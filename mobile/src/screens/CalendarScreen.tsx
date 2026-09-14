@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   addMonths,
   monthGrid,
@@ -7,11 +7,13 @@ import {
   byDueDate,
   dayHeading,
   emptyDay,
+  motion,
   sameDay,
   type Item,
 } from "@orbyn/core";
 import { PlannerList, type ListHandlers } from "../components/PlannerList";
 import { Icon } from "../components/Icon";
+import { FadeIn, PressableScale, easeOut, isReducedMotion } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -35,15 +37,15 @@ export function CalendarScreen({
           <Text style={[shared.sectionTitle, { marginBottom: 0, flex: 1 }]}>
             {month.toLocaleDateString([], { month: "long", year: "numeric" })}
           </Text>
-          <Pressable
+          <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Previous month"
             onPress={() => changeMonth(-1)}
             style={s.control}
           >
             <Icon name="chevronLeft" size={20} />
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Go to today"
             onPress={() => {
@@ -53,15 +55,15 @@ export function CalendarScreen({
             style={s.control}
           >
             <Text style={s.todayLabel}>Today</Text>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Next month"
             onPress={() => changeMonth(1)}
             style={s.control}
           >
             <Icon name="chevronRight" size={20} />
-          </Pressable>
+          </PressableScale>
         </View>
         <View style={s.week}>
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -86,12 +88,9 @@ export function CalendarScreen({
                     setSelected(day);
                     if (day.getMonth() !== month.getMonth()) setMonth(day);
                   }}
-                  style={[
-                    s.day,
-                    active && s.selected,
-                    today && !active && s.today,
-                  ]}
+                  style={[s.day, today && !active && s.today]}
                 >
+                  {active && <SelectedPill />}
                   <Text
                     style={[
                       s.dayText,
@@ -126,15 +125,44 @@ export function CalendarScreen({
           </View>
         ))}
       </View>
-      <PlannerList
-        items={items}
-        visible={visible}
-        title={dayHeading(selected)}
-        showStats={false}
-        empty={emptyDay}
-        {...handlers}
-      />
+      {/* Keyed by day so the agenda fades in when the selection changes. */}
+      <FadeIn key={selected.toDateString()}>
+        <PlannerList
+          items={items}
+          visible={visible}
+          title={dayHeading(selected)}
+          showStats={false}
+          empty={emptyDay}
+          {...handlers}
+        />
+      </FadeIn>
     </>
+  );
+}
+
+/** The selected day's filled highlight; scales in when a day is chosen. */
+function SelectedPill() {
+  const progress = useRef(
+    new Animated.Value(isReducedMotion() ? 1 : 0),
+  ).current;
+  useEffect(() => {
+    if (isReducedMotion()) return;
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: motion.base,
+      easing: easeOut,
+      useNativeDriver: true,
+    }).start();
+  }, [progress]);
+  const scale = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.6, 1],
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[s.selected, { opacity: progress, transform: [{ scale }] }]}
+    />
   );
 }
 const s = StyleSheet.create({
@@ -164,7 +192,15 @@ const s = StyleSheet.create({
     borderRadius: 10,
     margin: 1,
   },
-  selected: { backgroundColor: colors.accent },
+  selected: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+  },
   today: { backgroundColor: colors.accentSoft },
   dayText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
   dots: { height: 7, flexDirection: "row", gap: 3, marginTop: 4 },

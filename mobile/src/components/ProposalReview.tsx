@@ -10,6 +10,7 @@ import {
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -171,7 +172,7 @@ export function ProposalReview({
           {proposal.actions.map((a, n) => {
             const op = OPERATION[a.operation];
             return (
-              <View key={n} style={s.action}>
+              <FadeIn key={n} index={n} style={s.action}>
                 <View style={s.actionHead}>
                   <View style={[s.op, { backgroundColor: op.bg }]}>
                     <Text style={[s.opText, { color: op.fg }]}>{op.label}</Text>
@@ -184,7 +185,7 @@ export function ProposalReview({
                   </Text>
                 </View>
                 <Details action={a} items={items} before={before} />
-              </View>
+              </FadeIn>
             );
           })}
         </View>
@@ -207,7 +208,7 @@ export function ProposalReview({
         </View>
       )}
       {status === "applied" && count > 0 && (
-        <View style={s.status}>
+        <FadeIn style={s.status}>
           <Icon
             name="check"
             size={14}
@@ -217,13 +218,13 @@ export function ProposalReview({
           <Text style={[s.statusText, { color: colors.accent }]}>
             Saved to your planner
           </Text>
-        </View>
+        </FadeIn>
       )}
       {status === "discarded" && (
-        <View style={s.status}>
+        <FadeIn style={s.status}>
           <Icon name="x" size={14} color={colors.muted} />
           <Text style={s.statusText}>Discarded</Text>
-        </View>
+        </FadeIn>
       )}
     </View>
   );

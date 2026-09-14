@@ -5,6 +5,7 @@ import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { RoleBadge } from "../../components/RoleBadge";
 import { TeamDetail, type TeamActions } from "./TeamDetail";
+import { stagger } from "../../lib/motion";
 
 type Props = TeamActions & { teams: Team[] };
 
@@ -25,10 +26,13 @@ export function TeamsView({ teams, ...ctx }: Props) {
             Your teams <span>{teams.length}</span>
           </h2>
         </div>
-        {teams.map((t) => (
+        {teams.map((t, n) => (
           <button
             key={t.id}
-            className={"team-row " + (active === t.id ? "active" : "")}
+            className={
+              "team-row fade-up stagger " + (active === t.id ? "active" : "")
+            }
+            style={stagger(n)}
             aria-pressed={active === t.id}
             onClick={() => setSelected(t.id)}
           >

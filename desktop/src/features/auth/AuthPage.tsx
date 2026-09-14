@@ -28,7 +28,7 @@ export function AuthPage({
           ← Back to Orbyn
         </button>
       )}
-      <div className="auth-story">
+      <div className="auth-story fade-in motion-slow">
         <div className="brand">
           <Orbit /> orbyn<span>•</span>
         </div>
@@ -56,7 +56,7 @@ export function AuthPage({
         <small>Thoughtfully planned. Entirely yours.</small>
       </div>
       <main className="auth-form">
-        <div className="auth-card">
+        <div className="auth-card fade-up motion-slow">
           <span className="eyebrow">WELCOME TO YOUR SPACE</span>
           <h2>
             {register ? "A fresh start awaits." : "Good to have you back."}

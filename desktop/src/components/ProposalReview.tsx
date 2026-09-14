@@ -7,6 +7,7 @@ import {
   type Proposal,
 } from "@orbyn/core";
 import type { TurnState } from "../hooks/useAssistant";
+import { stagger } from "../lib/motion";
 
 type Props = {
   proposal: Proposal;
@@ -169,7 +170,11 @@ export function ProposalReview({
           }
         >
           {proposal.actions.map((a, n) => (
-            <div className="ai-action" key={n}>
+            <div
+              className="ai-action fade-up stagger"
+              style={stagger(n)}
+              key={n}
+            >
               <span className={"ai-op " + OPERATION[a.operation].className}>
                 {OPERATION[a.operation].label}
               </span>

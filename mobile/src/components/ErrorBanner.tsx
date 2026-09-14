@@ -1,9 +1,13 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
 import { Icon } from "./Icon";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 
-/** Inline error message. Renders nothing when there is no error; tap to dismiss when `onDismiss` is given. */
+/**
+ * Inline error message. Renders nothing when there is no error; tap to dismiss
+ * when `onDismiss` is given. Slides down and fades in when it appears.
+ */
 export function ErrorBanner({
   error,
   onDismiss,
@@ -13,7 +17,7 @@ export function ErrorBanner({
 }) {
   if (!error) return null;
   return (
-    <View style={s.banner}>
+    <FadeIn from="down" style={s.banner}>
       <Text accessibilityRole="alert" style={s.text}>
         {error}
       </Text>
@@ -27,7 +31,7 @@ export function ErrorBanner({
           <Icon name="x" size={16} color={colors.danger} />
         </Pressable>
       )}
-    </View>
+    </FadeIn>
   );
 }
 

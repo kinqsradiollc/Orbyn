@@ -121,3 +121,32 @@ export const dayHeading = (day: Date) =>
     month: "short",
     day: "numeric",
   });
+
+/**
+ * Motion shared by web and mobile so both apps move alike. Durations are in
+ * milliseconds; distances in CSS pixels / React Native points. Both apps must
+ * skip these animations when the user asks for reduced motion.
+ */
+export const motion = {
+  /** Presses, hovers, checkbox ticks. */
+  fast: 140,
+  /** Most enter and exit transitions. */
+  base: 220,
+  /** Screen changes, sheets, and the homepage hero. */
+  slow: 360,
+  /** Delay between consecutive list items as they appear. */
+  stagger: 35,
+  /** Items after this index appear without extra delay. */
+  maxStagger: 8,
+  /** How far an element travels while it enters. */
+  distance: 8,
+  /** Scale applied while a button or card is pressed. */
+  pressScale: 0.97,
+  /** Cubic-bezier control points; web uses cubic-bezier(), mobile Easing.bezier(). */
+  easeOut: [0.22, 1, 0.36, 1],
+  easeInOut: [0.65, 0, 0.35, 1],
+} as const;
+
+/** Delay for the nth item in a staggered list. */
+export const staggerDelay = (index: number) =>
+  Math.min(index, motion.maxStagger) * motion.stagger;

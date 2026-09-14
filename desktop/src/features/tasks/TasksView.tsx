@@ -44,10 +44,11 @@ export function TasksView({
           />
         </div>
       </div>
-      {visible.map((i) => (
+      {visible.map((i, n) => (
         <ItemRow
           key={i.id}
           item={i}
+          index={n}
           busy={busy}
           onToggle={onToggle}
           onEdit={onEdit}

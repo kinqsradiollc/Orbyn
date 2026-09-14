@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import {
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,6 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   freshItem,
+  motion,
   planDayPrompt,
   hasSystemPermission,
   hasTeamPermission,
@@ -27,6 +27,7 @@ import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
+import { FadeIn, PressableScale } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
 import { AssistantScreen } from "../screens/AssistantScreen";
 import { AuthScreen } from "../screens/AuthScreen";
@@ -138,7 +139,8 @@ export function RootScreen() {
           ...itemBody(i),
           status: i.status === "done" ? "todo" : "done",
         });
-        await refresh();
+        // The row may move to another group or leave this list.
+        await refresh({ animate: true });
       }),
   };
   const markRead = (n: Notice) =>
@@ -172,7 +174,7 @@ export function RootScreen() {
       <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
         <View style={s.headerRow}>
           <Brand size={24} />
-          <Pressable
+          <PressableScale
             accessibilityRole="button"
             accessibilityLabel="New item"
             hitSlop={8}
@@ -185,7 +187,7 @@ export function RootScreen() {
               color={colors.white}
               strokeWidth={2.2}
             />
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
       <ScrollView
@@ -197,7 +199,7 @@ export function RootScreen() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={() => act(refresh)}
+            onRefresh={() => act(() => refresh())}
             tintColor={colors.accent}
             colors={[colors.accent]}
           />
@@ -213,48 +215,59 @@ export function RootScreen() {
               })
               .toUpperCase()}
           </Text>
-          <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-          <Text style={[shared.subtitle, s.subtitle]}>{tabSubtitle(tab)}</Text>
+          {/* Keyed by tab: replays on navigation only, never on refresh. */}
+          <FadeIn key={`head-${tab}`} duration={motion.slow}>
+            <Text style={shared.title}>{tabTitle(tab, user)}</Text>
+            <Text style={[shared.subtitle, s.subtitle]}>
+              {tabSubtitle(tab)}
+            </Text>
+          </FadeIn>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
-          {tab === "Today" && (
-            <TodayScreen
-              items={items}
-              onPlanDay={() => {
-                setTab("AI");
-                void assistant.ask(planDayPrompt);
-              }}
-              {...listHandlers}
-            />
-          )}
-          {tab === "Tasks" && (
-            <TasksScreen
-              items={items}
-              search={search}
-              onSearch={setSearch}
-              {...listHandlers}
-            />
-          )}
-          {tab === "Calendar" && (
-            <CalendarScreen items={items} {...listHandlers} />
-          )}
-          {tab === "AI" && (
-            <AssistantScreen assistant={assistant} items={items} busy={busy} />
-          )}
-          {tab === "Inbox" && (
-            <InboxScreen notices={notices} onRead={markRead} />
-          )}
-          {tab === "Settings" && (
-            <SettingsScreen
-              user={user}
-              busy={busy}
-              act={act}
-              onUser={setUser}
-              onSignOut={signOut}
-              teamCount={teams.length}
-              onOpenTeams={() => setSheet("teams")}
-              onOpenAdmin={() => setSheet("admin")}
-            />
-          )}
+          <FadeIn key={`body-${tab}`} duration={motion.slow}>
+            {tab === "Today" && (
+              <TodayScreen
+                items={items}
+                onPlanDay={() => {
+                  setTab("AI");
+                  void assistant.ask(planDayPrompt);
+                }}
+                {...listHandlers}
+              />
+            )}
+            {tab === "Tasks" && (
+              <TasksScreen
+                items={items}
+                search={search}
+                onSearch={setSearch}
+                {...listHandlers}
+              />
+            )}
+            {tab === "Calendar" && (
+              <CalendarScreen items={items} {...listHandlers} />
+            )}
+            {tab === "AI" && (
+              <AssistantScreen
+                assistant={assistant}
+                items={items}
+                busy={busy}
+              />
+            )}
+            {tab === "Inbox" && (
+              <InboxScreen notices={notices} onRead={markRead} />
+            )}
+            {tab === "Settings" && (
+              <SettingsScreen
+                user={user}
+                busy={busy}
+                act={act}
+                onUser={setUser}
+                onSignOut={signOut}
+                teamCount={teams.length}
+                onOpenTeams={() => setSheet("teams")}
+                onOpenAdmin={() => setSheet("admin")}
+              />
+            )}
+          </FadeIn>
         </View>
       </ScrollView>
       <TabBar

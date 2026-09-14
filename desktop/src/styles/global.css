@@ -24,8 +24,12 @@ select {
 button {
   cursor: pointer;
   transition:
-    background 0.15s,
-    transform 0.15s;
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 button:disabled {
   opacity: 0.5;
@@ -1135,14 +1139,27 @@ footer svg {
   }
 }
 @media (max-width: 800px) {
+  /* Off-canvas: slides in and out instead of snapping. `visibility` keeps
+     the closed sidebar out of the tab order once it has slid away. */
   .sidebar {
-    display: none;
     z-index: 4;
     width: 240px;
-    box-shadow: 10px 0 80px #23362230;
+    transform: translateX(-100%);
+    visibility: hidden;
+    box-shadow: none;
+    transition:
+      transform var(--motion-slow) var(--ease-in-out),
+      box-shadow var(--motion-slow) var(--ease-in-out),
+      visibility 0s linear var(--motion-slow);
   }
   .sidebar.open {
-    display: flex;
+    transform: none;
+    visibility: visible;
+    box-shadow: 10px 0 80px #23362230;
+    transition:
+      transform var(--motion-slow) var(--ease-out),
+      box-shadow var(--motion-slow) var(--ease-out),
+      visibility 0s;
   }
   .shell {
     margin: 0;

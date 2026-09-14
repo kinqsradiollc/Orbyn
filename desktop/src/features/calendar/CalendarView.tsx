@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   monthGrid,
@@ -11,6 +11,7 @@ import {
   sameDay,
   type Item,
 } from "@orbyn/core";
+import { stagger } from "../../lib/motion";
 import "./calendar.css";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -150,32 +151,36 @@ export function CalendarView({ items, month, onMonthChange, onEdit }: Props) {
           })}
       </div>
       <div className="calendar-agenda" aria-live="polite">
-        <h3>
-          {dayHeading(selected)}
-          <span>{selectedItems.length}</span>
-        </h3>
-        {selectedItems.length === 0 ? (
-          <p>
-            <strong>{emptyDay.title}</strong> {emptyDay.body}
-          </p>
-        ) : (
-          selectedItems.map((i) => (
-            <button
-              key={i.id}
-              className={
-                "calendar-agenda-item " + (i.status === "done" ? "done" : "")
-              }
-              onClick={() => onEdit(i)}
-            >
-              <strong>{i.title}</strong>
-              <small>
-                {dateLabel(i.due_at)}
-                {i.kind === "event" ? " · Event" : ""}
-                {i.team_name ? " · " + i.team_name : ""}
-              </small>
-            </button>
-          ))
-        )}
+        <Fragment key={selected.toDateString()}>
+          <h3 className="fade-in">
+            {dayHeading(selected)}
+            <span>{selectedItems.length}</span>
+          </h3>
+          {selectedItems.length === 0 ? (
+            <p className="fade-in">
+              <strong>{emptyDay.title}</strong> {emptyDay.body}
+            </p>
+          ) : (
+            selectedItems.map((i, n) => (
+              <button
+                key={i.id}
+                className={
+                  "calendar-agenda-item fade-up stagger " +
+                  (i.status === "done" ? "done" : "")
+                }
+                style={stagger(n)}
+                onClick={() => onEdit(i)}
+              >
+                <strong>{i.title}</strong>
+                <small>
+                  {dateLabel(i.due_at)}
+                  {i.kind === "event" ? " · Event" : ""}
+                  {i.team_name ? " · " + i.team_name : ""}
+                </small>
+              </button>
+            ))
+          )}
+        </Fragment>
       </div>
     </section>
   );

@@ -191,54 +191,56 @@ export function App() {
               </button>
             </div>
           )}
-          <PageHeading view={view} user={user} onNewItem={() => newItem()} />
-          {view === "Overview" && (
-            <OverviewView
-              items={items}
-              busy={busy}
-              onToggle={toggle}
-              onEdit={setEditing}
-              onNewItem={() => newItem()}
-              onNavigate={navigate}
-              onPlanDay={() => {
-                navigate("AI assistant");
-                void assistant.ask(planDayPrompt);
-              }}
-            />
-          )}
-          {view === "My tasks" && (
-            <TasksView
-              items={items}
-              query={query}
-              onQueryChange={setQuery}
-              busy={busy}
-              onToggle={toggle}
-              onEdit={setEditing}
-            />
-          )}
-          {view === "Calendar" && (
-            <CalendarView
-              items={items}
-              month={month}
-              onMonthChange={setMonth}
-              onEdit={setEditing}
-            />
-          )}
-          {view === "AI assistant" && (
-            <AssistantView items={items} busy={busy} assistant={assistant} />
-          )}
-          {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
-          {view === "Admin" && isAdmin && <AdminView {...teamActions} />}
-          {view === "Notifications" && (
-            <NotificationsView notices={notices} onRead={planner.markRead} />
-          )}
-          {view === "Settings" && (
-            <SettingsView
-              user={user}
-              busy={busy}
-              onEmailReminders={planner.setEmailReminders}
-            />
-          )}
+          <div key={view} className="view-enter">
+            <PageHeading view={view} user={user} onNewItem={() => newItem()} />
+            {view === "Overview" && (
+              <OverviewView
+                items={items}
+                busy={busy}
+                onToggle={toggle}
+                onEdit={setEditing}
+                onNewItem={() => newItem()}
+                onNavigate={navigate}
+                onPlanDay={() => {
+                  navigate("AI assistant");
+                  void assistant.ask(planDayPrompt);
+                }}
+              />
+            )}
+            {view === "My tasks" && (
+              <TasksView
+                items={items}
+                query={query}
+                onQueryChange={setQuery}
+                busy={busy}
+                onToggle={toggle}
+                onEdit={setEditing}
+              />
+            )}
+            {view === "Calendar" && (
+              <CalendarView
+                items={items}
+                month={month}
+                onMonthChange={setMonth}
+                onEdit={setEditing}
+              />
+            )}
+            {view === "AI assistant" && (
+              <AssistantView items={items} busy={busy} assistant={assistant} />
+            )}
+            {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
+            {view === "Admin" && isAdmin && <AdminView {...teamActions} />}
+            {view === "Notifications" && (
+              <NotificationsView notices={notices} onRead={planner.markRead} />
+            )}
+            {view === "Settings" && (
+              <SettingsView
+                user={user}
+                busy={busy}
+                onEmailReminders={planner.setEmailReminders}
+              />
+            )}
+          </div>
           {loading && (
             <small className="sync-status">Syncing your space…</small>
           )}

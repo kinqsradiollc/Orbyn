@@ -12,6 +12,7 @@ import { dateLabel, groupItems, type Item } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import type { View } from "../../app/views";
+import { stagger } from "../../lib/motion";
 
 type Props = {
   items: Item[];
@@ -81,10 +82,11 @@ export function OverviewView({
               </button>
             </div>
             {today.length ? (
-              today.map((i) => (
+              today.map((i, n) => (
                 <ItemRow
                   key={i.id}
                   item={i}
+                  index={n}
                   busy={busy}
                   onToggle={onToggle}
                   onEdit={onEdit}
@@ -107,8 +109,13 @@ export function OverviewView({
               <h2>Coming into view</h2>
               <CalendarDays size={18} />
             </div>
-            {upcoming.slice(0, 4).map((i) => (
-              <button className="upcoming" key={i.id} onClick={() => onEdit(i)}>
+            {upcoming.slice(0, 4).map((i, n) => (
+              <button
+                className="upcoming fade-up stagger"
+                style={stagger(n)}
+                key={i.id}
+                onClick={() => onEdit(i)}
+              >
                 <span className="date-tile">
                   <small>
                     {new Date(i.due_at!).toLocaleDateString([], {
@@ -161,7 +168,7 @@ export function OverviewView({
               <span>of your plans complete</span>
             </div>
             <div className="progress-track">
-              <div style={{ width: `${percent}%` }} />
+              <div style={{ transform: `scaleX(${percent / 100})` }} />
             </div>
             <p>Progress happens one small step at a time.</p>
           </section>

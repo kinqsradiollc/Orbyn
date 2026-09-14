@@ -27,6 +27,7 @@ import type { Planner } from "../../hooks/usePlanner";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { RoleBadge } from "../../components/RoleBadge";
+import { stagger } from "../../lib/motion";
 
 /** Planner plumbing shared by the Teams and Admin views. */
 export type TeamActions = {
@@ -245,7 +246,7 @@ export function TeamDetail({
             </tr>
           </thead>
           <tbody>
-            {team.members.map((m) => {
+            {team.members.map((m, n) => {
               const self = m.user_id === user?.id;
               const options = TEAM_ROLES.filter(
                 (r) => r === m.role || canChangeTeamMember(actor, m.role, r),
@@ -253,7 +254,11 @@ export function TeamDetail({
               const canRemove =
                 !self && canChangeTeamMember(actor, m.role, null);
               return (
-                <tr key={m.user_id}>
+                <tr
+                  key={m.user_id}
+                  className="fade-up stagger"
+                  style={stagger(n)}
+                >
                   <td>
                     <strong>{m.name}</strong>
                     {self && <span className="you-tag">You</span>}
@@ -366,10 +371,11 @@ export function TeamDetail({
               View only — you&apos;re a viewer in {team.name}.
             </p>
           )}
-          {items?.map((i) => (
+          {items?.map((i, n) => (
             <ItemRow
               key={i.id}
               item={i}
+              index={n}
               busy={busy}
               readOnly={!canWrite}
               onToggle={onToggle}

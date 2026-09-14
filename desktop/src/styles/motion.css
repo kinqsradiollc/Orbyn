@@ -1,0 +1,224 @@
+/* ==========================================================================
+   Motion: shared keyframes and utilities. Timings come from the `motion`
+   tokens in @orbyn/core (set as CSS variables in main.tsx), so web and mobile
+   move alike.
+
+   Entrances use the independent `translate` / `scale` properties so they
+   compose with an element's own `transform` (rotated cards, press scale,
+   hover lift) instead of replacing it. Fill mode is `backwards`: elements are
+   hidden during their stagger delay, and nothing lingers after the animation
+   ends, so hover and press transforms keep working.
+   ========================================================================== */
+
+@keyframes motion-fade-up {
+  from {
+    opacity: 0;
+    translate: 0 var(--motion-distance);
+  }
+}
+@keyframes motion-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes motion-scale-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes motion-pop {
+  0% {
+    scale: 0.6;
+  }
+  60% {
+    scale: 1.12;
+  }
+  100% {
+    scale: 1;
+  }
+}
+@keyframes motion-slide-down {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--motion-distance) * -1);
+  }
+}
+@keyframes motion-slide-from-right {
+  from {
+    opacity: 0;
+    translate: var(--motion-distance) var(--motion-distance);
+  }
+}
+@keyframes motion-slide-from-left {
+  from {
+    opacity: 0;
+    translate: calc(var(--motion-distance) * -1) var(--motion-distance);
+  }
+}
+@keyframes motion-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Utilities (longhands, so they combine without resetting each other). */
+.fade-up,
+.fade-in,
+.scale-in,
+.pop,
+.slide-down {
+  animation-duration: var(--motion-base);
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: backwards;
+}
+.fade-up {
+  animation-name: motion-fade-up;
+}
+.fade-in {
+  animation-name: motion-fade-in;
+}
+.scale-in {
+  animation-name: motion-scale-in;
+}
+.pop {
+  animation-name: motion-pop;
+}
+.slide-down {
+  animation-name: motion-slide-down;
+}
+.motion-slow {
+  animation-duration: var(--motion-slow);
+}
+/* Delay by list index: set `--i` inline (see lib/motion.ts). */
+.stagger {
+  animation-delay: calc(
+    min(var(--i, 0), var(--motion-max-stagger, 8)) * var(--motion-stagger)
+  );
+}
+
+/* View changes: heading and content rise in together. */
+.view-enter {
+  animation: motion-fade-up var(--motion-slow) var(--ease-out) backwards;
+}
+
+/* Error banners anywhere (app, editor, auth). */
+.error {
+  animation: motion-slide-down var(--motion-base) var(--ease-out) backwards;
+}
+.sync-status {
+  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+}
+
+/* Item editor modal. */
+.modal-backdrop {
+  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+}
+.modal {
+  animation: motion-scale-in var(--motion-base) var(--ease-out) backwards;
+}
+
+/* Checkbox: colors ease; the tick pops when an item is completed. */
+.check {
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+.check.can-pop svg {
+  animation: motion-pop var(--motion-base) var(--ease-out) backwards;
+}
+/* Strike-through fades in via its color instead of snapping on. */
+.item-main strong {
+  text-decoration: line-through;
+  text-decoration-color: transparent;
+  transition:
+    color var(--motion-base) var(--ease-out),
+    text-decoration-color var(--motion-base) var(--ease-out);
+}
+.completed .item-main strong {
+  text-decoration-color: currentColor;
+}
+
+/* Unread dot in the sidebar. */
+nav button i {
+  animation: motion-pop var(--motion-base) var(--ease-out) backwards;
+}
+
+/* Overview progress bar grows with transform, not width. */
+.progress-track > div {
+  width: 100%;
+  transform-origin: left center;
+  transition: transform var(--motion-slow) var(--ease-out);
+  animation: motion-grow-x var(--motion-slow) var(--ease-out) backwards;
+}
+
+/* Hover color transitions on interactive rows and cards. */
+.upcoming,
+.team-row,
+.notice,
+.tabs button,
+.calendar-agenda-item {
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+.card,
+.stats,
+.assistant-card {
+  transition:
+    transform var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Press feedback. */
+  .primary:active:not(:disabled),
+  .secondary:active:not(:disabled),
+  .icon-button:active:not(:disabled),
+  .text-button:active:not(:disabled),
+  nav button:active,
+  .tabs button:active,
+  .upcoming:active,
+  .team-row:active,
+  .calendar-agenda-item:active,
+  .assistant-card > button:active,
+  .sidebar-note button:active,
+  .settings-link:active {
+    transform: scale(var(--motion-press-scale));
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  /* Subtle lift for cards on pointer devices. Busy work surfaces (chat,
+     calendar) and the modal stay put. */
+  .card:not(.ai-chat):not(.calendar):not(.modal):hover,
+  .stats:hover,
+  .assistant-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px #1c31240d;
+  }
+  .primary:hover:not(:disabled) {
+    box-shadow: 0 6px 16px #2b583f26;
+  }
+}
+
+/* Reduced motion: no movement, everything simply visible. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    translate: none !important;
+  }
+}

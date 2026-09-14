@@ -4,6 +4,7 @@ import { groupItems, type Item } from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { ItemCard } from "./ItemCard";
+import { Bump, FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -55,14 +56,16 @@ export function PlannerList({
   return (
     <>
       {showStats && (
-        <View style={s.stats}>
+        <FadeIn style={s.stats}>
           {stats.map((stat, n) => (
             <View key={stat.label} style={[s.stat, n > 0 && s.statDivider]}>
-              <Text style={s.statValue}>{stat.value}</Text>
+              <Bump value={stat.value}>
+                <Text style={s.statValue}>{stat.value}</Text>
+              </Bump>
               <Text style={shared.small}>{stat.label}</Text>
             </View>
           ))}
-        </View>
+        </FadeIn>
       )}
       {children}
       <View style={s.heading}>
@@ -74,27 +77,28 @@ export function PlannerList({
       {listed.length > 0 && (
         <View style={s.list}>
           {listed.map((i, n) => (
-            <ItemCard
-              key={i.id}
-              item={i}
-              busy={busy}
-              first={n === 0}
-              readOnly={canToggle ? !canToggle(i) : false}
-              onToggle={onToggle}
-              onEdit={onEdit}
-            />
+            <FadeIn key={i.id} index={n}>
+              <ItemCard
+                item={i}
+                busy={busy}
+                first={n === 0}
+                readOnly={canToggle ? !canToggle(i) : false}
+                onToggle={onToggle}
+                onEdit={onEdit}
+              />
+            </FadeIn>
           ))}
         </View>
       )}
       {!listed.length && (
-        <View style={[shared.card, shared.empty]}>
+        <FadeIn style={[shared.card, shared.empty]}>
           <View style={shared.emptyIcon}>
             <Icon name="sun" size={26} color={colors.accent} />
           </View>
           <Text style={shared.sectionTitle}>{empty.title}</Text>
           <Text style={[shared.subtitle, s.emptyText]}>{empty.body}</Text>
           <Button secondary icon="plus" title="Make a plan" onPress={onAdd} />
-        </View>
+        </FadeIn>
       )}
     </>
   );

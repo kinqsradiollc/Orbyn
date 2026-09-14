@@ -1,6 +1,21 @@
 /* Calendar: selection state, plus the phone layout that mirrors mobile. */
 .calendar-day {
   cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.calendar-day > span {
+  transition:
+    background-color var(--motion-base) var(--ease-out),
+    color var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
+}
+@media (hover: hover) {
+  .calendar-day:not(.outside):hover {
+    background-color: #fafbf8;
+  }
+  .calendar-day button:hover {
+    background-color: #e3ebdc;
+  }
 }
 .calendar-day:focus-visible {
   outline: 2px solid var(--green);

@@ -13,13 +13,16 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import { useReveal } from "../../hooks/useReveal";
+import { stagger } from "../../lib/motion";
 import "./home.css";
 
 type Props = { signedIn: boolean; onNavigate: (path: string) => void };
 export function HomePage({ signedIn, onNavigate }: Props) {
   const start = () => onNavigate(signedIn ? "/app" : "/signup");
+  const revealRoot = useReveal<HTMLDivElement>();
   return (
-    <div className="home">
+    <div className="home" ref={revealRoot}>
       <a className="home-skip" href="#home-main">
         Skip to content
       </a>
@@ -144,7 +147,10 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             </div>
           </div>
         </section>
-        <section className="home-principles" aria-label="Product principles">
+        <section
+          className="home-principles reveal"
+          aria-label="Product principles"
+        >
           <span>
             <ListTodo size={18} /> Less to hold in your head
           </span>
@@ -156,7 +162,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           </span>
         </section>
         <section className="home-features" id="features">
-          <div className="home-section-heading">
+          <div className="home-section-heading reveal">
             <span className="eyebrow">LIFE HAS A LOT OF MOVING PARTS</span>
             <h2>
               Give them a place
@@ -169,7 +175,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             </p>
           </div>
           <div className="home-feature-grid">
-            <article className="home-feature large">
+            <article className="home-feature large reveal" style={stagger(0)}>
               <span className="home-feature-icon">
                 <CalendarDays />
               </span>
@@ -188,7 +194,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 ))}
               </div>
             </article>
-            <article className="home-feature">
+            <article className="home-feature reveal" style={stagger(1)}>
               <span className="home-feature-icon">
                 <Sparkles />
               </span>
@@ -202,7 +208,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <ArrowUpRight size={16} />
               </div>
             </article>
-            <article className="home-feature">
+            <article className="home-feature reveal" style={stagger(2)}>
               <span className="home-feature-icon">
                 <Bell />
               </span>
@@ -215,7 +221,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <span /> At the right time. In your own rhythm.
               </div>
             </article>
-            <article className="home-feature">
+            <article className="home-feature reveal" style={stagger(3)}>
               <span className="home-feature-icon">
                 <Users />
               </span>
@@ -234,7 +240,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           </div>
         </section>
         <section className="home-how" id="how-it-works">
-          <div className="home-section-heading">
+          <div className="home-section-heading reveal">
             <span className="eyebrow">A SMALL START IS STILL A START</span>
             <h2>
               From on your mind
@@ -257,7 +263,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 body: "Check in from any device. Adjust as life changes. Celebrate the things you finish.",
               },
             ].map((step, n) => (
-              <article key={step.title}>
+              <article key={step.title} className="reveal" style={stagger(n)}>
                 <span>0{n + 1}</span>
                 <h3>{step.title}</h3>
                 <p>{step.body}</p>
@@ -266,7 +272,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           </div>
         </section>
         <section className="home-everywhere" id="everywhere">
-          <div>
+          <div className="reveal">
             <span className="eyebrow">SAME SPACE. WHEREVER YOU ARE.</span>
             <h2>
               At your desk.
@@ -288,7 +294,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
             </div>
           </div>
-          <div className="home-device-art" aria-hidden="true">
+          <div
+            className="home-device-art reveal"
+            style={stagger(2)}
+            aria-hidden="true"
+          >
             <div className="home-device-desktop">
               <Orbit size={22} />
               <div className="home-device-line wide" />
@@ -314,7 +324,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             </div>
           </div>
         </section>
-        <section className="home-final">
+        <section className="home-final reveal">
           <Orbit size={37} />
           <span className="eyebrow">
             A LITTLE MORE CLARITY. A LITTLE MORE YOU.

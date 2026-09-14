@@ -20,6 +20,7 @@ import { RoleBadge } from "../../components/RoleBadge";
 import { TeamDetail, type TeamActions } from "../teams/TeamDetail";
 import { AdminUsers } from "./AdminUsers";
 import { AdminAudit } from "./AdminAudit";
+import { stagger } from "../../lib/motion";
 
 type Tab = "Overview" | "Users" | "Teams" | "Audit log";
 
@@ -108,8 +109,12 @@ function OverviewPanel({
   const data = useRemote(() => client.adminOverview(), [revision], report);
   return (
     <div className="stat-grid">
-      {STATS.map(({ key, label, icon: Icon }) => (
-        <div className="card stat-card" key={key}>
+      {STATS.map(({ key, label, icon: Icon }, n) => (
+        <div
+          className="card stat-card fade-up stagger"
+          style={stagger(n)}
+          key={key}
+        >
           <span>
             <Icon size={15} /> {label}
           </span>
@@ -147,8 +152,8 @@ function TeamsPanel({
             </tr>
           </thead>
           <tbody>
-            {teams?.map((t) => (
-              <tr key={t.id}>
+            {teams?.map((t, n) => (
+              <tr key={t.id} className="fade-up stagger" style={stagger(n)}>
                 <td>
                   <button className="link-button" onClick={() => onOpen(t.id)}>
                     {t.name}

@@ -1,7 +1,8 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Item, type Priority } from "@orbyn/core";
 import { Icon } from "./Icon";
+import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii } from "../theme";
 
 const PRIORITY: Record<Priority, { bg: string; fg: string }> = {
@@ -10,7 +11,10 @@ const PRIORITY: Record<Priority, { bg: string; fg: string }> = {
   low: { bg: colors.lowBg, fg: colors.lowText },
 };
 
-/** One planner row, styled like the desktop `.item-row`. */
+/**
+ * One planner row, styled like the desktop `.item-row`. Shrinks slightly while
+ * pressed; the check mark pops when the item becomes done.
+ */
 export function ItemCard({
   item,
   busy,
@@ -30,8 +34,19 @@ export function ItemCard({
 }) {
   const done = item.status === "done";
   const tone = PRIORITY[item.priority];
+  const reduced = useReducedMotion();
+  const press = usePressScale();
+  const tick = useRef(new Animated.Value(1)).current;
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current && !reduced) {
+      tick.setValue(0.6);
+      pop(tick).start();
+    }
+    wasDone.current = done;
+  }, [done, reduced, tick]);
   return (
-    <View style={[s.row, !first && s.divider]}>
+    <Animated.View style={[s.row, !first && s.divider, press.style]}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done, disabled: busy || readOnly }}
@@ -42,13 +57,17 @@ export function ItemCard({
         style={[s.check, done && s.checked]}
       >
         {done && (
-          <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
+          <Animated.View style={{ transform: [{ scale: tick }] }}>
+            <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
+          </Animated.View>
         )}
       </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={"Edit " + item.title}
         style={({ pressed }) => [s.main, pressed && { opacity: 0.6 }]}
+        onPressIn={press.onPressIn}
+        onPressOut={press.onPressOut}
         onPress={() => onEdit(item)}
       >
         <Text numberOfLines={2} style={[s.title, done && s.done]}>
@@ -77,7 +96,7 @@ export function ItemCard({
       <View style={[s.pill, { backgroundColor: tone.bg }]}>
         <Text style={[s.pillText, { color: tone.fg }]}>{item.priority}</Text>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

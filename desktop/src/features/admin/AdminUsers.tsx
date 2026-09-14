@@ -3,6 +3,7 @@ import { Search, Trash2 } from "lucide-react";
 import type { AdminUser, SystemRole } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
+import { stagger } from "../../lib/motion";
 
 const PAGE = 50;
 
@@ -124,10 +125,16 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((u) => {
+            {rows.map((u, n) => {
               const self = u.id === user?.id;
               return (
-                <tr key={u.id} className={u.disabled ? "is-disabled" : ""}>
+                <tr
+                  key={u.id}
+                  className={
+                    "fade-up stagger " + (u.disabled ? "is-disabled" : "")
+                  }
+                  style={stagger(n % PAGE)}
+                >
                   <td>
                     <strong>{u.name}</strong>
                     {self && <span className="you-tag">You</span>}

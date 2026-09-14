@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { Icon } from "../components/Icon";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -14,7 +15,7 @@ export function InboxScreen({
 }) {
   if (!notices.length)
     return (
-      <View style={[shared.card, shared.empty]}>
+      <FadeIn style={[shared.card, shared.empty]}>
         <View style={shared.emptyIcon}>
           <Icon name="bell" size={24} color={colors.accent} />
         </View>
@@ -22,39 +23,42 @@ export function InboxScreen({
         <Text style={[shared.subtitle, { textAlign: "center" }]}>
           Deadline reminders will appear here.
         </Text>
-      </View>
+      </FadeIn>
     );
   return (
     <View style={s.list}>
       {notices.map((n, i) => (
-        <Pressable
-          key={n.id}
-          accessibilityRole="button"
-          accessibilityLabel={n.title + (n.read ? "" : ", unread")}
-          accessibilityHint={n.read ? undefined : "Marks this reminder as read"}
-          onPress={() => onRead(n)}
-          style={({ pressed }) => [
-            s.row,
-            i > 0 && s.divider,
-            !n.read && s.unread,
-            pressed && { opacity: 0.7 },
-          ]}
-        >
-          <View style={s.icon}>
-            <Icon name="bell" size={16} color={colors.accent} />
-            {!n.read && <View style={s.dot} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.title, n.read && { color: colors.textSoft }]}>
-              {n.title}
-            </Text>
-            <Text style={s.body}>{n.body}</Text>
-            <Text style={shared.small}>
-              {dateLabel(n.created_at)}
-              {n.read ? " · Read" : " · Tap to mark read"}
-            </Text>
-          </View>
-        </Pressable>
+        <FadeIn key={n.id} index={i}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={n.title + (n.read ? "" : ", unread")}
+            accessibilityHint={
+              n.read ? undefined : "Marks this reminder as read"
+            }
+            onPress={() => onRead(n)}
+            style={({ pressed }) => [
+              s.row,
+              i > 0 && s.divider,
+              !n.read && s.unread,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <View style={s.icon}>
+              <Icon name="bell" size={16} color={colors.accent} />
+              {!n.read && <View style={s.dot} />}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.title, n.read && { color: colors.textSoft }]}>
+                {n.title}
+              </Text>
+              <Text style={s.body}>{n.body}</Text>
+              <Text style={shared.small}>
+                {dateLabel(n.created_at)}
+                {n.read ? " · Read" : " · Tap to mark read"}
+              </Text>
+            </View>
+          </Pressable>
+        </FadeIn>
       ))}
     </View>
   );

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +23,7 @@ import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { TeamList } from "../components/TeamList";
 import { client } from "../lib/api";
+import { FadeIn, PressableScale } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 import { TeamDetailPage } from "./TeamDetail";
@@ -140,11 +140,11 @@ function Overview({ act }: { act: Act }) {
   ];
   return (
     <View style={s.grid}>
-      {stats.map((stat) => (
-        <View key={stat.label} style={s.tile}>
+      {stats.map((stat, n) => (
+        <FadeIn key={stat.label} index={n} style={s.tile}>
           <Text style={s.tileValue}>{stat.value}</Text>
           <Text style={shared.small}>{stat.label}</Text>
-        </View>
+        </FadeIn>
       ))}
     </View>
   );
@@ -226,7 +226,11 @@ function Users({
         {rows.map((u, n) => {
           const self = u.id === me?.id;
           return (
-            <View key={u.id} style={[s.userRow, n > 0 && s.divider]}>
+            <FadeIn
+              key={u.id}
+              index={n}
+              style={[s.userRow, n > 0 && s.divider]}
+            >
               <View style={s.userTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.userName} numberOfLines={1}>
@@ -279,7 +283,7 @@ function Users({
                   />
                 </View>
               )}
-            </View>
+            </FadeIn>
           );
         })}
       </View>
@@ -323,7 +327,7 @@ function Audit({ act, busy }: { act: Act; busy: boolean }) {
     <>
       <View style={s.list}>
         {rows.map((a, n) => (
-          <View key={a.id} style={[s.auditRow, n > 0 && s.divider]}>
+          <FadeIn key={a.id} index={n} style={[s.auditRow, n > 0 && s.divider]}>
             <Text style={s.auditAction}>{a.action}</Text>
             <Text style={shared.body} numberOfLines={2}>
               {auditTarget(a)}
@@ -337,7 +341,7 @@ function Audit({ act, busy }: { act: Act; busy: boolean }) {
                 minute: "2-digit",
               })}
             </Text>
-          </View>
+          </FadeIn>
         ))}
       </View>
       {rows.length < total && (
@@ -374,7 +378,7 @@ function SmallAction({
   destructive?: boolean;
 }) {
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
@@ -393,7 +397,7 @@ function SmallAction({
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 

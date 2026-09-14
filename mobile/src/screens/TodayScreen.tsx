@@ -1,9 +1,10 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { groupItems, dateLabel, type Item } from "@orbyn/core";
+import React, { useEffect, useRef } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { groupItems, dateLabel, motion, type Item } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlannerList, type ListHandlers } from "../components/PlannerList";
+import { Bump, FadeIn, easeOut, isReducedMotion } from "../motion";
 import { colors } from "../theme";
 import { shared } from "../styles";
 
@@ -30,21 +31,22 @@ export function TodayScreen({
       />
       <View style={shared.card}>
         <Text style={shared.sectionTitle}>Coming into view</Text>
-        {upcoming.slice(0, 4).map((item) => (
-          <Pressable
-            key={item.id}
-            accessibilityRole="button"
-            onPress={() => handlers.onEdit(item)}
-            style={s.upcoming}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={shared.body}>{item.title}</Text>
-              <Text style={shared.small}>
-                {dateLabel(item.due_at)} · {item.kind}
-              </Text>
-            </View>
-            <Icon name="chevronRight" size={18} color={colors.muted} />
-          </Pressable>
+        {upcoming.slice(0, 4).map((item, n) => (
+          <FadeIn key={item.id} index={n}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => handlers.onEdit(item)}
+              style={s.upcoming}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={shared.body}>{item.title}</Text>
+                <Text style={shared.small}>
+                  {dateLabel(item.due_at)} · {item.kind}
+                </Text>
+              </View>
+              <Icon name="chevronRight" size={18} color={colors.muted} />
+            </Pressable>
+          </FadeIn>
         ))}
         {!upcoming.length && (
           <Text style={shared.small}>
@@ -69,26 +71,44 @@ export function TodayScreen({
       </View>
       <View style={shared.card}>
         <Text style={shared.sectionTitle}>Your momentum</Text>
-        <Text style={shared.title}>{percent}%</Text>
+        <Bump value={percent}>
+          <Text style={shared.title}>{percent}%</Text>
+        </Bump>
         <Text style={shared.small}>of your plans complete</Text>
-        <View
-          style={s.progress}
-          accessibilityRole="progressbar"
-          accessibilityValue={{ min: 0, max: 100, now: percent }}
-        >
-          <View
-            style={{
-              width: `${percent}%`,
-              height: 5,
-              backgroundColor: colors.accent,
-            }}
-          />
-        </View>
+        <Progress percent={percent} />
         <Text style={shared.small}>
           Progress happens one small step at a time.
         </Text>
       </View>
     </>
+  );
+}
+
+/** Momentum bar; the fill grows from the left on mount and when it changes. */
+function Progress({ percent }: { percent: number }) {
+  const fill = useRef(
+    new Animated.Value(isReducedMotion() ? percent / 100 : 0),
+  ).current;
+  useEffect(() => {
+    if (isReducedMotion()) {
+      fill.setValue(percent / 100);
+      return;
+    }
+    Animated.timing(fill, {
+      toValue: percent / 100,
+      duration: motion.slow,
+      easing: easeOut,
+      useNativeDriver: true,
+    }).start();
+  }, [percent, fill]);
+  return (
+    <View
+      style={s.progress}
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: percent }}
+    >
+      <Animated.View style={[s.fill, { transform: [{ scaleX: fill }] }]} />
+    </View>
   );
 }
 
@@ -106,6 +126,12 @@ const s = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: colors.accentSoft,
     marginVertical: 16,
+  },
+  fill: {
+    width: "100%",
+    height: 5,
+    backgroundColor: colors.accent,
+    transformOrigin: "left",
   },
   badge: {
     width: 36,

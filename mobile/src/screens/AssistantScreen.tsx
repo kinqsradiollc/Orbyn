@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from "react";
 import {
   Animated,
   Easing,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -12,6 +11,7 @@ import { assistantSuggestions, type Item } from "@orbyn/core";
 import { Icon } from "../components/Icon";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
+import { FadeIn, PressableScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -35,7 +35,7 @@ export function AssistantScreen({
   return (
     <>
       {turns.length === 0 ? (
-        <View style={shared.softCard}>
+        <FadeIn style={shared.softCard}>
           <View style={s.badge}>
             <Icon name="sparkles" size={18} color={colors.accent} />
           </View>
@@ -46,7 +46,7 @@ export function AssistantScreen({
           </Text>
           <View style={s.chips}>
             {SUGGESTIONS.map((text) => (
-              <Pressable
+              <PressableScale
                 key={text}
                 accessibilityRole="button"
                 disabled={locked}
@@ -58,14 +58,14 @@ export function AssistantScreen({
                 ]}
               >
                 <Text style={s.chipText}>{text}</Text>
-              </Pressable>
+              </PressableScale>
             ))}
           </View>
-        </View>
+        </FadeIn>
       ) : (
         <View style={s.threadHead}>
           <Text style={shared.eyebrow}>CONVERSATION</Text>
-          <Pressable
+          <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Start a new conversation"
             disabled={thinking}
@@ -79,20 +79,20 @@ export function AssistantScreen({
               strokeWidth={2.2}
             />
             <Text style={s.newChatText}>New chat</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       )}
 
       <View style={s.thread}>
         {turns.map((turn) =>
           turn.role === "user" ? (
-            <View key={turn.id} style={s.userRow}>
+            <FadeIn key={turn.id} from="right" style={s.userRow}>
               <View style={s.userBubble}>
                 <Text style={s.userText}>{turn.text}</Text>
               </View>
-            </View>
+            </FadeIn>
           ) : (
-            <View key={turn.id} style={s.botRow}>
+            <FadeIn key={turn.id} from="left" style={s.botRow}>
               <View style={s.avatar}>
                 <Icon name="sparkles" size={13} color={colors.accent} />
               </View>
@@ -107,16 +107,16 @@ export function AssistantScreen({
                   onDiscard={() => discard(turn.id)}
                 />
               </View>
-            </View>
+            </FadeIn>
           ),
         )}
         {thinking && (
-          <View style={s.botRow}>
+          <FadeIn from="left" style={s.botRow}>
             <View style={s.avatar}>
               <Icon name="sparkles" size={13} color={colors.accent} />
             </View>
             <TypingIndicator />
-          </View>
+          </FadeIn>
         )}
       </View>
 
@@ -131,7 +131,7 @@ export function AssistantScreen({
           maxLength={4000}
           accessibilityLabel="Message your assistant"
         />
-        <Pressable
+        <PressableScale
           accessibilityRole="button"
           accessibilityLabel={thinking ? "Thinking" : "Send"}
           disabled={!canSend}
@@ -148,7 +148,7 @@ export function AssistantScreen({
             color={colors.white}
             strokeWidth={2.2}
           />
-        </Pressable>
+        </PressableScale>
       </View>
       <Text style={[shared.small, s.note]}>
         Your request and up to 100 recent items are shared with your configured
@@ -158,10 +158,15 @@ export function AssistantScreen({
   );
 }
 
-/** Three softly bouncing dots while the assistant is working. */
+/** Three softly bouncing dots while the assistant is working (still under reduced motion). */
 function TypingIndicator() {
+  const reduced = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (reduced) {
+      progress.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.timing(progress, {
         toValue: 1,
@@ -172,7 +177,7 @@ function TypingIndicator() {
     );
     loop.start();
     return () => loop.stop();
-  }, [progress]);
+  }, [progress, reduced]);
   return (
     <View
       style={[s.botBubble, s.typing]}

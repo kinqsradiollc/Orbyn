@@ -31,6 +31,7 @@ import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
+import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -73,28 +74,32 @@ export function TeamDetailPage({
   const [newRole, setNewRole] = useState<TeamRole>("member");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const d = await client.getTeam(teamId);
-    setDetail(d);
-    setName(d.name);
-    setItems(
-      hasTeamPermission(d.role, "items:read")
+  /** Fetch the team and its plans; `animate` eases rows into new places. */
+  const load = useCallback(
+    async (animate = false) => {
+      const d = await client.getTeam(teamId);
+      const list = hasTeamPermission(d.role, "items:read")
         ? await client.listItems({ team_id: teamId, limit: 500 })
-        : [],
-    );
-  }, [teamId]);
+        : [];
+      if (animate) animateLayout();
+      setDetail(d);
+      setName(d.name);
+      setItems(list);
+    },
+    [teamId],
+  );
 
   useEffect(() => {
-    void act(load);
+    void act(() => load());
     // Load once per team; `act` is recreated every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   /** Mutate, then reload this page and the planner. */
-  const run = (fn: () => Promise<unknown>) =>
+  const run = (fn: () => Promise<unknown>, animate = false) =>
     act(async () => {
       await fn();
-      await load();
+      await load(animate);
       await onChanged();
     });
 
@@ -236,13 +241,16 @@ export function TeamDetailPage({
             const editable = roles.length > 1 || canRemove;
             const open = expanded === m.user_id && editable;
             return (
-              <View key={m.user_id} style={n > 0 && s.divider}>
+              <FadeIn key={m.user_id} index={n} style={n > 0 && s.divider}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ expanded: open, disabled: !editable }}
                   accessibilityLabel={`${m.name}, ${TEAM_ROLE_LABELS[m.role]}`}
                   disabled={!editable}
-                  onPress={() => setExpanded(open ? null : m.user_id)}
+                  onPress={() => {
+                    animateLayout();
+                    setExpanded(open ? null : m.user_id);
+                  }}
                   style={({ pressed }) => [s.member, pressed && s.pressed]}
                 >
                   <View style={s.avatar}>
@@ -298,7 +306,7 @@ export function TeamDetailPage({
                     )}
                   </View>
                 )}
-              </View>
+              </FadeIn>
             );
           })}
         </View>
@@ -354,24 +362,27 @@ export function TeamDetailPage({
             {items.length > 0 ? (
               <View style={s.list}>
                 {items.map((i, n) => (
-                  <ItemCard
-                    key={i.id}
-                    item={{ ...i, team_name: null }}
-                    busy={busy}
-                    first={n === 0}
-                    readOnly={!canWrite}
-                    onEdit={(item) =>
-                      onOpenItem({ ...item, team_name: i.team_name })
-                    }
-                    onToggle={(item) =>
-                      run(() =>
-                        client.updateItem(item.id, {
-                          ...itemBody(item),
-                          status: item.status === "done" ? "todo" : "done",
-                        }),
-                      )
-                    }
-                  />
+                  <FadeIn key={i.id} index={n}>
+                    <ItemCard
+                      item={{ ...i, team_name: null }}
+                      busy={busy}
+                      first={n === 0}
+                      readOnly={!canWrite}
+                      onEdit={(item) =>
+                        onOpenItem({ ...item, team_name: i.team_name })
+                      }
+                      onToggle={(item) =>
+                        run(
+                          () =>
+                            client.updateItem(item.id, {
+                              ...itemBody(item),
+                              status: item.status === "done" ? "todo" : "done",
+                            }),
+                          true,
+                        )
+                      }
+                    />
+                  </FadeIn>
                 ))}
               </View>
             ) : (

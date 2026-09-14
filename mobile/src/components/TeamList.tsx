@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { TEAM_ROLE_LABELS, type Team } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { Pill } from "./Pill";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -19,35 +20,38 @@ export function TeamList({
   return (
     <View style={s.list}>
       {teams.map((t, n) => (
-        <Pressable
-          key={t.id}
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${t.name}`}
-          onPress={() => onSelect(t)}
-          style={({ pressed }) => [
-            s.row,
-            n > 0 && s.divider,
-            pressed && s.pressed,
-          ]}
-        >
-          <View style={s.icon}>
-            <Icon name="users" size={18} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.name} numberOfLines={1}>
-              {t.name}
-            </Text>
-            <Text style={shared.small} numberOfLines={1}>
-              {plural(t.member_count, "member")} ·{" "}
-              {plural(t.item_count, "plan")}
-            </Text>
-          </View>
-          <Pill
-            label={t.role ? TEAM_ROLE_LABELS[t.role] : "Not a member"}
-            tone={t.role === "owner" || t.role === "admin" ? "accent" : "muted"}
-          />
-          <Icon name="chevronRight" size={16} color={colors.faint} />
-        </Pressable>
+        <FadeIn key={t.id} index={n}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${t.name}`}
+            onPress={() => onSelect(t)}
+            style={({ pressed }) => [
+              s.row,
+              n > 0 && s.divider,
+              pressed && s.pressed,
+            ]}
+          >
+            <View style={s.icon}>
+              <Icon name="users" size={18} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.name} numberOfLines={1}>
+                {t.name}
+              </Text>
+              <Text style={shared.small} numberOfLines={1}>
+                {plural(t.member_count, "member")} ·{" "}
+                {plural(t.item_count, "plan")}
+              </Text>
+            </View>
+            <Pill
+              label={t.role ? TEAM_ROLE_LABELS[t.role] : "Not a member"}
+              tone={
+                t.role === "owner" || t.role === "admin" ? "accent" : "muted"
+              }
+            />
+            <Icon name="chevronRight" size={16} color={colors.faint} />
+          </Pressable>
+        </FadeIn>
       ))}
     </View>
   );

@@ -839,3 +839,103 @@
     top: 20px;
   }
 }
+
+/* ==========================================================================
+   Motion: hero entrance, drifting orbits, bobbing cards, scroll reveals.
+   Decorative loops only exist when the user hasn't asked for reduced motion.
+   ========================================================================== */
+.home-hero-copy > *,
+.home-preview,
+.home-floating-ai,
+.home-floating-reminder,
+.home-orbit,
+.home-star {
+  animation: motion-fade-up var(--motion-slow) var(--ease-out) backwards;
+  animation-delay: calc(
+    min(var(--i, 0), var(--motion-max-stagger, 8)) * var(--motion-stagger)
+  );
+}
+.home-hero-copy > :nth-child(2) {
+  --i: 1;
+}
+.home-hero-copy > :nth-child(3) {
+  --i: 2;
+}
+.home-hero-copy > :nth-child(4) {
+  --i: 3;
+}
+.home-hero-copy > :nth-child(5) {
+  --i: 4;
+}
+.home-orbit,
+.home-star {
+  animation-name: motion-fade-in;
+  --i: 2;
+}
+.home-preview {
+  animation-name: motion-scale-in;
+  --i: 4;
+}
+.home-floating-reminder {
+  --i: 6;
+}
+.home-floating-ai {
+  --i: 7;
+}
+
+@keyframes home-orbit-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+@keyframes home-bob {
+  50% {
+    translate: 0 -6px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .home-orbit.one {
+    animation:
+      motion-fade-in var(--motion-slow) var(--ease-out) backwards,
+      home-orbit-spin 70s linear infinite;
+  }
+  .home-orbit.two {
+    animation:
+      motion-fade-in var(--motion-slow) var(--ease-out) backwards,
+      home-orbit-spin 55s linear infinite reverse;
+  }
+  .home-orbit.three {
+    animation:
+      motion-fade-in var(--motion-slow) var(--ease-out) backwards,
+      home-orbit-spin 80s linear infinite;
+  }
+  /* Entrance first, then a gentle bob that starts once it has settled. */
+  .home-floating-reminder {
+    animation:
+      motion-fade-up var(--motion-slow) var(--ease-out)
+        calc(var(--i) * var(--motion-stagger)) backwards,
+      home-bob 6s var(--ease-in-out) 1s infinite;
+  }
+  .home-floating-ai {
+    animation:
+      motion-fade-up var(--motion-slow) var(--ease-out)
+        calc(var(--i) * var(--motion-stagger)) backwards,
+      home-bob 7s var(--ease-in-out) 1.8s infinite;
+  }
+}
+
+/* Scroll reveal (hooks/useReveal adds .is-visible once). */
+.reveal {
+  opacity: 0;
+  translate: 0 var(--motion-distance);
+  transition:
+    opacity var(--motion-slow) var(--ease-out),
+    translate var(--motion-slow) var(--ease-out);
+  transition-delay: calc(
+    min(var(--i, 0), var(--motion-max-stagger, 8)) * var(--motion-stagger)
+  );
+}
+.reveal.is-visible {
+  opacity: 1;
+  translate: none;
+}

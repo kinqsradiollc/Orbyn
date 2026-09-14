@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 import type { AuditEntry } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
+import { stagger } from "../../lib/motion";
 
 const PAGE = 50;
 
@@ -69,8 +70,12 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((a) => (
-              <tr key={a.id}>
+            {rows.map((a, n) => (
+              <tr
+                key={a.id}
+                className="fade-up stagger"
+                style={stagger(n % PAGE)}
+              >
                 <td className="nowrap">
                   {new Date(a.created_at).toLocaleString()}
                 </td>

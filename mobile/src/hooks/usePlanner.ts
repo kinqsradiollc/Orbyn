@@ -5,6 +5,7 @@ import type { Item, Notice, Team, User } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
+import { animateLayout } from "../motion";
 
 export type SignInInput = {
   email: string;
@@ -57,26 +58,34 @@ export function usePlanner() {
     }
   };
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    const seq = ++refreshSeq.current;
-    setRefreshing(true);
-    try {
-      const list = await client.listAllItems(500);
-      const [u, n, t] = await Promise.all([
-        client.me(),
-        client.listNotifications(),
-        client.listTeams(),
-      ]);
-      if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-      setItems(list);
-      setUser(u);
-      setNotices(n);
-      setTeams(t);
-    } finally {
-      if (tokenRef.current === token) setRefreshing(false);
-    }
-  }, [token]);
+  /**
+   * Reload planner data. With `animate`, rows that move, appear or disappear
+   * (e.g. after ticking a checkbox) animate into their new places.
+   */
+  const refresh = useCallback(
+    async (options?: { animate?: boolean }) => {
+      if (!token) return;
+      const seq = ++refreshSeq.current;
+      setRefreshing(true);
+      try {
+        const list = await client.listAllItems(500);
+        const [u, n, t] = await Promise.all([
+          client.me(),
+          client.listNotifications(),
+          client.listTeams(),
+        ]);
+        if (tokenRef.current !== token || seq !== refreshSeq.current) return;
+        if (options?.animate) animateLayout();
+        setItems(list);
+        setUser(u);
+        setNotices(n);
+        setTeams(t);
+      } finally {
+        if (tokenRef.current === token) setRefreshing(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     loadSession()
@@ -90,15 +99,15 @@ export function usePlanner() {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
-      if (AppState.currentState === "active") await act(refresh);
+      if (AppState.currentState === "active") await act(() => refresh());
       if (alive) timer = setTimeout(loop, 30000);
     };
     void loop();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void act(refresh);
+      if (state === "active") void act(() => refresh());
     });
     const notification = Notifications.addNotificationReceivedListener(() => {
-      void act(refresh);
+      void act(() => refresh());
     });
     return () => {
       alive = false;

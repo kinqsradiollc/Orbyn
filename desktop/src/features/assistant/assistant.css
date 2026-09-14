@@ -105,8 +105,10 @@
   background: #fff;
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    background 0.15s;
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 .ai-suggestions button:hover:not(:disabled) {
   border-color: #cfe0d4;
@@ -135,6 +137,13 @@
 .ai-row-user {
   justify-content: flex-end;
   align-self: flex-end;
+}
+/* New messages rise in: the assistant's from the left, yours from the right. */
+.ai-row {
+  animation: motion-slide-from-left var(--motion-base) var(--ease-out) backwards;
+}
+.ai-row-user {
+  animation-name: motion-slide-from-right;
 }
 .ai-bubble {
   border-radius: 16px;
@@ -209,8 +218,14 @@
   gap: 8px;
   margin-top: 12px;
 }
+.ai-actions {
+  transition: opacity var(--motion-base) var(--ease-out);
+}
 .ai-actions.is-discarded {
   opacity: 0.5;
+}
+.ai-decide {
+  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
 }
 .ai-action {
   display: flex;
@@ -301,6 +316,7 @@
   gap: 6px;
 }
 .ai-status {
+  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -352,6 +368,30 @@
   color: #fff;
   cursor: pointer;
   flex-shrink: 0;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+.ai-composer {
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ai-send:active:not(:disabled),
+  .ai-ghost:active:not(:disabled),
+  .ai-suggestions button:active:not(:disabled) {
+    transform: scale(var(--motion-press-scale));
+  }
+}
+@media (hover: hover) {
+  .ai-send:hover:not(:disabled) {
+    background-color: #2b583f;
+  }
+  .ai-suggestions button:hover:not(:disabled) {
+    box-shadow: 0 6px 18px #1c31240d;
+  }
 }
 .ai-send:disabled {
   opacity: 0.35;

@@ -1,21 +1,45 @@
+import { useEffect, useRef } from "react";
 import { ArrowUpRight, Check, Users } from "lucide-react";
 import { dateLabel, type Item } from "@orbyn/core";
+import { stagger } from "../lib/motion";
 
 type Props = {
   item: Item;
   busy: boolean;
   /** Viewers can open team items but not complete them. */
   readOnly?: boolean;
+  /** Position in its list; staggers the entrance animation. */
+  index?: number;
   onToggle: (item: Item) => void;
   onEdit: (item: Item) => void;
 };
 
-export function ItemRow({ item: i, busy, readOnly, onToggle, onEdit }: Props) {
+export function ItemRow({
+  item: i,
+  busy,
+  readOnly,
+  index = 0,
+  onToggle,
+  onEdit,
+}: Props) {
+  const done = i.status === "done";
+  // Items already done when the row mounts don't pop; completing one does.
+  const doneAtMount = useRef(done);
+  useEffect(() => {
+    if (!done) doneAtMount.current = false;
+  }, [done]);
   return (
-    <div className={"item-row " + (i.status === "done" ? "completed" : "")}>
+    <div
+      className={"item-row fade-up stagger " + (done ? "completed" : "")}
+      style={stagger(index)}
+    >
       <button
         disabled={busy || readOnly}
-        className={"check " + (i.status === "done" ? "checked" : "")}
+        className={
+          "check " +
+          (done ? "checked " : "") +
+          (doneAtMount.current ? "" : "can-pop")
+        }
         aria-label={
           i.status === "done" ? "Reopen " + i.title : "Complete " + i.title
         }

@@ -3,6 +3,7 @@ import { ArrowUp, ArrowUpRight, RotateCcw, Sparkles } from "lucide-react";
 import { assistantSuggestions as SUGGESTIONS, type Item } from "@orbyn/core";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { Assistant } from "../../hooks/useAssistant";
+import { stagger } from "../../lib/motion";
 import "./assistant.css";
 
 type Props = {
@@ -73,9 +74,11 @@ export function AssistantView({ items, busy, assistant }: Props) {
               language. You’ll review every change before it’s saved.
             </p>
             <div className="ai-suggestions">
-              {SUGGESTIONS.map((s) => (
+              {SUGGESTIONS.map((s, n) => (
                 <button
                   key={s.title}
+                  className="fade-up stagger"
+                  style={stagger(n)}
                   type="button"
                   disabled={locked}
                   onClick={() => void ask(s.title)}

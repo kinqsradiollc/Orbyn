@@ -165,6 +165,11 @@ The mobile app shares its look with the web app so both read as one product:
   `react-native-svg`; only the shapes the app needs are included rather than the whole icon pack.
   `src/components/Brand.tsx` is the Orbit mark, the "orbyn" wordmark, and the green dot, matching
   the desktop `.brand`.
+- **Motion.** `motion` and `staggerDelay` in `packages/core/src/presentation.ts` define one set of
+  durations, stagger, travel distance, press scale, and easing curves. The web app exposes them as
+  CSS variables and keyframes in `desktop/src/styles/motion.css`; the mobile app uses them with
+  React Native's `Animated` and `LayoutAnimation`, with no extra animation library. Both apps turn
+  animation off when the user has asked their system for reduced motion.
 - **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large
