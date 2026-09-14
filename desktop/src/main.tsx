@@ -1,4 +1,4 @@
-import { colors, motion } from "@orbyn/core";
+import { colors, motion, statusTones } from "@orbyn/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import "./styles/global.css";
@@ -7,6 +7,11 @@ import "./styles/motion.css";
 const root = document.documentElement.style;
 for (const [name, value] of Object.entries(colors))
   root.setProperty("--color-" + name, value);
+// Task status tones (same values as mobile), e.g. --status-blocked-fg.
+for (const [status, tone] of Object.entries(statusTones)) {
+  root.setProperty("--status-" + status + "-bg", tone.bg);
+  root.setProperty("--status-" + status + "-fg", tone.fg);
+}
 
 // Shared motion tokens (the mobile app uses the same values).
 const bezier = (points: readonly number[]) =>

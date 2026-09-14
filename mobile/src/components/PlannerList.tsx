@@ -1,136 +1,149 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { groupItems, type Item } from "@orbyn/core";
+import type { Item } from "@orbyn/core";
 import { Button } from "./Button";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { ItemCard } from "./ItemCard";
-import { Bump, FadeIn } from "../motion";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
 export type ListHandlers = {
   busy: boolean;
   onToggle: (item: Item) => void;
-  onEdit: (item: Item) => void;
+  /** Opens the task detail sheet. */
+  onOpen: (item: Item) => void;
   onAdd: () => void;
   /** False for items whose checkbox should be disabled (team items you only view). */
   canToggle?: (item: Item) => boolean;
 };
 
-/** Stats, section header, item rows and the empty state shared by Today / Tasks / Calendar. */
-export function PlannerList({
-  items,
-  visible,
-  listed = visible,
+/** Section heading with a count badge, used above every list of items. */
+export function SectionHeading({
   title,
-  showStats = true,
+  count,
+  hint,
+}: {
+  title: string;
+  count?: number;
+  /** Short line under the heading, e.g. "Blocked or past due". */
+  hint?: string;
+}) {
+  return (
+    <View style={s.headingWrap}>
+      <View style={s.heading} accessibilityRole="header">
+        <Text style={shared.sectionTitle}>{title}</Text>
+        {count !== undefined && (
+          <View style={s.count}>
+            <Text style={s.countText}>{count}</Text>
+          </View>
+        )}
+      </View>
+      {!!hint && <Text style={shared.small}>{hint}</Text>}
+    </View>
+  );
+}
+
+/** Rows of `ItemCard` in one bordered card. */
+export function ItemRows({
+  items,
+  busy,
+  onToggle,
+  onOpen,
+  canToggle,
+}: Omit<ListHandlers, "onAdd"> & { items: Item[] }) {
+  return (
+    <View style={s.list}>
+      {items.map((i, n) => (
+        <FadeIn key={i.id} index={n}>
+          <ItemCard
+            item={i}
+            busy={busy}
+            first={n === 0}
+            readOnly={canToggle ? !canToggle(i) : false}
+            onToggle={onToggle}
+            onOpen={onOpen}
+          />
+        </FadeIn>
+      ))}
+    </View>
+  );
+}
+
+/** Friendly empty card with an icon, a line of copy and an optional action. */
+export function EmptyState({
+  title,
+  body,
+  icon = "sun",
+  action,
+  onAction,
+}: {
+  title: string;
+  body: string;
+  icon?: IconName;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <FadeIn style={[shared.card, shared.empty]}>
+      <View style={shared.emptyIcon}>
+        <Icon name={icon} size={26} color={colors.accent} />
+      </View>
+      <Text style={[shared.sectionTitle, s.center]}>{title}</Text>
+      <Text style={[shared.subtitle, s.emptyText]}>{body}</Text>
+      {action && onAction && (
+        <Button secondary icon="plus" title={action} onPress={onAction} />
+      )}
+    </FadeIn>
+  );
+}
+
+/** Section header, item rows and the empty state shared by Tasks / Calendar. */
+export function PlannerList({
+  visible,
+  title,
+  hint,
   empty = {
     title: "A little breathing room.",
     body: "Your day is open. Add something worth making time for.",
   },
   busy,
   onToggle,
-  onEdit,
+  onOpen,
   onAdd,
   canToggle,
   children,
 }: ListHandlers & {
-  /** Every item, for the stats. */
-  items: Item[];
-  /** Items matching the tab's filter; decides whether the empty state shows. */
+  /** Items to render. */
   visible: Item[];
-  /** Items actually rendered (defaults to `visible`). */
-  listed?: Item[];
   title: string;
-  showStats?: boolean;
+  hint?: string;
   empty?: { title: string; body: string };
-  /** Rendered between the stats and the section title (the Tasks search box). */
+  /** Rendered above the section title (the Tasks search box and filters). */
   children?: React.ReactNode;
 }) {
-  const groups = groupItems(items);
-  const stats = [
-    { value: groups.today.length, label: "Due today" },
-    { value: groups.done.length, label: "Completed" },
-    { value: groups.overdue.length, label: "Overdue" },
-  ];
   return (
     <>
-      {showStats && (
-        <FadeIn style={s.stats}>
-          {stats.map((stat, n) => (
-            <View key={stat.label} style={[s.stat, n > 0 && s.statDivider]}>
-              <Bump value={stat.value}>
-                <Text style={s.statValue}>{stat.value}</Text>
-              </Bump>
-              <Text style={shared.small}>{stat.label}</Text>
-            </View>
-          ))}
-        </FadeIn>
-      )}
       {children}
-      <View style={s.heading}>
-        <Text style={shared.sectionTitle}>{title}</Text>
-        <View style={s.count}>
-          <Text style={s.countText}>{listed.length}</Text>
-        </View>
-      </View>
-      {listed.length > 0 && (
-        <View style={s.list}>
-          {listed.map((i, n) => (
-            <FadeIn key={i.id} index={n}>
-              <ItemCard
-                item={i}
-                busy={busy}
-                first={n === 0}
-                readOnly={canToggle ? !canToggle(i) : false}
-                onToggle={onToggle}
-                onEdit={onEdit}
-              />
-            </FadeIn>
-          ))}
-        </View>
-      )}
-      {!listed.length && (
-        <FadeIn style={[shared.card, shared.empty]}>
-          <View style={shared.emptyIcon}>
-            <Icon name="sun" size={26} color={colors.accent} />
-          </View>
-          <Text style={shared.sectionTitle}>{empty.title}</Text>
-          <Text style={[shared.subtitle, s.emptyText]}>{empty.body}</Text>
-          <Button secondary icon="plus" title="Make a plan" onPress={onAdd} />
-        </FadeIn>
+      <SectionHeading title={title} count={visible.length} hint={hint} />
+      {visible.length > 0 ? (
+        <ItemRows
+          items={visible}
+          busy={busy}
+          onToggle={onToggle}
+          onOpen={onOpen}
+          canToggle={canToggle}
+        />
+      ) : (
+        <EmptyState {...empty} action="Make a plan" onAction={onAdd} />
       )}
     </>
   );
 }
 
 const s = StyleSheet.create({
-  stats: {
-    flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 16,
-    marginBottom: 22,
-  },
-  stat: { flex: 1, paddingHorizontal: 16 },
-  statDivider: {
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderLeftColor: colors.border,
-  },
-  statValue: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  heading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-  },
+  headingWrap: { marginBottom: 10, gap: 2 },
+  heading: { flexDirection: "row", alignItems: "center", gap: 8 },
   count: {
     backgroundColor: colors.surfaceMuted,
     borderRadius: 6,
@@ -144,7 +157,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.card,
     overflow: "hidden",
-    marginBottom: 20,
+    marginBottom: 22,
   },
+  center: { textAlign: "center" },
   emptyText: { textAlign: "center", marginBottom: 16 },
 });

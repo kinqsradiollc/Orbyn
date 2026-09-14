@@ -4,11 +4,14 @@ import {
   freshItem,
   fromDateTimeLocal,
   hasTeamPermission,
+  statusLabels,
+  statusOrder,
   toDateTimeLocal,
   type Item,
   type ItemInput,
   type Kind,
   type Priority,
+  type Status,
   type Team,
 } from "@orbyn/core";
 
@@ -103,7 +106,7 @@ export function ItemEditor({
               notes: String(d.get("notes")),
               kind: d.get("kind") as Kind,
               priority: d.get("priority") as Priority,
-              status: base.status,
+              status: d.get("status") as Status,
               due_at: fromDateTimeLocal(d.get("due_at") as string | null),
               end_at: fromDateTimeLocal(d.get("end_at") as string | null),
               reminder_minutes: Number(d.get("reminder_minutes")),
@@ -144,6 +147,30 @@ export function ItemEditor({
                   <option value="high">High</option>
                 </select>
               </label>
+              <label>
+                Status
+                <select name="status" defaultValue={base.status}>
+                  {statusOrder.map((s) => (
+                    <option key={s} value={s}>
+                      {statusLabels[s]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {existing && (
+                <label>
+                  Progress
+                  <input
+                    readOnly
+                    tabIndex={-1}
+                    aria-describedby="progress-hint"
+                    value={`${existing.progress ?? 0}%`}
+                  />
+                  <small id="progress-hint" className="field-hint">
+                    Track progress from the task panel.
+                  </small>
+                </label>
+              )}
               <label>
                 Due / start time
                 <input

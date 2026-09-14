@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
-import { hasSystemPermission, type User } from "@orbyn/core";
+import { hasSystemPermission, statusHeadlines, type User } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
 import { Pill } from "../components/Pill";
@@ -18,6 +18,7 @@ export function SettingsScreen({
   teamCount,
   onOpenTeams,
   onOpenAdmin,
+  onOpenStatus,
 }: {
   user: User | null;
   busy: boolean;
@@ -27,8 +28,20 @@ export function SettingsScreen({
   teamCount: number;
   onOpenTeams: () => void;
   onOpenAdmin: () => void;
+  onOpenStatus: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
+  const [statusHeadline, setStatusHeadline] = useState("");
+  useEffect(() => {
+    let live = true;
+    client
+      .getStatus()
+      .then((r) => live && setStatusHeadline(statusHeadlines[r.state]))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
     <>
       <View style={[shared.card, s.account]}>
@@ -64,6 +77,13 @@ export function SettingsScreen({
               : "Share plans with others"
           }
           onPress={onOpenTeams}
+        />
+        <LinkRow
+          divider
+          icon="activity"
+          title="Service status"
+          detail={statusHeadline || "Uptime and incidents"}
+          onPress={onOpenStatus}
         />
         {isAdmin && (
           <LinkRow

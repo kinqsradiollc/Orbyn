@@ -27,6 +27,7 @@ import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
+import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
 import { AssistantScreen } from "../screens/AssistantScreen";
@@ -34,23 +35,28 @@ import { AuthScreen } from "../screens/AuthScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { InboxScreen } from "../screens/InboxScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
+import { StatusSheet } from "../screens/StatusSheet";
+import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
 import { TodayScreen } from "../screens/TodayScreen";
 import { colors, spacing } from "../theme";
 import { shared } from "../styles";
 
-type SheetName = "teams" | "admin";
+type SheetName = "teams" | "admin" | "status" | "task";
+/** What to present next: a sheet or the item editor. */
+type Next = { sheet: SheetName } | { edit: Editing };
 
 /**
- * Auth gate, tab switching, the shared item editor modal and the Teams /
- * Admin sheets.
+ * Auth gate, tab switching, the shared item editor modal, the task detail
+ * sheet and the Teams / Admin / Status sheets.
  *
- * Opening a team plan from a sheet never stacks two modals: the sheet closes,
- * and on iOS the editor presents from the sheet's `onDismiss` (presenting
- * while another sheet is still animating away is dropped by UIKit). When the
- * editor goes away the sheet reopens where it was (its navigation state lives
- * outside the Modal, so it survives being hidden).
+ * Modals never stack: presenting from an open sheet closes it first, and on
+ * iOS the next modal presents from the sheet's `onDismiss` (presenting while
+ * another sheet is still animating away is dropped by UIKit). The closed sheet
+ * goes on a back stack and reopens when the next modal goes away, so Teams ->
+ * task detail -> editor unwinds back to the task and then to Teams (sheet
+ * navigation state lives outside the Modal, so it survives being hidden).
  */
 export function RootScreen() {
   const planner = usePlanner();
@@ -77,10 +83,12 @@ export function RootScreen() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<SheetName | null>(null);
-  /** Item waiting for the sheet's dismiss animation before the editor opens (iOS). */
-  const pendingEdit = useRef<Editing | null>(null);
-  /** Sheet to reopen once the editor closes. */
-  const returnTo = useRef<SheetName | null>(null);
+  /** The task shown in the detail sheet. */
+  const [task, setTask] = useState<Item | null>(null);
+  /** Modal waiting for the sheet's dismiss animation before it opens (iOS). */
+  const pending = useRef<Next | null>(null);
+  /** Sheets to reopen, most recent last, once the modal above them closes. */
+  const back = useRef<SheetName[]>([]);
 
   if (!ready)
     return (
@@ -100,27 +108,46 @@ export function RootScreen() {
       />
     );
 
-  const openFromSheet = (item: Editing) => {
-    returnTo.current = sheet;
-    setSheet(null);
-    if (Platform.OS === "ios") pendingEdit.current = item;
-    else setEditing(item);
+  const show = (next: Next) =>
+    "sheet" in next ? setSheet(next.sheet) : setEditing(next.edit);
+  /** Present a sheet or the editor; an open sheet closes first and returns later. */
+  const present = (next: Next) => {
+    if (sheet) {
+      back.current.push(sheet);
+      setSheet(null);
+      if (Platform.OS === "ios") {
+        pending.current = next;
+        return;
+      }
+    }
+    show(next);
+  };
+  const goBack = () => {
+    const previous = back.current.pop();
+    if (previous) setSheet(previous);
   };
   const onSheetDismissed = () => {
-    const item = pendingEdit.current;
-    pendingEdit.current = null;
-    if (item) setEditing(item);
+    const next = pending.current;
+    pending.current = null;
+    if (next) show(next);
+    else goBack();
   };
-  const reopenSheet = () => {
-    const back = returnTo.current;
-    returnTo.current = null;
-    if (back) setSheet(back);
+  /** On Android there is no onDismiss, so return to the previous sheet now. */
+  const closeSheet = () => {
+    setSheet(null);
+    if (Platform.OS !== "ios") goBack();
   };
-  /** Close the editor; on Android there is no onDismiss, so return to the sheet now. */
   const closeEditor = () => {
     setEditing(null);
-    if (Platform.OS !== "ios") reopenSheet();
+    if (Platform.OS !== "ios") goBack();
   };
+  const openTask = (item: Item) => {
+    setTask(item);
+    present({ sheet: "task" });
+  };
+  /** Team / Admin sheets: saved plans open the task detail, new ones the editor. */
+  const openFromSheet = (item: Editing) =>
+    "id" in item ? openTask(item) : present({ edit: item });
   const clearError = () => setError("");
 
   const today = new Date();
@@ -128,17 +155,14 @@ export function RootScreen() {
   const listHandlers = {
     busy,
     onAdd: openNew,
-    onEdit: (i: Item) => setEditing({ ...i }),
+    onOpen: openTask,
     canToggle: (i: Item) => {
       const team = i.team_id && teams.find((t) => t.id === i.team_id);
       return !team || hasTeamPermission(team.role, "items:write");
     },
     onToggle: (i: Item) =>
       act(async () => {
-        await client.updateItem(i.id, {
-          ...itemBody(i),
-          status: i.status === "done" ? "todo" : "done",
-        });
+        await client.postItemUpdate(i.id, { status: toggledStatus(i) });
         // The row may move to another group or leave this list.
         await refresh({ animate: true });
       }),
@@ -151,9 +175,14 @@ export function RootScreen() {
   const saveEditing = () =>
     act(async () => {
       if (!editing) return;
-      if ("id" in editing)
-        await client.updateItem(editing.id, itemBody(editing));
-      else await client.createItem(editing);
+      if ("id" in editing) {
+        // Progress is owned by the checklist and the task sheet; omitting it
+        // keeps the saved value (sending it while steps exist is a 409).
+        const { progress: _progress, ...body } = itemBody(editing);
+        await client.updateItem(editing.id, body);
+        const saved = editing;
+        setTask((t) => (t && t.id === saved.id ? { ...t, ...saved } : t));
+      } else await client.createItem(editing);
       closeEditor();
       await refresh();
     });
@@ -161,6 +190,9 @@ export function RootScreen() {
     act(async () => {
       if (!editing || !("id" in editing)) return;
       await client.deleteItem(editing.id, editing.version);
+      // Don't return to the detail sheet of the item that was just deleted.
+      if (back.current.at(-1) === "task" && task?.id === editing.id)
+        back.current.pop();
       closeEditor();
       await refresh();
     });
@@ -265,6 +297,7 @@ export function RootScreen() {
                 teamCount={teams.length}
                 onOpenTeams={() => setSheet("teams")}
                 onOpenAdmin={() => setSheet("admin")}
+                onOpenStatus={() => setSheet("status")}
               />
             )}
           </FadeIn>
@@ -289,7 +322,16 @@ export function RootScreen() {
         onSave={saveEditing}
         onDelete={deleteEditing}
         onClose={closeEditor}
-        onDismissed={reopenSheet}
+        onDismissed={goBack}
+      />
+      <TaskDetail
+        visible={sheet === "task"}
+        item={task}
+        teams={teams}
+        onClose={closeSheet}
+        onDismiss={onSheetDismissed}
+        onEdit={(item) => present({ edit: { ...item } })}
+        onChanged={() => void refresh({ animate: true }).catch(() => {})}
       />
       <TeamsSheet
         visible={sheet === "teams"}
@@ -300,9 +342,14 @@ export function RootScreen() {
         clearError={clearError}
         act={act}
         refresh={refresh}
-        onClose={() => setSheet(null)}
+        onClose={closeSheet}
         onDismiss={onSheetDismissed}
         onOpenItem={openFromSheet}
+      />
+      <StatusSheet
+        visible={sheet === "status"}
+        onClose={closeSheet}
+        onDismiss={onSheetDismissed}
       />
       {hasSystemPermission(user?.role, "admin:access") && (
         <AdminSheet
@@ -313,7 +360,7 @@ export function RootScreen() {
           clearError={clearError}
           act={act}
           refresh={refresh}
-          onClose={() => setSheet(null)}
+          onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenItem={openFromSheet}
         />

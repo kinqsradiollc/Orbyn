@@ -1,12 +1,20 @@
+import { Activity } from "lucide-react";
 import type { User } from "@orbyn/core";
 
 type Props = {
   user: User | null;
   busy: boolean;
   onEmailReminders: (checked: boolean) => void;
+  /** Opens the public status page. */
+  onOpenStatus?: () => void;
 };
 
-export function SettingsView({ user, busy, onEmailReminders }: Props) {
+export function SettingsView({
+  user,
+  busy,
+  onEmailReminders,
+  onOpenStatus,
+}: Props) {
   return (
     <section className="card settings-card">
       <h2>Your account</h2>
@@ -39,6 +47,18 @@ export function SettingsView({ user, busy, onEmailReminders }: Props) {
         Your server administrator configures the provider URL, API key, and
         model. Keys stay on the backend.
       </p>
+      {onOpenStatus && (
+        <>
+          <hr />
+          <h2>Service status</h2>
+          <p className="muted">
+            See whether Orbyn is running smoothly and review recent incidents.
+          </p>
+          <button className="secondary" onClick={onOpenStatus}>
+            <Activity size={14} /> Service status
+          </button>
+        </>
+      )}
     </section>
   );
 }

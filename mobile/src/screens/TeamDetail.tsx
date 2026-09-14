@@ -16,7 +16,6 @@ import {
   freshItem,
   hasSystemPermission,
   hasTeamPermission,
-  itemBody,
   type Item,
   type TeamDetail,
   type TeamMember,
@@ -31,6 +30,7 @@ import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
+import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
@@ -368,15 +368,14 @@ export function TeamDetailPage({
                       busy={busy}
                       first={n === 0}
                       readOnly={!canWrite}
-                      onEdit={(item) =>
+                      onOpen={(item) =>
                         onOpenItem({ ...item, team_name: i.team_name })
                       }
                       onToggle={(item) =>
                         run(
                           () =>
-                            client.updateItem(item.id, {
-                              ...itemBody(item),
-                              status: item.status === "done" ? "todo" : "done",
+                            client.postItemUpdate(item.id, {
+                              status: toggledStatus(item),
                             }),
                           true,
                         )

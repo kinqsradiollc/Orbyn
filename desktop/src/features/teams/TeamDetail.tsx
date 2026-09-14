@@ -37,7 +37,10 @@ export type TeamActions = {
   act: Planner["act"];
   refresh: Planner["refresh"];
   report: Planner["report"];
-  onEditItem: (item: Item) => void;
+  /** Opens the task detail panel. */
+  onOpenItem: (item: Item) => void;
+  /** Whether you can change this item (false for team viewers). */
+  canWrite: (item: Item) => boolean;
   onNewTeamItem: (teamId: string) => void;
   onToggle: (item: Item) => void;
 };
@@ -58,7 +61,7 @@ export function TeamDetail({
   act,
   refresh,
   report,
-  onEditItem,
+  onOpenItem,
   onNewTeamItem,
   onToggle,
 }: Props) {
@@ -379,7 +382,7 @@ export function TeamDetail({
               busy={busy}
               readOnly={!canWrite}
               onToggle={onToggle}
-              onEdit={onEditItem}
+              onOpen={onOpenItem}
             />
           ))}
           {items && !items.length && (

@@ -13,6 +13,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
+import type { MouseEvent } from "react";
 import { useReveal } from "../../hooks/useReveal";
 import { stagger } from "../../lib/motion";
 import "./home.css";
@@ -21,6 +22,10 @@ type Props = { signedIn: boolean; onNavigate: (path: string) => void };
 export function HomePage({ signedIn, onNavigate }: Props) {
   const start = () => onNavigate(signedIn ? "/app" : "/signup");
   const revealRoot = useReveal<HTMLDivElement>();
+  const openStatus = (e: MouseEvent) => {
+    e.preventDefault();
+    onNavigate("/status");
+  };
   return (
     <div className="home" ref={revealRoot}>
       <a className="home-skip" href="#home-main">
@@ -35,6 +40,9 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="#features">Why Orbyn</a>
           <a href="#how-it-works">How it works</a>
           <a href="#everywhere">Your space, everywhere</a>
+          <a href="/status" onClick={openStatus}>
+            Status
+          </a>
         </nav>
         <div className="home-nav-actions">
           {!signedIn && (
@@ -343,13 +351,18 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           orbyn<span>•</span>
         </a>
         <span>Thoughtfully planned. Entirely yours.</span>
-        <button
-          className="text-button"
-          onClick={() => onNavigate(signedIn ? "/app" : "/login")}
-        >
-          {signedIn ? "Open planner" : "Sign in"}
-          <ArrowUpRight size={14} />
-        </button>
+        <div className="home-footer-links">
+          <a href="/status" className="text-button" onClick={openStatus}>
+            Status
+          </a>
+          <button
+            className="text-button"
+            onClick={() => onNavigate(signedIn ? "/app" : "/login")}
+          >
+            {signedIn ? "Open planner" : "Sign in"}
+            <ArrowUpRight size={14} />
+          </button>
+        </div>
       </footer>
     </div>
   );

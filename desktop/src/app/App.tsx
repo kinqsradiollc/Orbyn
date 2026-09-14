@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
   planDayPrompt,
@@ -6,6 +6,7 @@ import {
   hasTeamPermission,
   type Item,
   type ItemInput,
+  type Status,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { usePlanner } from "../hooks/usePlanner";
@@ -14,16 +15,21 @@ import { Sidebar } from "../components/Sidebar";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
 import { HomePage } from "../features/home/HomePage";
+import { StatusPage } from "../features/status/StatusPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
-import { CalendarView } from "../features/calendar/CalendarView";
+import {
+  CalendarView,
+  type CalendarMode,
+} from "../features/calendar/CalendarView";
 import { AssistantView } from "../features/assistant/AssistantView";
 import { NotificationsView } from "../features/notifications/NotificationsView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { TeamsView } from "../features/teams/TeamsView";
 import type { TeamActions } from "../features/teams/TeamDetail";
 import { AdminView } from "../features/admin/AdminView";
+import { TaskDetail } from "../features/task/TaskDetail";
 import type { View } from "./views";
 
 export function App() {
@@ -61,7 +67,10 @@ export function App() {
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   /** Team prefilled in the editor when a new item starts from a team page. */
   const [draftTeamId, setDraftTeamId] = useState<string | null>(null);
-  const [month, setMonth] = useState(new Date());
+  /** The task open in the detail panel (as last seen, in case it isn't in `items`). */
+  const [openTask, setOpenTask] = useState<Item | null>(null);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [mobileNav, setMobileNav] = useState(false);
 
   useEffect(() => {
@@ -71,13 +80,15 @@ export function App() {
   }, [token, path]);
   useEffect(() => {
     document.title =
-      path === "/"
-        ? "Orbyn — Your life, in a better orbit"
-        : token
-          ? view + " · Orbyn"
-          : path === "/login"
-            ? "Sign in · Orbyn"
-            : "Create your space · Orbyn";
+      path === "/status"
+        ? "Service status · Orbyn"
+        : path === "/"
+          ? "Orbyn — Your life, in a better orbit"
+          : token
+            ? view + " · Orbyn"
+            : path === "/login"
+              ? "Sign in · Orbyn"
+              : "Create your space · Orbyn";
   }, [path, token, view]);
 
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
@@ -87,20 +98,47 @@ export function App() {
     if (view === "Admin" && user && !isAdmin) setView("Overview");
   }, [view, user, isAdmin]);
 
+  // Signing out closes the task panel.
+  useEffect(() => {
+    if (!token) setOpenTask(null);
+  }, [token]);
+
   const newItem = (teamId: string | null = null) => {
     setDraftTeamId(teamId);
     setEditing("new");
   };
 
-  /** Viewers can't change team items; say so instead of letting the server reject it. */
-  const toggle = (i: Item) => {
-    const team = i.team_id ? teams.find((t) => t.id === i.team_id) : null;
-    if (team && !hasTeamPermission(team.role, "items:write")) {
-      planner.setError(`View only — you're a viewer in ${team.name}.`);
-      return;
-    }
-    void planner.toggleItem(i);
+  /** Personal items are always yours; team items need `items:write`. */
+  const canWrite = (i: Item) => {
+    if (!i.team_id) return true;
+    const team = teams.find((t) => t.id === i.team_id);
+    return hasTeamPermission(team?.role, "items:write");
   };
+
+  /** Viewers can't change team items; say so instead of letting the server reject it. */
+  const guard = (i: Item) => {
+    if (canWrite(i)) return true;
+    const team = teams.find((t) => t.id === i.team_id);
+    planner.setError(
+      `View only — you're a viewer in ${team?.name ?? i.team_name ?? "this team"}.`,
+    );
+    return false;
+  };
+
+  const toggle = (i: Item) => {
+    if (guard(i)) void planner.toggleItem(i);
+  };
+
+  const setStatus = (i: Item, status: Status) => {
+    if (status !== i.status && guard(i)) void planner.setItemStatus(i, status);
+  };
+
+  const openItem = (i: Item) => setOpenTask(i);
+  const closeTask = useCallback(() => setOpenTask(null), []);
+  // Prefer the freshest copy from the planner list.
+  const shownTask = openTask
+    ? (items.find((i) => i.id === openTask.id) ?? openTask)
+    : null;
 
   const teamActions: TeamActions = {
     user,
@@ -109,7 +147,8 @@ export function App() {
     act,
     refresh,
     report,
-    onEditItem: setEditing,
+    onOpenItem: openItem,
+    canWrite,
     onNewTeamItem: newItem,
     onToggle: toggle,
   };
@@ -125,11 +164,16 @@ export function App() {
     const target = editing;
     void act(async () => {
       if (target === "new") await client.createItem(data);
-      else
+      else {
         await client.updateItem(target.id, {
           ...data,
+          status: target.status,
           version: target.version,
         });
+        // Status changes go through the timeline so they're recorded.
+        if (data.status !== target.status)
+          await client.postItemUpdate(target.id, { status: data.status });
+      }
       setEditing(null);
       await refresh();
     });
@@ -141,9 +185,20 @@ export function App() {
     void act(async () => {
       await client.deleteItem(target.id, target.version);
       setEditing(null);
+      if (openTask?.id === target.id) setOpenTask(null);
       await refresh();
     });
   };
+
+  // Public status page, signed in or not. The native app routes in memory.
+  if (path === "/status")
+    return (
+      <StatusPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
 
   if (!nativeDesktop && path === "/")
     return <HomePage signedIn={!!token} onNavigate={navigatePath} />;
@@ -161,6 +216,14 @@ export function App() {
         onSubmit={(mode, values) => void planner.authenticate(mode, values)}
       />
     );
+
+  const listProps = {
+    items,
+    busy,
+    canWrite,
+    onToggle: toggle,
+    onOpen: openItem,
+  };
 
   return (
     <div className="app">
@@ -195,10 +258,7 @@ export function App() {
             <PageHeading view={view} user={user} onNewItem={() => newItem()} />
             {view === "Overview" && (
               <OverviewView
-                items={items}
-                busy={busy}
-                onToggle={toggle}
-                onEdit={setEditing}
+                {...listProps}
                 onNewItem={() => newItem()}
                 onNavigate={navigate}
                 onPlanDay={() => {
@@ -209,20 +269,20 @@ export function App() {
             )}
             {view === "My tasks" && (
               <TasksView
-                items={items}
+                {...listProps}
                 query={query}
                 onQueryChange={setQuery}
-                busy={busy}
-                onToggle={toggle}
-                onEdit={setEditing}
+                onSetStatus={setStatus}
               />
             )}
             {view === "Calendar" && (
               <CalendarView
-                items={items}
-                month={month}
-                onMonthChange={setMonth}
-                onEdit={setEditing}
+                {...listProps}
+                date={calendarDate}
+                onDateChange={setCalendarDate}
+                mode={calendarMode}
+                onModeChange={setCalendarMode}
+                shortcuts={!editing && !shownTask}
               />
             )}
             {view === "AI assistant" && (
@@ -238,6 +298,7 @@ export function App() {
                 user={user}
                 busy={busy}
                 onEmailReminders={planner.setEmailReminders}
+                onOpenStatus={() => navigatePath("/status")}
               />
             )}
           </div>
@@ -249,8 +310,22 @@ export function App() {
           </footer>
         </main>
       </div>
+      {shownTask && (
+        <TaskDetail
+          key={shownTask.id}
+          item={shownTask}
+          teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
+          canWrite={canWrite(shownTask)}
+          suspended={!!editing}
+          onClose={closeTask}
+          onEdit={setEditing}
+          onChanged={refresh}
+          onError={report}
+        />
+      )}
       {editing && (
         <ItemEditor
+          key={editing === "new" ? "new" : editing.id + ":" + editing.version}
           editing={editing}
           teams={teams}
           defaultTeamId={draftTeamId}

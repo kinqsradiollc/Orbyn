@@ -46,6 +46,13 @@ select:focus {
   outline: 2px solid #aac6b2;
   border-color: transparent;
 }
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid #95b49c;
+  outline-offset: 1px;
+}
 button {
   color: inherit;
 }
@@ -307,7 +314,7 @@ nav button i,
 }
 .eyebrow {
   display: block;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 1.9px;
   font-weight: 600;
   color: #8b978b;
@@ -343,8 +350,9 @@ nav button i,
 .text-button {
   border: 0;
   background: none;
-  font-size: 11px;
-  color: #698061;
+  font-size: 12px;
+  font-weight: 500;
+  color: #56704e;
   display: inline-flex;
   gap: 7px;
   align-items: center;
@@ -370,8 +378,9 @@ nav button i,
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 11px;
-  color: #808b81;
+  font-size: 12px;
+  font-weight: 500;
+  color: #637066;
 }
 .stats svg {
   color: #96a58c;
@@ -386,9 +395,9 @@ nav button i,
 }
 .stats small {
   font-family: "DM Sans", sans-serif;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
-  color: #9aa197;
+  color: #7f897f;
   margin-left: 12px;
 }
 .overview-grid {
@@ -412,7 +421,7 @@ nav button i,
 }
 .section-heading h2 span {
   font:
-    10px "DM Sans",
+    600 11px "DM Sans",
     sans-serif;
   margin-left: 7px;
   background: #f1f4ee;
@@ -453,18 +462,18 @@ nav button i,
   padding: 0;
 }
 .item-main strong {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.item-main span {
+.item-main .item-meta {
   display: block;
-  font-size: 10px;
-  color: #9ba197;
-  margin-top: 7px;
+  font-size: 12px;
+  color: #6f7b72;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -474,7 +483,9 @@ nav button i,
   color: #9ca498;
 }
 .priority {
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
   border-radius: 4px;
   padding: 4px 7px;
   text-transform: capitalize;
@@ -503,7 +514,10 @@ nav button i,
   margin-bottom: 9px;
 }
 .empty p {
-  font-size: 12px;
+  font-size: 13px;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
   margin-bottom: 14px;
 }
 .upcoming {
@@ -679,7 +693,7 @@ footer {
   justify-content: center;
   gap: 9px;
   margin-top: 25px;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.2px;
   color: #aab1a7;
 }
@@ -699,65 +713,12 @@ footer svg {
   color: #9aa595;
 }
 .search input {
-  border: 0;
+  border: 1px solid var(--border);
   background: #f8f9f6;
-  border-radius: 6px;
+  border-radius: 7px;
   padding: 8px 10px;
-  font-size: 11px;
+  font-size: 13px;
   width: 170px;
-}
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-}
-.day-name {
-  padding: 12px;
-  text-align: center;
-  font-size: 10px;
-  color: #9aa492;
-  background: #f9faf7;
-}
-.calendar-day {
-  min-height: 108px;
-  border-top: 1px solid var(--border);
-  border-right: 1px solid var(--border);
-  padding: 10px;
-  font-size: 11px;
-}
-.calendar-day > span {
-  display: inline-flex;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-}
-.calendar-day.is-today > span {
-  background: var(--green);
-  color: white;
-  border-radius: 50%;
-}
-.calendar-day.outside {
-  background: #fafbf8;
-  color: #c6ccc1;
-}
-.calendar-day button {
-  display: block;
-  width: 100%;
-  border: 0;
-  background: #edf2e8;
-  color: #648153;
-  font-size: 9px;
-  text-align: left;
-  padding: 5px;
-  border-radius: 4px;
-  margin-top: 5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.calendar-day button.done {
-  text-decoration: line-through;
-  opacity: 0.6;
 }
 .chat {
   padding: 28px;
@@ -1218,13 +1179,6 @@ footer svg {
   .stats small {
     font-size: 9px;
   }
-  .calendar-day {
-    min-height: 80px;
-    padding: 5px;
-  }
-  .calendar-day button {
-    font-size: 8px;
-  }
   .auth-story {
     display: none;
   }
@@ -1263,13 +1217,6 @@ footer svg {
   }
   .form-grid {
     grid-template-columns: 1fr;
-  }
-  .calendar-day {
-    min-height: 70px;
-  }
-  .calendar-day button {
-    font-size: 7px;
-    padding: 3px;
   }
   .chat {
     padding: 15px;
@@ -1728,5 +1675,447 @@ footer svg {
   .stat-grid {
     grid-template-columns: 1fr 1fr;
     gap: 12px;
+  }
+}
+
+/* ==========================================================================
+   Task progress: status tones, pills, progress bars, rows, overview, board.
+   Tone colors come from `statusTones` in @orbyn/core (set in main.tsx).
+   Pill text mixes the tone with the body text color for readable contrast.
+   ========================================================================== */
+.tone-todo {
+  --tone-bg: var(--status-todo-bg);
+  --tone-fg: var(--status-todo-fg);
+}
+.tone-in_progress {
+  --tone-bg: var(--status-in_progress-bg);
+  --tone-fg: var(--status-in_progress-fg);
+}
+.tone-blocked {
+  --tone-bg: var(--status-blocked-bg);
+  --tone-fg: var(--status-blocked-fg);
+}
+.tone-done {
+  --tone-bg: var(--status-done-bg);
+  --tone-fg: var(--status-done-fg);
+}
+.tone-todo,
+.tone-in_progress,
+.tone-blocked,
+.tone-done {
+  --tone-text: color-mix(in srgb, var(--tone-fg) 55%, #1c2a22);
+}
+.task-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--tone-bg);
+  color: var(--tone-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.task-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone-fg);
+  flex-shrink: 0;
+}
+
+.progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.progress-bar-track {
+  display: block;
+  flex: 1;
+  min-width: 48px;
+  height: 6px;
+  border-radius: 999px;
+  background: #e9eee7;
+  overflow: hidden;
+}
+.progress-bar.lg .progress-bar-track {
+  height: 10px;
+}
+.progress-bar-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tone-fg, #7f9f6b);
+  transform-origin: left center;
+  transition: transform var(--motion-slow) var(--ease-out);
+  animation: motion-grow-x var(--motion-slow) var(--ease-out) backwards;
+}
+.progress-bar-value {
+  min-width: 34px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #5f6b62;
+  text-align: right;
+}
+
+/* Rows */
+.item-row {
+  position: relative;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .item-row:hover {
+    background: #fbfcfa;
+  }
+}
+.item-row.tone-blocked:not(.completed) {
+  box-shadow: inset 3px 0 0 var(--tone-fg);
+}
+.item-main {
+  border-radius: 6px;
+}
+.item-main:focus-visible {
+  outline-offset: 4px;
+}
+.item-progress-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 9px;
+}
+.item-progress-line .progress-bar {
+  flex: 0 1 170px;
+}
+.item-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #637066;
+  white-space: nowrap;
+}
+.item-fact svg {
+  color: var(--color-muted);
+}
+.item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 45%;
+}
+.item-chevron {
+  color: #b3bcb5;
+  flex-shrink: 0;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+}
+.check:not(:disabled):hover {
+  border-color: var(--green);
+}
+
+/* Overview */
+.stats-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.stats > .stat-blocked strong {
+  color: var(--status-blocked-fg);
+}
+.stats > .stat-blocked svg {
+  color: var(--status-blocked-fg);
+}
+.overview-section .section-heading {
+  align-items: flex-start;
+}
+.overview-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.overview-section h2 .heading-icon {
+  color: var(--color-muted);
+}
+.overview-section h2 span {
+  margin-left: 0;
+}
+.section-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6f7b72;
+}
+.section-empty {
+  margin: 0;
+  padding: 0 23px 22px;
+  font-size: 13px;
+  color: #6f7b72;
+}
+.attention-card {
+  border-color: #f0d9cf;
+}
+.attention-card h2 .heading-icon {
+  color: var(--status-blocked-fg);
+}
+.upcoming-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.upcoming-main .progress-bar {
+  margin-top: 5px;
+  max-width: 180px;
+}
+.upcoming .task-status {
+  align-self: center;
+}
+
+/* My tasks: toolbar, filter chips, segmented control and board. */
+.tasks-heading {
+  flex-wrap: wrap;
+}
+.tasks-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--color-surfaceMuted);
+}
+.segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f6b62;
+  font-size: 12px;
+  font-weight: 500;
+}
+.segmented button.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 650;
+  box-shadow: 0 1px 3px #1c31241f;
+}
+@media (hover: hover) {
+  .segmented button:not(.active):hover {
+    color: var(--color-text);
+  }
+}
+.filter-chips {
+  display: flex;
+  gap: 8px;
+  padding: 0 23px 18px;
+  overflow-x: auto;
+}
+.filter-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: #5f6b62;
+  font-size: 12px;
+  font-weight: 500;
+}
+.filter-chips button i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone-fg);
+}
+.filter-chips button span {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-surfaceMuted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.filter-chips button.active {
+  border-color: var(--tone-fg, var(--green));
+  background: var(--tone-bg, var(--color-accentSoft));
+  color: var(--tone-text, var(--color-accent));
+  font-weight: 650;
+}
+.filter-chips button.active span {
+  background: var(--color-surface);
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr));
+  gap: 14px;
+  padding: 4px 18px 20px;
+  border-top: 1px solid var(--color-divider);
+}
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--color-surfaceMuted);
+}
+.board-column h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 2px 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.board-column h3 i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tone-fg);
+}
+.board-column h3 span {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: #5f6b62;
+  font:
+    600 11px "DM Sans",
+    sans-serif;
+}
+.board-empty {
+  margin: 0;
+  padding: 16px 8px;
+  border: 1px dashed #d5ddd5;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: #6f7b72;
+}
+.board-card {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .board-card:hover {
+    border-color: #d3ddd3;
+    box-shadow: 0 6px 18px #1c31240f;
+  }
+}
+.board-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 12px 8px;
+  border: 0;
+  border-radius: 9px 9px 0 0;
+  background: none;
+  text-align: left;
+}
+.board-card-main strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.board-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: #637066;
+}
+.board-card-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.board-card-meta .is-overdue {
+  color: var(--status-blocked-fg);
+  font-weight: 600;
+}
+.board-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.board-move select {
+  max-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 11px;
+}
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: repeat(min(var(--cols, 4), 2), minmax(0, 1fr));
+  }
+  .stats-4 {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 18px;
+  }
+  .stats-4 > div:nth-child(2) {
+    border-right: 0;
+  }
+}
+@media (max-width: 700px) {
+  /* Narrow: the board reads as a list grouped by status. */
+  .board {
+    grid-template-columns: 1fr;
+  }
+  .item-tags {
+    max-width: 40%;
+  }
+  .item-chevron {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .item-progress-line .progress-bar {
+    flex-basis: 120px;
+  }
+  .filter-chips {
+    padding: 0 17px 16px;
+  }
+  .tasks-tools,
+  .tasks-tools .search {
+    width: 100%;
+  }
+  .tasks-tools .search input {
+    flex: 1;
   }
 }

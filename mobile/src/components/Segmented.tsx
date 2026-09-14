@@ -77,6 +77,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
   },
   chip: {
+    // Reset the segment's `flex: 1`: in Yoga it forces a zero flex basis, so
+    // chips would share one row at equal widths instead of wrapping.
+    flex: 0,
     flexGrow: 1,
     flexShrink: 0,
     flexBasis: "auto",

@@ -16,6 +16,8 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   dateLabel,
   hasTeamPermission,
+  statusLabels,
+  statusOrder,
   type Item,
   type ItemInput,
   type Team,
@@ -177,6 +179,7 @@ function Form({
             <Section label="Type">
               <Segmented
                 disabled={readOnly}
+                accessibilityLabel="Type"
                 options={["task", "event"] as const}
                 value={editing.kind}
                 onChange={(kind) => onChange({ kind })}
@@ -185,9 +188,21 @@ function Form({
             <Section label="Priority">
               <Segmented
                 disabled={readOnly}
+                accessibilityLabel="Priority"
                 options={["low", "medium", "high"] as const}
                 value={editing.priority}
                 onChange={(priority) => onChange({ priority })}
+              />
+            </Section>
+            <Section label="Status">
+              <Segmented
+                wrap
+                disabled={readOnly}
+                accessibilityLabel="Status"
+                options={statusOrder}
+                labels={statusLabels}
+                value={editing.status}
+                onChange={(status) => onChange({ status })}
               />
             </Section>
             {(["due_at", "end_at"] as const).map((field) => (

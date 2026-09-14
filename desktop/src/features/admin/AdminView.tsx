@@ -8,27 +8,30 @@ import {
   Network,
   ScrollText,
   ShieldCheck,
+  Sparkles,
   TriangleAlert,
   UserX,
   Users,
   type LucideIcon,
 } from "lucide-react";
-import type { AdminOverview } from "@orbyn/core";
+import { hasSystemPermission, type AdminOverview } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
 import { RoleBadge } from "../../components/RoleBadge";
 import { TeamDetail, type TeamActions } from "../teams/TeamDetail";
 import { AdminUsers } from "./AdminUsers";
 import { AdminAudit } from "./AdminAudit";
+import { AdminAi } from "./AdminAi";
 import { stagger } from "../../lib/motion";
 
-type Tab = "Overview" | "Users" | "Teams" | "Audit log";
+type Tab = "Overview" | "Users" | "Teams" | "Audit log" | "AI";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Users", icon: Users },
   { label: "Teams", icon: Network },
   { label: "Audit log", icon: ScrollText },
+  { label: "AI", icon: Sparkles },
 ];
 
 const STATS: { key: keyof AdminOverview; label: string; icon: LucideIcon }[] = [
@@ -54,11 +57,13 @@ const STATS: { key: keyof AdminOverview; label: string; icon: LucideIcon }[] = [
 export function AdminView(props: TeamActions) {
   const [tab, setTab] = useState<Tab>("Overview");
   const [teamId, setTeamId] = useState<string | null>(null);
+  const canManageAi = hasSystemPermission(props.user?.role, "ai:manage");
+  const tabs = TABS.filter((t) => t.label !== "AI" || canManageAi);
 
   return (
     <>
       <div className="tabs" role="tablist" aria-label="Admin sections">
-        {TABS.map(({ label, icon: Icon }) => (
+        {tabs.map(({ label, icon: Icon }) => (
           <button
             key={label}
             role="tab"
@@ -98,6 +103,7 @@ export function AdminView(props: TeamActions) {
           />
         ))}
       {tab === "Audit log" && <AdminAudit report={props.report} />}
+      {tab === "AI" && canManageAi && <AdminAi {...props} />}
     </>
   );
 }

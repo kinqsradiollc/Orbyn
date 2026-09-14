@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  itemBody,
   type HttpError,
   type Item,
   type Notice,
+  type Status,
   type Team,
   type User,
 } from "@orbyn/core";
@@ -126,14 +126,23 @@ export function usePlanner() {
       clearSession();
     });
 
-  const toggleItem = (i: Item) =>
+  /** Status changes go through the timeline so everyone sees who moved what. */
+  const setItemStatus = (i: Item, status: Status) =>
     act(async () => {
-      await client.updateItem(i.id, {
-        ...itemBody(i),
-        status: i.status === "done" ? "todo" : "done",
-      });
+      await client.postItemUpdate(i.id, { status });
       await refresh();
     });
+
+  /** Quick-complete: done, or back to in progress / to do when reopened. */
+  const toggleItem = (i: Item) =>
+    setItemStatus(
+      i,
+      i.status !== "done"
+        ? "done"
+        : (i.progress ?? 0) > 0
+          ? "in_progress"
+          : "todo",
+    );
 
   const markRead = (n: Notice) =>
     act(async () => {
@@ -164,6 +173,7 @@ export function usePlanner() {
     authenticate,
     logout,
     toggleItem,
+    setItemStatus,
     markRead,
     setEmailReminders,
   };

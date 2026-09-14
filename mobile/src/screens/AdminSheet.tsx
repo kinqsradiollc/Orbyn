@@ -7,12 +7,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type {
-  AdminOverview,
-  AdminUser,
-  AuditEntry,
-  Team,
-  User,
+import {
+  hasSystemPermission,
+  type AdminOverview,
+  type AdminUser,
+  type AuditEntry,
+  type Team,
+  type User,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -21,17 +22,21 @@ import type { Editing } from "../components/ItemEditor";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { SmallAction } from "../components/SmallAction";
 import { TeamList } from "../components/TeamList";
 import { client } from "../lib/api";
-import { FadeIn, PressableScale } from "../motion";
+import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
+import { AdminAi } from "./AdminAi";
 import { TeamDetailPage } from "./TeamDetail";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
-type Segment = "overview" | "users" | "teams" | "audit";
+type Segment = "overview" | "users" | "teams" | "audit" | "ai";
 
 const SEGMENTS = ["overview", "users", "teams", "audit"] as const;
+const SEGMENTS_WITH_AI = [...SEGMENTS, "ai"] as const;
+const SEGMENT_LABELS = { ai: "AI" } as const;
 const AUDIT_PAGE = 30;
 
 /**
@@ -63,6 +68,7 @@ export function AdminSheet({
 }) {
   const [segment, setSegment] = useState<Segment>("overview");
   const [team, setTeam] = useState<string | null>(null);
+  const canManageAi = hasSystemPermission(user?.role, "ai:manage");
   const banner = <ErrorBanner error={error} onDismiss={clearError} />;
   const close = () => {
     setTeam(null);
@@ -101,7 +107,10 @@ export function AdminSheet({
             {banner}
             <Segmented
               accessibilityLabel="Admin section"
-              options={SEGMENTS}
+              options={canManageAi ? SEGMENTS_WITH_AI : SEGMENTS}
+              labels={SEGMENT_LABELS}
+              // Five segments truncate "Overview" as a fixed row; let them flow.
+              wrap={canManageAi}
               value={segment}
               onChange={setSegment}
             />
@@ -114,6 +123,9 @@ export function AdminSheet({
               <Teams act={act} onSelect={(t) => setTeam(t.id)} />
             )}
             {segment === "audit" && <Audit act={act} busy={busy} />}
+            {segment === "ai" && canManageAi && (
+              <AdminAi act={act} busy={busy} />
+            )}
           </View>
         </ScrollView>
       )}
@@ -366,41 +378,6 @@ function auditTarget(a: AuditEntry) {
   return label ? `${a.target_type} · ${label}` : a.target_type;
 }
 
-function SmallAction({
-  label,
-  onPress,
-  disabled,
-  destructive = false,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled: boolean;
-  destructive?: boolean;
-}) {
-  return (
-    <PressableScale
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        s.action,
-        pressed && { backgroundColor: colors.surfaceMuted },
-        disabled && { opacity: 0.45 },
-      ]}
-    >
-      <Text
-        style={[
-          s.actionText,
-          { color: destructive ? colors.danger : colors.accent },
-        ]}
-      >
-        {label}
-      </Text>
-    </PressableScale>
-  );
-}
-
 const s = StyleSheet.create({
   spacer: { height: 18 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -445,17 +422,6 @@ const s = StyleSheet.create({
   },
   pills: { gap: 5, alignItems: "flex-end" },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  action: {
-    minHeight: 34,
-    paddingHorizontal: 12,
-    borderRadius: radii.input - 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionText: { fontFamily: fonts.semibold, fontSize: 13 },
   auditRow: { paddingVertical: 13, paddingHorizontal: 16, gap: 2 },
   auditAction: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
 });

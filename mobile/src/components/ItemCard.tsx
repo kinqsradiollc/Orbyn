@@ -1,19 +1,17 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Item, type Priority } from "@orbyn/core";
+import { dateLabel, statusTones, type Item } from "@orbyn/core";
 import { Icon } from "./Icon";
+import { StatusPill } from "./Pill";
+import { ProgressBar } from "./ProgressBar";
+import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii } from "../theme";
 
-const PRIORITY: Record<Priority, { bg: string; fg: string }> = {
-  high: { bg: colors.highBg, fg: colors.highText },
-  medium: { bg: colors.mediumBg, fg: colors.mediumText },
-  low: { bg: colors.lowBg, fg: colors.lowText },
-};
-
 /**
- * One planner row, styled like the desktop `.item-row`. Shrinks slightly while
- * pressed; the check mark pops when the item becomes done.
+ * One planner row: quick-complete checkbox, title, status pill, a slim progress
+ * bar and checklist / update counts. Tapping the row opens the task detail.
+ * Shrinks slightly while pressed; the check mark pops when the item becomes done.
  */
 export function ItemCard({
   item,
@@ -21,7 +19,7 @@ export function ItemCard({
   first = false,
   readOnly = false,
   onToggle,
-  onEdit,
+  onOpen,
 }: {
   item: Item;
   busy: boolean;
@@ -30,10 +28,11 @@ export function ItemCard({
   /** Disables the checkbox, e.g. for team items you can only view. */
   readOnly?: boolean;
   onToggle: (item: Item) => void;
-  onEdit: (item: Item) => void;
+  onOpen: (item: Item) => void;
 }) {
   const done = item.status === "done";
-  const tone = PRIORITY[item.priority];
+  const percent = percentOf(item);
+  const tone = statusTones[item.status];
   const reduced = useReducedMotion();
   const press = usePressScale();
   const tick = useRef(new Animated.Value(1)).current;
@@ -45,6 +44,13 @@ export function ItemCard({
     }
     wasDone.current = done;
   }, [done, reduced, tick]);
+  const showProgress = item.kind === "task" || percent > 0;
+  const footer = [
+    stepsLabel(item.steps_done, item.steps_total),
+    updatesLabel(item),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <Animated.View style={[s.row, !first && s.divider, press.style]}>
       <Pressable
@@ -54,7 +60,7 @@ export function ItemCard({
         disabled={busy || readOnly}
         hitSlop={12}
         onPress={() => onToggle(item)}
-        style={[s.check, done && s.checked]}
+        style={[s.check, done && s.checked, readOnly && s.checkLocked]}
       >
         {done && (
           <Animated.View style={{ transform: [{ scale: tick }] }}>
@@ -64,15 +70,19 @@ export function ItemCard({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={"Edit " + item.title}
+        accessibilityLabel={`Open ${item.title}`}
+        accessibilityHint="Shows steps, progress and updates"
         style={({ pressed }) => [s.main, pressed && { opacity: 0.6 }]}
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
-        onPress={() => onEdit(item)}
+        onPress={() => onOpen(item)}
       >
-        <Text numberOfLines={2} style={[s.title, done && s.done]}>
-          {item.title}
-        </Text>
+        <View style={s.top}>
+          <Text numberOfLines={2} style={[s.title, done && s.done]}>
+            {item.title}
+          </Text>
+          <StatusPill status={item.status} />
+        </View>
         <View style={s.meta}>
           <Icon
             name={item.kind === "event" ? "calendar" : "clock"}
@@ -83,6 +93,11 @@ export function ItemCard({
             {dateLabel(item.due_at)}
             {item.kind === "event" ? " · Event" : ""}
           </Text>
+          {item.priority === "high" && (
+            <Text style={s.high} accessibilityLabel="High priority">
+              High
+            </Text>
+          )}
           {!!item.team_name && (
             <View style={s.team}>
               <Icon name="users" size={10} color={colors.accent} />
@@ -92,10 +107,22 @@ export function ItemCard({
             </View>
           )}
         </View>
+        {showProgress && (
+          <View style={s.progress}>
+            <ProgressBar
+              value={percent}
+              color={tone.fg}
+              label={`${item.title} progress`}
+            />
+            <Text style={s.percent}>{percent}%</Text>
+          </View>
+        )}
+        {!!footer && (
+          <Text numberOfLines={1} style={s.footer}>
+            {footer}
+          </Text>
+        )}
       </Pressable>
-      <View style={[s.pill, { backgroundColor: tone.bg }]}>
-        <Text style={[s.pillText, { color: tone.fg }]}>{item.priority}</Text>
-      </View>
     </Animated.View>
   );
 }
@@ -103,7 +130,7 @@ export function ItemCard({
 const s = StyleSheet.create({
   row: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 14,
     paddingVertical: 15,
     paddingHorizontal: 16,
@@ -121,10 +148,14 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 1,
   },
   checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkLocked: { opacity: 0.5 },
   main: { flex: 1 },
+  top: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   title: {
+    flex: 1,
     fontFamily: fonts.medium,
     fontSize: 15,
     lineHeight: 20,
@@ -137,6 +168,17 @@ const s = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.muted,
+  },
+  high: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    color: colors.highText,
+    backgroundColor: colors.highBg,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    marginLeft: 3,
   },
   team: {
     flexDirection: "row",
@@ -151,10 +193,23 @@ const s = StyleSheet.create({
     marginLeft: 3,
   },
   teamText: { fontFamily: fonts.semibold, fontSize: 10, color: colors.accent },
-  pill: { borderRadius: radii.pill, paddingHorizontal: 9, paddingVertical: 4 },
-  pillText: {
+  progress: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+  },
+  percent: {
+    minWidth: 34,
+    textAlign: "right",
     fontFamily: fonts.semibold,
     fontSize: 11,
-    textTransform: "capitalize",
+    color: colors.textSoft,
+  },
+  footer: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 6,
   },
 });

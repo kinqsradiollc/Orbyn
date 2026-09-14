@@ -647,6 +647,14 @@
 .home-footer .text-button {
   font-size: 11px;
 }
+.home-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.home-footer-links a {
+  color: #698061;
+}
 .auth-home-link {
   position: absolute;
   top: 24px;
