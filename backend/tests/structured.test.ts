@@ -8,8 +8,8 @@ const { parseReply, buildMessages } =
 const { complete } = await import("../src/modules/ai/providers/adapters.js");
 const { AI_PROVIDERS } = await import("@orbyn/core");
 
-test("Maincode is flagged for structured output; others are not", () => {
-  assert.equal(AI_PROVIDERS.maincode.structuredOutput, "json_schema");
+test("Matilda is flagged for structured output; others are not", () => {
+  assert.equal(AI_PROVIDERS.matilda.structuredOutput, "json_schema");
   assert.equal(AI_PROVIDERS.openai.structuredOutput, undefined);
   // Exactly the shape Matilda documents: no extra fields for its strict validator.
   assert.deepEqual(Object.keys(REPLY_FORMAT.json_schema), ["name", "schema"]);
@@ -89,7 +89,7 @@ test("only providers with structured output receive the reply schema", async () 
   };
   const messages = [{ role: "user" as const, content: "hi" }];
   await complete(
-    { ...base, kind: "maincode", structuredOutput: "json_schema" },
+    { ...base, kind: "matilda", structuredOutput: "json_schema" },
     messages,
     { responseFormat: REPLY_FORMAT },
   );
@@ -101,7 +101,7 @@ test("only providers with structured output receive the reply schema", async () 
   assert.equal("response_format" in bodies[1], false);
   // The schema counts toward Matilda's request limit.
   const trimmed = buildMessages(
-    { model: "matilda", ...AI_PROVIDERS.maincode },
+    { model: "matilda", ...AI_PROVIDERS.matilda },
     "hi",
     "UTC",
     Array.from({ length: 200 }, (_, n) => ({ id: n, title: "x".repeat(400) })),
@@ -113,5 +113,5 @@ test("only providers with structured output receive the reply schema", async () 
       response_format: REPLY_FORMAT,
     }),
   );
-  assert.ok(size <= AI_PROVIDERS.maincode.limits!.maxBodyBytes);
+  assert.ok(size <= AI_PROVIDERS.matilda.limits!.maxBodyBytes);
 });

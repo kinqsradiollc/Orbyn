@@ -182,3 +182,8 @@
     padding: 0 17px 20px;
   }
 }
+
+/* A pasted key that doesn't match the provider's usual prefix (warn only). */
+.field-hint.field-warning {
+  color: #9a5b12;
+}

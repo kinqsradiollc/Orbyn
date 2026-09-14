@@ -39,6 +39,9 @@ const SOURCE_LABELS = {
 
 const CLOUD_KINDS = AI_PROVIDER_KINDS.filter((k) => !AI_PROVIDERS[k].local);
 const LOCAL_KINDS = AI_PROVIDER_KINDS.filter((k) => AI_PROVIDERS[k].local);
+/** Kinds offered in the picker, plus `current` so a saved provider still shows. */
+const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
+  kinds.filter((k) => AI_PROVIDERS[k].pickerVisible || k === current);
 
 /** AI provider management for admins with `ai:manage`; the server enforces it too. */
 export function AdminAi({ busy, revision, act, report }: Props) {
@@ -489,11 +492,22 @@ function ProviderForm({
     );
   };
 
-  const keyHint = def.requiresKey
-    ? undefined
-    : def.local
-      ? "Not needed for local servers."
-      : "Optional. Only if your server asks for one.";
+  const prefixes = def.keyPrefixes ?? [];
+  const keyHint = def.defaultApiKey
+    ? "Optional. Leave blank to use the public tier."
+    : def.requiresKey
+      ? prefixes.length
+        ? `${def.label} keys start with ${prefixes.join(" or ")}.`
+        : undefined
+      : def.local
+        ? "Not needed for local servers."
+        : "Optional. Only if your server asks for one.";
+  // BrainRouter only warns on an unfamiliar prefix; it never blocks.
+  const typedKey = apiKey.trim();
+  const keyWarning =
+    typedKey && prefixes.length && !prefixes.some((p) => typedKey.startsWith(p))
+      ? `This doesn't look like a ${def.label} key. Those start with ${prefixes.join(" or ")}.`
+      : "";
 
   return (
     <section className="card ai-form-card fade-up" ref={ref}>
@@ -509,14 +523,14 @@ function ProviderForm({
             onChange={(e) => changeKind(e.target.value as AiProviderKind)}
           >
             <optgroup label="Cloud">
-              {CLOUD_KINDS.map((k) => (
+              {offered(CLOUD_KINDS, kind).map((k) => (
                 <option key={k} value={k}>
                   {AI_PROVIDERS[k].label}
                 </option>
               ))}
             </optgroup>
             <optgroup label="Local">
-              {LOCAL_KINDS.map((k) => (
+              {offered(LOCAL_KINDS, kind).map((k) => (
                 <option key={k} value={k}>
                   {AI_PROVIDERS[k].label}
                 </option>
@@ -564,12 +578,22 @@ function ProviderForm({
             spellCheck={false}
             maxLength={500}
             placeholder={
-              existing?.has_key ? "Leave blank to keep the saved key" : ""
+              existing?.has_key
+                ? "Leave blank to keep the saved key"
+                : prefixes[0]
+                  ? `${prefixes[0]}…`
+                  : ""
             }
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
-          {keyHint && <small className="field-hint">{keyHint}</small>}
+          {keyWarning ? (
+            <small className="field-hint field-warning" role="status">
+              {keyWarning}
+            </small>
+          ) : (
+            keyHint && <small className="field-hint">{keyHint}</small>
+          )}
         </label>
         {def.options.map((o) => (
           <label key={o.key}>

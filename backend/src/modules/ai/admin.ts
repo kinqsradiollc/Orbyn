@@ -64,6 +64,24 @@ async function providerRow(id: string): Promise<ProviderRow> {
   return row;
 }
 
+/**
+ * BrainRouter's key rules: a cloud provider needs a key unless it has a
+ * default one (opencode), and a pasted key for a non-local provider must be
+ * at least 16 characters.
+ */
+function checkKey(
+  kind: AiProviderKind,
+  key: string | undefined,
+  change: "create" | "update",
+) {
+  const def = AI_PROVIDERS[kind];
+  if (key && !def.local && key.length < 16)
+    fail(422, "That API key looks too short. Paste the full key.");
+  const missing = change === "create" ? !key : key === "";
+  if (missing && def.requiresKey && !def.defaultApiKey)
+    fail(422, `${def.label} needs an API key.`);
+}
+
 function checkRequired(
   kind: AiProviderKind,
   baseUrl: string,
@@ -95,6 +113,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
   app.post("/ai/providers", async (r, reply) => {
     const actor = await authorize(r, "ai:manage");
     const d = aiProviderInput.parse(r.body);
+    checkKey(d.kind, d.api_key, "create");
     const baseUrl = d.base_url || AI_PROVIDERS[d.kind].defaultBaseUrl;
     checkRequired(d.kind, baseUrl, d.options);
     await assertProviderUrl(baseUrl);
@@ -137,6 +156,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const d = aiProviderUpdate.parse(r.body);
     const current = await providerRow(id);
+    checkKey(current.kind, d.api_key, "update");
     const next = {
       name: d.name ?? current.name,
       base_url: d.base_url ?? current.base_url,

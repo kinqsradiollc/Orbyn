@@ -136,6 +136,21 @@ The assistant is deliberately a **propose-then-approve** loop:
    single failing action (wrong version, item belonging to someone else) rolls back the whole batch.
    Applying is idempotent.
 
+**Consistent with BrainRouter.** The provider catalog in `packages/core/src/aiProviders.ts`
+mirrors BrainRouter's: its built-in chat providers in the same order, then its declarative starter
+set, with the same ids, labels, endpoints and picker visibility (a test pins this). Calls follow
+BrainRouter's common OpenAI-compatible profile: `Authorization: Bearer`, a blank key sent as
+`local` for local servers and as opencode's `public` key, model lists read from `data[]` or
+`models[]`, error-envelope and empty-choice replies treated as failures, reasoning text used when
+`content` is empty, and `finish_reason: "length"` treated as a cut-off reply. OpenAI uses the
+Responses API for GPT and o-series models on its own endpoint, as in BrainRouter; Anthropic's
+native API gets `max_tokens: 8192`. Cloud keys are required (except opencode) and must be at
+least 16 characters; known prefixes (`sk-`, `sk-or-v1-`, `dsk-`, `mc_live_`) only produce a
+warning. Deliberate differences: Matilda uses its OpenAI-compatible endpoint with a JSON schema
+(BrainRouter drives its native SSE chat for tool calls, which this assistant does not need, and
+only the schema produced reliable plans in live tests); Azure keeps its `api-key` header; and
+Anthropic model listing uses `x-api-key`, which its API requires.
+
 Providers are added by admins in the admin console and stored in `ai_providers`; the active
 provider and model live in `ai_settings`. There is no server-settings fallback: with no provider
 chosen the assistant answers 503. Adapters speak the OpenAI, Anthropic and Azure OpenAI formats,

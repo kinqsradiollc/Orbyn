@@ -34,6 +34,9 @@ export async function connection(
     source: "database",
     limits: definition?.limits,
     structuredOutput: definition?.structuredOutput,
+    local: definition?.local,
+    defaultApiKey: definition?.defaultApiKey,
+    requestFormat: definition?.requestFormat,
   };
 }
 

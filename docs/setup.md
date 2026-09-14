@@ -68,7 +68,7 @@ The AI assistant is configured only in the app, never in `.env`. Sign in as an a
 **Admin → AI** (on mobile: **Settings → Admin console → AI**), then:
 
 1. **Add provider**: pick one of the built-in providers (OpenAI, Anthropic, Google Gemini, Azure
-   OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Maincode, LM Studio, Ollama and more) or "Other
+   OpenAI, OpenRouter, Groq, Mistral, Matilda (Maincode), ZenMux, opencode, LM Studio, Ollama, Together, Fireworks, Mistral, xAI, Perplexity, DeepInfra, Nebius and more) or "Other
    OpenAI-compatible", and paste its API key if it needs one.
 2. **Test** it and load its models.
 3. **Use for assistant** with the model you want.

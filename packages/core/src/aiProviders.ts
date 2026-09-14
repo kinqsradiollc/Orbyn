@@ -6,20 +6,23 @@ export const AI_PROVIDER_KINDS = [
   "openai",
   "anthropic",
   "gemini",
-  "azure",
   "openrouter",
+  "zenmux",
+  "matilda",
   "groq",
-  "mistral",
+  "azure",
+  "openai-compatible",
+  "opencode",
+  "lmstudio",
+  "ollama",
   "deepseek",
-  "maincode",
   "together",
   "fireworks",
+  "mistral",
   "xai",
   "perplexity",
   "deepinfra",
-  "lmstudio",
-  "ollama",
-  "openai-compatible",
+  "nebius",
 ] as const;
 export type AiProviderKind = (typeof AI_PROVIDER_KINDS)[number];
 
@@ -47,6 +50,8 @@ export type AiProviderDefinition = {
   /** Local servers usually run without a key. */
   requiresKey: boolean;
   local: boolean;
+  /** Offered in the admin's "Add provider" list (BrainRouter's pickerVisible). */
+  pickerVisible: boolean;
   /** Whether the provider can list its models for the picker. */
   listsModels: boolean;
   options: AiProviderOption[];
@@ -62,6 +67,15 @@ export type AiProviderDefinition = {
    * For models that ignore "reply in JSON" instructions but honour a schema.
    */
   structuredOutput?: "json_schema";
+  /**
+   * BrainRouter's requestFormat: "responses" uses OpenAI's Responses API for
+   * GPT and o-series models on OpenAI's own endpoint; chat completions otherwise.
+   */
+  requestFormat?: "responses";
+  /** Sent when the admin leaves the key blank (opencode's public key). */
+  defaultApiKey?: string;
+  /** Known key prefixes, used to hint and sanity-check pasted keys. */
+  keyPrefixes?: string[];
 };
 
 const cloud = (
@@ -78,6 +92,7 @@ const cloud = (
   defaultBaseUrl,
   requiresKey: true,
   local: false,
+  pickerVisible: true,
   listsModels: true,
   options: [],
   suggestedModels: [],
@@ -85,16 +100,18 @@ const cloud = (
 });
 
 export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
+  // Built-in providers, in BrainRouter's picker order: named clouds first…
   openai: cloud(
     "openai",
     "OpenAI",
-    "GPT models from OpenAI.",
+    "cloud · api.openai.com · or any compatible /v1 endpoint",
     "https://api.openai.com/v1",
+    { requestFormat: "responses", keyPrefixes: ["sk-proj-", "sk-"] },
   ),
   anthropic: cloud(
     "anthropic",
-    "Anthropic",
-    "Claude models, using Anthropic's native Messages API.",
+    "Anthropic (Claude)",
+    "cloud · api.anthropic.com/v1",
     "https://api.anthropic.com/v1",
     {
       format: "anthropic",
@@ -108,13 +125,49 @@ export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
   gemini: cloud(
     "gemini",
     "Google Gemini",
-    "Gemini models through Google's OpenAI-compatible endpoint.",
+    "cloud · generativelanguage.googleapis.com · OpenAI-compatible",
     "https://generativelanguage.googleapis.com/v1beta/openai",
+  ),
+  openrouter: cloud(
+    "openrouter",
+    "OpenRouter",
+    "cloud · openrouter.ai/api/v1 · gateway to many models",
+    "https://openrouter.ai/api/v1",
+    { keyPrefixes: ["sk-or-v1-"] },
+  ),
+  zenmux: cloud(
+    "zenmux",
+    "ZenMux",
+    "cloud · zenmux.ai/api/v1 · gateway to many models",
+    "https://zenmux.ai/api/v1",
+  ),
+  // Maincode's Matilda: Australian sovereign models hosted in Melbourne. Its
+  // OpenAI-compatible endpoint takes a Bearer `mc_live_` key, lists models at
+  // /models, rejects unknown request fields, and caps each request at 64 KiB
+  // and each message at 16,000 characters.
+  matilda: cloud(
+    "matilda",
+    "Matilda (Maincode)",
+    "cloud · matilda.maincode.com/api/v1 · Australian sovereign models",
+    "https://matilda.maincode.com/api/v1",
+    {
+      suggestedModels: ["matilda"],
+      keyPrefixes: ["mc_live_"],
+      limits: { maxBodyBytes: 65_536, maxMessageChars: 16_000 },
+      // Matilda answers in prose unless given a schema, which it enforces.
+      structuredOutput: "json_schema",
+    },
+  ),
+  groq: cloud(
+    "groq",
+    "Groq",
+    "cloud · api.groq.com/openai/v1 · fast inference",
+    "https://api.groq.com/openai/v1",
   ),
   azure: cloud(
     "azure",
     "Azure OpenAI",
-    "Your Azure OpenAI resource. Use the deployment name as the model.",
+    "cloud · your-resource.openai.azure.com · you provide the base URL; the model is your deployment name",
     "",
     {
       format: "azure",
@@ -129,90 +182,84 @@ export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
       ],
     },
   ),
-  openrouter: cloud(
-    "openrouter",
-    "OpenRouter",
-    "Hundreds of models behind one key.",
-    "https://openrouter.ai/api/v1",
+  // …then the generic OpenAI-compatible option and the hosted gateway…
+  "openai-compatible": cloud(
+    "openai-compatible",
+    "OpenAI-compatible (custom)",
+    "any /v1 endpoint · you provide the base URL + key",
+    "",
+    { requiresKey: false },
   ),
-  groq: cloud(
-    "groq",
-    "Groq",
-    "Fast inference for open models.",
-    "https://api.groq.com/openai/v1",
+  opencode: cloud(
+    "opencode",
+    "opencode (Zen gateway)",
+    "cloud · opencode.ai gateway · blank key uses the public tier",
+    "https://opencode.ai/zen/v1",
+    { requiresKey: false, defaultApiKey: "public" },
   ),
-  mistral: cloud(
-    "mistral",
-    "Mistral",
-    "Mistral's hosted models.",
-    "https://api.mistral.ai/v1",
-  ),
-  deepseek: cloud(
-    "deepseek",
-    "DeepSeek",
-    "DeepSeek's hosted models.",
-    "https://api.deepseek.com/v1",
-  ),
-  // Maincode's Matilda: Australian sovereign models hosted in Melbourne. Its
-  // OpenAI-compatible endpoint takes a Bearer `mc_live_` key, lists models at
-  // /models, rejects unknown request fields, and caps each request at 64 KiB
-  // and each message at 16,000 characters.
-  maincode: cloud(
-    "maincode",
-    "Maincode (Matilda)",
-    "Matilda, Australian sovereign models hosted in Melbourne.",
-    "https://matilda.maincode.com/api/v1",
-    {
-      suggestedModels: ["matilda"],
-      limits: { maxBodyBytes: 65_536, maxMessageChars: 16_000 },
-      // Matilda answers in prose unless given a schema, which it enforces.
-      structuredOutput: "json_schema",
-    },
-  ),
-  together: cloud(
-    "together",
-    "Together AI",
-    "Open models hosted by Together.",
-    "https://api.together.xyz/v1",
-  ),
-  fireworks: cloud(
-    "fireworks",
-    "Fireworks AI",
-    "Open models hosted by Fireworks.",
-    "https://api.fireworks.ai/inference/v1",
-  ),
-  xai: cloud("xai", "xAI", "Grok models from xAI.", "https://api.x.ai/v1"),
-  perplexity: cloud(
-    "perplexity",
-    "Perplexity",
-    "Perplexity's models.",
-    "https://api.perplexity.ai",
-  ),
-  deepinfra: cloud(
-    "deepinfra",
-    "DeepInfra",
-    "Open models hosted by DeepInfra.",
-    "https://api.deepinfra.com/v1/openai",
-  ),
+  // …then local servers, then entries hidden from the picker.
   lmstudio: cloud(
     "lmstudio",
-    "LM Studio",
-    "Models running in LM Studio. From Docker, use http://host.docker.internal:1234/v1.",
+    "LM Studio (local)",
+    "local · http://localhost:1234 · blank API key OK. From Docker, use http://host.docker.internal:1234/v1.",
     "http://localhost:1234/v1",
     { requiresKey: false, local: true },
   ),
   ollama: cloud(
     "ollama",
-    "Ollama",
-    "Models running in Ollama. From Docker, use http://host.docker.internal:11434/v1.",
+    "Ollama (local)",
+    "local · http://localhost:11434 · blank API key OK. From Docker, use http://host.docker.internal:11434/v1.",
     "http://localhost:11434/v1",
     { requiresKey: false, local: true },
   ),
-  "openai-compatible": cloud(
-    "openai-compatible",
-    "Other OpenAI-compatible",
-    "Any service that speaks the OpenAI chat API, such as vLLM or LiteLLM.",
-    "",
-    { requiresKey: false },
+  deepseek: cloud(
+    "deepseek",
+    "DeepSeek",
+    "cloud · api.deepseek.com/v1 (via OpenAI-compatible)",
+    "https://api.deepseek.com/v1",
+    { pickerVisible: false, keyPrefixes: ["dsk-"] },
+  ),
+  // BrainRouter's starter set: OpenAI-compatible vendors with no quirks.
+  together: cloud(
+    "together",
+    "Together AI",
+    "cloud · api.together.xyz/v1 (OpenAI-compatible)",
+    "https://api.together.xyz/v1",
+  ),
+  fireworks: cloud(
+    "fireworks",
+    "Fireworks AI",
+    "cloud · api.fireworks.ai/inference/v1 (OpenAI-compatible)",
+    "https://api.fireworks.ai/inference/v1",
+  ),
+  mistral: cloud(
+    "mistral",
+    "Mistral",
+    "cloud · api.mistral.ai/v1 (OpenAI-compatible)",
+    "https://api.mistral.ai/v1",
+  ),
+  xai: cloud(
+    "xai",
+    "xAI (Grok)",
+    "cloud · api.x.ai/v1 (OpenAI-compatible)",
+    "https://api.x.ai/v1",
+  ),
+  perplexity: cloud(
+    "perplexity",
+    "Perplexity",
+    "cloud · api.perplexity.ai (OpenAI-compatible)",
+    "https://api.perplexity.ai",
+  ),
+  deepinfra: cloud(
+    "deepinfra",
+    "DeepInfra",
+    "cloud · api.deepinfra.com/v1/openai (OpenAI-compatible)",
+    "https://api.deepinfra.com/v1/openai",
+  ),
+  nebius: cloud(
+    "nebius",
+    "Nebius AI Studio",
+    "cloud · api.studio.nebius.ai/v1 (OpenAI-compatible)",
+    "https://api.studio.nebius.ai/v1",
   ),
 };

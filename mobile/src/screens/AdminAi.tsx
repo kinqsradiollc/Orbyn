@@ -32,6 +32,9 @@ type FormState = { mode: "new" } | { mode: "edit"; provider: AiProvider };
 
 const CLOUD_KINDS = AI_PROVIDER_KINDS.filter((k) => !AI_PROVIDERS[k].local);
 const LOCAL_KINDS = AI_PROVIDER_KINDS.filter((k) => AI_PROVIDERS[k].local);
+/** Kinds offered in the picker, plus `current` so a saved provider still shows. */
+const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
+  kinds.filter((k) => AI_PROVIDERS[k].pickerVisible || k === current);
 const KIND_LABELS = Object.fromEntries(
   AI_PROVIDER_KINDS.map((k) => [k, AI_PROVIDERS[k].label]),
 ) as Record<AiProviderKind, string>;
@@ -500,12 +503,23 @@ function ProviderForm({
       await onSaved(saved);
     });
 
+  const prefixes = def.keyPrefixes ?? [];
   const keyPlaceholder =
     editing && provider.has_key
       ? "Leave blank to keep the saved key"
-      : def.requiresKey
-        ? "Paste your API key"
-        : "Optional for most local servers";
+      : def.defaultApiKey
+        ? "Optional. Blank uses the public tier"
+        : def.requiresKey
+          ? prefixes[0]
+            ? `Paste your key (${prefixes[0]}…)`
+            : "Paste your API key"
+          : "Optional for most local servers";
+  // BrainRouter only warns on an unfamiliar prefix; it never blocks.
+  const typedKey = apiKey.trim();
+  const keyWarning =
+    typedKey && prefixes.length && !prefixes.some((p) => typedKey.startsWith(p))
+      ? `This doesn't look like a ${def.label} key. Those start with ${prefixes.join(" or ")}.`
+      : "";
 
   return (
     <FadeIn style={shared.card}>
@@ -522,7 +536,7 @@ function ProviderForm({
           <Segmented
             wrap
             accessibilityLabel="Cloud providers"
-            options={CLOUD_KINDS}
+            options={offered(CLOUD_KINDS, kind)}
             labels={KIND_LABELS}
             value={kind}
             onChange={chooseKind}
@@ -532,7 +546,7 @@ function ProviderForm({
           <Segmented
             wrap
             accessibilityLabel="Local providers"
-            options={LOCAL_KINDS}
+            options={offered(LOCAL_KINDS, kind)}
             labels={KIND_LABELS}
             value={kind}
             onChange={chooseKind}
@@ -609,6 +623,11 @@ function ProviderForm({
         placeholderTextColor={colors.faint}
         accessibilityLabel="API key"
       />
+      {keyWarning ? (
+        <Text style={[shared.small, s.keyWarning]} accessibilityRole="alert">
+          {keyWarning}
+        </Text>
+      ) : null}
       {editing && provider.has_key && (
         <View style={s.keyRow}>
           <Text style={[shared.small, { flex: 1 }]}>
@@ -645,6 +664,7 @@ function ProviderForm({
 }
 
 const s = StyleSheet.create({
+  keyWarning: { color: "#9a5b12", marginTop: 6 },
   section: { marginTop: 8 },
   center: { textAlign: "center" },
   gapBelow: { marginBottom: 14 },

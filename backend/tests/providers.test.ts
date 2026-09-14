@@ -328,3 +328,32 @@ test("provider rules: metadata addresses, disabled providers, deletion, audit", 
   ])
     assert.ok(!serialized.includes(secret), "audit never contains keys");
 });
+
+test("key rules match BrainRouter: cloud keys required and at least 16 characters", async () => {
+  const create = (body: object) => call(admin, "POST", "/ai/providers", body);
+  const noKey = await create({ kind: "openai", name: "No key" });
+  assert.equal(noKey.statusCode, 422);
+  assert.match(noKey.json().message, /needs an API key/);
+  const short = await create({
+    kind: "openrouter",
+    name: "Short",
+    api_key: "sk-or-v1-x",
+  });
+  assert.equal(short.statusCode, 422);
+  assert.match(short.json().message, /too short/);
+  // opencode falls back to its public key; local servers accept any key.
+  const zen = await create({ kind: "opencode", name: "Zen" });
+  assert.equal(zen.statusCode, 201);
+  const local = await create({
+    kind: "lmstudio",
+    name: "Local",
+    base_url: "http://127.0.0.1:1234/v1",
+    api_key: "x",
+  });
+  assert.equal(local.statusCode, 201);
+  for (const id of [zen.json().id, local.json().id])
+    assert.equal(
+      (await call(admin, "DELETE", `/ai/providers/${id}`)).statusCode,
+      204,
+    );
+});

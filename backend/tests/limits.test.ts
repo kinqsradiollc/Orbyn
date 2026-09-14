@@ -13,8 +13,8 @@ const history = Array.from({ length: 12 }, (_, n) => ({
   content: `turn ${n} ` + "z".repeat(20_000),
 }));
 
-test("Maincode requests are trimmed to its 64 KiB and 16,000-character limits", () => {
-  const limits = AI_PROVIDERS.maincode.limits!;
+test("Matilda requests are trimmed to its 64 KiB and 16,000-character limits", () => {
+  const limits = AI_PROVIDERS.matilda.limits!;
   assert.deepEqual(limits, { maxBodyBytes: 65_536, maxMessageChars: 16_000 });
   const messages = buildMessages(
     { model: "matilda", limits },
