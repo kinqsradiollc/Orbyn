@@ -1,67 +1,112 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Item } from "@orbyn/core";
-import { colors } from "../theme";
-import { shared } from "../styles";
+import { dateLabel, type Item, type Priority } from "@orbyn/core";
+import { Icon } from "./Icon";
+import { colors, fonts, radii } from "../theme";
 
+const PRIORITY: Record<Priority, { bg: string; fg: string }> = {
+  high: { bg: colors.highBg, fg: colors.highText },
+  medium: { bg: colors.mediumBg, fg: colors.mediumText },
+  low: { bg: colors.lowBg, fg: colors.lowText },
+};
+
+/** One planner row, styled like the desktop `.item-row`. */
 export function ItemCard({
   item,
   busy,
+  first = false,
   onToggle,
   onEdit,
 }: {
   item: Item;
   busy: boolean;
+  /** Hides the divider on the first row of a list card. */
+  first?: boolean;
   onToggle: (item: Item) => void;
   onEdit: (item: Item) => void;
 }) {
   const done = item.status === "done";
+  const tone = PRIORITY[item.priority];
   return (
-    <View style={s.item}>
+    <View style={[s.row, !first && s.divider]}>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: done }}
-        accessibilityLabel={"Complete " + item.title}
+        accessibilityState={{ checked: done, disabled: busy }}
+        accessibilityLabel={(done ? "Reopen " : "Complete ") + item.title}
         disabled={busy}
+        hitSlop={12}
         onPress={() => onToggle(item)}
+        style={[s.check, done && s.checked]}
       >
-        <Text style={[s.checkbox, done && { color: colors.accent }]}>
-          {done ? "☑" : "□"}
-        </Text>
+        {done && (
+          <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
+        )}
       </Pressable>
-      <Pressable style={{ flex: 1 }} onPress={() => onEdit(item)}>
-        <Text
-          style={[
-            shared.itemTitle,
-            done && {
-              textDecorationLine: "line-through",
-              color: colors.muted,
-            },
-          ]}
-        >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={"Edit " + item.title}
+        style={({ pressed }) => [s.main, pressed && { opacity: 0.6 }]}
+        onPress={() => onEdit(item)}
+      >
+        <Text numberOfLines={2} style={[s.title, done && s.done]}>
           {item.title}
         </Text>
-        <Text style={shared.small}>
-          {dateLabel(item.due_at)} · {item.kind} · {item.priority}
-        </Text>
+        <View style={s.meta}>
+          <Icon
+            name={item.kind === "event" ? "calendar" : "clock"}
+            size={12}
+            color={colors.muted}
+          />
+          <Text numberOfLines={1} style={s.metaText}>
+            {dateLabel(item.due_at)}
+            {item.kind === "event" ? " · Event" : ""}
+          </Text>
+        </View>
       </Pressable>
-      <Text style={s.arrow}>↗</Text>
+      <View style={[s.pill, { backgroundColor: tone.bg }]}>
+        <Text style={[s.pillText, { color: tone.fg }]}>{item.priority}</Text>
+      </View>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  item: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
-    padding: 17,
-    borderWidth: 1,
-    borderColor: "#e8edde",
-    backgroundColor: colors.white,
-    borderRadius: 9,
-    marginBottom: 10,
+    gap: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 16,
   },
-  checkbox: { fontSize: 26, color: "#becab4" },
-  arrow: { fontSize: 20, color: "#9dac90" },
+  divider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  check: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "#cfd7ce",
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+  main: { flex: 1 },
+  title: {
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  done: { color: colors.faint, textDecorationLine: "line-through" },
+  meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
+  metaText: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  pill: { borderRadius: radii.pill, paddingHorizontal: 9, paddingVertical: 4 },
+  pillText: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    textTransform: "capitalize",
+  },
 });

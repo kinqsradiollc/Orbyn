@@ -7,9 +7,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { freshItem, itemBody, type Item, type Notice } from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
+import { Brand } from "../components/Brand";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Icon } from "../components/Icon";
 import { ItemEditor, type Editing } from "../components/ItemEditor";
 import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
@@ -22,7 +25,7 @@ import { InboxScreen } from "../screens/InboxScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TodayScreen } from "../screens/TodayScreen";
-import { colors } from "../theme";
+import { colors, spacing } from "../theme";
 import { shared } from "../styles";
 
 /** Auth gate, tab switching and the shared item editor modal. */
@@ -45,6 +48,7 @@ export function RootScreen() {
     signOut,
   } = planner;
   const assistant = useAssistant({ token, act, refresh });
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("Today");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -52,8 +56,8 @@ export function RootScreen() {
   if (!ready)
     return (
       <View style={shared.center}>
-        <Text style={shared.logo}>◎ orbyn</Text>
-        <Text>Finding your space…</Text>
+        <Brand size={34} />
+        <Text style={shared.small}>Finding your space…</Text>
       </View>
     );
   if (!token)
@@ -103,77 +107,103 @@ export function RootScreen() {
       setEditing(null);
       await refresh();
     });
+  const sidePadding = {
+    paddingLeft: insets.left + spacing.page,
+    paddingRight: insets.right + spacing.page,
+  };
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={s.header}>
-        <Text style={shared.logo}>◎ orbyn</Text>
-        <Pressable accessibilityLabel="Add item" onPress={openNew}>
-          <Text style={s.add}>＋</Text>
-        </Pressable>
+    <View style={s.screen}>
+      <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
+        <View style={s.headerRow}>
+          <Brand size={24} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="New item"
+            hitSlop={8}
+            onPress={openNew}
+            style={({ pressed }) => [s.add, pressed && s.addPressed]}
+          >
+            <Icon
+              name="plus"
+              size={20}
+              color={colors.white}
+              strokeWidth={2.2}
+            />
+          </Pressable>
+        </View>
       </View>
       <ScrollView
-        contentContainerStyle={shared.content}
+        style={s.scroll}
+        contentContainerStyle={[s.content, sidePadding]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => act(refresh)}
             tintColor={colors.accent}
+            colors={[colors.accent]}
           />
         }
       >
-        <Text style={shared.eyebrow}>
-          {today
-            .toLocaleDateString([], {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-            })
-            .toUpperCase()}
-        </Text>
-        <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-        <Text style={shared.subtitle}>{tabSubtitle(tab)}</Text>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
-        {tab === "Today" && (
-          <TodayScreen
-            items={items}
-            onPlanDay={() => {
-              setTab("AI");
-              void assistant.ask(
-                "Summarize my day and suggest what needs attention.",
-              );
-            }}
-            {...listHandlers}
-          />
-        )}
-        {tab === "Tasks" && (
-          <TasksScreen
-            items={items}
-            search={search}
-            onSearch={setSearch}
-            {...listHandlers}
-          />
-        )}
-        {tab === "Calendar" && (
-          <CalendarScreen items={items} {...listHandlers} />
-        )}
-        {tab === "AI" && (
-          <AssistantScreen assistant={assistant} items={items} busy={busy} />
-        )}
-        {tab === "Inbox" && <InboxScreen notices={notices} onRead={markRead} />}
-        {tab === "Settings" && (
-          <SettingsScreen
-            user={user}
-            busy={busy}
-            act={act}
-            onUser={setUser}
-            onSignOut={signOut}
-          />
-        )}
+        <View style={s.column}>
+          <Text style={shared.eyebrow}>
+            {today
+              .toLocaleDateString([], {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })
+              .toUpperCase()}
+          </Text>
+          <Text style={shared.title}>{tabTitle(tab, user)}</Text>
+          <Text style={[shared.subtitle, s.subtitle]}>{tabSubtitle(tab)}</Text>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {tab === "Today" && (
+            <TodayScreen
+              items={items}
+              onPlanDay={() => {
+                setTab("AI");
+                void assistant.ask(
+                  "Summarize my day and suggest what needs attention.",
+                );
+              }}
+              {...listHandlers}
+            />
+          )}
+          {tab === "Tasks" && (
+            <TasksScreen
+              items={items}
+              search={search}
+              onSearch={setSearch}
+              {...listHandlers}
+            />
+          )}
+          {tab === "Calendar" && (
+            <CalendarScreen items={items} {...listHandlers} />
+          )}
+          {tab === "AI" && (
+            <AssistantScreen assistant={assistant} items={items} busy={busy} />
+          )}
+          {tab === "Inbox" && (
+            <InboxScreen notices={notices} onRead={markRead} />
+          )}
+          {tab === "Settings" && (
+            <SettingsScreen
+              user={user}
+              busy={busy}
+              act={act}
+              onUser={setUser}
+              onSignOut={signOut}
+            />
+          )}
+        </View>
       </ScrollView>
       <TabBar
         tab={tab}
+        unread={notices.some((n) => !n.read)}
         onChange={(t) => {
           setTab(t);
           setSearch("");
@@ -193,15 +223,32 @@ export function RootScreen() {
 }
 
 const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
   header: {
+    backgroundColor: colors.background,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  headerRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e7ecdf",
+    width: "100%",
+    maxWidth: spacing.maxContent,
+    alignSelf: "center",
   },
-  add: { color: "#4d714d", fontSize: 32 },
+  add: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addPressed: { backgroundColor: colors.accentPressed },
+  scroll: { flex: 1 },
+  content: { paddingTop: 22, paddingBottom: 32 },
+  column: { width: "100%", maxWidth: spacing.maxContent, alignSelf: "center" },
+  subtitle: { marginBottom: 20 },
 });

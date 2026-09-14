@@ -111,7 +111,25 @@ The same bundle runs three ways:
 
 An Expo app with tabs for Today, Tasks, Calendar, Assistant, Inbox, and Settings, organised as
 `src/screens/`, `src/components/`, `src/hooks/`, `src/lib/` (API client, session, push), and
-`src/theme/`. The session token is stored with `expo-secure-store`. On login the app requests notification permission, obtains an
-Expo push token, and registers it with `POST /devices`. On logout it deletes the device
-registration so reminders stop. Push notifications include the item id so tapping one can open the
-right task.
+`src/theme/`. The session token is stored with `expo-secure-store`. On login the app requests
+notification permission, obtains an Expo push token, and registers it with `POST /devices`. On
+logout it deletes the device registration so reminders stop. Push notifications include the item id
+so tapping one can open the right task.
+
+### Design system
+
+The mobile app shares its look with the web app so both read as one product:
+
+- **Tokens.** `src/theme/index.ts` mirrors the desktop palette in `desktop/src/styles/global.css`
+  (accent `#376c51`, text `#27382f`, muted `#849089`, border `#e8ece9`, background `#f7f8fa`) plus
+  the priority pill colours.
+- **Type.** DM Sans for interface text and Manrope for headings and the wordmark, loaded with
+  `expo-font` from `@expo-google-fonts/*` in `src/app/App.tsx`.
+- **Icons and logo.** `src/components/Icon.tsx` draws the same lucide icons the desktop uses with
+  `react-native-svg`; only the shapes the app needs are included rather than the whole icon pack.
+  `src/components/Brand.tsx` is the Orbit mark, the "orbyn" wordmark, and the green dot, matching
+  the desktop `.brand`.
+- **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
+  under the home indicator, and each applies safe-area insets itself. Landscape and iPad
+  multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large
+  screens. The item editor is a native page sheet on iOS and a full-screen modal on Android.

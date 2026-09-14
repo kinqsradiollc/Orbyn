@@ -1,9 +1,10 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { Item } from "@orbyn/core";
+import { groupItems, type Item } from "@orbyn/core";
 import { Button } from "./Button";
+import { Icon } from "./Icon";
 import { ItemCard } from "./ItemCard";
-import { colors } from "../theme";
+import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
 export type ListHandlers = {
@@ -13,7 +14,7 @@ export type ListHandlers = {
   onAdd: () => void;
 };
 
-/** Stats card, section title, item rows and the empty state shared by Today / Tasks / Calendar. */
+/** Stats, section header, item rows and the empty state shared by Today / Tasks / Calendar. */
 export function PlannerList({
   items,
   visible,
@@ -35,41 +36,53 @@ export function PlannerList({
   /** Rendered between the stats and the section title (the Tasks search box). */
   children?: React.ReactNode;
 }) {
+  const groups = groupItems(items);
+  const stats = [
+    { value: groups.today.length, label: "Due today" },
+    { value: groups.done.length, label: "Completed" },
+    { value: groups.overdue.length, label: "Overdue" },
+  ];
   return (
     <>
       <View style={s.stats}>
-        <View>
-          <Text style={s.statValue}>
-            {items.filter((i) => i.status === "todo").length}
-          </Text>
-          <Text style={shared.small}>In your orbit</Text>
-        </View>
-        <View>
-          <Text style={s.statValue}>
-            {items.filter((i) => i.status === "done").length}
-          </Text>
-          <Text style={shared.small}>Completed</Text>
-        </View>
+        {stats.map((stat, n) => (
+          <View key={stat.label} style={[s.stat, n > 0 && s.statDivider]}>
+            <Text style={s.statValue}>{stat.value}</Text>
+            <Text style={shared.small}>{stat.label}</Text>
+          </View>
+        ))}
       </View>
       {children}
-      <Text style={shared.sectionTitle}>{title}</Text>
-      {listed.map((i) => (
-        <ItemCard
-          key={i.id}
-          item={i}
-          busy={busy}
-          onToggle={onToggle}
-          onEdit={onEdit}
-        />
-      ))}
+      <View style={s.heading}>
+        <Text style={shared.sectionTitle}>{title}</Text>
+        <View style={s.count}>
+          <Text style={s.countText}>{listed.length}</Text>
+        </View>
+      </View>
+      {listed.length > 0 && (
+        <View style={s.list}>
+          {listed.map((i, n) => (
+            <ItemCard
+              key={i.id}
+              item={i}
+              busy={busy}
+              first={n === 0}
+              onToggle={onToggle}
+              onEdit={onEdit}
+            />
+          ))}
+        </View>
+      )}
       {!visible.length && (
-        <View style={shared.empty}>
-          <Text style={s.emptyIcon}>☼</Text>
+        <View style={[shared.card, shared.empty]}>
+          <View style={shared.emptyIcon}>
+            <Icon name="sun" size={26} color={colors.accent} />
+          </View>
           <Text style={shared.sectionTitle}>A little breathing room.</Text>
-          <Text style={shared.subtitle}>
+          <Text style={[shared.subtitle, s.emptyText]}>
             Add something worth making time for.
           </Text>
-          <Button secondary title="Make a plan" onPress={onAdd} />
+          <Button secondary icon="plus" title="Make a plan" onPress={onAdd} />
         </View>
       )}
     </>
@@ -79,19 +92,44 @@ export function PlannerList({
 const s = StyleSheet.create({
   stats: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#e6ebdf",
-    borderRadius: 12,
-    padding: 23,
-    marginBottom: 27,
+    borderColor: colors.border,
+    borderRadius: radii.card,
+    paddingVertical: 16,
+    marginBottom: 22,
+  },
+  stat: { flex: 1, paddingHorizontal: 16 },
+  statDivider: {
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border,
   },
   statValue: {
-    fontSize: 30,
-    fontWeight: "500",
-    color: "#486147",
-    marginBottom: 6,
+    fontFamily: fonts.display,
+    fontSize: 26,
+    color: colors.text,
+    marginBottom: 2,
   },
-  emptyIcon: { fontSize: 40, color: "#a9bb93", marginBottom: 20 },
+  heading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  count: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  countText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
+  list: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.card,
+    overflow: "hidden",
+    marginBottom: 20,
+  },
+  emptyText: { textAlign: "center", marginBottom: 16 },
 });

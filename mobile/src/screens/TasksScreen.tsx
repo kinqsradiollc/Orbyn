@@ -1,7 +1,9 @@
 import React from "react";
-import { TextInput } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
 import { byDueDate, type Item } from "@orbyn/core";
+import { Icon } from "../components/Icon";
 import { PlannerList, type ListHandlers } from "../components/PlannerList";
+import { colors } from "../theme";
 import { shared } from "../styles";
 
 /** Case-insensitive match against the item's title and notes together. */
@@ -26,12 +28,28 @@ export function TasksScreen({
       title="All your plans"
       {...handlers}
     >
-      <TextInput
-        style={shared.input}
-        placeholder="Find something…"
-        value={search}
-        onChangeText={onSearch}
-      />
+      <View style={s.search}>
+        <View style={s.icon} pointerEvents="none">
+          <Icon name="search" size={17} color={colors.muted} />
+        </View>
+        <TextInput
+          style={[shared.input, s.input]}
+          placeholder="Find something…"
+          placeholderTextColor={colors.faint}
+          value={search}
+          onChangeText={onSearch}
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          accessibilityLabel="Search your plans"
+        />
+      </View>
     </PlannerList>
   );
 }
+
+const s = StyleSheet.create({
+  search: { marginBottom: 22, justifyContent: "center" },
+  icon: { position: "absolute", left: 15, zIndex: 1 },
+  input: { paddingLeft: 42 },
+});
