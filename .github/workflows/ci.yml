@@ -30,25 +30,28 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run format:check
-      - run: npm run typecheck
-      - run: npm run build
-      - run: npm test
+      - run: npm run build:packages
+      - run: npm run typecheck -w backend
+      - run: npm run typecheck -w desktop
+      - run: npm run build -w backend
+      - run: npm run build -w desktop
+      - run: npm test -w backend
         env:
           DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
   mobile:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mobile
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: mobile/package-lock.json
       - run: npm ci
-      - run: npm run typecheck
+      - run: npm run build:packages
+      - run: npm run typecheck -w mobile
+      - name: Bundle with Metro (no device needed)
+        run: npx expo export --platform android --output-dir /tmp/orbyn-export
+        working-directory: mobile
   docker:
     runs-on: ubuntu-latest
     steps:

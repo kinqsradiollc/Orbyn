@@ -1,0 +1,85 @@
+import { StyleSheet } from "react-native";
+import { colors, radii, spacing } from "./theme";
+
+/** Styles shared by several screens and components. */
+export const shared = StyleSheet.create({
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  logo: {
+    fontSize: 29,
+    fontWeight: "800",
+    letterSpacing: -1,
+    color: "#355d40",
+  },
+  eyebrow: {
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 1.6,
+    color: "#8c9a7d",
+    marginTop: 25,
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 21,
+    color: "#8a9582",
+    marginTop: 8,
+    marginBottom: 23,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#dfe6d7",
+    backgroundColor: colors.white,
+    padding: 14,
+    borderRadius: radii.input,
+    fontSize: 14,
+    color: "#355039",
+    marginBottom: 16,
+  },
+  content: { padding: spacing.page, paddingBottom: 35 },
+  title: {
+    fontSize: 29,
+    fontWeight: "500",
+    letterSpacing: -0.8,
+    color: "#334a37",
+  },
+  small: { fontSize: 10, color: "#98a18f", lineHeight: 18 },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    color: "#40553e",
+    marginBottom: 15,
+  },
+  itemTitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#40533c",
+    marginBottom: 5,
+  },
+  empty: { alignItems: "center", paddingVertical: 32 },
+  aiCard: {
+    backgroundColor: "#ebf0df",
+    borderRadius: 13,
+    padding: 23,
+    marginTop: 15,
+    marginBottom: 23,
+    borderWidth: 1,
+    borderColor: "#dfe7d1",
+  },
+  card: {
+    backgroundColor: colors.white,
+    padding: 22,
+    borderRadius: radii.card,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: "#e4eadb",
+  },
+  body: { fontSize: 13, lineHeight: 21, color: "#65785a", marginVertical: 10 },
+  error: {
+    color: "#a05c43",
+    backgroundColor: "#fbeddf",
+    padding: 13,
+    borderRadius: 7,
+    fontSize: 12,
+    marginBottom: 15,
+  },
+});

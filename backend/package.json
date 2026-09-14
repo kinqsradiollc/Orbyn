@@ -1,1 +1,33 @@
-{"name":"@orbyn/backend","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"tsx watch src/server.ts","build":"tsc","typecheck":"tsc --noEmit","start":"node dist/server.js","worker":"node dist/worker.js","migrate":"tsx src/migrate.ts","test":"tsx --test tests/*.test.ts"},"dependencies":{"@fastify/cors":"^11.2.0","@fastify/rate-limit":"^10.3.0","argon2":"^0.44.0","dotenv":"^17.3.1","fastify":"^5.12.4","nodemailer":"^10.0.9","pg":"^8.23.0","zod":"^4.3.6"},"devDependencies":{"@types/node":"^22.19.15","@types/nodemailer":"^7.0.11","@types/pg":"^8.18.0","tsx":"^4.21.0","typescript":"^5.9.3"}}
+{
+  "name": "@orbyn/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "worker": "node dist/worker.js",
+    "migrate": "tsx src/migrate.ts",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "argon2": "^0.44.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.12.4",
+    "nodemailer": "^10.0.9",
+    "pg": "^8.23.0",
+    "zod": "^4.3.6",
+    "@orbyn/core": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "@types/nodemailer": "^7.0.11",
+    "@types/pg": "^8.18.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

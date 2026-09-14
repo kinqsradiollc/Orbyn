@@ -92,9 +92,11 @@ untrusted.
 
 ## Desktop / web (`desktop/`)
 
-A single-page React app built with Vite. Views: Overview, My tasks, Calendar, AI assistant,
-Notifications, Settings. Session tokens live in `sessionStorage`. The app polls the API every 30
-seconds while visible.
+A single-page React app built with Vite. `src/features/<view>/` holds one folder per view
+(overview, tasks, calendar, assistant, notifications, settings, auth), `src/components/` the
+shared UI (item row, editor modal, proposal review, sidebar, topbar), `src/hooks/usePlanner.ts` the
+data layer (session, polling every 30 seconds while visible, optimistic-lock aware mutations), and
+`src/lib/api.ts` the configured `OrbynClient`. Session tokens live in `sessionStorage`.
 
 The same bundle runs three ways:
 
@@ -107,8 +109,9 @@ The same bundle runs three ways:
 
 ## Mobile (`mobile/`)
 
-An Expo app with tabs for Today, Tasks, Calendar, Assistant, and Settings. The session token is
-stored with `expo-secure-store`. On login the app requests notification permission, obtains an
+An Expo app with tabs for Today, Tasks, Calendar, Assistant, Inbox, and Settings, organised as
+`src/screens/`, `src/components/`, `src/hooks/`, `src/lib/` (API client, session, push), and
+`src/theme/`. The session token is stored with `expo-secure-store`. On login the app requests notification permission, obtains an
 Expo push token, and registers it with `POST /devices`. On logout it deletes the device
 registration so reminders stop. Push notifications include the item id so tapping one can open the
 right task.

@@ -1,4 +1,11 @@
 import { z } from "zod";
+
+export const KINDS = ["task", "event"] as const;
+export const STATUSES = ["todo", "done"] as const;
+export const PRIORITIES = ["low", "medium", "high"] as const;
+/** Largest reminder window: one week in minutes. */
+export const MAX_REMINDER_MINUTES = 10080;
+
 export const credentials = z.object({
   email: z
     .email()
@@ -7,16 +14,22 @@ export const credentials = z.object({
   password: z.string().min(10).max(128),
   name: z.string().trim().min(1).max(80).default("My space"),
 });
+
 export const itemData = z
   .object({
     title: z.string().trim().min(1).max(200),
     notes: z.string().max(10000).default(""),
-    kind: z.enum(["task", "event"]).default("task"),
-    status: z.enum(["todo", "done"]).default("todo"),
-    priority: z.enum(["low", "medium", "high"]).default("medium"),
+    kind: z.enum(KINDS).default("task"),
+    status: z.enum(STATUSES).default("todo"),
+    priority: z.enum(PRIORITIES).default("medium"),
     due_at: z.iso.datetime({ offset: true }).nullable().default(null),
     end_at: z.iso.datetime({ offset: true }).nullable().default(null),
-    reminder_minutes: z.number().int().min(0).max(10080).default(30),
+    reminder_minutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_REMINDER_MINUTES)
+      .default(30),
   })
   .strict()
   .refine(
@@ -28,6 +41,7 @@ export const itemData = z
     (d) => d.kind !== "event" || !!d.due_at,
     "Events require a start time",
   );
+
 export const actionSchema = z
   .object({
     operation: z.enum(["create", "update", "delete"]),
@@ -41,17 +55,27 @@ export const actionSchema = z
     "Existing item and version required",
   )
   .refine((a) => a.operation === "delete" || !!a.data, "Item data required");
+
 export const agentReply = z.object({
   summary: z.string().max(12000),
   actions: z.array(actionSchema).max(20).default([]),
 });
-export type Action = z.infer<typeof actionSchema>;
+
 export const deviceData = z.object({
   token: z
     .string()
     .max(250)
     .regex(/^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$/),
 });
-export function fail(statusCode: number, message: string): never {
-  throw Object.assign(new Error(message), { statusCode });
-}
+
+export const chatRequest = z.object({
+  message: z.string().trim().min(1).max(4000),
+  timezone: z.string().max(80).default("UTC"),
+});
+
+export const preferences = z.object({ email_reminders: z.boolean() });
+
+export const pagination = z.object({
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});

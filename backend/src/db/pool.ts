@@ -1,12 +1,15 @@
 import pg from "pg";
-import { config } from "./config.js";
+import { env } from "../config/env.js";
+
 export const pool = new pg.Pool({
-  connectionString: config.DATABASE_URL,
+  connectionString: env.DATABASE_URL,
   max: 10,
 });
-export async function transaction<T>(
-  fn: (db: pg.PoolClient) => Promise<T>,
-): Promise<T> {
+
+export type Db = pg.PoolClient;
+
+/** Run `fn` inside a transaction, rolling back on any thrown error. */
+export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");

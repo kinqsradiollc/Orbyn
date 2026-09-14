@@ -1,10 +1,13 @@
 import { config as loadEnv } from "dotenv";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
+
+// The root .env is three levels up from both src/config and dist/config.
 loadEnv({
-  path: fileURLToPath(new URL("../../.env", import.meta.url)),
+  path: fileURLToPath(new URL("../../../.env", import.meta.url)),
   quiet: true,
 });
-import { z } from "zod";
+
 const schema = z.object({
   DATABASE_URL: z
     .string()
@@ -24,4 +27,6 @@ const schema = z.object({
   SMTP_FROM: z.string().default("Orbyn <reminders@orbyn.local>"),
   EXPO_ACCESS_TOKEN: z.string().default(""),
 });
-export const config = schema.parse(process.env);
+
+export type Env = z.infer<typeof schema>;
+export const env: Env = schema.parse(process.env);

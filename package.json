@@ -1,1 +1,36 @@
-{"name":"orbyn","private":true,"workspaces":["backend","desktop"],"scripts":{"dev":"npm run dev -w desktop","build":"npm run build -w backend && npm run build -w desktop","typecheck":"npm run typecheck -w backend && npm run typecheck -w desktop","test":"npm run test -w backend","format":"prettier --write backend/src backend/tests desktop/src mobile/src docs README.md","format:check":"prettier --check backend/src backend/tests desktop/src mobile/src docs README.md"},"devDependencies":{"prettier":"^3.9.6"}}
+{
+  "name": "orbyn",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "desktop",
+    "mobile"
+  ],
+  "scripts": {
+    "build:packages": "npm run build -w @orbyn/core && npm run build -w @orbyn/api-client",
+    "dev:packages": "npm run dev -w @orbyn/core & npm run dev -w @orbyn/api-client & wait",
+    "dev": "npm run dev -w desktop",
+    "dev:api": "npm run dev -w backend",
+    "dev:web": "npm run dev -w desktop",
+    "dev:mobile": "npm run start -w mobile",
+    "build": "npm run build:packages && npm run build -w backend && npm run build -w desktop",
+    "typecheck": "npm run build:packages && npm run typecheck -w backend && npm run typecheck -w desktop && npm run typecheck -w mobile",
+    "test": "npm run build:packages && npm run test -w backend",
+    "migrate": "npm run migrate -w backend",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "11.1.1"
+    }
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6"
+  },
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  }
+}

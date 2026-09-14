@@ -105,19 +105,24 @@ Start only the infrastructure in Docker:
 docker compose up -d postgres mailpit
 ```
 
-Install and migrate. The default `.env.example` `DATABASE_URL` already points at the Compose
-Postgres on port 5433:
+Install, build the shared packages, and migrate. The default `.env.example` `DATABASE_URL`
+already points at the Compose Postgres on port 5433:
 
 ```bash
 npm install
-npm run migrate -w backend
+npm run build:packages
+npm run migrate
 ```
+
+`@orbyn/core` and `@orbyn/api-client` are consumed from their compiled `dist/` folders, so run
+`npm run build:packages` after cloning and whenever you edit them (or keep `npm run dev:packages`
+running to rebuild on change).
 
 Run the API with hot reload and the web app:
 
 ```bash
-npm run dev -w backend     # http://localhost:8000
-npm run dev                # http://localhost:5173
+npm run dev:api            # http://localhost:8000
+npm run dev:web            # http://localhost:5173
 ```
 
 The Vite dev server proxies `/api` to `http://localhost:8008` by default. When running the API
@@ -149,7 +154,21 @@ npm run package -w desktop   # output in desktop/release/
 
 See the [README](../README.md#tests). The suite needs a database literally named `orbyn_test`.
 
-## 5. Formatting
+## 5. Working in the monorepo
+
+- Add shared types, validation, or pure helpers to `packages/core/src` and export them from its
+  `index.ts`. Both the backend and the apps import from `@orbyn/core`.
+- Add new API endpoints as a method on `OrbynClient` in `packages/api-client/src/client.ts` so
+  web and mobile stay in sync.
+- Backend features are folders under `backend/src/modules/<name>/` with a `routes.ts` (HTTP) and,
+  when there is logic worth sharing, a `service.ts`. Register new route plugins in
+  `backend/src/app.ts`.
+- Web features are folders under `desktop/src/features/<name>/`; mobile screens live in
+  `mobile/src/screens/`. Reusable UI goes in each app's `components/`.
+- `npm install` at the root installs every workspace, including mobile. npm 11.4.0 creates broken
+  scoped workspace symlinks; use npm 10.x or 11.5+ (see the README).
+
+## 6. Formatting
 
 ```bash
 npm run format        # write

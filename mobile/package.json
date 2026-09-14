@@ -1,5 +1,5 @@
 {
-  "name": "orbyn-mobile",
+  "name": "@orbyn/mobile",
   "version": "1.0.0",
   "private": true,
   "main": "index.ts",
@@ -19,15 +19,12 @@
     "expo-secure-store": "~57.0.4",
     "react": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-safe-area-context": "~5.7.0"
+    "react-native-safe-area-context": "~5.7.0",
+    "@orbyn/core": "1.0.0",
+    "@orbyn/api-client": "1.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.4",
     "typescript": "~6.0.3"
-  },
-  "overrides": {
-    "xcode": {
-      "uuid": "11.1.1"
-    }
   }
 }

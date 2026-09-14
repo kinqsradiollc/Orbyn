@@ -1,15 +1,18 @@
 # Mobile guide
 
-The mobile app lives in `mobile/` and is a standalone Expo project (it is not part of the npm
-workspace because React Native pins its own dependency tree).
+The mobile app lives in `mobile/` and is the `@orbyn/mobile` workspace of the monorepo. It shares
+types, validation, and the API client with the web app through `@orbyn/core` and
+`@orbyn/api-client`.
 
 ## Run in development
 
+From the repository root:
+
 ```bash
-cd mobile
-cp .env.example .env
 npm install
-npx expo start
+npm run build:packages
+cp mobile/.env.example mobile/.env
+npm run dev:mobile          # or: cd mobile && npx expo start
 ```
 
 Press `i` for the iOS simulator or `a` for an Android emulator. The default
@@ -63,5 +66,5 @@ change them in `app.json` before publishing under your own organization.
 ## Type checking
 
 ```bash
-cd mobile && npm run typecheck
+npm run typecheck -w mobile
 ```

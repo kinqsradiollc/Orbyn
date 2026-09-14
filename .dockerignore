@@ -5,4 +5,8 @@
 **/.expo
 .env
 .env.*
-mobile
+docs
+.github
+# Mobile sources are never built in Docker; only its manifest is needed for npm ci.
+mobile/**
+!mobile/package.json

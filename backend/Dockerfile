@@ -1,17 +1,40 @@
-FROM node:22-bookworm-slim AS build
+# Builds the API / worker / migrate image from the monorepo root:
+#   docker build -f backend/Dockerfile -t orbyn-backend .
+# The same image runs three commands (see compose.yaml):
+#   node backend/dist/server.js   API (default)
+#   node backend/dist/worker.js   reminder worker
+#   node backend/dist/migrate.js  apply SQL migrations
+
+# Workspace manifests only, so dependency layers cache independently of source.
+FROM node:22-bookworm-slim AS manifests
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY packages/core/package.json packages/core/package.json
+COPY packages/api-client/package.json packages/api-client/package.json
 COPY backend/package.json backend/package.json
 COPY desktop/package.json desktop/package.json
-RUN npm ci --workspace=@orbyn/backend --include-workspace-root=false
+COPY mobile/package.json mobile/package.json
+
+# Compile @orbyn/core and the backend with dev dependencies available.
+FROM manifests AS build
+RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
+COPY packages/core packages/core
 COPY backend backend
-RUN npm run build -w backend
-RUN npm prune --omit=dev --workspace=@orbyn/backend
+RUN npm run build -w @orbyn/core && npm run build -w @orbyn/backend
+
+# Production dependencies only.
+FROM manifests AS prod-deps
+RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
+
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/backend ./backend
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/packages/core/package.json ./packages/core/package.json
+COPY --from=build --chown=node:node /app/packages/core/dist ./packages/core/dist
+COPY --from=build --chown=node:node /app/backend/package.json ./backend/package.json
+COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
+COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations
 USER node
 EXPOSE 8000
 CMD ["node", "backend/dist/server.js"]
