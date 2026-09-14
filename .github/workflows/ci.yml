@@ -74,7 +74,7 @@ jobs:
           file: backend/Dockerfile
           push: false
           load: true
-          tags: orbyn-api:latest,orbyn-worker:latest,orbyn-migrate:latest
+          tags: orbyn-api:latest,orbyn-ai:latest,orbyn-status:latest,orbyn-notifier:latest,orbyn-migrate:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
       - name: Build web image
@@ -87,6 +87,15 @@ jobs:
           tags: orbyn-desktop:latest
           cache-from: type=gha,scope=desktop
           cache-to: type=gha,scope=desktop,mode=max
+      - name: Build connection pooler image
+        uses: docker/build-push-action@v6
+        with:
+          context: pgbouncer
+          push: false
+          load: true
+          tags: orbyn-pgbouncer:latest
+          cache-from: type=gha,scope=pgbouncer
+          cache-to: type=gha,scope=pgbouncer,mode=max
       - name: Start services and run the live API smoke test
         run: |
           cp .env.example .env
