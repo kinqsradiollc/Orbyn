@@ -2119,3 +2119,23 @@ footer svg {
     flex: 1;
   }
 }
+
+/* Pinned top bar: the breadcrumb, date and bell stay in place while the page
+   scrolls. --topbar-h lets pages size themselves around it. */
+.shell {
+  --topbar-h: 77px;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: var(--topbar-h);
+  background: rgba(255, 255, 255, 0.84);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  backdrop-filter: saturate(1.4) blur(14px);
+}
+@media (max-width: 800px) {
+  .shell {
+    --topbar-h: 60px;
+  }
+}

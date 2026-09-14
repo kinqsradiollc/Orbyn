@@ -29,31 +29,6 @@
   cursor: default;
   opacity: 0.55;
 }
-.calendar-hint {
-  margin: -6px 20px 12px;
-  font-size: 12px;
-  color: #6f7b72;
-}
-.calendar-hint kbd {
-  display: inline-block;
-  min-width: 20px;
-  padding: 1px 5px;
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  background: var(--color-surface);
-  font:
-    600 11px "DM Sans",
-    sans-serif;
-  text-align: center;
-  color: var(--color-text);
-}
-@media (hover: none), (max-width: 900px) {
-  .calendar-hint {
-    display: none;
-  }
-}
-
 /* ---- Shared entry look (month bars, all-day chips, time grid blocks) ---- */
 .prio-high {
   --bar-bg: var(--color-highBg);
@@ -189,9 +164,14 @@
   outline: none;
   box-shadow: inset 0 0 0 3px #95b49c;
 }
+/* Selected day: a soft tint and a ring on the date, so bars crossing the
+   day are never cut by an outline. */
 .month-cell.is-selected {
-  background: #f1f6f2;
-  box-shadow: inset 0 0 0 2px var(--green);
+  background: #f2f7f3;
+}
+.month-cell.is-selected:not(.is-today) .month-date {
+  color: var(--green);
+  box-shadow: inset 0 0 0 1.5px var(--green);
 }
 .month-date {
   display: inline-flex;
@@ -214,19 +194,45 @@
 }
 .month-bar {
   z-index: 1;
-  margin: 0 4px;
+  margin: 0 5px;
   height: 22px;
+  border-radius: 6px;
+  font-weight: 600;
 }
+.month-bar.is-event {
+  color: color-mix(in srgb, var(--bar-edge) 70%, #1d2a22);
+  background: color-mix(in srgb, var(--bar-bg) 70%, var(--bar-edge) 14%);
+}
+.month-bar.is-multi.is-task {
+  color: color-mix(in srgb, var(--tone-fg) 65%, #1d2a22);
+}
+/* Continues from the previous week or into the next: square that end and
+   show a small arrow so the bar reads as one span across rows. */
 .month-bar.cont-before {
   margin-left: 0;
+  padding-left: 6px;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   box-shadow: none;
+}
+.month-bar.cont-before::before {
+  content: "‹";
+  flex-shrink: 0;
+  font-weight: 700;
+  opacity: 0.6;
 }
 .month-bar.cont-after {
   margin-right: 0;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
+}
+.month-bar.cont-after::after {
+  content: "›";
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 6px;
+  font-weight: 700;
+  opacity: 0.6;
 }
 .month-more {
   z-index: 1;
@@ -301,6 +307,14 @@
     border-color: #d3ddd3;
     background: #fbfcfa;
   }
+}
+.agenda-time small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #7a857c;
+  white-space: nowrap;
 }
 .agenda-time {
   flex: 0 0 58px;

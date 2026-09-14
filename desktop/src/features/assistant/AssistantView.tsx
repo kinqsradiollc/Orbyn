@@ -15,13 +15,19 @@ type Props = {
 export function AssistantView({ items, busy, assistant }: Props) {
   const { message, setMessage, turns, thinking, ask, apply, dismiss, reset } =
     assistant;
-  const endRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const locked = busy || thinking;
 
-  // Keep the newest message in view.
+  // Keep the newest message in view by scrolling the conversation itself,
+  // never the page, so the header and composer stay where they are.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const el = threadRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
   }, [turns.length, thinking]);
 
   // Grow the composer with its content, up to a limit.
@@ -62,7 +68,7 @@ export function AssistantView({ items, busy, assistant }: Props) {
         )}
       </header>
 
-      <div className="ai-thread" aria-live="polite">
+      <div className="ai-thread" aria-live="polite" ref={threadRef}>
         {turns.length === 0 && (
           <div className="ai-empty">
             <span className="ai-empty-mark">
@@ -133,7 +139,6 @@ export function AssistantView({ items, busy, assistant }: Props) {
             </div>
           </div>
         )}
-        <div ref={endRef} />
       </div>
 
       <form

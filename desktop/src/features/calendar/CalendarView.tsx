@@ -138,6 +138,7 @@ export function CalendarView({
             className="icon-button"
             aria-label={`Previous ${unit}`}
             title={`Previous ${unit} (←)`}
+            aria-keyshortcuts="ArrowLeft"
             onClick={() => step(-1)}
           >
             <ChevronLeft size={19} />
@@ -145,6 +146,7 @@ export function CalendarView({
           <button
             className="secondary calendar-today"
             title="Jump to today (T)"
+            aria-keyshortcuts="T"
             disabled={sameDay(date, new Date())}
             onClick={() => onDateChange(new Date())}
           >
@@ -154,6 +156,7 @@ export function CalendarView({
             className="icon-button"
             aria-label={`Next ${unit}`}
             title={`Next ${unit} (→)`}
+            aria-keyshortcuts="ArrowRight"
             onClick={() => step(1)}
           >
             <ChevronRight size={19} />
@@ -167,6 +170,7 @@ export function CalendarView({
               aria-pressed={mode === m.id}
               className={mode === m.id ? "active" : ""}
               title={`${m.label} view (${m.key.toUpperCase()})`}
+              aria-keyshortcuts={m.key.toUpperCase()}
               onClick={() => onModeChange(m.id)}
             >
               {m.label}
@@ -174,10 +178,6 @@ export function CalendarView({
           ))}
         </div>
       </div>
-      <p className="calendar-hint">
-        <kbd>←</kbd> <kbd>→</kbd> move · <kbd>T</kbd> today · <kbd>M</kbd>{" "}
-        <kbd>W</kbd> <kbd>D</kbd> switch view
-      </p>
 
       {mode === "month" && (
         <div className="month-layout">

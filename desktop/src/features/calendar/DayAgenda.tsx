@@ -5,7 +5,7 @@ import { stagger } from "../../lib/motion";
 import { progressOf } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
-import { firstDay, isAllDay, isMultiDay, timeLabel } from "./dates";
+import { firstDay, isAllDay, isMultiDay, lastDay, timeLabel } from "./dates";
 
 type Props = { day: Date; items: Item[]; onOpen: (item: Item) => void };
 
@@ -46,11 +46,22 @@ export function DayAgenda({ day, items, onOpen }: Props) {
                 onClick={() => onOpen(i)}
               >
                 <span className="agenda-time">
-                  {continued
-                    ? "Ongoing"
-                    : isAllDay(i) && !isMultiDay(i)
-                      ? "All day"
-                      : timeLabel(new Date(i.due_at!))}
+                  {continued ? (
+                    <>
+                      Ongoing
+                      <small>
+                        until{" "}
+                        {lastDay(i).toLocaleDateString([], {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </small>
+                    </>
+                  ) : isAllDay(i) && !isMultiDay(i) ? (
+                    "All day"
+                  ) : (
+                    timeLabel(new Date(i.due_at!))
+                  )}
                 </span>
                 <span className="agenda-main">
                   <strong>{i.title}</strong>
