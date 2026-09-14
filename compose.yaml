@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orbyn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-orbyn}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  migrate:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
+    command: ["node", "backend/dist/migrate.js"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
+      SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
+    ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  worker:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
+      SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
+    command: ["node", "backend/dist/worker.js"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  desktop:
+    build: {context: ., dockerfile: desktop/Dockerfile}
+    ports: ["${WEB_PORT:-8080}:8080"]
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+  mailpit:
+    image: axllent/mailpit:v1.29
+    ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
+    restart: unless-stopped
+volumes:
+  postgres_data:

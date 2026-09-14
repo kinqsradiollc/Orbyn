@@ -1,0 +1,8 @@
+.git
+**/node_modules
+**/dist
+**/release
+**/.expo
+.env
+.env.*
+mobile
