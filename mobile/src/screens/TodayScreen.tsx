@@ -1,6 +1,12 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { emptyPlans, overviewItems, statusTones, type Item } from "@orbyn/core";
+import {
+  inProgressEmpty,
+  emptyPlans,
+  overviewItems,
+  statusTones,
+  type Item,
+} from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import {
@@ -95,7 +101,7 @@ export function TodayScreen({
             title="In progress"
             hint="Tasks you’ve started"
             items={inProgress}
-            empty="Nothing underway yet. Open a task and tick a step to get it moving."
+            empty={inProgressEmpty(inProgressCount)}
             handlers={handlers}
           />
           {attention.length > 0 && (

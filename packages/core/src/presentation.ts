@@ -189,3 +189,9 @@ export const statusTones: Record<Status, { bg: string; fg: string }> = {
 
 /** Statuses in the order people move through them. */
 export const statusOrder: Status[] = ["todo", "in_progress", "blocked", "done"];
+
+/** Explain why the in-progress section can be empty despite a nonzero total. */
+export const inProgressEmpty = (count: number) =>
+  count > 0
+    ? "Your in-progress work is listed under Needs attention because it is past due."
+    : "Nothing underway yet. Open a task and set it to In progress when you start.";

@@ -13,7 +13,12 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
-import { dateLabel, overviewItems, type Item } from "@orbyn/core";
+import {
+  dateLabel,
+  overviewItems,
+  inProgressEmpty,
+  type Item,
+} from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
@@ -140,8 +145,7 @@ export function OverviewView({
               rows(inProgress)
             ) : (
               <p className="section-empty">
-                Nothing underway. Open a task and set it to In progress when you
-                start.
+                {inProgressEmpty(inProgressCount)}
               </p>
             )}
           </OverviewSection>
