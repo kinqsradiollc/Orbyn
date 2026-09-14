@@ -1,34 +1,49 @@
 # Architecture
 
-Orbyn is three deployables plus PostgreSQL. The clients never talk to the database or to the AI
-provider directly; everything goes through the backend API.
+Orbyn is a set of backend services, two client apps and PostgreSQL. The clients never talk to the
+database or to AI providers directly; everything goes through the gateway.
 
 ```
- desktop (web / Electron)  ──┐
-                             ├──► api (Fastify) ──► PostgreSQL ◄── worker (reminders)
- mobile (Expo)             ──┘        │                               │
-                                      ▼                               ├──► SMTP (email)
-                         OpenAI-compatible provider                   └──► Expo Push (mobile)
+ web / Electron ─┐                  ┌─► api ─────┐
+                 ├─► load balancer ─► gateway ──┼─► ai ──────┼─► PgBouncer ─► Postgres primary
+ mobile (Expo) ──┘    (production)  └─► status ──┘                  │        └─► read replicas
+                                       notifier ─► SMTP, Expo Push ┘
 ```
 
-## Backend (`backend/`)
+## Services
 
-| File             | Responsibility                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `src/config.ts`  | Loads `.env` and validates configuration with zod.                                 |
-| `src/db.ts`      | pg connection pool and a `transaction()` helper.                                   |
-| `src/migrate.ts` | Applies `migrations/*.sql` in order under an advisory lock. Idempotent.            |
-| `src/schemas.ts` | zod schemas for credentials, items, AI actions, device tokens.                     |
-| `src/planner.ts` | `mutate()`: the single code path for create/update/delete with optimistic locking. |
-| `src/app.ts`     | Fastify app: auth, items, devices, notifications, AI chat and proposal apply.      |
-| `src/ai.ts`      | Calls any OpenAI-compatible `/chat/completions` endpoint and validates the reply.  |
-| `src/worker.ts`  | Reminder scheduler and delivery loop.                                              |
-| `src/server.ts`  | Process entry for the API.                                                         |
+One backend image runs each service with a different command. They scale independently and can
+live on different machines; see [scalability.md](scalability.md).
 
-The API and worker are the same Docker image with different commands, so they scale
-independently. Several worker replicas can run at once: scheduling is serialized with a Postgres
-advisory lock, while delivery uses `FOR UPDATE SKIP LOCKED` so replicas never process the same
-notification twice.
+| Service    | Entry point            | Owns                                                                       |
+| ---------- | ---------------------- | -------------------------------------------------------------------------- |
+| `api`      | `services/api.ts`      | Auth, profile, items, steps and updates, teams, admin console, devices     |
+| `ai`       | `services/ai.ts`       | Assistant chat, proposals, AI provider settings (`/ai/*`)                  |
+| `status`   | `services/status.ts`   | Probes every service every 30 s and serves the public `GET /status` report |
+| `notifier` | `services/notifier.ts` | Reminder scheduling and delivery; heartbeat for the status page            |
+| `migrate`  | `migrate.ts`           | Applies `migrations/*.sql` in order under an advisory lock, then exits     |
+| gateway    | `gateway/` (nginx)     | Routes `/ai/*` to ai, `/status` to status, everything else to api          |
+
+`server.ts` runs every module in one process for local development and tests.
+`services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
+with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
+
+## Backend (`backend/src`)
+
+| Path              | Responsibility                                                                  |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `config/env.ts`   | Loads `.env` and validates configuration with zod                               |
+| `db/pool.ts`      | Primary and optional read-replica pools, `reader()`, `transaction()`            |
+| `modules/<name>/` | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
+| `modules/items/`  | `mutate()`, the single write path with optimistic locking, plus progress        |
+| `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
+| `worker/`         | Reminder scheduler and delivery lanes                                           |
+| `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
+
+Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
+while delivery uses `FOR UPDATE SKIP LOCKED` so instances never process the same notification
+twice. Reads that tolerate brief replication lag use `reader()`, which picks the replica unless the
+client has just written (read-your-writes).
 
 ### Authentication
 

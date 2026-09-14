@@ -30,6 +30,10 @@ export async function enqueue() {
     UNION ALL SELECT 'email',u.email WHERE u.email_reminders AND $1::boolean
     UNION ALL SELECT 'push',d.token FROM devices d WHERE d.user_id=u.id
    ) c WHERE i.status <> 'done' AND i.due_at IS NOT NULL
+    -- Bounded by the longest reminder window (7 days) plus a day of catch-up,
+    -- so each cycle scans a small index range, not every item ever created.
+    AND i.due_at > now() - interval '1 day'
+    AND i.due_at <= now() + interval '7 days'
     AND i.due_at-make_interval(mins=>i.reminder_minutes)<=now()
    ON CONFLICT(item_id,item_version,channel,destination) DO NOTHING`,
       [emailEnabled],
@@ -37,6 +41,10 @@ export async function enqueue() {
     await db.query("DELETE FROM sessions WHERE expires_at<now()");
     await db.query(
       "DELETE FROM proposals WHERE expires_at<now()-interval '1 day'",
+    );
+    // Finished reminder records are kept for 90 days, then removed.
+    await db.query(
+      "DELETE FROM notifications WHERE created_at < now() - interval '90 days' AND state IN ('sent','cancelled','failed')",
     );
   });
 }

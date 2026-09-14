@@ -25,6 +25,11 @@ gateway. A public status page shows uptime for each part of Orbyn. Admins connec
 such as OpenAI, Anthropic, Gemini, Azure OpenAI, OpenRouter, Groq, LM Studio, or Ollama from the
 admin console; keys are stored encrypted. See [architecture](docs/architecture.md#services).
 
+Every service is stateless and can run as many instances as needed, on one host or many machines,
+behind a load balancer. PgBouncer pools database connections, and lag-tolerant reads can go to
+read replicas. See [scalability](docs/scalability.md) for the topology, measured load test results
+and a capacity plan for a million users.
+
 ## Repository layout
 
 Orbyn is an npm workspaces monorepo. Shared code lives in `packages/`, and each deployable app
@@ -38,6 +43,9 @@ lives in its own top-level folder.
 | `desktop/`             | `@orbyn/desktop`    | React + Vite web app, also packaged as an Electron desktop app. Organised by `features/`.   |
 | `mobile/`              | `@orbyn/mobile`     | Expo (React Native) app for iOS and Android. Organised by `screens/`.                       |
 | `docs/`                |                     | Setup, architecture, API reference, deployment, and mobile guides.                          |
+| `gateway/`             |                     | nginx gateway template, rendered from environment settings at start.                        |
+| `pgbouncer/`           |                     | Connection pooler image with primary and read-replica routes.                               |
+| `deploy/`              |                     | Kubernetes manifests (`deploy/k8s`) and Postgres replication scripts.                       |
 
 ```
 orbyn/
@@ -114,6 +122,8 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 - [API reference](docs/api.md) - all HTTP endpoints
 - [Mobile guide](docs/mobile.md) - running on a device, push notifications, EAS builds
 - [Deployment](docs/deployment.md) - production checklist
+- [Scalability](docs/scalability.md) - multi-host topology, load balancer, replicas, capacity plan
+- [Kubernetes](deploy/k8s/README.md) - manifests with autoscaling, ingress and network policies
 
 ## Scripts
 

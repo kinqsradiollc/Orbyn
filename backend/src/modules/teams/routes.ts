@@ -9,7 +9,7 @@ import {
   type TeamMember,
 } from "@orbyn/core";
 import { z } from "zod";
-import { query, transaction, type Db } from "../../db/pool.js";
+import { query, reader, transaction, type Db } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
@@ -77,7 +77,7 @@ export async function teamRoutes(app: FastifyInstance) {
   app.get("/teams", async (r) => {
     const u = await authenticate(r);
     return (
-      await query<Team>(
+      await reader(r.headers).query<Team>(
         `SELECT ${TEAM_COLUMNS}, m.role FROM teams t
          JOIN team_members m ON m.team_id=t.id AND m.user_id=$1
          ORDER BY lower(t.name), t.id`,

@@ -6,7 +6,8 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { env } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { createHash } from "node:crypto";
+import { closeDatabase, pool } from "../db/pool.js";
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
 export type ServiceName = "api" | "ai" | "status" | "all";
@@ -38,8 +39,15 @@ export async function createService(
   await app.register(cors, {
     origin: env.CORS_ORIGINS.split(","),
     methods: ["GET", "POST", "PUT", "DELETE"],
+    exposedHeaders: ["ETag"],
   });
-  await app.register(rateLimit, { max: 180, timeWindow: "1 minute" });
+  // Sign-in and AI routes set their own stricter limits, which always apply.
+  // The general per-client limit can be left to the gateway (0).
+  await app.register(rateLimit, {
+    global: env.RATE_LIMIT_PER_MINUTE > 0,
+    max: env.RATE_LIMIT_PER_MINUTE || 180,
+    timeWindow: "1 minute",
+  });
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ZodError)
@@ -56,6 +64,30 @@ export async function createService(
       .send({ message: code === 500 ? "Unexpected server error" : e.message });
   });
 
+  // Conditional GETs: unchanged responses cost a 304 with no body, which
+  // keeps the apps' polling cheap in bandwidth and client work.
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (
+      request.method !== "GET" ||
+      reply.statusCode !== 200 ||
+      typeof payload !== "string"
+    )
+      return payload;
+    const etag = `W/"${createHash("sha1").update(payload).digest("base64url")}"`;
+    reply.header("ETag", etag);
+    if (!reply.getHeader("Cache-Control"))
+      reply.header("Cache-Control", "private, no-cache");
+    if (request.headers["if-none-match"] === etag) {
+      reply.code(304);
+      return "";
+    }
+    return payload;
+  });
+
+  /** Liveness: the process is up. No database, so a database blip never restarts every instance. */
+  app.get("/live", async () => ({ status: "ok", service: name }));
+
+  /** Readiness: this instance can serve traffic, including the database. */
   app.get("/health", async () => {
     await pool.query("SELECT 1");
     return {
@@ -80,7 +112,7 @@ export async function startService(
     process.on(signal, async () => {
       await onStop();
       await app.close();
-      await pool.end();
+      await closeDatabase();
       process.exit(0);
     });
 }

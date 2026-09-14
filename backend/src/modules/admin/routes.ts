@@ -9,7 +9,7 @@ import {
   type AuditEntry,
   type Team,
 } from "@orbyn/core";
-import { pool, query, transaction, type Db } from "../../db/pool.js";
+import { query, reader, transaction, type Db } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
@@ -53,7 +53,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get("/admin/overview", async (r): Promise<AdminOverview> => {
     await authorize(r, "admin:access");
     return (
-      await pool.query<AdminOverview>(`SELECT
+      await reader(r.headers).query<AdminOverview>(`SELECT
         (SELECT count(*) FROM users)::int AS users,
         (SELECT count(*) FROM users WHERE role='admin')::int AS admins,
         (SELECT count(*) FROM users WHERE disabled)::int AS disabled_users,
@@ -71,12 +71,12 @@ export async function adminRoutes(app: FastifyInstance) {
     const pattern = `%${q.search.replace(/[\\%_]/g, (c) => "\\" + c)}%`;
     const where = "($1 = '%%' OR u.email ILIKE $1 OR u.name ILIKE $1)";
     const [rows, total] = await Promise.all([
-      pool.query<AdminUser>(
+      reader(r.headers).query<AdminUser>(
         `SELECT ${USER_COLUMNS} FROM users u WHERE ${where}
          ORDER BY u.created_at, u.email LIMIT $2 OFFSET $3`,
         [pattern, q.limit, q.offset],
       ),
-      pool.query<{ n: number }>(
+      reader(r.headers).query<{ n: number }>(
         `SELECT count(*)::int AS n FROM users u WHERE ${where}`,
         [pattern],
       ),
@@ -203,7 +203,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get("/admin/teams", async (r) => {
     const actor = await authorize(r, "teams:read_all");
     return (
-      await pool.query<Team>(
+      await reader(r.headers).query<Team>(
         `SELECT ${TEAM_COLUMNS}, (SELECT role FROM team_members WHERE team_id=t.id AND user_id=$1) AS role
          FROM teams t ORDER BY lower(t.name), t.id`,
         [actor.id],
@@ -215,14 +215,16 @@ export async function adminRoutes(app: FastifyInstance) {
     await authorize(r, "audit:read");
     const q = auditQuery.parse(r.query);
     const [rows, total] = await Promise.all([
-      pool.query<AuditEntry>(
+      reader(r.headers).query<AuditEntry>(
         `SELECT a.id::text, a.actor_id, COALESCE(u.email, a.actor_email) AS actor_email, a.action, a.target_type,
                 a.target_id, a.details, a.created_at
          FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id
          ORDER BY a.created_at DESC, a.id DESC LIMIT $1 OFFSET $2`,
         [q.limit, q.offset],
       ),
-      pool.query<{ n: number }>("SELECT count(*)::int AS n FROM audit_log"),
+      reader(r.headers).query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM audit_log",
+      ),
     ]);
     return { rows: rows.rows, total: total.rows[0].n };
   });

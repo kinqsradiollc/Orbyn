@@ -3,7 +3,7 @@ import type {
   StatusIncident,
   StatusReport,
 } from "@orbyn/core";
-import { pool } from "../../db/pool.js";
+import { readPool } from "../../db/pool.js";
 import { components } from "./components.js";
 import { lastDays, overallState, ratio, stateFromRecent } from "./uptime.js";
 
@@ -25,7 +25,7 @@ export async function statusReport(): Promise<StatusReport> {
   const list = components();
   const ids = list.map((c) => c.id);
   const [windows, recent, daily, incidents] = await Promise.all([
-    pool.query(
+    readPool.query(
       `SELECT service,
          avg(ok::int) FILTER (WHERE checked_at > now() - interval '1 day') AS day,
          avg(ok::int) FILTER (WHERE checked_at > now() - interval '7 days') AS week,
@@ -35,7 +35,7 @@ export async function statusReport(): Promise<StatusReport> {
        GROUP BY service`,
       [ids],
     ),
-    pool.query(
+    readPool.query(
       `SELECT service, ok, latency_ms, checked_at FROM (
          SELECT service, ok, latency_ms, checked_at,
            row_number() OVER (PARTITION BY service ORDER BY checked_at DESC) AS n
@@ -44,7 +44,7 @@ export async function statusReport(): Promise<StatusReport> {
        ) r WHERE n <= 2 ORDER BY service, checked_at DESC`,
       [ids],
     ),
-    pool.query(
+    readPool.query(
       `SELECT service,
          to_char(date_trunc('day', checked_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
          avg(ok::int) AS uptime
@@ -54,7 +54,7 @@ export async function statusReport(): Promise<StatusReport> {
       [ids],
     ),
     // Incidents are runs of two or more failed checks in a row (gaps and islands).
-    pool.query(
+    readPool.query(
       `SELECT g.service, min(g.checked_at) AS started_at,
          (SELECT min(c.checked_at) FROM status_checks c
            WHERE c.service = g.service AND c.ok AND c.checked_at > max(g.checked_at)) AS resolved_at

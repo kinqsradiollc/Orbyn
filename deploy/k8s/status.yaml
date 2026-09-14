@@ -1,0 +1,133 @@
+# Status service: probes every component on a schedule and serves the public
+# GET /status report. Replicas are safe: each round, only the replica holding a
+# Postgres advisory lock records results. Two replicas keep /status available.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: status
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: status
+spec:
+  # No "replicas": the HPA owns the count (autoscaling.yaml).
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: status
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: status
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" in the official Node images (see api.yaml)
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: status
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: status
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: status
+          # Placeholder: set the real registry and tag in kustomization.yaml.
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/services/status.js"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=192"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: status
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: status
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: status
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

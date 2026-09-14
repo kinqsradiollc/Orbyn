@@ -20,7 +20,8 @@
     "start:ai": "node dist/services/ai.js",
     "start:status": "node dist/services/status.js",
     "start:notifier": "node dist/services/notifier.js",
-    "start:all": "node dist/server.js"
+    "start:all": "node dist/server.js",
+    "load": "tsx scripts/load.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

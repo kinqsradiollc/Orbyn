@@ -1,0 +1,257 @@
+# Network policies for the orbyn namespace. They need a CNI that enforces
+# NetworkPolicy (Calico, Cilium, or the cloud's policy engine). Without one,
+# they are accepted but do nothing.
+#
+# Model: deny everything in both directions, then allow only these flows.
+#   Ingress (into pods)
+#     ingress controller -> api, ai, status :8000, web :8080
+#     status             -> api, ai :8000, web :8080   (health probes)
+#     web                -> api, ai, status :8000      (/api proxy, web.yaml)
+#     backend pods       -> pgbouncer :6432            (only if pgbouncer.yaml is used)
+#   Egress (out of pods)
+#     every pod -> cluster DNS
+#     backend pods -> the database (and pgbouncer)
+#     ai -> HTTPS (AI providers); notifier -> HTTPS (Expo push) and SMTP
+#
+# Kubelet probes come from the node, which most CNIs always allow. If yours
+# does not, allow the node CIDR to reach 8000/8080.
+#
+# Placeholders to change for your cluster:
+#   - ingress controller namespace/labels (ingress-nginx defaults below)
+#   - DATABASE CIDR 10.0.0.0/16: your managed database's private subnet
+#   - kube-dns labels (k8s-app: kube-dns is the common default). With
+#     NodeLocal DNSCache, also allow its link-local IP (169.254.20.10/32).
+#   - the private ranges excluded from "internet" egress
+# 1. Deny all ingress to every pod in the namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 2. Deny all egress from every pod in the namespace. Flows are allowed below.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+# 3. The ingress controller may reach the public-facing services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, ai, status, web]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+---
+# 4. The status service probes api, ai and web (GET /health).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-status-probes
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, ai, web]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: status
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+---
+# 5. The web app's nginx proxies /api/* to the backend services (web.yaml, option A).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-to-services
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, ai, status]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: web
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# 6. Backend pods may reach PgBouncer (harmless when pgbouncer.yaml is unused).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-pgbouncer-clients
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: pgbouncer
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, ai, status, notifier, migrate]
+      ports:
+        - protocol: TCP
+          port: 6432
+---
+# 7. Every pod may resolve DNS through the cluster DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 8. Backend pods (and PgBouncer) may reach the database: the managed Postgres
+#    subnet on 5432 directly, or PgBouncer in this namespace on 6432.
+#    If Postgres runs in-cluster (for example CloudNativePG), replace the
+#    ipBlock with a namespaceSelector/podSelector for its pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-database-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [api, ai, status, notifier, migrate, pgbouncer]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16 # placeholder: the database's private subnet
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: pgbouncer
+      ports:
+        - protocol: TCP
+          port: 6432
+---
+# 9. In-namespace HTTP: status probes api, ai and web; web proxies to api, ai
+#    and status. Each target's ingress is still limited by rules 4 and 5.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-http-egress
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [status, web]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [api, ai, status, web]
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080
+---
+# 10. Outbound internet for the two services that need it.
+#     ai:       AI providers over HTTPS (AI_BASE_URL and admin-configured providers).
+#     notifier: Expo push (https://exp.host) and the SMTP relay.
+#     Plain NetworkPolicy cannot filter by hostname. To pin these to specific
+#     domains, use an egress gateway or FQDN policies (Cilium, Calico Enterprise).
+#     If an admin sets up a provider on another port (a self-hosted model on
+#     :11434, for example), add that port here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ai-internet-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: ai
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - protocol: TCP
+          port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-notifier-internet-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: notifier
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - protocol: TCP
+          port: 443 # Expo push
+        - protocol: TCP
+          port: 587 # SMTP submission (STARTTLS)
+        - protocol: TCP
+          port: 465 # SMTP over TLS

@@ -1,0 +1,209 @@
+# OPTIONAL: PgBouncer, only for when the managed database has no pooler of its own.
+#
+# Use the provider's pooler when there is one: RDS Proxy (AWS), Cloud SQL
+# managed connection pooling (GCP), or the PgBouncer built into Azure Database
+# for PostgreSQL Flexible Server. They are patched, highly available and
+# monitored for you. Point DATABASE_URL / DATABASE_READ_URL at them and skip
+# this file (it is commented out in kustomization.yaml).
+#
+# The image is built from pgbouncer/ in this repo (Alpine pgbouncer, transaction
+# pooling, port 6432). At start its entrypoint writes userlist.txt and the
+# [databases] section from DB_USER, DB_PASSWORD, DB_NAME, PRIMARY_HOST and
+# READ_HOST:
+#   <DB_NAME>       -> PRIMARY_HOST   DATABASE_URL=.../orbyn
+#   <DB_NAME>_read  -> READ_HOST      DATABASE_READ_URL=.../orbyn_read
+#
+# Sizing: each PgBouncer replica opens up to default_pool_size (40) +
+# reserve_pool_size (10) server connections per database/user pair. With 2
+# replicas that is up to 100 on the primary and 100 on the replica, which must
+# fit under Postgres max_connections. Scale this Deployment by hand; an HPA
+# would multiply server connections.
+#
+# TLS: SERVER_TLS_SSLMODE (below) sets how PgBouncer connects to Postgres.
+# It is "require" here because managed databases expect encryption; use
+# verify-full with a mounted CA bundle for certificate checks.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pgbouncer
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: pgbouncer
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: pgbouncer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: pgbouncer
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        # The image's "pgbouncer" user has no fixed UID, and the kubelet cannot
+        # check a name, so an explicit non-root UID is used. It needs no entry
+        # in /etc/passwd. /etc/pgbouncer becomes a writable emptyDir (below),
+        # so ownership inside the image does not matter.
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: pgbouncer
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: pgbouncer
+          matchLabelKeys: [pod-template-hash]
+      # The entrypoint writes into /etc/pgbouncer. To keep the root filesystem
+      # read-only, that directory is an emptyDir, and this init container
+      # first copies in the image's pgbouncer.base.ini.
+      initContainers:
+        - name: copy-config
+          image: ghcr.io/your-org/orbyn-pgbouncer:TAG # same image as below
+          imagePullPolicy: IfNotPresent
+          command:
+            [
+              "cp",
+              "/etc/pgbouncer/pgbouncer.base.ini",
+              "/work/pgbouncer.base.ini",
+            ]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /work
+      containers:
+        - name: pgbouncer
+          # Placeholder: built from pgbouncer/Dockerfile and pushed next to
+          # the backend image.
+          image: ghcr.io/your-org/orbyn-pgbouncer:TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 6432
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: orbyn-secrets, key: DB_USER }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: orbyn-secrets, key: DB_PASSWORD }
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef: { name: orbyn-secrets, key: DB_NAME }
+            - name: PRIMARY_HOST
+              valueFrom:
+                secretKeyRef: { name: orbyn-secrets, key: PRIMARY_HOST }
+            - name: READ_HOST
+              valueFrom:
+                secretKeyRef:
+                  { name: orbyn-secrets, key: READ_HOST, optional: true }
+            - name: SERVER_TLS_SSLMODE
+              value: require
+          resources:
+            # PgBouncer is single-threaded: more than one core does not help.
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: postgres
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: postgres
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            # Let the Service drop this endpoint before shutdown starts, so
+            # new connections go to the other replica.
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pgbouncer
+            - name: tmp # unix socket directory
+              mountPath: /tmp
+      volumes:
+        - name: config
+          emptyDir:
+            medium: Memory # holds the credentials file; keep it off disk
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pgbouncer
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: pgbouncer
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: pgbouncer
+  ports:
+    - name: postgres
+      port: 6432
+      targetPort: postgres
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pgbouncer
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: pgbouncer
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: pgbouncer

@@ -1,0 +1,41 @@
+# kubectl apply -k deploy/k8s
+#
+# Not listed here, on purpose:
+#   secrets.example.yaml  an example only; the real orbyn-secrets comes from a
+#                         secret manager (External Secrets or SOPS).
+#   migrate-job.yaml      runs BEFORE each rollout, as its own step (see its
+#                         header and the README). A Job's pod template is
+#                         immutable, so it cannot be re-applied with a new tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orbyn
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: orbyn
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - config.yaml
+  - api.yaml
+  - ai.yaml
+  - status.yaml
+  - notifier.yaml
+  - web.yaml
+  - autoscaling.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  # Optional: uncomment only when the managed database has no pooler of its own.
+  # - pgbouncer.yaml
+
+# Set the real registry and tag here, or in CI:
+#   (cd deploy/k8s && kustomize edit set image ghcr.io/your-org/orbyn-backend=ghcr.io/acme/orbyn-backend:1.4.2)
+images:
+  - name: ghcr.io/your-org/orbyn-backend
+    newTag: TAG
+  - name: ghcr.io/your-org/orbyn-web
+    newTag: TAG
+  - name: ghcr.io/your-org/orbyn-pgbouncer
+    newTag: TAG

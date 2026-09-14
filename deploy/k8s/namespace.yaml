@@ -1,0 +1,15 @@
+# Namespace for every Orbyn workload.
+#
+# Pod Security Admission enforces the "restricted" profile: every pod must run
+# as non-root, drop all capabilities, disallow privilege escalation and use the
+# RuntimeDefault seccomp profile. Every manifest in this directory passes it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orbyn
+  labels:
+    app.kubernetes.io/part-of: orbyn
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

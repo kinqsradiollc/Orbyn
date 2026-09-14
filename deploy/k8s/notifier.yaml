@@ -1,0 +1,109 @@
+# Reminder service: schedules and delivers in-app, email and push reminders.
+# It has no HTTP port and no Service. Replicas are safe: reminders are claimed
+# with SELECT ... FOR UPDATE SKIP LOCKED, so no two lanes or replicas deliver
+# the same one.
+#
+# Health: the liveness probe is only a process check. What really shows the
+# notifier is working is its heartbeat row in Postgres (service_heartbeats,
+# updated about every 10s). The status service reports "Reminders" as down
+# once that heartbeat is 90s old. Alert on that, not on pod restarts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifier
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: notifier
+spec:
+  # No "replicas": the HPA owns the count (autoscaling.yaml).
+  revisionHistoryLimit: 5
+  # With no readiness probe, a pod counts as available once it has run for
+  # 10s. That catches crash-on-start during a rollout.
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: notifier
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: notifier
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # On SIGTERM each lane finishes its current delivery and the loop exits,
+      # then pools and SMTP close. No preStop is needed: there is no traffic
+      # to drain.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" in the official Node images (see api.yaml)
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: notifier
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: notifier
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: notifier
+          # Placeholder: set the real registry and tag in kustomization.yaml.
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/services/notifier.js"]
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # Process check: node is PID 1, so this succeeds while it is running.
+          # A crashed process already restarts the container; this probe adds
+          # little, and the Postgres heartbeat above is the real signal.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

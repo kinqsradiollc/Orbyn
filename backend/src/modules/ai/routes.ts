@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { actionSchema, chatRequest, fail } from "@orbyn/core";
-import { pool, transaction } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { audit } from "../../lib/audit.js";
@@ -24,7 +24,7 @@ export async function aiRoutes(app: FastifyInstance) {
         "AI is not configured. An admin can choose a provider in the admin console, or set AI_BASE_URL, AI_MODEL and AI_API_KEY on the server.",
       );
     const items = (
-      await pool.query(
+      await reader(r.headers).query(
         `SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id=i.team_id
          WHERE ${VISIBLE_ITEMS} ORDER BY i.updated_at DESC LIMIT 100`,
         [u.id],

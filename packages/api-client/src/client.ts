@@ -28,6 +28,11 @@ import {
   type User,
 } from "@orbyn/core";
 
+/** After a write, reads ask for the primary database for this long. */
+const READ_YOUR_WRITES_MS = 5000;
+/** How many unchanged-response bodies to remember for conditional GETs. */
+const MAX_CACHED = 100;
+
 export type TokenSource = () =>
   string | null | undefined | Promise<string | null | undefined>;
 
@@ -58,6 +63,9 @@ export class OrbynClient {
   private readonly getToken: TokenSource;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private lastWriteAt = 0;
+  /** Last body per signed-in path, for 304 Not Modified replies. */
+  private readonly cache = new Map<string, { etag: string; text: string }>();
 
   constructor(options: OrbynClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -67,9 +75,17 @@ export class OrbynClient {
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    const method = options.method ?? "GET";
     const token = options.anonymous ? null : await this.getToken();
+    const key = `${token ?? ""} ${path}`;
+    const cached = method === "GET" ? this.cache.get(key) : undefined;
+    // Read-your-writes: right after this client writes, its reads go to the
+    // primary database rather than a replica that may lag a moment behind.
+    const fresh =
+      method === "GET" && Date.now() - this.lastWriteAt < READ_YOUR_WRITES_MS;
+    if (method !== "GET") this.lastWriteAt = Date.now();
     const response = await this.fetchImpl(this.baseUrl + path, {
-      method: options.method ?? "GET",
+      method,
       // Only declare a JSON body when there is one: the API rejects an empty
       // body labelled application/json (this broke logout and other bodyless calls).
       headers: {
@@ -77,11 +93,16 @@ export class OrbynClient {
           ? {}
           : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(cached ? { "If-None-Match": cached.etag } : {}),
+        ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
       },
       body:
         options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
+    // Nothing changed since last time: reuse the body we already have. It is
+    // parsed afresh so callers can never mutate the remembered copy.
+    if (response.status === 304 && cached) return JSON.parse(cached.text) as T;
     if (!response.ok) {
       const error = (await response
         .json()
@@ -90,7 +111,16 @@ export class OrbynClient {
       };
       throw new HttpError(response.status, error.message || "Request failed");
     }
-    return response.status === 204 ? (undefined as T) : response.json();
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    const etag = response.headers.get("ETag");
+    if (method === "GET" && etag) {
+      this.cache.delete(key);
+      this.cache.set(key, { etag, text });
+      if (this.cache.size > MAX_CACHED)
+        this.cache.delete(this.cache.keys().next().value as string);
+    }
+    return JSON.parse(text) as T;
   }
 
   // ---- health ----

@@ -9,7 +9,8 @@ import {
   stepUpdate,
   type ItemDetail,
 } from "@orbyn/core";
-import { pool, query, transaction, type Db } from "../../db/pool.js";
+import type { QueryResult } from "pg";
+import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
@@ -24,31 +25,38 @@ import {
 /** Item columns for list views; checklist and timeline counts are stored on the item. */
 const ITEM_COLUMNS = `i.*, t.name AS team_name`;
 
+type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
+/** Runs queries on a transaction client. */
+const via =
+  (db: Db): Run =>
+  (text, values) =>
+    db.query(text, values);
+
 /** A task with its checklist and its 100 most recent updates, newest first. */
-export async function itemDetail(id: string, db?: Db): Promise<ItemDetail> {
+export async function itemDetail(
+  id: string,
+  run: Run = (text, values) => pool.query(text, values),
+): Promise<ItemDetail> {
   const item = (
-    await query(
+    await run(
       `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id = i.team_id WHERE i.id = $1`,
       [id],
-      db,
     )
   ).rows[0];
   if (!item) fail(404, "Item not found");
   const steps = (
-    await query(
+    await run(
       "SELECT id, item_id, title, done, position, created_at FROM item_steps WHERE item_id=$1 ORDER BY position, created_at, id",
       [id],
-      db,
     )
   ).rows;
   const updates = (
-    await query(
+    await run(
       `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
               u.body, u.status, u.progress, u.created_at
        FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
        WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
       [id],
-      db,
     )
   ).rows;
   return { ...item, steps, updates };
@@ -60,7 +68,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const q = itemsQuery.parse(r.query);
     if (q.team_id) await requireTeam(q.team_id, u, "items:read");
     return (
-      await pool.query(
+      await reader(r.headers).query(
         `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id=i.team_id
          WHERE ${VISIBLE_ITEMS} AND ($4::uuid IS NULL OR i.team_id=$4)
          ORDER BY i.created_at DESC, i.id LIMIT $2 OFFSET $3`,
@@ -72,12 +80,13 @@ export async function itemRoutes(app: FastifyInstance) {
   app.get("/items/:id", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
+    const db = reader(r.headers);
     const item = (
-      await pool.query<ItemRow>("SELECT * FROM items WHERE id=$1", [id])
+      await db.query<ItemRow>("SELECT * FROM items WHERE id=$1", [id])
     ).rows[0];
     if (!item) fail(404, "Item not found");
     await requireItemAccess(u, item, "items:read");
-    return itemDetail(id);
+    return itemDetail(id, (text, values) => db.query(text, values));
   });
 
   app.post("/items", async (r, reply) => {
@@ -137,7 +146,7 @@ export async function itemRoutes(app: FastifyInstance) {
         [id, d.title],
       );
       await recomputeProgress(db, id);
-      return itemDetail(id, db);
+      return itemDetail(id, via(db));
     });
     reply.code(201);
     return detail;
@@ -157,7 +166,7 @@ export async function itemRoutes(app: FastifyInstance) {
       );
       if (!updated.rowCount) fail(404, "Step not found");
       await recomputeProgress(db, id);
-      return itemDetail(id, db);
+      return itemDetail(id, via(db));
     });
   });
 
@@ -174,7 +183,7 @@ export async function itemRoutes(app: FastifyInstance) {
       );
       if (!deleted.rowCount) fail(404, "Step not found");
       await recomputeProgress(db, id);
-      return itemDetail(id, db);
+      return itemDetail(id, via(db));
     });
   });
 
@@ -224,7 +233,7 @@ export async function itemRoutes(app: FastifyInstance) {
            WHERE id = $2`,
           [d.progress, id],
         );
-      return itemDetail(id, db);
+      return itemDetail(id, via(db));
     });
     reply.code(201);
     return detail;

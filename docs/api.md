@@ -19,7 +19,19 @@ All request and response bodies are JSON. Authenticated routes need
 
 ## Health
 
-`GET /health` → `{ "status": "ok" }` after a successful database round trip.
+- `GET /live`: liveness. Answers `{"status":"ok","service":"api"}` without touching the database.
+  Use it for restart decisions.
+- `GET /health`: readiness. Checks the database; answers `503` when this instance cannot serve.
+  Through the gateway, `GET /health` is answered by the gateway itself.
+
+## Caching and consistency
+
+- **Conditional GETs.** Successful `GET` responses carry a weak `ETag`. Send it back as
+  `If-None-Match`; when nothing changed the API answers `304 Not Modified` with no body.
+  `@orbyn/api-client` does this automatically.
+- **Read-your-writes.** With a read replica configured, lists and details may lag the primary by
+  a moment. Send `X-Orbyn-Consistency: primary` to read from the primary; the shared client does
+  so for 5 seconds after each of its own writes.
 
 ## Auth
 

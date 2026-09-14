@@ -1,0 +1,128 @@
+# Public entry points, which replace the Compose gateway (gateway/nginx.conf.template).
+#
+#   api.orbyn.example  /ai/*     -> ai      (assistant, AI provider admin)
+#                      /status   -> status  (public status report)
+#                      /*        -> api     (everything else)
+#   app.orbyn.example  /*        -> web     (static app; its nginx proxies /api/*)
+#
+# Keep the path split in step with serviceModules in backend/src/app.ts and
+# with the web nginx config in web.yaml.
+#
+# Controller: written for ingress-nginx (annotations nginx.ingress.kubernetes.io/*).
+# The Kubernetes project has retired ingress-nginx; it no longer gets
+# releases or security fixes. For a new cluster, prefer a maintained
+# controller or the Gateway API (HTTPRoute). The routing moves across one to
+# one, but the rate-limit and timeout annotations below must be redone in
+# that controller's own terms.
+#
+# Real client IPs (needed for per-client rate limits here and in services):
+#   - Put the controller's LoadBalancer Service on externalTrafficPolicy: Local,
+#     or turn on PROXY protocol on both the cloud load balancer and the
+#     controller (use-proxy-protocol: "true" in its ConfigMap).
+#   - If an L7 load balancer or CDN sits in front, set use-forwarded-headers
+#     and proxy-real-ip-cidr in the controller ConfigMap to that tier's
+#     CIDRs only. Never trust X-Forwarded-For from the internet.
+#   - Leave compute-full-forwarded-for off, so the controller overwrites the
+#     client's X-Forwarded-For instead of appending to a forged one. Services
+#     run with TRUST_PROXY=true and take the first address in that header.
+#
+# Rate limiting belongs at the edge (here, a WAF, or a CDN), in front of the
+# per-service backstop RATE_LIMIT_PER_MINUTE. ingress-nginx keeps limits in
+# memory per controller replica, so the effective limit is roughly
+# rps x controller replicas. For exact global limits use a WAF, a CDN, or a
+# controller with a shared (Redis) store.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-api
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: api
+  annotations:
+    # TLS: cert-manager issues the certificate into secretName below.
+    # Placeholder issuer: use your ClusterIssuer's name.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Per client IP, as the Compose gateway did: 50 r/s with a burst.
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-connections: "200"
+    # Same as the services' bodyLimit (64 KiB) and the gateway's timeouts.
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "75"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "75"
+    # Retry another replica only on connection errors or 502/503. nginx never
+    # retries non-idempotent requests (POST and similar) once they were sent.
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "2"
+    # The Compose gateway cached /status for 10s. ingress-nginx has no
+    # per-path cache without snippets (often disabled), so the status service
+    # serves it directly. Put a CDN in front to cache it.
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /ai
+            pathType: Prefix # /ai and /ai/..., not /aix
+            backend:
+              service:
+                name: ai
+                port:
+                  name: http
+          - path: /status
+            pathType: Exact
+            backend:
+              service:
+                name: status
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+---
+# The web app. Static files, plus /api/* proxied by the web nginx (web.yaml).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-web
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: web
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # placeholder
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Covers static assets and /api/* calls from the app together.
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    nginx.ingress.kubernetes.io/limit-connections: "200"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "75"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "75"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.orbyn.example
+      secretName: orbyn-web-tls
+  rules:
+    - host: app.orbyn.example
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

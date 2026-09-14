@@ -12,6 +12,8 @@ const schema = z.object({
   DATABASE_URL: z
     .string()
     .default("postgres://orbyn:orbyn@localhost:5432/orbyn"),
+  /** Optional read replica (or its PgBouncer alias) for reads that tolerate a little lag. */
+  DATABASE_READ_URL: z.string().default(""),
   PORT: z.coerce.number().default(8000),
   CORS_ORIGINS: z
     .string()
@@ -38,6 +40,15 @@ const schema = z.object({
   STATUS_GATEWAY_URL: z.string().default(""),
   STATUS_API_URL: z.string().default(""),
   STATUS_AI_URL: z.string().default(""),
+  /** Database connections each service process keeps (to Postgres or PgBouncer). */
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
+  /**
+   * Requests per minute each client may make to a service. 0 leaves general
+   * limiting to the gateway; sign-in and AI routes always keep their own limits.
+   */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).default(180),
+  /** Parallel delivery lanes in the reminder service. */
+  NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
 });
 
 export type Env = z.infer<typeof schema>;
