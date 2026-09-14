@@ -18,9 +18,6 @@ const schema = z.object({
   CORS_ORIGINS: z
     .string()
     .default("http://localhost:5173,http://localhost:8080"),
-  AI_BASE_URL: z.url().default("https://api.openai.com/v1"),
-  AI_API_KEY: z.string().default(""),
-  AI_MODEL: z.string().default(""),
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().default(1025),
   SMTP_USER: z.string().default(""),

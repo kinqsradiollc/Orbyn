@@ -8,7 +8,6 @@ import "./setup.js";
 const adminEmail = `ai-admin-${randomUUID()}@example.com`;
 process.env.ADMIN_EMAILS = adminEmail;
 process.env.SECRETS_KEY = randomBytes(32).toString("base64");
-process.env.AI_MODEL = ""; // no .env fallback: only the admin's choice counts
 
 type Seen = {
   method: string;
@@ -131,7 +130,8 @@ test("only admins can manage AI providers", async () => {
   );
   const list = (await call(admin, "GET", "/ai/providers")).json();
   assert.equal(list.settings.source, "none");
-  assert.equal(list.settings.secrets_ready, true);
+  // Keys can always be saved: there is no "secrets ready" gate any more.
+  assert.equal("secrets_ready" in list.settings, false);
   assert.equal((await chat(member)).statusCode, 503);
 });
 

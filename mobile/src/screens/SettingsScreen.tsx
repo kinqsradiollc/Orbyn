@@ -154,8 +154,8 @@ export function SettingsScreen({
       <Text style={[shared.eyebrow, s.section]}>AI PROVIDER</Text>
       <View style={shared.card}>
         <Text style={shared.body}>
-          Your server administrator configures the provider URL, API key, and
-          model. Keys stay on the backend, never on this device.
+          An admin connects the AI provider in Admin → AI. Keys stay on the
+          server, never on this device.
         </Text>
       </View>
 

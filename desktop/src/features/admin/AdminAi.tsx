@@ -12,11 +12,10 @@ import {
   KeyRound,
   Pencil,
   Plus,
+  Power,
   RefreshCw,
-  Server,
   Sparkles,
   Trash2,
-  TriangleAlert,
 } from "lucide-react";
 import {
   AI_PROVIDERS,
@@ -35,8 +34,7 @@ type Props = Pick<TeamActions, "busy" | "revision" | "act" | "report">;
 
 const SOURCE_LABELS = {
   database: "Admin console",
-  environment: "Server settings (.env)",
-  none: "Not configured",
+  none: "Not set up",
 } as const;
 
 const CLOUD_KINDS = AI_PROVIDER_KINDS.filter((k) => !AI_PROVIDERS[k].local);
@@ -112,12 +110,10 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     });
 
   const remove = (p: AiProvider) => {
-    const note =
-      p.id === activeId
-        ? " The assistant will fall back to the server settings (.env)."
-        : "";
     if (
-      !window.confirm(`Delete ${p.name}? Its saved key is removed too.${note}`)
+      !window.confirm(
+        `Delete ${p.name}? Its saved key is removed too. If the assistant was using it, the assistant turns off until you choose another provider.`,
+      )
     )
       return;
     mutate(async () => {
@@ -126,29 +122,27 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     });
   };
 
+  const turnOff = () => {
+    if (
+      !window.confirm(
+        "Turn off the assistant? It stays off until you choose a provider again.",
+      )
+    )
+      return;
+    mutate(() => client.updateAiSettings({ provider_id: null }));
+  };
+
   return (
     <>
-      {settings && !settings.secrets_ready && (
-        <div className="ai-warning fade-up" role="note">
-          <TriangleAlert size={16} />
-          <span>
-            Set SECRETS_KEY on the server before saving API keys (see
-            docs/setup.md).
-          </span>
-        </div>
-      )}
-
       <section className="card ai-assistant fade-up">
         <div className="section-heading">
           <h2>Assistant</h2>
           <button
             className="secondary"
-            disabled={busy || !settings || settings.provider_id === null}
-            onClick={() =>
-              mutate(() => client.updateAiSettings({ provider_id: null }))
-            }
+            disabled={busy || !settings || settings.source === "none"}
+            onClick={turnOff}
           >
-            <Server size={14} /> Use server settings (.env)
+            <Power size={14} /> Turn off assistant
           </button>
         </div>
         <dl className="ai-facts">
@@ -163,9 +157,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                 ? "–"
                 : settings.source === "database"
                   ? (active?.name ?? "Unknown provider")
-                  : settings.source === "environment"
-                    ? "Server settings (.env)"
-                    : "None"}
+                  : "None"}
             </dd>
           </div>
           <div>
@@ -175,8 +167,8 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         </dl>
         {settings?.source === "none" && (
           <p className="muted pad ai-note">
-            The assistant is off until you add a provider here or configure one
-            in the server&apos;s .env file.
+            The assistant is off. Add a provider below and choose Use for
+            assistant.
           </p>
         )}
       </section>
@@ -187,7 +179,6 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           ref={formRef}
           editing={editing}
           busy={busy}
-          secretsReady={settings.secrets_ready}
           onCancel={() => setEditing(null)}
           onSave={(save) =>
             mutate(async () => {
@@ -417,8 +408,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               {data && !providers.length && (
                 <tr>
                   <td colSpan={5} className="muted table-empty">
-                    No providers yet. Add one to choose the assistant&apos;s
-                    model here instead of in the server&apos;s .env file.
+                    No providers yet. Add one to turn on the assistant.
                   </td>
                 </tr>
               )}
@@ -443,7 +433,6 @@ type FormProps = {
   ref: Ref<HTMLElement>;
   editing: AiProvider | "new";
   busy: boolean;
-  secretsReady: boolean;
   onCancel: () => void;
   onSave: (save: SaveFn) => void;
   onRemoveKey: (p: AiProvider) => void;
@@ -454,7 +443,6 @@ function ProviderForm({
   ref,
   editing,
   busy,
-  secretsReady,
   onCancel,
   onSave,
   onRemoveKey,
@@ -492,7 +480,7 @@ function ProviderForm({
       name: name.trim() || def.label,
       base_url: baseUrl.trim() || undefined,
       options: opts,
-      ...(key && secretsReady ? { api_key: key } : {}),
+      ...(key ? { api_key: key } : {}),
     };
     onSave(() =>
       existing
@@ -501,13 +489,11 @@ function ProviderForm({
     );
   };
 
-  const keyHint = !secretsReady
-    ? "Set SECRETS_KEY on the server to save keys."
-    : !def.requiresKey
-      ? def.local
-        ? "Not needed for local servers."
-        : "Optional. Only if your server asks for one."
-      : undefined;
+  const keyHint = def.requiresKey
+    ? undefined
+    : def.local
+      ? "Not needed for local servers."
+      : "Optional. Only if your server asks for one.";
 
   return (
     <section className="card ai-form-card fade-up" ref={ref}>
@@ -577,7 +563,6 @@ function ProviderForm({
             autoComplete="new-password"
             spellCheck={false}
             maxLength={500}
-            disabled={!secretsReady}
             placeholder={
               existing?.has_key ? "Leave blank to keep the saved key" : ""
             }

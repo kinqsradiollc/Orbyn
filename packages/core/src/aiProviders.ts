@@ -11,6 +11,7 @@ export const AI_PROVIDER_KINDS = [
   "groq",
   "mistral",
   "deepseek",
+  "maincode",
   "together",
   "fireworks",
   "xai",
@@ -51,6 +52,11 @@ export type AiProviderDefinition = {
   options: AiProviderOption[];
   /** Shown before the model list loads; the admin can always type a model. */
   suggestedModels: string[];
+  /**
+   * Hard request limits some providers enforce. The assistant trims what it
+   * sends (older history, then the planner snapshot) to fit.
+   */
+  limits?: { maxBodyBytes: number; maxMessageChars: number };
 };
 
 const cloud = (
@@ -141,6 +147,20 @@ export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
     "DeepSeek",
     "DeepSeek's hosted models.",
     "https://api.deepseek.com/v1",
+  ),
+  // Maincode's Matilda: Australian sovereign models hosted in Melbourne. Its
+  // OpenAI-compatible endpoint takes a Bearer `mc_live_` key, lists models at
+  // /models, rejects unknown request fields, and caps each request at 64 KiB
+  // and each message at 16,000 characters.
+  maincode: cloud(
+    "maincode",
+    "Maincode (Matilda)",
+    "Matilda, Australian sovereign models hosted in Melbourne.",
+    "https://matilda.maincode.com/api/v1",
+    {
+      suggestedModels: ["matilda"],
+      limits: { maxBodyBytes: 65_536, maxMessageChars: 16_000 },
+    },
   ),
   together: cloud(
     "together",

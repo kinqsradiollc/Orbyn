@@ -136,10 +136,11 @@ The assistant is deliberately a **propose-then-approve** loop:
    single failing action (wrong version, item belonging to someone else) rolls back the whole batch.
    Applying is idempotent.
 
-Because the provider only needs the OpenAI chat completions shape, `AI_BASE_URL` can point at
-OpenAI, Azure, OpenRouter, Groq, Together, a local Ollama or vLLM server, and so on. Planner
-content is passed to the model as data, and the prompt instructs it to treat titles and notes as
-untrusted.
+Providers are added by admins in the admin console and stored in `ai_providers`; the active
+provider and model live in `ai_settings`. There is no server-settings fallback: with no provider
+chosen the assistant answers 503. Adapters speak the OpenAI, Anthropic and Azure OpenAI formats,
+so any OpenAI-compatible service (including local LM Studio or Ollama) works too. Planner content
+is passed to the model as data, and the prompt instructs it to treat titles and notes as untrusted.
 
 ## Desktop / web (`desktop/`)
 

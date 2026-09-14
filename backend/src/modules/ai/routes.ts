@@ -21,7 +21,7 @@ export async function aiRoutes(app: FastifyInstance) {
     if (!ai)
       fail(
         503,
-        "AI is not configured. An admin can choose a provider in the admin console, or set AI_BASE_URL, AI_MODEL and AI_API_KEY on the server.",
+        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
     const items = (
       await reader(r.headers).query(

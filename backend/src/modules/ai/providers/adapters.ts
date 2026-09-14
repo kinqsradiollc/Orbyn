@@ -9,7 +9,9 @@ export type ResolvedAi = {
   apiKey: string;
   model: string;
   options: { apiVersion?: string };
-  source: "database" | "environment";
+  source: "database";
+  /** Hard request limits the provider enforces, if any (see AI_PROVIDERS). */
+  limits?: { maxBodyBytes: number; maxMessageChars: number };
 };
 
 export type ChatMessage = {

@@ -161,9 +161,8 @@ export type AiSettings = {
   provider_id: string | null;
   model: string;
   /** Where the assistant's configuration currently comes from. */
-  source: "database" | "environment" | "none";
-  /** False until SECRETS_KEY is set; keys cannot be saved before then. */
-  secrets_ready: boolean;
+  /** "none" means the assistant is off until an admin chooses a provider. */
+  source: "database" | "none";
   updated_at: string | null;
 };
 

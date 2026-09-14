@@ -90,10 +90,8 @@ Then open:
 Create an account in the web app, add a task with a due date, and a reminder lands in Mailpit
 and in the in-app notification tray when the reminder window opens.
 
-To enable the AI assistant, set `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` in `.env` and run
-`docker compose up -d` again. Use a provider with an OpenAI-compatible `/chat/completions` endpoint and bearer authentication
-(or no authentication for a local server). Set its exact model or deployment name. Providers
-that require a different authentication header or URL shape need a compatible gateway.
+To enable the AI assistant, sign in as an admin and open **Admin → AI** to add a provider and
+choose its model. Nothing AI-related goes in `.env`; see [setup](docs/setup.md#ai-providers).
 
 ## Quick start (local development)
 

@@ -29,7 +29,8 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
 
 ## Checklist
 
-1. **Secrets.** Set a strong `POSTGRES_PASSWORD`, a real `AI_API_KEY`, and SMTP credentials. Use
+1. **Secrets.** Set a strong `POSTGRES_PASSWORD`, SMTP credentials, and `SECRETS_KEY`. AI providers are added
+   by admins in the app, not in `.env`. Use
    your platform's secret store rather than a committed `.env`.
 2. **Database.** Prefer a managed PostgreSQL 15+ with automated backups, failover and read
    replicas. Point `DATABASE_URL` at its pooler (or PgBouncer) and `DATABASE_READ_URL` at a replica
@@ -82,5 +83,8 @@ recording coordinate through PostgreSQL locks. Keep instances x `DB_POOL_MAX` wi
 
 ## Secrets key
 
-`SECRETS_KEY` encrypts AI provider keys saved from the admin console. Back it up with the database:
-without it, saved keys cannot be decrypted and admins must re-enter them.
+`SECRETS_KEY` is optional. Without it, Orbyn generates a key on first use and keeps it in the
+database, so AI provider keys saved from the admin console work with no setup. In production, set
+`SECRETS_KEY` so the key lives outside the database: a leaked database dump then cannot reveal
+saved keys. Keys saved before you set it keep working. Back `SECRETS_KEY` up with the database;
+without it, keys saved while it was set cannot be decrypted and admins must re-enter them.

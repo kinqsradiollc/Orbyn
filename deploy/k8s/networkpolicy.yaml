@@ -210,7 +210,7 @@ spec:
           port: 8080
 ---
 # 10. Outbound internet for the two services that need it.
-#     ai:       AI providers over HTTPS (AI_BASE_URL and admin-configured providers).
+#     ai:       AI providers configured by admins, over HTTPS.
 #     notifier: Expo push (https://exp.host) and the SMTP relay.
 #     Plain NetworkPolicy cannot filter by hostname. To pin these to specific
 #     domains, use an egress gateway or FQDN policies (Cilium, Calico Enterprise).

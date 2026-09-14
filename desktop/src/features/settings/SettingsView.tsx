@@ -44,8 +44,8 @@ export function SettingsView({
       <hr />
       <h2>AI provider</h2>
       <p className="muted">
-        Your server administrator configures the provider URL, API key, and
-        model. Keys stay on the backend.
+        An admin connects the AI provider in Admin → AI. Keys stay on the
+        server.
       </p>
       {onOpenStatus && (
         <>

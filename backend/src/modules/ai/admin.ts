@@ -10,16 +10,11 @@ import {
   type AiProviderKind,
   type AiSettings,
 } from "@orbyn/core";
-import { env } from "../../config/env.js";
 import { query, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import {
-  encryptSecret,
-  maskSecret,
-  secretsConfigured,
-} from "../../lib/secrets.js";
+import { encryptSecret, maskSecret } from "../../lib/secrets.js";
 import { complete, listModels, ProviderError } from "./providers/adapters.js";
 import { assertProviderUrl } from "./providers/network.js";
 import { connection, type ProviderRow } from "./providers/resolve.js";
@@ -56,8 +51,7 @@ async function currentSettings(): Promise<AiSettings> {
   return {
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
-    source: fromDatabase ? "database" : env.AI_MODEL ? "environment" : "none",
-    secrets_ready: secretsConfigured(),
+    source: fromDatabase ? "database" : "none",
     updated_at: row?.updated_at ? iso(row.updated_at) : null,
   };
 }
@@ -104,7 +98,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     const baseUrl = d.base_url || AI_PROVIDERS[d.kind].defaultBaseUrl;
     checkRequired(d.kind, baseUrl, d.options);
     await assertProviderUrl(baseUrl);
-    const encrypted = d.api_key ? encryptSecret(d.api_key) : null;
+    const encrypted = d.api_key ? await encryptSecret(d.api_key) : null;
     const row = await transaction(async (db) => {
       const created = (
         await db.query<ProviderRow>(
@@ -163,7 +157,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
         : d.api_key === ""
           ? { encrypted: null, hint: "", change: "removed" }
           : {
-              encrypted: encryptSecret(d.api_key),
+              encrypted: await encryptSecret(d.api_key),
               hint: maskSecret(d.api_key),
               change: "replaced",
             };
@@ -210,7 +204,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const current = await providerRow(id);
     await transaction(async (db) => {
-      // Deleting the active provider leaves the assistant on the .env fallback.
+      // Deleting the active provider turns the assistant off until another is chosen.
       await db.query("UPDATE ai_settings SET model='' WHERE provider_id=$1", [
         id,
       ]);
@@ -232,7 +226,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
   app.post("/ai/providers/:id/models", strictRateLimit, async (r) => {
     await authorize(r, "ai:manage");
     const row = await providerRow(idParam(r));
-    const target = connection(row, "");
+    const target = await connection(row, "");
     try {
       return { models: await listModels(target) };
     } catch (error) {
@@ -250,7 +244,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     const model =
       d.model || (settings.provider_id === id ? settings.model : "");
     if (!model) fail(422, "Choose a model to test.");
-    const target = connection(row, model);
+    const target = await connection(row, model);
     const started = Date.now();
     try {
       await complete(

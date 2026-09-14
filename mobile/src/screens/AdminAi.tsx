@@ -46,15 +46,10 @@ const SOURCE: Record<
     tone: "accent",
     body: "The assistant uses a provider configured here.",
   },
-  environment: {
-    label: "Server .env",
-    tone: "muted",
-    body: "The assistant uses the provider set in the server's environment.",
-  },
   none: {
     label: "Not set up",
     tone: "warning",
-    body: "No provider is configured. Add one below and choose Use for assistant.",
+    body: "The assistant is off. Add a provider below and choose Use for assistant.",
   },
 };
 
@@ -118,7 +113,6 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
       <ProviderForm
         key={form.mode === "edit" ? form.provider.id : "new"}
         provider={form.mode === "edit" ? form.provider : undefined}
-        secretsReady={settings.secrets_ready}
         busy={busy}
         act={act}
         onSaved={async (saved) => {
@@ -144,11 +138,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
         <View style={s.kv}>
           <Text style={shared.small}>Provider</Text>
           <Text style={s.kvValue} numberOfLines={1}>
-            {active
-              ? `${active.name} · ${KIND_LABELS[active.kind]}`
-              : settings.source === "environment"
-                ? "Server settings"
-                : "—"}
+            {active ? `${active.name} · ${KIND_LABELS[active.kind]}` : "—"}
           </Text>
         </View>
         <View style={s.kv}>
@@ -159,26 +149,30 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
         </View>
         <Button
           secondary
-          title="Use server settings"
+          title="Turn off assistant"
           style={s.flushButton}
-          disabled={busy || settings.provider_id === null}
+          disabled={busy || settings.source === "none"}
           onPress={() =>
-            act(async () =>
-              setSettings(await client.updateAiSettings({ provider_id: null })),
+            Alert.alert(
+              "Turn off the assistant?",
+              "It stays off until you choose a provider again.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Turn off",
+                  style: "destructive",
+                  onPress: () =>
+                    act(async () =>
+                      setSettings(
+                        await client.updateAiSettings({ provider_id: null }),
+                      ),
+                    ),
+                },
+              ],
             )
           }
         />
       </FadeIn>
-
-      {!settings.secrets_ready && (
-        <FadeIn index={1} style={s.warning}>
-          <Icon name="shieldCheck" size={18} color={s.warningText.color} />
-          <Text style={[s.warningText, { flex: 1 }]}>
-            The server needs SECRETS_KEY before API keys can be saved. Local
-            providers that don't need a key still work.
-          </Text>
-        </FadeIn>
-      )}
 
       <Text style={[shared.eyebrow, s.section]}>PROVIDERS</Text>
       {providers.length ? (
@@ -212,7 +206,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                 onDelete={() =>
                   Alert.alert(
                     "Delete this provider?",
-                    `${p.name} and its saved key are removed. The assistant falls back to server settings if it was using it.`,
+                    `${p.name} and its saved key are removed. If the assistant was using it, the assistant turns off until you choose another provider.`,
                     [
                       { text: "Cancel", style: "cancel" },
                       {
@@ -439,14 +433,12 @@ function ProviderRow({
 
 function ProviderForm({
   provider,
-  secretsReady,
   busy,
   act,
   onSaved,
   onCancel,
 }: {
   provider?: AiProvider;
-  secretsReady: boolean;
   busy: boolean;
   act: Act;
   onSaved: (saved: AiProvider) => Promise<void>;
@@ -488,7 +480,7 @@ function ProviderForm({
       const options = def.options.length
         ? { apiVersion: apiVersion.trim() }
         : undefined;
-      const key = secretsReady ? apiKey.trim() : "";
+      const key = apiKey.trim();
       const saved = provider
         ? await client.updateAiProvider(provider.id, {
             name: name.trim(),
@@ -508,9 +500,8 @@ function ProviderForm({
       await onSaved(saved);
     });
 
-  const keyPlaceholder = !secretsReady
-    ? "Needs SECRETS_KEY on the server"
-    : editing && provider.has_key
+  const keyPlaceholder =
+    editing && provider.has_key
       ? "Leave blank to keep the saved key"
       : def.requiresKey
         ? "Paste your API key"
@@ -602,13 +593,13 @@ function ProviderForm({
 
       <Text style={shared.label}>API key</Text>
       <TextInput
-        style={[shared.input, s.input, !secretsReady && s.inputDisabled]}
+        style={[shared.input, s.input]}
         value={apiKey}
         onChangeText={(v) => {
           setApiKey(v);
           if (v) setRemoveKey(false);
         }}
-        editable={secretsReady && !removeKey}
+        editable={!removeKey}
         secureTextEntry
         autoCorrect={false}
         autoCapitalize="none"
@@ -679,22 +670,6 @@ const s = StyleSheet.create({
     color: colors.text,
   },
   flushButton: { marginTop: 10, marginBottom: 0 },
-  warning: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: "#fbf3e2",
-    borderRadius: radii.input,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  warningText: {
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#a3742b",
-  },
   list: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -719,7 +694,6 @@ const s = StyleSheet.create({
   name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
   expand: { paddingHorizontal: 16, paddingBottom: 14 },
   input: { marginBottom: 12 },
-  inputDisabled: { backgroundColor: colors.surfaceMuted },
   chipCaption: { marginBottom: 8 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
   chip: {

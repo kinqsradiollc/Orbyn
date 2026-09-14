@@ -176,7 +176,7 @@ export const aiProviderUpdate = z
   })
   .strict();
 
-/** Which provider and model the assistant uses; a null provider falls back to the server's .env. */
+/** Which provider and model the assistant uses; a null provider turns the assistant off. */
 export const aiSettingsInput = z
   .object({
     provider_id: z.uuid().nullable(),

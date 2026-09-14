@@ -26,8 +26,7 @@ const provider = createServer((req, res) => {
   });
 });
 await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
-process.env.AI_BASE_URL = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
-process.env.AI_MODEL = "test-provider";
+const providerUrl = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
 process.env.SMTP_HOST = "";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
@@ -62,6 +61,18 @@ const clean = (i: Record<string, unknown>) => ({
 });
 before(async () => {
   await migrate();
+  // The assistant uses the stand-in provider, chosen as an admin would in the
+  // console (there is no server-settings fallback).
+  const standIn = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('openai-compatible', 'Stand-in', $1) RETURNING id",
+      [providerUrl],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id=$1, model='test-provider' WHERE id",
+    [standIn],
+  );
   for (const name of ["alice", "bob"]) {
     const r = await app.inject({
       method: "POST",
@@ -87,6 +98,7 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [
     [aliceId, bobId],
   ]);
+  await pool.query("DELETE FROM ai_providers WHERE name='Stand-in'");
   await app.close();
   await pool.end();
   provider.close();

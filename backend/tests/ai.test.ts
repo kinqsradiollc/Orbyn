@@ -14,7 +14,7 @@ const unitAi = {
   apiKey: "",
   model: "unit-test",
   options: {},
-  source: "environment" as const,
+  source: "database" as const,
 };
 
 test("parses plain, fenced, and reasoning-prefixed replies", () => {

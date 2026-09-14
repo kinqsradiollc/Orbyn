@@ -46,10 +46,7 @@ data:
   STATUS_AI_URL: "http://ai.orbyn.svc.cluster.local:8000"
   STATUS_INTERVAL_MS: "30000"
 
-  # AI provider defaults. Admins can also add providers from the console; those
-  # are stored in the database, encrypted with SECRETS_KEY.
-  AI_BASE_URL: "https://api.openai.com/v1"
-  AI_MODEL: ""
+  # AI providers are added by admins in the app and stored in the database.
 
   # Outbound email for reminders (notifier). The password lives in the Secret.
   SMTP_HOST: "smtp.example.com" # placeholder

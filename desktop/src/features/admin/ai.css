@@ -1,21 +1,4 @@
 /* Admin console: AI tab */
-.ai-warning {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  background: var(--color-highBg);
-  color: #8a5a42;
-  border: 1px solid #f1d9cc;
-  border-radius: 9px;
-  padding: 13px 16px;
-  margin-bottom: 20px;
-  font-size: 12px;
-  line-height: 1.5;
-}
-.ai-warning svg {
-  flex: none;
-  margin-top: 1px;
-}
 .ai-assistant .section-heading {
   flex-wrap: wrap;
 }
