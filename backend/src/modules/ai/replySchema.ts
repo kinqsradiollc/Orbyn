@@ -37,9 +37,14 @@ export const REPLY_FORMAT = {
       additionalProperties: false,
       required: ["summary", "actions"],
       properties: {
+        // A list of lines, not one string: under a strict schema Matilda ends
+        // the string whenever it tries to write a raw line break, which cut
+        // replies off mid-sentence. `dropNulls` joins the lines back up.
         summary: {
-          type: "string",
-          description: "Your reply to the user in plain, friendly sentences.",
+          type: "array",
+          items: { type: "string" },
+          description:
+            "The complete answer shown to the user, one Markdown line per entry: short paragraphs, '- ' bullet lines, **bold**, and empty strings between sections. Include the actual content, such as the items themselves, never a description of it.",
         },
         actions: {
           type: "array",
@@ -103,6 +108,12 @@ const withoutNulls = (value: Record<string, unknown>, keys: string[]) => {
  */
 export function dropNulls(value: unknown): unknown {
   if (!value || typeof value !== "object") return value;
+  const lines = (value as { summary?: unknown }).summary;
+  if (Array.isArray(lines))
+    value = {
+      ...value,
+      summary: lines.filter((l) => typeof l === "string").join("\n"),
+    };
   const reply = value as { actions?: unknown };
   if (!Array.isArray(reply.actions)) return value;
   return {

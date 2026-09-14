@@ -41,7 +41,7 @@ export type OrbynClientOptions = {
   baseUrl: string;
   /** Returns the current session token, or nothing when signed out. */
   getToken?: TokenSource;
-  /** Per-request timeout. Defaults to 70s to outlast the AI provider timeout. */
+  /** Per-request timeout. Defaults to 120s to outlast the assistant's 110s deadline. */
   timeoutMs?: number;
   /** Override fetch (tests, custom agents). Defaults to the global fetch. */
   fetch?: typeof fetch;
@@ -70,7 +70,7 @@ export class OrbynClient {
   constructor(options: OrbynClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.getToken = options.getToken ?? (() => null);
-    this.timeoutMs = options.timeoutMs ?? 70000;
+    this.timeoutMs = options.timeoutMs ?? 120_000;
     this.fetchImpl = options.fetch ?? ((...args) => fetch(...args));
   }
 

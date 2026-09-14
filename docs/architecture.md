@@ -160,7 +160,16 @@ more: Maincode's Matilda answers in prose unless it is given the reply schema, s
 `limits` get trimmed history and planner snapshots. Before a proposal is stored, the backend
 drops actions a model got wrong: edits or deletions of items that were not in the snapshot, edits
 that change nothing, and creates that duplicate an existing item. Timestamps without an offset get
-the user's local offset. Planner content
+the user's local offset. Proposals are kept only when the latest message asks for a
+change, and deletions only when it asks to delete, remove or cancel something. The planner
+snapshot is sent in the user's local time with only the fields the model needs, and each earlier
+reply in the history carries a note saying whether its changes were approved or discarded, so a
+model never repeats them. Providers flagged `structuredOutput` (Matilda) answer questions that
+change nothing in plain Markdown and use the reply schema only for change requests. Each provider
+attempt gets 45 seconds within a 110-second deadline (BrainRouter's 120-second chat timeout and
+45-second Matilda stall limit); the API client allows 120 seconds and the proxies 125. Replies are
+rendered on web and mobile by one shared parser (`parseRichText` in `@orbyn/core`): headings,
+paragraphs, bulleted and numbered lists, bold, italic and code. Planner content
 is passed to the model as data, and the prompt instructs it to treat titles and notes as untrusted.
 
 ## Desktop / web (`desktop/`)

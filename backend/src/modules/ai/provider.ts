@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { agentReply, fail, type AgentReply, type ChatTurn } from "@orbyn/core";
-import { offsetAt, systemPrompt } from "./prompt.js";
+import { answerPrompt, offsetAt, systemPrompt } from "./prompt.js";
+import { wantsChanges } from "./guards.js";
 import { dropNulls, REPLY_FORMAT } from "./replySchema.js";
 import {
   complete,
@@ -10,6 +11,14 @@ import {
 } from "./providers/adapters.js";
 
 const ATTEMPTS = 2;
+/** The whole request, as BrainRouter's 120 s chat timeout minus headroom. */
+const DEADLINE_MS = 110_000;
+/**
+ * One attempt. A provider that stalls mid-reply (Matilda sometimes does) is
+ * abandoned after this so the retry still fits in the deadline, like
+ * BrainRouter's 45 s quiet timeout for Matilda.
+ */
+const ATTEMPT_MS = 45_000;
 
 const NAIVE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
 
@@ -62,6 +71,35 @@ export function parseReply(content: string, timezone?: string): AgentReply {
 }
 
 /**
+ * A plain-text answer as a reply with no actions. If the model sent the JSON
+ * reply anyway, that is used instead.
+ */
+export function answerReply(content: string, timezone?: string): AgentReply {
+  const text = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (text.startsWith("{") || text.startsWith("```")) {
+    try {
+      return { ...parseReply(text, timezone), actions: [] };
+    } catch {
+      // Not the JSON reply after all: show the text as it is.
+    }
+  }
+  return agentReply.parse({ summary: text.slice(0, 12000), actions: [] });
+}
+
+/** Proposals always come with words: a model that sent none gets a plain line. */
+export function withSummary(reply: AgentReply): AgentReply {
+  if (reply.summary.trim() || !reply.actions.length) return reply;
+  const n = reply.actions.length;
+  return {
+    ...reply,
+    summary:
+      n === 1
+        ? "Here's the change for you to review."
+        : `Here are ${n} changes for you to review.`,
+  };
+}
+
+/**
  * The messages for one request: the system prompt, recent history, and the
  * user's request with a planner snapshot. For providers with hard request
  * limits (such as Maincode's Matilda) it trims to fit: long messages are
@@ -74,6 +112,7 @@ export function buildMessages(
   timezone: string,
   items: unknown[],
   history: ChatTurn[] = [],
+  mode: "plan" | "answer" = "plan",
 ): ChatMessage[] {
   const limits = ai.limits;
   const clip = (text: string) =>
@@ -96,7 +135,12 @@ export function buildMessages(
     content: clip(turn.content),
   }));
   const build = (): ChatMessage[] => [
-    { role: "system", content: clip(systemPrompt(timezone)) },
+    {
+      role: "system",
+      content: clip(
+        mode === "answer" ? answerPrompt(timezone) : systemPrompt(timezone),
+      ),
+    },
     ...turns,
     { role: "user", content: request() },
   ];
@@ -106,7 +150,9 @@ export function buildMessages(
       JSON.stringify({
         model: ai.model,
         messages: build(),
-        ...(ai.structuredOutput ? { response_format: REPLY_FORMAT } : {}),
+        ...(ai.structuredOutput && mode === "plan"
+          ? { response_format: REPLY_FORMAT }
+          : {}),
       }),
     );
   while (shown > 0 && request().length > limits.maxMessageChars) shown--;
@@ -136,21 +182,36 @@ export async function askProvider(
   } catch {
     fail(422, "Unknown timezone");
   }
-  const messages = buildMessages(ai, message, timezone, items, history);
+  // Providers that write poor JSON (Matilda) answer questions that change
+  // nothing in plain Markdown; change requests still use the reply schema.
+  const answerOnly = !!ai.structuredOutput && !wantsChanges(message);
+  const messages = buildMessages(
+    ai,
+    message,
+    timezone,
+    items,
+    history,
+    answerOnly ? "answer" : "plan",
+  );
   let reason = "unknown";
-  const deadline = AbortSignal.timeout(60_000);
+  const deadline = AbortSignal.timeout(DEADLINE_MS);
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     if (deadline.aborted) break;
     try {
       const content = await complete(ai, messages, {
-        signal: deadline,
-        responseFormat: REPLY_FORMAT,
+        signal: AbortSignal.any([deadline, AbortSignal.timeout(ATTEMPT_MS)]),
+        ...(answerOnly ? {} : { responseFormat: REPLY_FORMAT }),
       });
       if (!content) {
         reason = "empty_reply";
       } else {
         try {
-          return parseReply(content, timezone);
+          const parsed = answerOnly
+            ? answerReply(content, timezone)
+            : parseReply(content, timezone);
+          if (parsed.summary.trim() || parsed.actions.length)
+            return withSummary(parsed);
+          reason = "empty_reply";
         } catch (error) {
           reason =
             error instanceof SyntaxError ? "invalid_json" : "schema_mismatch";

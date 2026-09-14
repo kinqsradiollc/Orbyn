@@ -149,7 +149,13 @@ async function send(
 async function json<T>(response: Response): Promise<T> {
   try {
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "";
+    if (name === "TimeoutError" || name === "AbortError")
+      throw new ProviderError(
+        "timeout",
+        "The provider took too long to answer.",
+      );
     throw new ProviderError(
       "invalid_body",
       "The provider sent a reply Orbyn could not read.",

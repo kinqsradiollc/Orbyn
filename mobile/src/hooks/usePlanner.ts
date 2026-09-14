@@ -62,11 +62,15 @@ export function usePlanner() {
    * Reload planner data. With `animate`, rows that move, appear or disappear
    * (e.g. after ticking a checkbox) animate into their new places.
    */
+  const lastData = useRef("");
+  /** The message from the last failed background refresh, if showing. */
+  const backgroundError = useRef("");
   const refresh = useCallback(
-    async (options?: { animate?: boolean }) => {
+    async (options?: { animate?: boolean; silent?: boolean }) => {
       if (!token) return;
       const seq = ++refreshSeq.current;
-      setRefreshing(true);
+      // Background refreshes never show the pull-to-refresh spinner.
+      if (!options?.silent) setRefreshing(true);
       try {
         const list = await client.listAllItems(500);
         const [u, n, t] = await Promise.all([
@@ -75,13 +79,18 @@ export function usePlanner() {
           client.listTeams(),
         ]);
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
+        const snapshot = JSON.stringify([list, u, n, t]);
+        // Nothing changed: skip the re-render entirely.
+        if (options?.silent && snapshot === lastData.current) return;
+        lastData.current = snapshot;
         if (options?.animate) animateLayout();
         setItems(list);
         setUser(u);
         setNotices(n);
         setTeams(t);
       } finally {
-        if (tokenRef.current === token) setRefreshing(false);
+        if (tokenRef.current === token && !options?.silent)
+          setRefreshing(false);
       }
     },
     [token],
@@ -98,16 +107,36 @@ export function usePlanner() {
     if (!token) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
+    // Background refresh: no spinner, no busy state, and errors stay on
+    // screen until a later refresh succeeds (then only its own error clears).
+    const background = async () => {
+      try {
+        await refresh({ silent: true });
+        if (backgroundError.current) {
+          const stale = backgroundError.current;
+          backgroundError.current = "";
+          setError((current) => (current === stale ? "" : current));
+        }
+      } catch (e) {
+        if ((e as { status?: number }).status === 401) {
+          await clearSession();
+          resetSession();
+          return;
+        }
+        backgroundError.current = (e as Error).message;
+        setError(backgroundError.current);
+      }
+    };
     const loop = async () => {
-      if (AppState.currentState === "active") await act(() => refresh());
+      if (AppState.currentState === "active") await background();
       if (alive) timer = setTimeout(loop, 30000);
     };
     void loop();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void act(() => refresh());
+      if (state === "active") void background();
     });
     const notification = Notifications.addNotificationReceivedListener(() => {
-      void act(() => refresh());
+      void background();
     });
     return () => {
       alive = false;

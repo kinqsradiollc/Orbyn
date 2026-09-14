@@ -67,29 +67,28 @@ test("gives the model the local offset and upcoming daylight-saving changes", ()
 
 test("provider retries share one deadline instead of outlasting the client", async (t) => {
   const { askProvider } = await import("../src/modules/ai/provider.js");
-  const deadlines: AbortSignal[] = [];
   const controller = new AbortController();
-  let timeouts = 0;
-  t.mock.method(AbortSignal, "timeout", () => {
-    timeouts++;
+  const timeouts: number[] = [];
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    timeouts.push(ms);
     return controller.signal;
   });
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async (_url: unknown, init: RequestInit) => {
-      deadlines.push(init.signal!);
-      return deadlines.length === 1
-        ? new Response("unavailable", { status: 503 })
-        : Response.json({
-            choices: [{ message: { content: JSON.stringify(reply) } }],
-          });
-    },
-  );
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return calls === 1
+      ? new Response("unavailable", { status: 503 })
+      : Response.json({
+          choices: [{ message: { content: JSON.stringify(reply) } }],
+        });
+  });
   assert.deepEqual(await askProvider(unitAi, "Summarize", "UTC", []), reply);
-  assert.equal(deadlines.length, 2);
-  assert.equal(timeouts, 1);
-  assert.equal(deadlines[0], deadlines[1]);
+  assert.equal(calls, 2);
+  // One overall deadline, created once, then a shorter limit per attempt so a
+  // stalled reply is abandoned and retried (BrainRouter: 120 s chat, 45 s
+  // quiet timeout). The deadline stays below the API client's 120 s.
+  assert.deepEqual(timeouts, [110_000, 45_000, 45_000]);
+  assert.ok(timeouts[0] < 120_000);
 });
 
 test("provider does not retry after the overall deadline expires", async (t) => {

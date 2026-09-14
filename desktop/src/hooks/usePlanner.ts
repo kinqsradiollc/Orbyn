@@ -50,34 +50,46 @@ export function usePlanner() {
     [clearSession],
   );
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    const seq = ++refreshSeq.current;
-    setLoading(true);
-    try {
-      const all = await client.listAllItems(500);
-      const [u, n, t] = await Promise.all([
-        client.me(),
-        client.listNotifications(),
-        client.listTeams(),
-      ]);
-      if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-      setItems(all);
-      setUser(u);
-      setNotices(n);
-      setTeams(t);
-      setRevision((r) => r + 1);
-    } finally {
-      if (tokenRef.current === token) setLoading(false);
-    }
-  }, [token]);
+  const lastData = useRef("");
+  /**
+   * Reload planner data. Background refreshes pass `silent`: no loading
+   * indicator, and nothing re-renders when the data is unchanged.
+   */
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) return;
+      const seq = ++refreshSeq.current;
+      if (!options?.silent) setLoading(true);
+      try {
+        const all = await client.listAllItems(500);
+        const [u, n, t] = await Promise.all([
+          client.me(),
+          client.listNotifications(),
+          client.listTeams(),
+        ]);
+        if (tokenRef.current !== token || seq !== refreshSeq.current) return;
+        const snapshot = JSON.stringify([all, u, n, t]);
+        if (options?.silent && snapshot === lastData.current) return;
+        lastData.current = snapshot;
+        setItems(all);
+        setUser(u);
+        setNotices(n);
+        setTeams(t);
+        setRevision((r) => r + 1);
+      } finally {
+        if (tokenRef.current === token && !options?.silent) setLoading(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
       try {
-        if (document.visibilityState === "visible") await refresh();
+        if (document.visibilityState === "visible")
+          await refresh({ silent: true });
       } catch (e) {
         if (alive) report(e);
       }

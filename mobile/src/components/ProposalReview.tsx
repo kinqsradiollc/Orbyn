@@ -2,7 +2,9 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   dateLabel,
+  parseRichText,
   type Action,
+  type RichInline,
   type Item,
   type ItemInput,
   type Proposal,
@@ -20,27 +22,53 @@ const OPERATION = {
   delete: { label: "Delete", bg: colors.dangerSoft, fg: colors.danger },
 } as const;
 
-/** Plain lines as paragraphs; "- " / "• " / "1." lines as bullets. */
+function Inlines({ parts }: { parts: RichInline[] }) {
+  return (
+    <>
+      {parts.map((part, n) => (
+        <Text
+          key={n}
+          style={[
+            part.bold && s.bold,
+            part.italic && s.italic,
+            part.code && s.code,
+          ]}
+        >
+          {part.text}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+/** The reply as headings, paragraphs and lists (shared parser with web). */
 function SummaryText({ text }: { text: string }) {
-  const lines = text
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter(Boolean);
   return (
     <View style={s.summary}>
-      {lines.map((line, n) => {
-        const bullet = line.match(/^(?:[-•*]|\d+[.)])\s+(.*)$/);
-        return bullet ? (
-          <View key={n} style={s.bulletRow}>
-            <Text style={s.bulletDot}>•</Text>
-            <Text style={[shared.body, { flex: 1 }]}>{bullet[1]}</Text>
+      {parseRichText(text).map((block, n) =>
+        block.type === "heading" ? (
+          <Text key={n} style={s.heading} accessibilityRole="header">
+            <Inlines parts={block.inlines} />
+          </Text>
+        ) : block.type === "list" ? (
+          <View key={n} style={s.list}>
+            {block.items.map((item, m) => (
+              <View key={m} style={s.bulletRow}>
+                <Text style={s.bulletDot}>
+                  {block.ordered ? `${m + 1}.` : "•"}
+                </Text>
+                <Text style={[shared.body, s.bulletText]}>
+                  <Inlines parts={item} />
+                </Text>
+              </View>
+            ))}
           </View>
         ) : (
           <Text key={n} style={shared.body}>
-            {line}
+            <Inlines parts={block.inlines} />
           </Text>
-        );
-      })}
+        ),
+      )}
     </View>
   );
 }
@@ -231,8 +259,24 @@ export function ProposalReview({
 }
 
 const s = StyleSheet.create({
-  summary: { gap: 6 },
+  summary: { gap: 8 },
+  heading: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.text,
+    marginTop: 4,
+  },
+  bold: { fontFamily: fonts.semibold, color: colors.text },
+  italic: { fontStyle: "italic" },
+  code: {
+    fontFamily: "Menlo",
+    fontSize: 13,
+    backgroundColor: colors.surfaceMuted,
+  },
+  list: { gap: 6 },
   bulletRow: { flexDirection: "row", gap: 8 },
+  bulletText: { flex: 1 },
   bulletDot: {
     fontFamily: fonts.bold,
     fontSize: 14,

@@ -48,6 +48,22 @@ test("a strict-schema reply with nulls parses, and defaults still apply", () => 
   assert.equal(action.data?.reminder_minutes, 30);
   assert.equal(action.data?.end_at, null);
   assert.deepEqual(dropNulls("plain text"), "plain text");
+  // Strict-schema replies arrive as lines and are joined back into Markdown.
+  const lined = parseReply(
+    JSON.stringify({
+      summary: [
+        "Here's your week:",
+        "",
+        "- **Call Mum** on Friday",
+        "- Dentist",
+      ],
+      actions: [],
+    }),
+  );
+  assert.equal(
+    lined.summary,
+    "Here's your week:\n\n- **Call Mum** on Friday\n- Dentist",
+  );
   // Matilda invents ids for new items, sometimes not valid UUIDs: dropped.
   const invented = parseReply(
     JSON.stringify({
@@ -114,4 +130,80 @@ test("only providers with structured output receive the reply schema", async () 
     }),
   );
   assert.ok(size <= AI_PROVIDERS.matilda.limits!.maxBodyBytes);
+});
+
+test("Matilda answers questions in prose and uses the schema only for changes", async (t) => {
+  const { askProvider } = await import("../src/modules/ai/provider.js");
+  const bodies: Record<string, unknown>[] = [];
+  let answer = "";
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return Response.json({ choices: [{ message: { content: answer } }] });
+    },
+  );
+  const matilda = {
+    kind: "matilda",
+    format: "openai" as const,
+    baseUrl: "https://matilda.maincode.com/api/v1",
+    apiKey: "mc_live_test_key_123456",
+    model: "matilda",
+    options: {},
+    source: "database" as const,
+    structuredOutput: "json_schema" as const,
+  };
+  answer = "Here's your week:\n\n- **Call Mum** on Friday at 6 pm";
+  const summary = await askProvider(matilda, "Summarize my week", "UTC", []);
+  assert.equal(summary.summary, answer);
+  assert.deepEqual(summary.actions, []);
+  assert.equal("response_format" in bodies[0], false);
+  answer = JSON.stringify({
+    summary: ["Added it."],
+    actions: [
+      {
+        operation: "create",
+        item_id: null,
+        version: null,
+        data: {
+          title: "Call Mum",
+          notes: null,
+          kind: "task",
+          status: null,
+          priority: null,
+          due_at: null,
+          end_at: null,
+          reminder_minutes: null,
+          team_id: null,
+          progress: null,
+        },
+      },
+    ],
+  });
+  const change = await askProvider(
+    matilda,
+    "Add a task to call Mum",
+    "UTC",
+    [],
+  );
+  assert.equal(change.actions.length, 1);
+  assert.deepEqual(bodies[1].response_format, REPLY_FORMAT);
+});
+
+test("proposals without words get a summary, and today is the user's local day", async () => {
+  const { withSummary } = await import("../src/modules/ai/provider.js");
+  const { answerPrompt } = await import("../src/modules/ai/prompt.js");
+  const reply = withSummary({
+    summary: " ",
+    actions: [{ operation: "create", data: { title: "Plumber" } }],
+  } as never);
+  assert.equal(reply.summary, "Here's the change for you to review.");
+  // 16:06 UTC on Monday is already Tuesday in Melbourne.
+  const prompt = answerPrompt(
+    "Australia/Melbourne",
+    new Date("2026-09-14T16:06:00Z"),
+  );
+  assert.match(prompt, /it is Tuesday 15 September 2026/);
+  assert.doesNotMatch(prompt, /Current UTC/);
 });

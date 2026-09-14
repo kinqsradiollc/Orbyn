@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChatTurn, Item, Proposal } from "@orbyn/core";
+import {
+  proposalNote,
+  type ChatTurn,
+  type Item,
+  type Proposal,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 
 /** What happened to an assistant reply's proposed changes. */
@@ -54,7 +59,22 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       .map((t): ChatTurn =>
         t.role === "user"
           ? { role: "user", content: t.text }
-          : { role: "assistant", content: t.proposal.summary },
+          : {
+              role: "assistant",
+              // Tell the model what happened to this reply's changes so it
+              // never re-proposes them (chat turns are capped at 12,000 chars).
+              content: [
+                t.proposal.summary,
+                proposalNote(
+                  t.proposal.actions,
+                  t.state,
+                  Object.fromEntries(t.before.map((i) => [i.id, i.title])),
+                ),
+              ]
+                .filter(Boolean)
+                .join("\n\n")
+                .slice(0, 12000),
+            },
       )
       .slice(-12);
 

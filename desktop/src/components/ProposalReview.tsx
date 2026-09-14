@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from "react";
 import { Bell, Calendar, Check, Clock, Flag, Users, X } from "lucide-react";
 import {
   dateLabel,
@@ -5,6 +6,8 @@ import {
   type Item,
   type ItemInput,
   type Proposal,
+  parseRichText,
+  type RichInline,
 } from "@orbyn/core";
 import type { TurnState } from "../hooks/useAssistant";
 import { stagger } from "../lib/motion";
@@ -27,30 +30,50 @@ const OPERATION = {
   delete: { label: "Delete", className: "ai-op-delete" },
 } as const;
 
-/** Renders plain lines as paragraphs and "- " / "• " lines as a list. */
+function Inlines({ parts }: { parts: RichInline[] }) {
+  return (
+    <>
+      {parts.map((part, n) => {
+        let node: ReactNode = part.code ? <code>{part.text}</code> : part.text;
+        if (part.italic) node = <em>{node}</em>;
+        if (part.bold) node = <strong>{node}</strong>;
+        return <Fragment key={n}>{node}</Fragment>;
+      })}
+    </>
+  );
+}
+
+/** The reply as headings, paragraphs and lists (shared parser with mobile). */
 export function SummaryText({ text }: { text: string }) {
-  const blocks: (string | string[])[] = [];
-  for (const raw of text.split(/\n+/)) {
-    const line = raw.trim();
-    if (!line) continue;
-    const bullet = line.match(/^(?:[-•*]|\d+[.)])\s+(.*)$/);
-    const last = blocks[blocks.length - 1];
-    if (bullet) {
-      if (Array.isArray(last)) last.push(bullet[1]);
-      else blocks.push([bullet[1]]);
-    } else blocks.push(line);
-  }
   return (
     <div className="ai-summary">
-      {blocks.map((b, n) =>
-        Array.isArray(b) ? (
-          <ul key={n}>
-            {b.map((li, m) => (
-              <li key={m}>{li}</li>
-            ))}
-          </ul>
+      {parseRichText(text).map((block, n) =>
+        block.type === "heading" ? (
+          <h4 key={n}>
+            <Inlines parts={block.inlines} />
+          </h4>
+        ) : block.type === "list" ? (
+          block.ordered ? (
+            <ol key={n}>
+              {block.items.map((item, m) => (
+                <li key={m}>
+                  <Inlines parts={item} />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <ul key={n}>
+              {block.items.map((item, m) => (
+                <li key={m}>
+                  <Inlines parts={item} />
+                </li>
+              ))}
+            </ul>
+          )
         ) : (
-          <p key={n}>{b}</p>
+          <p key={n}>
+            <Inlines parts={block.inlines} />
+          </p>
         ),
       )}
     </div>

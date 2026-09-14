@@ -8,6 +8,7 @@ import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { askProvider } from "./provider.js";
 import { pruneActions } from "./guards.js";
+import { modelSnapshot } from "./snapshot.js";
 import { resolveAi } from "./providers/resolve.js";
 
 /**
@@ -35,11 +36,11 @@ export async function aiRoutes(app: FastifyInstance) {
       ai,
       d.message,
       d.timezone,
-      items,
+      modelSnapshot(items, d.timezone),
       d.history,
       r.log,
     );
-    const actions = pruneActions(response.actions, items);
+    const actions = pruneActions(response.actions, items, d.message);
     const p = (
       await pool.query(
         "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",

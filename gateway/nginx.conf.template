@@ -89,7 +89,7 @@ ${UPSTREAM_STATUS}
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_connect_timeout 5s;
-    proxy_read_timeout 75s;
+    proxy_read_timeout 125s;
     # Retry another replica only for idempotent requests (nginx's default).
     proxy_next_upstream error timeout http_502 http_503;
     proxy_next_upstream_tries 2;
