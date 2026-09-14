@@ -139,7 +139,13 @@ The assistant is deliberately a **propose-then-approve** loop:
 Providers are added by admins in the admin console and stored in `ai_providers`; the active
 provider and model live in `ai_settings`. There is no server-settings fallback: with no provider
 chosen the assistant answers 503. Adapters speak the OpenAI, Anthropic and Azure OpenAI formats,
-so any OpenAI-compatible service (including local LM Studio or Ollama) works too. Planner content
+so any OpenAI-compatible service (including local LM Studio or Ollama) works too. Some providers need
+more: Maincode's Matilda answers in prose unless it is given the reply schema, so providers flagged
+`structuredOutput` receive it as `response_format` (strict JSON Schema), and providers with request
+`limits` get trimmed history and planner snapshots. Before a proposal is stored, the backend
+drops actions a model got wrong: edits or deletions of items that were not in the snapshot, edits
+that change nothing, and creates that duplicate an existing item. Timestamps without an offset get
+the user's local offset. Planner content
 is passed to the model as data, and the prompt instructs it to treat titles and notes as untrusted.
 
 ## Desktop / web (`desktop/`)

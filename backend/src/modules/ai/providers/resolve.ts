@@ -33,6 +33,7 @@ export async function connection(
     options: row.options ?? {},
     source: "database",
     limits: definition?.limits,
+    structuredOutput: definition?.structuredOutput,
   };
 }
 

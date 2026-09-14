@@ -7,6 +7,7 @@ import { audit } from "../../lib/audit.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { askProvider } from "./provider.js";
+import { pruneActions } from "./guards.js";
 import { resolveAi } from "./providers/resolve.js";
 
 /**
@@ -38,13 +39,14 @@ export async function aiRoutes(app: FastifyInstance) {
       d.history,
       r.log,
     );
+    const actions = pruneActions(response.actions, items);
     const p = (
       await pool.query(
         "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
-        [u.id, JSON.stringify(response.actions)],
+        [u.id, JSON.stringify(actions)],
       )
     ).rows[0];
-    return { id: p.id, ...response };
+    return { id: p.id, summary: response.summary, actions };
   });
 
   app.post("/ai/proposals/:id/apply", async (r) => {

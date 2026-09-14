@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { agentReply, fail, type AgentReply, type ChatTurn } from "@orbyn/core";
-import { systemPrompt } from "./prompt.js";
+import { offsetAt, systemPrompt } from "./prompt.js";
+import { dropNulls, REPLY_FORMAT } from "./replySchema.js";
 import {
   complete,
   ProviderError,
@@ -10,12 +11,36 @@ import {
 
 const ATTEMPTS = 2;
 
+const NAIVE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/**
+ * Timestamps without an offset are the user's wall-clock time (models such as
+ * Matilda sometimes drop it): add the user's offset for that date rather than
+ * rejecting the whole reply.
+ */
+function addMissingOffsets(value: unknown, timezone?: string): unknown {
+  if (!timezone || !value || typeof value !== "object") return value;
+  const actions = (value as { actions?: unknown }).actions;
+  if (!Array.isArray(actions)) return value;
+  for (const action of actions) {
+    const data = action && typeof action === "object" ? action.data : null;
+    if (!data || typeof data !== "object") continue;
+    for (const key of ["due_at", "end_at"]) {
+      const at = data[key];
+      if (typeof at !== "string" || !NAIVE_TIME.test(at)) continue;
+      const full = at.length === 16 ? `${at}:00` : at;
+      data[key] = full + offsetAt(timezone, new Date(`${full}Z`));
+    }
+  }
+  return value;
+}
+
 /**
  * Pull the reply object out of whatever the model produced. Tolerates
  * reasoning blocks, code fences, prose around the JSON, and small models that
  * echo the JSON schema with their answer nested under "properties".
  */
-export function parseReply(content: string): AgentReply {
+export function parseReply(content: string, timezone?: string): AgentReply {
   let text = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced) text = fenced[1];
@@ -33,7 +58,7 @@ export function parseReply(content: string): AgentReply {
     "summary" in value.properties
   )
     value = value.properties;
-  return agentReply.parse(value);
+  return agentReply.parse(addMissingOffsets(dropNulls(value), timezone));
 }
 
 /**
@@ -44,7 +69,7 @@ export function parseReply(content: string): AgentReply {
  * oldest history goes first when the whole request is too large.
  */
 export function buildMessages(
-  ai: Pick<ResolvedAi, "model" | "limits">,
+  ai: Pick<ResolvedAi, "model" | "limits" | "structuredOutput">,
   message: string,
   timezone: string,
   items: unknown[],
@@ -77,7 +102,13 @@ export function buildMessages(
   ];
   if (!limits) return build();
   const bytes = () =>
-    Buffer.byteLength(JSON.stringify({ model: ai.model, messages: build() }));
+    Buffer.byteLength(
+      JSON.stringify({
+        model: ai.model,
+        messages: build(),
+        ...(ai.structuredOutput ? { response_format: REPLY_FORMAT } : {}),
+      }),
+    );
   while (shown > 0 && request().length > limits.maxMessageChars) shown--;
   while (turns.length > 0 && bytes() > limits.maxBodyBytes)
     turns = turns.slice(1);
@@ -111,12 +142,15 @@ export async function askProvider(
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     if (deadline.aborted) break;
     try {
-      const content = await complete(ai, messages, { signal: deadline });
+      const content = await complete(ai, messages, {
+        signal: deadline,
+        responseFormat: REPLY_FORMAT,
+      });
       if (!content) {
         reason = "empty_reply";
       } else {
         try {
-          return parseReply(content);
+          return parseReply(content, timezone);
         } catch (error) {
           reason =
             error instanceof SyntaxError ? "invalid_json" : "schema_mismatch";

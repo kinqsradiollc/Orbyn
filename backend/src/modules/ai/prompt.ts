@@ -5,7 +5,7 @@ const replyJsonSchema = JSON.stringify(z.toJSONSchema(agentReply));
 
 const DAY = 86_400_000;
 
-function offsetAt(timezone: string, at: Date) {
+export function offsetAt(timezone: string, at: Date) {
   const name = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     timeZoneName: "longOffset",

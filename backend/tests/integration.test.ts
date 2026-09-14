@@ -278,11 +278,29 @@ test("AI proposal batch rolls back when an action targets another user", async (
     payload: { message: "Change things" },
   });
   assert.equal(r.statusCode, 200);
+  // The model cannot see Bob's item, so an action on it is dropped up front.
+  assert.deepEqual(
+    r.json().actions.map((a: { operation: string }) => a.operation),
+    ["create"],
+  );
+  // Apply still rolls the whole batch back if one action is forbidden.
+  const forged = (
+    await pool.query(
+      "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
+      [
+        aliceId,
+        JSON.stringify([
+          { operation: "create", data: payload("Must rollback") },
+          { operation: "delete", item_id: b.id, version: 1 },
+        ]),
+      ],
+    )
+  ).rows[0].id;
   assert.equal(
     (
       await app.inject({
         method: "POST",
-        url: `/ai/proposals/${r.json().id}/apply`,
+        url: `/ai/proposals/${forged}/apply`,
         headers: headers(alice),
       })
     ).statusCode,

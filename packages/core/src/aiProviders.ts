@@ -57,6 +57,11 @@ export type AiProviderDefinition = {
    * sends (older history, then the planner snapshot) to fit.
    */
   limits?: { maxBodyBytes: number; maxMessageChars: number };
+  /**
+   * Send the assistant's reply schema as `response_format` json_schema.
+   * For models that ignore "reply in JSON" instructions but honour a schema.
+   */
+  structuredOutput?: "json_schema";
 };
 
 const cloud = (
@@ -160,6 +165,8 @@ export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
     {
       suggestedModels: ["matilda"],
       limits: { maxBodyBytes: 65_536, maxMessageChars: 16_000 },
+      // Matilda answers in prose unless given a schema, which it enforces.
+      structuredOutput: "json_schema",
     },
   ),
   together: cloud(

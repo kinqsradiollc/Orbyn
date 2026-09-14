@@ -12,6 +12,8 @@ export type ResolvedAi = {
   source: "database";
   /** Hard request limits the provider enforces, if any (see AI_PROVIDERS). */
   limits?: { maxBodyBytes: number; maxMessageChars: number };
+  /** Send `options.responseFormat` as `response_format` (see AI_PROVIDERS). */
+  structuredOutput?: "json_schema";
 };
 
 export type ChatMessage = {
@@ -99,7 +101,12 @@ async function json<T>(response: Response): Promise<T> {
 export async function complete(
   ai: ResolvedAi,
   messages: ChatMessage[],
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    /** A `response_format` value, used only by providers with `structuredOutput`. */
+    responseFormat?: object;
+  } = {},
 ): Promise<string> {
   const signal =
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
@@ -141,9 +148,13 @@ export async function complete(
       method: "POST",
       headers: headers(ai),
       // Azure picks the model from the deployment in the URL.
-      body: JSON.stringify(
-        ai.format === "azure" ? { messages } : { model: ai.model, messages },
-      ),
+      body: JSON.stringify({
+        ...(ai.format === "azure" ? {} : { model: ai.model }),
+        messages,
+        ...(ai.structuredOutput && options.responseFormat
+          ? { response_format: options.responseFormat }
+          : {}),
+      }),
     },
     signal,
   );
