@@ -55,3 +55,48 @@ test("gives the model the local offset and upcoming daylight-saving changes", ()
   );
   assert.match(systemPrompt("UTC"), /do not repeat the schema/);
 });
+
+test("provider retries share one deadline instead of outlasting the client", async (t) => {
+  const { askProvider } = await import("../src/modules/ai/provider.js");
+  const deadlines: AbortSignal[] = [];
+  const controller = new AbortController();
+  let timeouts = 0;
+  t.mock.method(AbortSignal, "timeout", () => {
+    timeouts++;
+    return controller.signal;
+  });
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init: RequestInit) => {
+      deadlines.push(init.signal!);
+      return deadlines.length === 1
+        ? new Response("unavailable", { status: 503 })
+        : Response.json({
+            choices: [{ message: { content: JSON.stringify(reply) } }],
+          });
+    },
+  );
+  assert.deepEqual(await askProvider("Summarize", "UTC", []), reply);
+  assert.equal(deadlines.length, 2);
+  assert.equal(timeouts, 1);
+  assert.equal(deadlines[0], deadlines[1]);
+});
+
+test("provider does not retry after the overall deadline expires", async (t) => {
+  const { askProvider } = await import("../src/modules/ai/provider.js");
+  const controller = new AbortController();
+  let attempts = 0;
+  t.mock.method(AbortSignal, "timeout", () => controller.signal);
+  t.mock.method(globalThis, "fetch", async () => {
+    attempts++;
+    const error = new DOMException("Deadline expired", "TimeoutError");
+    controller.abort(error);
+    throw error;
+  });
+  await assert.rejects(
+    askProvider("Summarize", "UTC", []),
+    /could not return a valid plan/,
+  );
+  assert.equal(attempts, 1);
+});

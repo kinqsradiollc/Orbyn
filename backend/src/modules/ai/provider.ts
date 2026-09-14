@@ -65,13 +65,16 @@ export async function askProvider(
     },
   ];
   let reason = "unknown";
+  // Both attempts share one deadline, below the client/proxy timeouts.
+  const deadline = AbortSignal.timeout(60000);
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    if (deadline.aborted) break;
     try {
       const response = await fetch(
         env.AI_BASE_URL.replace(/\/$/, "") + "/chat/completions",
         {
           method: "POST",
-          signal: AbortSignal.timeout(60000),
+          signal: deadline,
           headers: {
             "Content-Type": "application/json",
             ...(env.AI_API_KEY

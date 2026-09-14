@@ -1,6 +1,12 @@
 import React from "react";
 import { StyleSheet, TextInput, View } from "react-native";
-import { byDueDate, type Item } from "@orbyn/core";
+import {
+  byDueDate,
+  searchItems,
+  emptyPlans,
+  emptySearch,
+  type Item,
+} from "@orbyn/core";
 import { Icon } from "../components/Icon";
 import { PlannerList, type ListHandlers } from "../components/PlannerList";
 import { colors } from "../theme";
@@ -20,12 +26,14 @@ export function TasksScreen({
   search: string;
   onSearch: (search: string) => void;
 }) {
-  const visible = items.filter((i) => matchesSearch(i, search)).sort(byDueDate);
+  const visible = searchItems(items, search).slice().sort(byDueDate);
   return (
     <PlannerList
       items={items}
       visible={visible}
-      title="All your plans"
+      title="All items"
+      showStats={false}
+      empty={search.trim() ? emptySearch : emptyPlans}
       {...handlers}
     >
       <View style={s.search}>

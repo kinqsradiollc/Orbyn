@@ -271,6 +271,10 @@ test("team roles control membership and team items", async () => {
   );
 
   // Removing someone revokes access immediately.
+  const previousNotice = (await call(viewer, "GET", "/notifications"))
+    .json()
+    .find((n: { title: string }) => n.title === "Coming up: Ship launch");
+  assert.ok(previousNotice, "team reminder should be visible before removal");
   assert.equal(
     (await call(owner, "DELETE", `/teams/${teamId}/members/${viewer.id}`))
       .statusCode,
@@ -281,6 +285,17 @@ test("team roles control membership and team items", async () => {
     !(await call(viewer, "GET", "/items"))
       .json()
       .some((i: { id: string }) => i.id === shared.id),
+  );
+  assert.ok(
+    !(await call(viewer, "GET", "/notifications"))
+      .json()
+      .some((n: { id: string }) => n.id === previousNotice.id),
+    "old reminders must not disclose items after membership is revoked",
+  );
+  assert.equal(
+    (await call(viewer, "POST", `/notifications/${previousNotice.id}/read`))
+      .statusCode,
+    404,
   );
 });
 

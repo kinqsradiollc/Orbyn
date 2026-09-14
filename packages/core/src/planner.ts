@@ -40,16 +40,16 @@ export type PlannerGroups = {
 export function groupItems(items: Item[], now = new Date()): PlannerGroups {
   const pending = items.filter((i) => i.status !== "done");
   const done = items.filter((i) => i.status === "done");
-  const today = pending.filter(
-    (i) => i.due_at && sameDay(new Date(i.due_at), now),
-  );
+  const today = pending
+    .filter((i) => i.due_at && sameDay(new Date(i.due_at), now))
+    .sort(byDueDate);
   const overdue = pending.filter(
     (i) =>
       i.due_at && new Date(i.due_at) < now && !sameDay(new Date(i.due_at), now),
   );
   const upcoming = pending
     .filter((i) => i.due_at && new Date(i.due_at) >= now)
-    .sort((a, b) => a.due_at!.localeCompare(b.due_at!));
+    .sort(byDueDate);
   return { pending, today, overdue, upcoming, done };
 }
 
@@ -68,4 +68,7 @@ export const itemsOnDay = (items: Item[], day: Date) =>
 
 /** Sort by due date ascending with undated items last. */
 export const byDueDate = (a: Item, b: Item) =>
-  (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999");
+  (a.due_at ? Date.parse(a.due_at) : Infinity) -
+    (b.due_at ? Date.parse(b.due_at) : Infinity) ||
+  a.title.localeCompare(b.title) ||
+  a.id.localeCompare(b.id);

@@ -1,6 +1,6 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { byDueDate, sameDay, type Item } from "@orbyn/core";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { groupItems, dateLabel, type Item } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlannerList, type ListHandlers } from "../components/PlannerList";
@@ -16,13 +16,10 @@ export function TodayScreen({
   /** Jumps to the assistant and asks it to plan the day. */
   onPlanDay: () => void;
 }) {
-  const today = new Date();
-  const visible = items
-    .filter(
-      (i) =>
-        i.status === "todo" && !!i.due_at && sameDay(new Date(i.due_at), today),
-    )
-    .sort(byDueDate);
+  const { today: visible, upcoming, done } = groupItems(items);
+  const percent = items.length
+    ? Math.round((done.length / items.length) * 100)
+    : 0;
   return (
     <>
       <PlannerList
@@ -31,6 +28,30 @@ export function TodayScreen({
         title="Today’s focus"
         {...handlers}
       />
+      <View style={shared.card}>
+        <Text style={shared.sectionTitle}>Coming into view</Text>
+        {upcoming.slice(0, 4).map((item) => (
+          <Pressable
+            key={item.id}
+            accessibilityRole="button"
+            onPress={() => handlers.onEdit(item)}
+            style={s.upcoming}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={shared.body}>{item.title}</Text>
+              <Text style={shared.small}>
+                {dateLabel(item.due_at)} · {item.kind}
+              </Text>
+            </View>
+            <Icon name="chevronRight" size={18} color={colors.muted} />
+          </Pressable>
+        ))}
+        {!upcoming.length && (
+          <Text style={shared.small}>
+            No upcoming plans yet. Your next idea can start here.
+          </Text>
+        )}
+      </View>
       <View style={shared.softCard}>
         <View style={s.badge}>
           <Icon name="sparkles" size={18} color={colors.accent} />
@@ -38,7 +59,7 @@ export function TodayScreen({
         <Text style={shared.eyebrow}>A MIND BESIDE YOURS</Text>
         <Text style={shared.title}>Find your next clear step.</Text>
         <Text style={[shared.subtitle, s.text]}>
-          Turn a busy mind into a plan that feels possible.
+          Let’s turn a busy mind into a plan that feels possible.
         </Text>
         <Button
           icon="arrowRight"
@@ -46,11 +67,46 @@ export function TodayScreen({
           onPress={onPlanDay}
         />
       </View>
+      <View style={shared.card}>
+        <Text style={shared.sectionTitle}>Your momentum</Text>
+        <Text style={shared.title}>{percent}%</Text>
+        <Text style={shared.small}>of your plans complete</Text>
+        <View
+          style={s.progress}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: 100, now: percent }}
+        >
+          <View
+            style={{
+              width: `${percent}%`,
+              height: 5,
+              backgroundColor: colors.accent,
+            }}
+          />
+        </View>
+        <Text style={shared.small}>
+          Progress happens one small step at a time.
+        </Text>
+      </View>
     </>
   );
 }
 
 const s = StyleSheet.create({
+  upcoming: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  progress: {
+    height: 5,
+    borderRadius: 4,
+    overflow: "hidden",
+    backgroundColor: colors.accentSoft,
+    marginVertical: 16,
+  },
   badge: {
     width: 36,
     height: 36,

@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   freshItem,
+  planDayPrompt,
   hasSystemPermission,
   hasTeamPermission,
   itemBody,
@@ -220,9 +221,7 @@ export function RootScreen() {
               items={items}
               onPlanDay={() => {
                 setTab("AI");
-                void assistant.ask(
-                  "Summarize my day and suggest what needs attention.",
-                );
+                void assistant.ask(planDayPrompt);
               }}
               {...listHandlers}
             />

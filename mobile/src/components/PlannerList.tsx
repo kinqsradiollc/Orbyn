@@ -22,6 +22,11 @@ export function PlannerList({
   visible,
   listed = visible,
   title,
+  showStats = true,
+  empty = {
+    title: "A little breathing room.",
+    body: "Your day is open. Add something worth making time for.",
+  },
   busy,
   onToggle,
   onEdit,
@@ -36,6 +41,8 @@ export function PlannerList({
   /** Items actually rendered (defaults to `visible`). */
   listed?: Item[];
   title: string;
+  showStats?: boolean;
+  empty?: { title: string; body: string };
   /** Rendered between the stats and the section title (the Tasks search box). */
   children?: React.ReactNode;
 }) {
@@ -47,14 +54,16 @@ export function PlannerList({
   ];
   return (
     <>
-      <View style={s.stats}>
-        {stats.map((stat, n) => (
-          <View key={stat.label} style={[s.stat, n > 0 && s.statDivider]}>
-            <Text style={s.statValue}>{stat.value}</Text>
-            <Text style={shared.small}>{stat.label}</Text>
-          </View>
-        ))}
-      </View>
+      {showStats && (
+        <View style={s.stats}>
+          {stats.map((stat, n) => (
+            <View key={stat.label} style={[s.stat, n > 0 && s.statDivider]}>
+              <Text style={s.statValue}>{stat.value}</Text>
+              <Text style={shared.small}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
       {children}
       <View style={s.heading}>
         <Text style={shared.sectionTitle}>{title}</Text>
@@ -77,15 +86,13 @@ export function PlannerList({
           ))}
         </View>
       )}
-      {!visible.length && (
+      {!listed.length && (
         <View style={[shared.card, shared.empty]}>
           <View style={shared.emptyIcon}>
             <Icon name="sun" size={26} color={colors.accent} />
           </View>
-          <Text style={shared.sectionTitle}>A little breathing room.</Text>
-          <Text style={[shared.subtitle, s.emptyText]}>
-            Add something worth making time for.
-          </Text>
+          <Text style={shared.sectionTitle}>{empty.title}</Text>
+          <Text style={[shared.subtitle, s.emptyText]}>{empty.body}</Text>
           <Button secondary icon="plus" title="Make a plan" onPress={onAdd} />
         </View>
       )}

@@ -76,8 +76,9 @@ Create an account in the web app, add a task with a due date, and a reminder lan
 and in the in-app notification tray when the reminder window opens.
 
 To enable the AI assistant, set `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` in `.env` and run
-`docker compose up -d` again. Any provider that speaks the OpenAI chat completions API works
-(OpenAI, Azure OpenAI, OpenRouter, Groq, Together, Ollama, vLLM, LM Studio, and so on).
+`docker compose up -d` again. Use a provider with an OpenAI-compatible `/chat/completions` endpoint and bearer authentication
+(or no authentication for a local server). Set its exact model or deployment name. Providers
+that require a different authentication header or URL shape need a compatible gateway.
 
 ## Quick start (local development)
 
@@ -87,7 +88,7 @@ docker compose up -d postgres mailpit
 npm install
 npm run build:packages        # compile the shared packages first
 npm run migrate
-npm run dev:api               # API on http://localhost:8000
+PORT=8008 npm run dev:api     # API on http://localhost:8008
 npm run dev:web               # web app on http://localhost:5173 (proxies /api to the backend)
 ```
 

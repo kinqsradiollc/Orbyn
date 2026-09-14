@@ -122,13 +122,14 @@ running to rebuild on change).
 Run the API with hot reload and the web app:
 
 ```bash
-npm run dev:api            # http://localhost:8000
+PORT=8008 npm run dev:api  # http://localhost:8008
 npm run dev:web            # http://localhost:5173
 ```
 
-The Vite dev server proxies `/api` to `http://localhost:8008` by default. When running the API
-locally on port 8000, either set `API_PORT=8000` or start the web app with
-`VITE_API_URL=http://localhost:8000 npm run dev`.
+The Vite dev server proxies `/api` to `http://localhost:8008` by default. If you choose another
+local API port, start the web app with `API_PROXY_URL=http://localhost:YOUR_PORT npm run dev:web`.
+`API_PORT` controls Docker port publishing only; `PORT` controls a local API process. Compose
+fixes the internal API port at 8000, so changing your local `PORT` does not break its health check.
 
 Run the worker:
 

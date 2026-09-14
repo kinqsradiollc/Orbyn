@@ -87,7 +87,13 @@ export function usePlanner() {
 
   useEffect(() => {
     if (!token) return;
-    void act(refresh);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const loop = async () => {
+      if (AppState.currentState === "active") await act(refresh);
+      if (alive) timer = setTimeout(loop, 30000);
+    };
+    void loop();
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") void act(refresh);
     });
@@ -95,6 +101,8 @@ export function usePlanner() {
       void act(refresh);
     });
     return () => {
+      alive = false;
+      clearTimeout(timer);
       sub.remove();
       notification.remove();
     };

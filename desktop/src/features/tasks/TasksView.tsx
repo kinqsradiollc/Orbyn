@@ -1,5 +1,11 @@
 import { ListTodo, Search } from "lucide-react";
-import type { Item } from "@orbyn/core";
+import {
+  byDueDate,
+  searchItems,
+  emptyPlans,
+  emptySearch,
+  type Item,
+} from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 
@@ -20,6 +26,8 @@ export function TasksView({
   onToggle,
   onEdit,
 }: Props) {
+  const visible = searchItems(items, query).slice().sort(byDueDate);
+  const empty = query.trim() ? emptySearch : emptyPlans;
   return (
     <section className="card">
       <div className="section-heading">
@@ -36,25 +44,17 @@ export function TasksView({
           />
         </div>
       </div>
-      {items
-        .filter((i) =>
-          (i.title + " " + i.notes).toLowerCase().includes(query.toLowerCase()),
-        )
-        .map((i) => (
-          <ItemRow
-            key={i.id}
-            item={i}
-            busy={busy}
-            onToggle={onToggle}
-            onEdit={onEdit}
-          />
-        ))}
-      {!items.length && (
-        <EmptyState
-          icon={ListTodo}
-          title="Give your ideas a home."
-          body="Add a task or event to start building your plan."
+      {visible.map((i) => (
+        <ItemRow
+          key={i.id}
+          item={i}
+          busy={busy}
+          onToggle={onToggle}
+          onEdit={onEdit}
         />
+      ))}
+      {!visible.length && (
+        <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
       )}
     </section>
   );

@@ -15,9 +15,13 @@ cp mobile/.env.example mobile/.env
 npm run dev:mobile          # or: cd mobile && npx expo start
 ```
 
-Press `i` for the iOS simulator or `a` for an Android emulator. The default
-`EXPO_PUBLIC_API_URL=http://localhost:8008` works for simulators when the backend runs via Docker
-Compose on the same machine.
+Build the native development client once with `npm run ios -w mobile` or
+`npm run android -w mobile` (requires Xcode or Android Studio). Then use the Expo dev server
+and press `i` or `a` to open the installed client.
+
+For the iOS simulator, `EXPO_PUBLIC_API_URL=http://localhost:8008` reaches Docker on the Mac.
+For an Android emulator, use `http://10.0.2.2:8008` or run `adb reverse tcp:8008 tcp:8008`
+to use localhost. On a physical phone, localhost refers to the phone itself.
 
 ### Physical device
 
@@ -25,20 +29,20 @@ Compose on the same machine.
 2. Set `EXPO_PUBLIC_API_URL=http://192.168.1.20:8008` in `mobile/.env`.
 3. Publish the API on all interfaces: set `API_BIND=0.0.0.0` in the root `.env` and add the LAN
    origin to `CORS_ORIGINS` if you also serve the web app from it, then `docker compose up -d`.
-4. Restart `npx expo start` so the new env is bundled, and open the project in Expo Go or a
+4. Restart `npx expo start` so the new env is bundled, and open the project in your
    development build.
 
 ## Push notifications
 
 Push reminders need a real Expo push token, which requires:
 
-- an EAS project id in `EXPO_PUBLIC_EAS_PROJECT_ID` (create one with `npx eas init`), and
-- a development build or store build. Expo Go can receive pushes on Android but not reliably on
-  iOS, so use `npx eas build --profile development` for iOS testing.
+- an EAS project id in `EXPO_PUBLIC_EAS_PROJECT_ID` (create one with `npx eas-cli init`), and
+- a development build or store build with APNs / FCM credentials configured in EAS.
+  Use a physical device to verify actual delivery; Expo Go is not the push validation path.
 
 Flow inside the app:
 
-1. After login, the app asks for notification permission and calls
+1. In Settings, tap **Enable mobile notifications**. The app asks for permission and calls
    `Notifications.getExpoPushTokenAsync`.
 2. It registers the token with `POST /devices` and caches it in secure storage.
 3. The backend worker sends reminders to Expo's push API and stores the ticket, then checks the
@@ -53,11 +57,11 @@ If your Expo account has "enhanced push security" enabled, set `EXPO_ACCESS_TOKE
 
 ```bash
 cd mobile
-npx eas login
-npx eas init                       # writes the project id into app.json
-npx eas build --profile preview    # internal distribution build
-npx eas build --profile production
-npx eas submit --profile production
+npx eas-cli login
+npx eas-cli init                       # writes the project id into app.json
+npx eas-cli build --profile preview    # internal distribution build
+npx eas-cli build --profile production
+npx eas-cli submit --profile production
 ```
 
 Profiles are defined in `eas.json`. Bundle identifiers are `com.orbyn.planner` on both platforms;
@@ -68,3 +72,6 @@ change them in `app.json` before publishing under your own organization.
 ```bash
 npm run typecheck -w mobile
 ```
+
+Native signing and App Store / Play Store submission require your developer accounts. JavaScript
+bundle checks do not prove native compilation, signing, or device push delivery.

@@ -34,7 +34,7 @@
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  background: #e7f0ea;
+  background: var(--color-accentSoft);
   color: var(--green);
 }
 .ai-avatar-small {
@@ -48,14 +48,14 @@
   gap: 6px;
   border: 1px solid var(--border);
   background: #fff;
-  color: #526158;
+  color: var(--color-textSoft);
   border-radius: 999px;
   padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
 }
 .ai-ghost:hover:not(:disabled) {
-  background: #f3f5f2;
+  background: var(--color-surfaceMuted);
 }
 .ai-thread {
   flex: 1;
@@ -75,7 +75,7 @@
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
-  background: #e7f0ea;
+  background: var(--color-accentSoft);
   color: var(--green);
   margin-bottom: 12px;
 }
@@ -114,7 +114,7 @@
 }
 .ai-suggestions strong {
   font-size: 13px;
-  color: #27382f;
+  color: var(--color-text);
 }
 .ai-suggestions span {
   font-size: 12px;
@@ -168,7 +168,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #9ab68c;
+  background: var(--color-dot);
   animation: ai-bounce 1.2s infinite ease-in-out;
 }
 .ai-typing span:nth-child(2) {
@@ -239,16 +239,16 @@
   margin-top: 1px;
 }
 .ai-op-create {
-  background: #e7f0ea;
+  background: var(--color-accentSoft);
   color: var(--green);
 }
 .ai-op-update {
-  background: #eef3ec;
-  color: #6d8a6f;
+  background: var(--color-soft);
+  color: var(--color-mediumText);
 }
 .ai-op-delete {
-  background: #fbeee8;
-  color: #b0573b;
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
 }
 .ai-chips {
   display: flex;
@@ -260,8 +260,8 @@
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #526158;
-  background: #f3f5f2;
+  color: var(--color-textSoft);
+  background: var(--color-surfaceMuted);
   border-radius: 999px;
   padding: 3px 9px;
   text-transform: none;
@@ -270,20 +270,20 @@
   text-transform: capitalize;
 }
 .ai-priority-high {
-  background: #fbefea !important;
-  color: #c28c70 !important;
+  background: var(--color-highBg) !important;
+  color: var(--color-highText) !important;
 }
 .ai-notes {
   flex-basis: 100%;
   margin: 2px 0 0;
   font-size: 13px;
-  color: #526158;
+  color: var(--color-textSoft);
 }
 .ai-diff {
   margin: 0;
   padding-left: 16px;
   font-size: 13px;
-  color: #526158;
+  color: var(--color-textSoft);
 }
 .ai-muted {
   color: var(--muted);
@@ -339,7 +339,7 @@
   padding: 8px 0;
   max-height: 180px;
   background: transparent;
-  color: #27382f;
+  color: var(--color-text);
 }
 .ai-send {
   width: 40px;

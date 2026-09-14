@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type { Item } from "@orbyn/core";
+import { assistantSuggestions, type Item } from "@orbyn/core";
 import { Icon } from "../components/Icon";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
@@ -16,12 +16,7 @@ import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
 /** Same starter prompts as the desktop assistant. */
-const SUGGESTIONS = [
-  "Summarize my week",
-  "What needs my attention?",
-  "Help me plan tomorrow",
-  "Add a task to call Mum on Friday at 6pm",
-];
+const SUGGESTIONS = assistantSuggestions.map((s) => s.title);
 
 export function AssistantScreen({
   assistant,

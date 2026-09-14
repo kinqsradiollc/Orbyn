@@ -1,22 +1,9 @@
 import { useEffect, useRef } from "react";
 import { ArrowUp, ArrowUpRight, RotateCcw, Sparkles } from "lucide-react";
-import type { Item } from "@orbyn/core";
+import { assistantSuggestions as SUGGESTIONS, type Item } from "@orbyn/core";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { Assistant } from "../../hooks/useAssistant";
 import "./assistant.css";
-
-const SUGGESTIONS = [
-  { title: "Summarize my week", hint: "A calm overview of what’s coming" },
-  {
-    title: "What needs my attention?",
-    hint: "Overdue and high-priority items",
-  },
-  { title: "Help me plan tomorrow", hint: "Turn tomorrow into a doable plan" },
-  {
-    title: "Add a task to call Mum on Friday at 6pm",
-    hint: "Create items in plain language",
-  },
-];
 
 type Props = {
   items: Item[];

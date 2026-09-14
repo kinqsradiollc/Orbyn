@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
+  planDayPrompt,
   hasSystemPermission,
   hasTeamPermission,
   type Item,
@@ -12,6 +13,7 @@ import { useAssistant } from "../hooks/useAssistant";
 import { Sidebar } from "../components/Sidebar";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
+import { HomePage } from "../features/home/HomePage";
 import { AuthPage } from "../features/auth/AuthPage";
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
@@ -25,6 +27,19 @@ import { AdminView } from "../features/admin/AdminView";
 import type { View } from "./views";
 
 export function App() {
+  const nativeDesktop = location.protocol === "file:";
+  const [path, setPath] = useState(location.pathname);
+  const navigatePath = (next: string, replace = false) => {
+    if (!nativeDesktop)
+      window.history[replace ? "replaceState" : "pushState"]({}, "", next);
+    setPath(next);
+    window.scrollTo(0, 0);
+  };
+  useEffect(() => {
+    const pop = () => setPath(location.pathname);
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, []);
   const planner = usePlanner();
   const assistant = useAssistant(planner);
   const {
@@ -48,6 +63,22 @@ export function App() {
   const [draftTeamId, setDraftTeamId] = useState<string | null>(null);
   const [month, setMonth] = useState(new Date());
   const [mobileNav, setMobileNav] = useState(false);
+
+  useEffect(() => {
+    if (token && (path === "/login" || path === "/signup"))
+      navigatePath("/app", true);
+    if (!token && path === "/app") navigatePath("/login", true);
+  }, [token, path]);
+  useEffect(() => {
+    document.title =
+      path === "/"
+        ? "Orbyn — Your life, in a better orbit"
+        : token
+          ? view + " · Orbyn"
+          : path === "/login"
+            ? "Sign in · Orbyn"
+            : "Create your space · Orbyn";
+  }, [path, token, view]);
 
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
 
@@ -114,9 +145,16 @@ export function App() {
     });
   };
 
+  if (!nativeDesktop && path === "/")
+    return <HomePage signedIn={!!token} onNavigate={navigatePath} />;
+
   if (!token)
     return (
       <AuthPage
+        key={path}
+        initialMode={path === "/login" ? "login" : "register"}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
         busy={busy}
         error={error}
         onClearError={() => planner.setError("")}
@@ -164,9 +202,7 @@ export function App() {
               onNavigate={navigate}
               onPlanDay={() => {
                 navigate("AI assistant");
-                void assistant.ask(
-                  "Summarize my upcoming plans and suggest what I should focus on.",
-                );
+                void assistant.ask(planDayPrompt);
               }}
             />
           )}

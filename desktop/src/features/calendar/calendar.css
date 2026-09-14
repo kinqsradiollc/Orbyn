@@ -1,0 +1,94 @@
+/* Calendar: selection state, plus the phone layout that mirrors mobile. */
+.calendar-day {
+  cursor: pointer;
+}
+.calendar-day:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+.calendar-day.is-selected > span {
+  background: var(--green);
+  color: #fff;
+}
+.calendar-dots,
+.calendar-agenda {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* Titles are unreadable at this width: show dots and a day list instead. */
+  .calendar-day button {
+    display: none;
+  }
+  .calendar-day {
+    min-height: 52px;
+    align-items: center;
+  }
+  .calendar-dots {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    margin-top: 4px;
+  }
+  .calendar-dots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+  .calendar-dots i.done {
+    background: #aab3ad;
+  }
+  .calendar-agenda {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .calendar-agenda h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "Manrope", sans-serif;
+    font-size: 15px;
+    margin: 0 0 4px;
+  }
+  .calendar-agenda h3 span {
+    font-size: 11px;
+    color: var(--muted);
+    background: #f3f5f2;
+    border-radius: 6px;
+    padding: 2px 7px;
+  }
+  .calendar-agenda p {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0;
+  }
+  .calendar-agenda-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: left;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    font: inherit;
+  }
+  .calendar-agenda-item strong {
+    font-size: 14px;
+    font-weight: 500;
+    color: #27382f;
+  }
+  .calendar-agenda-item small {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .calendar-agenda-item.done strong {
+    color: #aab3ad;
+    text-decoration: line-through;
+  }
+}

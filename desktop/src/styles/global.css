@@ -1,13 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap");
 :root {
   font-family: "DM Sans", sans-serif;
-  color: #27382f;
-  background: #f7f8fa;
+  color: var(--color-text);
+  background: var(--color-background);
   font-synthesis: none;
   font-weight: 400;
-  --green: #376c51;
-  --muted: #849089;
-  --border: #e8ece9;
+  --green: var(--color-accent);
+  --muted: var(--color-muted);
+  --border: var(--color-border);
 }
 * {
   box-sizing: border-box;
@@ -112,7 +112,7 @@ small {
 }
 .brand > span {
   font-size: 30px;
-  color: #9ab68c;
+  color: var(--color-dot);
   margin-left: -5px;
 }
 .workspace {
@@ -424,7 +424,7 @@ nav button i,
   gap: 13px;
   align-items: center;
   padding: 18px 22px;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
 }
 .check {
   width: 17px;
@@ -474,16 +474,16 @@ nav button i,
   border-radius: 4px;
   padding: 4px 7px;
   text-transform: capitalize;
-  background: #f2f4f0;
-  color: #96a18b;
+  background: var(--color-lowBg);
+  color: var(--color-lowText);
 }
 .priority.high {
-  background: #fbefea;
-  color: #c28c70;
+  background: var(--color-highBg);
+  color: var(--color-highText);
 }
 .priority.medium {
-  background: #f8f5e9;
-  color: #ad9b65;
+  background: var(--color-mediumBg);
+  color: var(--color-mediumText);
 }
 .empty {
   text-align: center;
@@ -510,7 +510,7 @@ nav button i,
   width: 100%;
   background: white;
   border: 0;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
   text-align: left;
 }
 .upcoming:hover {
@@ -1277,7 +1277,7 @@ footer svg {
   letter-spacing: 0.2px;
   border-radius: 4px;
   padding: 3px 7px;
-  background: #f2f4f0;
+  background: var(--color-lowBg);
   color: #7d8977;
   white-space: nowrap;
   vertical-align: middle;
@@ -1296,11 +1296,11 @@ footer svg {
   color: #7f8c78;
 }
 .role-badge.viewer {
-  background: #f8f5e9;
-  color: #ad9b65;
+  background: var(--color-mediumBg);
+  color: var(--color-mediumText);
 }
 .role-badge.override {
-  background: #fbefea;
+  background: var(--color-highBg);
   color: #b57a69;
 }
 .profile strong .role-badge {
@@ -1342,7 +1342,7 @@ footer svg {
   margin: 0 23px 18px;
   padding: 11px 14px;
   border-radius: 7px;
-  background: #f8f5e9;
+  background: var(--color-mediumBg);
   color: #8d7d4c;
   font-size: 11px;
   line-height: 1.6;
@@ -1388,7 +1388,7 @@ footer svg {
   width: 100%;
   padding: 14px 22px;
   border: 0;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
   background: white;
   text-align: left;
 }
@@ -1450,7 +1450,7 @@ footer svg {
 }
 .create-team {
   padding: 18px 22px 22px;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
 }
 .team-detail .section-heading small {
   display: block;
@@ -1481,7 +1481,7 @@ footer svg {
   justify-content: space-between;
   gap: 12px;
   padding: 18px 23px 14px;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
 }
 .subheading h3 {
   font-size: 13px;
@@ -1530,7 +1530,7 @@ footer svg {
 }
 .data-table td {
   padding: 12px 14px;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
   color: #4a5a4f;
   vertical-align: middle;
 }
@@ -1598,8 +1598,8 @@ footer svg {
   color: #3c6349;
 }
 .status-pill.disabled {
-  background: #fbefea;
-  color: #c28c70;
+  background: var(--color-highBg);
+  color: var(--color-highText);
 }
 .table-footer {
   display: flex;
@@ -1607,7 +1607,7 @@ footer svg {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 23px 18px;
-  border-top: 1px solid #f0f2ef;
+  border-top: 1px solid var(--color-divider);
 }
 .audit-action {
   font-size: 10px;
