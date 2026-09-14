@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { emptyPlans, groupItems, statusTones, type Item } from "@orbyn/core";
+import { emptyPlans, overviewItems, statusTones, type Item } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import {
@@ -9,17 +9,11 @@ import {
   SectionHeading,
   type ListHandlers,
 } from "../components/PlannerList";
-import { isOverdue } from "../lib/progress";
 import { Bump, FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
-import { startOfWeek } from "./calendar/dates";
 
 const COMING_UP = 5;
-
-/** When a done item was finished, as far as the list response tells us. */
-const finishedAt = (i: Item) =>
-  Date.parse(i.last_update_at ?? i.updated_at ?? "") || 0;
 
 /**
  * Overview: four stat cards, then the work that matters now. Each item shows
@@ -36,33 +30,28 @@ export function TodayScreen({
   onPlanDay: () => void;
 }) {
   const now = new Date();
-  const groups = groupItems(items, now);
-  const open = groups.pending;
-  const weekStart = startOfWeek(now).getTime();
-  const doneThisWeek = groups.done.filter(
-    (i) => finishedAt(i) >= weekStart,
-  ).length;
-
-  const shown = new Set<string>();
-  const take = (list: Item[]) =>
-    list.filter((i) => !shown.has(i.id) && shown.add(i.id));
-  const attention = take(
-    open.filter((i) => i.status === "blocked" || isOverdue(i, now)),
-  );
-  const inProgress = take(open.filter((i) => i.status === "in_progress"));
-  const dueToday = take(groups.today);
-  const comingUp = take(groups.upcoming).slice(0, COMING_UP);
+  const {
+    pending: open,
+    attention,
+    inProgress,
+    today: dueToday,
+    upcoming,
+    doneThisWeek,
+    inProgressCount,
+    blockedCount,
+  } = overviewItems(items, now);
+  const comingUp = upcoming.slice(0, COMING_UP);
 
   const stats = [
     { label: "Open", value: open.length, color: colors.textSoft },
     {
       label: "In progress",
-      value: open.filter((i) => i.status === "in_progress").length,
+      value: inProgressCount,
       color: statusTones.in_progress.fg,
     },
     {
       label: "Blocked",
-      value: open.filter((i) => i.status === "blocked").length,
+      value: blockedCount,
       color: statusTones.blocked.fg,
     },
     {

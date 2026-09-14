@@ -74,3 +74,52 @@ export const byDueDate = (a: Item, b: Item) =>
     (b.due_at ? Date.parse(b.due_at) : Infinity) ||
   a.title.localeCompare(b.title) ||
   a.id.localeCompare(b.id);
+
+/** Shared overview: each open item appears in its highest-priority section only.
+ * Counts include all matching items, even when attention takes precedence.
+ * Completion recency uses the latest available activity, not a completion timestamp.
+ */
+export function overviewItems(items: Item[], now = new Date()) {
+  const groups = groupItems(items, now);
+  const overdue = new Set(groups.overdue.map((i) => i.id));
+  const shown = new Set<string>();
+  const take = (list: Item[]) =>
+    list.filter((i) => !shown.has(i.id) && shown.add(i.id));
+  const attention = take(
+    groups.pending
+      .filter((i) => i.status === "blocked" || overdue.has(i.id))
+      .sort(
+        (a, b) =>
+          Number(b.status === "blocked") - Number(a.status === "blocked") ||
+          byDueDate(a, b),
+      ),
+  );
+  const inProgress = take(
+    groups.pending.filter((i) => i.status === "in_progress").sort(byDueDate),
+  );
+  const today = take(groups.today);
+  const upcoming = take(groups.upcoming);
+  const weekStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - now.getDay(),
+  ).getTime();
+  const doneThisWeek = groups.done.filter((i) => {
+    const touched = Math.max(
+      Date.parse(i.updated_at ?? "") || 0,
+      Date.parse(i.last_update_at ?? "") || 0,
+    );
+    return touched >= weekStart && touched <= now.getTime();
+  }).length;
+  return {
+    ...groups,
+    attention,
+    inProgress,
+    today,
+    upcoming,
+    doneThisWeek,
+    inProgressCount: groups.pending.filter((i) => i.status === "in_progress")
+      .length,
+    blockedCount: groups.pending.filter((i) => i.status === "blocked").length,
+  };
+}

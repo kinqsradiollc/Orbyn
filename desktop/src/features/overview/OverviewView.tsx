@@ -13,14 +13,14 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
-import { dateLabel, groupItems, sameDay, type Item } from "@orbyn/core";
+import { dateLabel, overviewItems, type Item } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import type { View } from "../../app/views";
 import { stagger } from "../../lib/motion";
-import { isOverdue, progressOf } from "../../lib/tasks";
+import { progressOf } from "../../lib/tasks";
 
 type Props = {
   items: Item[];
@@ -33,17 +33,6 @@ type Props = {
   onPlanDay: () => void;
 };
 
-/** Sunday 00:00 of the current week (weeks start on Sunday, like the calendar). */
-const startOfWeek = (now: Date) =>
-  new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
-
-/** When an item last changed: its edit time or its newest update. */
-const touchedAt = (i: Item) =>
-  Math.max(
-    i.updated_at ? Date.parse(i.updated_at) : 0,
-    i.last_update_at ? Date.parse(i.last_update_at) : 0,
-  );
-
 export function OverviewView({
   items,
   busy,
@@ -55,22 +44,17 @@ export function OverviewView({
   onPlanDay,
 }: Props) {
   const now = new Date();
-  const { pending, today, upcoming, done } = groupItems(items, now);
-  const inProgress = pending.filter(
-    (i) => i.status === "in_progress" && !isOverdue(i, now),
-  );
-  const attention = pending
-    .filter((i) => i.status === "blocked" || isOverdue(i, now))
-    .sort(
-      (a, b) =>
-        Number(b.status === "blocked") - Number(a.status === "blocked") ||
-        (a.due_at ? Date.parse(a.due_at) : Infinity) -
-          (b.due_at ? Date.parse(b.due_at) : Infinity),
-    );
-  const comingUp = upcoming.filter((i) => !sameDay(new Date(i.due_at!), now));
-  const weekStart = startOfWeek(now).getTime();
-  const doneThisWeek = done.filter((i) => touchedAt(i) >= weekStart).length;
-  const blocked = pending.filter((i) => i.status === "blocked").length;
+  const {
+    pending,
+    today,
+    upcoming: comingUp,
+    done,
+    attention,
+    inProgress,
+    doneThisWeek,
+    inProgressCount,
+    blockedCount: blocked,
+  } = overviewItems(items, now);
   const openTasks = pending.filter((i) => i.kind === "task");
   const average = openTasks.length
     ? openTasks.reduce((sum, i) => sum + progressOf(i), 0) / openTasks.length
@@ -111,7 +95,7 @@ export function OverviewView({
         <Stat icon={CircleDot} label="Open" value={pending.length}>
           still on your list
         </Stat>
-        <Stat icon={Loader} label="In progress" value={inProgress.length}>
+        <Stat icon={Loader} label="In progress" value={inProgressCount}>
           moving along
         </Stat>
         <Stat
