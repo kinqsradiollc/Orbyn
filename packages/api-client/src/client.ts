@@ -1,6 +1,12 @@
 import {
   HttpError,
   type AdminOverview,
+  type AiModelList,
+  type AiProvider,
+  type AiProviderKind,
+  type AiProvidersResponse,
+  type AiSettings,
+  type AiTestResult,
   type AdminUser,
   type AuditEntry,
   type AuthResponse,
@@ -11,6 +17,7 @@ import {
   type Notice,
   type Page,
   type Proposal,
+  type StatusReport,
   type SystemRole,
   type Team,
   type TeamDetail,
@@ -87,6 +94,11 @@ export class OrbynClient {
   // ---- health ----
   health() {
     return this.request<{ status: string }>("/health", { anonymous: true });
+  }
+
+  /** The public uptime report; no sign-in needed. */
+  getStatus() {
+    return this.request<StatusReport>("/status", { anonymous: true });
   }
 
   // ---- auth ----
@@ -246,6 +258,61 @@ export class OrbynClient {
   adminListTeams() {
     return this.request<Team[]>("/admin/teams");
   }
+  // ---- AI providers (system admins) ----
+  listAiProviders() {
+    return this.request<AiProvidersResponse>("/ai/providers");
+  }
+  createAiProvider(input: {
+    kind: AiProviderKind;
+    name: string;
+    base_url?: string;
+    api_key?: string;
+    options?: { apiVersion?: string };
+    enabled?: boolean;
+  }) {
+    return this.request<AiProvider>("/ai/providers", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Omit `api_key` to keep the saved key; send "" to remove it. */
+  updateAiProvider(
+    id: string,
+    input: {
+      name?: string;
+      base_url?: string;
+      api_key?: string;
+      options?: { apiVersion?: string };
+      enabled?: boolean;
+    },
+  ) {
+    return this.request<AiProvider>(`/ai/providers/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteAiProvider(id: string) {
+    return this.request<void>(`/ai/providers/${id}`, { method: "DELETE" });
+  }
+  /** Lists models using the provider's saved key. */
+  listAiModels(id: string) {
+    return this.request<AiModelList>(`/ai/providers/${id}/models`, {
+      method: "POST",
+    });
+  }
+  testAiProvider(id: string, model?: string) {
+    return this.request<AiTestResult>(`/ai/providers/${id}/test`, {
+      method: "POST",
+      body: model ? { model } : {},
+    });
+  }
+  updateAiSettings(input: { provider_id: string | null; model?: string }) {
+    return this.request<AiSettings>("/ai/settings", {
+      method: "PUT",
+      body: input,
+    });
+  }
+
   adminListAudit(params: { limit?: number; offset?: number } = {}) {
     const q = new URLSearchParams();
     if (params.limit !== undefined) q.set("limit", String(params.limit));

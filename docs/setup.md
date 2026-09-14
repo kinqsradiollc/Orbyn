@@ -20,30 +20,31 @@ The root `.env` is read by Docker Compose and by the backend when it runs locall
 
 ### Environment variables
 
-| Variable            | Default                                       | Used by        | Description                                                                                           |
-| ------------------- | --------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| `POSTGRES_USER`     | `orbyn`                                       | compose        | Database role created in the Postgres container.                                                      |
-| `POSTGRES_PASSWORD` | required                                      | compose        | Database password. Compose refuses to start without it.                                               |
-| `POSTGRES_DB`       | `orbyn`                                       | compose        | Database name.                                                                                        |
-| `POSTGRES_PORT`     | `5433`                                        | compose        | Host port the Postgres container is published on (loopback only).                                     |
-| `DATABASE_URL`      | `postgres://orbyn:orbyn@localhost:5432/orbyn` | backend        | Connection string for local runs. Inside Compose it is derived automatically.                         |
-| `PORT`              | `8000`                                        | backend        | Port the API listens on inside its container or local process.                                        |
-| `API_PORT`          | `8008`                                        | compose        | Host port the API is published on.                                                                    |
-| `API_BIND`          | `127.0.0.1`                                   | compose        | Host interface for the API port. Set `0.0.0.0` to expose on the LAN (needed for a physical phone).    |
-| `WEB_PORT`          | `8080`                                        | compose        | Host port for the web app.                                                                            |
-| `CORS_ORIGINS`      | `http://localhost:5173,http://localhost:8080` | backend        | Comma-separated allowed browser origins.                                                              |
-| `AI_BASE_URL`       | `https://api.openai.com/v1`                   | backend        | Base URL of any OpenAI-compatible chat completions API.                                               |
-| `AI_API_KEY`        | empty                                         | backend        | Bearer token for the provider. Leave empty for local providers that need none.                        |
-| `AI_MODEL`          | empty                                         | backend        | Model name. The assistant is disabled (HTTP 503) until this is set.                                   |
-| `SMTP_HOST`         | `localhost`                                   | backend/worker | SMTP server. Empty disables email reminders. Compose overrides it to `mailpit`.                       |
-| `SMTP_PORT`         | `1025`                                        | worker         | SMTP port.                                                                                            |
-| `SMTP_USER`         | empty                                         | worker         | SMTP username. Empty means no authentication.                                                         |
-| `SMTP_PASSWORD`     | empty                                         | worker         | SMTP password.                                                                                        |
-| `SMTP_SECURE`       | `false`                                       | worker         | `true` for implicit TLS (port 465).                                                                   |
-| `SMTP_FROM`         | `Orbyn <reminders@orbyn.local>`               | worker         | Sender shown on reminder emails.                                                                      |
-| `DOCKER_SMTP_HOST`  | `mailpit`                                     | compose        | SMTP host used by the containers. Point at a real relay in production.                                |
-| `EXPO_ACCESS_TOKEN` | empty                                         | worker         | Optional Expo access token for push delivery with enhanced security enabled.                          |
-| `ADMIN_EMAILS`      | empty                                         | backend        | Comma-separated emails that are always system admins. The first account to register is also an admin. |
+| Variable            | Default                                       | Used by        | Description                                                                                                                                                                  |
+| ------------------- | --------------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`     | `orbyn`                                       | compose        | Database role created in the Postgres container.                                                                                                                             |
+| `POSTGRES_PASSWORD` | required                                      | compose        | Database password. Compose refuses to start without it.                                                                                                                      |
+| `POSTGRES_DB`       | `orbyn`                                       | compose        | Database name.                                                                                                                                                               |
+| `POSTGRES_PORT`     | `5433`                                        | compose        | Host port the Postgres container is published on (loopback only).                                                                                                            |
+| `DATABASE_URL`      | `postgres://orbyn:orbyn@localhost:5432/orbyn` | backend        | Connection string for local runs. Inside Compose it is derived automatically.                                                                                                |
+| `PORT`              | `8000`                                        | backend        | Port the API listens on inside its container or local process.                                                                                                               |
+| `API_PORT`          | `8008`                                        | compose        | Host port the API is published on.                                                                                                                                           |
+| `API_BIND`          | `127.0.0.1`                                   | compose        | Host interface for the API port. Set `0.0.0.0` to expose on the LAN (needed for a physical phone).                                                                           |
+| `WEB_PORT`          | `8080`                                        | compose        | Host port for the web app.                                                                                                                                                   |
+| `CORS_ORIGINS`      | `http://localhost:5173,http://localhost:8080` | backend        | Comma-separated allowed browser origins.                                                                                                                                     |
+| `AI_BASE_URL`       | `https://api.openai.com/v1`                   | backend        | Base URL of any OpenAI-compatible chat completions API.                                                                                                                      |
+| `AI_API_KEY`        | empty                                         | backend        | Bearer token for the provider. Leave empty for local providers that need none.                                                                                               |
+| `AI_MODEL`          | empty                                         | backend        | Model name. The assistant is disabled (HTTP 503) until this is set.                                                                                                          |
+| `SMTP_HOST`         | `localhost`                                   | backend/worker | SMTP server. Empty disables email reminders. Compose overrides it to `mailpit`.                                                                                              |
+| `SMTP_PORT`         | `1025`                                        | worker         | SMTP port.                                                                                                                                                                   |
+| `SMTP_USER`         | empty                                         | worker         | SMTP username. Empty means no authentication.                                                                                                                                |
+| `SMTP_PASSWORD`     | empty                                         | worker         | SMTP password.                                                                                                                                                               |
+| `SMTP_SECURE`       | `false`                                       | worker         | `true` for implicit TLS (port 465).                                                                                                                                          |
+| `SMTP_FROM`         | `Orbyn <reminders@orbyn.local>`               | worker         | Sender shown on reminder emails.                                                                                                                                             |
+| `DOCKER_SMTP_HOST`  | `mailpit`                                     | compose        | SMTP host used by the containers. Point at a real relay in production.                                                                                                       |
+| `EXPO_ACCESS_TOKEN` | empty                                         | worker         | Optional Expo access token for push delivery with enhanced security enabled.                                                                                                 |
+| `ADMIN_EMAILS`      | empty                                         | backend        | Comma-separated emails that are always system admins. The first account to register is also an admin.                                                                        |
+| `SECRETS_KEY`       | empty                                         | backend        | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts AI provider credentials saved from the admin console. Keep it stable: changing it makes saved keys unreadable. |
 
 Mobile has its own `mobile/.env.example`:
 
@@ -98,6 +99,24 @@ docker compose down                     # stop, keep data
 docker compose down -v                  # stop and delete the database volume
 ```
 
+## Services and ports
+
+`docker compose up -d --build` starts the backend as separate services behind a gateway:
+
+| Service    | Reached at              | Notes                                             |
+| ---------- | ----------------------- | ------------------------------------------------- |
+| `desktop`  | <http://localhost:8080> | Web app; `/api` goes to the gateway               |
+| `gateway`  | <http://localhost:8008> | API entry point for web, mobile, and desktop apps |
+| `api`      | internal `api:8000`     | Planner API                                       |
+| `ai`       | internal `ai:8000`      | Assistant and AI provider settings                |
+| `status`   | internal `status:8000`  | Status probes; public report at `/status`         |
+| `notifier` | no port                 | Reminder delivery                                 |
+| `postgres` | `localhost:5433`        | Database                                          |
+| `mailpit`  | <http://localhost:8025> | Local email inbox                                 |
+
+Check them with `docker compose ps`, and the public status report with
+`curl localhost:8008/status`. The web app shows it at <http://localhost:8080/status>.
+
 ## 3. Run locally for development
 
 Start only the infrastructure in Docker:
@@ -119,7 +138,9 @@ npm run migrate
 `npm run build:packages` after cloning and whenever you edit them (or keep `npm run dev:packages`
 running to rebuild on change).
 
-Run the API with hot reload and the web app:
+Run the API with hot reload and the web app. `dev:api` runs every backend module in one process,
+which is simplest for development; `npm run dev:api -w backend`, `dev:ai -w backend`,
+`dev:status -w backend`, and `dev:notifier -w backend` run the services one by one:
 
 ```bash
 PORT=8008 npm run dev:api  # http://localhost:8008
@@ -154,7 +175,23 @@ npm run package -w desktop   # output in desktop/release/
 
 ## 4. Tests
 
-See the [README](../README.md#tests). The suite needs a database literally named `orbyn_test`.
+Tests run against a separate, disposable database, never the one the app uses. Start it and run
+the suite:
+
+```bash
+docker compose --profile test up -d postgres-test
+TEST_DATABASE_URL=postgres://orbyn:orbyn-test@localhost:55434/orbyn_test npm test
+```
+
+| Safeguard          | What it prevents                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| Separate server    | The `postgres-test` container is its own server on port 55434, with data kept in memory                                       |
+| Separate setting   | Tests read only `TEST_DATABASE_URL`; `DATABASE_URL` is ignored                                                                |
+| Name check         | The database name must end in `_test`                                                                                         |
+| Server-side marker | The database must have `orbyn.environment = 'test'`, set by `backend/tests/db/init-test-db.sql` when the container is created |
+
+If the suite refuses to run, it names the check that failed. Never add the marker to a database
+that holds real data. CI runs its own throwaway PostgreSQL and marks it the same way.
 
 ## 5. Working in the monorepo
 

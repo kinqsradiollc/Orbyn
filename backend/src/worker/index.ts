@@ -15,6 +15,10 @@ export async function runWorker() {
     });
   while (!stopping) {
     try {
+      // Heartbeat for the status page: the reminder service has no HTTP port.
+      await pool.query(
+        "INSERT INTO service_heartbeats(service,last_seen_at) VALUES('notifier',now()) ON CONFLICT (service) DO UPDATE SET last_seen_at=now()",
+      );
       await enqueue();
       for (let i = 0; i < MAX_DELIVERIES_PER_CYCLE && !stopping; i++)
         if (!(await deliverOne())) break;

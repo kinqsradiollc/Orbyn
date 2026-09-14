@@ -1,14 +1,10 @@
-// Entry point: `node dist/server.js` (Compose `api` service) or `npm run dev`.
+// Single-process mode: every HTTP module plus the status prober in one
+// process, for quick local development (`npm run dev -w backend`). Docker
+// Compose runs each service separately behind the gateway instead.
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
-import { pool } from "./db/pool.js";
+import { startProber } from "./modules/status/prober.js";
+import { startService } from "./services/http.js";
 
-const app = await buildApp();
-await app.listen({ host: "0.0.0.0", port: env.PORT });
-
-for (const signal of ["SIGINT", "SIGTERM"])
-  process.on(signal, async () => {
-    await app.close();
-    await pool.end();
-    process.exit(0);
-  });
+const stopProber = startProber();
+await startService(await buildApp(), env.PORT, stopProber);

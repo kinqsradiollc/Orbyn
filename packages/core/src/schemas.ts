@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
+import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = ["todo", "done"] as const;
@@ -134,3 +135,53 @@ export const auditQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
+
+const baseUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (v) => v === "" || /^https?:\/\//i.test(v),
+    "Base URL must start with http:// or https://",
+  );
+
+/** Creating a provider. `api_key` is encrypted before it is stored. */
+export const aiProviderInput = z
+  .object({
+    kind: z.enum(AI_PROVIDER_KINDS),
+    name: z.string().trim().min(1).max(80),
+    base_url: baseUrl.default(""),
+    api_key: z.string().trim().max(4000).optional(),
+    options: z
+      .object({ apiVersion: z.string().trim().max(40).optional() })
+      .strict()
+      .default({}),
+    enabled: z.boolean().default(true),
+  })
+  .strict();
+
+/** Editing a provider. Omit `api_key` to keep the saved key; send "" to remove it. */
+export const aiProviderUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    base_url: baseUrl.optional(),
+    api_key: z.string().trim().max(4000).optional(),
+    options: z
+      .object({ apiVersion: z.string().trim().max(40).optional() })
+      .strict()
+      .optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict();
+
+/** Which provider and model the assistant uses; a null provider falls back to the server's .env. */
+export const aiSettingsInput = z
+  .object({
+    provider_id: z.uuid().nullable(),
+    model: z.string().trim().max(200).default(""),
+  })
+  .strict();
+
+export const aiTestInput = z
+  .object({ model: z.string().trim().max(200).optional() })
+  .strict();

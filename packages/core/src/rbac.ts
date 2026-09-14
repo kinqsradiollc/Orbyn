@@ -19,6 +19,7 @@ export const SYSTEM_PERMISSIONS = [
   "teams:read_all",
   "teams:manage_all",
   "audit:read",
+  "ai:manage",
 ] as const;
 export type SystemPermission = (typeof SYSTEM_PERMISSIONS)[number];
 

@@ -35,9 +35,11 @@ jobs:
       - run: npm run typecheck -w desktop
       - run: npm run build -w backend
       - run: npm run build -w desktop
+      - name: Mark the CI database as a test database
+        run: psql "postgres://orbyn:orbyn-test@localhost:5432/orbyn_test" -c "ALTER DATABASE orbyn_test SET orbyn.environment TO 'test'"
       - run: npm test -w backend
         env:
-          DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
+          TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
   mobile:
     runs-on: ubuntu-latest
     steps:

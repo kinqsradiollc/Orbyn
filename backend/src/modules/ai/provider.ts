@@ -1,7 +1,12 @@
 import type { FastifyBaseLogger } from "fastify";
 import { agentReply, fail, type AgentReply, type ChatTurn } from "@orbyn/core";
-import { env } from "../../config/env.js";
 import { systemPrompt } from "./prompt.js";
+import {
+  complete,
+  ProviderError,
+  type ChatMessage,
+  type ResolvedAi,
+} from "./providers/adapters.js";
 
 const ATTEMPTS = 2;
 
@@ -32,28 +37,26 @@ export function parseReply(content: string): AgentReply {
 }
 
 /**
- * Ask any OpenAI-compatible chat completions endpoint for a plan. The reply is
- * validated against `agentReply`; nothing here writes to the database.
- * Retries once when the provider fails or returns something unusable.
+ * Ask `ai` (resolved by the caller, so this never reads the database) for a
+ * plan. The reply is validated against `agentReply`; nothing here writes to
+ * the database. Retries once when the provider fails or returns something
+ * unusable, but both attempts share one deadline, below the client and proxy
+ * timeouts, and no retry starts after it has passed.
  */
 export async function askProvider(
+  ai: ResolvedAi,
   message: string,
   timezone: string,
   items: unknown[],
   history: ChatTurn[] = [],
   log?: FastifyBaseLogger,
 ): Promise<AgentReply> {
-  if (!env.AI_MODEL)
-    fail(
-      503,
-      "AI is not configured. Set AI_BASE_URL, AI_MODEL and AI_API_KEY on the server.",
-    );
   try {
     new Intl.DateTimeFormat("en", { timeZone: timezone });
   } catch {
     fail(422, "Unknown timezone");
   }
-  const messages = [
+  const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt(timezone) },
     ...history.slice(-12).map((turn) => ({
       role: turn.role,
@@ -65,52 +68,44 @@ export async function askProvider(
     },
   ];
   let reason = "unknown";
-  // Both attempts share one deadline, below the client/proxy timeouts.
-  const deadline = AbortSignal.timeout(60000);
+  const deadline = AbortSignal.timeout(60_000);
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     if (deadline.aborted) break;
     try {
-      const response = await fetch(
-        env.AI_BASE_URL.replace(/\/$/, "") + "/chat/completions",
-        {
-          method: "POST",
-          signal: deadline,
-          headers: {
-            "Content-Type": "application/json",
-            ...(env.AI_API_KEY
-              ? { Authorization: `Bearer ${env.AI_API_KEY}` }
-              : {}),
-          },
-          body: JSON.stringify({ model: env.AI_MODEL, messages }),
-        },
-      );
-      if (!response.ok) {
-        reason = `http_${response.status}`;
-        continue;
-      }
-      const result = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
-      };
-      const content = result.choices?.[0]?.message?.content;
+      const content = await complete(ai, messages, { signal: deadline });
       if (!content) {
         reason = "empty_reply";
-        continue;
-      }
-      try {
-        return parseReply(content);
-      } catch (error) {
-        reason =
-          error instanceof SyntaxError ? "invalid_json" : "schema_mismatch";
+      } else {
+        try {
+          return parseReply(content);
+        } catch (error) {
+          reason =
+            error instanceof SyntaxError ? "invalid_json" : "schema_mismatch";
+        }
       }
     } catch (error) {
-      reason =
-        error instanceof Error && error.name === "TimeoutError"
-          ? "timeout"
-          : "network";
+      reason = error instanceof ProviderError ? error.reason : "unexpected";
     }
     // Content is never logged: it contains the user's planner.
-    log?.warn({ event: "ai_provider_retry", attempt, reason }, "AI retry");
+    log?.warn(
+      {
+        event: "ai_provider_retry",
+        attempt,
+        reason,
+        provider: ai.kind,
+        source: ai.source,
+      },
+      "AI retry",
+    );
   }
-  log?.error({ event: "ai_provider_failed", reason }, "AI provider failed");
+  log?.error(
+    {
+      event: "ai_provider_failed",
+      reason,
+      provider: ai.kind,
+      source: ai.source,
+    },
+    "AI provider failed",
+  );
   fail(502, "The AI provider could not return a valid plan. Please try again.");
 }

@@ -1,12 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-// Pure unit tests for the AI plumbing: no database or provider needed.
-process.env.AI_MODEL ||= "unit-test";
+// Pure unit tests for the AI plumbing: no database, network, or provider needed.
 const { parseReply } = await import("../src/modules/ai/provider.js");
 const { localTimeContext, systemPrompt } =
   await import("../src/modules/ai/prompt.js");
 
 const reply = { summary: "Your week is clear.", actions: [] };
+/** A provider handed straight to askProvider; fetch is mocked in the tests that use it. */
+const unitAi = {
+  kind: "openai-compatible",
+  format: "openai" as const,
+  baseUrl: "http://127.0.0.1:9/v1",
+  apiKey: "",
+  model: "unit-test",
+  options: {},
+  source: "environment" as const,
+};
 
 test("parses plain, fenced, and reasoning-prefixed replies", () => {
   for (const content of [
@@ -77,7 +86,7 @@ test("provider retries share one deadline instead of outlasting the client", asy
           });
     },
   );
-  assert.deepEqual(await askProvider("Summarize", "UTC", []), reply);
+  assert.deepEqual(await askProvider(unitAi, "Summarize", "UTC", []), reply);
   assert.equal(deadlines.length, 2);
   assert.equal(timeouts, 1);
   assert.equal(deadlines[0], deadlines[1]);
@@ -95,7 +104,7 @@ test("provider does not retry after the overall deadline expires", async (t) => 
     throw error;
   });
   await assert.rejects(
-    askProvider("Summarize", "UTC", []),
+    askProvider(unitAi, "Summarize", "UTC", []),
     /could not return a valid plan/,
   );
   assert.equal(attempts, 1);

@@ -2,9 +2,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-// This suite requires an isolated PostgreSQL database, never a production database.
-if (!process.env.DATABASE_URL?.includes("orbyn_test"))
-  throw new Error("Set DATABASE_URL to an isolated database named orbyn_test");
+// Connects only to a verified test database (see setup.ts).
+import "./setup.js";
 let providerResponse: unknown = {
   summary: "Your week looks clear.",
   actions: [],

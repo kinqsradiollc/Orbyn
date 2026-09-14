@@ -48,3 +48,15 @@ docker build -f desktop/Dockerfile -t orbyn-web .
 ## Backups
 
 Everything lives in PostgreSQL. A nightly `pg_dump` of the `orbyn` database is a complete backup.
+
+## Scaling services
+
+Each backend service can be scaled on its own, for example
+`docker compose up -d --scale api=3 --scale ai=2`. The gateway resolves service names per request,
+so new replicas receive traffic without a restart. Running more than one `notifier` or `status`
+replica is safe: reminder scheduling and status recording coordinate through PostgreSQL locks.
+
+## Secrets key
+
+`SECRETS_KEY` encrypts AI provider keys saved from the admin console. Back it up with the database:
+without it, saved keys cannot be decrypted and admins must re-enter them.

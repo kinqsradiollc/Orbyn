@@ -18,6 +18,13 @@ Anyone can create a **team** and share tasks and events with it. Team roles are 
 member, and viewer. Every team member gets the reminders for team items. See
 [architecture](docs/architecture.md#access-control) for the full permission matrix.
 
+## Services and status
+
+The backend runs as separate services (API, AI assistant, reminders, status) behind an nginx
+gateway. A public status page shows uptime for each part of Orbyn. Admins connect AI providers
+such as OpenAI, Anthropic, Gemini, Azure OpenAI, OpenRouter, Groq, LM Studio, or Ollama from the
+admin console; keys are stored encrypted. See [architecture](docs/architecture.md#services).
+
 ## Repository layout
 
 Orbyn is an npm workspaces monorepo. Shared code lives in `packages/`, and each deployable app
@@ -133,11 +140,19 @@ All commands run from the repository root.
 
 ## Tests
 
-The backend suite uses a real PostgreSQL database and refuses to run against anything not named
-`orbyn_test`:
+The backend tests use their own throwaway PostgreSQL, separate from the app's database:
 
 ```bash
-docker run -d --name orbyn-test-postgres -p 127.0.0.1:55432:5432 \
-  -e POSTGRES_USER=orbyn -e POSTGRES_PASSWORD=orbyn-test -e POSTGRES_DB=orbyn_test postgres:17-alpine
-DATABASE_URL=postgres://orbyn:orbyn-test@127.0.0.1:55432/orbyn_test npm test
+docker compose --profile test up -d postgres-test
+TEST_DATABASE_URL=postgres://orbyn:orbyn-test@localhost:55434/orbyn_test npm test
 ```
+
+`TEST_DATABASE_URL` can also live in `.env`. Three safeguards keep tests away from real data:
+
+- Tests read only `TEST_DATABASE_URL`, never `DATABASE_URL`.
+- The database name must end in `_test`.
+- The database must carry the marker `orbyn.environment = 'test'`, which the test container sets when
+  it is created. Development and production databases never have it, so the suite refuses to run
+  against them even if the URL is wrong.
+
+The test database keeps its data in memory; stopping it discards everything.

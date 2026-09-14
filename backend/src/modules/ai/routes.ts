@@ -7,6 +7,7 @@ import { audit } from "../../lib/audit.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { askProvider } from "./provider.js";
+import { resolveAi } from "./providers/resolve.js";
 
 /**
  * Propose-then-approve assistant. `/ai/chat` stores a proposal; nothing changes
@@ -16,6 +17,12 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post("/ai/chat", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const d = chatRequest.parse(r.body);
+    const ai = await resolveAi();
+    if (!ai)
+      fail(
+        503,
+        "AI is not configured. An admin can choose a provider in the admin console, or set AI_BASE_URL, AI_MODEL and AI_API_KEY on the server.",
+      );
     const items = (
       await pool.query(
         `SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id=i.team_id
@@ -24,6 +31,7 @@ export async function aiRoutes(app: FastifyInstance) {
       )
     ).rows;
     const response = await askProvider(
+      ai,
       d.message,
       d.timezone,
       items,

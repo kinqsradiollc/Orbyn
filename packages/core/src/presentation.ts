@@ -150,3 +150,22 @@ export const motion = {
 /** Delay for the nth item in a staggered list. */
 export const staggerDelay = (index: number) =>
   Math.min(index, motion.maxStagger) * motion.stagger;
+
+/** Status page wording, shared by web and mobile. */
+export const serviceStateLabels = {
+  operational: "Operational",
+  degraded: "Degraded performance",
+  outage: "Outage",
+  unknown: "No data yet",
+} as const;
+
+export const statusHeadlines = {
+  operational: "All systems operational",
+  degraded: "Some systems are running slowly",
+  outage: "Some systems are down",
+  unknown: "Checking our systems",
+} as const;
+
+/** "99.98%" for a 0-1 ratio, or an em dash when there is no data. */
+export const formatUptime = (ratio: number | null) =>
+  ratio === null ? "—" : `${(Math.floor(ratio * 10000) / 100).toFixed(2)}%`;

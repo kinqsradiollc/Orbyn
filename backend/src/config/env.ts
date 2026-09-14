@@ -28,6 +28,16 @@ const schema = z.object({
   EXPO_ACCESS_TOKEN: z.string().default(""),
   /** Comma-separated emails that are always system admins. */
   ADMIN_EMAILS: z.string().default(""),
+  /** 32 random bytes, base64. Encrypts credentials stored in the database. */
+  SECRETS_KEY: z.string().default(""),
+  /** "true" when services sit behind the gateway and should trust X-Forwarded-For. */
+  TRUST_PROXY: z.enum(["true", "false"]).default("false"),
+  /** How often the status service probes each component. */
+  STATUS_INTERVAL_MS: z.coerce.number().int().min(5000).default(30000),
+  /** Where the status service reaches each component; empty means this process. */
+  STATUS_GATEWAY_URL: z.string().default(""),
+  STATUS_API_URL: z.string().default(""),
+  STATUS_AI_URL: z.string().default(""),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -1,9 +1,12 @@
 # Builds the API / worker / migrate image from the monorepo root:
 #   docker build -f backend/Dockerfile -t orbyn-backend .
-# The same image runs three commands (see compose.yaml):
-#   node backend/dist/server.js   API (default)
-#   node backend/dist/worker.js   reminder worker
-#   node backend/dist/migrate.js  apply SQL migrations
+# The same image runs every backend service (see compose.yaml):
+#   node backend/dist/services/api.js       planner API (default)
+#   node backend/dist/services/ai.js        AI assistant
+#   node backend/dist/services/status.js    status probes and public report
+#   node backend/dist/services/notifier.js  reminder delivery
+#   node backend/dist/migrate.js            apply SQL migrations
+#   node backend/dist/server.js             everything in one process
 
 # Workspace manifests only, so dependency layers cache independently of source.
 FROM node:22-bookworm-slim AS manifests
@@ -37,4 +40,4 @@ COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
 COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations
 USER node
 EXPOSE 8000
-CMD ["node", "backend/dist/server.js"]
+CMD ["node", "backend/dist/services/api.js"]
