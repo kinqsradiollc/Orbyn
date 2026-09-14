@@ -12,6 +12,8 @@ export type ListHandlers = {
   onToggle: (item: Item) => void;
   onEdit: (item: Item) => void;
   onAdd: () => void;
+  /** False for items whose checkbox should be disabled (team items you only view). */
+  canToggle?: (item: Item) => boolean;
 };
 
 /** Stats, section header, item rows and the empty state shared by Today / Tasks / Calendar. */
@@ -24,6 +26,7 @@ export function PlannerList({
   onToggle,
   onEdit,
   onAdd,
+  canToggle,
   children,
 }: ListHandlers & {
   /** Every item, for the stats. */
@@ -67,6 +70,7 @@ export function PlannerList({
               item={i}
               busy={busy}
               first={n === 0}
+              readOnly={canToggle ? !canToggle(i) : false}
               onToggle={onToggle}
               onEdit={onEdit}
             />

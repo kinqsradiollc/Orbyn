@@ -53,15 +53,51 @@ Every item write goes through `mutate()` and requires the current `version`. A s
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
 statement with `user_id`, and cross-tenant access returns 404 rather than 403.
 
+### Access control
+
+Roles and permissions are defined once in `packages/core/src/rbac.ts` and enforced only on the
+server; the clients use the same helpers to decide what to show.
+
+**System roles.** `admin` or `member`. The first account on a fresh database, and any email in
+`ADMIN_EMAILS`, becomes an admin. Admins can open the admin console: see counts, list and search
+accounts, change roles, disable or delete accounts, manage any team, and read the audit log.
+Disabling an account signs it out everywhere and stops its reminders. The last active admin
+cannot be demoted, disabled, or deleted.
+
+**Team roles.**
+
+| Permission                   | Owner | Admin | Member | Viewer |
+| ---------------------------- | :---: | :---: | :----: | :----: |
+| See the team and its members |   ✓   |   ✓   |   ✓    |   ✓    |
+| Read team items              |   ✓   |   ✓   |   ✓    |   ✓    |
+| Create, edit, delete items   |   ✓   |   ✓   |   ✓    |        |
+| Add, change, remove members  |   ✓   |  ✓\*  |        |        |
+| Rename the team              |   ✓   |   ✓   |        |        |
+| Delete the team              |   ✓   |       |        |        |
+
+\* Team admins manage members and viewers only and cannot grant admin or owner. A team always keeps
+at least one owner.
+
+**Privacy.** System admins manage every team as an owner would, but the override never covers
+reading or writing items: admins cannot see anyone's personal items or a team's items unless they
+are a member. Non-members get `404` for a team, so team existence does not leak.
+
+**Enforcement points.** `lib/auth.ts` rejects disabled accounts and checks system permissions;
+`lib/teams.ts` resolves team roles; `modules/items/service.ts` checks them on every item write,
+including AI proposals, so the assistant can never do more than the person approving it. Moving an
+item into a team needs write access there; moving it out needs member-management rights in the
+team it leaves.
+
 ### Reminder pipeline
 
 1. Every 10 seconds the worker runs `enqueue()`. For each open item whose `due_at` minus
    `reminder_minutes` has passed, it inserts one notification per channel: `inapp` always,
    `email` if the user has email reminders on and SMTP is configured, and `push` for every
-   registered device. The unique key `(item_id, item_version, channel, destination)` makes this
+   registered device. Personal items notify their owner; team items notify every active member. The unique key `(item_id, item_version, channel, destination)` makes this
    idempotent, so restarting or running many workers never double-sends.
 2. `deliverOne()` claims a pending row with `SKIP LOCKED`, re-checks that the item is still open,
-   still on the same `reminder_version`, and that the destination is still valid. If not, the row
+   still on the same `reminder_version`, that the recipient is still active and can still see the
+   item, and that the destination is still valid. If not, the row
    is cancelled. This is how completing a task or changing its date suppresses stale reminders.
 3. Email goes out over SMTP with a stable `Message-ID`. Push goes to the Expo push service; the
    ticket id is stored and the row moves to `receipt` state, then the receipt is checked 15 minutes

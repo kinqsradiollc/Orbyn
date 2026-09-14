@@ -7,6 +7,17 @@ assistant (any OpenAI-compatible provider) can summarize your planner and propos
 updates, and deletes that you approve before they are saved. A background worker sends in-app,
 email, and mobile push reminders as deadlines approach.
 
+## Roles and teams
+
+Accounts are either **admins** or **members**. The first account, and any email in `ADMIN_EMAILS`,
+is an admin. Admins get an admin console in the web and mobile apps to see usage, manage accounts
+and roles, disable or delete users, manage any team, and read the audit log. They never see the
+contents of other people's items.
+
+Anyone can create a **team** and share tasks and events with it. Team roles are owner, admin,
+member, and viewer. Every team member gets the reminders for team items. See
+[architecture](docs/architecture.md#access-control) for the full permission matrix.
+
 ## Repository layout
 
 Orbyn is an npm workspaces monorepo. Shared code lives in `packages/`, and each deployable app

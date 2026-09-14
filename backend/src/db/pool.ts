@@ -23,3 +23,10 @@ export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
     db.release();
   }
 }
+
+/** Run a query on a transaction client when given one, otherwise on the pool. */
+export const query = <R extends pg.QueryResultRow = any>(
+  text: string,
+  values: unknown[] = [],
+  db?: Db,
+) => (db ? db.query<R>(text, values) : pool.query<R>(text, values));

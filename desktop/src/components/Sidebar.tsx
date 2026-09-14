@@ -1,5 +1,5 @@
 import { ArrowUpRight, LogOut, Orbit, Settings, Sparkles } from "lucide-react";
-import type { User } from "@orbyn/core";
+import { hasSystemPermission, type User } from "@orbyn/core";
 import { NAV, type View } from "../app/views";
 
 type Props = {
@@ -19,6 +19,7 @@ export function Sidebar({
   onNavigate,
   onSignOut,
 }: Props) {
+  const isAdmin = hasSystemPermission(user?.role, "admin:access");
   return (
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="brand">
@@ -33,17 +34,19 @@ export function Sidebar({
       </div>
       <span className="nav-label">YOUR WORKSPACE</span>
       <nav>
-        {NAV.map(({ label, icon: Icon }) => (
-          <button
-            key={label}
-            className={view === label ? "active" : ""}
-            onClick={() => onNavigate(label)}
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-            {label === "Notifications" && hasUnread && <i />}
-          </button>
-        ))}
+        {NAV.filter((n) => !n.adminOnly || isAdmin).map(
+          ({ label, icon: Icon }) => (
+            <button
+              key={label}
+              className={view === label ? "active" : ""}
+              onClick={() => onNavigate(label)}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+              {label === "Notifications" && hasUnread && <i />}
+            </button>
+          ),
+        )}
       </nav>
       <div className="sidebar-bottom">
         <div className="sidebar-note">
@@ -63,8 +66,11 @@ export function Sidebar({
         <div className="profile">
           <span className="avatar">{user?.name[0] || "O"}</span>
           <div>
-            <strong>{user?.name || "Loading…"}</strong>
-            <small>Personal account</small>
+            <strong>
+              {user?.name || "Loading…"}
+              {isAdmin && <span className="role-badge system">Admin</span>}
+            </strong>
+            <small>{isAdmin ? "Workspace admin" : "Personal account"}</small>
           </div>
           <button
             className="icon-button"

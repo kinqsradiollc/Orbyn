@@ -10,9 +10,14 @@ let providerResponse: unknown = {
   actions: [],
 };
 let providerStatus = 200;
+let lastProviderRequest: { messages: { role: string; content: string }[] } = {
+  messages: [],
+};
 const provider = createServer((req, res) => {
-  req.resume();
+  let body = "";
+  req.on("data", (chunk) => (body += chunk));
   req.on("end", () => {
+    lastProviderRequest = JSON.parse(body || "{}");
     res.writeHead(providerStatus, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
@@ -282,6 +287,32 @@ test("AI proposal batch rolls back when an action targets another user", async (
     0,
   );
 });
+test("the assistant forwards conversation history to the provider", async () => {
+  providerResponse = { summary: "Tomorrow is clear too.", actions: [] };
+  const r = await app.inject({
+    method: "POST",
+    url: "/ai/chat",
+    headers: headers(alice),
+    payload: {
+      message: "And tomorrow?",
+      timezone: "UTC",
+      history: [
+        { role: "user", content: "What is on today?" },
+        { role: "assistant", content: "Nothing today." },
+      ],
+    },
+  });
+  assert.equal(r.statusCode, 200);
+  const messages = lastProviderRequest.messages;
+  assert.deepEqual(
+    messages.map((m) => m.role),
+    ["system", "user", "assistant", "user"],
+  );
+  assert.equal(messages[1].content, "What is on today?");
+  assert.equal(messages[2].content, "Nothing today.");
+  assert.match(messages[3].content, /And tomorrow\?/);
+});
+
 test("AI provider errors and invalid outputs are handled", async () => {
   providerResponse = {
     summary: "Invalid",

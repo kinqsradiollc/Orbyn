@@ -61,6 +61,10 @@ const title = (view: View, user: User | null) => {
       return "Small steps. Big things.";
     case "AI assistant":
       return "A little help thinking ahead.";
+    case "Teams":
+      return "Plans are better together.";
+    case "Admin":
+      return "Workspace admin";
     default:
       return view;
   }
@@ -76,6 +80,10 @@ const subtitle = (view: View) => {
       return "A little perspective on the days ahead.";
     case "AI assistant":
       return "Summarize your plans, untangle your week, or make a fresh start.";
+    case "Teams":
+      return "Share tasks and events with the people you plan with.";
+    case "Admin":
+      return "Accounts, teams, and a record of every change.";
     default:
       return "Your space, just the way you like it.";
   }
@@ -87,7 +95,13 @@ export function PageHeading({ view, user, onNewItem }: PageHeadingProps) {
     <div className="page-heading">
       <div>
         <span className="eyebrow">
-          {view === "Overview" ? "A FRESH PERSPECTIVE" : "YOUR PERSONAL ORBIT"}
+          {view === "Overview"
+            ? "A FRESH PERSPECTIVE"
+            : view === "Teams"
+              ? "SHARED ORBITS"
+              : view === "Admin"
+                ? "WORKSPACE CONTROL"
+                : "YOUR PERSONAL ORBIT"}
         </span>
         <h1>{title(view, user)}</h1>
         <p>{subtitle(view)}</p>

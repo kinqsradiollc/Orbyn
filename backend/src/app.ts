@@ -10,6 +10,8 @@ import { itemRoutes } from "./modules/items/routes.js";
 import { deviceRoutes } from "./modules/devices/routes.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
 import { aiRoutes } from "./modules/ai/routes.js";
+import { teamRoutes } from "./modules/teams/routes.js";
+import { adminRoutes } from "./modules/admin/routes.js";
 
 /** Build the HTTP API. Each feature lives in `modules/<name>/routes.ts`. */
 export async function buildApp() {
@@ -49,5 +51,7 @@ export async function buildApp() {
   await app.register(deviceRoutes);
   await app.register(notificationRoutes);
   await app.register(aiRoutes);
+  await app.register(teamRoutes);
+  await app.register(adminRoutes);
   return app;
 }

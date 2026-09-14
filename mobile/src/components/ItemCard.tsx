@@ -15,6 +15,7 @@ export function ItemCard({
   item,
   busy,
   first = false,
+  readOnly = false,
   onToggle,
   onEdit,
 }: {
@@ -22,6 +23,8 @@ export function ItemCard({
   busy: boolean;
   /** Hides the divider on the first row of a list card. */
   first?: boolean;
+  /** Disables the checkbox, e.g. for team items you can only view. */
+  readOnly?: boolean;
   onToggle: (item: Item) => void;
   onEdit: (item: Item) => void;
 }) {
@@ -31,9 +34,9 @@ export function ItemCard({
     <View style={[s.row, !first && s.divider]}>
       <Pressable
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: done, disabled: busy }}
+        accessibilityState={{ checked: done, disabled: busy || readOnly }}
         accessibilityLabel={(done ? "Reopen " : "Complete ") + item.title}
-        disabled={busy}
+        disabled={busy || readOnly}
         hitSlop={12}
         onPress={() => onToggle(item)}
         style={[s.check, done && s.checked]}
@@ -61,6 +64,14 @@ export function ItemCard({
             {dateLabel(item.due_at)}
             {item.kind === "event" ? " · Event" : ""}
           </Text>
+          {!!item.team_name && (
+            <View style={s.team}>
+              <Icon name="users" size={10} color={colors.accent} />
+              <Text numberOfLines={1} style={s.teamText}>
+                {item.team_name}
+              </Text>
+            </View>
+          )}
         </View>
       </Pressable>
       <View style={[s.pill, { backgroundColor: tone.bg }]}>
@@ -102,7 +113,25 @@ const s = StyleSheet.create({
   },
   done: { color: colors.faint, textDecorationLine: "line-through" },
   meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
-  metaText: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+  metaText: {
+    flexShrink: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  team: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
+    maxWidth: 140,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 3,
+  },
+  teamText: { fontFamily: fonts.semibold, fontSize: 10, color: colors.accent },
   pill: { borderRadius: radii.pill, paddingHorizontal: 9, paddingVertical: 4 },
   pillText: {
     fontFamily: fonts.semibold,

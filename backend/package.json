@@ -10,7 +10,9 @@
     "start": "node dist/server.js",
     "worker": "node dist/worker.js",
     "migrate": "tsx src/migrate.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "admin:grant": "tsx src/grant-admin.ts",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -28,6 +30,7 @@
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.18.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@orbyn/api-client": "1.0.0"
   }
 }

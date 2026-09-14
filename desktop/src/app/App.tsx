@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
-import type { Item, ItemInput } from "@orbyn/core";
+import {
+  hasSystemPermission,
+  hasTeamPermission,
+  type Item,
+  type ItemInput,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { usePlanner } from "../hooks/usePlanner";
 import { useAssistant } from "../hooks/useAssistant";
@@ -14,18 +19,69 @@ import { CalendarView } from "../features/calendar/CalendarView";
 import { AssistantView } from "../features/assistant/AssistantView";
 import { NotificationsView } from "../features/notifications/NotificationsView";
 import { SettingsView } from "../features/settings/SettingsView";
+import { TeamsView } from "../features/teams/TeamsView";
+import type { TeamActions } from "../features/teams/TeamDetail";
+import { AdminView } from "../features/admin/AdminView";
 import type { View } from "./views";
 
 export function App() {
   const planner = usePlanner();
   const assistant = useAssistant(planner);
-  const { token, user, items, notices, busy, error, loading, act, refresh } =
-    planner;
+  const {
+    token,
+    user,
+    items,
+    notices,
+    teams,
+    revision,
+    busy,
+    error,
+    loading,
+    act,
+    refresh,
+    report,
+  } = planner;
   const [view, setView] = useState<View>("Overview");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  /** Team prefilled in the editor when a new item starts from a team page. */
+  const [draftTeamId, setDraftTeamId] = useState<string | null>(null);
   const [month, setMonth] = useState(new Date());
   const [mobileNav, setMobileNav] = useState(false);
+
+  const isAdmin = hasSystemPermission(user?.role, "admin:access");
+
+  // Leave the admin console if the user loses admin access (e.g. self-demotion).
+  useEffect(() => {
+    if (view === "Admin" && user && !isAdmin) setView("Overview");
+  }, [view, user, isAdmin]);
+
+  const newItem = (teamId: string | null = null) => {
+    setDraftTeamId(teamId);
+    setEditing("new");
+  };
+
+  /** Viewers can't change team items; say so instead of letting the server reject it. */
+  const toggle = (i: Item) => {
+    const team = i.team_id ? teams.find((t) => t.id === i.team_id) : null;
+    if (team && !hasTeamPermission(team.role, "items:write")) {
+      planner.setError(`View only — you're a viewer in ${team.name}.`);
+      return;
+    }
+    void planner.toggleItem(i);
+  };
+
+  const teamActions: TeamActions = {
+    user,
+    busy,
+    revision,
+    act,
+    refresh,
+    report,
+    onEditItem: setEditing,
+    onNewTeamItem: newItem,
+    onToggle: toggle,
+  };
 
   const navigate = (v: View) => {
     setView(v);
@@ -97,18 +153,14 @@ export function App() {
               </button>
             </div>
           )}
-          <PageHeading
-            view={view}
-            user={user}
-            onNewItem={() => setEditing("new")}
-          />
+          <PageHeading view={view} user={user} onNewItem={() => newItem()} />
           {view === "Overview" && (
             <OverviewView
               items={items}
               busy={busy}
-              onToggle={planner.toggleItem}
+              onToggle={toggle}
               onEdit={setEditing}
-              onNewItem={() => setEditing("new")}
+              onNewItem={() => newItem()}
               onNavigate={navigate}
               onPlanDay={() => {
                 navigate("AI assistant");
@@ -124,7 +176,7 @@ export function App() {
               query={query}
               onQueryChange={setQuery}
               busy={busy}
-              onToggle={planner.toggleItem}
+              onToggle={toggle}
               onEdit={setEditing}
             />
           )}
@@ -139,6 +191,8 @@ export function App() {
           {view === "AI assistant" && (
             <AssistantView items={items} busy={busy} assistant={assistant} />
           )}
+          {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
+          {view === "Admin" && isAdmin && <AdminView {...teamActions} />}
           {view === "Notifications" && (
             <NotificationsView notices={notices} onRead={planner.markRead} />
           )}
@@ -160,6 +214,8 @@ export function App() {
       {editing && (
         <ItemEditor
           editing={editing}
+          teams={teams}
+          defaultTeamId={draftTeamId}
           busy={busy}
           error={error}
           onClose={() => setEditing(null)}

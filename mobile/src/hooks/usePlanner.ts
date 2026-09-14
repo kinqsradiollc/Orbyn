@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
-import type { Item, Notice, User } from "@orbyn/core";
+import type { Item, Notice, Team, User } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
@@ -15,7 +15,7 @@ export type SignInInput = {
 
 /**
  * Session + planner data layer: restores the token from SecureStore, loads
- * items / profile / notifications, refreshes when the app returns to the
+ * items / profile / notifications / teams, refreshes when the app returns to the
  * foreground or a push arrives, and signs out on 401.
  */
 export function usePlanner() {
@@ -24,6 +24,7 @@ export function usePlanner() {
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,6 +36,7 @@ export function usePlanner() {
     setToken("");
     setItems([]);
     setNotices([]);
+    setTeams([]);
     setUser(null);
   };
 
@@ -61,14 +63,16 @@ export function usePlanner() {
     setRefreshing(true);
     try {
       const list = await client.listAllItems(500);
-      const [u, n] = await Promise.all([
+      const [u, n, t] = await Promise.all([
         client.me(),
         client.listNotifications(),
+        client.listTeams(),
       ]);
       if (tokenRef.current !== token || seq !== refreshSeq.current) return;
       setItems(list);
       setUser(u);
       setNotices(n);
+      setTeams(t);
     } finally {
       if (tokenRef.current === token) setRefreshing(false);
     }
@@ -121,6 +125,7 @@ export function usePlanner() {
     setUser,
     items,
     notices,
+    teams,
     error,
     setError,
     busy,

@@ -1,5 +1,13 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import type { Item } from "@orbyn/core";
 import { Icon } from "../components/Icon";
 import { ProposalReview } from "../components/ProposalReview";
@@ -12,6 +20,7 @@ const SUGGESTIONS = [
   "Summarize my week",
   "What needs my attention?",
   "Help me plan tomorrow",
+  "Add a task to call Mum on Friday at 6pm",
 ];
 
 export function AssistantScreen({
@@ -23,46 +32,99 @@ export function AssistantScreen({
   items: Item[];
   busy: boolean;
 }) {
-  const { message, setMessage, proposal, ask, apply, discard } = assistant;
-  const canSend = !busy && !!message.trim();
+  const { message, setMessage, turns, thinking, ask, apply, discard, reset } =
+    assistant;
+  const locked = busy || thinking;
+  const canSend = !locked && !!message.trim();
+
   return (
     <>
-      <View style={shared.softCard}>
-        <View style={s.badge}>
-          <Icon name="sparkles" size={18} color={colors.accent} />
+      {turns.length === 0 ? (
+        <View style={shared.softCard}>
+          <View style={s.badge}>
+            <Icon name="sparkles" size={18} color={colors.accent} />
+          </View>
+          <Text style={shared.sectionTitle}>What’s on your mind?</Text>
+          <Text style={[shared.subtitle, s.intro]}>
+            Ask for a summary, plan your day, or change items in plain language.
+            You’ll review every change before it’s saved.
+          </Text>
+          <View style={s.chips}>
+            {SUGGESTIONS.map((text) => (
+              <Pressable
+                key={text}
+                accessibilityRole="button"
+                disabled={locked}
+                onPress={() => ask(text)}
+                style={({ pressed }) => [
+                  s.chip,
+                  pressed && s.chipPressed,
+                  locked && { opacity: 0.5 },
+                ]}
+              >
+                <Text style={s.chipText}>{text}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
-        <Text style={shared.sectionTitle}>What’s on your mind?</Text>
-        <Text style={[shared.subtitle, s.intro]}>
-          Ask for a summary, create a plan, or adjust your existing items.
-          You’ll review all changes before they’re saved.
-        </Text>
-        <View style={s.chips}>
-          {SUGGESTIONS.map((text) => (
-            <Pressable
-              key={text}
-              accessibilityRole="button"
-              disabled={busy}
-              onPress={() => ask(text)}
-              style={({ pressed }) => [
-                s.chip,
-                pressed && s.chipPressed,
-                busy && { opacity: 0.5 },
-              ]}
-            >
-              <Text style={s.chipText}>{text}</Text>
-            </Pressable>
-          ))}
+      ) : (
+        <View style={s.threadHead}>
+          <Text style={shared.eyebrow}>CONVERSATION</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Start a new conversation"
+            disabled={thinking}
+            onPress={reset}
+            style={({ pressed }) => [s.newChat, pressed && s.chipPressed]}
+          >
+            <Icon
+              name="plus"
+              size={14}
+              color={colors.accent}
+              strokeWidth={2.2}
+            />
+            <Text style={s.newChatText}>New chat</Text>
+          </Pressable>
         </View>
-      </View>
-      {proposal && (
-        <ProposalReview
-          proposal={proposal}
-          items={items}
-          busy={busy}
-          onApprove={apply}
-          onDiscard={discard}
-        />
       )}
+
+      <View style={s.thread}>
+        {turns.map((turn) =>
+          turn.role === "user" ? (
+            <View key={turn.id} style={s.userRow}>
+              <View style={s.userBubble}>
+                <Text style={s.userText}>{turn.text}</Text>
+              </View>
+            </View>
+          ) : (
+            <View key={turn.id} style={s.botRow}>
+              <View style={s.avatar}>
+                <Icon name="sparkles" size={13} color={colors.accent} />
+              </View>
+              <View style={s.botBubble}>
+                <ProposalReview
+                  proposal={turn.proposal}
+                  items={items}
+                  before={turn.before}
+                  busy={locked}
+                  state={turn.state}
+                  onApprove={() => apply(turn.id)}
+                  onDiscard={() => discard(turn.id)}
+                />
+              </View>
+            </View>
+          ),
+        )}
+        {thinking && (
+          <View style={s.botRow}>
+            <View style={s.avatar}>
+              <Icon name="sparkles" size={13} color={colors.accent} />
+            </View>
+            <TypingIndicator />
+          </View>
+        )}
+      </View>
+
       <View style={s.composer}>
         <TextInput
           style={s.input}
@@ -76,7 +138,7 @@ export function AssistantScreen({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={busy ? "Thinking" : "Send"}
+          accessibilityLabel={thinking ? "Thinking" : "Send"}
           disabled={!canSend}
           onPress={() => ask()}
           style={({ pressed }) => [
@@ -93,12 +155,53 @@ export function AssistantScreen({
           />
         </Pressable>
       </View>
-      {busy && <Text style={[shared.small, s.status]}>Thinking…</Text>}
       <Text style={[shared.small, s.note]}>
         Your request and up to 100 recent items are shared with your configured
         AI provider.
       </Text>
     </>
+  );
+}
+
+/** Three softly bouncing dots while the assistant is working. */
+function TypingIndicator() {
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [progress]);
+  return (
+    <View
+      style={[s.botBubble, s.typing]}
+      accessibilityRole="progressbar"
+      accessibilityLabel="Orbyn is thinking"
+    >
+      {[0, 1, 2].map((n) => {
+        const start = n * 0.15;
+        const translateY = progress.interpolate({
+          inputRange: [0, start, start + 0.2, start + 0.4, 1],
+          outputRange: [0, 0, -4, 0, 0],
+        });
+        const opacity = progress.interpolate({
+          inputRange: [0, start, start + 0.2, start + 0.4, 1],
+          outputRange: [0.45, 0.45, 1, 0.45, 0.45],
+        });
+        return (
+          <Animated.View
+            key={n}
+            style={[s.dot, { opacity, transform: [{ translateY }] }]}
+          />
+        );
+      })}
+    </View>
   );
 }
 
@@ -124,6 +227,76 @@ const s = StyleSheet.create({
   },
   chipPressed: { backgroundColor: colors.accentSoft },
   chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
+  threadHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  newChat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  newChatText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.accent,
+  },
+  thread: { gap: 12, marginBottom: 14 },
+  userRow: { flexDirection: "row", justifyContent: "flex-end" },
+  userBubble: {
+    maxWidth: "85%",
+    backgroundColor: colors.accent,
+    borderRadius: 18,
+    borderBottomRightRadius: 5,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+  },
+  userText: {
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.white,
+  },
+  botRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  botBubble: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderTopLeftRadius: 5,
+    padding: 14,
+  },
+  typing: {
+    flex: 0,
+    flexDirection: "row",
+    gap: 5,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.dot,
+  },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -153,6 +326,5 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  status: { marginTop: 10, color: colors.accent },
   note: { marginTop: 12, textAlign: "center" },
 });

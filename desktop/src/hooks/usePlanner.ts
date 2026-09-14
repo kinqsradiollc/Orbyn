@@ -4,6 +4,7 @@ import {
   type HttpError,
   type Item,
   type Notice,
+  type Team,
   type User,
 } from "@orbyn/core";
 import { client } from "../lib/api";
@@ -21,6 +22,9 @@ export function usePlanner() {
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  /** Bumps after every successful refresh so dependent views can reload. */
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,13 +32,23 @@ export function usePlanner() {
   tokenRef.current = token;
   const refreshSeq = useRef(0);
 
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     session.clear();
     setToken("");
     setUser(null);
     setItems([]);
     setNotices([]);
-  };
+    setTeams([]);
+  }, []);
+
+  /** Surface an error in the banner; a 401 signs the user out. */
+  const report = useCallback(
+    (e: unknown) => {
+      setError((e as Error).message);
+      if ((e as HttpError).status === 401) clearSession();
+    },
+    [clearSession],
+  );
 
   const refresh = useCallback(async () => {
     if (!token) return;
@@ -42,14 +56,17 @@ export function usePlanner() {
     setLoading(true);
     try {
       const all = await client.listAllItems(500);
-      const [u, n] = await Promise.all([
+      const [u, n, t] = await Promise.all([
         client.me(),
         client.listNotifications(),
+        client.listTeams(),
       ]);
       if (tokenRef.current !== token || seq !== refreshSeq.current) return;
       setItems(all);
       setUser(u);
       setNotices(n);
+      setTeams(t);
+      setRevision((r) => r + 1);
     } finally {
       if (tokenRef.current === token) setLoading(false);
     }
@@ -62,10 +79,7 @@ export function usePlanner() {
       try {
         if (document.visibilityState === "visible") await refresh();
       } catch (e) {
-        if (alive) {
-          setError((e as Error).message);
-          if ((e as HttpError).status === 401) clearSession();
-        }
+        if (alive) report(e);
       }
       if (alive) timer = setTimeout(loop, 30000);
     };
@@ -74,7 +88,7 @@ export function usePlanner() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [refresh]);
+  }, [refresh, report]);
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -82,8 +96,7 @@ export function usePlanner() {
     try {
       await fn();
     } catch (e) {
-      setError((e as Error).message);
-      if ((e as HttpError).status === 401) clearSession();
+      report(e);
     } finally {
       setBusy(false);
     }
@@ -138,12 +151,15 @@ export function usePlanner() {
     user,
     items,
     notices,
+    teams,
+    revision,
     error,
     setError,
     busy,
     loading,
     refresh,
     act,
+    report,
     clearSession,
     authenticate,
     logout,

@@ -1,11 +1,21 @@
 import {
   HttpError,
+  type AdminOverview,
+  type AdminUser,
+  type AuditEntry,
   type AuthResponse,
+  type ChatTurn,
   type Credentials,
   type Item,
   type ItemInput,
   type Notice,
+  type Page,
   type Proposal,
+  type SystemRole,
+  type Team,
+  type TeamDetail,
+  type TeamMember,
+  type TeamRole,
   type User,
 } from "@orbyn/core";
 
@@ -51,8 +61,12 @@ export class OrbynClient {
     const token = options.anonymous ? null : await this.getToken();
     const response = await this.fetchImpl(this.baseUrl + path, {
       method: options.method ?? "GET",
+      // Only declare a JSON body when there is one: the API rejects an empty
+      // body labelled application/json (this broke logout and other bodyless calls).
       headers: {
-        "Content-Type": "application/json",
+        ...(options.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body:
@@ -103,10 +117,13 @@ export class OrbynClient {
   }
 
   // ---- items ----
-  listItems(params: { limit?: number; offset?: number } = {}) {
+  listItems(
+    params: { limit?: number; offset?: number; team_id?: string } = {},
+  ) {
     const q = new URLSearchParams();
     if (params.limit !== undefined) q.set("limit", String(params.limit));
     if (params.offset !== undefined) q.set("offset", String(params.offset));
+    if (params.team_id) q.set("team_id", params.team_id);
     const suffix = q.size ? `?${q}` : "";
     return this.request<Item[]>(`/items${suffix}`);
   }
@@ -152,15 +169,88 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
-  chat(message: string, timezone: string) {
+  /** Ask the assistant. Pass earlier turns in `history` for follow-up questions. */
+  chat(message: string, timezone: string, history: ChatTurn[] = []) {
     return this.request<Proposal>("/ai/chat", {
       method: "POST",
-      body: { message, timezone },
+      body: { message, timezone, history: history.slice(-12) },
     });
   }
   applyProposal(id: string) {
     return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {
       method: "POST",
     });
+  }
+
+  // ---- teams ----
+  listTeams() {
+    return this.request<Team[]>("/teams");
+  }
+  createTeam(input: { name: string }) {
+    return this.request<Team>("/teams", { method: "POST", body: input });
+  }
+  getTeam(id: string) {
+    return this.request<TeamDetail>(`/teams/${id}`);
+  }
+  updateTeam(id: string, input: { name: string }) {
+    return this.request<Team>(`/teams/${id}`, { method: "PUT", body: input });
+  }
+  deleteTeam(id: string) {
+    return this.request<void>(`/teams/${id}`, { method: "DELETE" });
+  }
+  addTeamMember(teamId: string, input: { email: string; role?: TeamRole }) {
+    return this.request<TeamMember>(`/teams/${teamId}/members`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateTeamMember(teamId: string, userId: string, input: { role: TeamRole }) {
+    return this.request<TeamMember>(`/teams/${teamId}/members/${userId}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Remove a member, or leave the team when `userId` is your own id. */
+  removeTeamMember(teamId: string, userId: string) {
+    return this.request<void>(`/teams/${teamId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ---- admin (system admins only) ----
+  adminOverview() {
+    return this.request<AdminOverview>("/admin/overview");
+  }
+  adminListUsers(
+    params: { search?: string; limit?: number; offset?: number } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (params.search) q.set("search", params.search);
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.offset !== undefined) q.set("offset", String(params.offset));
+    const suffix = q.size ? `?${q}` : "";
+    return this.request<Page<AdminUser>>(`/admin/users${suffix}`);
+  }
+  adminUpdateUser(
+    id: string,
+    input: { role?: SystemRole; disabled?: boolean },
+  ) {
+    return this.request<AdminUser>(`/admin/users/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  adminDeleteUser(id: string) {
+    return this.request<void>(`/admin/users/${id}`, { method: "DELETE" });
+  }
+  adminListTeams() {
+    return this.request<Team[]>("/admin/teams");
+  }
+  adminListAudit(params: { limit?: number; offset?: number } = {}) {
+    const q = new URLSearchParams();
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.offset !== undefined) q.set("offset", String(params.offset));
+    const suffix = q.size ? `?${q}` : "";
+    return this.request<Page<AuditEntry>>(`/admin/audit${suffix}`);
   }
 }

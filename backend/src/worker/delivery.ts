@@ -20,10 +20,15 @@ export async function deliverOne(): Promise<boolean> {
     ).rows[0];
     if (!n) return false;
 
+    // Re-check against the recipient, not the item owner: they may have been
+    // disabled, left the team, or turned email off since this was queued.
     const item = (
       await db.query(
-        "SELECT i.*,u.email_reminders FROM items i JOIN users u ON u.id=i.user_id WHERE i.id=$1",
-        [n.item_id],
+        `SELECT i.status, i.reminder_version, u.email_reminders, u.disabled,
+          ((i.team_id IS NULL AND i.user_id=u.id) OR EXISTS (
+            SELECT 1 FROM team_members m WHERE m.team_id=i.team_id AND m.user_id=u.id)) AS can_see
+         FROM items i JOIN users u ON u.id=$2 WHERE i.id=$1`,
+        [n.item_id, n.user_id],
       )
     ).rows[0];
     const deviceExists =
@@ -37,6 +42,8 @@ export async function deliverOne(): Promise<boolean> {
         : true;
     const stale =
       !item ||
+      !item.can_see ||
+      item.disabled ||
       item.status === "done" ||
       item.reminder_version !== n.item_version ||
       (n.channel === "email" && !item.email_reminders) ||

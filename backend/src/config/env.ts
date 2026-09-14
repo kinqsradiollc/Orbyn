@@ -26,7 +26,15 @@ const schema = z.object({
   SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   SMTP_FROM: z.string().default("Orbyn <reminders@orbyn.local>"),
   EXPO_ACCESS_TOKEN: z.string().default(""),
+  /** Comma-separated emails that are always system admins. */
+  ADMIN_EMAILS: z.string().default(""),
 });
 
 export type Env = z.infer<typeof schema>;
 export const env: Env = schema.parse(process.env);
+
+export const adminEmails = new Set(
+  env.ADMIN_EMAILS.split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);

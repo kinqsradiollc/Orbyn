@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -8,7 +9,14 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { freshItem, itemBody, type Item, type Notice } from "@orbyn/core";
+import {
+  freshItem,
+  hasSystemPermission,
+  hasTeamPermission,
+  itemBody,
+  type Item,
+  type Notice,
+} from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -18,17 +26,30 @@ import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
+import { AdminSheet } from "../screens/AdminSheet";
 import { AssistantScreen } from "../screens/AssistantScreen";
 import { AuthScreen } from "../screens/AuthScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { InboxScreen } from "../screens/InboxScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
+import { TeamsSheet } from "../screens/TeamsSheet";
 import { TodayScreen } from "../screens/TodayScreen";
 import { colors, spacing } from "../theme";
 import { shared } from "../styles";
 
-/** Auth gate, tab switching and the shared item editor modal. */
+type SheetName = "teams" | "admin";
+
+/**
+ * Auth gate, tab switching, the shared item editor modal and the Teams /
+ * Admin sheets.
+ *
+ * Opening a team plan from a sheet never stacks two modals: the sheet closes,
+ * and on iOS the editor presents from the sheet's `onDismiss` (presenting
+ * while another sheet is still animating away is dropped by UIKit). When the
+ * editor goes away the sheet reopens where it was (its navigation state lives
+ * outside the Modal, so it survives being hidden).
+ */
 export function RootScreen() {
   const planner = usePlanner();
   const {
@@ -38,6 +59,7 @@ export function RootScreen() {
     setUser,
     items,
     notices,
+    teams,
     error,
     setError,
     busy,
@@ -47,11 +69,16 @@ export function RootScreen() {
     signIn,
     signOut,
   } = planner;
-  const assistant = useAssistant({ token, act, refresh });
+  const assistant = useAssistant({ token, act, refresh, items });
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("Today");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [sheet, setSheet] = useState<SheetName | null>(null);
+  /** Item waiting for the sheet's dismiss animation before the editor opens (iOS). */
+  const pendingEdit = useRef<Editing | null>(null);
+  /** Sheet to reopen once the editor closes. */
+  const returnTo = useRef<SheetName | null>(null);
 
   if (!ready)
     return (
@@ -71,12 +98,39 @@ export function RootScreen() {
       />
     );
 
+  const openFromSheet = (item: Editing) => {
+    returnTo.current = sheet;
+    setSheet(null);
+    if (Platform.OS === "ios") pendingEdit.current = item;
+    else setEditing(item);
+  };
+  const onSheetDismissed = () => {
+    const item = pendingEdit.current;
+    pendingEdit.current = null;
+    if (item) setEditing(item);
+  };
+  const reopenSheet = () => {
+    const back = returnTo.current;
+    returnTo.current = null;
+    if (back) setSheet(back);
+  };
+  /** Close the editor; on Android there is no onDismiss, so return to the sheet now. */
+  const closeEditor = () => {
+    setEditing(null);
+    if (Platform.OS !== "ios") reopenSheet();
+  };
+  const clearError = () => setError("");
+
   const today = new Date();
   const openNew = () => setEditing(freshItem());
   const listHandlers = {
     busy,
     onAdd: openNew,
     onEdit: (i: Item) => setEditing({ ...i }),
+    canToggle: (i: Item) => {
+      const team = i.team_id && teams.find((t) => t.id === i.team_id);
+      return !team || hasTeamPermission(team.role, "items:write");
+    },
     onToggle: (i: Item) =>
       act(async () => {
         await client.updateItem(i.id, {
@@ -97,14 +151,14 @@ export function RootScreen() {
       if ("id" in editing)
         await client.updateItem(editing.id, itemBody(editing));
       else await client.createItem(editing);
-      setEditing(null);
+      closeEditor();
       await refresh();
     });
   const deleteEditing = () =>
     act(async () => {
       if (!editing || !("id" in editing)) return;
       await client.deleteItem(editing.id, editing.version);
-      setEditing(null);
+      closeEditor();
       await refresh();
     });
   const sidePadding = {
@@ -197,6 +251,9 @@ export function RootScreen() {
               act={act}
               onUser={setUser}
               onSignOut={signOut}
+              teamCount={teams.length}
+              onOpenTeams={() => setSheet("teams")}
+              onOpenAdmin={() => setSheet("admin")}
             />
           )}
         </View>
@@ -211,13 +268,44 @@ export function RootScreen() {
       />
       <ItemEditor
         editing={editing}
+        teams={teams}
         busy={busy}
         error={error}
-        onChange={setEditing}
+        onChange={(patch) =>
+          setEditing((prev) => (prev ? { ...prev, ...patch } : prev))
+        }
         onSave={saveEditing}
         onDelete={deleteEditing}
-        onClose={() => setEditing(null)}
+        onClose={closeEditor}
+        onDismissed={reopenSheet}
       />
+      <TeamsSheet
+        visible={sheet === "teams"}
+        user={user}
+        teams={teams}
+        busy={busy}
+        error={error}
+        clearError={clearError}
+        act={act}
+        refresh={refresh}
+        onClose={() => setSheet(null)}
+        onDismiss={onSheetDismissed}
+        onOpenItem={openFromSheet}
+      />
+      {hasSystemPermission(user?.role, "admin:access") && (
+        <AdminSheet
+          visible={sheet === "admin"}
+          user={user}
+          busy={busy}
+          error={error}
+          clearError={clearError}
+          act={act}
+          refresh={refresh}
+          onClose={() => setSheet(null)}
+          onDismiss={onSheetDismissed}
+          onOpenItem={openFromSheet}
+        />
+      )}
     </View>
   );
 }
