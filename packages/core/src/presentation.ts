@@ -1,3 +1,5 @@
+import type { Status } from "./types.js";
+
 /** Platform-neutral visual tokens and product copy used by web and mobile. */
 export const colors = {
   background: "#f7f8fa",
@@ -169,3 +171,21 @@ export const statusHeadlines = {
 /** "99.98%" for a 0-1 ratio, or an em dash when there is no data. */
 export const formatUptime = (ratio: number | null) =>
   ratio === null ? "—" : `${(Math.floor(ratio * 10000) / 100).toFixed(2)}%`;
+
+/** Task status wording and colors, shared by web and mobile. */
+export const statusLabels: Record<Status, string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  blocked: "Blocked",
+  done: "Done",
+};
+
+export const statusTones: Record<Status, { bg: string; fg: string }> = {
+  todo: { bg: colors.lowBg, fg: colors.lowText },
+  in_progress: { bg: colors.accentSoft, fg: colors.accent },
+  blocked: { bg: colors.dangerSoft, fg: colors.danger },
+  done: { bg: colors.soft, fg: colors.mediumText },
+};
+
+/** Statuses in the order people move through them. */
+export const statusOrder: Status[] = ["todo", "in_progress", "blocked", "done"];

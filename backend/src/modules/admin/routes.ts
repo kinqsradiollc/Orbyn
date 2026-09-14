@@ -59,7 +59,7 @@ export async function adminRoutes(app: FastifyInstance) {
         (SELECT count(*) FROM users WHERE disabled)::int AS disabled_users,
         (SELECT count(*) FROM teams)::int AS teams,
         (SELECT count(*) FROM items)::int AS items,
-        (SELECT count(*) FROM items WHERE status='todo')::int AS open_items,
+        (SELECT count(*) FROM items WHERE status <> 'done')::int AS open_items,
         (SELECT count(*) FROM notifications WHERE state IN ('pending','receipt'))::int AS notifications_pending,
         (SELECT count(*) FROM notifications WHERE state='failed')::int AS notifications_failed`)
     ).rows[0];

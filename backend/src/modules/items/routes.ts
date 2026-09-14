@@ -1,11 +1,58 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { itemData, itemsQuery } from "@orbyn/core";
-import { pool, transaction } from "../../db/pool.js";
+import {
+  fail,
+  itemData,
+  itemsQuery,
+  progressUpdateInput,
+  stepInput,
+  stepUpdate,
+  type ItemDetail,
+} from "@orbyn/core";
+import { pool, query, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
-import { mutate } from "./service.js";
+import {
+  lockItem,
+  mutate,
+  recomputeProgress,
+  requireItemAccess,
+  type ItemRow,
+} from "./service.js";
+
+/** Item columns for list views; checklist and timeline counts are stored on the item. */
+const ITEM_COLUMNS = `i.*, t.name AS team_name`;
+
+/** A task with its checklist and its 100 most recent updates, newest first. */
+export async function itemDetail(id: string, db?: Db): Promise<ItemDetail> {
+  const item = (
+    await query(
+      `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id = i.team_id WHERE i.id = $1`,
+      [id],
+      db,
+    )
+  ).rows[0];
+  if (!item) fail(404, "Item not found");
+  const steps = (
+    await query(
+      "SELECT id, item_id, title, done, position, created_at FROM item_steps WHERE item_id=$1 ORDER BY position, created_at, id",
+      [id],
+      db,
+    )
+  ).rows;
+  const updates = (
+    await query(
+      `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
+              u.body, u.status, u.progress, u.created_at
+       FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
+       WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
+      [id],
+      db,
+    )
+  ).rows;
+  return { ...item, steps, updates };
+}
 
 export async function itemRoutes(app: FastifyInstance) {
   app.get("/items", async (r) => {
@@ -14,12 +61,23 @@ export async function itemRoutes(app: FastifyInstance) {
     if (q.team_id) await requireTeam(q.team_id, u, "items:read");
     return (
       await pool.query(
-        `SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id=i.team_id
+        `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id=i.team_id
          WHERE ${VISIBLE_ITEMS} AND ($4::uuid IS NULL OR i.team_id=$4)
          ORDER BY i.created_at DESC, i.id LIMIT $2 OFFSET $3`,
         [u.id, q.limit, q.offset, q.team_id ?? null],
       )
     ).rows;
+  });
+
+  app.get("/items/:id", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const item = (
+      await pool.query<ItemRow>("SELECT * FROM items WHERE id=$1", [id])
+    ).rows[0];
+    if (!item) fail(404, "Item not found");
+    await requireItemAccess(u, item, "items:read");
+    return itemDetail(id);
   });
 
   app.post("/items", async (r, reply) => {
@@ -62,5 +120,113 @@ export async function itemRoutes(app: FastifyInstance) {
       }),
     );
     return reply.code(204).send();
+  });
+
+  // Checklist steps. These change progress but not the item's edit version,
+  // so an open editor never hits a conflict because someone ticked a step.
+  app.post("/items/:id/steps", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = stepInput.parse(r.body);
+    const detail = await transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      await db.query(
+        `INSERT INTO item_steps(item_id, title, position)
+         VALUES($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM item_steps WHERE item_id=$1))`,
+        [id, d.title],
+      );
+      await recomputeProgress(db, id);
+      return itemDetail(id, db);
+    });
+    reply.code(201);
+    return detail;
+  });
+
+  app.put("/items/:id/steps/:stepId", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const stepId = idParam(r, "stepId");
+    const d = stepUpdate.parse(r.body);
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      const updated = await db.query(
+        "UPDATE item_steps SET title=coalesce($1, title), done=coalesce($2, done) WHERE id=$3 AND item_id=$4",
+        [d.title ?? null, d.done ?? null, stepId, id],
+      );
+      if (!updated.rowCount) fail(404, "Step not found");
+      await recomputeProgress(db, id);
+      return itemDetail(id, db);
+    });
+  });
+
+  app.delete("/items/:id/steps/:stepId", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const stepId = idParam(r, "stepId");
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      const deleted = await db.query(
+        "DELETE FROM item_steps WHERE id=$1 AND item_id=$2",
+        [stepId, id],
+      );
+      if (!deleted.rowCount) fail(404, "Step not found");
+      await recomputeProgress(db, id);
+      return itemDetail(id, db);
+    });
+  });
+
+  // Progress updates: a note in the task's timeline that can also change its
+  // status or, when it has no checklist, its progress.
+  app.post("/items/:id/updates", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = progressUpdateInput.parse(r.body);
+    const detail = await transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      if (d.progress !== undefined) {
+        const steps = (
+          await db.query<{ n: number }>(
+            "SELECT count(*)::int AS n FROM item_steps WHERE item_id=$1",
+            [id],
+          )
+        ).rows[0].n;
+        if (steps > 0) fail(409, "This task's progress follows its checklist.");
+      }
+      await db.query(
+        "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
+        [id, u.id, d.body, d.status ?? null, d.progress ?? null],
+      );
+      await db.query(
+        "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
+        [id],
+      );
+      if (d.status)
+        await db.query(
+          `UPDATE items SET
+             status = $1::text,
+             progress = CASE WHEN $1::text = 'done' THEN 100 ELSE progress END,
+             reminder_version = CASE WHEN status = 'done' AND $1::text <> 'done'
+               THEN reminder_version + 1 ELSE reminder_version END,
+             updated_at = now()
+           WHERE id = $2`,
+          [d.status, id],
+        );
+      if (d.progress !== undefined)
+        await db.query(
+          `UPDATE items SET
+             progress = $1::int,
+             status = CASE WHEN status = 'todo' AND $1::int > 0 THEN 'in_progress' ELSE status END,
+             updated_at = now()
+           WHERE id = $2`,
+          [d.progress, id],
+        );
+      return itemDetail(id, db);
+    });
+    reply.code(201);
+    return detail;
   });
 }

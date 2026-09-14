@@ -3,7 +3,7 @@ import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 
 export const KINDS = ["task", "event"] as const;
-export const STATUSES = ["todo", "done"] as const;
+export const STATUSES = ["todo", "in_progress", "blocked", "done"] as const;
 export const PRIORITIES = ["low", "medium", "high"] as const;
 /** Largest reminder window: one week in minutes. */
 export const MAX_REMINDER_MINUTES = 10080;
@@ -34,6 +34,8 @@ export const itemData = z
       .default(30),
     /** Shared team this item belongs to; null for a personal item. */
     team_id: z.uuid().nullable().default(null),
+    /** 0-100. Optional: omitted on edit keeps the saved value; checklists set it. */
+    progress: z.number().int().min(0).max(100).optional(),
   })
   .strict()
   .refine(
@@ -185,3 +187,32 @@ export const aiSettingsInput = z
 export const aiTestInput = z
   .object({ model: z.string().trim().max(200).optional() })
   .strict();
+
+/** A checklist step on a task. */
+export const stepInput = z
+  .object({ title: z.string().trim().min(1).max(200) })
+  .strict();
+
+export const stepUpdate = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    done: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (d) => d.title !== undefined || d.done !== undefined,
+    "Nothing to update",
+  );
+
+/** A progress note on a task, optionally changing its status or progress. */
+export const progressUpdateInput = z
+  .object({
+    body: z.string().trim().max(2000).default(""),
+    status: z.enum(STATUSES).optional(),
+    progress: z.number().int().min(0).max(100).optional(),
+  })
+  .strict()
+  .refine(
+    (d) => d.body !== "" || d.status !== undefined || d.progress !== undefined,
+    "Write an update, or change the status or progress",
+  );

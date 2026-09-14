@@ -136,6 +136,25 @@ counts, but never the contents of personal or team items.
 The last active admin cannot be demoted, disabled, or deleted (`409`), and admins cannot delete
 their own account here.
 
+### Task progress
+
+`status` is `todo`, `in_progress`, `blocked`, or `done`, and `progress` is 0 to 100. List
+responses also include `steps_total`, `steps_done`, `updates_count`, and `last_update_at`.
+
+| Method and path                   | Body / result                                                                |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /items/:id`                  | The item with `steps[]` and its 100 most recent `updates[]`, newest first    |
+| `POST /items/:id/steps`           | `{ "title" }` adds a checklist step; returns the item detail                 |
+| `PUT /items/:id/steps/:stepId`    | `{ "title"?, "done"? }`; returns the item detail                             |
+| `DELETE /items/:id/steps/:stepId` | Removes a step; returns the item detail                                      |
+| `POST /items/:id/updates`         | `{ "body"?, "status"?, "progress"? }` posts a timeline entry; returns detail |
+
+When a task has steps, its progress is the share of steps done, and ticking the first step moves a
+`todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a
+task done sets progress to 100; reopening it re-arms its reminder. Steps and updates do not change
+the item's `version`, so an open editor never conflicts because of them, and `PUT /items/:id`
+without `progress` keeps the saved value. Viewers can read steps and updates but not change them.
+
 ## Devices (mobile push)
 
 ### `POST /devices` (auth)

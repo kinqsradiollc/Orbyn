@@ -30,6 +30,11 @@ export type Item = ItemInput & {
   user_id?: string;
   /** Present on list responses when the item belongs to a team. */
   team_name?: string | null;
+  /** Checklist and timeline counts, present on list and detail responses. */
+  steps_total?: number;
+  steps_done?: number;
+  updates_count?: number;
+  last_update_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -172,3 +177,29 @@ export type AiTestResult = {
   latency_ms: number | null;
   message: string;
 };
+
+export type ItemStep = {
+  id: string;
+  item_id: string;
+  title: string;
+  done: boolean;
+  position: number;
+  created_at: string;
+};
+
+/** One entry in a task's progress timeline. */
+export type ItemUpdate = {
+  id: string;
+  item_id: string;
+  user_id: string | null;
+  author_name: string;
+  body: string;
+  /** Set when this update changed the status. */
+  status: Status | null;
+  /** Set when this update changed the progress. */
+  progress: number | null;
+  created_at: string;
+};
+
+/** A task with its checklist and progress timeline (newest first). */
+export type ItemDetail = Item & { steps: ItemStep[]; updates: ItemUpdate[] };

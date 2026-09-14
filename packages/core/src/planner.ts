@@ -12,6 +12,7 @@ export const freshItem = (): ItemInput => ({
   end_at: null,
   reminder_minutes: 30,
   team_id: null,
+  progress: 0,
 });
 
 /** The exact body `PUT /items/:id` expects: every field plus the current version. */
@@ -25,6 +26,7 @@ export const itemBody = (i: Item): ItemInput & { version: number } => ({
   end_at: i.end_at,
   reminder_minutes: i.reminder_minutes,
   team_id: i.team_id ?? null,
+  progress: i.progress,
   version: i.version,
 });
 

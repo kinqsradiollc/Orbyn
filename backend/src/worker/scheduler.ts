@@ -29,7 +29,7 @@ export async function enqueue() {
     SELECT 'inapp' AS channel,u.id::text AS destination
     UNION ALL SELECT 'email',u.email WHERE u.email_reminders AND $1::boolean
     UNION ALL SELECT 'push',d.token FROM devices d WHERE d.user_id=u.id
-   ) c WHERE i.status='todo' AND i.due_at IS NOT NULL
+   ) c WHERE i.status <> 'done' AND i.due_at IS NOT NULL
     AND i.due_at-make_interval(mins=>i.reminder_minutes)<=now()
    ON CONFLICT(item_id,item_version,channel,destination) DO NOTHING`,
       [emailEnabled],

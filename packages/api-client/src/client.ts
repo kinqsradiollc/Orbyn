@@ -13,6 +13,8 @@ import {
   type ChatTurn,
   type Credentials,
   type Item,
+  type ItemDetail,
+  type Status,
   type ItemInput,
   type Notice,
   type Page,
@@ -158,6 +160,42 @@ export class OrbynClient {
   deleteItem(id: string, version: number) {
     return this.request<void>(`/items/${id}?version=${version}`, {
       method: "DELETE",
+    });
+  }
+
+  /** A task with its checklist steps and progress timeline. */
+  getItem(id: string) {
+    return this.request<ItemDetail>(`/items/${id}`);
+  }
+  addStep(itemId: string, input: { title: string }) {
+    return this.request<ItemDetail>(`/items/${itemId}/steps`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateStep(
+    itemId: string,
+    stepId: string,
+    input: { title?: string; done?: boolean },
+  ) {
+    return this.request<ItemDetail>(`/items/${itemId}/steps/${stepId}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteStep(itemId: string, stepId: string) {
+    return this.request<ItemDetail>(`/items/${itemId}/steps/${stepId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Post a progress note, optionally changing status or progress. */
+  postItemUpdate(
+    itemId: string,
+    input: { body?: string; status?: Status; progress?: number },
+  ) {
+    return this.request<ItemDetail>(`/items/${itemId}/updates`, {
+      method: "POST",
+      body: input,
     });
   }
 
