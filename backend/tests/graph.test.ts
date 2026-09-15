@@ -370,6 +370,30 @@ test("a delete of an item the request doesn't name is refused", async () => {
   );
 });
 
+test("an update of an item the request doesn't name is refused", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  await addItem(me.token, { title: "Buy groceries", due_at: soon });
+  // The wrong item, with its own title, so the title check can't catch it.
+  const wrong = plan("Moved.", [
+    {
+      operation: "update",
+      item_id: gym.id,
+      data: { title: "Gym session", due_at: "2026-09-17T17:00" },
+    },
+  ]);
+  reset(wrong, wrong);
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(r.json().actions, []);
+  assert.match(r.json().summary, /Gym session: The user didn't name this item/);
+});
+
 test("invalid plans twice are a provider error", async () => {
   const me = await newUser();
   reset("not json", "still not json");

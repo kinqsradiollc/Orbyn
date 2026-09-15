@@ -283,7 +283,26 @@ async function propose(
     if (!result?.ok) refuse(p, reply.error ?? result?.error ?? "refused");
   }
 
-  const updates = of("update");
+  // A change to an item that was shown must be to one the request names (its
+  // title shares words with the request), unless the user asked for all of
+  // something. Matilda once moved the gym session when asked to move the
+  // groceries, and proposed deleting the groceries with "the gym session".
+  // Ids it wasn't shown go on to the tools, which report them as missing.
+  const named = (p: Planned) => {
+    if (
+      !shown.titles.has(p.id) ||
+      shown.named.has(p.id) ||
+      ALL_OF_THEM.test(ctx.intentText)
+    )
+      return true;
+    refuse(
+      p,
+      "The user didn't name this item. Change only items named in the request.",
+    );
+    return false;
+  };
+
+  const updates = of("update").filter(named);
   if (updates.length) {
     const results = await perItem("propose_update", updates, (list) => ({
       changes: list.map((p) => ({ id: p.id, fields: p.fields })),
@@ -304,17 +323,7 @@ async function propose(
     }
   }
 
-  // A delete must be of an item the request names (its title shares words
-  // with the request), unless the user asked for all of something: Matilda
-  // once proposed deleting the groceries alongside "the gym session".
-  const deletes = of("delete").filter((p) => {
-    if (shown.named.has(p.id) || ALL_OF_THEM.test(ctx.intentText)) return true;
-    refuse(
-      p,
-      "The user didn't name this item. Delete only items named in the request.",
-    );
-    return false;
-  });
+  const deletes = of("delete").filter(named);
   if (deletes.length) {
     const results = await perItem("propose_delete", deletes, (list) => ({
       ids: list.map((p) => p.id),
