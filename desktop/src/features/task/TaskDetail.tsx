@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
+  Ban,
   CalendarClock,
+  CalendarPlus,
   Check,
+  CornerLeftUp,
+  Hourglass,
+  Link2,
+  ListTree,
   Crosshair,
   Eye,
   MapPin,
@@ -16,22 +22,47 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
+  freshItem,
+  isClosed,
   sameDay,
   statusLabels,
-  statusOrder,
+  STATUSES,
   type HttpError,
   type Item,
   type ItemDetail,
+  type ItemLink,
   type ItemStep,
   type Status,
+  type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { celebrate } from "../../lib/celebrate";
 import { stagger } from "../../lib/motion";
 import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import { ItemFacts } from "../../components/ItemFacts";
+import { BlockDialog } from "../calendar/BlockDialog";
+import { minutesLabel, spanLabel } from "../../lib/planning";
+import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
+
+/** How far ahead "Booked time" looks. */
+const BOOKED_DAYS = 30;
+
+const shortDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+/** The next quarter hour from now, for "Schedule…". */
+function nextQuarter() {
+  const d = new Date();
+  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
+  return d;
+}
 
 type Props = {
   /** The task as listed; the panel loads its checklist and timeline. */
@@ -48,6 +79,10 @@ type Props = {
   onFocus?: (item: Item) => void;
   /** Refresh the planner after a change. */
   onChanged: () => Promise<void>;
+  /** Everything in the planner: the parent and the subtasks. */
+  items?: Item[];
+  /** Shows another item in this panel (a parent or a subtask). */
+  onOpenItem?: (item: Item) => void;
   /** Planner error handler (signs out on 401). */
   onError: (e: unknown) => void;
 };
@@ -83,6 +118,8 @@ export function TaskDetail({
   onFocus,
   onChanged,
   onError,
+  items,
+  onOpenItem,
 }: Props) {
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [pending, setPending] = useState(false);
@@ -124,6 +161,70 @@ export function TaskDetail({
     };
   }, [reloadKey, item.id]);
 
+  // Booked time: this task's time blocks over the next 30 days.
+  const [booked, setBooked] = useState<TimeBlock[] | null>(null);
+  const [bookedTick, setBookedTick] = useState(0);
+  const [scheduling, setScheduling] = useState(false);
+  const [blockPending, setBlockPending] = useState(false);
+  useEffect(() => {
+    if (item.kind !== "task") return;
+    let alive = true;
+    const now = Date.now();
+    client
+      .listBlocks(
+        new Date(now).toISOString(),
+        new Date(now + BOOKED_DAYS * 86_400_000).toISOString(),
+      )
+      .then(
+        (all) =>
+          alive &&
+          setBooked(
+            all
+              .filter(
+                (b) => b.item_id === item.id && Date.parse(b.end_at) > now,
+              )
+              .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at)),
+          ),
+        () => alive && setBooked([]),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [item.id, item.kind, reloadKey, bookedTick]);
+  // Subtasks: a new one goes in the same place (team and list) as this task.
+  const [newSubtask, setNewSubtask] = useState("");
+  const addSubtask = (e: FormEvent) => {
+    e.preventDefault();
+    const title = newSubtask.trim();
+    if (!title) return;
+    void blockAction(async () => {
+      await client.createItem({
+        ...freshItem(),
+        title,
+        kind: "task",
+        parent_id: item.id,
+        team_id: item.team_id ?? null,
+        list_id: item.list_id ?? null,
+      });
+      setNewSubtask("");
+    });
+  };
+  /** Add or remove a block, then reload the list and the planner. */
+  const blockAction = async (fn: () => Promise<unknown>) => {
+    setBlockPending(true);
+    setError("");
+    try {
+      await fn();
+      setBookedTick((n) => n + 1);
+      await onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+      if ((e as HttpError).status === 401) onError(e);
+    } finally {
+      setBlockPending(false);
+    }
+  };
+
   // Focus the panel on open; give focus back to whatever opened it.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -136,7 +237,8 @@ export function TaskDetail({
 
   // Escape closes; Tab stays inside the panel.
   useEffect(() => {
-    if (suspended) return;
+    // The schedule dialog handles its own keys while it's open.
+    if (suspended || scheduling) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (renaming) return;
@@ -160,9 +262,26 @@ export function TaskDetail({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [suspended, renaming, onClose]);
+  }, [suspended, scheduling, renaming, onClose]);
 
   const current: Item = detail ?? item;
+  const parent = current.parent_id
+    ? items?.find((i) => i.id === current.parent_id)
+    : undefined;
+  const children = (items ?? [])
+    .filter((i) => i.parent_id === current.id)
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  /** Levels above this task: a tree has three levels at most. */
+  let depth = 0;
+  for (let up = parent; up && depth < 3; depth++) {
+    const id = up.parent_id;
+    up = id ? items?.find((i) => i.id === id) : undefined;
+  }
+  const canAddSubtask =
+    canWrite &&
+    current.kind === "task" &&
+    depth < 2 &&
+    !isClosed(current.status);
   const steps = (detail?.steps ?? [])
     .slice()
     .sort((a, b) => a.position - b.position);
@@ -179,7 +298,11 @@ export function TaskDetail({
     setPending(true);
     setError("");
     try {
-      setDetail(await fn());
+      const before = (detail ?? item).status;
+      const next = await fn();
+      setDetail(next);
+      // A status change, an update or the last checklist step can finish it.
+      if (next.status === "done" && before !== "done") celebrate();
       await onChanged();
       return true;
     } catch (e) {
@@ -293,6 +416,14 @@ export function TaskDetail({
               <X size={20} />
             </button>
           </div>
+          {parent && (
+            <button
+              className="link-button drawer-parent"
+              onClick={() => onOpenItem?.(parent)}
+            >
+              <CornerLeftUp size={13} aria-hidden="true" /> {parent.title}
+            </button>
+          )}
           <h2 id="task-drawer-title">{current.title}</h2>
           <div className="drawer-facts">
             <span>
@@ -302,6 +433,14 @@ export function TaskDetail({
             <span className={"priority " + current.priority}>
               {current.priority} priority
             </span>
+            {current.kind === "task" &&
+              !isClosed(current.status) &&
+              current.remaining_minutes != null && (
+                <span className="drawer-fact">
+                  <Hourglass size={14} aria-hidden="true" />
+                  {minutesLabel(current.remaining_minutes)} left
+                </span>
+              )}
             {current.location && (
               <span className="drawer-fact">
                 <MapPin size={14} aria-hidden="true" />
@@ -326,7 +465,7 @@ export function TaskDetail({
               role="radiogroup"
               aria-label="Status"
             >
-              {statusOrder.map((s) => (
+              {STATUSES.map((s) => (
                 <button
                   key={s}
                   role="radio"
@@ -424,9 +563,99 @@ export function TaskDetail({
           {current.notes && (
             <section className="drawer-section">
               <h3>Notes</h3>
-              <p className="drawer-notes">{current.notes}</p>
+              <p className="drawer-notes">
+                <Linkify text={current.notes} />
+              </p>
             </section>
           )}
+
+          {(detail?.links ?? []).length > 0 && (
+            <section className="drawer-section" aria-labelledby="links-title">
+              <h3 id="links-title">
+                <Link2 size={16} aria-hidden="true" /> Links
+              </h3>
+              <ul className="item-links">
+                {((detail?.links ?? []) as ItemLink[]).map((l) => (
+                  <li key={l.id}>
+                    <a href={l.url} target="_blank" rel="noopener noreferrer">
+                      {l.title || l.url}
+                    </a>
+                    {l.title && <small>{hostOf(l.url)}</small>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {current.kind === "task" &&
+            (children.length > 0 || canAddSubtask) && (
+              <section
+                className="drawer-section"
+                aria-labelledby="subtasks-title"
+              >
+                <div className="drawer-section-head">
+                  <h3 id="subtasks-title">
+                    <ListTree size={16} aria-hidden="true" /> Subtasks
+                  </h3>
+                  {children.length > 0 && (
+                    <span className="drawer-count">
+                      {children.filter((c) => c.status === "done").length} of{" "}
+                      {children.filter((c) => c.status !== "cancelled").length}{" "}
+                      done
+                    </span>
+                  )}
+                </div>
+                {children.length > 0 && (
+                  <ul className="subtask-list">
+                    {children.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          className="subtask-main"
+                          onClick={() => onOpenItem?.(c)}
+                        >
+                          <span className="subtask-title">{c.title}</span>
+                          <small>
+                            {progressOf(c)}%
+                            {c.estimate_minutes
+                              ? ` · ${minutesLabel(c.estimate_minutes)}`
+                              : ""}
+                            {c.remaining_minutes != null && !isClosed(c.status)
+                              ? ` · ${minutesLabel(c.remaining_minutes)} left`
+                              : ""}
+                          </small>
+                        </button>
+                        <StatusPill status={c.status} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {canAddSubtask && (
+                  <form className="step-add" onSubmit={addSubtask}>
+                    <label htmlFor="subtask-title" className="sr-only">
+                      New subtask
+                    </label>
+                    <input
+                      id="subtask-title"
+                      maxLength={200}
+                      placeholder="Add a subtask…"
+                      value={newSubtask}
+                      onChange={(e) => setNewSubtask(e.target.value)}
+                    />
+                    <button
+                      className="secondary"
+                      disabled={blockPending || !newSubtask.trim()}
+                    >
+                      <Plus size={14} /> Add subtask
+                    </button>
+                  </form>
+                )}
+                {canWrite && current.kind === "task" && depth >= 2 && (
+                  <p className="drawer-hint">
+                    Subtasks go three levels deep at most.
+                  </p>
+                )}
+              </section>
+            )}
 
           <section className="drawer-section" aria-labelledby="steps-title">
             <div className="drawer-section-head">
@@ -540,6 +769,53 @@ export function TaskDetail({
             )}
           </section>
 
+          {current.kind === "task" && (
+            <section className="drawer-section" aria-labelledby="booked-title">
+              <div className="drawer-section-head">
+                <h3 id="booked-title">
+                  <CalendarClock size={16} aria-hidden="true" /> Booked time
+                </h3>
+                {current.status !== "done" && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={blockPending}
+                    onClick={() => setScheduling(true)}
+                  >
+                    <CalendarPlus size={14} /> Schedule…
+                  </button>
+                )}
+              </div>
+              {booked === null ? (
+                <p className="drawer-hint">Loading booked time…</p>
+              ) : booked.length ? (
+                <ul className="booked-list">
+                  {booked.map((b) => (
+                    <li key={b.id}>
+                      <span>
+                        {shortDay(b.start_at)},{" "}
+                        {spanLabel(b.start_at, b.end_at)}
+                      </span>
+                      <button
+                        type="button"
+                        className="link-button"
+                        disabled={blockPending}
+                        aria-label={`Remove the time on ${shortDay(b.start_at)}, ${spanLabel(b.start_at, b.end_at)}`}
+                        onClick={() =>
+                          void blockAction(() => client.deleteBlock(b.id))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="drawer-hint">No time set aside yet.</p>
+              )}
+            </section>
+          )}
+
           <section className="drawer-section" aria-labelledby="updates-title">
             <div className="drawer-section-head">
               <h3 id="updates-title">
@@ -574,13 +850,11 @@ export function TaskDetail({
                       <option value="">
                         Keep status ({statusLabels[current.status]})
                       </option>
-                      {statusOrder
-                        .filter((s) => s !== current.status)
-                        .map((s) => (
-                          <option key={s} value={s}>
-                            Move to {statusLabels[s]}
-                          </option>
-                        ))}
+                      {STATUSES.filter((s) => s !== current.status).map((s) => (
+                        <option key={s} value={s}>
+                          Move to {statusLabels[s]}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <button
@@ -645,9 +919,25 @@ export function TaskDetail({
         </div>
 
         <div className="drawer-foot">
-          {onFocus && current.kind === "task" && current.status !== "done" && (
+          {onFocus && current.kind === "task" && !isClosed(current.status) && (
             <button className="primary" onClick={() => onFocus(current)}>
               <Crosshair size={15} /> Focus
+            </button>
+          )}
+          {canWrite && current.kind === "task" && !isClosed(current.status) && (
+            <button
+              className="secondary"
+              disabled={pending}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Cancel “${current.title}”? It closes without being done.`,
+                  )
+                )
+                  setStatus("cancelled");
+              }}
+            >
+              <Ban size={15} /> Cancel task
             </button>
           )}
           <button className="secondary" onClick={() => onEdit(current)}>
@@ -665,6 +955,25 @@ export function TaskDetail({
             Close
           </button>
         </div>
+        {scheduling && (
+          <BlockDialog
+            heading="Set time aside"
+            subject={current.title}
+            start={nextQuarter()}
+            minutes={Math.min(current.estimate_minutes ?? 30, 1440)}
+            onClose={() => setScheduling(false)}
+            onSave={(start, end) => {
+              setScheduling(false);
+              void blockAction(() =>
+                client.createBlock({
+                  item_id: item.id,
+                  start_at: start.toISOString(),
+                  end_at: end.toISOString(),
+                }),
+              );
+            }}
+          />
+        )}
       </aside>
     </div>
   );

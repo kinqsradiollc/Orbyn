@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  CalendarSync,
   Copy,
   KeyRound,
   Plus,
@@ -15,14 +14,17 @@ import {
   type Webhook,
   type WebhookEvent,
 } from "@orbyn/core";
-import { client } from "../../lib/api";
+import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
+import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
+import "./settings-w3.css";
 
 type Props = { report: (e: unknown) => void };
 
-const EVENT_LABELS: Record<WebhookEvent, string> = {
+/** Labels for the events we know; newer ones show their name. */
+const EVENT_LABELS: Partial<Record<WebhookEvent, string>> = {
   "item.created": "Item created",
   "item.updated": "Item updated",
   "item.completed": "Item completed",
@@ -32,6 +34,9 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled",
+  "event.starting": "Event starting soon",
+  "block.started": "Time block started",
+  "task.at_risk": "Task at risk",
 };
 
 /** A secret shown once, with a copy button. */
@@ -56,7 +61,8 @@ function OnceSecret({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * API keys, webhooks and the calendar feed: how other tools work with Orbyn.
+ * API keys, webhooks, the calendar feed and subscribed calendars: how other
+ * tools work with Orbyn.
  * Everything is served from this server; nothing is sent anywhere else
  * unless you add a webhook.
  */
@@ -73,10 +79,22 @@ export function ConnectionsSettings({ report }: Props) {
           here, and webhooks send only the events you pick to the address you
           give.
         </p>
+        <p className="muted">
+          Building an integration? See the{" "}
+          <a
+            href={`${apiBase}/openapi.yaml`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            API reference
+          </a>{" "}
+          (OpenAPI).
+        </p>
       </section>
       <ApiKeys report={report} />
       <Webhooks report={report} />
-      <CalendarFeed report={report} />
+      <CalendarFeedCard report={report} />
+      <CalendarSubscriptions report={report} />
     </>
   );
 }
@@ -175,6 +193,8 @@ function Webhooks({ report }: Props) {
   const [hooks, setHooks] = useState<Webhook[] | null>(null);
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<WebhookEvent[]>(["item.created"]);
+  /** Minutes before an event that "event starting soon" is sent. */
+  const [lead, setLead] = useState(15);
   const [secret, setSecret] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, string>>({});
   const action = useAction(report);
@@ -195,7 +215,11 @@ function Webhooks({ report }: Props) {
       return;
     }
     void action.run(async () => {
-      const hook = await client.createWebhook({ url: url.trim(), events });
+      const hook = await client.createWebhook({
+        url: url.trim(),
+        events,
+        ...(events.includes("event.starting") ? { lead_minutes: lead } : {}),
+      });
       setSecret(hook.secret);
       setUrl("");
       await load();
@@ -205,6 +229,12 @@ function Webhooks({ report }: Props) {
     void action.run(async () => {
       await client.updateWebhook(h.id, { active });
       await load();
+    });
+  const setLeadFor = (h: Webhook, minutes: number) =>
+    void action.run(async () => {
+      await client.updateWebhook(h.id, { lead_minutes: minutes });
+      await load();
+      return "Saved.";
     });
   const test = (h: Webhook) =>
     void action.run(async () => {
@@ -246,6 +276,8 @@ function Webhooks({ report }: Props) {
                 <strong className="hook-url">{h.url}</strong>
                 <small>
                   {h.events.map((e) => EVENT_LABELS[e] ?? e).join(", ")}
+                  {h.events.includes("event.starting") &&
+                    ` · starts ${h.lead_minutes ?? 15} min before`}
                 </small>
                 <small>
                   {h.last_status !== null
@@ -263,6 +295,28 @@ function Webhooks({ report }: Props) {
                   </small>
                 )}
               </span>
+              {h.events.includes("event.starting") && (
+                <label className="hook-lead">
+                  <span className="sr-only">
+                    Minutes before an event, for {h.url}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    defaultValue={h.lead_minutes ?? 15}
+                    disabled={action.pending}
+                    onBlur={(e) => {
+                      const v = Math.min(
+                        120,
+                        Math.max(0, Math.round(Number(e.target.value) || 0)),
+                      );
+                      if (v !== (h.lead_minutes ?? 15)) setLeadFor(h, v);
+                    }}
+                  />{" "}
+                  min before
+                </label>
+              )}
               <label className="hook-active">
                 <span className="sr-only">Send to {h.url}</span>
                 <input
@@ -324,88 +378,32 @@ function Webhooks({ report }: Props) {
                     )
                   }
                 />
-                {EVENT_LABELS[ev]}
+                {EVENT_LABELS[ev] ?? ev}
               </label>
             ))}
           </div>
         </fieldset>
+        {events.includes("event.starting") && (
+          <div className="settings-field">
+            <label htmlFor="hook-lead">
+              “Event starting soon”: minutes before
+            </label>
+            <input
+              id="hook-lead"
+              type="number"
+              min={0}
+              max={120}
+              value={lead}
+              onChange={(e) =>
+                setLead(Math.min(120, Math.max(0, Number(e.target.value) || 0)))
+              }
+            />
+          </div>
+        )}
         <button className="primary" disabled={action.pending || !url.trim()}>
           <Plus size={14} /> Add webhook
         </button>
       </form>
-      <OutcomeNote outcome={action.outcome} />
-    </section>
-  );
-}
-
-function CalendarFeed({ report }: Props) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const action = useAction(report);
-
-  const create = () =>
-    void action.run(async () => {
-      const feed = await client.createCalendarFeed();
-      setUrl(feed.url);
-      setCopied(false);
-      return url
-        ? "Made a new link. The old one no longer works."
-        : "Your private link is ready.";
-    });
-  const turnOff = () => {
-    if (
-      !window.confirm(
-        "Turn off the calendar feed? Subscribed apps stop updating.",
-      )
-    )
-      return;
-    void action.run(async () => {
-      await client.deleteCalendarFeed();
-      setUrl(null);
-      return "The calendar feed is off. Any old link no longer works.";
-    });
-  };
-
-  return (
-    <section className="card settings-card" aria-labelledby="feed-title">
-      <h2 id="feed-title">
-        <CalendarSync size={16} aria-hidden="true" /> Calendar feed
-      </h2>
-      <p className="muted">
-        In Apple Calendar, Google Calendar or Outlook, choose “Subscribe to
-        calendar” (or “From URL”) and paste your private link.
-      </p>
-      {url && (
-        <div className="secret-box">
-          <strong>Your private link</strong>
-          <div className="secret-row">
-            <code>{url}</code>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => void copyText(url).then(setCopied)}
-            >
-              <Copy size={13} /> {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <small>
-            Anyone with this link can see your calendar. Keep it private.
-          </small>
-        </div>
-      )}
-      <div className="button-row start">
-        <button className="primary" disabled={action.pending} onClick={create}>
-          <CalendarSync size={14} />{" "}
-          {url ? "Replace link" : "Create or replace private link"}
-        </button>
-        <button
-          className="secondary"
-          disabled={action.pending}
-          onClick={turnOff}
-        >
-          Turn off feed
-        </button>
-      </div>
       <OutcomeNote outcome={action.outcome} />
     </section>
   );

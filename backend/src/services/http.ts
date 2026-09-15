@@ -8,7 +8,7 @@ import { ZodError } from "zod";
 import { env } from "../config/env.js";
 import { createHash } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
-import { authenticate } from "../lib/auth.js";
+import { apiKeyId, authenticate } from "../lib/auth.js";
 import { cachedSettings, settings } from "../lib/settings.js";
 import { versionInfo } from "../lib/version.js";
 
@@ -18,6 +18,8 @@ export type ServiceName = "api" | "ai" | "status" | "all";
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const OPEN_DURING_MAINTENANCE = ["/auth/", "/admin/", "/devices", "/ai/chat"];
+/** Paths anyone with a link can open: booking pages, invites, profiles, RSVPs. */
+const PUBLIC_PAGES = /^\/(book|invite|u|rsvp)(\/|$)/;
 
 /**
  * Fastify with the plugins, error handling, and `/health` endpoint every
@@ -51,11 +53,21 @@ export async function createService(
   await app.register(cors, {
     origin: (origin, cb) =>
       cb(null, !origin || cachedSettings().cors_origins.includes(origin)),
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    exposedHeaders: ["ETag"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    exposedHeaders: [
+      "ETag",
+      "RateLimit-Limit",
+      "RateLimit-Remaining",
+      "RateLimit-Reset",
+      "Retry-After",
+    ],
   });
   // Sign-in and AI routes set their own stricter limits, which always apply.
-  // The general per-client limit can be left to the gateway (0).
+  // The general per-client limit can be left to the gateway (0). Requests
+  // signed with a personal API key count against that key, wherever they
+  // come from; everything else counts per address. Every response says
+  // where the client stands (RateLimit-Limit, -Remaining, -Reset), and a
+  // 429 says when to try again (Retry-After, in seconds).
   await app.register(rateLimit, {
     global: true,
     max: () => {
@@ -63,6 +75,17 @@ export async function createService(
       return limit > 0 ? limit : 1_000_000;
     },
     timeWindow: "1 minute",
+    enableDraftSpec: true,
+    keyGenerator: async (request) => {
+      const key = await apiKeyId(request).catch(() => null);
+      return key ? `key:${key}` : request.ip;
+    },
+  });
+
+  // Public booking, invite, profile and RSVP responses aren't for search engines.
+  app.addHook("onRequest", async (request, reply) => {
+    if (PUBLIC_PAGES.test(request.url.split("?")[0]))
+      reply.header("X-Robots-Tag", "noindex, nofollow");
   });
 
   // Maintenance mode: members can read but not change anything. Admins,

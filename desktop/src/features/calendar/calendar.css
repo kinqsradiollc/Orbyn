@@ -1079,3 +1079,333 @@
     padding: 14px;
   }
 }
+
+/* Colour-coding: items in a list take the list's colour. Events tint their
+   bar with it; tasks keep their status dot and tint and take it on their
+   edge. Titles keep the text colour, so both themes stay readable. */
+.cal-entry.has-list.is-event {
+  --bar-edge: var(--list);
+  --bar-bg: color-mix(in srgb, var(--list) 16%, var(--color-surface));
+}
+.tg-allday-cell .cal-entry.has-list.is-task,
+.month-bar.has-list.is-task:not(.cont-before),
+.tg-event.has-list.is-task,
+.calendar-agenda-item.has-list {
+  box-shadow: inset 3px 0 0 var(--list);
+}
+.month-bar.has-list.is-task:not(.is-multi) {
+  padding-left: 8px;
+}
+@media (max-width: 640px) {
+  .month-dots i.has-list:not(.is-done) {
+    background: var(--list);
+  }
+}
+
+/* A time picked with a click in the week or day grid ("C" adds an event). */
+.tg-selected {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 0;
+  padding: 2px 6px;
+  border: 1.5px solid var(--green);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accentSoft) 60%, transparent);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Frames: translucent bands in the frame's colour behind entries. Only the
+   label takes clicks, so picking times and dragging still work inside. */
+.tg-frame {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  border-left: 3px solid var(--frame);
+  background: color-mix(in srgb, var(--frame) 9%, transparent);
+  pointer-events: none;
+}
+.tg-frame.is-busy {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--frame) 13%, transparent) 0 6px,
+    color-mix(in srgb, var(--frame) 6%, transparent) 6px 12px
+  );
+}
+.tg-frame-label {
+  display: inline-block;
+  max-width: calc(100% - 6px);
+  margin: 2px 0 0 3px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--frame) 18%, var(--color-surface));
+  color: color-mix(in srgb, var(--frame) var(--tint-text), var(--color-text));
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+/* Month view: a small mark per frame beside the date. */
+.month-cell {
+  position: relative;
+}
+.month-frames {
+  position: absolute;
+  top: 9px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+}
+.month-frames i {
+  width: 10px;
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+/* Tuning a plan: planned blocks can be dragged (pinned) and removed. */
+.cal-ghost.is-tunable {
+  pointer-events: auto;
+  cursor: grab;
+}
+.cal-ghost.is-tunable:active {
+  cursor: grabbing;
+}
+.cal-ghost.is-pinned {
+  border-style: solid;
+}
+.cal-ghost-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  color: var(--color-textSoft);
+}
+.cal-ghost-remove:hover {
+  color: var(--color-danger);
+}
+.tg-slot.is-copy {
+  z-index: 4;
+  opacity: 0.8;
+  pointer-events: none;
+}
+/* Keep-free ranges while tuning. */
+.tg-keepfree {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 3px 2px 6px;
+  border: 1.5px dashed var(--color-textMuted);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-textMuted) 10%, transparent) 0 5px,
+    transparent 5px 10px
+  );
+  color: var(--color-textSoft);
+  font-size: 10px;
+  font-weight: 650;
+  pointer-events: none;
+}
+.tg-keepfree.is-draft {
+  border-color: var(--green);
+  color: var(--green);
+}
+.tg-keepfree button {
+  display: inline-flex;
+  padding: 1px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  pointer-events: auto;
+}
+.tg-keepfree button:hover {
+  color: var(--color-danger);
+}
+.tg-col.is-selecting {
+  cursor: row-resize;
+}
+
+/* A note under the toolbar: a skipped frame day, a copied block. */
+.calendar-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+  font-size: 12px;
+}
+.calendar-note span {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-note .text-button {
+  padding: 0;
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+}
+.calendar-note .icon-button {
+  color: inherit;
+}
+
+/* Planner: what to plan for, stale plans, the task checklist, keep-free. */
+.planner-scope {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+}
+.planner-scope legend {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.planner-scope small {
+  color: var(--color-textMuted);
+}
+.scope-lists {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-divider);
+}
+.plan-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warnBorder);
+  border-radius: 9px;
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+  font-size: 12px;
+}
+.plan-stale span {
+  flex: 1 1 160px;
+}
+.plan-stale .secondary {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.plan-tasks,
+.plan-keepfree {
+  padding: 12px 20px 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.plan-tasks h3,
+.plan-keepfree h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.plan-tasks ul,
+.plan-keepfree ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.plan-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 12px;
+}
+.plan-task.is-out strong {
+  color: var(--color-textMuted);
+  text-decoration: line-through;
+}
+.plan-task-check {
+  display: flex;
+  align-items: flex-start;
+  flex: 1 1 170px;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.plan-task-check input {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--green);
+}
+.plan-task-check strong {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plan-task-check small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-textMuted);
+}
+.plan-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-left: 24px;
+}
+.plan-estimate input[type="number"] {
+  width: 76px;
+  padding: 5px 7px;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.plan-estimate .secondary {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.plan-keepfree li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 12px;
+}
+.plan-keepfree .panel-hint {
+  margin: 8px 0 0;
+}
+
+/* The frame editor over the calendar. */
+.frame-dialog {
+  width: 640px;
+  max-width: 100%;
+}
+.frame-dialog-body {
+  padding: 0 22px 22px;
+}

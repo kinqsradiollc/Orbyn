@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   actionSchema,
   agentReply,
+  blockDuplicateInput,
   blockInput,
   blockUpdate,
   bookingPageInput,
@@ -10,6 +11,11 @@ import type {
   bookingAvailability,
   bookingQuestion,
   BOOKING_VIEWS,
+  calendarFeedSettingsInput,
+  calendarSubscriptionInput,
+  calendarSubscriptionUpdate,
+  EDIT_SCOPES,
+  RSVP_STATUSES,
   dateOverride,
   BREAK_LEVELS,
   calendarSetInput,
@@ -17,8 +23,17 @@ import type {
   credentials,
   frameFilters,
   frameInput,
+  frameSkipInput,
   frameUpdate,
+  bufferScopeInput,
+  inviteBookingRequest,
   itemData,
+  itemLinkInput,
+  itemPositionInput,
+  ITEM_SORTS,
+  openInviteInput,
+  profileInput,
+  TRAVEL_MODES,
   KINDS,
   listInput,
   listUpdate,
@@ -26,6 +41,8 @@ import type {
   placeUpdate,
   plannerPrefsInput,
   planPreviewInput,
+  planScope,
+  planTuneInput,
   PRIORITIES,
   STATUSES,
   tagInput,
@@ -70,6 +87,39 @@ export type Item = ItemInput & {
   series_start?: string | null;
   /** Occurrences removed from a repeating item. */
   exdates?: string[];
+  /**
+   * The priority score (see `priorityScore`), on list responses. Null for
+   * events and finished tasks.
+   */
+  score?: number | null;
+  /** Manual order among items with the same parent, list or space. */
+  position?: number;
+  /** max(0, estimate − spent); null without an estimate. */
+  remaining_minutes?: number | null;
+  /** Subtasks that aren't cancelled, and how many of them are done. */
+  child_count?: number;
+  children_done?: number;
+};
+
+export type ItemSort = (typeof ITEM_SORTS)[number];
+
+/** A web link on a task. */
+export type ItemLink = z.output<typeof itemLinkInput> & {
+  id: string;
+  position: number;
+};
+
+/** An item deleted since the sync point (only its id and when). */
+export type DeletedItem = { id: string; deleted_at: string };
+
+/** One page of `GET /items?updated_after=` (incremental sync), oldest change first. */
+export type ItemSyncPage = {
+  items: Item[];
+  /** Present when `include_deleted=1`. */
+  deleted: DeletedItem[];
+  /** Pass back as `cursor` for the next page, or later for what changed since. */
+  next_cursor: string;
+  has_more: boolean;
 };
 
 export type User = {
@@ -78,6 +128,31 @@ export type User = {
   email: string;
   email_reminders: boolean;
   role: SystemRole;
+  /** Your public profile's address (/u/<handle>), if you made one. */
+  handle?: string | null;
+  bio?: string;
+};
+
+/** Your public profile, as you edit it. */
+export type Profile = {
+  handle: string | null;
+  bio: string;
+  /** The page's address, or null without a handle. */
+  url: string | null;
+};
+
+/** What /u/<handle> shows: a name, a short bio and active booking pages. */
+export type PublicProfile = {
+  name: string;
+  handle: string;
+  bio: string;
+  pages: {
+    title: string;
+    slug: string;
+    description: string;
+    durations: number[];
+    color: string;
+  }[];
 };
 
 export type Team = {
@@ -139,8 +214,20 @@ export type Notice = {
   body: string;
   read: boolean;
   created_at: string;
-  /** "conflict" notices offer a Reschedule action for the block in `ref`. */
-  kind?: "reminder" | "conflict" | "booking";
+  /**
+   * "conflict" notices offer a Reschedule action for the block in `ref`.
+   * "rollforward" (ref = the local date) offers Roll forward; "at_risk" and
+   * "deadline" (ref = the local date, `item_id` = the task) offer Plan it.
+   */
+  kind?:
+    | "reminder"
+    | "conflict"
+    | "booking"
+    | "rollforward"
+    | "at_risk"
+    | "deadline"
+    /** Someone you invited answered (`item_id` = the event, `ref` = the attendee). */
+    | "rsvp";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
@@ -320,7 +407,49 @@ export type ItemUpdate = {
 };
 
 /** A task with its checklist and progress timeline (newest first). */
-export type ItemDetail = Item & { steps: ItemStep[]; updates: ItemUpdate[] };
+export type ItemDetail = Item & {
+  steps: ItemStep[];
+  updates: ItemUpdate[];
+  /** People invited to an event, with their answers. */
+  attendees?: Attendee[];
+  /** Occurrences of a repeating item changed on their own. */
+  overrides?: ItemOverride[];
+  /** Web links, in order. */
+  links?: ItemLink[];
+};
+
+export type AttendeeStatus = "needs_action" | (typeof RSVP_STATUSES)[number];
+
+/** Someone invited to an event by email. */
+export type Attendee = {
+  id: string;
+  email: string;
+  name: string;
+  status: AttendeeStatus;
+  responded_at: string | null;
+};
+
+/** What changed on one occurrence of a series ("edit this one"). */
+export type OccurrenceChanges = {
+  title?: string;
+  notes?: string;
+  /** The occurrence's own start and end. */
+  due_at?: string;
+  end_at?: string | null;
+  location?: string;
+  meeting_url?: string;
+  busy?: boolean;
+  color?: string | null;
+  alerts?: number[];
+};
+
+/** One occurrence of a repeating item, changed on its own. */
+export type ItemOverride = OccurrenceChanges & {
+  /** Which occurrence (its original start). */
+  occurrence: string;
+};
+
+export type EditScope = (typeof EDIT_SCOPES)[number];
 
 // ---- Planning -----------------------------------------------------------------
 
@@ -384,6 +513,32 @@ export type CalendarEntry = {
   occurrence: string | null;
   rrule: string | null;
   version: number;
+  /** A whole-day entry: `start_at` and `end_at` are local midnights. */
+  all_day?: boolean;
+  /** Whether it counts as busy (false for free and all-day events). */
+  busy?: boolean;
+  color?: string | null;
+  /** Minutes before the start to remind. */
+  alerts?: number[];
+  /** True when this occurrence was changed on its own. */
+  overridden?: boolean;
+  /** How many people are invited. */
+  attendee_count?: number;
+};
+
+/** One occurrence of an event from a calendar you subscribe to (read-only). */
+export type ExternalEntry = {
+  subscription_id: string;
+  /** The subscription's name. */
+  name: string;
+  color: string;
+  title: string;
+  start_at: string;
+  end_at: string;
+  all_day: boolean;
+  location: string;
+  /** Whether it counts as busy (the subscription's setting). */
+  busy: boolean;
 };
 
 /** Time the calendar keeps around events: buffers and travel. */
@@ -395,6 +550,18 @@ export type DerivedBlock = {
   label: string;
 };
 
+/** One occurrence of a frame on the calendar. */
+export type FrameOccurrence = {
+  frame_id: string;
+  name: string;
+  color: string;
+  start_at: string;
+  end_at: string;
+  busy: boolean;
+  /** The frame's local date for this occurrence (what `skip` takes). */
+  date: string;
+};
+
 export type CalendarView = {
   from: string;
   to: string;
@@ -402,6 +569,31 @@ export type CalendarView = {
   entries: CalendarEntry[];
   blocks: TimeBlock[];
   derived: DerivedBlock[];
+  /** Your frames in the range. */
+  frames?: FrameOccurrence[];
+  /** Events from calendars you subscribe to. */
+  external?: ExternalEntry[];
+};
+
+/** One event found by `GET /calendar/search`: yours, or from a subscription. */
+export type CalendarSearchResult =
+  | ({ source: "item" } & CalendarEntry)
+  | ({ source: "external" } & ExternalEntry);
+
+export type CalendarSearch = {
+  q: string;
+  from: string;
+  to: string;
+  /** Soonest first, up to 100. */
+  results: CalendarSearchResult[];
+};
+
+/** Busy times of someone you share a team with, for overlaying on your calendar. */
+export type UserAvailability = {
+  user_id: string;
+  name: string;
+  timezone: string;
+  busy: BusyInterval[];
 };
 
 export type BreakLevel = (typeof BREAK_LEVELS)[number];
@@ -426,6 +618,29 @@ export type PlannerPrefs = {
   extra_timezones: string[];
   calendar_sets: CalendarSet[];
   pinned_user_ids: string[];
+  /** Days before a due time to warn about a task with no time set aside (0 = off). */
+  deadline_notice_days?: number;
+  /** Planner notices also go to push and email when these are on. */
+  planner_notices?: PlannerNotices;
+  /** Alerts new items get when created without any. */
+  default_alerts?: DefaultAlerts;
+  /** Completing a task adds its blocks' past time to its time spent (once). */
+  count_blocks_as_spent?: boolean;
+  /** Which events get buffers. */
+  buffer_scope?: BufferScope;
+  /** Minutes added to every travel leg. */
+  travel_padding_minutes?: number;
+};
+
+export type BufferScope = z.output<typeof bufferScopeInput>;
+
+export type PlannerNotices = { push: boolean; email: boolean };
+
+/** Minutes-before alerts for new events, tasks and all-day items. */
+export type DefaultAlerts = {
+  event: number[];
+  task: number[];
+  all_day: number[];
 };
 
 export type FrameFilters = z.output<typeof frameFilters>;
@@ -434,12 +649,23 @@ export type FrameFilters = z.output<typeof frameFilters>;
 export type Frame = {
   id: string;
   name: string;
+  /** Weekdays it repeats on, when it has no `rrule`. */
   days: number[];
   start_time: string;
   end_time: string;
   filters: FrameFilters;
   color: string;
   position: number;
+  /** How it repeats; wins over `days` when set. */
+  rrule?: string | null;
+  /** The first day of the rule ("YYYY-MM-DD"). */
+  series_start?: string | null;
+  /** Busy frames block booking pages and teammates' meeting times. */
+  busy?: boolean;
+  /** Skipped dates ("YYYY-MM-DD", in the frame's zone). */
+  exdates?: string[];
+  /** Its time zone; the owner's planner zone when null. */
+  timezone?: string | null;
 };
 
 /** A place and the time it takes to get there. */
@@ -448,7 +674,13 @@ export type Place = {
   label: string;
   match: string;
   travel_minutes: number;
+  /** How you get there (a label only). */
+  mode?: TravelMode | null;
+  /** Minutes on weekdays 07:00-09:00 and 16:00-18:00; null: the same as usual. */
+  peak_minutes?: number | null;
 };
+
+export type TravelMode = (typeof TRAVEL_MODES)[number];
 
 /** A block the planner proposes. */
 export type PlannedBlock = {
@@ -462,6 +694,8 @@ export type PlannedBlock = {
   part: number;
   parts: number;
   score: number;
+  /** A block the user pinned while tuning the plan; it stays where it is. */
+  pinned?: boolean;
 };
 
 export type UnplacedTask = {
@@ -469,6 +703,47 @@ export type UnplacedTask = {
   title: string;
   due_at: string | null;
   reason: string;
+};
+
+export type PlanScope = z.output<typeof planScope>;
+
+/** Every task a plan looked at, for a checklist of what's in and out. */
+export type PlanTask = {
+  item_id: string;
+  title: string;
+  due_at: string | null;
+  priority: Priority;
+  team_id: string | null;
+  list_id: string | null;
+  /** The minutes planned for: the tuned estimate, or the task's own. */
+  estimate_minutes: number | null;
+  /** True when the plan uses a tuned estimate rather than the task's. */
+  estimate_tuned: boolean;
+  /** False for tasks left out of this plan. */
+  included: boolean;
+  /** Minutes the plan gives it (pinned blocks included). */
+  planned_minutes: number;
+  /** Why it wasn't (fully) planned, or why it was left out; null when it fits. */
+  reason: string | null;
+  at_risk: boolean;
+};
+
+/** The options a plan was made with, resolved from the request and preferences. */
+export type PlanOptions = {
+  start_date: string;
+  days: number;
+  pad_percent: number;
+  split: boolean;
+  break_level: BreakLevel;
+  use_frames: boolean;
+  timezone: string;
+  scope: PlanScope | null;
+  keep_free: BusyInterval[];
+  item_ids: string[] | null;
+  include_item_ids: string[];
+  exclude_item_ids: string[];
+  estimates: Record<string, number>;
+  pinned_blocks: { item_id: string; start_at: string; end_at: string }[];
 };
 
 /** A generated plan; nothing is saved until it is applied. */
@@ -485,7 +760,17 @@ export type Plan = {
   applied: boolean;
   expires_at: string;
   summary: string;
+  /** Every task considered: included, left out, and why. */
+  tasks?: PlanTask[];
+  options?: PlanOptions;
+  /** Set once a tuned plan replaces this one. */
+  superseded_by?: string | null;
+  /** Tasks whose estimates were saved while tuning. */
+  estimates_saved?: string[];
 };
+
+/** Whether the calendar or tasks changed since a plan was made. */
+export type PlanStaleness = { stale: boolean };
 
 export type AtRiskTask = UnplacedTask & {
   remaining_minutes: number;
@@ -529,6 +814,18 @@ export type MemberWorkload = {
   load: number;
   overloaded: boolean;
   at_risk: number;
+  /** This member's tasks that can't get enough time before they're due. */
+  at_risk_items?: TeamAtRiskItem[];
+};
+
+/** A team task that can't get enough time before it's due. */
+export type TeamAtRiskItem = {
+  id: string;
+  title: string;
+  assignee_id: string;
+  assignee_name: string;
+  due_at: string;
+  remaining_minutes: number;
 };
 
 export type MeetingSlot = {
@@ -580,6 +877,13 @@ export type BookingPage = {
   counts: { upcoming: number; needs_approval: number };
   created_at: string;
   updated_at: string;
+  /** A team's page (its owners and admins manage it); null for your own. */
+  team_id?: string | null;
+  team_name?: string | null;
+  /** Whether you can change the page (its owner, or a team owner or admin). */
+  can_edit?: boolean;
+  /** Minutes before the meeting the booker is emailed a reminder. */
+  remind_before_minutes?: number[];
 };
 
 /**
@@ -617,6 +921,8 @@ export type Booking = {
   timezone: string;
   created_at: string;
   updated_at: string;
+  /** Set for a booking made from an open invite (then `page_id` is null). */
+  invite_id?: string | null;
 };
 
 /** One step in a booking's history. */
@@ -719,9 +1025,56 @@ export type ManagedBooking = {
     location: string;
     has_meeting_link: boolean;
     hosts: string[];
+    /** True when the booking came from an open invite (no page to book again from). */
+    invite?: boolean;
   };
   can_reschedule: boolean;
   can_cancel: boolean;
+};
+
+/**
+ * open: waiting for someone to pick a time. booked: someone did. expired:
+ * its time ran out. cancelled: its owner withdrew it.
+ */
+export type OpenInviteStatus = "open" | "booked" | "expired" | "cancelled";
+
+/** A one-off link offering hand-picked windows, as its owner sees it. */
+export type OpenInvite = {
+  id: string;
+  title: string;
+  duration: number;
+  windows: BusyInterval[];
+  location: string;
+  meeting_url: string;
+  co_hosts: { user_id: string; name: string }[];
+  remind_before_minutes: number[];
+  status: OpenInviteStatus;
+  expires_at: string;
+  /** The private link to send (`<APP_URL>/invite/<token>`). */
+  url: string;
+  booking: {
+    id: string;
+    name: string;
+    email: string;
+    start_at: string;
+    end_at: string;
+    status: BookingStatus;
+  } | null;
+  created_at: string;
+};
+
+/** What someone with an open invite's link sees. */
+export type PublicInvite = {
+  title: string;
+  hosts: string[];
+  duration: number;
+  location: string;
+  has_meeting_link: boolean;
+  status: OpenInviteStatus;
+  expires_at: string;
+  timezone: string;
+  /** Free start times inside the windows (empty unless open). */
+  slots: BusyInterval[];
 };
 
 // ---- API keys, webhooks, calendar feed ------------------------------------------
@@ -743,6 +1096,8 @@ export type Webhook = {
   id: string;
   url: string;
   events: WebhookEvent[];
+  /** Minutes before a busy event that `event.starting` is sent. */
+  lead_minutes?: number;
   active: boolean;
   last_status: number | null;
   last_error: string | null;
@@ -753,7 +1108,48 @@ export type Webhook = {
 export type NewWebhook = Webhook & { secret: string };
 
 /** A private subscription link for other calendar apps. */
-export type CalendarFeed = { url: string };
+export type CalendarFeed = {
+  url: string;
+  /** True for the link that only shows when you're busy. */
+  busy?: boolean;
+};
+
+/** Which feed links are on (the links themselves are only shown once) and what they include. */
+export type CalendarFeedSettings = {
+  enabled: boolean;
+  busy_enabled: boolean;
+  include_blocks: boolean;
+};
+
+/** A calendar from another app that Orbyn reads by its ICS link. */
+export type CalendarSubscription = {
+  id: string;
+  url: string;
+  name: string;
+  color: string;
+  busy: boolean;
+  last_fetched_at: string | null;
+  /** Why the last refresh failed; null when it worked. */
+  last_error: string | null;
+  event_count: number;
+  created_at: string;
+};
+
+/** What an invitee sees from their RSVP link. */
+export type RsvpView = {
+  title: string;
+  start_at: string;
+  end_at: string | null;
+  all_day: boolean;
+  timezone: string;
+  rrule: string | null;
+  organizer: string;
+  location: string;
+  meeting_url: string;
+  name: string;
+  email: string;
+  status: AttendeeStatus;
+};
 
 // ---- Request bodies (what clients send) ------------------------------------------
 
@@ -769,9 +1165,27 @@ export type FrameUpdate = z.input<typeof frameUpdate>;
 export type PlaceInput = z.input<typeof placeInput>;
 export type PlaceUpdate = z.input<typeof placeUpdate>;
 export type PlanPreviewInput = z.input<typeof planPreviewInput>;
+export type PlanTuneInput = z.input<typeof planTuneInput>;
+export type FrameSkipInput = z.input<typeof frameSkipInput>;
+export type BlockDuplicateInput = z.input<typeof blockDuplicateInput>;
 export type BookingPageInput = z.input<typeof bookingPageInput>;
 export type BookingPageUpdate = z.input<typeof bookingPageUpdate>;
 export type BookingRequest = z.input<typeof bookingRequest>;
+export type CalendarSubscriptionInput = z.input<
+  typeof calendarSubscriptionInput
+>;
+export type CalendarSubscriptionUpdate = z.input<
+  typeof calendarSubscriptionUpdate
+>;
+export type CalendarFeedSettingsInput = z.input<
+  typeof calendarFeedSettingsInput
+>;
+export type ItemPositionInput = z.input<typeof itemPositionInput>;
+export type ItemLinkInput = z.input<typeof itemLinkInput>;
+export type BufferScopeInput = z.input<typeof bufferScopeInput>;
+export type OpenInviteInput = z.input<typeof openInviteInput>;
+export type InviteBookingRequest = z.input<typeof inviteBookingRequest>;
+export type ProfileInput = z.input<typeof profileInput>;
 export type WebhookInput = z.input<typeof webhookInput>;
 export type WebhookUpdate = z.input<typeof webhookUpdate>;
 export type WebhookTestResult = {

@@ -17,17 +17,18 @@ import {
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { Field } from "../components/Field";
+import { Field, NumberInput } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
-import { shareText } from "../lib/planning";
+import { parseMinutes, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
+import { CalendarFeedCard, SubscriptionsCard } from "./CalendarLinks";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const EVENT_LABELS: Record<WebhookEvent, string> = {
@@ -40,10 +41,22 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled or declined",
+  "event.starting": "An event is about to start",
+  "block.started": "A time block starts",
+  "task.at_risk": "A task is at risk",
+};
+/** Minutes before a busy event that `event.starting` goes (the server's range). */
+const MAX_LEAD = 120;
+const DEFAULT_LEAD = 15;
+/** The lead time typed, or null when it's empty or out of range. */
+const leadOf = (text: string) => {
+  const n = parseMinutes(text);
+  return n !== null && n >= 0 && n <= MAX_LEAD ? n : null;
 };
 
 /**
- * Settings → Connections: API keys, webhooks and the private calendar feed.
+ * Settings → Connections: API keys, webhooks, your calendar feed links and
+ * the calendars you subscribe to.
  * Secrets are shown once, when they're made.
  */
 export function ConnectionsSheet({
@@ -85,7 +98,9 @@ function Body() {
     null,
   );
   const [tests, setTests] = useState<Record<string, string>>({});
-  const [feed, setFeed] = useState<string | null>(null);
+  const [lead, setLead] = useState(String(DEFAULT_LEAD));
+  const wantsLead = events.includes("event.starting");
+  const newLead = leadOf(lead);
 
   useEffect(() => {
     void run(async () => {
@@ -267,6 +282,19 @@ function Body() {
               <Text style={shared.small}>
                 {h.events.map((e) => EVENT_LABELS[e]).join(", ")}
               </Text>
+              {h.events.includes("event.starting") && (
+                <LeadRow
+                  key={`${h.id}-${h.lead_minutes ?? DEFAULT_LEAD}`}
+                  minutes={h.lead_minutes ?? DEFAULT_LEAD}
+                  busy={busy}
+                  onSave={(lead_minutes) =>
+                    void run(async () => {
+                      await client.updateWebhook(h.id, { lead_minutes });
+                      await reloadHooks();
+                    })
+                  }
+                />
+              )}
               <View style={s.status}>
                 {h.last_status !== null ? (
                   <Pill
@@ -368,16 +396,37 @@ function Body() {
               })}
             </ChipRow>
           </Field>
+          {wantsLead && (
+            <Field
+              label="Starts … minutes before"
+              hint={`When “${EVENT_LABELS["event.starting"]}” is sent: 0 to ${MAX_LEAD} minutes before each busy event.`}
+            >
+              <NumberInput
+                value={lead}
+                onChangeText={setLead}
+                suffix="minutes before"
+                accessibilityLabel={`Send event starting this many minutes before, 0 to ${MAX_LEAD}`}
+              />
+            </Field>
+          )}
           <Button
             title="Add webhook"
             icon="plus"
             style={s.last}
-            disabled={busy || !url.trim() || !events.length}
+            disabled={
+              busy ||
+              !url.trim() ||
+              !events.length ||
+              (wantsLead && newLead === null)
+            }
             onPress={() =>
               void run(async () => {
                 const made = await client.createWebhook({
                   url: url.trim(),
                   events,
+                  ...(wantsLead && newLead !== null
+                    ? { lead_minutes: newLead }
+                    : {}),
                 });
                 animateLayout();
                 setSecret({ url: made.url, secret: made.secret });
@@ -388,116 +437,102 @@ function Body() {
           />
         </View>
 
-        {/* Calendar feed */}
-        <Text style={[shared.eyebrow, s.eyebrow]}>CALENDAR FEED</Text>
-        <View style={shared.card}>
-          <Text style={[shared.small, s.gap]}>
-            Subscribe from Apple Calendar, Google Calendar or Outlook with a
-            private link. Anyone with the link can see your plans, so keep it to
-            yourself. Making a new link turns off the old one.
-          </Text>
-          {feed && (
-            <FadeIn style={s.secret}>
-              <Text selectable style={s.code}>
-                {feed}
-              </Text>
-              <Button
-                title="Share link"
-                icon="share"
-                style={s.last}
-                onPress={() => void shareText(feed)}
-              />
-            </FadeIn>
-          )}
-          <Button
-            secondary={!!feed}
-            title={feed ? "Replace link" : "Create link"}
-            icon="link"
-            disabled={busy}
-            onPress={() =>
-              void run(async () => {
-                const made = await client.createCalendarFeed();
-                animateLayout();
-                setFeed(made.url);
-              })
-            }
-          />
-          <Button
-            destructive
-            title="Turn off calendar feed"
-            disabled={busy}
-            style={s.last}
-            onPress={() =>
-              Alert.alert(
-                "Turn off the calendar feed?",
-                "Calendars subscribed to the link stop updating.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Turn off",
-                    style: "destructive",
-                    onPress: () =>
-                      void run(async () => {
-                        await client.deleteCalendarFeed();
-                        animateLayout();
-                        setFeed(null);
-                        Alert.alert("Calendar feed turned off");
-                      }),
-                  },
-                ],
-              )
-            }
-          />
-        </View>
+        <CalendarFeedCard />
+        <SubscriptionsCard />
       </View>
     </ScrollView>
   );
 }
 
-const s = StyleSheet.create({
-  privacy: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  eyebrow: { marginTop: 8 },
-  gap: { marginBottom: 12 },
-  secret: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 14,
-  },
-  code: {
-    fontFamily: "Menlo",
-    fontSize: 13,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  actions: { flexDirection: "row", gap: 10, marginTop: 8 },
-  flex: { flex: 1, marginBottom: 0 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  rowTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  hook: {
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  hookTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  status: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  error: { color: colors.danger, marginTop: 6 },
-  test: { color: colors.accent, marginTop: 6 },
-  formTop: { marginTop: 14 },
-  last: { marginBottom: 0 },
-});
+/** A webhook's lead time for "An event is about to start", editable in place. */
+function LeadRow({
+  minutes,
+  busy,
+  onSave,
+}: {
+  minutes: number;
+  busy: boolean;
+  onSave: (minutes: number) => void;
+}) {
+  const [text, setText] = useState(String(minutes));
+  const value = leadOf(text);
+  return (
+    <View style={s.lead}>
+      <Text style={[shared.small, s.leadLabel]}>Starts</Text>
+      <NumberInput
+        value={text}
+        onChangeText={setText}
+        suffix="min before"
+        accessibilityLabel={`Send event starting this many minutes before, 0 to ${MAX_LEAD}`}
+      />
+      <SmallAction
+        label="Save"
+        disabled={busy || value === null || value === minutes}
+        onPress={() => value !== null && onSave(value)}
+      />
+    </View>
+  );
+}
+
+const s = themed(() =>
+  StyleSheet.create({
+    lead: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 8,
+    },
+    leadLabel: { marginRight: -2 },
+    privacy: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+    eyebrow: { marginTop: 8 },
+    gap: { marginBottom: 12 },
+    secret: {
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 14,
+    },
+    code: {
+      fontFamily: "Menlo",
+      fontSize: 13,
+      color: colors.text,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 10,
+    },
+    actions: { flexDirection: "row", gap: 10, marginTop: 8 },
+    flex: { flex: 1, marginBottom: 0 },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    rowTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    hook: {
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    hookTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+    status: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+    },
+    error: { color: colors.danger, marginTop: 6 },
+    test: { color: colors.accent, marginTop: 6 },
+    formTop: { marginTop: 14 },
+    last: { marginBottom: 0 },
+  }),
+);

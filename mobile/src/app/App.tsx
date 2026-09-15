@@ -2,7 +2,6 @@ import React from "react";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import * as SystemUI from "expo-system-ui";
 import * as Notifications from "expo-notifications";
 import {
   useFonts,
@@ -16,7 +15,7 @@ import {
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
 import { RootScreen } from "./RootScreen";
-import { colors } from "../theme";
+import { colors, ThemeContext, useThemeController } from "../theme";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -27,14 +26,13 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Paint the native root view so rotation, keyboard and modal transitions never flash white.
-void SystemUI.setBackgroundColorAsync(colors.background);
-
 /**
  * Edge-to-edge root: nothing here pads for the notch or home indicator. Each
  * screen applies safe-area insets itself so backgrounds reach every edge.
+ * App owns the theme, so a theme change re-renders everything below it.
  */
 export default function App() {
+  const theme = useThemeController();
   const [fontsLoaded, fontError] = useFonts({
     Manrope_700Bold,
     Manrope_800ExtraBold,
@@ -44,11 +42,13 @@ export default function App() {
     DMSans_700Bold,
   });
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        {(fontsLoaded || fontError) && <RootScreen />}
-      </View>
-    </SafeAreaProvider>
+    <ThemeContext.Provider value={theme}>
+      <SafeAreaProvider>
+        <StatusBar style={theme.scheme === "dark" ? "light" : "dark"} />
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          {(fontsLoaded || fontError) && <RootScreen />}
+        </View>
+      </SafeAreaProvider>
+    </ThemeContext.Provider>
   );
 }

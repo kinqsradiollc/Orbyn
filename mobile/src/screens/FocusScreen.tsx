@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Animated,
   Modal,
   Pressable,
@@ -14,6 +15,7 @@ import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { PlanningMeta } from "../components/PlanningMeta";
+import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { minutesLabel, nextUp } from "../lib/planning";
 import { useNow } from "../hooks/useNow";
@@ -24,7 +26,7 @@ import {
   PressableScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, radii, spacing } from "../theme";
+import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Runs shorter than this (a stray tap) aren't logged. */
@@ -51,9 +53,12 @@ export function FocusScreen({
   onDismiss,
   onSwitch,
   onChanged,
+  readOnly = false,
 }: {
   /** The task in focus; the screen is shown while this is set. */
   item: Item | null;
+  /** A team task you can only view: no timer, no Mark done. */
+  readOnly?: boolean;
   /** Planner items, for "Next up". */
   items: Item[];
   onClose: () => void;
@@ -89,6 +94,7 @@ export function FocusScreen({
               onClose={onClose}
               onSwitch={onSwitch}
               onChanged={onChanged}
+              readOnly={readOnly}
             />
           )}
         </SafeAreaView>
@@ -104,6 +110,7 @@ function Body({
   onClose,
   onSwitch,
   onChanged,
+  readOnly,
 }: {
   seed: Item;
   items: Item[];
@@ -111,6 +118,7 @@ function Body({
   onClose: () => void;
   onSwitch: (item: Item) => void;
   onChanged: () => void;
+  readOnly: boolean;
 }) {
   const { busy, error, setError, run } = useRun();
   const [detail, setDetail] = useState<ItemDetail | null>(null);
@@ -122,7 +130,9 @@ function Body({
   const done = item.status === "done";
   const elapsed =
     startedAt === null ? 0 : Math.max(0, now.getTime() - startedAt);
-  const next = nextUp(items, seed.id)[0];
+  // Up to four tasks to go to next, most pressing first.
+  const upcoming = nextUp(items, seed.id).slice(0, 4);
+  const next = upcoming[0];
   const steps = (detail?.steps ?? [])
     .slice()
     .sort((a, b) => a.position - b.position);
@@ -157,6 +167,17 @@ function Body({
     if (await stop()) onClose();
   };
   leaveRef.current = () => void close();
+
+  // Leaving the app stops the timer and logs what ran, like closing focus.
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      // Only a real switch away, not a glance at Control Center.
+      if (state === "background") void stopRef.current();
+    });
+    return () => sub.remove();
+  }, []);
 
   const markDone = async () => {
     if (!(await stop())) return;
@@ -201,7 +222,17 @@ function Body({
           <PlanningMeta item={item} large />
           {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
 
-          {!done && (
+          {readOnly && (
+            <View style={s.viewOnly}>
+              <Icon name="users" size={16} color={colors.accent} />
+              <Text style={s.viewOnlyText}>
+                View only — you’re a viewer in this team, so the timer and Mark
+                done are off.
+              </Text>
+            </View>
+          )}
+
+          {!done && !readOnly && (
             <View style={s.timerCard}>
               <Text
                 style={s.timer}
@@ -255,8 +286,11 @@ function Body({
                   key={step.id}
                   accessibilityRole="checkbox"
                   accessibilityLabel={step.title}
-                  accessibilityState={{ checked: step.done, disabled: busy }}
-                  disabled={busy}
+                  accessibilityState={{
+                    checked: step.done,
+                    disabled: busy || readOnly,
+                  }}
+                  disabled={busy || readOnly}
                   onPress={() => void toggleStep(step.id, !step.done)}
                   style={[s.step, n > 0 && s.divider]}
                 >
@@ -278,7 +312,7 @@ function Body({
             </View>
           )}
 
-          {!done && (
+          {!done && !readOnly && (
             <Button
               title={busy ? "Saving…" : "Mark done"}
               icon="check"
@@ -302,6 +336,23 @@ function Body({
                   if (await stop()) onSwitch(next);
                 }}
               />
+              {upcoming.slice(1).map((other) => (
+                <View key={other.id} style={[s.otherRow, s.divider]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.otherTitle} numberOfLines={1}>
+                      {other.title}
+                    </Text>
+                    <PlanningMeta item={other} />
+                  </View>
+                  <SmallAction
+                    label="Focus"
+                    disabled={busy}
+                    onPress={async () => {
+                      if (await stop()) onSwitch(other);
+                    }}
+                  />
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -334,117 +385,146 @@ function Celebration({ title }: { title: string }) {
   );
 }
 
-const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.page,
-    paddingVertical: 14,
-  },
-  eyebrow: { ...shared.eyebrow, marginBottom: 0 },
-  round: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  body: { padding: spacing.page, paddingTop: 4, paddingBottom: 40 },
-  column: { width: "100%", maxWidth: 600, alignSelf: "center" },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: -0.8,
-    color: colors.text,
-  },
-  notes: { ...shared.body, marginTop: 12 },
-  timerCard: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 26,
-    paddingHorizontal: 18,
-    marginVertical: 20,
-    gap: 6,
-  },
-  timer: {
-    fontFamily: fonts.display,
-    fontSize: 56,
-    letterSpacing: -1.5,
-    color: colors.text,
-    fontVariant: ["tabular-nums"],
-  },
-  play: {
-    marginTop: 12,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  celebrate: {
-    alignItems: "center",
-    backgroundColor: colors.soft,
-    borderWidth: 1,
-    borderColor: colors.softBorder,
-    borderRadius: radii.card,
-    padding: 22,
-    marginVertical: 20,
-  },
-  badge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  celebrateTitle: { ...shared.title, fontSize: 24 },
-  center: { textAlign: "center" },
-  gapBelow: { marginBottom: 8 },
-  step: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 48,
-    paddingVertical: 10,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: "#cfd7ce",
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  stepText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.text,
-  },
-  stepDone: { color: colors.faint, textDecorationLine: "line-through" },
-  next: { marginTop: 8 },
-  nextTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 16,
-    color: colors.text,
-  },
-  nextButton: { marginTop: 12, marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.page,
+      paddingVertical: 14,
+    },
+    eyebrow: { ...shared.eyebrow, marginBottom: 0 },
+    round: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    body: { padding: spacing.page, paddingTop: 4, paddingBottom: 40 },
+    column: { width: "100%", maxWidth: 600, alignSelf: "center" },
+    title: {
+      fontFamily: fonts.display,
+      fontSize: 28,
+      lineHeight: 34,
+      letterSpacing: -0.8,
+      color: colors.text,
+    },
+    notes: { ...shared.body, marginTop: 12 },
+    timerCard: {
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 26,
+      paddingHorizontal: 18,
+      marginVertical: 20,
+      gap: 6,
+    },
+    timer: {
+      fontFamily: fonts.display,
+      fontSize: 56,
+      letterSpacing: -1.5,
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+    play: {
+      marginTop: 12,
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    celebrate: {
+      alignItems: "center",
+      backgroundColor: colors.soft,
+      borderWidth: 1,
+      borderColor: colors.softBorder,
+      borderRadius: radii.card,
+      padding: 22,
+      marginVertical: 20,
+    },
+    badge: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 12,
+    },
+    celebrateTitle: { ...shared.title, fontSize: 24 },
+    center: { textAlign: "center" },
+    gapBelow: { marginBottom: 8 },
+    step: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 48,
+      paddingVertical: 10,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+    stepText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.text,
+    },
+    stepDone: { color: colors.faint, textDecorationLine: "line-through" },
+    next: { marginTop: 8 },
+    nextTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 16,
+      color: colors.text,
+    },
+    nextButton: { marginTop: 12, marginBottom: 0 },
+    otherRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingTop: 12,
+      marginTop: 12,
+    },
+    otherTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    viewOnly: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginVertical: 16,
+    },
+    viewOnlyText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
+  }),
+);

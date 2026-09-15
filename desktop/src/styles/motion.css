@@ -205,6 +205,83 @@ nav button i {
   }
 }
 
+/* Completion celebration (components/Celebration.tsx): a small card that
+   pops up with a burst of dots, a lighter take on focus mode's. Not shown
+   with reduced motion. */
+@keyframes celebrate-burst {
+  from {
+    opacity: 1;
+    translate: 0 0;
+    scale: 0.4;
+  }
+  to {
+    opacity: 0;
+    translate: calc(cos(var(--a)) * 90px) calc(sin(var(--a)) * 54px);
+    scale: 1;
+  }
+}
+@keyframes celebrate-out {
+  to {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+.celebrate {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  z-index: 10;
+  translate: -50% 0;
+  pointer-events: none;
+}
+.celebrate-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  box-shadow: 0 12px 40px #1c312433;
+  color: var(--color-text);
+  font:
+    650 13px "Manrope",
+    sans-serif;
+  white-space: nowrap;
+  animation:
+    motion-pop var(--motion-slow) var(--ease-out) backwards,
+    celebrate-out var(--motion-base) var(--ease-in-out) 1300ms forwards;
+}
+.celebrate-card svg {
+  color: var(--green);
+}
+.celebrate-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+.celebrate-burst i {
+  --a: calc(var(--n) * 36deg);
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px;
+  border-radius: 50%;
+  background: var(--color-dot);
+  animation: celebrate-burst 800ms var(--ease-out) forwards;
+}
+.celebrate-burst i:nth-child(3n) {
+  background: var(--color-highText);
+}
+.celebrate-burst i:nth-child(3n + 1) {
+  background: var(--green);
+}
+@media (prefers-reduced-motion: reduce) {
+  .celebrate {
+    display: none;
+  }
+}
+
 /* Reduced motion: no movement, everything simply visible. */
 @media (prefers-reduced-motion: reduce) {
   *,

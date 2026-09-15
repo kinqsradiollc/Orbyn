@@ -10,11 +10,14 @@ const headers = {
 type Ticket = { status?: string; id?: string; details?: { error?: string } };
 
 export type PushNotification = {
-  item_id: string;
+  item_id: string | null;
   destination: string;
   title: string;
   body: string;
   receipt_id: string | null;
+  /** What the notice is about, so the app can open the right place. */
+  kind?: string;
+  ref?: string;
 };
 
 export type PushOutcome =
@@ -43,7 +46,7 @@ export async function sendPush(
               to: n.destination,
               title: n.title,
               body: n.body,
-              data: { itemId: n.item_id },
+              data: { itemId: n.item_id, kind: n.kind, ref: n.ref },
               sound: "default",
             },
       ),

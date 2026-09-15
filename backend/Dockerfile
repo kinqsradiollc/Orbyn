@@ -44,6 +44,8 @@ COPY --from=build --chown=node:node /app/packages/core/dist ./packages/core/dist
 COPY --from=build --chown=node:node /app/backend/package.json ./backend/package.json
 COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
 COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations
+# Served at GET /openapi.yaml.
+COPY --chown=node:node docs/openapi.yaml ./docs/openapi.yaml
 USER node
 EXPOSE 8000
 CMD ["node", "backend/dist/services/api.js"]

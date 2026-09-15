@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  DEFAULT_BOOKER_REMINDERS,
   QUESTION_TYPES,
   SLOT_INTERVALS,
   addDays,
@@ -24,7 +25,13 @@ import {
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Swatches } from "../lists/ListsView";
-import { deviceTimeZone, minutesLabel, timeZones } from "../../lib/planning";
+import {
+  copyText,
+  deviceTimeZone,
+  minutesLabel,
+  timeZones,
+} from "../../lib/planning";
+import { RemindersField } from "./RemindersField";
 import {
   DEFAULT_COLOR,
   accentStyle,
@@ -76,6 +83,9 @@ type Draft = {
   allow_reschedule: boolean;
   event_title: string;
   confirmation_message: string;
+  /** A team's page, managed by its owners and admins; null for yours. */
+  team_id: string | null;
+  remind_before_minutes: number[];
 };
 type SectionId =
   "details" | "rules" | "hours" | "dates" | "form" | "approval" | "look";
@@ -140,6 +150,8 @@ const blank = (): Draft => ({
   allow_reschedule: true,
   event_title: "{page} with {name}",
   confirmation_message: "",
+  team_id: null,
+  remind_before_minutes: [...DEFAULT_BOOKER_REMINDERS],
 });
 const draftFrom = (p: BookingPage): Draft => ({
   slug: p.slug,
@@ -172,6 +184,10 @@ const draftFrom = (p: BookingPage): Draft => ({
   allow_reschedule: p.allow_reschedule,
   event_title: p.event_title,
   confirmation_message: p.confirmation_message,
+  team_id: p.team_id ?? null,
+  remind_before_minutes: p.remind_before_minutes ?? [
+    ...DEFAULT_BOOKER_REMINDERS,
+  ],
 });
 const slugify = (s: string) =>
   s
@@ -330,6 +346,10 @@ function Ranges({
 }
 
 /** Creating or editing a booking page, in sections. */
+/** The HTML that shows a booking page inside another website. */
+const embedSnippet = (slug: string) =>
+  `<iframe src="${bookingLink(slug)}?embed=1" title="Book a time" width="100%" height="760" style="border:0"></iframe>`;
+
 export function PageForm({
   page,
   user,
@@ -350,6 +370,7 @@ export function PageForm({
   );
   const [slugTouched, setSlugTouched] = useState(!!page);
   const [people, setPeople] = useState<TeamMember[]>([]);
+  const [embedCopied, setEmbedCopied] = useState(false);
   const action = useAction(report);
 
   // Co-hosts come from the people in your teams.
@@ -380,6 +401,10 @@ export function PageForm({
     (a, b) => a - b,
   );
   const zones = timeZones();
+  // A page can belong to a team whose owners and admins manage it.
+  const ownerTeams = teams.filter(
+    (t) => t.role === "owner" || t.role === "admin" || t.id === draft.team_id,
+  );
   const jump = (id: SectionId) =>
     document
       .getElementById("bp-sec-" + id)
@@ -490,6 +515,8 @@ export function PageForm({
       allow_reschedule: draft.allow_reschedule,
       event_title: draft.event_title.trim(),
       confirmation_message: draft.confirmation_message.trim(),
+      team_id: draft.team_id,
+      remind_before_minutes: draft.remind_before_minutes,
     };
     void action
       .run(async () => {
@@ -531,6 +558,28 @@ export function PageForm({
         </nav>
 
         <Section id="details" title="Details">
+          {ownerTeams.length > 0 && (
+            <div className="settings-field">
+              <label htmlFor="bp-owner">Owner</label>
+              <select
+                id="bp-owner"
+                value={draft.team_id ?? ""}
+                aria-describedby="bp-owner-hint"
+                onChange={(e) => set("team_id", e.target.value || null)}
+              >
+                <option value="">Me</option>
+                {ownerTeams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <small id="bp-owner-hint" className="field-hint">
+                A team&apos;s owners and admins can change its pages; every
+                member sees them.
+              </small>
+            </div>
+          )}
           <div className="settings-grid">
             <div className="settings-field wide">
               <label htmlFor="bp-title">Title</label>
@@ -1143,6 +1192,10 @@ export function PageForm({
               </span>
             </label>
           </div>
+          <RemindersField
+            value={draft.remind_before_minutes}
+            onChange={(v) => set("remind_before_minutes", v)}
+          />
         </Section>
 
         <Section id="look" title="Look & messages">
@@ -1175,7 +1228,7 @@ export function PageForm({
                   onChange={(e) => set("color", e.target.value.trim())}
                 />
                 <span
-                  className="accent-preview"
+                  className="accent-preview booking-accent"
                   style={accentStyle(draft.color)}
                   aria-hidden="true"
                 >
@@ -1243,6 +1296,29 @@ export function PageForm({
                 {draft.confirmation_message.length}/1000
               </small>
             </div>
+            {page && (
+              <div className="settings-field wide">
+                <span className="settings-label">Embed on a website</span>
+                <div className="secret-row">
+                  <code className="embed-code">{embedSnippet(page.slug)}</code>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() =>
+                      void copyText(embedSnippet(page.slug)).then(
+                        setEmbedCopied,
+                      )
+                    }
+                  >
+                    <Copy size={13} /> {embedCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <small className="field-hint">
+                  Paste it into your site&apos;s HTML. There the page shows
+                  without Orbyn&apos;s header and footer.
+                </small>
+              </div>
+            )}
           </div>
         </Section>
 

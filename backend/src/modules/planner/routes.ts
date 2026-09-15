@@ -1,24 +1,36 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomBytes } from "node:crypto";
 import {
+  blockDuplicateInput,
   blockInput,
   blockUpdate,
+  calendarFeedCreateInput,
+  calendarFeedSettingsInput,
+  calendarSearchQuery,
   fail,
+  type CalendarFeed,
+  type CalendarFeedSettings,
+  type CalendarSearch,
+  type CalendarSearchResult,
   frameInput,
+  frameSkipInput,
   frameUpdate,
   localDateKey,
   placeInput,
   placeUpdate,
   plannerPrefsInput,
   planPreviewInput,
+  planTuneInput,
   rangeQuery,
   rollForwardInput,
   type CalendarView,
   type Frame,
+  type FrameOccurrence,
   type Place,
   type Plan,
   type PlannerPrefs,
   type PlannerReview,
+  type PlanStaleness,
   type TimeBlock,
 } from "@orbyn/core";
 import { z } from "zod";
@@ -33,17 +45,48 @@ import {
   derivedBlocks,
   loadPlaces,
   loadPrefs,
+  PLACE_COLUMNS,
   timeBlocks,
 } from "./calendar.js";
 import {
+  daysForRule,
   FRAME_COLUMNS,
+  frameSpans,
   loadFrames,
+} from "./frames.js";
+import {
   makePlan,
   planById,
+  planStale,
   reviewFor,
+  tunePlan,
   workingFree,
 } from "./plans.js";
 import { icsFeed } from "./ics.js";
+import { externalEntries } from "./subscriptions.js";
+import { settings } from "../../lib/settings.js";
+
+const DAY_MS = 86_400_000;
+
+/** What someone's feed links are and include. */
+async function feedSettings(db: Db | typeof pool, userId: string) {
+  const row = (
+    await db.query<{
+      full: boolean;
+      busy: boolean;
+      options: { include_blocks?: boolean };
+    }>(
+      `SELECT calendar_feed_hash IS NOT NULL AS full, calendar_busy_feed_hash IS NOT NULL AS busy,
+              calendar_feed_options AS options FROM users WHERE id = $1`,
+      [userId],
+    )
+  ).rows[0];
+  return {
+    enabled: row.full,
+    busy_enabled: row.busy,
+    include_blocks: !!row.options.include_blocks,
+  } satisfies CalendarFeedSettings;
+}
 
 async function ownBlock(db: Db, id: string, userId: string) {
   const row = (
@@ -103,7 +146,21 @@ export async function plannerRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = plannerPrefsInput.parse(r.body);
     return transaction(async (db) => {
-      const next: PlannerPrefs = { ...(await loadPrefs(db, u.id)), ...d };
+      const current = await loadPrefs(db, u.id);
+      const alerts = current.default_alerts!;
+      const next: PlannerPrefs = {
+        ...current,
+        ...d,
+        planner_notices: {
+          push: d.planner_notices?.push ?? current.planner_notices!.push,
+          email: d.planner_notices?.email ?? current.planner_notices!.email,
+        },
+        default_alerts: {
+          event: d.default_alerts?.event ?? alerts.event,
+          task: d.default_alerts?.task ?? alerts.task,
+          all_day: d.default_alerts?.all_day ?? alerts.all_day,
+        },
+      };
       if (next.work_end <= next.work_start)
         fail(422, "Working hours must end after they start.");
       // Pinned people must share a team with you.
@@ -123,13 +180,19 @@ export async function plannerRoutes(app: FastifyInstance) {
         `INSERT INTO planner_prefs (user_id, timezone, work_days, work_start, work_end,
            pad_percent, split_after_minutes, min_block_minutes, break_level, horizon_days,
            buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
-           default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+           default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
+           deadline_notice_days, planner_notices, default_alerts, count_blocks_as_spent,
+           buffer_scope, travel_padding_minutes, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+           $21,$22,$23, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
            buffer_after_minutes=$12, adaptive_buffers=$13, default_travel_minutes=$14,
-           extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17, updated_at=now()`,
+           extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17,
+           deadline_notice_days=$18, planner_notices=$19, default_alerts=$20,
+           count_blocks_as_spent=$21, buffer_scope=$22, travel_padding_minutes=$23,
+           updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -148,6 +211,12 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.extra_timezones,
           JSON.stringify(next.calendar_sets),
           next.pinned_user_ids,
+          next.deadline_notice_days,
+          JSON.stringify(next.planner_notices),
+          JSON.stringify(next.default_alerts),
+          next.count_blocks_as_spent ?? false,
+          JSON.stringify(next.buffer_scope),
+          next.travel_padding_minutes ?? 0,
         ],
       );
       return loadPrefs(db, u.id);
@@ -162,25 +231,34 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.post("/planner/frames", async (r, reply) => {
     const u = await authenticate(r);
     const d = frameInput.parse(r.body);
+    const rrule = d.rrule ?? null;
+    const tz = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
     const frame = (
       await pool.query<Frame>(
-        `INSERT INTO frames (user_id, name, days, start_time, end_time, filters, color, position)
+        `INSERT INTO frames (user_id, name, days, start_time, end_time, filters, color, position,
+           rrule, series_start, busy, exdates, timezone)
          VALUES ($1, $2, $3, $4, $5, $6, coalesce($7, '#9ab68c'),
-           (SELECT coalesce(max(position), -1) + 1 FROM frames WHERE user_id = $1))
+           (SELECT coalesce(max(position), -1) + 1 FROM frames WHERE user_id = $1),
+           $8, $9, $10, $11::date[], $12)
          RETURNING ${FRAME_COLUMNS}`,
         [
           u.id,
           d.name,
-          d.days,
+          d.days ?? daysForRule(rrule!),
           d.start_time,
           d.end_time,
           JSON.stringify(d.filters),
           d.color ?? null,
+          rrule,
+          rrule ? localDateKey(new Date(), tz) : null,
+          d.busy,
+          d.exdates,
+          d.timezone ?? null,
         ],
       )
     ).rows[0];
     reply.code(201);
-    return frame;
+    return { ...frame, days: frame.days.map(Number) };
   });
 
   app.put("/planner/frames/:id", async (r) => {
@@ -197,10 +275,20 @@ export async function plannerRoutes(app: FastifyInstance) {
       const next = { ...current, ...d };
       if (next.end_time <= next.start_time)
         fail(422, "A frame ends after it starts.");
-      return (
+      // A new rule starts today; its weekdays are kept in `days` for older apps.
+      const ruleChanged = d.rrule !== undefined && d.rrule !== current.rrule;
+      let seriesStart = current.series_start ?? null;
+      if (ruleChanged && next.rrule) {
+        const tz = next.timezone ?? (await loadPrefs(db, u.id)).timezone;
+        seriesStart = localDateKey(new Date(), tz);
+        if (!d.days) next.days = daysForRule(next.rrule);
+      }
+      const frame = (
         await db.query<Frame>(
           `UPDATE frames SET name=$2, days=$3, start_time=$4, end_time=$5, filters=$6,
-             color=$7, position=$8 WHERE id=$1 RETURNING ${FRAME_COLUMNS}`,
+             color=$7, position=$8, rrule=$9, series_start=$10, busy=$11,
+             exdates=$12::date[], timezone=$13
+           WHERE id=$1 RETURNING ${FRAME_COLUMNS}`,
           [
             current.id,
             next.name,
@@ -210,11 +298,38 @@ export async function plannerRoutes(app: FastifyInstance) {
             JSON.stringify(next.filters),
             next.color,
             next.position,
+            next.rrule ?? null,
+            next.rrule ? seriesStart : null,
+            next.busy ?? false,
+            next.exdates ?? [],
+            next.timezone ?? null,
           ],
         )
       ).rows[0];
+      return { ...frame, days: frame.days.map(Number) };
     });
   });
+
+  // Skip one date of a frame ("not this Friday"), or bring it back.
+  for (const [path, add] of [
+    ["/planner/frames/:id/skip", true],
+    ["/planner/frames/:id/unskip", false],
+  ] as const)
+    app.post(path, async (r) => {
+      const u = await authenticate(r);
+      const d = frameSkipInput.parse(r.body);
+      const frame = (
+        await pool.query<Frame>(
+          `UPDATE frames SET exdates = CASE WHEN $3
+             THEN (SELECT array_agg(DISTINCT x ORDER BY x) FROM unnest(array_append(exdates, $4::date)) x)
+             ELSE array_remove(exdates, $4::date) END
+           WHERE id = $1 AND user_id = $2 RETURNING ${FRAME_COLUMNS}`,
+          [idParam(r), u.id, add, d.date],
+        )
+      ).rows[0];
+      if (!frame) fail(404, "Frame not found");
+      return { ...frame, days: frame.days.map(Number) };
+    });
 
   app.delete("/planner/frames/:id", async (r, reply) => {
     const u = await authenticate(r);
@@ -236,9 +351,9 @@ export async function plannerRoutes(app: FastifyInstance) {
     const d = placeInput.parse(r.body);
     const place = (
       await pool.query<Place>(
-        `INSERT INTO places (user_id, label, match, travel_minutes) VALUES ($1, $2, $3, $4)
-         RETURNING id, label, match, travel_minutes`,
-        [u.id, d.label, d.match, d.travel_minutes],
+        `INSERT INTO places (user_id, label, match, travel_minutes, mode, peak_minutes)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${PLACE_COLUMNS}`,
+        [u.id, d.label, d.match, d.travel_minutes, d.mode, d.peak_minutes],
       )
     ).rows[0];
     reply.code(201);
@@ -251,14 +366,20 @@ export async function plannerRoutes(app: FastifyInstance) {
     const place = (
       await pool.query<Place>(
         `UPDATE places SET label = coalesce($3, label), match = coalesce($4, match),
-           travel_minutes = coalesce($5, travel_minutes)
-         WHERE id = $1 AND user_id = $2 RETURNING id, label, match, travel_minutes`,
+           travel_minutes = coalesce($5, travel_minutes),
+           mode = CASE WHEN $6 THEN $7 ELSE mode END,
+           peak_minutes = CASE WHEN $8 THEN $9::smallint ELSE peak_minutes END
+         WHERE id = $1 AND user_id = $2 RETURNING ${PLACE_COLUMNS}`,
         [
           idParam(r),
           u.id,
           d.label ?? null,
           d.match ?? null,
           d.travel_minutes ?? null,
+          d.mode !== undefined,
+          d.mode ?? null,
+          d.peak_minutes !== undefined,
+          d.peak_minutes ?? null,
         ],
       )
     ).rows[0];
@@ -285,11 +406,28 @@ export async function plannerRoutes(app: FastifyInstance) {
     const from = new Date(q.from);
     const to = new Date(q.to);
     const prefs = await loadPrefs(db, u.id);
-    const [entries, blocks, places] = await Promise.all([
+    const [entries, blocks, places, frameRows, external] = await Promise.all([
       calendarEntries(db, u.id, from, to),
       timeBlocks(db, u.id, from, to),
       loadPlaces(db, u.id),
+      loadFrames(db, u.id),
+      externalEntries(db, u.id, from, to),
     ]);
+    const frames: FrameOccurrence[] = frameRows
+      .flatMap((f) =>
+        frameSpans(f, from.getTime(), to.getTime(), prefs.timezone).map(
+          (s) => ({
+            frame_id: f.id,
+            name: f.name,
+            color: f.color,
+            start_at: new Date(s.start).toISOString(),
+            end_at: new Date(s.end).toISOString(),
+            busy: f.busy ?? false,
+            date: s.date,
+          }),
+        ),
+      )
+      .sort((a, b) => a.start_at.localeCompare(b.start_at));
     const day = new Intl.DateTimeFormat("en-CA", { timeZone: prefs.timezone });
     const derived = derivedBlocks(entries, prefs, places, (at) =>
       day.format(new Date(at)),
@@ -301,6 +439,61 @@ export async function plannerRoutes(app: FastifyInstance) {
       entries,
       blocks,
       derived,
+      frames,
+      external,
+    };
+  });
+
+  // Find events by words: yours (each occurrence, with its own changes) and
+  // those from calendars you subscribe to. A year either side by default.
+  app.get("/calendar/search", async (r): Promise<CalendarSearch> => {
+    const u = await authenticate(r);
+    const q = calendarSearchQuery.parse(r.query);
+    const db = reader(r.headers);
+    const now = Date.now();
+    const from = q.from ? new Date(q.from) : new Date(now - 365 * DAY_MS);
+    const to = q.to ? new Date(q.to) : new Date(now + 365 * DAY_MS);
+    if (to <= from) fail(422, "End must be after start");
+    const words = q.q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+    const patterns = words.map(
+      (w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`,
+    );
+    // Items whose own words, or an occurrence's, match every word.
+    const matched = (
+      await db.query<{ id: string; notes: string }>(
+        `SELECT i.id, i.notes FROM items i
+         WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) w
+             WHERE (i.title || ' ' || i.notes || ' ' || i.location) NOT ILIKE w
+               AND NOT EXISTS (SELECT 1 FROM item_overrides o WHERE o.item_id = i.id
+                 AND (coalesce(o.data->>'title', '') || ' ' || coalesce(o.data->>'location', '')) ILIKE w))
+         LIMIT 500`,
+        [u.id, patterns],
+      )
+    ).rows;
+    const notes = new Map(matched.map((m) => [m.id, m.notes]));
+    const entries = matched.length
+      ? await calendarEntries(db, u.id, from, to, [...notes.keys()])
+      : [];
+    const results: CalendarSearchResult[] = [
+      ...entries
+        .filter((e) => {
+          const text =
+            `${e.title} ${e.location} ${notes.get(e.item_id) ?? ""}`.toLowerCase();
+          return words.every((w) => text.includes(w));
+        })
+        .map((e) => ({ source: "item" as const, ...e })),
+      ...(await externalEntries(db, u.id, from, to, false, patterns)).map(
+        (e) => ({ source: "external" as const, ...e }),
+      ),
+    ];
+    return {
+      q: q.q,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      results: results
+        .sort((a, b) => a.start_at.localeCompare(b.start_at))
+        .slice(0, 100),
     };
   });
 
@@ -397,6 +590,56 @@ export async function plannerRoutes(app: FastifyInstance) {
     });
   });
 
+  // Another block for the same task and length: at `start_at`, or the next
+  // free working time after the original.
+  app.post("/blocks/:id/duplicate", async (r, reply) => {
+    const u = await authenticate(r);
+    const d = blockDuplicateInput.parse(r.body ?? {});
+    const block = await transaction(async (db) => {
+      const b = await ownBlock(db, idParam(r), u.id);
+      const open = await db.query(
+        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
+        [u.id, b.item_id],
+      );
+      if (!open.rowCount) fail(409, "This task is done or no longer yours.");
+      const length = b.end_at.getTime() - b.start_at.getTime();
+      let slot: { start_at: string; end_at: string } | null;
+      if (d.start_at)
+        slot = {
+          start_at: new Date(d.start_at).toISOString(),
+          end_at: new Date(Date.parse(d.start_at) + length).toISOString(),
+        };
+      else {
+        slot = await workingFree(
+          db,
+          u.id,
+          length / 60000,
+          [],
+          new Date(),
+          b.end_at,
+        );
+        if (!slot)
+          fail(409, "There's no free working time in the 7 days after it.");
+      }
+      const { id } = (
+        await db.query<{ id: string }>(
+          `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+          [b.item_id, u.id, slot!.start_at, slot!.end_at],
+        )
+      ).rows[0];
+      const created = await blockById(db, id, u.id);
+      await queueWebhooks(
+        db,
+        "block.scheduled",
+        { user_id: u.id, team_id: null },
+        created,
+      );
+      return created;
+    });
+    reply.code(201);
+    return block;
+  });
+
   // ---- plans ---------------------------------------------------------------------
 
   app.post("/planner/preview", async (r): Promise<Plan> => {
@@ -408,6 +651,20 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.get("/planner/plans/:id", async (r) => {
     const u = await authenticate(r);
     return planById(reader(r.headers), idParam(r), u.id);
+  });
+
+  // Tune a plan before applying it; returns a new plan that replaces it.
+  app.patch("/planner/plans/:id", async (r): Promise<Plan> => {
+    const u = await authenticate(r);
+    const d = planTuneInput.parse(r.body ?? {});
+    return transaction((db) => tunePlan(db, u, idParam(r), d));
+  });
+
+  // Whether the calendar or tasks changed since the plan was made.
+  app.get("/planner/plans/:id/stale", async (r): Promise<PlanStaleness> => {
+    const u = await authenticate(r);
+    // The primary: a replica a moment behind would miss the change being asked about.
+    return { stale: await planStale(pool, idParam(r), u.id) };
   });
 
   // Save a plan's blocks. Blocks that now clash with something are left out.
@@ -445,7 +702,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           (x) => x.start_at < b.end_at && b.start_at < x.end_at,
         );
         const open = await db.query(
-          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status <> 'done' AND ${VISIBLE_ITEMS}`,
+          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
           [u.id, b.item_id],
         );
         if (clash || !open.rowCount) {
@@ -508,22 +765,47 @@ export async function plannerRoutes(app: FastifyInstance) {
 
   // ---- calendar feed: a private link other calendar apps can subscribe to ------
 
-  app.post("/me/calendar-feed", async (r) => {
+  app.get("/me/calendar-feed", async (r): Promise<CalendarFeedSettings> => {
     const u = await authenticate(r);
+    return feedSettings(reader(r.headers), u.id);
+  });
+
+  app.put("/me/calendar-feed", async (r): Promise<CalendarFeedSettings> => {
+    const u = await authenticate(r);
+    const d = calendarFeedSettingsInput.parse(r.body ?? {});
+    await pool.query(
+      "UPDATE users SET calendar_feed_options = calendar_feed_options || $2::jsonb WHERE id = $1",
+      [u.id, JSON.stringify(d)],
+    );
+    return feedSettings(pool, u.id);
+  });
+
+  // The full link, or `{ "busy": true }` for one that only shows when you're
+  // busy (safe to share). Each is shown once; making it again replaces it.
+  app.post("/me/calendar-feed", async (r): Promise<CalendarFeed> => {
+    const u = await authenticate(r);
+    const d = calendarFeedCreateInput.parse(r.body ?? {});
     const token = randomBytes(24).toString("base64url");
-    await pool.query("UPDATE users SET calendar_feed_hash = $2 WHERE id = $1", [
-      u.id,
-      digest(token),
-    ]);
-    return { url: `${publicOrigin(r)}/calendar/feed/${token}.ics` };
+    await pool.query(
+      `UPDATE users SET ${d.busy ? "calendar_busy_feed_hash" : "calendar_feed_hash"} = $2 WHERE id = $1`,
+      [u.id, digest(token)],
+    );
+    return {
+      url: `${publicOrigin(r)}/calendar/feed/${token}.ics`,
+      busy: d.busy,
+    };
   });
 
   app.delete("/me/calendar-feed", async (r, reply) => {
     const u = await authenticate(r);
-    await pool.query(
-      "UPDATE users SET calendar_feed_hash = NULL WHERE id = $1",
-      [u.id],
-    );
+    const { busy } = z
+      .object({ busy: z.enum(["0", "1", "true", "false"]).optional() })
+      .parse(r.query);
+    const column =
+      busy === "1" || busy === "true"
+        ? "calendar_busy_feed_hash"
+        : "calendar_feed_hash";
+    await pool.query(`UPDATE users SET ${column} = NULL WHERE id = $1`, [u.id]);
     return reply.code(204).send();
   });
 
@@ -531,14 +813,33 @@ export async function plannerRoutes(app: FastifyInstance) {
     const { file } = z
       .object({ file: z.string().regex(/^[A-Za-z0-9_-]{20,64}\.ics$/) })
       .parse(r.params);
+    const { busy } = z.object({ busy: z.string().optional() }).parse(r.query);
+    const hash = digest(file.slice(0, -4));
     const user = (
-      await pool.query<{ id: string; name: string; disabled: boolean }>(
-        "SELECT id, name, disabled FROM users WHERE calendar_feed_hash = $1",
-        [digest(file.slice(0, -4))],
+      await pool.query<{
+        id: string;
+        name: string;
+        disabled: boolean;
+        busy_link: boolean;
+        options: { include_blocks?: boolean };
+      }>(
+        `SELECT id, name, disabled, calendar_busy_feed_hash = $1 AS busy_link,
+                calendar_feed_options AS options
+         FROM users WHERE calendar_feed_hash = $1 OR calendar_busy_feed_hash = $1`,
+        [hash],
       )
     ).rows[0];
     if (!user || user.disabled) fail(404, "Calendar not found");
-    const body = await icsFeed(pool, user.id, user.name);
+    const from = (await settings()).smtp.from;
+    const body = await icsFeed(pool, user.id, user.name, {
+      // The busy link never shows more; the full link can ask for less.
+      busyOnly: user.busy_link || busy === "1" || busy === "true",
+      includeBlocks: !!user.options.include_blocks,
+      organizer: {
+        name: user.name,
+        email: (from.match(/<([^>]+)>/)?.[1] ?? from).trim(),
+      },
+    });
     return reply
       .header("Content-Type", "text/calendar; charset=utf-8")
       .header("Cache-Control", "private, max-age=300")

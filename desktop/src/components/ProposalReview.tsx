@@ -1,3 +1,4 @@
+import { alertLabel } from "./EventFields";
 import { Fragment, type ReactNode } from "react";
 import { Bell, Calendar, Check, Clock, Flag, Users, X } from "lucide-react";
 import {
@@ -137,6 +138,17 @@ const teamName = (items: Item[], teamId: string | null) =>
       "A team"
     : "Personal";
 
+/** "15 min before, 1 day before", "No reminder", or null when none are given. */
+function reminderText(i: {
+  alerts?: number[] | null;
+  reminder_minutes?: number | null;
+}) {
+  const alerts =
+    i.alerts ?? (i.reminder_minutes != null ? [i.reminder_minutes] : null);
+  if (alerts === null) return null;
+  return alerts.length ? alerts.map(alertLabel).join(", ") : "No reminder";
+}
+
 /** Human-readable "field: before → after" lines for an update. */
 function changes(data: ItemInput, current: Item, items: Item[]) {
   const lines: string[] = [];
@@ -150,11 +162,10 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   compare("Priority", current.priority, data.priority);
   compare("Status", current.status, data.status);
   compare("Type", current.kind, data.kind);
-  compare(
-    "Reminder",
-    `${current.reminder_minutes} min`,
-    `${data.reminder_minutes} min`,
-  );
+  // Only when the change sets reminders; left out, they stay as they are.
+  const after = reminderText(data);
+  if (after !== null)
+    compare("Reminder", reminderText(current) ?? "No reminder", after);
   compare(
     "Shared with",
     teamName(items, current.team_id),
@@ -208,7 +219,7 @@ function Details({
       {data.due_at && (
         <span>
           <Bell size={12} />
-          {data.reminder_minutes} min before
+          {reminderText(data) ?? "Your default reminders"}
         </span>
       )}
       {data.team_id && (

@@ -7,9 +7,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { motion, sameDay, statusTones, type Status } from "@orbyn/core";
+import { motion, sameDay, type Status } from "@orbyn/core";
 import { easeOut, isReducedMotion } from "../../motion";
-import { colors, fonts } from "../../theme";
+import { colors, fonts, themed, statusTones } from "../../theme";
 import { startOfWeek, weekDays } from "./dates";
 
 const SWIPE_DISTANCE = 50;
@@ -25,8 +25,8 @@ export function WeekStrip({
   onShiftWeek,
 }: {
   selected: Date;
-  /** What's planned on a day, for the dots. */
-  plansOn: (day: Date) => { key: string; status: Status }[];
+  /** What's planned on a day, for the dots; `color` overrides the status colour. */
+  plansOn: (day: Date) => { key: string; status: Status; color?: string }[];
   onSelect: (day: Date) => void;
   /** +1 for next week, -1 for the previous one. */
   onShiftWeek: (direction: 1 | -1) => void;
@@ -165,7 +165,7 @@ export function WeekStrip({
                         // On the green pill a status dot could vanish; use white.
                         backgroundColor: active
                           ? colors.white
-                          : statusTones[i.status].fg,
+                          : (i.color ?? statusTones[i.status].fg),
                       },
                     ]}
                   />
@@ -179,39 +179,41 @@ export function WeekStrip({
   );
 }
 
-const s = StyleSheet.create({
-  clip: { overflow: "hidden" },
-  row: { flexDirection: "row" },
-  pill: {
-    position: "absolute",
-    left: 3,
-    top: 0,
-    bottom: 0,
-    borderRadius: 16,
-    backgroundColor: colors.accent,
-  },
-  day: { flex: 1, alignItems: "center", paddingVertical: 10, minHeight: 78 },
-  weekday: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    color: colors.muted,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  dateWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-    borderWidth: 1.5,
-    borderColor: "transparent",
-  },
-  todayRing: { borderColor: colors.accent },
-  date: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
-  todayText: { color: colors.accent },
-  activeText: { color: colors.white },
-  dots: { height: 8, flexDirection: "row", gap: 3, marginTop: 3 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    clip: { overflow: "hidden" },
+    row: { flexDirection: "row" },
+    pill: {
+      position: "absolute",
+      left: 3,
+      top: 0,
+      bottom: 0,
+      borderRadius: 16,
+      backgroundColor: colors.accent,
+    },
+    day: { flex: 1, alignItems: "center", paddingVertical: 10, minHeight: 78 },
+    weekday: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      color: colors.muted,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
+    dateWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 4,
+      borderWidth: 1.5,
+      borderColor: "transparent",
+    },
+    todayRing: { borderColor: colors.accent },
+    date: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    todayText: { color: colors.accent },
+    activeText: { color: colors.white },
+    dots: { height: 8, flexDirection: "row", gap: 3, marginTop: 3 },
+    dot: { width: 6, height: 6, borderRadius: 3 },
+  }),
+);

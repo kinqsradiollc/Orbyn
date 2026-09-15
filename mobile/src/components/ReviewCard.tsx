@@ -8,13 +8,16 @@ import { client } from "../lib/api";
 import { minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
+/** Unfinished blocks shown before "Show all". */
+const FEW = 5;
+
 /**
- * What needs a look in the plan: unfinished time blocks (move them forward),
- * blocks that now clash with an event (reschedule), and tasks at risk of
- * missing their due date. Hidden when there's nothing to review.
+ * What needs a look in the plan: unfinished time blocks (move them forward,
+ * one or all), blocks that now clash with an event (reschedule), and tasks
+ * at risk of missing their due date. Hidden when there's nothing to review.
  */
 export function ReviewCard({
   items,
@@ -26,6 +29,8 @@ export function ReviewCard({
   onPlan: (plan: Plan) => void;
 }) {
   const [review, setReview] = useState<PlannerReview | null>(null);
+  const [all, setAll] = useState(false);
+  const [note, setNote] = useState("");
   const { busy, error, setError, run } = useRun();
 
   const load = useCallback(async () => {
@@ -44,46 +49,81 @@ export function ReviewCard({
 
   if (!review) return null;
   const { unfinished, conflicts, at_risk } = review;
-  if (!unfinished.length && !conflicts.length && !at_risk.length) return null;
+  if (!unfinished.length && !conflicts.length && !at_risk.length && !note)
+    return null;
+  const shownUnfinished = all ? unfinished : unfinished.slice(0, FEW);
+
+  const moveForward = (ids?: string[]) =>
+    void run(async () => {
+      onPlan(await client.rollForward(ids));
+    });
 
   return (
     <FadeIn style={shared.card}>
-      <Text style={shared.sectionTitle} accessibilityRole="header">
-        Needs a look
-      </Text>
-      <Text style={[shared.small, s.hint]}>Keep your plan honest.</Text>
+      <View style={s.head}>
+        <View style={{ flex: 1 }}>
+          <Text style={shared.sectionTitle} accessibilityRole="header">
+            Needs a look
+          </Text>
+          <Text style={[shared.small, s.hint]}>Keep your plan honest.</Text>
+        </View>
+        <SmallAction
+          label={busy ? "Checking…" : "Refresh"}
+          disabled={busy}
+          onPress={() =>
+            void run(async () => {
+              setNote("");
+              await load();
+            })
+          }
+        />
+      </View>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
+      {!!note && (
+        <Text style={s.note} accessibilityRole="alert">
+          {note}
+        </Text>
+      )}
 
       {unfinished.length > 0 && (
         <View style={s.group}>
           <Text style={shared.label}>Unfinished ({unfinished.length})</Text>
-          {unfinished.slice(0, 5).map((b) => (
-            <View key={b.id} style={s.row}>
-              <Text style={s.title} numberOfLines={1}>
-                {b.title}
-              </Text>
-              <Text style={shared.small}>
-                {slotLabel(b.start_at, b.end_at)}
-              </Text>
+          {shownUnfinished.map((b) => (
+            <View key={b.id} style={s.actionRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.title} numberOfLines={1}>
+                  {b.title}
+                </Text>
+                <Text style={shared.small}>
+                  {slotLabel(b.start_at, b.end_at)}
+                </Text>
+              </View>
+              <SmallAction
+                label="Move forward"
+                disabled={busy}
+                onPress={() => moveForward([b.id])}
+              />
             </View>
           ))}
-          {unfinished.length > 5 && (
-            <Text style={shared.small}>And {unfinished.length - 5} more.</Text>
+          {unfinished.length > FEW && (
+            <View style={s.more}>
+              <SmallAction
+                label={all ? "Show fewer" : `Show all ${unfinished.length}`}
+                disabled={false}
+                onPress={() => {
+                  animateLayout();
+                  setAll(!all);
+                }}
+              />
+            </View>
           )}
           <Button
             secondary
             icon="arrowRight"
-            title={busy ? "Planning…" : "Move forward"}
+            title={busy ? "Planning…" : "Move all forward"}
             disabled={busy}
             style={s.button}
-            onPress={() =>
-              void run(async () => {
-                const plan = await client.rollForward(
-                  unfinished.map((b) => b.id),
-                );
-                onPlan(plan);
-              })
-            }
+            onPress={() => moveForward(unfinished.map((b) => b.id))}
           />
         </View>
       )}
@@ -110,7 +150,10 @@ export function ReviewCard({
                 disabled={busy}
                 onPress={() =>
                   void run(async () => {
-                    await client.rescheduleBlock(block.id);
+                    const moved = await client.rescheduleBlock(block.id);
+                    setNote(
+                      `${block.title} moved to ${slotLabel(moved.start_at, moved.end_at)}.`,
+                    );
                     await load();
                   })
                 }
@@ -141,16 +184,26 @@ export function ReviewCard({
   );
 }
 
-const s = StyleSheet.create({
-  hint: { marginTop: 2, marginBottom: 12 },
-  group: { marginTop: 6, marginBottom: 6 },
-  row: { paddingVertical: 6 },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-  },
-  title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
-  button: { marginTop: 8, marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+    hint: { marginTop: 2, marginBottom: 12 },
+    note: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+      marginBottom: 8,
+    },
+    group: { marginTop: 6, marginBottom: 6 },
+    row: { paddingVertical: 6 },
+    actionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+    },
+    more: { flexDirection: "row", marginTop: 4 },
+    title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    button: { marginTop: 8, marginBottom: 0 },
+  }),
+);

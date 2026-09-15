@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 
 /**
  * A choice chip: single choice (radio) or one of many (checkbox). Selected
@@ -87,26 +87,28 @@ export function ChipRow({
   );
 }
 
-const s = StyleSheet.create({
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    minHeight: 38,
-    maxWidth: "100%",
-    paddingHorizontal: 13,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  disabled: { opacity: 0.45 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  text: {
-    flexShrink: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.textSoft,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: 38,
+      maxWidth: "100%",
+      paddingHorizontal: 13,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    disabled: { opacity: 0.45 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    text: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+  }),
+);

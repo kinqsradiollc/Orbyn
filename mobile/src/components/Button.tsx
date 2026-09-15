@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 import { Icon, type IconName } from "./Icon";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 
 export function Button({
   title,
@@ -48,25 +48,27 @@ export function Button({
   );
 }
 
-const s = StyleSheet.create({
-  button: {
-    minHeight: 48,
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 18,
-    backgroundColor: colors.accent,
-    borderRadius: radii.input,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  pressed: { backgroundColor: colors.accentPressed },
-  secondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryPressed: { backgroundColor: colors.surfaceMuted },
-  disabled: { opacity: 0.45 },
-  text: { fontFamily: fonts.semibold, fontSize: 15 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    button: {
+      minHeight: 48,
+      flexDirection: "row",
+      gap: 8,
+      paddingHorizontal: 18,
+      backgroundColor: colors.accent,
+      borderRadius: radii.input,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 10,
+    },
+    pressed: { backgroundColor: colors.accentPressed },
+    secondary: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    secondaryPressed: { backgroundColor: colors.surfaceMuted },
+    disabled: { opacity: 0.45 },
+    text: { fontFamily: fonts.semibold, fontSize: 15 },
+  }),
+);

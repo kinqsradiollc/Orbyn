@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -14,10 +15,13 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
+  MAX_ITEM_LINKS as MAX_LINKS,
   dateLabel,
   hasTeamPermission,
   statusLabels,
   statusOrder,
+  type Attendee,
+  type AttendeeStatus,
   type Item,
   type ItemInput,
   type Team,
@@ -25,15 +29,21 @@ import {
 } from "@orbyn/core";
 import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
-import { NumberInput } from "./Field";
+import { AlertsField, ColorField, InviteesField } from "./EventFields";
+import { DateField, NumberInput } from "./Field";
 import { Icon } from "./Icon";
 import { RepeatPicker } from "./RepeatPicker";
 import { Segmented } from "./Segmented";
 import { client } from "../lib/api";
-import { deviceTimeZone, ESTIMATES, minutesLabel } from "../lib/planning";
+import {
+  deviceTimeZone,
+  ESTIMATES,
+  LIST_COLORS,
+  minutesLabel,
+} from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii, spacing } from "../theme";
+import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 
 /** A saved item being edited, or the draft of a new one. */
@@ -58,6 +68,13 @@ type Props = {
 };
 
 const PERSONAL = "personal";
+/** The server's cap on tags per item. */
+const MAX_TAGS = 20;
+/** Every status, closed ones last. */
+const STATUS_OPTIONS = [...statusOrder, "cancelled"] as const;
+type LinkDraft = { url: string; title: string };
+/** Web links: http or https only. */
+const LINK_URL = /^https?:\/\/\S+$/i;
 
 /** Native sheet on iOS, full-screen modal on Android; both respect safe areas. */
 export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
@@ -144,9 +161,118 @@ function Form({
   const [newTag, setNewTag] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState("");
+  /** From the repeat picker: an ending chosen without its date. */
+  const [repeatProblem, setRepeatProblem] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+  /** The web's checks before saving: a repeat needs a date, and its last date. */
+  const save = () => {
+    const problem =
+      editing.rrule && !editing.due_at
+        ? "Repeating items need a date. Add a start time."
+        : repeatProblem;
+    setFormError(problem ?? "");
+    if (!problem) onSave();
+  };
+
+  // Invitees and their answers come from the saved event (lists don't carry them).
+  const itemId = "id" in editing ? editing.id : null;
+  const [savedPeople, setSavedPeople] = useState<
+    { email: string; name?: string }[]
+  >([]);
+  const [statuses, setStatuses] = useState<Map<string, AttendeeStatus>>(
+    () => new Map(),
+  );
+  /** Links saved on the item (rows in lists don't carry them). */
+  const [savedLinks, setSavedLinks] = useState<LinkDraft[]>([]);
+  useEffect(() => {
+    if (!itemId) return;
+    let alive = true;
+    client
+      .getItem(itemId)
+      .then((d) => {
+        if (!alive) return;
+        setSavedLinks(
+          (d.links ?? []).map(({ url, title }) => ({
+            url,
+            title: title ?? "",
+          })),
+        );
+        // The detail carries full invitees (with answers), not the input shape.
+        const people = (d.attendees ?? []) as Attendee[];
+        setSavedPeople(
+          people.map((a) => ({ email: a.email, name: a.name || undefined })),
+        );
+        setStatuses(new Map(people.map((a) => [a.email, a.status])));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [itemId]);
+  // Sent only once changed: the list replaces the saved invitees.
+  const people = editing.attendees ?? savedPeople;
+  // Likewise links: sending the list replaces the saved ones.
+  const links: LinkDraft[] = editing.links ?? savedLinks;
+  const alerts =
+    editing.alerts ??
+    (editing.reminder_minutes != null ? [editing.reminder_minutes] : []);
+  const colorChoices = [
+    ...new Set([
+      ...LIST_COLORS,
+      ...lists.map((l) => l.color),
+      ...tags.map((t) => t.color),
+    ]),
+  ];
+
+  // All-day items keep dates only: local midnight to the midnight after the last day.
+  const allDay = !!editing.all_day;
+  const dayOf = (iso: string | null | undefined) => {
+    const d = iso ? new Date(iso) : new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  };
+  const nextDay = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const fromKey = (key: string) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const firstDay = dayOf(editing.due_at);
+  const lastDay = editing.end_at
+    ? dayOf(new Date(Date.parse(editing.end_at) - 1).toISOString())
+    : firstDay;
+  const setAllDay = (on: boolean) => {
+    if (picker) setPicker(null);
+    if (on) {
+      const last = lastDay < firstDay ? firstDay : lastDay;
+      onChange({
+        all_day: true,
+        timezone: deviceTimeZone(),
+        due_at: firstDay.toISOString(),
+        end_at: editing.kind === "event" ? nextDay(last).toISOString() : null,
+      });
+    } else {
+      const start = new Date(firstDay);
+      start.setHours(9);
+      onChange({
+        all_day: false,
+        due_at: start.toISOString(),
+        end_at:
+          editing.kind === "event"
+            ? new Date(start.getTime() + 3_600_000).toISOString()
+            : null,
+      });
+    }
+  };
+
   const addTag = async () => {
     const name = newTag.trim();
     if (!name) return;
+    if (tagIds.length >= MAX_TAGS) {
+      setTagError("Up to 20 tags.");
+      return;
+    }
     const existing = scopeTags.find(
       (t) => t.name.toLowerCase() === name.toLowerCase(),
     );
@@ -244,6 +370,11 @@ function Form({
                     Only team admins can move this out of {savedTeam.name}.
                   </Text>
                 )}
+                {teamId !== savedTeamId && (
+                  <Text style={[shared.small, s.hint]}>
+                    Moving it clears its list, tags and assignee.
+                  </Text>
+                )}
               </Section>
             )}
             <Section label="Type">
@@ -269,126 +400,192 @@ function Form({
                 wrap
                 disabled={readOnly}
                 accessibilityLabel="Status"
-                options={statusOrder}
+                options={STATUS_OPTIONS}
                 labels={statusLabels}
                 value={editing.status}
                 onChange={(status) => onChange({ status })}
               />
             </Section>
-            {(["due_at", "end_at"] as const).map((field) => (
-              <Section
-                key={field}
-                label={field === "due_at" ? "Due / start" : "End (optional)"}
-              >
-                <View style={s.dateRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      (field === "due_at" ? "Due date: " : "End date: ") +
-                      dateLabel(editing[field])
-                    }
-                    disabled={readOnly}
-                    onPress={() => setPicker({ field, mode: "date" })}
-                    style={({ pressed }) => [
-                      s.dateButton,
-                      picker?.field === field && s.dateActive,
-                      pressed && { backgroundColor: colors.surfaceMuted },
-                    ]}
-                  >
-                    <Icon
-                      name={field === "due_at" ? "clock" : "calendar"}
-                      size={16}
-                      color={colors.accent}
-                    />
-                    <Text
-                      style={[
-                        s.dateText,
-                        !editing[field] && { color: colors.faint },
-                      ]}
-                    >
-                      {dateLabel(editing[field])}
-                    </Text>
-                  </Pressable>
-                  {editing[field] && !readOnly && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear time"
-                      hitSlop={8}
-                      onPress={() => {
-                        if (picker?.field === field) setPicker(null);
-                        setDate(field, null);
-                      }}
-                      style={s.clear}
-                    >
-                      <Icon name="x" size={16} color={colors.muted} />
-                    </Pressable>
-                  )}
-                </View>
-              </Section>
-            ))}
-            {picker && (
-              <View style={s.pickerCard}>
-                <DateTimePicker
-                  value={new Date(editing[picker.field] || Date.now())}
-                  mode={picker.mode}
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  accentColor={colors.accent}
-                  textColor={colors.text}
-                  onChange={(event, date) => {
-                    if (event.type === "dismissed") {
-                      setPicker(null);
-                      return;
-                    }
-                    if (date) {
-                      const current = new Date(
-                        editing[picker.field] || Date.now(),
-                      );
-                      if (picker.mode === "date")
-                        current.setFullYear(
-                          date.getFullYear(),
-                          date.getMonth(),
-                          date.getDate(),
-                        );
-                      else
-                        current.setHours(
-                          date.getHours(),
-                          date.getMinutes(),
-                          0,
-                          0,
-                        );
-                      setDate(picker.field, current.toISOString());
-                      if (Platform.OS === "android")
-                        setPicker(
-                          picker.mode === "date"
-                            ? { ...picker, mode: "time" }
-                            : null,
-                        );
-                    }
-                  }}
+            <Section label="All day">
+              <View style={s.switchRow}>
+                <Text style={[shared.small, { flex: 1 }]}>
+                  Just dates, no times. All-day items never count as busy.
+                </Text>
+                <Switch
+                  value={allDay}
+                  disabled={readOnly}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel="All day"
+                  onValueChange={setAllDay}
                 />
-                {Platform.OS === "ios" && (
-                  <Button
-                    title={picker.mode === "date" ? "Choose time" : "Done"}
-                    icon={picker.mode === "date" ? "arrowRight" : "check"}
-                    style={{ marginBottom: 0 }}
-                    onPress={() => {
-                      if (!editing[picker.field])
-                        setDate(picker.field, new Date().toISOString());
-                      setPicker(
-                        picker.mode === "date"
-                          ? { ...picker, mode: "time" }
-                          : null,
+              </View>
+            </Section>
+            {allDay && (
+              <>
+                <Section label={editing.kind === "event" ? "First day" : "Day"}>
+                  <DateField
+                    label={editing.kind === "event" ? "First day" : "Day"}
+                    value={keyOf(firstDay)}
+                    onChange={(key) => {
+                      if (!key) return;
+                      const start = fromKey(key);
+                      const days = Math.round(
+                        (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
                       );
+                      onChange({
+                        due_at: start.toISOString(),
+                        end_at:
+                          editing.kind === "event"
+                            ? nextDay(
+                                new Date(
+                                  start.getFullYear(),
+                                  start.getMonth(),
+                                  start.getDate() + Math.max(0, days),
+                                ),
+                              ).toISOString()
+                            : null,
+                      });
                     }}
                   />
+                </Section>
+                {editing.kind === "event" && (
+                  <Section label="Last day">
+                    <DateField
+                      label="Last day"
+                      value={keyOf(lastDay < firstDay ? firstDay : lastDay)}
+                      minimumDate={firstDay}
+                      onChange={(key) =>
+                        key &&
+                        onChange({
+                          end_at: nextDay(fromKey(key)).toISOString(),
+                        })
+                      }
+                    />
+                  </Section>
                 )}
-              </View>
+              </>
+            )}
+            {!allDay && (
+              <>
+                {(["due_at", "end_at"] as const).map((field) => (
+                  <Section
+                    key={field}
+                    label={
+                      field === "due_at" ? "Due / start" : "End (optional)"
+                    }
+                  >
+                    <View style={s.dateRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          (field === "due_at" ? "Due date: " : "End date: ") +
+                          dateLabel(editing[field])
+                        }
+                        disabled={readOnly}
+                        onPress={() => setPicker({ field, mode: "date" })}
+                        style={({ pressed }) => [
+                          s.dateButton,
+                          picker?.field === field && s.dateActive,
+                          pressed && { backgroundColor: colors.surfaceMuted },
+                        ]}
+                      >
+                        <Icon
+                          name={field === "due_at" ? "clock" : "calendar"}
+                          size={16}
+                          color={colors.accent}
+                        />
+                        <Text
+                          style={[
+                            s.dateText,
+                            !editing[field] && { color: colors.faint },
+                          ]}
+                        >
+                          {dateLabel(editing[field])}
+                        </Text>
+                      </Pressable>
+                      {editing[field] && !readOnly && (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear time"
+                          hitSlop={8}
+                          onPress={() => {
+                            if (picker?.field === field) setPicker(null);
+                            setDate(field, null);
+                          }}
+                          style={s.clear}
+                        >
+                          <Icon name="x" size={16} color={colors.muted} />
+                        </Pressable>
+                      )}
+                    </View>
+                  </Section>
+                ))}
+                {picker && (
+                  <View style={s.pickerCard}>
+                    <DateTimePicker
+                      value={new Date(editing[picker.field] || Date.now())}
+                      mode={picker.mode}
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      accentColor={colors.accent}
+                      textColor={colors.text}
+                      onChange={(event, date) => {
+                        if (event.type === "dismissed") {
+                          setPicker(null);
+                          return;
+                        }
+                        if (date) {
+                          const current = new Date(
+                            editing[picker.field] || Date.now(),
+                          );
+                          if (picker.mode === "date")
+                            current.setFullYear(
+                              date.getFullYear(),
+                              date.getMonth(),
+                              date.getDate(),
+                            );
+                          else
+                            current.setHours(
+                              date.getHours(),
+                              date.getMinutes(),
+                              0,
+                              0,
+                            );
+                          setDate(picker.field, current.toISOString());
+                          if (Platform.OS === "android")
+                            setPicker(
+                              picker.mode === "date"
+                                ? { ...picker, mode: "time" }
+                                : null,
+                            );
+                        }
+                      }}
+                    />
+                    {Platform.OS === "ios" && (
+                      <Button
+                        title={picker.mode === "date" ? "Choose time" : "Done"}
+                        icon={picker.mode === "date" ? "arrowRight" : "check"}
+                        style={{ marginBottom: 0 }}
+                        onPress={() => {
+                          if (!editing[picker.field])
+                            setDate(picker.field, new Date().toISOString());
+                          setPicker(
+                            picker.mode === "date"
+                              ? { ...picker, mode: "time" }
+                              : null,
+                          );
+                        }}
+                      />
+                    )}
+                  </View>
+                )}
+              </>
             )}
             <Section label="Repeat">
               <RepeatPicker
                 rrule={editing.rrule}
                 dueAt={editing.due_at}
                 disabled={readOnly}
+                onProblem={setRepeatProblem}
                 onChange={(rrule) =>
                   onChange(
                     rrule
@@ -397,58 +594,62 @@ function Form({
                   )
                 }
               />
+              {exists && !!editing.rrule && (
+                <Text style={[shared.small, s.hint]}>
+                  When you save or delete, you choose this one, this and
+                  following, or all of them.
+                </Text>
+              )}
             </Section>
-            {editing.kind === "task" && (
-              <Section label="How long will it take?">
-                <ChipRow label="Estimate">
+            <Section label="How long will it take?">
+              <ChipRow label="Estimate">
+                <Chip
+                  label="Not sure"
+                  selected={!estimate && !customEstimate}
+                  disabled={readOnly}
+                  onPress={() => {
+                    setCustomEstimate(false);
+                    onChange({ estimate_minutes: null });
+                  }}
+                />
+                {ESTIMATES.map((m) => (
                   <Chip
-                    label="Not sure"
-                    selected={!estimate && !customEstimate}
+                    key={m}
+                    label={minutesLabel(m)}
+                    accessibilityLabel={`${minutesLabel(m)} estimate`}
+                    selected={!customEstimate && estimate === m}
                     disabled={readOnly}
                     onPress={() => {
                       setCustomEstimate(false);
-                      onChange({ estimate_minutes: null });
+                      onChange({ estimate_minutes: m });
                     }}
                   />
-                  {ESTIMATES.map((m) => (
-                    <Chip
-                      key={m}
-                      label={minutesLabel(m)}
-                      accessibilityLabel={`${minutesLabel(m)} estimate`}
-                      selected={!customEstimate && estimate === m}
-                      disabled={readOnly}
-                      onPress={() => {
-                        setCustomEstimate(false);
-                        onChange({ estimate_minutes: m });
-                      }}
-                    />
-                  ))}
-                  <Chip
-                    label="Custom"
-                    selected={customEstimate}
-                    disabled={readOnly}
-                    onPress={() => setCustomEstimate(true)}
+                ))}
+                <Chip
+                  label="Custom"
+                  selected={customEstimate}
+                  disabled={readOnly}
+                  onPress={() => setCustomEstimate(true)}
+                />
+              </ChipRow>
+              {customEstimate && (
+                <View style={s.below}>
+                  <NumberInput
+                    value={estimate ? String(estimate) : ""}
+                    editable={!readOnly}
+                    placeholder="50"
+                    suffix="minutes"
+                    accessibilityLabel="Estimate in minutes"
+                    onChangeText={(text) =>
+                      onChange({
+                        estimate_minutes:
+                          Math.min(10080, Number(text) || 0) || null,
+                      })
+                    }
                   />
-                </ChipRow>
-                {customEstimate && (
-                  <View style={s.below}>
-                    <NumberInput
-                      value={estimate ? String(estimate) : ""}
-                      editable={!readOnly}
-                      placeholder="50"
-                      suffix="minutes"
-                      accessibilityLabel="Estimate in minutes"
-                      onChangeText={(text) =>
-                        onChange({
-                          estimate_minutes:
-                            Math.min(10080, Number(text) || 0) || null,
-                        })
-                      }
-                    />
-                  </View>
-                )}
-              </Section>
-            )}
+                </View>
+              )}
+            </Section>
             <Section label="List">
               {scopeLists.length ? (
                 <ChipRow label="List">
@@ -489,7 +690,9 @@ function Form({
                         label={t.name}
                         color={t.color}
                         selected={on}
-                        disabled={readOnly}
+                        disabled={
+                          readOnly || (!on && tagIds.length >= MAX_TAGS)
+                        }
                         onPress={() =>
                           onChange({
                             tag_ids: on
@@ -538,11 +741,25 @@ function Form({
                   </PressableScale>
                 </View>
               )}
+              {tagIds.length >= MAX_TAGS && (
+                <Text style={[shared.small, s.hint]}>Up to 20 tags.</Text>
+              )}
               {!!tagError && (
                 <Text accessibilityRole="alert" style={[s.error, s.below]}>
                   {tagError}
                 </Text>
               )}
+            </Section>
+            <Section label="Colour on the calendar">
+              <ColorField
+                value={editing.color ?? null}
+                choices={colorChoices}
+                disabled={readOnly}
+                onChange={(color) => onChange({ color })}
+              />
+              <Text style={[shared.small, s.hint]}>
+                With no colour of its own it takes its list’s.
+              </Text>
             </Section>
             {!!teamId && members.length > 0 && (
               <Section label="Assigned to">
@@ -562,6 +779,20 @@ function Form({
                       onPress={() => onChange({ assignee_id: m.user_id })}
                     />
                   ))}
+                  {/* Someone who left the team stays until you pick another. */}
+                  {!!editing.assignee_id &&
+                    !members.some((m) => m.user_id === editing.assignee_id) && (
+                      <Chip
+                        label={
+                          ("assignee_name" in editing &&
+                            editing.assignee_name) ||
+                          "Current assignee"
+                        }
+                        selected
+                        disabled={readOnly}
+                        onPress={() => {}}
+                      />
+                    )}
                 </ChipRow>
               </Section>
             )}
@@ -592,6 +823,30 @@ function Form({
                     onChangeText={(meeting_url) => onChange({ meeting_url })}
                   />
                 </Section>
+                {!allDay && (
+                  <Section label="Show as">
+                    <Segmented
+                      disabled={readOnly}
+                      accessibilityLabel="Show as"
+                      options={["busy", "free"] as const}
+                      labels={{ busy: "Busy", free: "Free" }}
+                      value={editing.busy === false ? "free" : "busy"}
+                      onChange={(value) => onChange({ busy: value === "busy" })}
+                    />
+                    <Text style={[shared.small, s.hint]}>
+                      Free events don’t block your planner, booking pages or
+                      teammates.
+                    </Text>
+                  </Section>
+                )}
+                <Section label="Invite people">
+                  <InviteesField
+                    people={people}
+                    statuses={statuses}
+                    disabled={readOnly}
+                    onChange={(attendees) => onChange({ attendees })}
+                  />
+                </Section>
               </>
             )}
             <Section label="Notes">
@@ -607,17 +862,27 @@ function Form({
                 onChangeText={(notes) => onChange({ notes })}
               />
             </Section>
-            <Section label="Remind me before (minutes)">
-              <TextInput
-                style={shared.input}
-                keyboardType="number-pad"
-                editable={!readOnly}
-                value={String(editing.reminder_minutes)}
-                onChangeText={(value) =>
-                  onChange({ reminder_minutes: Number(value) || 0 })
+            <Section label="Links">
+              <LinksField
+                links={links}
+                disabled={readOnly}
+                onChange={(next) => onChange({ links: next })}
+              />
+            </Section>
+            <Section label="Alerts">
+              <AlertsField
+                alerts={alerts}
+                disabled={readOnly}
+                onChange={(next) =>
+                  onChange({ alerts: next, reminder_minutes: undefined })
                 }
               />
             </Section>
+            {!!formError && (
+              <Text accessibilityRole="alert" style={s.error}>
+                {formError}
+              </Text>
+            )}
             {!!error && (
               <Text accessibilityRole="alert" style={s.error}>
                 {error}
@@ -628,7 +893,7 @@ function Form({
                 title={busy ? "Saving…" : "Save item"}
                 icon={busy ? undefined : "check"}
                 disabled={busy}
-                onPress={onSave}
+                onPress={save}
               />
             )}
             {exists && !readOnly && (
@@ -637,18 +902,21 @@ function Form({
                 title="Delete item"
                 disabled={busy}
                 onPress={() =>
-                  Alert.alert(
-                    "Delete this item?",
-                    "This removes it from your planner.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: onDelete,
-                      },
-                    ],
-                  )
+                  // A repeating item asks which ones to delete instead.
+                  editing.rrule
+                    ? onDelete()
+                    : Alert.alert(
+                        "Delete this item?",
+                        "This removes it from your planner.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: onDelete,
+                          },
+                        ],
+                      )
                 }
               />
             )}
@@ -656,6 +924,125 @@ function Form({
         </ScrollView>
       </KeyboardAvoidingView>
     </>
+  );
+}
+
+/** Web links on the item: a title (optional) and an address, up to 20. */
+function LinksField({
+  links,
+  disabled,
+  onChange,
+}: {
+  links: LinkDraft[];
+  disabled: boolean;
+  onChange: (links: LinkDraft[]) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [problem, setProblem] = useState("");
+  const full = links.length >= MAX_LINKS;
+  const add = () => {
+    const clean = url.trim();
+    if (!LINK_URL.test(clean)) {
+      setProblem("Links start with http:// or https://.");
+      return;
+    }
+    if (links.some((l) => l.url === clean)) {
+      setProblem("That link is already here.");
+      return;
+    }
+    onChange([...links, { url: clean, title: title.trim() }]);
+    setUrl("");
+    setTitle("");
+    setProblem("");
+  };
+  return (
+    <View>
+      {links.length === 0 && disabled && (
+        <Text style={shared.small}>No links.</Text>
+      )}
+      {links.map((l, n) => (
+        <View key={`${l.url}-${n}`} style={[s.linkRow, n > 0 && s.linkDivider]}>
+          <Icon name="link" size={14} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.linkTitle} numberOfLines={1}>
+              {l.title || l.url}
+            </Text>
+            {!!l.title && (
+              <Text style={shared.small} numberOfLines={1}>
+                {l.url}
+              </Text>
+            )}
+          </View>
+          {!disabled && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${l.title || l.url}`}
+              hitSlop={8}
+              onPress={() => onChange(links.filter((_, i) => i !== n))}
+              style={s.linkRemove}
+            >
+              <Icon name="x" size={16} color={colors.muted} />
+            </Pressable>
+          )}
+        </View>
+      ))}
+      {!disabled && !full && (
+        <View style={links.length > 0 && s.below}>
+          <TextInput
+            style={shared.input}
+            value={url}
+            onChangeText={(t) => {
+              setUrl(t);
+              if (problem) setProblem("");
+            }}
+            maxLength={2000}
+            placeholder="https://"
+            placeholderTextColor={colors.faint}
+            keyboardType="url"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Link address"
+          />
+          <View style={[s.tagRow, s.below]}>
+            <TextInput
+              style={[shared.input, s.tagInput]}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={200}
+              placeholder="Title (optional)"
+              placeholderTextColor={colors.faint}
+              returnKeyType="done"
+              onSubmitEditing={add}
+              accessibilityLabel="Link title, optional"
+            />
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Add link"
+              accessibilityState={{ disabled: !url.trim() }}
+              disabled={!url.trim()}
+              onPress={add}
+              style={[s.tagAdd, !url.trim() && { opacity: 0.45 }]}
+            >
+              <Icon
+                name="plus"
+                size={18}
+                color={colors.white}
+                strokeWidth={2.2}
+              />
+            </PressableScale>
+          </View>
+        </View>
+      )}
+      {!!problem && (
+        <Text style={[shared.small, s.hint, { color: colors.danger }]}>
+          {problem}
+        </Text>
+      )}
+      {full && !disabled && (
+        <Text style={[shared.small, s.hint]}>Up to {MAX_LINKS} links.</Text>
+      )}
+    </View>
   );
 }
 
@@ -674,103 +1061,129 @@ function Section({
   );
 }
 
-const s = StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.page,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  headerTitle: {
-    fontFamily: fonts.display,
-    fontSize: 18,
-    letterSpacing: -0.4,
-    color: colors.text,
-  },
-  close: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  body: { padding: spacing.page, paddingBottom: 40 },
-  column: { width: "100%", maxWidth: 600, alignSelf: "center" },
-  section: { marginBottom: 18 },
-  titleInput: { fontFamily: fonts.medium, fontSize: 17 },
-  dateRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dateButton: {
-    flex: 1,
-    minHeight: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    paddingHorizontal: 15,
-  },
-  dateActive: { borderColor: colors.accent },
-  dateText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
-  clear: {
-    width: 44,
-    height: 50,
-    borderRadius: radii.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pickerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    marginBottom: 18,
-  },
-  notes: { minHeight: 100 },
-  hint: { marginTop: 8 },
-  viewOnly: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 18,
-  },
-  viewOnlyText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.accent,
-  },
-  error: {
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.danger,
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 14,
-  },
-  below: { marginTop: 10 },
-  tagRow: { flexDirection: "row", gap: 8 },
-  tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
-  tagAdd: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.input,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    sheet: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.page,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    headerTitle: {
+      fontFamily: fonts.display,
+      fontSize: 18,
+      letterSpacing: -0.4,
+      color: colors.text,
+    },
+    close: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    body: { padding: spacing.page, paddingBottom: 40 },
+    column: { width: "100%", maxWidth: 600, alignSelf: "center" },
+    section: { marginBottom: 18 },
+    titleInput: { fontFamily: fonts.medium, fontSize: 17 },
+    dateRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    dateButton: {
+      flex: 1,
+      minHeight: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      paddingHorizontal: 15,
+    },
+    dateActive: { borderColor: colors.accent },
+    dateText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    clear: {
+      width: 44,
+      height: 50,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pickerCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radii.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      marginBottom: 18,
+    },
+    notes: { minHeight: 100 },
+    hint: { marginTop: 8 },
+    viewOnly: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 18,
+    },
+    viewOnlyText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
+    error: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.danger,
+      backgroundColor: colors.dangerSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 14,
+    },
+    below: { marginTop: 10 },
+    switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    tagRow: { flexDirection: "row", gap: 8 },
+    linkRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 48,
+      paddingVertical: 6,
+    },
+    linkDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    linkTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    linkRemove: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+    tagAdd: {
+      width: 44,
+      height: 44,
+      borderRadius: radii.input,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

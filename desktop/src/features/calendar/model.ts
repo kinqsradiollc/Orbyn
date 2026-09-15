@@ -2,6 +2,7 @@ import {
   startOfDay,
   type CalendarEntry,
   type CalendarSet,
+  type ExternalEntry,
   type Item,
 } from "@orbyn/core";
 
@@ -22,19 +23,20 @@ export const entryEnd = (e: CalendarEntry) =>
       : Date.parse(e.start_at) + (e.kind === "event" ? 60 : 30) * 60_000,
   );
 
-const lastDayOf = (e: CalendarEntry) =>
+/** Anything with a start and an optional end (entries, external events). */
+type Timed = { start_at: string; end_at: string | null; all_day?: boolean };
+
+const lastDayOf = (e: Timed) =>
   e.end_at && Date.parse(e.end_at) > Date.parse(e.start_at)
     ? startOfDay(new Date(Date.parse(e.end_at) - 1))
     : startOfDay(new Date(e.start_at));
 
-/** Multi-day entries, and ones at midnight with no end, have no time of day. */
-export const isAllDayEntry = (e: CalendarEntry) => {
-  const start = new Date(e.start_at);
-  if (lastDayOf(e).getTime() > startOfDay(start).getTime()) return true;
-  return !e.end_at && start.getHours() === 0 && start.getMinutes() === 0;
-};
+/** Whole-day entries (`all_day`) and ones spanning several days go in the all-day row. */
+export const isAllDayEntry = (e: Timed) =>
+  !!e.all_day ||
+  lastDayOf(e).getTime() > startOfDay(new Date(e.start_at)).getTime();
 
-export const entryOnDay = (e: CalendarEntry, day: Date) => {
+export const entryOnDay = (e: Timed, day: Date) => {
   const d = startOfDay(day).getTime();
   return (
     startOfDay(new Date(e.start_at)).getTime() <= d &&
@@ -73,5 +75,31 @@ export function entryAsItem(e: CalendarEntry, items: Map<string, Item>): Item {
     team_name: e.team_name,
     list_id: e.list_id,
     rrule: e.rrule,
+    all_day: e.all_day ?? false,
+    busy: e.busy,
+    color: e.color ?? null,
   } as Item;
 }
+
+/** Unique per occurrence of an event from a subscribed calendar. */
+export const externalKey = (x: ExternalEntry) =>
+  `x:${x.subscription_id}@${x.start_at}@${x.title}`;
+
+/** An external event shaped like an item for the month grid and day list (read-only). */
+export const externalAsItem = (x: ExternalEntry): Item =>
+  ({
+    id: externalKey(x),
+    version: 0,
+    title: x.title,
+    notes: "",
+    kind: "event",
+    status: "todo",
+    priority: "low",
+    due_at: x.start_at,
+    end_at: x.end_at,
+    team_id: null,
+    all_day: x.all_day,
+    busy: x.busy,
+    color: x.color,
+    location: x.location,
+  }) as Item;

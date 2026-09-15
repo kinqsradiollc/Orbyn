@@ -1,16 +1,19 @@
-import { Timer, Users, Video } from "lucide-react";
+import { Lock, Timer, Users, Video } from "lucide-react";
 import {
   dayHeading,
   emptyDay,
   sameDay,
   type CalendarEntry,
+  type ExternalEntry,
   type TimeBlock,
 } from "@orbyn/core";
+import { usePlanning } from "../../app/planning";
 import { joinable, spanLabel } from "../../lib/planning";
 import { stagger } from "../../lib/motion";
 import { StatusPill } from "../../components/StatusPill";
 import { timeLabel } from "./dates";
-import { entryKey, entryOnDay, isAllDayEntry } from "./model";
+import { listLook } from "./MonthView";
+import { entryKey, entryOnDay, externalKey, isAllDayEntry } from "./model";
 
 type Props = {
   days: Date[];
@@ -18,14 +21,27 @@ type Props = {
   blocks: TimeBlock[];
   onEntry: (entry: CalendarEntry, anchor: DOMRect) => void;
   onBlock: (block: TimeBlock, anchor: DOMRect) => void;
+  /** Events from subscribed calendars (read-only). */
+  external: ExternalEntry[];
+  onExternal: (event: ExternalEntry, anchor: DOMRect) => void;
 };
 
 type Row =
   | { key: string; at: number; entry: CalendarEntry }
-  | { key: string; at: number; block: TimeBlock };
+  | { key: string; at: number; block: TimeBlock }
+  | { key: string; at: number; external: ExternalEntry };
 
 /** The next two weeks as a list, day by day: events, tasks and time blocks. */
-export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
+export function AgendaList({
+  days,
+  entries,
+  blocks,
+  onEntry,
+  onBlock,
+  external,
+  onExternal,
+}: Props) {
+  const { listById } = usePlanning();
   const now = Date.now();
   const filled = days
     .map((day) => {
@@ -43,6 +59,13 @@ export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
             key: block.id,
             at: Date.parse(block.start_at),
             block,
+          })),
+        ...external
+          .filter((x) => entryOnDay(x, day))
+          .map((x) => ({
+            key: externalKey(x),
+            at: isAllDayEntry(x) ? 0 : Date.parse(x.start_at),
+            external: x,
           })),
       ].sort((a, b) => a.at - b.at);
       return { day, rows };
@@ -67,59 +90,97 @@ export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
             {dayHeading(day)}
             <span>{rows.length}</span>
           </h3>
-          {rows.map((r, n) =>
-            "entry" in r ? (
-              <div
-                key={r.key}
-                className="agenda-row fade-up stagger"
-                style={stagger(n)}
-              >
-                <button
-                  className={
-                    "calendar-agenda-item " +
-                    (r.entry.status === "done" ? "done" : "")
-                  }
-                  aria-haspopup="dialog"
-                  onClick={(e) =>
-                    onEntry(r.entry, e.currentTarget.getBoundingClientRect())
-                  }
+          {rows.map((r, n) => {
+            if ("external" in r) {
+              const x = r.external;
+              return (
+                <div
+                  key={r.key}
+                  className="agenda-row fade-up stagger"
+                  style={stagger(n)}
                 >
-                  <span className="agenda-time">
-                    {isAllDayEntry(r.entry)
-                      ? "All day"
-                      : timeLabel(new Date(r.entry.start_at))}
-                  </span>
-                  <span className="agenda-main">
-                    <strong>{r.entry.title}</strong>
-                    <small>
-                      {r.entry.kind === "event" ? "Event" : "Task"}
-                      {r.entry.occurrence && " · Repeats"}
-                      {r.entry.location && ` · ${r.entry.location}`}
-                      {r.entry.team_name && (
-                        <>
-                          {" · "}
-                          <Users size={11} aria-hidden="true" />{" "}
-                          {r.entry.team_name}
-                        </>
-                      )}
-                    </small>
-                  </span>
-                  {r.entry.kind === "task" && (
-                    <StatusPill status={r.entry.status} />
-                  )}
-                </button>
-                {joinable(r.entry, now) && (
-                  <a
-                    className="secondary agenda-join"
-                    href={r.entry.meeting_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    className="calendar-agenda-item is-external has-list"
+                    style={{ "--list": x.color } as never}
+                    aria-haspopup="dialog"
+                    onClick={(e) =>
+                      onExternal(x, e.currentTarget.getBoundingClientRect())
+                    }
                   >
-                    <Video size={14} aria-hidden="true" /> Join
-                  </a>
-                )}
-              </div>
-            ) : (
+                    <span className="agenda-time">
+                      {isAllDayEntry(x)
+                        ? "All day"
+                        : timeLabel(new Date(x.start_at))}
+                    </span>
+                    <span className="agenda-main">
+                      <strong>{x.title}</strong>
+                      <small>
+                        <Lock size={11} aria-hidden="true" /> {x.name}
+                        {x.location && ` · ${x.location}`}
+                      </small>
+                    </span>
+                  </button>
+                </div>
+              );
+            }
+            if ("entry" in r) {
+              const look = listLook(r.entry.list_id, listById, r.entry.color);
+              return (
+                <div
+                  key={r.key}
+                  className="agenda-row fade-up stagger"
+                  style={stagger(n)}
+                >
+                  <button
+                    className={
+                      "calendar-agenda-item " +
+                      (r.entry.status === "done" ? "done" : "") +
+                      look.className
+                    }
+                    style={look.style}
+                    aria-haspopup="dialog"
+                    onClick={(e) =>
+                      onEntry(r.entry, e.currentTarget.getBoundingClientRect())
+                    }
+                  >
+                    <span className="agenda-time">
+                      {isAllDayEntry(r.entry)
+                        ? "All day"
+                        : timeLabel(new Date(r.entry.start_at))}
+                    </span>
+                    <span className="agenda-main">
+                      <strong>{r.entry.title}</strong>
+                      <small>
+                        {r.entry.kind === "event" ? "Event" : "Task"}
+                        {r.entry.occurrence && " · Repeats"}
+                        {r.entry.location && ` · ${r.entry.location}`}
+                        {r.entry.team_name && (
+                          <>
+                            {" · "}
+                            <Users size={11} aria-hidden="true" />{" "}
+                            {r.entry.team_name}
+                          </>
+                        )}
+                      </small>
+                    </span>
+                    {r.entry.kind === "task" && (
+                      <StatusPill status={r.entry.status} />
+                    )}
+                  </button>
+                  {joinable(r.entry, now) && (
+                    <a
+                      className="secondary agenda-join"
+                      href={r.entry.meeting_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Video size={14} aria-hidden="true" /> Join
+                    </a>
+                  )}
+                </div>
+              );
+            }
+            return (
               <div
                 key={r.key}
                 className="agenda-row fade-up stagger"
@@ -144,8 +205,8 @@ export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
                   </span>
                 </button>
               </div>
-            ),
-          )}
+            );
+          })}
         </section>
       ))}
     </div>

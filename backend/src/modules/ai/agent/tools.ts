@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  isClosed,
   KINDS,
   PRIORITIES,
   STATUSES,
@@ -227,7 +228,7 @@ export async function overview(ctx: AgentContext) {
   const rows = (
     await pool.query<Row>(
       `${ITEM_SELECT} WHERE ${VISIBLE_ITEMS}
-         AND (i.status <> 'done' OR i.updated_at > now() - interval '7 days')
+         AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '7 days')
        ORDER BY (i.due_at IS NULL), i.due_at, i.updated_at DESC LIMIT 500`,
       [ctx.user.id],
     )
@@ -238,7 +239,7 @@ export async function overview(ctx: AgentContext) {
     ctx.timezone,
   );
   const day = (r: Row) => (r.due_at ? localDate(r.due_at, ctx.timezone) : "");
-  const open = rows.filter((r) => r.status !== "done");
+  const open = rows.filter((r) => !isClosed(r.status));
   const overdue = open.filter((r) => r.due_at && day(r) < today);
   const dueToday = open.filter((r) => day(r) === today);
   const upcoming = open.filter((r) => day(r) > today && day(r) <= weekOut);
@@ -295,7 +296,7 @@ export async function related(ctx: AgentContext, message: string) {
             WHERE lower(i.title) LIKE '%' || w || '%') AS hits
          FROM items i LEFT JOIN teams t ON t.id = i.team_id
          WHERE ${VISIBLE_ITEMS}
-           AND (i.status <> 'done' OR i.updated_at > now() - interval '14 days')
+           AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '14 days')
        ) m
        WHERE hits > 0 ORDER BY hits DESC, (due_at IS NULL), due_at LIMIT 12`,
       [ctx.user.id, words],
@@ -333,7 +334,7 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
       `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`,
     );
   if (a.status?.length) add("i.status = ANY($?)", a.status);
-  else if (!a.include_done) where.push("i.status <> 'done'");
+  else if (!a.include_done) where.push("i.status NOT IN ('done', 'cancelled')");
   if (a.kind) add("i.kind = $?", a.kind);
   if (a.priority) add("i.priority = $?", a.priority);
   if (a.team_id === "personal") where.push("i.team_id IS NULL");

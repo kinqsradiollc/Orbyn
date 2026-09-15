@@ -1,21 +1,26 @@
-import { useMemo, useState } from "react";
-import { Columns3, List, ListTodo, Search, X } from "lucide-react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Columns3, List, ListTodo, Pin, Search, X } from "lucide-react";
 import {
   searchItems,
   emptyPlans,
   emptySearch,
+  STATUSES,
+  isClosed,
   statusLabels,
-  statusOrder,
   type Item,
+  type ItemSort,
   type Priority,
   type Status,
 } from "@orbyn/core";
+import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
+import { Popover } from "../../components/Popover";
 import { usePlanning } from "../../app/planning";
 import { statusCounts } from "../../lib/tasks";
 import {
   byScore,
+  errorText,
   matchesDue,
   SIZE_LABELS,
   sizeOf,
@@ -35,6 +40,8 @@ type Props = {
   onSetStatus: (item: Item, status: Status) => void;
   /** You, for "Assigned to me". */
   userId?: string;
+  /** Refresh the planner after reordering. */
+  onChanged?: () => Promise<void>;
 };
 
 type Filter = Status | "all";
@@ -43,6 +50,8 @@ type Group = "none" | "list" | "tag" | "size";
 
 const LAYOUT_KEY = "orbyn-tasks-layout";
 const GROUP_KEY = "orbyn-tasks-group";
+const PIN_KEY = "orbyn-tasks-pinned";
+const SORT_KEY = "orbyn-tasks-sort";
 const saved = <T extends string>(key: string, allowed: T[], fallback: T): T => {
   try {
     const value = localStorage.getItem(key) as T | null;
@@ -64,14 +73,94 @@ const DUE_OPTIONS: { id: DueFilter; label: string }[] = [
   { id: "any", label: "Any due date" },
   { id: "overdue", label: "Overdue" },
   { id: "today", label: "Today" },
+  { id: "tomorrow", label: "Tomorrow" },
+  { id: "soon", label: "Due soon" },
   { id: "week", label: "This week" },
   { id: "none", label: "No date" },
 ];
 
+const SORTS: { id: ItemSort; label: string }[] = [
+  { id: "newest", label: "Newest" },
+  { id: "score", label: "Priority score" },
+  { id: "due", label: "Due date" },
+  { id: "priority", label: "Priority" },
+  { id: "estimate", label: "Estimate" },
+  { id: "title", label: "Title" },
+  { id: "created", label: "Created" },
+  { id: "position", label: "Manual order" },
+];
+const RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
+/** Smallest first, missing values last. */
+const ascending = (a?: number | null, b?: number | null) =>
+  a == null || Number.isNaN(a)
+    ? b == null || Number.isNaN(b)
+      ? 0
+      : 1
+    : b == null || Number.isNaN(b)
+      ? -1
+      : a - b;
+const time = (iso?: string | null) => (iso ? Date.parse(iso) : null);
+const negate = (n: number | null | undefined) => (n == null ? null : -n);
+
+/**
+ * The server's `sort` orders, on the loaded items. "Priority score" uses the
+ * `score` each item comes with (none for events and finished tasks, which go
+ * last); ties go to the more pressing task.
+ */
+function sortBy(sort: ItemSort, now: Date): (a: Item, b: Item) => number {
+  const pressing = byScore(now);
+  switch (sort) {
+    case "newest":
+      return (a, b) =>
+        ascending(negate(time(a.created_at)), negate(time(b.created_at))) ||
+        pressing(a, b);
+    case "created":
+      return (a, b) =>
+        ascending(time(a.created_at), time(b.created_at)) ||
+        a.title.localeCompare(b.title);
+    case "due":
+      return (a, b) =>
+        ascending(time(a.due_at), time(b.due_at)) || pressing(a, b);
+    case "priority":
+      return (a, b) => RANK[b.priority] - RANK[a.priority] || pressing(a, b);
+    case "estimate":
+      return (a, b) =>
+        ascending(a.estimate_minutes, b.estimate_minutes) || pressing(a, b);
+    case "position":
+      return (a, b) =>
+        ascending(a.position, b.position) || a.title.localeCompare(b.title);
+    case "title":
+      return (a, b) => a.title.localeCompare(b.title);
+    default:
+      return (a, b) =>
+        ascending(negate(a.score), negate(b.score)) || pressing(a, b);
+  }
+}
+
+/** Smart lists that can be pinned above the list. Overdue always is. */
+type PinId = "today" | "tomorrow" | "soon";
+const PINNABLE: { id: PinId; label: string; hint: string }[] = [
+  { id: "today", label: "Today", hint: "Due today" },
+  { id: "tomorrow", label: "Tomorrow", hint: "Due tomorrow" },
+  { id: "soon", label: "Due soon", hint: "Due after tomorrow, within a week" },
+];
+const savedPins = (): PinId[] => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(PIN_KEY) ?? "[]");
+    return Array.isArray(value)
+      ? PINNABLE.map((p) => p.id).filter((id) => value.includes(id))
+      : [];
+  } catch {
+    return [];
+  }
+};
+
 /**
  * Every item with search, filters (due, priority, list, tag, size, assignee),
- * status chips, grouping, and a List / Board toggle. Sorted by how pressing
- * each task is.
+ * status chips, grouping, a sort order (most pressing first unless you pick
+ * another, remembered) and a List / Board toggle. In the List layout, open items that are overdue (and, if
+ * pinned from the view menu, due today, tomorrow or soon) sit in their own
+ * sections at the top.
  */
 export function TasksView({
   items,
@@ -83,6 +172,7 @@ export function TasksView({
   onOpen,
   onSetStatus,
   userId,
+  onChanged,
 }: Props) {
   const { lists, tags, listById, tagById } = usePlanning();
   const [filter, setFilter] = useState<Filter>("all");
@@ -92,6 +182,15 @@ export function TasksView({
   const [group, setGroupState] = useState<Group>(() =>
     saved(GROUP_KEY, ["none", "list", "tag", "size"], "none"),
   );
+  const [pins, setPinsState] = useState<PinId[]>(savedPins);
+  const [sort, setSortState] = useState<ItemSort>(() =>
+    saved(
+      SORT_KEY,
+      SORTS.map((s) => s.id),
+      "score",
+    ),
+  );
+  const [viewMenu, setViewMenu] = useState<DOMRect | null>(null);
   const [due, setDue] = useState<DueFilter>("any");
   const [priority, setPriority] = useState<Priority | "any">("any");
   const [listId, setListId] = useState("any");
@@ -106,6 +205,13 @@ export function TasksView({
   const setGroup = (next: Group) => {
     setGroupState(next);
     remember(GROUP_KEY, next);
+  };
+  const togglePin = (id: PinId) => {
+    const next = PINNABLE.map((p) => p.id).filter(
+      (p) => (p === id) !== pins.includes(p),
+    );
+    setPinsState(next);
+    remember(PIN_KEY, JSON.stringify(next));
   };
 
   // People team tasks are assigned to, for the assignee filter.
@@ -151,7 +257,7 @@ export function TasksView({
               ? !!i.team_id && !i.assignee_id
               : i.assignee_id === assignee)),
     )
-    .sort(byScore(now));
+    .sort(sortBy(sort, now));
   const counts = statusCounts(matching);
   const visible =
     filter === "all" ? matching : matching.filter((i) => i.status === filter);
@@ -165,7 +271,27 @@ export function TasksView({
           }
         : emptyPlans;
 
-  /** The visible items split into titled groups (an item can sit in several tag groups). */
+  // Pinned smart lists: open items only, and each item shows once.
+  const open = visible.filter((i) => !isClosed(i.status));
+  const pinned =
+    layout === "list"
+      ? [
+          { id: "overdue" as const, label: "Overdue" },
+          ...PINNABLE.filter((p) => pins.includes(p.id)),
+        ]
+          .map((p) => ({
+            key: p.id,
+            title: p.label,
+            items: open.filter((i) => matchesDue(i, p.id, now)),
+          }))
+          .filter((s) => s.items.length)
+      : [];
+  const pinnedIds = new Set(pinned.flatMap((s) => s.items.map((i) => i.id)));
+  const rest = pinned.length
+    ? visible.filter((i) => !pinnedIds.has(i.id))
+    : visible;
+
+  /** The unpinned items split into titled groups (an item can sit in several tag groups). */
   const groups: {
     key: string;
     title: string;
@@ -179,15 +305,13 @@ export function TasksView({
               key: l.id,
               title: l.team_name ? `${l.name} · ${l.team_name}` : l.name,
               color: l.color,
-              items: visible.filter((i) => i.list_id === l.id),
+              items: rest.filter((i) => i.list_id === l.id),
             }))
             .filter((g) => g.items.length),
           {
             key: "none",
             title: "No list",
-            items: visible.filter(
-              (i) => !i.list_id || !listById.has(i.list_id),
-            ),
+            items: rest.filter((i) => !i.list_id || !listById.has(i.list_id)),
           },
         ]
       : group === "tag"
@@ -197,13 +321,13 @@ export function TasksView({
                 key: t.id,
                 title: t.name,
                 color: t.color,
-                items: visible.filter((i) => (i.tag_ids ?? []).includes(t.id)),
+                items: rest.filter((i) => (i.tag_ids ?? []).includes(t.id)),
               }))
               .filter((g) => g.items.length),
             {
               key: "none",
               title: "No tag",
-              items: visible.filter(
+              items: rest.filter(
                 (i) => !(i.tag_ids ?? []).some((id) => tagById.has(id)),
               ),
             },
@@ -212,22 +336,160 @@ export function TasksView({
           ? SIZES.map((s) => ({
               key: s,
               title: SIZE_LABELS[s],
-              items: visible.filter((i) => sizeOf(i) === s),
+              items: rest.filter((i) => sizeOf(i) === s),
             }))
-          : [{ key: "all", title: "", items: visible }];
+          : [
+              {
+                key: "all",
+                title: pinned.length ? "Everything else" : "",
+                items: rest,
+              },
+            ];
 
-  const rows = (list: Item[]) =>
-    list.map((i, n) => (
-      <ItemRow
-        key={i.id}
-        item={i}
-        index={n}
-        busy={busy}
-        readOnly={!canWrite(i)}
-        onToggle={onToggle}
-        onOpen={onOpen}
-      />
-    ));
+  // Subtasks sit under their parent when both are listed; folding hides them.
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const toggleFold = (id: string) =>
+    setFolded((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Manual order: drag a row onto another, or use its arrows.
+  const manual = sort === "position";
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; before: boolean } | null>(
+    null,
+  );
+  const [moveError, setMoveError] = useState("");
+  const move = async (
+    id: string,
+    to: { before_id?: string; after_id?: string },
+  ) => {
+    setMoveError("");
+    try {
+      await client.moveItem(id, to);
+      await onChanged?.();
+    } catch (e) {
+      setMoveError(errorText(e));
+    }
+  };
+
+  /**
+   * Rows for a list: subtasks go under a parent listed with them, and one
+   * whose parent is elsewhere names it ("↳ Parent").
+   */
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const rows = (list: Item[], tree = true) => {
+    const ids = new Set(list.map((i) => i.id));
+    const kids = new Map<string, Item[]>();
+    if (tree)
+      for (const i of list)
+        if (i.parent_id && ids.has(i.parent_id))
+          kids.set(i.parent_id, [...(kids.get(i.parent_id) ?? []), i]);
+    const top = tree
+      ? list.filter((i) => !i.parent_id || !ids.has(i.parent_id))
+      : list;
+    const render = (level: Item[], depth: number): ReactNode[] =>
+      level.map((i, n) => {
+        const children = kids.get(i.id) ?? [];
+        const isFolded = folded.has(i.id);
+        const row = (
+          <ItemRow
+            key={i.id}
+            item={i}
+            index={n}
+            busy={busy}
+            readOnly={!canWrite(i)}
+            score={sort === "score" ? i.score : undefined}
+            parentTitle={
+              i.parent_id && !ids.has(i.parent_id)
+                ? itemById.get(i.parent_id)?.title
+                : undefined
+            }
+            collapsed={children.length ? isFolded : undefined}
+            onToggleChildren={
+              children.length ? () => toggleFold(i.id) : undefined
+            }
+            onMoveUp={
+              manual && n > 0
+                ? () => void move(i.id, { before_id: level[n - 1].id })
+                : undefined
+            }
+            onMoveDown={
+              manual && n < level.length - 1
+                ? () => void move(i.id, { after_id: level[n + 1].id })
+                : undefined
+            }
+            onToggle={onToggle}
+            onOpen={onOpen}
+          />
+        );
+        const shown = manual ? (
+          <div
+            key={i.id}
+            className={
+              "reorder-row" +
+              (dragId === i.id ? " is-dragging" : "") +
+              (dropAt?.id === i.id
+                ? dropAt.before
+                  ? " is-drop-before"
+                  : " is-drop-after"
+                : "")
+            }
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", i.id);
+              setDragId(i.id);
+            }}
+            onDragEnd={() => {
+              setDragId(null);
+              setDropAt(null);
+            }}
+            onDragOver={(e) => {
+              if (!dragId || dragId === i.id) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const before = e.clientY < r.top + r.height / 2;
+              if (dropAt?.id !== i.id || dropAt.before !== before)
+                setDropAt({ id: i.id, before });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = dragId;
+              const before = dropAt?.id === i.id ? dropAt.before : true;
+              setDragId(null);
+              setDropAt(null);
+              if (from && from !== i.id)
+                void move(
+                  from,
+                  before ? { before_id: i.id } : { after_id: i.id },
+                );
+            }}
+          >
+            {row}
+          </div>
+        ) : (
+          row
+        );
+        if (!children.length || isFolded) return shown;
+        return (
+          <Fragment key={i.id}>
+            {shown}
+            <div
+              className="task-children"
+              role="group"
+              aria-label={`Subtasks of ${i.title}`}
+            >
+              {render(children, depth + 1)}
+            </div>
+          </Fragment>
+        );
+      });
+    return render(top, 0);
+  };
 
   return (
     <section className="card tasks-card">
@@ -246,6 +508,18 @@ export function TasksView({
               onChange={(e) => onQueryChange(e.target.value)}
             />
           </div>
+          <button
+            className="secondary tasks-view-button"
+            aria-haspopup="dialog"
+            aria-expanded={!!viewMenu}
+            onClick={(e) =>
+              setViewMenu(
+                viewMenu ? null : e.currentTarget.getBoundingClientRect(),
+              )
+            }
+          >
+            <Pin size={14} aria-hidden="true" /> View
+          </button>
           <div className="segmented" role="group" aria-label="Layout">
             <button
               aria-pressed={layout === "list"}
@@ -264,6 +538,38 @@ export function TasksView({
           </div>
         </div>
       </div>
+      {viewMenu && (
+        <Popover
+          anchor={viewMenu}
+          label="View options"
+          onClose={() => setViewMenu(null)}
+        >
+          <div className="popover-head">
+            <small className="eyebrow">PINNED AT THE TOP</small>
+            <small>Overdue tasks are always pinned when there are some.</small>
+          </div>
+          <div className="popover-actions">
+            {PINNABLE.map((p) => (
+              <label key={p.id} className="popover-check">
+                <input
+                  type="checkbox"
+                  checked={pins.includes(p.id)}
+                  onChange={() => togglePin(p.id)}
+                />
+                <span>
+                  {p.label}
+                  <small>{p.hint}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+          {layout === "board" && (
+            <small className="popover-note">
+              Pinned lists show in the List layout.
+            </small>
+          )}
+        </Popover>
+      )}
       <div className="filter-bar" role="group" aria-label="Filters">
         <label className="filter-select">
           <span>Due</span>
@@ -361,6 +667,23 @@ export function TasksView({
             </select>
           </label>
         )}
+        <label className="filter-select">
+          <span>Sort</span>
+          <select
+            value={sort}
+            onChange={(e) => {
+              const next = e.target.value as ItemSort;
+              setSortState(next);
+              remember(SORT_KEY, next);
+            }}
+          >
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
         {active && (
           <button className="text-button filter-clear" onClick={clear}>
             <X size={13} /> Clear filters
@@ -368,7 +691,7 @@ export function TasksView({
         )}
       </div>
       <div className="filter-chips" role="group" aria-label="Filter by status">
-        {(["all", ...statusOrder] as Filter[]).map((f) => (
+        {(["all", ...STATUSES] as Filter[]).map((f) => (
           <button
             key={f}
             aria-pressed={filter === f}
@@ -383,42 +706,72 @@ export function TasksView({
           </button>
         ))}
       </div>
+      {moveError && (
+        <div className="error" role="alert">
+          {moveError}
+        </div>
+      )}
+      {manual && layout === "list" && (
+        <p className="tasks-hint">
+          Drag rows, or use their arrows, to set the order. Items move within
+          their own list, team or parent task.
+        </p>
+      )}
       {!visible.length ? (
         <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
       ) : layout === "board" ? (
         <TaskBoard
           items={visible}
-          statuses={filter === "all" ? statusOrder : [filter]}
+          parentOf={(i) =>
+            i.parent_id ? itemById.get(i.parent_id)?.title : undefined
+          }
+          statuses={filter === "all" ? [...STATUSES] : [filter]}
           busy={busy}
           canWrite={canWrite}
           onOpen={onOpen}
           onSetStatus={onSetStatus}
         />
-      ) : group === "none" ? (
-        rows(visible)
       ) : (
-        groups
-          .filter((g) => g.items.length)
-          .map((g) => (
+        <>
+          {pinned.map((s) => (
             <section
-              key={g.key}
-              className="task-group"
-              aria-label={`${g.title}, ${g.items.length}`}
+              key={s.key}
+              className={"task-group task-pinned is-" + s.key}
+              aria-label={`${s.title}, ${s.items.length}`}
             >
               <h3 className="task-group-title">
-                {g.color && (
-                  <i
-                    className="list-dot"
-                    style={{ background: g.color }}
-                    aria-hidden="true"
-                  />
-                )}
-                {g.title}
-                <span>{g.items.length}</span>
+                <Pin size={12} aria-hidden="true" />
+                {s.title}
+                <span>{s.items.length}</span>
               </h3>
-              {rows(g.items)}
+              {rows(s.items)}
             </section>
-          ))
+          ))}
+          {group === "none" && !pinned.length
+            ? rows(rest)
+            : groups
+                .filter((g) => g.items.length)
+                .map((g) => (
+                  <section
+                    key={g.key}
+                    className="task-group"
+                    aria-label={`${g.title}, ${g.items.length}`}
+                  >
+                    <h3 className="task-group-title">
+                      {g.color && (
+                        <i
+                          className="list-dot"
+                          style={{ background: g.color }}
+                          aria-hidden="true"
+                        />
+                      )}
+                      {g.title}
+                      <span>{g.items.length}</span>
+                    </h3>
+                    {rows(g.items)}
+                  </section>
+                ))}
+        </>
       )}
     </section>
   );

@@ -27,7 +27,9 @@ import {
 import { Message, accentStyle, whenLabel } from "./bookingUi";
 import { ManageBooking } from "./ManageBooking";
 import { SlotPicker } from "./SlotPicker";
+import { useNoIndex } from "../../hooks/useNoIndex";
 import "./booking.css";
+import "./booking-w3.css";
 
 type Props = {
   path: string;
@@ -45,28 +47,35 @@ const LINKS = new Set(["confirm", "cancel", "manage"]);
  * older emails.
  */
 export function PublicBooking({ path, onHome }: Props) {
+  // Booking and manage links are private to whoever has them.
+  useNoIndex();
+  // Inside another site (?embed=1): just the page, without Orbyn's frame.
+  const embed =
+    new URLSearchParams(window.location.search).get("embed") === "1";
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const [, first, token] = parts;
   return (
-    <div className="public-page">
-      <header className="public-nav">
-        {onHome ? (
-          <a
-            className="brand"
-            href="/"
-            onClick={(e) => {
-              e.preventDefault();
-              onHome();
-            }}
-          >
-            <Orbit /> orbyn<span>•</span>
-          </a>
-        ) : (
-          <span className="brand">
-            <Orbit /> orbyn<span>•</span>
-          </span>
-        )}
-      </header>
+    <div className={"public-page" + (embed ? " is-embed" : "")}>
+      {!embed && (
+        <header className="public-nav">
+          {onHome ? (
+            <a
+              className="brand"
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                onHome();
+              }}
+            >
+              <Orbit /> orbyn<span>•</span>
+            </a>
+          ) : (
+            <span className="brand">
+              <Orbit /> orbyn<span>•</span>
+            </span>
+          )}
+        </header>
+      )}
       <main className="public-main">
         {first === "confirm" && token ? (
           <Confirm token={token} />
@@ -83,7 +92,9 @@ export function PublicBooking({ path, onHome }: Props) {
           />
         )}
       </main>
-      <footer>Scheduling by Orbyn · your details go only to the host.</footer>
+      {!embed && (
+        <footer>Scheduling by Orbyn · your details go only to the host.</footer>
+      )}
     </div>
   );
 }

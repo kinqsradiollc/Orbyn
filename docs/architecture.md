@@ -37,7 +37,7 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `modules/<name>/` | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
 | `modules/items/`  | `mutate()`, the single write path with optimistic locking, plus progress        |
 | `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `worker/`         | Reminder scheduler and delivery lanes                                           |
+| `worker/`         | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
 | `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
 
 Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
@@ -54,21 +54,27 @@ rate limited separately from the rest of the API.
 
 ### Data model
 
-| Table                                                          | Purpose                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                |
-| `sessions`                                                     | Hashed bearer tokens with expiry.                                                           |
-| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe. |
-| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                             |
-| `notifications`                                                | Reminder outbox. One row per item version, channel, and destination. Also the in-app tray.  |
-| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                |
-| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                   |
-| `time_blocks`                                                  | Time each person set aside to work on a task.                                               |
-| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, work windows, places.       |
-| `plans`                                                        | Generated plans waiting to be applied. Expire after an hour.                                |
-| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.  |
-| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                    |
-| `migrations`                                                   | Applied migration file names.                                                               |
+| Table                                                          | Purpose                                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                    |
+| `sessions`                                                     | Hashed bearer tokens with expiry.                                                               |
+| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe.     |
+| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                                 |
+| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.          |
+| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                    |
+| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                       |
+| `time_blocks`                                                  | Time each person set aside to work on a task.                                                   |
+| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.        |
+| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.                 |
+| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.      |
+| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                        |
+| `item_overrides`                                               | One occurrence of a repeating item changed on its own, keyed by its original start.             |
+| `item_attendees`                                               | People invited to an event by email, their answer, and their RSVP token (hashed and encrypted). |
+| `calendar_subscriptions`, `external_events`                    | Calendars read by ICS link, and their events as last fetched (read-only).                       |
+| `item_links`                                                   | Web links on a task, in order.                                                                  |
+| `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                 |
+| `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.      |
+| `migrations`                                                   | Applied migration file names.                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
@@ -111,11 +117,16 @@ team it leaves.
 
 ### Reminder pipeline
 
-1. Every 10 seconds the worker runs `enqueue()`. For each open item whose `due_at` minus
-   `reminder_minutes` has passed, it inserts one notification per channel: `inapp` always,
-   `email` if the user has email reminders on and SMTP is configured, and `push` for every
-   registered device. Personal items notify their owner; team items notify every active member. The unique key `(item_id, item_version, channel, destination)` makes this
-   idempotent, so restarting or running many workers never double-sends.
+1. Every 10 seconds the worker runs `enqueue()`. An item has up to five `alerts` (minutes before
+   `due_at`). For each open item whose latest passed alert hasn't been sent, it inserts one
+   notification per channel: `inapp` always, `email` if the user has email reminders on and SMTP
+   is configured, and `push` for every registered device. Personal items notify their owner; team
+   items notify every active member. The reminder's `ref` is the alert's minutes, and the unique
+   key `(item_id, item_version, channel, destination, kind, ref)` makes this idempotent, so
+   restarting or running many workers never double-sends. An item created after several of its
+   alerts have passed gets one reminder, not all of them. A repeating item's current occurrence
+   uses its own time, title and alerts when it was changed on its own, and gets none when it was
+   removed.
 2. `deliverOne()` claims a pending row with `SKIP LOCKED`, re-checks that the item is still open,
    still on the same `reminder_version`, that the recipient is still active and can still see the
    item, and that the destination is still valid. If not, the row
@@ -125,8 +136,27 @@ team it leaves.
    later. A `DeviceNotRegistered` receipt removes the device.
 4. Failures back off exponentially (30s, 60s, ... capped at 1h) and give up after 8 attempts.
 
-`reminder_version` only increments when the due date, reminder window, or done-to-todo status
-changes. Editing a title or notes does not resend a reminder that was already delivered.
+`reminder_version` only increments when the due date, the alerts, or done-to-todo status
+changes (or the current occurrence is changed or removed on its own). Editing a title or notes does not resend a reminder that was already delivered. Reminder
+text shows the due time in each recipient's planner time zone (`orbyn_local_time()`, which falls
+back to UTC for a zone Postgres doesn't know).
+
+Reminders to bookers use the email lane too (`booker_reminder`, never in the app): each cycle
+queues, for every confirmed booking starting within 8 days, the latest of its page's (or open
+invite's) `remind_before_minutes` whose time has come and hadn't yet when it was booked. The
+`ref` is `<booking>:<start>:<minutes>`, unique among booker reminders, so each goes once per
+booking, start time and value. The email is written at delivery (`bookerReminder()`), so it
+carries the current manage link without storing it, and is cancelled when the booking was
+cancelled or moved, has started, or SMTP is gone.
+
+Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) use the same outbox and lanes.
+They are always in-app, and go to push and email when the person's `planner_notices` preference
+allows (email also needs SMTP). Their `item_version` is 0 and their `ref` is the block (conflicts)
+or the person's local date, so `notifications_once` keeps them to one per task per day; roll-forward
+notices have no item and are kept to one per day by `notifications_planner_once`. Delivery
+re-checks them against that preference instead of `email_reminders`, and cancels a notice that was
+dealt with in the app (a rescheduled block marks its conflict read), whose task is done or out of
+reach, or whose block is gone.
 
 ### AI assistant
 
@@ -261,11 +291,13 @@ is passed to the model as data, and the prompt instructs it to treat titles and 
 ### Planning
 
 Everything planning needs lives on this server; nothing syncs with Google, Microsoft or iCloud.
-Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
+Other tools read Orbyn through the calendar feed, API keys and webhooks instead, and Orbyn reads
+other calendars only through their ICS links.
 
 - **Time zones and repeats** (`packages/core/src/time.ts`): wall-clock conversion that survives
-  daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly,
-  yearly; interval; count or until). A repeating item keeps `series_start` and its own time zone;
+  daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly
+  on month days or weekdays with set positions such as "the last weekday", yearly; interval;
+  count or until). A repeating item keeps `series_start` and its own time zone;
   `due_at` is the current occurrence. The notifier moves ended event occurrences on (bumping the
   reminder version, so every occurrence gets its reminder). Completing a repeating task moves it
   to its next occurrence.
@@ -273,22 +305,64 @@ Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
   person's time blocks, and works out buffers and travel from their settings and places on the
   fly, so they never go stale. `busyIntervals()` merges events, buffers, travel and blocks into
   plain intervals; the planner, team time and booking pages all use it, and nothing but intervals
-  leaves it.
+  leaves it. Team time and booking pages also ask it to count busy frames; the planner never does.
+- **Frames** (`modules/planner/frames.ts`): recurring windows for a kind of work. They repeat on
+  weekdays or by a rule (which counts from `series_start`), skip dates (`exdates`), keep their own
+  time zone if they have one, and can be marked busy. `frameSpans()` expands them for the
+  planner's windows, busy time and the calendar view.
 - **The planner** (`modules/planner/scheduler.ts`): a pure, deterministic function. Free time is
   frames (or working hours) minus busy time and keep-free times. Tasks go in order of the priority
-  score (`3 × priority + 4 × urgency + 2 if overdue`, blocked tasks last), padded, split into
-  sessions with breaks, into the earliest slot that ends before the due time. Tasks that don't
-  fit are listed with a reason, and ones that can't make their due time are flagged at risk.
-  Previews are stored as `plans` for an hour and applied in one transaction that skips any block
-  that has started to clash. The assistant uses the same engine through its `plan_schedule`
-  tool (Matilda's graph plans directly), so it never places times itself.
+  score (`3 × priority + 4 × urgency + 2 if overdue + 1 × size_fit`, where `size_fit` is 1 when
+  the remaining estimate fits the first planned day's largest free slot, 0.5 when it doesn't and
+  0.75 without an estimate; blocked tasks last), padded, split into sessions with breaks, into the
+  earliest slot that ends before the due time. Tasks that don't fit are listed with a reason, and
+  ones that can't make their due time are flagged at risk. Task lists show and sort by the same
+  score (`GET /items?sort=score`), comparing with today's largest free slot. Previews are stored
+  as `plans` for an hour, with everything they were made from, and applied in one transaction
+  that skips any block that has started to clash. The assistant uses the same engine through its
+  `plan_schedule` tool (Matilda's graph plans directly), so it never places times itself.
+- **Tuning a plan** (`modules/planner/plans.ts`): `PATCH /planner/plans/:id` makes the plan again
+  from its stored inputs with tasks added or left out, estimates changed (optionally saved through
+  `mutate()`), keep-free times, a scope, and pinned blocks, which the engine keeps in place and
+  plans around. The result is a new plan; the old one expires and points at it. Each plan keeps a
+  fingerprint of its busy time, frames, hours and tasks, so `GET /planner/plans/:id/stale` can
+  tell the apps to make it again when something changed. Every plan lists each task considered,
+  whether it's in, and why it wasn't (fully) planned.
 - **Conflicts and review**: once a minute the notifier looks for events that now overlap a
-  future block and sends one in-app notice per block, with a one-tap reschedule to the next free
+  future block and sends one notice per block, with a one-tap reschedule to the next free
   working time. The review lists unfinished past blocks (to roll forward into a new plan), tasks
   whose remaining estimate exceeds the free time before they're due, and current conflicts.
+- **Planner notices** (`worker/planning.ts`, every 15 minutes): for people with planner activity
+  (saved settings or recent blocks, plus recent blocks or tasks due within two weeks),
+  `scanPlanningNotices()` sends a roll-forward notice from their working start on a working day
+  when earlier blocks are unfinished, an at-risk notice for each task whose remaining estimate is
+  more than the free time before it's due, and a due-soon notice for tasks due within
+  `deadline_notice_days` that have no time set aside for what's left. Each is idempotent through
+  the outbox's unique keys, and delivered like conflicts.
+- **Blocks**: besides moving and rescheduling, a block can be duplicated at a chosen time or into
+  the next free working time after it, for another session on the same task.
+- **Subtasks and order** (`modules/items/service.ts`): a subtask is a task with a `parent_id`
+  in the same space as its parent, three levels at most and without loops (`checkParent()`, on
+  every write through `mutate()`). Deleting a task deletes its subtasks. The planner, at-risk and
+  due-soon notices and team workload all count a task's own work with `remainingOf()`
+  (`scheduler.ts`): while it has open subtasks, only what its estimate has beyond theirs, so the
+  work counted is the larger of the two and never both. Manual order (`position`) is kept per
+  place (the parent, else the list, else the space); `moveItem()` renumbers a place under an
+  advisory lock and, like checklist steps, leaves `version` alone.
+- **Closed tasks**: `done` and `cancelled` both close a task (`isClosed()` in `@orbyn/core`):
+  the planner, busy time, reminders, notices, scores and counts treat them alike. Only completing
+  counts progress, fires `item.completed`, moves a repeating task on and, with
+  `count_blocks_as_spent`, adds its blocks' past time to `spent_minutes` (each block once, marked
+  `counted`).
+- **Buffers and travel**: `derivedBlocks()` gives buffers only to events in the person's
+  `buffer_scope` (personal, teams, lists, a minimum length, meetings with others: invitees, a
+  meeting link or a team), and times each travel leg with the place's `peak_minutes` when it
+  touches weekday peak hours (07:00–09:00, 16:00–18:00 local), plus `travel_padding_minutes`.
+  A place's `mode` is only a label; there's no routing service.
 - **Team time**: availability returns busy intervals only; workload compares each member's free
-  working time with the estimates of this team's open tasks assigned to them; meeting suggestions
-  intersect everyone's free time and rank slots that would split someone's focus time last.
+  working time with the estimates of this team's open tasks assigned to them, and lists the tasks
+  at risk (those due soonest take the free time first); meeting suggestions intersect everyone's
+  free time and rank slots that would split someone's focus time last.
 - **Booking pages**: free slots (`booking/availability.ts`) intersect the page's hours (custom
   weekly hours or each host's working hours, with date overrides) with every required host's free
   time, minus held bookings, keeping the page's buffers, notice, interval and daily and weekly
@@ -298,13 +372,62 @@ Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
   reschedule): each lands on `booking_events`, the confirmed booking becomes an event on each
   host's calendar through `mutate()`, and moves update those events in place. Bookers manage a
   booking through one link whose token is kept encrypted, so every email repeats it.
+- **Open invites, team pages and profiles** (`booking/invites.ts`, `pages.ts`, `profile.ts`): an
+  open invite stands in for a page (`inviteAsPage()`) whose hours are its windows, so the same
+  booking steps, manage link, timeline, webhooks and inbox serve it; `availableSlots()` gives an
+  invite the windows minus every host's busy time, on the quarter hour. Picking a time books it
+  in the same transaction under the invite's advisory lock; a booker cancelling reopens it, and
+  the notifier marks it expired at `expires_at`. A page with a `team_id` is managed by the team's
+  owners and admins and hosted by its members. `/u/<handle>` lists the active pages someone owns
+  or hosts. Public booking, invite, profile and RSVP responses carry `X-Robots-Tag: noindex`, and
+  only those web pages may be framed (the web container's nginx).
 - **API keys and webhooks**: keys (`ok_…`) are stored hashed and act as their owner, except in
   the admin console. Webhook events are queued in the same transaction as the change (so a
   rolled-back change sends nothing) and delivered by the notifier's lanes with an HMAC-SHA256
   signature and backoff. Webhook URLs must resolve to public addresses, checked on save and before
   every delivery (`lib/netguard.ts`), so users can't make the server call its own network.
+  `event.starting` and `block.started` are found by the notifier every minute
+  (`worker/webhookEvents.ts`) and `task.at_risk` comes with the at-risk notice; a delivery's
+  `dedupe_key` (unique per webhook) keeps each to once per occurrence, block start or task and
+  day. Rate limits count API-key requests per key (its id, looked up once a minute) and others per
+  address, with `RateLimit-*` headers. `GET /openapi.yaml` serves `docs/openapi.yaml`.
+- **Incremental sync**: `GET /items?updated_after=` reads items by `(updated_at, id)` from a
+  cursor holding the exact microsecond, merged with `deleted_items`, the tombstones `mutate()` (and
+  booking cancellations) write before deleting, with the audience at the time. Changes that
+  don't touch the version (steps, time logged, order, a subtask's status on its parent) still move
+  `updated_at`, so sync sees them.
+- **Events**: all-day items store local midnights in their zone (their end is the midnight after
+  the last day, counted in days so daylight saving can't move it) and are never busy; events
+  marked free aren't either, and neither gets buffers or travel. `busyIntervals()` is where both
+  rules live, so the planner, team time, booking pages and the busy feed agree.
+- **One occurrence or the rest** (`modules/items/occurrences.ts`): changing one occurrence of a
+  series writes an `item_overrides` row (only what differs from the series); removing one adds an
+  exdate, as `skip` always did. `expandSeries()` in `calendar.ts` applies both, including
+  occurrences moved into or out of a range, so every reader (calendar, busy time, conflicts,
+  search, the feed) sees the same thing; the notifier joins the current occurrence's row.
+  "This and following" ends the series with an `UNTIL` just before the occurrence and creates the
+  rest through `mutate()`. An edit to the whole series drops changes to occurrences that no
+  longer exist.
+- **Invitations** (`modules/items/attendees.ts`): `mutate()` keeps an event's invitees and, in
+  the same transaction, queues iCalendar emails (`REQUEST` or `CANCEL`) as `invite` rows in the
+  notifications outbox, so a rolled-back edit sends nothing and a mail outage never fails one; the
+  email lane sends the calendar part with nodemailer's `icalEvent` and drops invitations for
+  people since taken off. Each invitee's RSVP token is hashed for lookups and kept encrypted so
+  every email repeats the same link. Nothing is queued without SMTP.
 - **Calendar feed**: a private, rotatable iCalendar link (`/calendar/feed/<token>.ics`, only the
-  token's hash is stored) with repeating items as RRULEs in their own time zone.
+  token's hash is stored) with repeating items as RRULEs in their own time zone, changed
+  occurrences as `RECURRENCE-ID` events, all-day dates, free time, alerts and invitees, and
+  optionally time blocks. A second link shows only busy intervals, taken from `busyIntervals()`.
+- **Subscriptions** (`modules/planner/subscriptions.ts`, `icsParse.ts`): calendars read by ICS
+  link. The notifier claims due subscriptions (new ones, then hourly) and fetches them with the
+  same public-address guard as webhooks, re-checked on every redirect, with time and size limits
+  and conditional requests. A small parser reads events, zones, repeats in Orbyn's subset,
+  exdates and changed occurrences; the events replace the old ones in one transaction, and a
+  failure keeps them. They're expanded on read like items, and reach `busyIntervals()` only when
+  the subscription counts as busy.
+- **Search and overlays**: `GET /calendar/search` expands only the items whose words match, so
+  each occurrence is found with its own changes; `GET /availability` gives the busy intervals of
+  people who share a team with you, for drawing over your own calendar.
 
 ## Desktop / web (`desktop/`)
 

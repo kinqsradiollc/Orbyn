@@ -8,6 +8,7 @@ import {
   type BookingPage,
   type BusyInterval,
   type DateOverride,
+  type OpenInviteStatus,
   type PlannerPrefs,
 } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
@@ -24,7 +25,30 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
  */
 export type PageRow = Omit<BookingPage, "counts"> & {
   counts?: BookingPage["counts"];
+  /** Set when this "page" stands for an open invite: its windows are its hours. */
+  invite?: InviteRow;
 };
+
+/** An open invite as stored. */
+export type InviteRow = {
+  id: string;
+  owner_id: string;
+  title: string;
+  duration: number;
+  windows: BusyInterval[];
+  location: string;
+  meeting_url: string;
+  co_host_ids: string[];
+  remind_before_minutes: number[];
+  status: OpenInviteStatus;
+  expires_at: Date;
+  booking_id: string | null;
+  token_encrypted: string;
+  created_at: Date;
+};
+
+/** Open invites offer start times on the quarter hour. */
+const INVITE_STEP_MINUTES = 15;
 
 type Span = { start: number; end: number };
 
@@ -143,13 +167,126 @@ export type SlotOptions = {
   ignoreItemIds?: string[];
 };
 
+/** Bookings still held (waiting for an email link or a host) on pages these people host. */
+async function holdsFor(
+  db: Queryable,
+  hosts: string[],
+  from: number,
+  to: number,
+  ignoreBookingId?: string,
+): Promise<BusyInterval[]> {
+  return (
+    await db.query<{ start_at: Date; end_at: Date }>(
+      `SELECT b.start_at, b.end_at FROM bookings b
+       WHERE b.page_id IN (SELECT page_id FROM booking_hosts WHERE user_id = ANY ($1::uuid[]))
+         AND b.status IN ('pending', 'awaiting_approval') AND b.hold_until > now()
+         AND b.start_at < $3 AND b.end_at > $2 AND b.id IS DISTINCT FROM $4::uuid`,
+      [hosts, new Date(from), new Date(to), ignoreBookingId ?? null],
+    )
+  ).rows.map((h) => ({
+    start_at: h.start_at.toISOString(),
+    end_at: h.end_at.toISOString(),
+  }));
+}
+
+/**
+ * Free start times inside an open invite's windows: every host (the owner
+ * and co-hosts) must be free, and bookings still held count as busy. Start
+ * times fall on the quarter hour in the owner's time zone.
+ */
+async function inviteSlots(
+  db: Queryable,
+  page: PageRow,
+  duration: number,
+  from: Date,
+  to: Date,
+  options: SlotOptions,
+): Promise<BusyInterval[]> {
+  const now = (options.now ?? new Date()).getTime();
+  const earliest = Math.max(from.getTime(), now);
+  const latest = to.getTime();
+  if (latest <= earliest) return [];
+  const windows = merge(
+    page
+      .invite!.windows.map((w) =>
+        clip(
+          { start: Date.parse(w.start_at), end: Date.parse(w.end_at) },
+          earliest,
+          latest,
+        ),
+      )
+      .filter((s): s is Span => !!s),
+  );
+  if (!windows.length) return [];
+  const hosts = page.hosts.map((h) => h.user_id);
+  const holds = await holdsFor(
+    db,
+    hosts,
+    earliest - DAY,
+    latest + DAY,
+    options.ignoreBookingId,
+  );
+  let common: Span[] | null = windows;
+  for (const host of hosts) {
+    const busy = await busyIntervals(
+      db,
+      host,
+      new Date(earliest - 60 * MINUTE),
+      new Date(latest + 60 * MINUTE),
+      {
+        blocks: true,
+        derived: true,
+        frames: true,
+        excludeItemIds: options.ignoreItemIds,
+      },
+    );
+    common = intersect(
+      common!,
+      freeSpans(windows, mergeIntervals([...busy, ...holds])),
+    );
+  }
+  const tz = await pageTimeZone(db, page);
+  return startTimes(common ?? [], INVITE_STEP_MINUTES, duration, tz);
+}
+
+/** Start times stepping by `step` minutes from local midnight, that fit `duration`. */
+function startTimes(
+  spans: Span[],
+  step: number,
+  duration: number,
+  tz: string,
+  accept: (at: number) => boolean = () => true,
+): BusyInterval[] {
+  const stepMs = step * MINUTE;
+  const need = duration * MINUTE;
+  // The first start at or after `ms` that sits on the interval from local midnight.
+  const aligned = (ms: number) => {
+    const offset = offsetMinutes(tz, new Date(ms)) * MINUTE;
+    return Math.ceil((ms + offset) / stepMs) * stepMs - offset;
+  };
+  const slots: BusyInterval[] = [];
+  for (const span of spans)
+    for (
+      let at = aligned(span.start);
+      at + need <= span.end && slots.length < MAX_SLOTS;
+      at += stepMs
+    )
+      if (accept(at))
+        slots.push({
+          start_at: new Date(at).toISOString(),
+          end_at: new Date(at + need).toISOString(),
+        });
+  return slots;
+}
+
 /**
  * Free start times for a page between `from` and `to`: the page's hours
  * (its own weekly hours or each host's working hours, with date overrides)
  * that every required host has free, keeping the page's buffers before and
  * after, its notice period and window, and its daily and weekly limits.
  * Events, buffers, travel, time blocks and other bookings' holds count as
- * busy. Start times step by the page's interval from local midnight.
+ * busy. Start times step by the page's interval from local midnight. An
+ * open invite's times come from its windows instead (`inviteSlots`).
  */
 export async function availableSlots(
   db: Queryable,
@@ -159,6 +296,7 @@ export async function availableSlots(
   to: Date,
   options: SlotOptions = {},
 ): Promise<BusyInterval[]> {
+  if (page.invite) return inviteSlots(db, page, duration, from, to, options);
   const now = (options.now ?? new Date()).getTime();
   const earliest = Math.max(
     from.getTime(),
@@ -170,23 +308,13 @@ export async function availableSlots(
   const before = page.buffer_before_minutes * MINUTE;
   const after = page.buffer_after_minutes * MINUTE;
   const tz = await pageTimeZone(db, page);
-  const holds = (
-    await db.query<{ start_at: Date; end_at: Date }>(
-      `SELECT b.start_at, b.end_at FROM bookings b
-       WHERE b.page_id IN (SELECT page_id FROM booking_hosts WHERE user_id = ANY ($1::uuid[]))
-         AND b.status IN ('pending', 'awaiting_approval') AND b.hold_until > now()
-         AND b.start_at < $3 AND b.end_at > $2 AND b.id IS DISTINCT FROM $4::uuid`,
-      [
-        required,
-        new Date(earliest - DAY),
-        new Date(latest + DAY),
-        options.ignoreBookingId ?? null,
-      ],
-    )
-  ).rows.map((h) => ({
-    start_at: h.start_at.toISOString(),
-    end_at: h.end_at.toISOString(),
-  }));
+  const holds = await holdsFor(
+    db,
+    required,
+    earliest - DAY,
+    latest + DAY,
+    options.ignoreBookingId,
+  );
 
   // Busy time just outside the range still matters because of the buffers.
   const pad = before + after + 60 * MINUTE;
@@ -198,9 +326,15 @@ export async function availableSlots(
       host,
       new Date(earliest - pad),
       new Date(latest + pad),
-      { blocks: true, derived: true, excludeItemIds: options.ignoreItemIds },
+      {
+        blocks: true,
+        derived: true,
+        frames: true,
+        excludeItemIds: options.ignoreItemIds,
+      },
     );
-    // A booking needs `before` free ahead of it and `after` free behind it.
+    // Busy frames count, like events. A booking needs `before` free ahead of
+    // it and `after` free behind it.
     const grown = [...busy, ...holds].map((b) => ({
       start_at: new Date(Date.parse(b.start_at) - after).toISOString(),
       end_at: new Date(Date.parse(b.end_at) + before).toISOString(),
@@ -246,33 +380,12 @@ export async function availableSlots(
     }
   }
 
-  const step = page.slot_interval_minutes * MINUTE;
-  const need = duration * MINUTE;
-  // The first start at or after `ms` that sits on the interval from local midnight.
-  const aligned = (ms: number) => {
-    const offset = offsetMinutes(tz, new Date(ms)) * MINUTE;
-    return Math.ceil((ms + offset) / step) * step - offset;
-  };
-  const slots: BusyInterval[] = [];
-  for (const span of common) {
-    for (
-      let at = aligned(span.start);
-      at + need <= span.end && slots.length < MAX_SLOTS;
-      at += step
-    ) {
-      const day = localDateKey(new Date(at), tz);
-      if (page.max_per_day && (perDay.get(day) ?? 0) >= page.max_per_day)
-        continue;
-      if (
-        page.max_per_week &&
-        (perWeek.get(weekOf(day)) ?? 0) >= page.max_per_week
-      )
-        continue;
-      slots.push({
-        start_at: new Date(at).toISOString(),
-        end_at: new Date(at + need).toISOString(),
-      });
-    }
-  }
-  return slots;
+  return startTimes(common, page.slot_interval_minutes, duration, tz, (at) => {
+    const day = localDateKey(new Date(at), tz);
+    if (page.max_per_day && (perDay.get(day) ?? 0) >= page.max_per_day)
+      return false;
+    return !(
+      page.max_per_week && (perWeek.get(weekOf(day)) ?? 0) >= page.max_per_week
+    );
+  });
 }

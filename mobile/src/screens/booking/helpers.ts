@@ -6,9 +6,9 @@ import type {
 } from "@orbyn/core";
 import type { PillTone } from "../../components/Pill";
 import { webOrigin } from "../../lib/api";
-import { clockText } from "../../lib/planning";
+import { clockText, minutesLabel } from "../../lib/planning";
 
-export const DURATIONS = [15, 30, 45, 60, 90, 120];
+export const DURATIONS = [15, 20, 30, 45, 60, 90, 120];
 export const NOTICE = [
   { value: 0, label: "None" },
   { value: 60, label: "1 hour" },
@@ -16,7 +16,19 @@ export const NOTICE = [
   { value: 1440, label: "1 day" },
   { value: 2880, label: "2 days" },
 ];
-export const BUFFERS = [0, 5, 10, 15, 30, 60];
+export const BUFFERS = [0, 5, 10, 15, 30, 60].map((value) => ({
+  value,
+  label: value ? minutesLabel(value) : "None",
+}));
+/** Longest notice (two weeks) and buffer, in minutes: the server's limits. */
+export const MAX_NOTICE = 20160;
+export const MAX_BUFFER = 120;
+export const MAX_HOSTS = 10;
+export const MAX_CONFIRMATION = 1000;
+/** Lowercase words joined by single dashes. */
+export const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+export const MEETING_URL = /^https?:\/\/\S+$/i;
+export const PLACEHOLDERS = ["{page}", "{name}", "{email}"];
 /** Mon–Fri, 9 to 5: where custom hours start. */
 export const DEFAULT_WEEK = [1, 2, 3, 4, 5].map((day) => ({
   day,
@@ -155,12 +167,138 @@ export const eventActor = (e: BookingEvent) =>
   e.actor_name ??
   (e.actor === "booker" ? "Booker" : e.actor === "host" ? "Host" : "Orbyn");
 
-/** Still bookable: confirmed and not over, or waiting and not yet started. */
+/** Still open: confirmed and not over, or waiting on an email or a host. */
 export const isOpen = (b: Booking, now = Date.now()) =>
   b.status === "confirmed"
     ? Date.parse(b.end_at) > now
-    : (b.status === "pending" || b.status === "awaiting_approval") &&
-      Date.parse(b.start_at) > now;
+    : b.status === "pending" || b.status === "awaiting_approval";
+
+/** Whether you can change a page: the server says so, or it's yours. */
+export const canEditPage = (
+  p: { owner_id: string; can_edit?: boolean },
+  userId: string | undefined,
+) => p.can_edit ?? p.owner_id === userId;
+
+/** "Today", "Tomorrow", "Yesterday" or "Friday, Sep 18" for "2026-09-18". */
+export function dayHeading(key: string) {
+  const [y, m, d] = key.split("-").map(Number);
+  const day = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const offset = Math.round((day.getTime() - today.getTime()) / 86_400_000);
+  if (offset === 0) return "Today";
+  if (offset === 1) return "Tomorrow";
+  if (offset === -1) return "Yesterday";
+  return day.toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    ...(y !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
+
+// ---- Accent colours (from the web's bookingUi) ----------------------------------
+
+const DEFAULT_ACCENT = "#376c51";
+const channels = (hex: string) =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const toHex = (rgb: number[]) =>
+  "#" + rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+const luminance = (hex: string) => {
+  const [r, g, b] = channels(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+/** Contrast against white, from 1 to 21. */
+const onWhite = (hex: string) => 1.05 / (luminance(hex) + 0.05);
+
+/**
+ * `hex`, darkened just enough that white text on it (and it as text on
+ * white) meets WCAG AA. Dark colours come back unchanged.
+ */
+export function readableAccent(hex: string) {
+  let rgb = channels(HEX.test(hex) ? hex : DEFAULT_ACCENT);
+  let out = toHex(rgb);
+  for (let i = 0; i < 24 && onWhite(out) < 4.5; i++) {
+    rgb = rgb.map((v) => v * 0.92);
+    out = toHex(rgb);
+  }
+  return out;
+}
+
+// ---- Time zones ----------------------------------------------------------------
+
+/** Used when the device can't list every zone. */
+const COMMON_ZONES = [
+  "UTC",
+  "Pacific/Honolulu",
+  "America/Anchorage",
+  "America/Los_Angeles",
+  "America/Denver",
+  "America/Phoenix",
+  "America/Chicago",
+  "America/New_York",
+  "America/Halifax",
+  "America/Mexico_City",
+  "America/Bogota",
+  "America/Sao_Paulo",
+  "America/Argentina/Buenos_Aires",
+  "Europe/London",
+  "Europe/Dublin",
+  "Europe/Lisbon",
+  "Europe/Paris",
+  "Europe/Berlin",
+  "Europe/Madrid",
+  "Europe/Rome",
+  "Europe/Amsterdam",
+  "Europe/Stockholm",
+  "Europe/Warsaw",
+  "Europe/Athens",
+  "Europe/Istanbul",
+  "Europe/Moscow",
+  "Africa/Cairo",
+  "Africa/Lagos",
+  "Africa/Johannesburg",
+  "Africa/Nairobi",
+  "Asia/Dubai",
+  "Asia/Karachi",
+  "Asia/Kolkata",
+  "Asia/Dhaka",
+  "Asia/Bangkok",
+  "Asia/Ho_Chi_Minh",
+  "Asia/Jakarta",
+  "Asia/Singapore",
+  "Asia/Hong_Kong",
+  "Asia/Shanghai",
+  "Asia/Manila",
+  "Asia/Seoul",
+  "Asia/Tokyo",
+  "Australia/Perth",
+  "Australia/Adelaide",
+  "Australia/Brisbane",
+  "Australia/Sydney",
+  "Australia/Melbourne",
+  "Pacific/Auckland",
+];
+
+/** Every IANA zone the device knows, or a list of common ones. */
+export function timeZones(): string[] {
+  try {
+    const list = (
+      Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+    ).supportedValuesOf?.("timeZone");
+    if (list?.length) return list;
+  } catch {
+    // Fall through to the common zones.
+  }
+  return COMMON_ZONES;
+}
+
+/** "America/New_York" as "America / New York". */
+export const zoneLabel = (zone: string) =>
+  zone.replace(/_/g, " ").replace(/\//g, " / ");
 
 /** No-shows can be marked once a confirmed booking has started. */
 export const canMarkNoShow = (b: Booking, now = Date.now()) =>

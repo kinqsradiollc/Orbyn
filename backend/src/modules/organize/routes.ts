@@ -18,7 +18,7 @@ import { requireTeam } from "../../lib/teams.js";
  * team roles like team items do (viewers read, members and above write).
  */
 const LIST_COLUMNS = `l.id, l.user_id, l.team_id, t.name AS team_name, l.name, l.color, l.position, l.created_at,
-  (SELECT count(*)::int FROM items i WHERE i.list_id = l.id AND i.status <> 'done') AS item_count`;
+  (SELECT count(*)::int FROM items i WHERE i.list_id = l.id AND i.status NOT IN ('done', 'cancelled')) AS item_count`;
 
 /** Rows `$1` can see: their own personal ones and their teams' ones. */
 const VISIBLE = (alias: string) =>

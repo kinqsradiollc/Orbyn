@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "./Icon";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 
 /** The Orbyn wordmark, matching the desktop `.brand`: orbit icon, "orbyn", green dot. */
 export function Brand({ size = 26 }: { size?: number }) {
@@ -29,8 +29,10 @@ export function Brand({ size = 26 }: { size?: number }) {
   );
 }
 
-const s = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center" },
-  word: { fontFamily: fonts.brand, color: colors.text },
-  dot: { color: colors.dot },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    row: { flexDirection: "row", alignItems: "center" },
+    word: { fontFamily: fonts.brand, color: colors.text },
+    dot: { color: colors.dot },
+  }),
+);

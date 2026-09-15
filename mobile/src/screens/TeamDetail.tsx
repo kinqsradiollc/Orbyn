@@ -32,7 +32,7 @@ import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamTime } from "./TeamTime";
 
@@ -194,7 +194,12 @@ export function TeamDetailPage({
         </View>
         <Text style={[shared.subtitle, s.gap]}>
           {detail.member_count} member{detail.member_count === 1 ? "" : "s"} ·{" "}
-          {detail.item_count} plan{detail.item_count === 1 ? "" : "s"}
+          {detail.item_count} plan{detail.item_count === 1 ? "" : "s"} · created{" "}
+          {new Date(detail.created_at).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
         </Text>
 
         {!detail.role && (
@@ -202,6 +207,14 @@ export function TeamDetailPage({
             <Text style={shared.body}>
               You’re managing this team as a system admin. Its plans stay
               private to members.
+            </Text>
+          </View>
+        )}
+        {!!detail.role && canRead && !canWrite && (
+          <View style={shared.softCard}>
+            <Text style={shared.body}>
+              View only: you’re a viewer in {detail.name}. You can see its plans
+              but not change them.
             </Text>
           </View>
         )}
@@ -287,12 +300,22 @@ export function TeamDetailPage({
                         labels={TEAM_ROLE_LABELS}
                         value={m.role}
                         onChange={(role) => {
-                          if (role !== m.role)
+                          if (role === m.role) return;
+                          const change = () =>
                             void run(() =>
                               client.updateTeamMember(teamId, m.user_id, {
                                 role,
                               }),
                             );
+                          if (!me) return change();
+                          Alert.alert(
+                            `Change your own role to ${TEAM_ROLE_LABELS[role]}?`,
+                            "You may lose access to some controls.",
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              { text: "Change role", onPress: change },
+                            ],
+                          );
                         }}
                       />
                     )}
@@ -358,6 +381,7 @@ export function TeamDetailPage({
             members={detail.members}
             userId={user?.id}
             canWrite={canWrite}
+            onOpenItem={onOpenItem}
             onCreated={() =>
               void load(true)
                 .then(onChanged)
@@ -440,61 +464,71 @@ export function TeamDetailPage({
   );
 }
 
-const s = StyleSheet.create({
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  gap: { marginBottom: 14 },
-  eyebrow: { marginTop: 8 },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  member: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.display, fontSize: 15, color: colors.accent },
-  memberName: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 1,
-  },
-  memberActions: { paddingHorizontal: 16, paddingBottom: 14, gap: 10 },
-  removeButton: { marginBottom: 0 },
-  addButton: { marginTop: 12, marginBottom: 0 },
-  heading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  count: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  countText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
-  footer: { marginTop: 18 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    gap: { marginBottom: 14 },
+    eyebrow: { marginTop: 8 },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    member: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    avatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontFamily: fonts.display,
+      fontSize: 15,
+      color: colors.accent,
+    },
+    memberName: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 1,
+    },
+    memberActions: { paddingHorizontal: 16, paddingBottom: 14, gap: 10 },
+    removeButton: { marginBottom: 0 },
+    addButton: { marginTop: 12, marginBottom: 0 },
+    heading: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    count: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    countText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.muted,
+    },
+    footer: { marginTop: 18 },
+  }),
+);

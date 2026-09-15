@@ -11,7 +11,7 @@ import {
   usePressScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, spacing } from "../theme";
+import { colors, fonts, spacing, themed } from "../theme";
 
 /** Bottom navigation. Extends under the home indicator and pads for it. */
 export function TabBar({
@@ -140,46 +140,48 @@ function UnreadDot() {
   return <Animated.View style={[s.dot, { transform: [{ scale }] }]} />;
 }
 
-const s = StyleSheet.create({
-  bar: {
-    backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingTop: 8,
-  },
-  row: {
-    flexDirection: "row",
-    width: "100%",
-    maxWidth: spacing.maxContent,
-    alignSelf: "center",
-  },
-  tab: { flex: 1, alignItems: "center", gap: 3 },
-  iconWrap: {
-    width: 48,
-    height: 30,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pill: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 15,
-    backgroundColor: colors.accentSoft,
-  },
-  dot: {
-    position: "absolute",
-    top: 5,
-    right: 13,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.highText,
-    borderWidth: 1,
-    borderColor: colors.surface,
-  },
-  label: { fontFamily: fonts.medium, fontSize: 10, color: colors.muted },
-  labelActive: { fontFamily: fonts.semibold, color: colors.accent },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    bar: {
+      backgroundColor: colors.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingTop: 8,
+    },
+    row: {
+      flexDirection: "row",
+      width: "100%",
+      maxWidth: spacing.maxContent,
+      alignSelf: "center",
+    },
+    tab: { flex: 1, alignItems: "center", gap: 3 },
+    iconWrap: {
+      width: 48,
+      height: 30,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pill: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 15,
+      backgroundColor: colors.accentSoft,
+    },
+    dot: {
+      position: "absolute",
+      top: 5,
+      right: 13,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.highText,
+      borderWidth: 1,
+      borderColor: colors.surface,
+    },
+    label: { fontFamily: fonts.medium, fontSize: 10, color: colors.muted },
+    labelActive: { fontFamily: fonts.semibold, color: colors.accent },
+  }),
+);

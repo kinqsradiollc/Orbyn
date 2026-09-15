@@ -17,7 +17,7 @@ import {
 } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const PICK_DAYS = 7;
@@ -240,47 +240,49 @@ export function SchedulePanel({
   );
 }
 
-const s = StyleSheet.create({
-  heading: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  close: {
-    marginLeft: "auto",
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  offer: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 14,
-    marginBottom: 12,
-  },
-  offerTime: {
-    fontFamily: fonts.display,
-    fontSize: 17,
-    color: colors.text,
-    marginBottom: 4,
-  },
-  offerButton: { marginTop: 10, marginBottom: 0 },
-  gap: { marginTop: 12 },
-  gapSmall: { marginTop: 6 },
-  booked: { marginTop: 8 },
-  bookedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 48,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  bookedText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.text,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    heading: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+    close: {
+      marginLeft: "auto",
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    offer: {
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 14,
+      marginBottom: 12,
+    },
+    offerTime: {
+      fontFamily: fonts.display,
+      fontSize: 17,
+      color: colors.text,
+      marginBottom: 4,
+    },
+    offerButton: { marginTop: 10, marginBottom: 0 },
+    gap: { marginTop: 12 },
+    gapSmall: { marginTop: 6 },
+    booked: { marginTop: 8 },
+    bookedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 48,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    bookedText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      color: colors.text,
+    },
+  }),
+);

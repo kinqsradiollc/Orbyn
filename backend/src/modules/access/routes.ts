@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   apiKeyInput,
   fail,
@@ -24,9 +25,43 @@ import { sendWebhook } from "../../worker/webhooks.js";
 const MAX_KEYS = 20;
 const MAX_WEBHOOKS = 10;
 const WEBHOOK_COLUMNS =
-  "id, url, events, active, last_status, last_error, last_delivered_at, created_at";
+  "id, url, events, lead_minutes, active, last_status, last_error, last_delivered_at, created_at";
+
+let openApi: string | null | undefined;
+
+/**
+ * The hand-maintained OpenAPI description (docs/openapi.yaml), read once.
+ * Looked for next to the repository's docs, from the source or the build.
+ */
+async function openApiSpec() {
+  if (openApi !== undefined) return openApi;
+  const candidates = [
+    new URL("../../../../docs/openapi.yaml", import.meta.url),
+    new URL("docs/openapi.yaml", `file://${process.cwd()}/`),
+    new URL("../docs/openapi.yaml", `file://${process.cwd()}/`),
+  ];
+  openApi = null;
+  for (const file of candidates) {
+    const text = await readFile(file, "utf8").catch(() => null);
+    if (text) {
+      openApi = text;
+      break;
+    }
+  }
+  return openApi;
+}
 
 export async function accessRoutes(app: FastifyInstance) {
+  // What automation tools need to know about the API, without signing in.
+  app.get("/openapi.yaml", async (_r, reply) => {
+    const spec = await openApiSpec();
+    if (!spec) fail(404, "This server doesn't include the API description.");
+    return reply
+      .header("Content-Type", "application/yaml; charset=utf-8")
+      .header("Cache-Control", "public, max-age=300")
+      .send(spec);
+  });
+
   app.get("/me/api-keys", async (r) => {
     const u = await authenticate(r);
     return (
@@ -104,9 +139,15 @@ export async function accessRoutes(app: FastifyInstance) {
       const secret = `whsec_${randomBytes(24).toString("base64url")}`;
       const row = (
         await pool.query<Webhook>(
-          `INSERT INTO webhooks (user_id, url, events, secret_encrypted) VALUES ($1, $2, $3, $4)
-         RETURNING ${WEBHOOK_COLUMNS}`,
-          [u.id, d.url, [...new Set(d.events)], await encryptSecret(secret)],
+          `INSERT INTO webhooks (user_id, url, events, secret_encrypted, lead_minutes)
+           VALUES ($1, $2, $3, $4, $5) RETURNING ${WEBHOOK_COLUMNS}`,
+          [
+            u.id,
+            d.url,
+            [...new Set(d.events)],
+            await encryptSecret(secret),
+            d.lead_minutes,
+          ],
         )
       ).rows[0];
       reply.code(201);
@@ -121,7 +162,7 @@ export async function accessRoutes(app: FastifyInstance) {
     const row = (
       await pool.query<Webhook>(
         `UPDATE webhooks SET url = coalesce($3, url), events = coalesce($4, events),
-           active = coalesce($5, active)
+           active = coalesce($5, active), lead_minutes = coalesce($6, lead_minutes)
          WHERE id = $1 AND user_id = $2 RETURNING ${WEBHOOK_COLUMNS}`,
         [
           idParam(r),
@@ -129,6 +170,7 @@ export async function accessRoutes(app: FastifyInstance) {
           d.url ?? null,
           d.events ? [...new Set(d.events)] : null,
           d.active ?? null,
+          d.lead_minutes ?? null,
         ],
       )
     ).rows[0];

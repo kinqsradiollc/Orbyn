@@ -14,6 +14,15 @@ import {
   type Credentials,
   type Item,
   type ItemDetail,
+  type ItemPositionInput,
+  type ItemSyncPage,
+  type InviteBookingRequest,
+  type OpenInvite,
+  type OpenInviteInput,
+  type Profile,
+  type ProfileInput,
+  type PublicInvite,
+  type PublicProfile,
   type Status,
   type ItemInput,
   type Notice,
@@ -33,6 +42,7 @@ import {
   type TeamRole,
   type User,
   type ApiKey,
+  type BlockDuplicateInput,
   type BlockInput,
   type BlockUpdate,
   type Booking,
@@ -46,10 +56,22 @@ import {
   type BookingView,
   type ManagedBooking,
   type CalendarFeed,
+  type CalendarFeedSettings,
+  type CalendarFeedSettingsInput,
+  type CalendarSearch,
+  type CalendarSubscription,
+  type CalendarSubscriptionInput,
+  type CalendarSubscriptionUpdate,
   type CalendarView,
+  type EditScope,
+  type QuickAddCreated,
+  type QuickAddResult,
+  type RsvpView,
+  type UserAvailability,
   type Frame,
   type FrameInput,
   type FrameUpdate,
+  type ItemSort,
   type ListInput,
   type ListUpdate,
   type MeetingSlot,
@@ -65,6 +87,8 @@ import {
   type PlannerPrefsInput,
   type PlannerReview,
   type PlanPreviewInput,
+  type PlanStaleness,
+  type PlanTuneInput,
   type PublicBookingPage,
   type Tag,
   type TagInput,
@@ -76,6 +100,14 @@ import {
   type WebhookTestResult,
   type WebhookUpdate,
 } from "@orbyn/core";
+
+/** "?scope=this&occurrence=…" for edits to part of a repeating item. */
+const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
+  if (!o.scope || o.scope === "all") return "";
+  const q = new URLSearchParams({ scope: o.scope });
+  if (o.occurrence) q.set("occurrence", o.occurrence);
+  return `?${q}`;
+};
 
 /** After a write, reads ask for the primary database for this long. */
 const READ_YOUR_WRITES_MS = 5000;
@@ -99,7 +131,7 @@ export type OrbynClientOptions = {
 };
 
 export type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   /** Send without the Authorization header even if a token exists. */
   anonymous?: boolean;
@@ -279,6 +311,10 @@ export class OrbynClient {
       list_id?: string;
       tag_id?: string;
       assignee_id?: string;
+      /** List order; newest first when omitted. Every item carries its `score`. */
+      sort?: ItemSort;
+      /** Only the subtasks of this task. */
+      parent_id?: string;
     } = {},
   ) {
     const q = new URLSearchParams();
@@ -290,10 +326,39 @@ export class OrbynClient {
       "list_id",
       "tag_id",
       "assignee_id",
+      "sort",
+      "parent_id",
     ] as const)
       if (params[key]) q.set(key, params[key]!);
     const suffix = q.size ? `?${q}` : "";
     return this.request<Item[]>(`/items${suffix}`);
+  }
+  /**
+   * Incremental sync: items changed after `updated_after` (or after a
+   * previous page's `next_cursor`), oldest change first, and with
+   * `include_deleted` the items deleted since.
+   */
+  syncItems(params: {
+    updated_after?: string;
+    cursor?: string;
+    include_deleted?: boolean;
+    limit?: number;
+    team_id?: string;
+  }) {
+    const q = new URLSearchParams();
+    if (params.updated_after) q.set("updated_after", params.updated_after);
+    if (params.cursor) q.set("cursor", params.cursor);
+    if (params.include_deleted) q.set("include_deleted", "1");
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.team_id) q.set("team_id", params.team_id);
+    return this.request<ItemSyncPage>(`/items?${q}`);
+  }
+  /** Move an item in its manual order (doesn't change its version). */
+  moveItem(id: string, input: ItemPositionInput) {
+    return this.request<Item>(`/items/${id}/position`, {
+      method: "PUT",
+      body: input,
+    });
   }
   /** Add minutes worked (focus timer). */
   logTime(itemId: string, minutes: number) {
@@ -367,6 +432,13 @@ export class OrbynClient {
       method: "POST",
     });
   }
+  /** Another block for the same task and length, at `start_at` or the next free time after it. */
+  duplicateBlock(id: string, input: BlockDuplicateInput = {}) {
+    return this.request<TimeBlock>(`/blocks/${id}/duplicate`, {
+      method: "POST",
+      body: input,
+    });
+  }
   getPlannerPrefs() {
     return this.request<PlannerPrefs>("/planner/prefs");
   }
@@ -393,6 +465,20 @@ export class OrbynClient {
   }
   deleteFrame(id: string) {
     return this.request<void>(`/planner/frames/${id}`, { method: "DELETE" });
+  }
+  /** Skip one date ("YYYY-MM-DD") of a frame. */
+  skipFrame(id: string, date: string) {
+    return this.request<Frame>(`/planner/frames/${id}/skip`, {
+      method: "POST",
+      body: { date },
+    });
+  }
+  /** Bring back a skipped date of a frame. */
+  unskipFrame(id: string, date: string) {
+    return this.request<Frame>(`/planner/frames/${id}/unskip`, {
+      method: "POST",
+      body: { date },
+    });
   }
   listPlaces() {
     return this.request<Place[]>("/planner/places");
@@ -422,6 +508,17 @@ export class OrbynClient {
   getPlan(id: string) {
     return this.request<Plan>(`/planner/plans/${id}`);
   }
+  /** Tune a plan (tasks in or out, estimates, pinned blocks, keep-free, scope); returns the new plan that replaces it. */
+  tunePlan(id: string, input: PlanTuneInput) {
+    return this.request<Plan>(`/planner/plans/${id}`, {
+      method: "PATCH",
+      body: input,
+    });
+  }
+  /** Whether the calendar or tasks changed since the plan was made. */
+  planStale(id: string) {
+    return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
+  }
   applyPlan(id: string) {
     return this.request<{ blocks: TimeBlock[]; skipped: number }>(
       `/planner/plans/${id}/apply`,
@@ -439,12 +536,87 @@ export class OrbynClient {
       body: blockIds ? { block_ids: blockIds } : {},
     });
   }
-  /** Create (or replace) your private calendar subscription link. */
-  createCalendarFeed() {
-    return this.request<CalendarFeed>("/me/calendar-feed", { method: "POST" });
+  /**
+   * Create (or replace) your private calendar subscription link, or with
+   * `busy: true` the link that only shows when you're busy.
+   */
+  createCalendarFeed(options: { busy?: boolean } = {}) {
+    return this.request<CalendarFeed>("/me/calendar-feed", {
+      method: "POST",
+      body: options.busy ? { busy: true } : {},
+    });
   }
-  deleteCalendarFeed() {
-    return this.request<void>("/me/calendar-feed", { method: "DELETE" });
+  deleteCalendarFeed(options: { busy?: boolean } = {}) {
+    return this.request<void>(
+      `/me/calendar-feed${options.busy ? "?busy=1" : ""}`,
+      { method: "DELETE" },
+    );
+  }
+  /** Which feed links are on, and whether the feed includes time blocks. */
+  calendarFeedSettings() {
+    return this.request<CalendarFeedSettings>("/me/calendar-feed");
+  }
+  updateCalendarFeedSettings(input: CalendarFeedSettingsInput) {
+    return this.request<CalendarFeedSettings>("/me/calendar-feed", {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  // ---- calendars from other apps (ICS links) ----
+  listCalendarSubscriptions() {
+    return this.request<CalendarSubscription[]>("/me/calendar-subscriptions");
+  }
+  createCalendarSubscription(input: CalendarSubscriptionInput) {
+    return this.request<CalendarSubscription>("/me/calendar-subscriptions", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateCalendarSubscription(id: string, input: CalendarSubscriptionUpdate) {
+    return this.request<CalendarSubscription>(
+      `/me/calendar-subscriptions/${id}`,
+      { method: "PUT", body: input },
+    );
+  }
+  deleteCalendarSubscription(id: string) {
+    return this.request<void>(`/me/calendar-subscriptions/${id}`, {
+      method: "DELETE",
+    });
+  }
+  /** Fetch it now instead of waiting for the hourly refresh. */
+  refreshCalendarSubscription(id: string) {
+    return this.request<CalendarSubscription>(
+      `/me/calendar-subscriptions/${id}/refresh`,
+      { method: "POST" },
+    );
+  }
+
+  /** Events matching words, a year either side of today unless a range is given. */
+  searchCalendar(q: string, range: { from?: string; to?: string } = {}) {
+    const params = new URLSearchParams({ q });
+    if (range.from) params.set("from", range.from);
+    if (range.to) params.set("to", range.to);
+    return this.request<CalendarSearch>(`/calendar/search?${params}`);
+  }
+  /** Busy times of up to 10 people you share a team with (at most 31 days). */
+  availability(userIds: string[], from: string, to: string) {
+    const q = new URLSearchParams({ user_ids: userIds.join(","), from, to });
+    return this.request<UserAvailability[]>(`/availability?${q}`);
+  }
+
+  // ---- invitations (public: the invitee's private link) ----
+  getRsvp(token: string) {
+    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
+      anonymous: true,
+    });
+  }
+  answerRsvp(token: string, status: "accepted" | "declined" | "tentative") {
+    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { status },
+      anonymous: true,
+    });
   }
 
   // ---- team time ----
@@ -677,7 +849,62 @@ export class OrbynClient {
     );
   }
 
+  // ---- open invites ----
+  listOpenInvites() {
+    return this.request<OpenInvite[]>("/open-invites");
+  }
+  /** A one-off link offering hand-picked windows; its `url` is the link to send. */
+  createOpenInvite(input: OpenInviteInput) {
+    return this.request<OpenInvite>("/open-invites", {
+      method: "POST",
+      body: input,
+    });
+  }
+  getOpenInvite(id: string) {
+    return this.request<OpenInvite>(`/open-invites/${id}`);
+  }
+  /** Withdraw an invite (a booking made from it is cancelled). */
+  cancelOpenInvite(id: string) {
+    return this.request<void>(`/open-invites/${id}`, { method: "DELETE" });
+  }
+  /** Public: an open invite and its free times, from its link. */
+  getPublicInvite(token: string, timezone: string) {
+    return this.request<PublicInvite>(
+      `/invite/${encodeURIComponent(token)}?${new URLSearchParams({ timezone })}`,
+      { anonymous: true },
+    );
+  }
+  /** Public: pick a time from an open invite (booked at once). */
+  bookInvite(token: string, input: InviteBookingRequest) {
+    return this.request<BookingReceipt>(
+      `/invite/${encodeURIComponent(token)}`,
+      { method: "POST", body: input, anonymous: true },
+    );
+  }
+
+  // ---- profile page ----
+  getProfile() {
+    return this.request<Profile>("/me/profile");
+  }
+  /** `handle: null` removes your page. */
+  updateProfile(input: ProfileInput) {
+    return this.request<Profile>("/me/profile", { method: "PUT", body: input });
+  }
+  /** Public: someone's profile page and their booking pages. */
+  getPublicProfile(handle: string) {
+    return this.request<PublicProfile>(`/u/${encodeURIComponent(handle)}`, {
+      anonymous: true,
+    });
+  }
+
   // ---- API keys and webhooks ----
+  /** Public: the OpenAPI description of the API, as YAML. */
+  openApiSpec() {
+    return this.request<string>("/openapi.yaml", {
+      anonymous: true,
+      raw: true,
+    });
+  }
   listApiKeys() {
     return this.request<ApiKey[]>("/me/api-keys");
   }
@@ -728,11 +955,44 @@ export class OrbynClient {
   createItem(input: Partial<ItemInput> & { title: string }) {
     return this.request<Item>("/items", { method: "POST", body: input });
   }
-  updateItem(id: string, input: ItemInput & { version: number }) {
-    return this.request<Item>(`/items/${id}`, { method: "PUT", body: input });
+  /**
+   * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
+   * ;Cafe Roma"), parsed on the server without AI.
+   */
+  quickAdd(text: string, timezone?: string) {
+    return this.request<QuickAddCreated>("/items/quick", {
+      method: "POST",
+      body: { text, ...(timezone ? { timezone } : {}) },
+    });
   }
-  deleteItem(id: string, version: number) {
-    return this.request<void>(`/items/${id}?version=${version}`, {
+  /** What quick add would make of the text, with its chips. Nothing is saved. */
+  previewQuickAdd(text: string, timezone?: string) {
+    return this.request<QuickAddResult>("/items/quick", {
+      method: "POST",
+      body: { text, preview: true, ...(timezone ? { timezone } : {}) },
+    });
+  }
+  /**
+   * Save an item. For one occurrence of a repeating item pass `scope: "this"`
+   * (or `"following"` for it and every later one) and the `occurrence`.
+   */
+  updateItem(
+    id: string,
+    input: ItemInput & { version: number },
+    options: { scope?: EditScope; occurrence?: string } = {},
+  ) {
+    return this.request<Item>(`/items/${id}${scopeQuery(options)}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteItem(
+    id: string,
+    version: number,
+    options: { scope?: EditScope; occurrence?: string } = {},
+  ) {
+    const scope = scopeQuery(options).replace(/^\?/, "&");
+    return this.request<void>(`/items/${id}?version=${version}${scope}`, {
       method: "DELETE",
     });
   }

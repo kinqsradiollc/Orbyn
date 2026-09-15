@@ -27,7 +27,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
     onNavigate("/status");
   };
   return (
-    <div className="home" ref={revealRoot}>
+    <div className="home theme-light" ref={revealRoot}>
       <a className="home-skip" href="#home-main">
         Skip to content
       </a>

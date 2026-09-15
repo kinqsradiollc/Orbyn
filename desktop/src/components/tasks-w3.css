@@ -1,0 +1,113 @@
+/* Tasks: the cancelled status, subtasks under their parent, manual order,
+   time left and links. Existing tokens only; cancelled uses the same tokens
+   as its tone in @orbyn/core (surfaceMuted and muted). */
+.tone-cancelled {
+  --tone-bg: var(--color-surfaceMuted);
+  --tone-fg: var(--color-muted);
+  --tone-text: color-mix(in srgb, var(--color-muted) 55%, var(--color-text));
+}
+.item-row.tone-cancelled .item-main strong {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Subtasks listed under their parent. */
+.task-children {
+  margin-left: 28px;
+  border-left: 2px solid var(--color-divider);
+}
+.row-fold {
+  flex: none;
+  margin-right: -6px;
+}
+
+/* Manual order: drag rows, or use the arrows. */
+.row-move {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+.reorder-row {
+  cursor: grab;
+}
+.reorder-row.is-dragging {
+  opacity: 0.5;
+}
+.reorder-row.is-drop-before {
+  box-shadow: inset 0 2px 0 var(--green);
+}
+.reorder-row.is-drop-after {
+  box-shadow: inset 0 -2px 0 var(--green);
+}
+.tasks-hint {
+  margin: 0;
+  padding: 0 23px 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Task detail: the parent, subtasks and links. */
+.drawer-parent {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  padding: 0;
+  font-size: 12px;
+}
+.subtask-list,
+.item-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.subtask-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.subtask-list li:first-child {
+  border-top: 0;
+}
+.subtask-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.subtask-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.subtask-main small,
+.item-links small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.item-links li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* A subtask shown apart from its parent names it. */
+.row-parent {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

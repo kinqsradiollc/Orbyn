@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
-  KeyboardAvoidingView,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,9 +13,9 @@ import {
 import {
   dateLabel,
   hasTeamPermission,
+  isClosed,
   statusLabels,
   statusOrder,
-  statusTones,
   type Item,
   type ItemDetail,
   type ItemStep,
@@ -26,17 +25,26 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { LinkedText } from "../components/LinkedText";
 import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
 import { SchedulePanel } from "../components/SchedulePanel";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
 import { canJoin } from "../lib/planning";
-import { percentOf, stepsLabel, timeAgo } from "../lib/progress";
+import {
+  leftLabel,
+  percentOf,
+  stepsLabel,
+  subtasksLabel,
+  timeAgo,
+} from "../lib/progress";
 import {
   animateLayout,
   FadeIn,
@@ -44,12 +52,18 @@ import {
   PressableScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
+/** Every status, closed ones last. */
+const STATUS_CHOICES: Status[] = [...statusOrder, "cancelled"];
+/** A task, its subtasks and theirs: the server's limit. */
+const MAX_LEVELS = 3;
 
-const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
+const PRIORITY = themed<
+  Record<Priority, { bg: string; fg: string; label: string }>
+>(() => ({
   high: { bg: colors.highBg, fg: colors.highText, label: "High priority" },
   medium: {
     bg: colors.mediumBg,
@@ -57,7 +71,7 @@ const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
     label: "Medium priority",
   },
   low: { bg: colors.lowBg, fg: colors.lowText, label: "Low priority" },
-};
+}));
 
 /**
  * Task detail sheet: status, progress, checklist and the updates timeline.
@@ -67,17 +81,23 @@ const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
 export function TaskDetail({
   visible,
   item,
+  items,
   teams,
   onClose,
   onDismiss,
   onEdit,
   onFocus,
   onChanged,
+  onOpenItem,
 }: {
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
   item: Item | null;
+  /** Everything loaded, for the task's parent and subtasks. */
+  items: Item[];
   teams: Team[];
+  /** Show another task here (a subtask, or the task above). */
+  onOpenItem: (item: Item) => void;
   onClose: () => void;
   /** iOS: called once the dismiss animation has finished. */
   onDismiss?: () => void;
@@ -99,35 +119,58 @@ export function TaskDetail({
         <Body
           key={item.id}
           seed={item}
+          items={items}
           teams={teams}
           onEdit={onEdit}
           onFocus={onFocus}
           onChanged={onChanged}
+          onOpenItem={onOpenItem}
         />
       )}
+      <CelebrationHost />
     </Sheet>
   );
 }
 
 function Body({
   seed,
+  items,
   teams,
   onEdit,
   onFocus,
   onChanged,
+  onOpenItem,
 }: {
   seed: Item;
+  items: Item[];
   teams: Team[];
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
+  onOpenItem: (item: Item) => void;
 }) {
+  const [newSubtask, setNewSubtask] = useState("");
+  /** The task above, when it isn't among the loaded items. */
+  const [fetchedParent, setFetchedParent] = useState<Item | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [newStep, setNewStep] = useState("");
   const [note, setNote] = useState("");
   const [noteStatus, setNoteStatus] = useState<Status | null>(null);
+  /** The update box has focus: its status choices show above it. */
+  const [composing, setComposing] = useState(false);
+  const area = useRef<React.ComponentRef<typeof View>>(null);
+  const keyboard = useKeyboardInset(area);
+  /** Progress being chosen, saved half a second after the last tap. */
+  const [draft, setDraft] = useState<number | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (progressTimer.current) clearTimeout(progressTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -142,7 +185,16 @@ function Body({
     return () => {
       alive = false;
     };
-  }, [seed.id]);
+    // Reload when the task changes elsewhere, not only when another opens.
+  }, [
+    seed.id,
+    seed.version,
+    seed.status,
+    seed.steps_done,
+    seed.steps_total,
+    seed.updates_count,
+    seed.last_update_at,
+  ]);
 
   const item: Item = detail ?? seed;
   const team = item.team_id
@@ -158,7 +210,7 @@ function Body({
     ? steps.filter((st) => st.done).length
     : (seed.steps_done ?? 0);
   const stepsTotal = detail ? steps.length : (seed.steps_total ?? 0);
-  const percent = percentOf(item);
+  const percent = draft ?? percentOf(item);
   const tone = statusTones[item.status];
   const priority = PRIORITY[item.priority];
   const meetingUrl = item.meeting_url ?? "";
@@ -167,20 +219,105 @@ function Body({
     { meeting_url: meetingUrl, start_at: item.due_at, end_at: item.end_at },
     now,
   );
-  const canWork = item.kind === "task" && item.status !== "done" && !readOnly;
+  const canWork = item.kind === "task" && !isClosed(item.status) && !readOnly;
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const parent = item.parent_id
+    ? (byId.get(item.parent_id) ??
+      (fetchedParent?.id === item.parent_id ? fetchedParent : null))
+    : null;
+  const parentId = item.parent_id ?? null;
+  const parentKnown = !parentId || byId.has(parentId);
+  useEffect(() => {
+    if (!parentId || parentKnown) return;
+    let alive = true;
+    client
+      .getItem(parentId)
+      .then((p) => alive && setFetchedParent(p))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [parentId, parentKnown]);
+  /** 1 for a task, 2 for a subtask, 3 for a subtask's subtask. */
+  let level = 1;
+  for (
+    let p = item.parent_id, guard = 0;
+    p && guard < MAX_LEVELS;
+    p = byId.get(p)?.parent_id, guard++
+  )
+    level++;
+  const subtasks = items
+    .filter((i) => i.parent_id === item.id)
+    .sort(
+      (a, b) =>
+        Number(isClosed(a.status)) - Number(isClosed(b.status)) ||
+        (a.position ?? 0) - (b.position ?? 0),
+    );
+  const canAddSubtask =
+    item.kind === "task" &&
+    !readOnly &&
+    !isClosed(item.status) &&
+    level < MAX_LEVELS;
+  const links = detail?.links ?? [];
+  const left = leftLabel(item);
+  const addSubtask = async () => {
+    const title = newSubtask.trim();
+    if (!title || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.createItem({
+        title,
+        kind: "task",
+        status: "todo",
+        priority: item.priority,
+        parent_id: item.id,
+        team_id: item.team_id ?? null,
+        list_id: item.list_id ?? null,
+      });
+      animateLayout();
+      setNewSubtask("");
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancelTask = () =>
+    Alert.alert(
+      "Cancel this task?",
+      subtasks.length
+        ? "It leaves your plans and its time blocks are removed. Its subtasks stay as they are. You can reopen it later."
+        : "It leaves your plans and its time blocks are removed. You can reopen it later.",
+      [
+        { text: "Keep it", style: "cancel" },
+        {
+          text: "Cancel task",
+          style: "destructive",
+          onPress: () => setStatus("cancelled"),
+        },
+      ],
+    );
 
   /** Run a change; the server answers with the fresh detail. */
   const run = async (fn: () => Promise<ItemDetail>) => {
     setBusy(true);
     setError("");
+    const before = item.status;
     try {
       const next = await fn();
       animateLayout();
       setDetail(next);
+      // A status change, an update or the last checklist step can finish it.
+      if (next.status === "done" && before !== "done") celebrate(next.title);
       onChanged();
       return true;
     } catch (e) {
       setError((e as Error).message);
+      // The task changed elsewhere (steps added, a newer version): reload it.
+      if ((e as { status?: number }).status === 409)
+        client.getItem(seed.id).then(setDetail, () => {});
       return false;
     } finally {
       setBusy(false);
@@ -190,6 +327,18 @@ function Body({
   const setStatus = (status: Status) => {
     if (status !== item.status)
       void run(() => client.postItemUpdate(item.id, { status }));
+  };
+  /** Set progress by hand; saved half a second after the last change. */
+  const setProgress = (value: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(value)));
+    setDraft(next);
+    if (progressTimer.current) clearTimeout(progressTimer.current);
+    progressTimer.current = setTimeout(() => {
+      progressTimer.current = null;
+      void run(() => client.postItemUpdate(item.id, { progress: next })).then(
+        () => setDraft(null),
+      );
+    }, 500);
   };
   const addStep = async () => {
     const title = newStep.trim();
@@ -215,19 +364,30 @@ function Body({
     const {
       steps: _steps,
       updates: _updates,
+      links: saved,
       ...rest
     } = detail ?? ({ ...seed, steps: [], updates: [] } as ItemDetail);
-    onEdit({ ...rest, team_name: teamName });
+    // The editor sends links as { url, title } only (ids are the server's).
+    onEdit({
+      ...rest,
+      team_name: teamName,
+      ...(saved
+        ? { links: saved.map(({ url, title }) => ({ url, title })) }
+        : {}),
+    });
   };
   const canPost =
     !busy && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <View
+      ref={area}
+      collapsable={false}
+      onLayout={keyboard.onLayout}
+      style={[s.fill, { paddingBottom: keyboard.inset }]}
     >
       <ScrollView
+        style={s.fill}
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
@@ -237,6 +397,24 @@ function Body({
 
           {/* Header */}
           <FadeIn style={s.header}>
+            {!!item.parent_id && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  parent ? `Subtask of ${parent.title}` : "Subtask"
+                }
+                accessibilityHint={parent ? "Opens that task" : undefined}
+                disabled={!parent}
+                hitSlop={6}
+                onPress={() => parent && onOpenItem(parent)}
+                style={({ pressed }) => [s.crumb, pressed && { opacity: 0.6 }]}
+              >
+                <Icon name="chevronLeft" size={13} color={colors.accent} />
+                <Text style={s.crumbText} numberOfLines={1}>
+                  {parent ? `Subtask of ${parent.title}` : "Subtask"}
+                </Text>
+              </Pressable>
+            )}
             <View style={s.headerTop}>
               <StatusPill status={item.status} />
               {item.kind === "event" && <Text style={s.kind}>Event</Text>}
@@ -270,6 +448,14 @@ function Body({
                   </Text>
                 </View>
               )}
+              {!!left && (
+                <View style={[s.chip, s.progressChip]}>
+                  <Icon name="clock" size={11} color={colors.textSoft} />
+                  <Text style={[s.chipText, { color: colors.textSoft }]}>
+                    {left}
+                  </Text>
+                </View>
+              )}
             </View>
             <PlanningMeta item={item} large />
             {!!item.location && (
@@ -278,7 +464,46 @@ function Body({
                 <Text style={s.metaText}>{item.location}</Text>
               </View>
             )}
-            {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
+            {!!item.notes && (
+              <LinkedText
+                text={item.notes}
+                style={s.notes}
+                onError={setError}
+              />
+            )}
+            {links.length > 0 && (
+              <View style={s.links} accessibilityLabel="Links">
+                {links.map((l, n) => (
+                  <Pressable
+                    key={`${l.url}-${n}`}
+                    accessibilityRole="link"
+                    accessibilityLabel={l.title || l.url}
+                    accessibilityHint="Opens in your browser"
+                    onPress={() =>
+                      void Linking.openURL(l.url).catch(() =>
+                        setError("That link couldn’t be opened."),
+                      )
+                    }
+                    style={({ pressed }) => [
+                      s.link,
+                      pressed && { backgroundColor: colors.surfaceMuted },
+                    ]}
+                  >
+                    <Icon name="link" size={14} color={colors.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.linkTitle} numberOfLines={1}>
+                        {l.title || l.url}
+                      </Text>
+                      {!!l.title && (
+                        <Text style={shared.small} numberOfLines={1}>
+                          {l.url}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             {!!meetingUrl && (
               <View style={s.meeting}>
                 <Button
@@ -349,7 +574,11 @@ function Body({
                 {stepsLabel(stepsDone, stepsTotal)} · Progress follows the
                 checklist
               </Text>
-            ) : readOnly ? null : (
+            ) : readOnly ? null : item.status === "done" ? (
+              <Text style={[shared.small, s.progressHint]}>
+                Reopen the task to change its progress.
+              </Text>
+            ) : (
               <>
                 <Text style={[shared.small, s.progressHint]}>
                   No checklist yet. Set progress by hand:
@@ -365,12 +594,7 @@ function Body({
                         accessibilityLabel={`Set progress to ${value}%`}
                         accessibilityState={{ checked: active, disabled: busy }}
                         disabled={busy}
-                        onPress={() =>
-                          !active &&
-                          void run(() =>
-                            client.postItemUpdate(item.id, { progress: value }),
-                          )
-                        }
+                        onPress={() => !active && setProgress(value)}
                         style={[
                           s.segment,
                           filled && { backgroundColor: tone.bg },
@@ -389,9 +613,139 @@ function Body({
                     );
                   })}
                 </View>
+                <View style={s.stepper}>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="5% less"
+                    accessibilityState={{ disabled: busy || percent <= 0 }}
+                    disabled={busy || percent <= 0}
+                    onPress={() => setProgress(percent - 5)}
+                    style={[s.stepperButton, (busy || percent <= 0) && s.faded]}
+                  >
+                    <Text style={s.stepperText}>−5%</Text>
+                  </PressableScale>
+                  <Text style={s.stepperValue} accessibilityLiveRegion="polite">
+                    {percent}%
+                  </Text>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="5% more"
+                    accessibilityState={{ disabled: busy || percent >= 100 }}
+                    disabled={busy || percent >= 100}
+                    onPress={() => setProgress(percent + 5)}
+                    style={[
+                      s.stepperButton,
+                      (busy || percent >= 100) && s.faded,
+                    ]}
+                  >
+                    <Text style={s.stepperText}>+5%</Text>
+                  </PressableScale>
+                </View>
               </>
             )}
           </FadeIn>
+
+          {/* Subtasks */}
+          {item.kind === "task" && (subtasks.length > 0 || canAddSubtask) && (
+            <FadeIn index={2} style={shared.card}>
+              <View style={s.cardHeading}>
+                <Text style={shared.sectionTitle} accessibilityRole="header">
+                  Subtasks
+                </Text>
+                {subtasks.length > 0 && (
+                  <Text style={s.counter}>
+                    {subtasksLabel(item) ||
+                      `${subtasks.filter((c) => c.status === "done").length} of ${subtasks.length}`}
+                  </Text>
+                )}
+              </View>
+              {!subtasks.length && (
+                <Text style={[shared.small, s.gapBelow]}>
+                  Split bigger work into tasks of their own, each with its own
+                  date and estimate.
+                </Text>
+              )}
+              {subtasks.map((c, n) => (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${c.title}, ${statusLabels[c.status]}, ${percentOf(c)}%`}
+                  accessibilityHint="Opens this subtask"
+                  onPress={() => onOpenItem(c)}
+                  style={({ pressed }) => [
+                    s.subtask,
+                    n > 0 && s.stepDivider,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[s.stepText, isClosed(c.status) && s.stepDone]}
+                      numberOfLines={2}
+                    >
+                      {c.title}
+                    </Text>
+                    <Text style={shared.small} numberOfLines={1}>
+                      {[
+                        `${percentOf(c)}%`,
+                        c.due_at ? dateLabel(c.due_at) : "",
+                        leftLabel(c),
+                        subtasksLabel(c),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  </View>
+                  <StatusPill status={c.status} />
+                  <Icon name="chevronRight" size={16} color={colors.faint} />
+                </Pressable>
+              ))}
+              {canAddSubtask && (
+                <View style={s.addRow}>
+                  <TextInput
+                    style={[shared.input, s.addInput]}
+                    value={newSubtask}
+                    onChangeText={setNewSubtask}
+                    maxLength={200}
+                    placeholder="Add subtask"
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="done"
+                    submitBehavior="submit"
+                    onSubmitEditing={() => void addSubtask()}
+                    accessibilityLabel="New subtask title"
+                  />
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Add subtask"
+                    accessibilityState={{
+                      disabled: busy || !newSubtask.trim(),
+                    }}
+                    disabled={busy || !newSubtask.trim()}
+                    onPress={() => void addSubtask()}
+                    style={[
+                      s.addButton,
+                      (busy || !newSubtask.trim()) && { opacity: 0.45 },
+                    ]}
+                  >
+                    <Icon
+                      name="plus"
+                      size={18}
+                      color={colors.white}
+                      strokeWidth={2.2}
+                    />
+                  </PressableScale>
+                </View>
+              )}
+              {item.kind === "task" &&
+                !readOnly &&
+                level >= MAX_LEVELS &&
+                !subtasks.length && (
+                  <Text style={shared.small}>
+                    Tasks go three levels deep, so this one can’t have subtasks.
+                  </Text>
+                )}
+            </FadeIn>
+          )}
 
           {/* Checklist */}
           <FadeIn index={2} style={shared.card}>
@@ -428,6 +782,9 @@ function Body({
                 }
                 onDelete={() =>
                   void run(() => client.deleteStep(item.id, step.id))
+                }
+                onRename={(title) =>
+                  void run(() => client.updateStep(item.id, step.id, { title }))
                 }
               />
             ))}
@@ -477,40 +834,6 @@ function Body({
                 <Text style={s.counter}>{updates.length}</Text>
               )}
             </View>
-            {!readOnly && (
-              <View style={s.composer}>
-                <TextInput
-                  style={[shared.input, s.noteInput]}
-                  value={note}
-                  onChangeText={setNote}
-                  multiline
-                  maxLength={2000}
-                  textAlignVertical="top"
-                  placeholder="Share progress, a blocker or a win…"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Update text"
-                />
-                <Text style={[shared.label, s.composerLabel]}>
-                  Change status (optional)
-                </Text>
-                <StatusChoice
-                  compact
-                  value={noteStatus}
-                  disabled={busy}
-                  onChange={(st) =>
-                    setNoteStatus((prev) => (prev === st ? null : st))
-                  }
-                  accessibilityLabel="Status to set with this update"
-                />
-                <Button
-                  title={busy ? "Posting…" : "Post update"}
-                  icon={busy ? undefined : "arrowRight"}
-                  disabled={!canPost}
-                  onPress={() => void postNote()}
-                  style={s.post}
-                />
-              </View>
-            )}
             {detail && !updates.length && (
               <Text style={shared.small}>
                 No updates yet.
@@ -528,9 +851,75 @@ function Body({
             icon="arrowRight"
             onPress={openEditor}
           />
+          {item.kind === "task" && !readOnly && !isClosed(item.status) && (
+            <Button
+              destructive
+              title="Cancel task"
+              icon="x"
+              disabled={busy}
+              onPress={cancelTask}
+            />
+          )}
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      {/* Fixed under the scrolling detail, and above the keyboard. */}
+      {!readOnly && (
+        <View style={s.footer}>
+          <View style={sheetStyles.column}>
+            {(composing || !!note.trim() || !!noteStatus) && (
+              <>
+                <Text style={[shared.label, s.composerLabel]}>
+                  Change status (optional)
+                </Text>
+                <StatusChoice
+                  compact
+                  value={noteStatus}
+                  disabled={busy}
+                  onChange={(st) =>
+                    setNoteStatus((prev) => (prev === st ? null : st))
+                  }
+                  accessibilityLabel="Status to set with this update"
+                />
+              </>
+            )}
+            <View style={s.footerRow}>
+              <TextInput
+                style={[shared.input, s.noteInput]}
+                value={note}
+                onChangeText={setNote}
+                onFocus={() => setComposing(true)}
+                onBlur={() => setComposing(false)}
+                multiline
+                maxLength={2000}
+                textAlignVertical="top"
+                placeholder="Share progress, a blocker or a win…"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Update text"
+              />
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={busy ? "Posting update" : "Post update"}
+                accessibilityState={{ disabled: !canPost }}
+                disabled={!canPost}
+                onPress={() => void postNote()}
+                style={({ pressed }) => [
+                  s.send,
+                  pressed && { backgroundColor: colors.accentPressed },
+                  !canPost && { opacity: 0.4 },
+                ]}
+              >
+                <Icon
+                  name="arrowRight"
+                  size={18}
+                  color={colors.white}
+                  strokeWidth={2.2}
+                />
+              </PressableScale>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -554,7 +943,7 @@ function StatusChoice({
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
     >
-      {statusOrder.map((status) => {
+      {STATUS_CHOICES.map((status) => {
         const active = status === value;
         const t = statusTones[status];
         return (
@@ -586,7 +975,10 @@ function StatusChoice({
   );
 }
 
-/** One checklist step: tick with a pop, delete with the trash button. */
+/**
+ * One checklist step: tick with a pop, tap its title to rename it, delete
+ * with the trash button.
+ */
 function StepRow({
   step,
   first,
@@ -594,6 +986,7 @@ function StepRow({
   readOnly,
   onToggle,
   onDelete,
+  onRename,
 }: {
   step: ItemStep;
   first: boolean;
@@ -601,7 +994,24 @@ function StepRow({
   readOnly: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }) {
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState(step.title);
+  // Submitting blurs the field too; save once.
+  const saving = useRef(false);
+  const startRename = () => {
+    setTitle(step.title);
+    saving.current = false;
+    setRenaming(true);
+  };
+  const finishRename = () => {
+    if (saving.current) return;
+    saving.current = true;
+    setRenaming(false);
+    const next = title.trim();
+    if (next && next !== step.title) onRename(next);
+  };
   const reduced = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const was = useRef(step.done);
@@ -621,7 +1031,6 @@ function StepRow({
         disabled={disabled}
         hitSlop={8}
         onPress={onToggle}
-        style={s.stepMain}
       >
         <Animated.View
           style={[s.check, step.done && s.checked, { transform: [{ scale }] }]}
@@ -630,8 +1039,33 @@ function StepRow({
             <Icon name="check" size={12} color={colors.white} strokeWidth={3} />
           )}
         </Animated.View>
-        <Text style={[s.stepText, step.done && s.stepDone]}>{step.title}</Text>
       </Pressable>
+      {renaming ? (
+        <TextInput
+          style={[shared.input, s.stepRename]}
+          value={title}
+          onChangeText={setTitle}
+          autoFocus
+          maxLength={200}
+          returnKeyType="done"
+          onSubmitEditing={finishRename}
+          onBlur={finishRename}
+          accessibilityLabel={`Rename step ${step.title}`}
+        />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={step.title}
+          accessibilityHint={readOnly ? undefined : "Renames this step"}
+          disabled={readOnly || disabled}
+          onPress={startRename}
+          style={s.stepTitle}
+        >
+          <Text style={[s.stepText, step.done && s.stepDone]}>
+            {step.title}
+          </Text>
+        </Pressable>
+      )}
       {!readOnly && (
         <Pressable
           accessibilityRole="button"
@@ -681,198 +1115,298 @@ function UpdateRow({ update, first }: { update: ItemUpdate; first: boolean }) {
   );
 }
 
-const s = StyleSheet.create({
-  header: { marginBottom: 18 },
-  headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 24,
-    lineHeight: 30,
-    letterSpacing: -0.6,
-    color: colors.text,
-    marginTop: 10,
-  },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-  },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  metaLine: { marginTop: 10 },
-  meeting: { marginTop: 14, gap: 6 },
-  join: { marginBottom: 0 },
-  metaText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: radii.pill,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  teamChip: { backgroundColor: colors.accentSoft },
-  progressChip: { backgroundColor: colors.surfaceMuted },
-  chipText: { fontFamily: fonts.semibold, fontSize: 11 },
-  notes: { ...shared.body, marginTop: 12 },
-  viewOnly: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 18,
-  },
-  viewOnlyText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.accent,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 18,
-  },
-  statusRowCompact: { marginBottom: 12, gap: 6 },
-  statusChip: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    minHeight: 44,
-    borderRadius: radii.input,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 10,
-  },
-  statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.textSoft,
-  },
-  progressCard: { gap: 12 },
-  progressTop: { flexDirection: "row", alignItems: "baseline" },
-  bigPercent: {
-    marginLeft: "auto",
-    fontFamily: fonts.display,
-    fontSize: 26,
-    letterSpacing: -0.6,
-  },
-  progressHint: { marginTop: -2 },
-  segments: { flexDirection: "row", gap: 6 },
-  segment: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.muted,
-  },
-  cardHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  counter: {
-    marginLeft: "auto",
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.muted,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 6,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  gapBelow: { marginBottom: 12 },
-  step: { flexDirection: "row", alignItems: "center", minHeight: 46 },
-  stepDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  stepMain: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: "#cfd7ce",
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  stepText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.text,
-  },
-  stepDone: { color: colors.faint, textDecorationLine: "line-through" },
-  trash: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  trashPressed: { backgroundColor: colors.dangerSoft },
-  addRow: { flexDirection: "row", gap: 8, marginTop: 10 },
-  addInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.input,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  composer: { marginBottom: 14 },
-  noteInput: { minHeight: 76 },
-  composerLabel: { marginTop: 12 },
-  post: { marginBottom: 0 },
-  update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
-  updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  author: {
-    flexShrink: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.text,
-  },
-  updateBody: { ...shared.body, marginTop: 3 },
-  changes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    header: { marginBottom: 18 },
+    headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+    kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
+    title: {
+      fontFamily: fonts.display,
+      fontSize: 24,
+      lineHeight: 30,
+      letterSpacing: -0.6,
+      color: colors.text,
+      marginTop: 10,
+    },
+    metaRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 10,
+    },
+    metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+    metaLine: { marginTop: 10 },
+    meeting: { marginTop: 14, gap: 6 },
+    join: { marginBottom: 0 },
+    metaText: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: radii.pill,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+    },
+    teamChip: { backgroundColor: colors.accentSoft },
+    progressChip: { backgroundColor: colors.surfaceMuted },
+    chipText: { fontFamily: fonts.semibold, fontSize: 11 },
+    notes: { ...shared.body, marginTop: 12 },
+    crumb: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: 4,
+      marginBottom: 10,
+      maxWidth: "100%",
+    },
+    crumbText: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+    },
+    links: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      overflow: "hidden",
+    },
+    link: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 44,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    linkTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.accent,
+    },
+    subtask: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 52,
+      paddingVertical: 10,
+    },
+    viewOnly: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 18,
+    },
+    viewOnlyText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.accent,
+    },
+    statusRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 18,
+    },
+    statusRowCompact: { marginBottom: 12, gap: 6 },
+    statusChip: {
+      flexGrow: 1,
+      flexBasis: "45%",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      minHeight: 44,
+      borderRadius: radii.input,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 10,
+    },
+    statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    progressCard: { gap: 12 },
+    progressTop: { flexDirection: "row", alignItems: "baseline" },
+    bigPercent: {
+      marginLeft: "auto",
+      fontFamily: fonts.display,
+      fontSize: 26,
+      letterSpacing: -0.6,
+    },
+    progressHint: { marginTop: -2 },
+    segments: { flexDirection: "row", gap: 6 },
+    segment: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepper: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 16,
+    },
+    stepperButton: {
+      minWidth: 64,
+      minHeight: 40,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepperText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    stepperValue: {
+      minWidth: 48,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    faded: { opacity: 0.45 },
+    stepTitle: { flex: 1, paddingVertical: 4 },
+    stepRename: { flex: 1, minHeight: 40, paddingVertical: 8 },
+    segmentText: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.muted,
+    },
+    cardHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    counter: {
+      marginLeft: "auto",
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.muted,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 6,
+      overflow: "hidden",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    gapBelow: { marginBottom: 12 },
+    step: { flexDirection: "row", alignItems: "center", minHeight: 46 },
+    stepDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    stepMain: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+    },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+    stepText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.text,
+    },
+    stepDone: { color: colors.faint, textDecorationLine: "line-through" },
+    trash: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    trashPressed: { backgroundColor: colors.dangerSoft },
+    addRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+    addInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+    addButton: {
+      width: 44,
+      height: 44,
+      borderRadius: radii.input,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fill: { flex: 1 },
+    footer: {
+      backgroundColor: colors.background,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingHorizontal: spacing.page,
+      paddingTop: 10,
+      paddingBottom: 10,
+    },
+    footerRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+    /** Grows to five lines of 21 pt, then scrolls inside. */
+    noteInput: {
+      flex: 1,
+      minHeight: 50,
+      maxHeight: 21 * 5 + 26,
+      lineHeight: 21,
+    },
+    composerLabel: { marginTop: 0 },
+    send: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
+    updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+    author: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    updateBody: { ...shared.body, marginTop: 3 },
+    changes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  }),
+);

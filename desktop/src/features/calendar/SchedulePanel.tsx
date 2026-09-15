@@ -1,3 +1,4 @@
+import { isClosed } from "@orbyn/core";
 import { useState } from "react";
 import { CalendarPlus, GripVertical } from "lucide-react";
 import { dateLabel, type Item } from "@orbyn/core";
@@ -16,7 +17,7 @@ const SHOWN = 12;
 export function SchedulePanel({ items, onSchedule }: Props) {
   const [all, setAll] = useState(false);
   const open = items
-    .filter((i) => i.kind === "task" && i.status !== "done")
+    .filter((i) => i.kind === "task" && !isClosed(i.status))
     .sort(byScore());
   const shown = all ? open : open.slice(0, SHOWN);
   return (

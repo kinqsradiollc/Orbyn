@@ -4,12 +4,15 @@ import {
   inProgressEmpty,
   emptyPlans,
   overviewItems,
-  statusTones,
   type Item,
   type Plan,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { ProgressBar } from "../components/ProgressBar";
+import { QuickAdd } from "../components/QuickAdd";
+import { SmallAction } from "../components/SmallAction";
+import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
 import {
   EmptyState,
@@ -18,7 +21,7 @@ import {
   type ListHandlers,
 } from "../components/PlannerList";
 import { Bump, FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const COMING_UP = 5;
@@ -32,9 +35,20 @@ export function TodayScreen({
   items,
   onPlanDay,
   onOpenPlanner,
+  userId,
+  onQuickAdded,
+  onAsk,
+  onShowAll,
   ...handlers
 }: ListHandlers & {
   items: Item[];
+  /** Opens the Tasks tab. */
+  onShowAll: () => void;
+  userId?: string;
+  /** After quick add created something, so the planner reloads. */
+  onQuickAdded: (item: Item) => void;
+  /** Hand quick-add text to the assistant instead. */
+  onAsk: (text: string) => void;
   /** Jumps to the assistant and asks it to plan the day. */
   onPlanDay: () => void;
   /** Opens the Plan my day sheet, optionally on a plan to review. */
@@ -47,11 +61,18 @@ export function TodayScreen({
     inProgress,
     today: dueToday,
     upcoming,
+    done,
     doneThisWeek,
     inProgressCount,
     blockedCount,
   } = overviewItems(items, now);
   const comingUp = upcoming.slice(0, COMING_UP);
+  // Momentum, as on the web: share of plans complete, average open progress.
+  const openTasks = open.filter((i) => i.kind === "task");
+  const average = openTasks.length
+    ? openTasks.reduce((sum, i) => sum + percentOf(i), 0) / openTasks.length
+    : 0;
+  const completePct = items.length ? (done.length / items.length) * 100 : 0;
 
   const stats = [
     { label: "Open", value: open.length, color: colors.textSoft },
@@ -74,6 +95,7 @@ export function TodayScreen({
 
   return (
     <>
+      <QuickAdd userId={userId} onCreated={onQuickAdded} onAsk={onAsk} />
       <View style={s.stats}>
         {stats.map((stat, n) => (
           <FadeIn key={stat.label} index={n} style={s.statCell}>
@@ -139,6 +161,7 @@ export function TodayScreen({
             title="Due today"
             items={dueToday}
             empty="Nothing else is due today."
+            emptyAction={{ label: "Plan something", onPress: handlers.onAdd }}
             handlers={handlers}
           />
           <Section
@@ -147,6 +170,30 @@ export function TodayScreen({
             empty="No upcoming plans yet. Your next idea can start here."
             handlers={handlers}
           />
+          <View style={s.allRow}>
+            <SmallAction
+              label="All tasks"
+              disabled={false}
+              onPress={onShowAll}
+            />
+          </View>
+          <FadeIn style={shared.card}>
+            <Text style={shared.sectionTitle}>Your momentum</Text>
+            <View
+              style={s.momentumLine}
+              accessible
+              accessibilityLabel={`${Math.round(completePct)}% of your plans complete`}
+            >
+              <Text style={s.momentumValue}>{Math.round(completePct)}%</Text>
+              <Text style={shared.small}>of your plans complete</Text>
+            </View>
+            <ProgressBar value={completePct} height={6} />
+            <Text style={[shared.small, s.momentumHint]}>
+              {openTasks.length
+                ? `Open tasks are ${Math.round(average)}% done on average.`
+                : "Progress happens one small step at a time."}
+            </Text>
+          </FadeIn>
         </>
       )}
 
@@ -174,6 +221,7 @@ function Section({
   hint,
   items,
   empty,
+  emptyAction,
   handlers,
 }: {
   title: string;
@@ -181,6 +229,8 @@ function Section({
   items: Item[];
   /** Line shown instead of rows when the section is empty. */
   empty?: string;
+  /** A button beside the empty line. */
+  emptyAction?: { label: string; onPress: () => void };
   handlers: ListHandlers;
 }) {
   return (
@@ -189,59 +239,87 @@ function Section({
       {items.length > 0 ? (
         <ItemRows items={items} {...handlers} />
       ) : (
-        <View style={s.emptyRow}>
-          <Text style={shared.small}>{empty}</Text>
+        <View style={[s.emptyRow, !!emptyAction && s.emptyWithAction]}>
+          <Text style={[shared.small, { flex: 1 }]}>{empty}</Text>
+          {emptyAction && (
+            <SmallAction
+              label={emptyAction.label}
+              disabled={handlers.busy}
+              onPress={emptyAction.onPress}
+            />
+          )}
         </View>
       )}
     </View>
   );
 }
 
-const s = StyleSheet.create({
-  stats: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -5,
-    marginBottom: 18,
-  },
-  statCell: { width: "50%", padding: 5 },
-  stat: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  statTop: { flexDirection: "row", alignItems: "center", gap: 7 },
-  statDot: { width: 7, height: 7, borderRadius: 4 },
-  statLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
-  statValue: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.text,
-    marginTop: 4,
-  },
-  emptyRow: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 22,
-  },
-  badge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  text: { marginBottom: 18 },
-  plan: { flexDirection: "row", alignItems: "center", gap: 14 },
-  planText: { flex: 1, gap: 3 },
-  planButton: { marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    stats: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginHorizontal: -5,
+      marginBottom: 18,
+    },
+    statCell: { width: "50%", padding: 5 },
+    stat: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    statTop: { flexDirection: "row", alignItems: "center", gap: 7 },
+    statDot: { width: 7, height: 7, borderRadius: 4 },
+    statLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    statValue: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: colors.text,
+      marginTop: 4,
+    },
+    emptyRow: {
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      marginBottom: 22,
+    },
+    emptyWithAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    allRow: { flexDirection: "row", marginTop: -8, marginBottom: 22 },
+    momentumLine: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    momentumValue: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: colors.text,
+    },
+    momentumHint: { marginTop: 10 },
+    badge: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 14,
+    },
+    text: { marginBottom: 18 },
+    plan: { flexDirection: "row", alignItems: "center", gap: 14 },
+    planText: { flex: 1, gap: 3 },
+    planButton: { marginBottom: 0 },
+  }),
+);

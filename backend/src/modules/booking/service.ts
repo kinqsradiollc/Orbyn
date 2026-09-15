@@ -6,8 +6,9 @@ import { digest } from "../../lib/auth.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
-import { mutate } from "../items/service.js";
+import { mutate, recordDeletions } from "../items/service.js";
 import { availableSlots, pageTimeZone, type PageRow } from "./availability.js";
+import { pageFor } from "./pages.js";
 
 /**
  * What can happen to a booking: confirmed, held for a host's approval,
@@ -16,7 +17,9 @@ import { availableSlots, pageTimeZone, type PageRow } from "./availability.js";
  */
 export type BookingRow = {
   id: string;
-  page_id: string;
+  /** The page it was booked on, or null for a booking from an open invite. */
+  page_id: string | null;
+  invite_id: string | null;
   start_at: Date;
   end_at: Date;
   name: string;
@@ -140,6 +143,15 @@ export function eventTitle(
     .slice(0, 200);
 }
 
+/** Where a booking came from, for webhook payloads. */
+const source = (page: PageRow) =>
+  page.invite ? { page: null, invite_id: page.invite.id } : { page: page.slug };
+
+/** An open invite's own link, for "pick another time". */
+export async function inviteLink(invite: { token_encrypted: string }) {
+  return appLink(`/invite/${await decryptSecret(invite.token_encrypted)}`);
+}
+
 /** The booker's answers as "Question: answer" lines. */
 export function answerLines(page: PageRow, answers: Record<string, string>) {
   return page.questions
@@ -159,7 +171,9 @@ async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
         data: {
           title: eventTitle(page, booking),
           notes: [
-            `Booked by ${booking.name} <${booking.email}> through /book/${page.slug}.`,
+            page.invite
+              ? `Booked by ${booking.name} <${booking.email}> through your open invite.`
+              : `Booked by ${booking.name} <${booking.email}> through /book/${page.slug}.`,
             booking.note,
             answerLines(page, booking.answers).join("\n"),
           ]
@@ -250,7 +264,7 @@ export async function confirm(
     { user_id: page.owner_id, team_id: null },
     {
       id: booking.id,
-      page: page.slug,
+      ...source(page),
       start_at: booking.start_at.toISOString(),
       end_at: booking.end_at.toISOString(),
       name: booking.name,
@@ -294,7 +308,7 @@ export async function awaitApproval(
     { user_id: page.owner_id, team_id: null },
     {
       id: booking.id,
-      page: page.slug,
+      ...source(page),
       start_at: booking.start_at.toISOString(),
       end_at: booking.end_at.toISOString(),
       name: booking.name,
@@ -346,7 +360,7 @@ export async function decline(
     { user_id: page.owner_id, team_id: null },
     {
       id: booking.id,
-      page: page.slug,
+      ...source(page),
       status: "declined",
       reason,
     },
@@ -371,10 +385,12 @@ export async function cancel(
       ? booking.end_at > new Date()
       : holding(booking);
   if (!open) fail(409, "This booking can't be cancelled any more.");
-  if (booking.item_ids.length)
+  if (booking.item_ids.length) {
+    await recordDeletions(db, booking.item_ids);
     await db.query("DELETE FROM items WHERE id = ANY ($1::uuid[])", [
       booking.item_ids,
     ]);
+  }
   await db.query(
     `UPDATE bookings SET status = 'cancelled', cancelled_by = $2, cancel_reason = $3,
        item_ids = '{}', hold_until = now(), confirm_token_hash = NULL, cancel_token_hash = NULL,
@@ -382,13 +398,30 @@ export async function cancel(
     [booking.id, by.actor, reason],
   );
   await logEvent(db, booking.id, "cancelled", by, reason);
+  // An open invite opens again when its booker cancels (while it lasts); a
+  // host cancelling withdraws it.
+  let reopened = false;
+  if (page.invite) {
+    const row = (
+      await db.query<{ status: string }>(
+        `UPDATE open_invites SET
+           status = CASE WHEN $2 = 'booker' AND expires_at > now() THEN 'open'
+                         WHEN $2 = 'booker' THEN 'expired' ELSE 'cancelled' END,
+           booking_id = CASE WHEN $2 = 'booker' THEN NULL ELSE booking_id END,
+           updated_at = now()
+         WHERE id = $1 AND booking_id = $3 RETURNING status`,
+        [page.invite.id, by.actor, booking.id],
+      )
+    ).rows[0];
+    reopened = row?.status === "open";
+  }
   await queueWebhooks(
     db,
     "booking.cancelled",
     { user_id: page.owner_id, team_id: null },
     {
       id: booking.id,
-      page: page.slug,
+      ...source(page),
       status: "cancelled",
       cancelled_by: by.actor,
       reason,
@@ -400,7 +433,7 @@ export async function cancel(
       `Hi ${booking.name},`,
       `Your booking for ${when} was cancelled by the host.`,
       reason ? `Their note: ${reason}` : "",
-      `Pick another time: ${appLink(`/book/${page.slug}`)}`,
+      page.invite ? "" : `Pick another time: ${appLink(`/book/${page.slug}`)}`,
     ]);
   else {
     const tz = await pageTimeZone(db, page);
@@ -416,8 +449,44 @@ export async function cancel(
     await mailBooker(booking, `Cancelled: ${page.title}`, [
       `Hi ${booking.name},`,
       `Your booking for ${when} is cancelled.`,
+      reopened
+        ? `Changed your mind? Pick another time: ${await inviteLink(page.invite!)}`
+        : "",
     ]);
   }
+}
+
+/**
+ * The email reminding a booker of a confirmed booking, made when it's sent
+ * so it carries the current manage link. Null when it shouldn't go any more:
+ * the booking was cancelled or declined, moved (the reminder's `ref` keeps
+ * the start it was queued for), or has started.
+ */
+export async function bookerReminder(db: Db, ref: string) {
+  const [bookingId, epoch] = ref.split(":");
+  const booking = (
+    await db.query<BookingRow>("SELECT * FROM bookings WHERE id::text = $1", [
+      bookingId,
+    ])
+  ).rows[0];
+  if (
+    !booking ||
+    booking.status !== "confirmed" ||
+    booking.start_at <= new Date() ||
+    Math.round(booking.start_at.getTime() / 1000) !== Number(epoch)
+  )
+    return null;
+  const page = await pageFor(db, booking);
+  if (!page) return null;
+  return {
+    title: `Reminder: ${page.title}`,
+    body: [
+      `Hi ${booking.name},`,
+      `A reminder: ${page.title} with ${page.hosts.map((h) => h.name).join(", ")} is on ${whenLabel(booking.start_at, booking.end_at, booking.timezone)}.`,
+      ...place(page),
+      `Need to change or cancel it? ${await manageLink(db, booking)}`,
+    ].join("\n\n"),
+  };
 }
 
 export async function reschedule(
@@ -467,7 +536,7 @@ export async function reschedule(
     { user_id: page.owner_id, team_id: null },
     {
       id: booking.id,
-      page: page.slug,
+      ...source(page),
       start_at: start.toISOString(),
       end_at: end.toISOString(),
       moved_by: by.actor,

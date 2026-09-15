@@ -1,25 +1,49 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  editScopeQuery,
   fail,
+  isClosed,
   itemData,
+  itemPositionInput,
   itemsQuery,
+  parseQuickAdd,
+  priorityScore,
   progressUpdateInput,
+  quickAddInput,
   skipOccurrenceInput,
   stepInput,
   stepUpdate,
   timeLogInput,
   type ItemDetail,
+  type ItemSort,
+  type ItemSyncPage,
+  type OccurrenceChanges,
+  type QuickAddCreated,
+  type QuickAddList,
+  type QuickAddMember,
+  type QuickAddResult,
 } from "@orbyn/core";
 import type { QueryResult } from "pg";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { loadPrefs } from "../planner/calendar.js";
+import { largestFreeMinutes } from "../planner/plans.js";
 import {
+  deleteOccurrences,
+  editFollowing,
+  editOccurrence,
+  skipOccurrence,
+} from "./occurrences.js";
+import {
+  countBlocksAsSpent,
   ITEM_COLUMNS,
   ITEM_FROM,
+  loadItem,
   lockItem,
+  moveItem,
   mutate,
   recomputeProgress,
   requireItemAccess,
@@ -33,7 +57,11 @@ const via =
   (text, values) =>
     db.query(text, values);
 
-/** A task with its checklist and its 100 most recent updates, newest first. */
+/**
+ * A task with its checklist and its 100 most recent updates, newest first;
+ * an event with the people invited and their answers; a repeating item with
+ * the occurrences changed on their own.
+ */
 export async function itemDetail(
   id: string,
   run: Run = (text, values) => pool.query(text, values),
@@ -57,40 +85,244 @@ export async function itemDetail(
       [id],
     )
   ).rows;
-  return { ...item, steps, updates };
+  const attendees = (
+    await run(
+      `SELECT id, email, name, status, responded_at FROM item_attendees
+       WHERE item_id = $1 ORDER BY created_at, email`,
+      [id],
+    )
+  ).rows;
+  const overrides = (
+    await run(
+      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1 ORDER BY occurrence",
+      [id],
+    )
+  ).rows.map((o: { occurrence: Date; data: OccurrenceChanges }) => ({
+    ...o.data,
+    occurrence: o.occurrence.toISOString(),
+  }));
+  const links = (
+    await run(
+      "SELECT id, url, title, position FROM item_links WHERE item_id = $1 ORDER BY position, id",
+      [id],
+    )
+  ).rows;
+  return { ...item, steps, updates, attendees, overrides, links };
 }
+
+/** ORDER BY for each list order but the score, which is worked out in code. */
+const ORDER: Record<Exclude<ItemSort, "score">, string> = {
+  newest: "i.created_at DESC, i.id",
+  created: "i.created_at, i.id",
+  due: "i.due_at NULLS LAST, i.created_at DESC, i.id",
+  priority:
+    "CASE i.priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC, i.due_at NULLS LAST, i.id",
+  estimate: "i.estimate_minutes NULLS LAST, i.due_at NULLS LAST, i.id",
+  title: "lower(i.title), i.id",
+  position: "i.position, i.created_at, i.id",
+};
+
+/**
+ * A place in the change history: a time in microseconds since 1970 and an
+ * id, so items changed in the same microsecond keep a stable order.
+ */
+type SyncPoint = { us: bigint; id: string };
+const LAST_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+const encodeCursor = (p: SyncPoint) =>
+  Buffer.from(`${p.us}.${p.id}`).toString("base64url");
+function decodeCursor(cursor: string): SyncPoint {
+  const [us, id] = Buffer.from(cursor, "base64url").toString().split(".");
+  if (!/^\d{1,20}$/.test(us ?? "") || !z.uuid().safeParse(id).success)
+    fail(422, "That cursor isn't valid. Start again with updated_after.");
+  return { us: BigInt(us), id };
+}
+/** A row's place in the change history, from Postgres to the microsecond. */
+const SYNC_US = (column: string) =>
+  `(extract(epoch FROM ${column}) * 1000000)::bigint::text AS sync_us`;
+/** "Changed after this point", on a time column and an id column. */
+const AFTER = (time: string, id: string, us: string, after: string) =>
+  `(${time}, ${id}) > (timestamptz 'epoch' + ${us}::bigint * interval '1 microsecond', ${after}::uuid)`;
+/** Most items a score-sorted list ranks before taking the page asked for. */
+const MAX_SCORED = 5000;
+
+type ScoreRow = {
+  id: string;
+  kind: string;
+  status: string;
+  priority: "low" | "medium" | "high";
+  due_at: Date | string | null;
+  estimate_minutes: number | null;
+  spent_minutes: number;
+  created_at: Date | string;
+};
+
+/** The priority score of an open task; null for events and closed tasks. */
+const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
+  i.kind === "task" && !isClosed(i.status)
+    ? priorityScore(
+        { ...i, due_at: i.due_at ? new Date(i.due_at).toISOString() : null },
+        now,
+        slot,
+      )
+    : null;
 
 export async function itemRoutes(app: FastifyInstance) {
   app.get("/items", async (r) => {
     const u = await authenticate(r);
     const q = itemsQuery.parse(r.query);
     if (q.team_id) await requireTeam(q.team_id, u, "items:read");
+    const db = reader(r.headers);
     const words = (q.q ?? "")
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 6)
       .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    return (
-      await reader(r.headers).query(
-        `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM}
-         WHERE ${VISIBLE_ITEMS} AND ($4::uuid IS NULL OR i.team_id=$4)
-           AND ($5::uuid IS NULL OR i.list_id=$5)
-           AND ($6::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$6))
-           AND ($7::uuid IS NULL OR i.assignee_id=$7)
-           AND NOT EXISTS (SELECT 1 FROM unnest($8::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)
-         ORDER BY i.created_at DESC, i.id LIMIT $2 OFFSET $3`,
-        [
-          u.id,
-          q.limit,
-          q.offset,
-          q.team_id ?? null,
-          q.list_id ?? null,
-          q.tag_id ?? null,
-          q.assignee_id ?? null,
-          words,
-        ],
+    const where = `${VISIBLE_ITEMS} AND ($2::uuid IS NULL OR i.team_id=$2)
+           AND ($3::uuid IS NULL OR i.list_id=$3)
+           AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$4))
+           AND ($5::uuid IS NULL OR i.assignee_id=$5)
+           AND NOT EXISTS (SELECT 1 FROM unnest($6::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)
+           AND ($7::uuid IS NULL OR i.parent_id=$7)`;
+    const filters = [
+      u.id,
+      q.team_id ?? null,
+      q.list_id ?? null,
+      q.tag_id ?? null,
+      q.assignee_id ?? null,
+      words,
+      q.parent_id ?? null,
+    ];
+    const now = new Date();
+    let rows: (ScoreRow & Record<string, unknown>)[];
+    let slot: number | null = null;
+    const withScores = async (list: typeof rows) => {
+      // The score's size term needs today's largest free slot; only look it
+      // up when there's an open task to score.
+      if (
+        slot === null &&
+        list.some((i) => i.kind === "task" && !isClosed(i.status))
       )
-    ).rows;
+        slot = await largestFreeMinutes(db, u.id, now);
+      return list.map((i) => ({ ...i, score: scoreOf(i, now, slot ?? 0) }));
+    };
+
+    // Incremental sync: what changed after a point, oldest change first, with
+    // deleted items as tombstones, and a cursor to carry on from.
+    if (q.updated_after || q.cursor) {
+      const from: SyncPoint = q.cursor
+        ? decodeCursor(q.cursor)
+        : { us: BigInt(Date.parse(q.updated_after!)) * 1000n, id: LAST_ID };
+      const changed = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS}, ${SYNC_US("i.updated_at")} FROM ${ITEM_FROM}
+           WHERE ${where} AND ${AFTER("i.updated_at", "i.id", "$8", "$9")}
+           ORDER BY i.updated_at, i.id LIMIT $10`,
+          [...filters, from.us.toString(), from.id, q.limit + 1],
+        )
+      ).rows as (ScoreRow & { sync_us: string } & Record<string, unknown>)[];
+      const deleted = q.include_deleted
+        ? (
+            await db.query<{ id: string; deleted_at: Date; sync_us: string }>(
+              `SELECT d.item_id AS id, d.deleted_at, ${SYNC_US("d.deleted_at")}
+               FROM deleted_items d
+               WHERE ((d.team_id IS NULL AND d.user_id = $1)
+                   OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+                 AND ($2::uuid IS NULL OR d.team_id = $2)
+                 AND ${AFTER("d.deleted_at", "d.item_id", "$3", "$4")}
+               ORDER BY d.deleted_at, d.item_id LIMIT $5`,
+              [
+                u.id,
+                q.team_id ?? null,
+                from.us.toString(),
+                from.id,
+                q.limit + 1,
+              ],
+            )
+          ).rows
+        : [];
+      // One stream in change order; a page takes the first `limit` of it.
+      const stream = [
+        ...changed.map(({ sync_us, ...item }) => ({
+          at: BigInt(sync_us),
+          id: item.id,
+          item,
+        })),
+        ...deleted.map((d) => ({
+          at: BigInt(d.sync_us),
+          id: d.id,
+          gone: { id: d.id, deleted_at: new Date(d.deleted_at).toISOString() },
+        })),
+      ].sort((a, b) =>
+        a.at === b.at ? a.id.localeCompare(b.id) : a.at < b.at ? -1 : 1,
+      );
+      const page = stream.slice(0, q.limit);
+      const last = page.at(-1);
+      return {
+        items: await withScores(
+          page.flatMap((p) => ("item" in p ? [p.item] : [])),
+        ),
+        deleted: page.flatMap((p) => ("gone" in p ? [p.gone] : [])),
+        next_cursor: encodeCursor(last ? { us: last.at, id: last.id } : from),
+        has_more: stream.length > q.limit,
+      } as unknown as ItemSyncPage;
+    }
+
+    if (q.sort === "score") {
+      // Rank every match by score, then load the page asked for.
+      const ranked = (
+        await db.query<ScoreRow>(
+          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.estimate_minutes,
+                  i.spent_minutes, i.created_at
+           FROM items i WHERE ${where} LIMIT ${MAX_SCORED}`,
+          filters,
+        )
+      ).rows;
+      slot = await largestFreeMinutes(db, u.id, now);
+      const score = new Map(ranked.map((i) => [i.id, scoreOf(i, now, slot!)]));
+      const due = (i: ScoreRow) =>
+        i.due_at ? new Date(i.due_at).getTime() : Infinity;
+      const ids = ranked
+        .sort(
+          (a, b) =>
+            (score.get(b.id) ?? -Infinity) - (score.get(a.id) ?? -Infinity) ||
+            due(a) - due(b) ||
+            new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime() ||
+            a.id.localeCompare(b.id),
+        )
+        .slice(q.offset, q.offset + q.limit)
+        .map((i) => i.id);
+      const found = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = ANY ($1::uuid[])`,
+          [ids],
+        )
+      ).rows;
+      const byId = new Map(found.map((i) => [i.id as string, i]));
+      rows = ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+    } else
+      rows = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE ${where}
+           ORDER BY ${ORDER[q.sort]} LIMIT $8 OFFSET $9`,
+          [...filters, q.limit, q.offset],
+        )
+      ).rows;
+    return withScores(rows);
+  });
+
+  // Manual order. Like checklist steps, this doesn't change the edit
+  // version, so an open editor never conflicts because of a drag.
+  app.put("/items/:id/position", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = itemPositionInput.parse(r.body);
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      await moveItem(db, item, d);
+      return loadItem(db, id);
+    });
   });
 
   // Minutes worked with the focus timer. Like checklist steps, this doesn't
@@ -116,19 +348,58 @@ export async function itemRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const d = skipOccurrenceInput.parse(r.body);
     return transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      if (!item.rrule)
-        fail(409, "Only repeating items have occurrences to skip.");
-      await db.query(
-        `UPDATE items SET exdates = array_append(exdates, $1::timestamptz),
-           version = version + 1, updated_at = now()
-         WHERE id = $2 AND NOT ($1::timestamptz = ANY (exdates))`,
-        [d.occurrence, id],
-      );
+      await skipOccurrence(db, u, id, d.occurrence);
       return itemDetail(id, via(db));
     });
   });
+
+  // Quick add: one line of text, parsed without AI, into a new item.
+  app.post(
+    "/items/quick",
+    async (r, reply): Promise<QuickAddResult | QuickAddCreated> => {
+      const u = await authenticate(r);
+      const d = quickAddInput.parse(r.body);
+      const timeZone = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
+      const mine = `(x.team_id IS NULL AND x.user_id = $1)
+        OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`;
+      const [lists, tags, members] = await Promise.all([
+        pool.query<QuickAddList>(
+          `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
+          [u.id],
+        ),
+        pool.query<QuickAddList>(
+          `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
+          [u.id],
+        ),
+        // Everyone who shares a team with you, and which of your teams.
+        pool.query<QuickAddMember>(
+          `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
+           FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
+           WHERE m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+           GROUP BY p.id, p.name, p.email`,
+          [u.id],
+        ),
+      ]);
+      const parsed = parseQuickAdd(d.text, {
+        timeZone,
+        lists: lists.rows,
+        tags: tags.rows,
+        members: members.rows,
+        selfId: u.id,
+      });
+      if (!parsed.input.title)
+        fail(422, 'Add a title, such as "Lunch with Sam tomorrow 1pm".');
+      if (d.preview) return parsed;
+      const item = await transaction((db) =>
+        mutate(db, u, {
+          operation: "create",
+          data: itemData.parse(parsed.input),
+        }),
+      );
+      reply.code(201);
+      return { item: item!, chips: parsed.chips };
+    },
+  );
 
   app.get("/items/:id", async (r) => {
     const u = await authenticate(r);
@@ -152,20 +423,23 @@ export async function itemRoutes(app: FastifyInstance) {
     return item;
   });
 
+  // ?scope=this|following changes one occurrence of a repeating item, or it
+  // and every later one; the default (all) changes the whole item.
   app.put("/items/:id", async (r) => {
     const u = await authenticate(r);
+    const scope = editScopeQuery.parse(r.query);
     const { version, ...raw } = z
       .object({ version: z.number().int().positive() })
       .passthrough()
       .parse(r.body);
     const data = itemData.parse(raw);
+    const id = idParam(r);
     return transaction((db) =>
-      mutate(db, u, {
-        operation: "update",
-        data,
-        item_id: idParam(r),
-        version,
-      }),
+      scope.scope === "this"
+        ? editOccurrence(db, u, id, version, scope.occurrence!, data)
+        : scope.scope === "following"
+          ? editFollowing(db, u, id, version, scope.occurrence!, data)
+          : mutate(db, u, { operation: "update", data, item_id: id, version }),
     );
   });
 
@@ -173,13 +447,17 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const q = z
       .object({ version: z.coerce.number().int().positive() })
+      .and(editScopeQuery)
       .parse(r.query);
+    const id = idParam(r);
     await transaction((db) =>
-      mutate(db, u, {
-        operation: "delete",
-        item_id: idParam(r),
-        version: q.version,
-      }),
+      q.scope === "all"
+        ? mutate(db, u, {
+            operation: "delete",
+            item_id: id,
+            version: q.version,
+          })
+        : deleteOccurrences(db, u, id, q.version, q.scope, q.occurrence!),
     );
     return reply.code(204).send();
   });
@@ -266,17 +544,21 @@ export async function itemRoutes(app: FastifyInstance) {
         "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
         [id],
       );
-      if (d.status)
+      if (d.status) {
         await db.query(
           `UPDATE items SET
              status = $1::text,
              progress = CASE WHEN $1::text = 'done' THEN 100 ELSE progress END,
-             reminder_version = CASE WHEN status = 'done' AND $1::text <> 'done'
+             reminder_version = CASE WHEN status IN ('done', 'cancelled')
+               AND $1::text NOT IN ('done', 'cancelled')
                THEN reminder_version + 1 ELSE reminder_version END,
              updated_at = now()
            WHERE id = $2`,
           [d.status, id],
         );
+        if (d.status === "done" && item.status !== "done")
+          await countBlocksAsSpent(db, u.id, id);
+      }
       if (d.progress !== undefined)
         await db.query(
           `UPDATE items SET

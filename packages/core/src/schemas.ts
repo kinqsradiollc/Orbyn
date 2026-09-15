@@ -4,7 +4,21 @@ import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 
 export const KINDS = ["task", "event"] as const;
-export const STATUSES = ["todo", "in_progress", "blocked", "done"] as const;
+export const STATUSES = [
+  "todo",
+  "in_progress",
+  "blocked",
+  "done",
+  "cancelled",
+] as const;
+/**
+ * Statuses that close a task. Done is finished; cancelled is closed without
+ * being done (no progress, no `item.completed`, and a repeating task stops).
+ */
+export const CLOSED_STATUSES = ["done", "cancelled"] as const;
+/** Whether a status closes an item (done or cancelled). */
+export const isClosed = (status: string) =>
+  (CLOSED_STATUSES as readonly string[]).includes(status);
 export const PRIORITIES = ["low", "medium", "high"] as const;
 /** Largest reminder window: one week in minutes. */
 export const MAX_REMINDER_MINUTES = 10080;
@@ -32,6 +46,43 @@ const timeZoneField = z
   .trim()
   .max(80)
   .refine(isTimeZone, "Unknown time zone");
+const hexColor = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, "Colours look like #376c51");
+const emailAddress = z
+  .email()
+  .max(254)
+  .transform((s) => s.toLowerCase());
+
+/** Largest alert: four weeks before, in minutes. */
+export const MAX_ALERT_MINUTES = 40320;
+/** Alerts before an item, in minutes: up to 5, each at most four weeks. */
+export const alertsField = z
+  .array(z.number().int().min(0).max(MAX_ALERT_MINUTES))
+  .max(5, "Up to 5 alerts")
+  .transform((a) => [...new Set(a)].sort((x, y) => x - y));
+
+/** Most links a task can carry. */
+export const MAX_ITEM_LINKS = 20;
+/** A web link on a task: http or https only. */
+export const itemLinkInput = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .max(2000)
+      .regex(/^https?:\/\/\S+$/i, "Links start with http:// or https://"),
+    title: z.string().trim().max(200).default(""),
+  })
+  .strict();
+
+/** Someone invited to an event by email. */
+export const attendeeInput = z
+  .object({
+    email: emailAddress,
+    name: z.string().trim().max(120).optional(),
+  })
+  .strict();
 
 export const itemData = z
   .object({
@@ -42,12 +93,15 @@ export const itemData = z
     priority: z.enum(PRIORITIES).default("medium"),
     due_at: z.iso.datetime({ offset: true }).nullable().default(null),
     end_at: z.iso.datetime({ offset: true }).nullable().default(null),
-    reminder_minutes: z
-      .number()
-      .int()
-      .min(0)
-      .max(MAX_REMINDER_MINUTES)
-      .default(30),
+    /**
+     * Older apps' single reminder. When a write gives it without `alerts`,
+     * it sets the (smallest) alert. Responses carry the smallest alert, or
+     * null when there are none; null in a request means "not given".
+     */
+    reminder_minutes: z.preprocess(
+      (v) => (v === null ? undefined : v),
+      z.number().int().min(0).max(MAX_REMINDER_MINUTES).optional(),
+    ),
     /** Shared team this item belongs to; null for a personal item. */
     team_id: z.uuid().nullable().default(null),
     /** 0-100. Optional: omitted on edit keeps the saved value; checklists set it. */
@@ -70,14 +124,51 @@ export const itemData = z
       .refine(isValidRrule, "That repeat rule isn't supported")
       .nullable()
       .optional(),
-    /** The time zone a repeating item keeps its wall-clock time in. */
+    /** The time zone a repeating or all-day item keeps its wall-clock time in. */
     timezone: timeZoneField.optional(),
+    // Event fields. Like the planning fields, omitted on edit keeps the saved value.
+    /**
+     * A whole-day item: `due_at` is local midnight in its time zone and
+     * `end_at` the (exclusive) midnight it ends. Never busy.
+     */
+    all_day: z.boolean().optional(),
+    /** Whether an event counts as busy (default true). Free events don't block time. */
+    busy: z.boolean().optional(),
+    /** Its own colour on the calendar; null uses the list's or the default. */
+    color: hexColor.nullable().optional(),
+    /** Minutes before `due_at` to remind, up to 5 (0 = at the time). */
+    alerts: alertsField.optional(),
+    /** People invited by email (events only, up to 50). */
+    attendees: z
+      .array(attendeeInput)
+      .max(50, "Up to 50 people")
+      .refine(
+        (a) => new Set(a.map((x) => x.email)).size === a.length,
+        "Invite each person once",
+      )
+      .optional(),
+    /**
+     * The task this one is a subtask of (tasks only, three levels at most,
+     * in the same space as its parent). Omitted on edit keeps it; null
+     * makes it a top-level task.
+     */
+    parent_id: z.uuid().nullable().optional(),
+    /** Web links on the item (up to 20). Sending the list replaces it. */
+    links: z
+      .array(itemLinkInput)
+      .max(MAX_ITEM_LINKS, `Up to ${MAX_ITEM_LINKS} links`)
+      .optional(),
   })
   .strict()
   .refine(
     (d) =>
       !d.end_at || (!!d.due_at && Date.parse(d.end_at) > Date.parse(d.due_at)),
     "End must be after start",
+  )
+  .refine((d) => !d.all_day || !!d.due_at, "All-day items need a date")
+  .refine(
+    (d) => !d.attendees?.length || d.kind === "event",
+    "Only events can have people invited",
   )
   .refine(
     (d) => d.kind !== "event" || !!d.due_at,
@@ -87,6 +178,10 @@ export const itemData = z
   .refine(
     (d) => !d.assignee_id || !!d.team_id,
     "Only team items can be assigned to someone",
+  )
+  .refine(
+    (d) => !d.parent_id || d.kind === "task",
+    "Only tasks can be subtasks",
   );
 
 export const actionSchema = z
@@ -137,6 +232,27 @@ export const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(200),
 });
 
+/**
+ * Orders for `GET /items`. newest: created, newest first (the default).
+ * score: the priority score, highest first. due: soonest due first. priority:
+ * high to low. estimate: shortest first. title: A to Z. created: oldest first.
+ * position: the manual order (`PUT /items/:id/position`).
+ */
+export const ITEM_SORTS = [
+  "newest",
+  "score",
+  "due",
+  "priority",
+  "estimate",
+  "title",
+  "created",
+  "position",
+] as const;
+
+const flag = z
+  .enum(["0", "1", "true", "false"])
+  .transform((v) => v === "1" || v === "true");
+
 export const itemsQuery = pagination.extend({
   /** Only items shared with this team. */
   team_id: z.uuid().optional(),
@@ -145,12 +261,44 @@ export const itemsQuery = pagination.extend({
   list_id: z.uuid().optional(),
   tag_id: z.uuid().optional(),
   assignee_id: z.uuid().optional(),
+  /** Only the subtasks of this task. */
+  parent_id: z.uuid().optional(),
+  sort: z.enum(ITEM_SORTS).default("newest"),
+  /**
+   * Incremental sync: items changed after this time, oldest change first,
+   * as `{ items, deleted, next_cursor, has_more }`.
+   */
+  updated_after: z.iso.datetime({ offset: true }).optional(),
+  /** Incremental sync: carry on from a previous page's `next_cursor`. */
+  cursor: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^[A-Za-z0-9_-]+$/, "That cursor isn't valid")
+    .optional(),
+  /** Incremental sync: also list items deleted since then. */
+  include_deleted: flag.default(false),
 });
 
-const emailField = z
-  .email()
-  .max(254)
-  .transform((s) => s.toLowerCase());
+/**
+ * Where to put an item in its manual order: before or after another item in
+ * the same place (same parent, else list, else space), or at an index.
+ */
+export const itemPositionInput = z
+  .object({
+    before_id: z.uuid().optional(),
+    after_id: z.uuid().optional(),
+    position: z.number().int().min(0).max(100000).optional(),
+  })
+  .strict()
+  .refine(
+    (d) =>
+      [d.before_id, d.after_id, d.position].filter((v) => v !== undefined)
+        .length === 1,
+    "Give one of before_id, after_id or position",
+  );
+
+const emailField = emailAddress;
 
 export const teamInput = z
   .object({ name: z.string().trim().min(1).max(80) })
@@ -327,9 +475,7 @@ export type MaintenanceInput = z.input<typeof maintenanceInput>;
 
 // ---- Planning: lists, tags, time blocks, the planner ------------------------
 
-const color = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}$/, "Colours look like #376c51");
+const color = hexColor;
 const instant = z.iso.datetime({ offset: true });
 const clock = z
   .string()
@@ -416,6 +562,116 @@ export const timeLogInput = z
 /** Remove one occurrence from a repeating item. */
 export const skipOccurrenceInput = z.object({ occurrence: instant }).strict();
 
+export const EDIT_SCOPES = ["this", "following", "all"] as const;
+
+/**
+ * Which occurrences of a repeating item an edit or delete touches: only
+ * `occurrence`, it and every later one, or the whole series (the default).
+ */
+export const editScopeQuery = z
+  .object({
+    scope: z.enum(EDIT_SCOPES).default("all"),
+    occurrence: instant.optional(),
+  })
+  .refine(
+    (d) => d.scope === "all" || !!d.occurrence,
+    "Say which occurrence to change",
+  );
+
+/** Text typed into the command bar ("Lunch with @anna tomorrow 1pm ;Cafe Roma"). */
+export const quickAddInput = z
+  .object({
+    text: z.string().trim().min(1).max(500),
+    /** The device's zone, for words like "tomorrow" and "3pm"; your planner zone when omitted. */
+    timezone: timeZoneField.optional(),
+    /** Only parse it; nothing is created. */
+    preview: z.boolean().default(false),
+  })
+  .strict();
+
+export const RSVP_STATUSES = ["accepted", "declined", "tentative"] as const;
+/** An invitee's answer from their email link. */
+export const rsvpInput = z.object({ status: z.enum(RSVP_STATUSES) }).strict();
+
+/** A calendar from another app, by its iCalendar (ICS) link. */
+const subscriptionUrl = z
+  .string()
+  .trim()
+  .max(1000)
+  .regex(
+    /^(https?|webcal):\/\/\S+$/i,
+    "Calendar links start with https:// or webcal://",
+  )
+  // webcal:// is https:// for calendar apps.
+  .transform((u) => u.replace(/^webcal:\/\//i, "https://"));
+export const calendarSubscriptionInput = z
+  .object({
+    url: subscriptionUrl,
+    name: z.string().trim().min(1).max(80),
+    color: color.optional(),
+    /** Count its events as busy (for the planner, booking pages and teammates). */
+    busy: z.boolean().default(false),
+  })
+  .strict();
+export const calendarSubscriptionUpdate = z
+  .object({
+    url: subscriptionUrl.optional(),
+    name: z.string().trim().min(1).max(80).optional(),
+    color: color.optional(),
+    busy: z.boolean().optional(),
+  })
+  .strict()
+  .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+/** What your private calendar feed includes. */
+export const calendarFeedSettingsInput = z
+  .object({
+    /** Add your time blocks as "Focus: {task}". */
+    include_blocks: z.boolean().optional(),
+  })
+  .strict();
+/** Make a feed link: the full one, or one that only shows when you're busy. */
+export const calendarFeedCreateInput = z
+  .object({ busy: z.boolean().default(false) })
+  .strict();
+
+const MAX_SEARCH_MS = 800 * 86_400_000;
+/** Find events by words, a year either side of today unless a range is given. */
+export const calendarSearchQuery = z
+  .object({
+    q: z.string().trim().min(1).max(100),
+    from: instant.optional(),
+    to: instant.optional(),
+  })
+  .refine(
+    (d) => !d.from || !d.to || Date.parse(d.to) > Date.parse(d.from),
+    "End must be after start",
+  )
+  .refine(
+    (d) =>
+      !d.from ||
+      !d.to ||
+      Date.parse(d.to) - Date.parse(d.from) <= MAX_SEARCH_MS,
+    "Search 800 days or fewer at a time",
+  );
+
+/** Teammates' busy times to show over your own calendar. */
+export const availabilityQuery = z
+  .object({
+    /** Comma-separated user ids, up to 10. */
+    user_ids: z.string().trim().min(1).max(400),
+    from: instant,
+    to: instant,
+  })
+  .refine(
+    (d) => Date.parse(d.to) > Date.parse(d.from),
+    "End must be after start",
+  )
+  .refine(
+    (d) => Date.parse(d.to) - Date.parse(d.from) <= 31 * 86_400_000,
+    "Ask for 31 days or fewer at a time",
+  );
+
 export const BREAK_LEVELS = ["none", "light", "normal", "intense"] as const;
 
 /** A saved set of what the calendar shows. */
@@ -426,6 +682,23 @@ export const calendarSetInput = z
     personal: z.boolean().default(true),
     team_ids: z.array(z.uuid()).max(50).default([]),
     list_ids: z.array(z.uuid()).max(100).default([]),
+  })
+  .strict();
+
+/**
+ * Which events get buffers. `personal` (default true) takes your personal
+ * events; `team_ids` takes those teams' events (all your teams when null or
+ * omitted, none when empty); a non-empty `list_ids` keeps only events in
+ * those lists; `min_minutes` skips shorter events; `only_with_others` keeps
+ * only meetings: events with people invited, a meeting link, or a team.
+ */
+export const bufferScopeInput = z
+  .object({
+    personal: z.boolean().default(true),
+    team_ids: z.array(z.uuid()).max(50).nullable().default(null),
+    list_ids: z.array(z.uuid()).max(100).default([]),
+    min_minutes: z.number().int().min(0).max(1440).default(0),
+    only_with_others: z.boolean().default(false),
   })
   .strict();
 
@@ -447,6 +720,28 @@ export const plannerPrefsInput = z
     extra_timezones: z.array(timeZoneField).max(3).optional(),
     calendar_sets: z.array(calendarSetInput).max(12).optional(),
     pinned_user_ids: z.array(z.uuid()).max(20).optional(),
+    /** Warn this many days before a task is due with no time set aside; 0 turns it off. */
+    deadline_notice_days: z.number().int().min(0).max(14).optional(),
+    /** Where planner notices (roll forward, at risk, due soon, conflicts) go besides the app. */
+    planner_notices: z
+      .object({ push: z.boolean().optional(), email: z.boolean().optional() })
+      .strict()
+      .optional(),
+    /** Alerts new items get when they're created without any; send a key to change it. */
+    default_alerts: z
+      .object({
+        event: alertsField.optional(),
+        task: alertsField.optional(),
+        all_day: alertsField.optional(),
+      })
+      .strict()
+      .optional(),
+    /** When a task is completed, add the past time of its blocks to its time spent (once). */
+    count_blocks_as_spent: z.boolean().optional(),
+    /** Which events get buffers; replaces the saved scope. */
+    buffer_scope: bufferScopeInput.optional(),
+    /** Minutes added to every travel leg (0 to 30). */
+    travel_padding_minutes: z.number().int().min(0).max(30).optional(),
   })
   .strict();
 
@@ -463,6 +758,18 @@ export const frameFilters = z
   })
   .strict();
 
+/** How a frame repeats; when set it wins over `days`. */
+const frameRrule = z
+  .string()
+  .trim()
+  .max(200)
+  .refine(isValidRrule, "That repeat rule isn't supported");
+/** Dates a frame is skipped on, in its time zone. */
+const frameExdates = z
+  .array(dayKey)
+  .max(200)
+  .transform((d) => [...new Set(d)].sort());
+
 const frameFields = {
   name: z.string().trim().min(1).max(60),
   days: weekdays,
@@ -477,6 +784,8 @@ const frameOrder = (d: { start_time?: string; end_time?: string }) =>
 export const frameInput = z
   .object({
     ...frameFields,
+    /** Weekdays it repeats on; not needed when `rrule` is set. */
+    days: weekdays.optional(),
     filters: frameFilters.default({
       priorities: [],
       list_ids: [],
@@ -486,9 +795,17 @@ export const frameInput = z
       max_minutes: null,
     }),
     color: color.optional(),
+    /** For example "FREQ=MONTHLY;BYMONTHDAY=-1" (the last day of each month). */
+    rrule: frameRrule.nullable().optional(),
+    /** Busy frames block booking pages and teammates' meeting times. */
+    busy: z.boolean().default(false),
+    exdates: frameExdates.default([]),
+    /** The zone its times are in; the owner's planner zone when null. */
+    timezone: timeZoneField.nullable().optional(),
   })
   .strict()
-  .refine(frameOrder, "A frame ends after it starts");
+  .refine(frameOrder, "A frame ends after it starts")
+  .refine((d) => !!d.days || !!d.rrule, "Choose the days a frame repeats on");
 export const frameUpdate = z
   .object({
     name: frameFields.name.optional(),
@@ -498,9 +815,18 @@ export const frameUpdate = z
     filters: frameFilters.optional(),
     color: color.optional(),
     position: z.number().int().min(0).max(10000).optional(),
+    rrule: frameRrule.nullable().optional(),
+    busy: z.boolean().optional(),
+    exdates: frameExdates.optional(),
+    timezone: timeZoneField.nullable().optional(),
   })
   .strict()
   .refine(frameOrder, "A frame ends after it starts");
+
+/** Skip (or bring back) one date of a frame. */
+export const frameSkipInput = z.object({ date: dayKey }).strict();
+
+export const TRAVEL_MODES = ["walk", "cycle", "transit", "drive"] as const;
 
 /** A place and how long it takes to get there, for travel time. */
 export const placeInput = z
@@ -509,6 +835,10 @@ export const placeInput = z
     /** Text found in an event's location, such as "Collins St" or "Office". */
     match: z.string().trim().min(1).max(200),
     travel_minutes: z.number().int().min(0).max(240),
+    /** How you get there (a label only). */
+    mode: z.enum(TRAVEL_MODES).nullable().default(null),
+    /** Travel minutes on weekdays 07:00-09:00 and 16:00-18:00; null: the same as usual. */
+    peak_minutes: z.number().int().min(0).max(240).nullable().default(null),
   })
   .strict();
 export const placeUpdate = z
@@ -516,9 +846,29 @@ export const placeUpdate = z
     label: z.string().trim().min(1).max(60).optional(),
     match: z.string().trim().min(1).max(200).optional(),
     travel_minutes: z.number().int().min(0).max(240).optional(),
+    mode: z.enum(TRAVEL_MODES).nullable().optional(),
+    peak_minutes: z.number().int().min(0).max(240).nullable().optional(),
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+/**
+ * Which tasks a plan considers ("plan only Work"). `personal` (default true)
+ * takes your personal tasks; `team_ids` takes team tasks assigned to you in
+ * those teams (all your teams when omitted, none when empty); a non-empty
+ * `list_ids` keeps only tasks in those lists.
+ */
+export const planScope = z
+  .object({
+    personal: z.boolean().default(true),
+    team_ids: z.array(z.uuid()).max(50).optional(),
+    list_ids: z.array(z.uuid()).max(100).default([]),
+  })
+  .strict();
+
+const keepFree = z
+  .array(z.object({ start_at: instant, end_at: instant }).strict())
+  .max(20);
 
 /** Asking the planner for a plan. Omitted options use the saved preferences. */
 export const planPreviewInput = z
@@ -532,16 +882,53 @@ export const planPreviewInput = z
     /** Only place tasks inside frames (when there are any). */
     use_frames: z.boolean().default(true),
     /** Times to leave empty, such as "keep Friday afternoon free". */
-    keep_free: z
-      .array(z.object({ start_at: instant, end_at: instant }).strict())
-      .max(20)
-      .default([]),
+    keep_free: keepFree.default([]),
     /** Only plan these tasks. */
     item_ids: z.array(z.uuid()).max(200).optional(),
     exclude_item_ids: z.array(z.uuid()).max(200).default([]),
     /** The device's time zone, used until the user saves their own in settings. */
     timezone: timeZoneField.optional(),
+    /** Only tasks from these places (personal, some teams, some lists). */
+    scope: planScope.optional(),
   })
+  .strict();
+
+const planEstimates = z
+  .record(z.uuid(), z.number().int().min(1).max(10080))
+  .refine((e) => Object.keys(e).length <= 200, "200 estimates at most");
+
+/**
+ * Tuning a plan before it's applied. Each field given replaces the plan's
+ * current value (estimates merge by task); omitted fields keep it.
+ */
+export const planTuneInput = z
+  .object({
+    /** Tasks to add, even ones outside the scope or not assigned to you. */
+    include_item_ids: z.array(z.uuid()).max(200).optional(),
+    /** Tasks to leave out. */
+    exclude_item_ids: z.array(z.uuid()).max(200).optional(),
+    /** Minutes to plan each task for, instead of its estimate. */
+    estimates: planEstimates.optional(),
+    /** Also save those estimates on the tasks (only tasks you can edit). */
+    save_estimates: z.boolean().default(false),
+    keep_free: keepFree.optional(),
+    /** Blocks to keep exactly where they are; the rest is planned around them. */
+    pinned_blocks: z
+      .array(
+        z
+          .object({ item_id: z.uuid(), ...blockTimes })
+          .strict()
+          .refine(blockSpan, BLOCK_SPAN),
+      )
+      .max(100)
+      .optional(),
+    scope: planScope.nullable().optional(),
+  })
+  .strict();
+
+/** A copy of a block: at `start_at`, or the next free time after the original. */
+export const blockDuplicateInput = z
+  .object({ start_at: instant.optional() })
   .strict();
 
 /** Move unfinished blocks forward; all of yesterday's and earlier when omitted. */
@@ -677,6 +1064,12 @@ const slotInterval = z
 const bufferMinutes = z.number().int().min(0).max(120);
 /** The title of the event hosts get: {page}, {name} and {email} are filled in. */
 const eventTitle = z.string().trim().min(1).max(200);
+/** Email the booker this many minutes before: up to 3 values, 10 minutes to a week. */
+export const DEFAULT_BOOKER_REMINDERS = [1440, 60];
+const remindBefore = z
+  .array(z.number().int().min(10).max(10080))
+  .max(3, "Up to 3 reminders")
+  .transform((a) => [...new Set(a)].sort((x, y) => y - x));
 
 export const bookingPageInput = z
   .object({
@@ -708,6 +1101,10 @@ export const bookingPageInput = z
     event_title: eventTitle.default("{page} with {name}"),
     /** Shown after booking and in the confirmation email. */
     confirmation_message: z.string().trim().max(1000).default(""),
+    /** A team's page: its owners and admins manage it, and its hosts are members. */
+    team_id: z.uuid().nullable().default(null),
+    /** Email the booker this many minutes before the meeting (a day and an hour by default). */
+    remind_before_minutes: remindBefore.default(DEFAULT_BOOKER_REMINDERS),
   })
   .strict();
 export const bookingPageUpdate = z
@@ -736,6 +1133,108 @@ export const bookingPageUpdate = z
     allow_reschedule: z.boolean().optional(),
     event_title: eventTitle.optional(),
     confirmation_message: z.string().trim().max(1000).optional(),
+    team_id: z.uuid().nullable().optional(),
+    remind_before_minutes: remindBefore.optional(),
+  })
+  .strict()
+  .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+// ---- Open invites and profiles ----------------------------------------------------
+
+const inviteWindow = z
+  .object({ start_at: instant, end_at: instant })
+  .strict()
+  .refine(
+    (w) => Date.parse(w.end_at) > Date.parse(w.start_at),
+    "Each window ends after it starts",
+  );
+
+/** A one-off link offering hand-picked windows; the first to pick a time books it. */
+export const openInviteInput = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    duration: z.number().int().min(5).max(480),
+    windows: z.array(inviteWindow).min(1).max(20, "Up to 20 windows"),
+    location: z.string().trim().max(300).default(""),
+    meeting_url: meetingUrl.default(""),
+    /** Teammates who must also be free (up to 10, from your teams). */
+    co_host_ids: z.array(z.uuid()).max(10).default([]),
+    /** When the link stops working; the end of the last window at the latest. */
+    expires_at: instant.optional(),
+    remind_before_minutes: remindBefore.default(DEFAULT_BOOKER_REMINDERS),
+  })
+  .strict()
+  .refine(
+    (d) =>
+      d.windows.some(
+        (w) =>
+          Date.parse(w.end_at) - Date.parse(w.start_at) >= d.duration * 60_000,
+      ),
+    "At least one window must fit the meeting",
+  );
+
+/** The times an open invite offers, shown in `timezone`. */
+export const inviteQuery = z.object({
+  timezone: timeZoneField.default("UTC"),
+});
+
+/** Someone picking a time from an open invite. */
+export const inviteBookingRequest = z
+  .object({
+    start_at: instant,
+    name: z.string().trim().min(1).max(120),
+    email: emailField,
+    note: z.string().trim().max(2000).default(""),
+    timezone: timeZoneField.default("UTC"),
+  })
+  .strict();
+
+/** Paths the web app uses, so no profile can have them as a handle. */
+export const RESERVED_HANDLES = [
+  "about",
+  "admin",
+  "api",
+  "app",
+  "book",
+  "cancel",
+  "confirm",
+  "help",
+  "invite",
+  "login",
+  "manage",
+  "me",
+  "orbyn",
+  "register",
+  "rsvp",
+  "settings",
+  "signup",
+  "status",
+  "support",
+  "u",
+  "www",
+];
+
+/** Your public profile page at /u/<handle>. */
+export const profileInput = z
+  .object({
+    /** Null removes the page. */
+    handle: z
+      .string()
+      .trim()
+      .toLowerCase()
+      .min(3)
+      .max(40)
+      .regex(
+        /^[a-z0-9]+(-[a-z0-9]+)*$/,
+        "Use lowercase letters, numbers and single dashes",
+      )
+      .refine(
+        (h) => !RESERVED_HANDLES.includes(h),
+        "That name is reserved. Try another.",
+      )
+      .nullable()
+      .optional(),
+    bio: z.string().trim().max(300).optional(),
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
@@ -824,16 +1323,22 @@ export const WEBHOOK_EVENTS = [
   "booking.confirmed",
   "booking.rescheduled",
   "booking.cancelled",
+  "event.starting",
+  "block.started",
+  "task.at_risk",
 ] as const;
 const webhookUrl = z
   .string()
   .trim()
   .max(500)
   .regex(/^https?:\/\/\S+$/i, "Webhook URLs start with https://");
+/** How many minutes before a busy event `event.starting` is sent (0 to 120). */
+const leadMinutes = z.number().int().min(0).max(120);
 export const webhookInput = z
   .object({
     url: webhookUrl,
     events: z.array(z.enum(WEBHOOK_EVENTS)).min(1).max(WEBHOOK_EVENTS.length),
+    lead_minutes: leadMinutes.default(15),
   })
   .strict();
 export const webhookUpdate = z
@@ -845,6 +1350,7 @@ export const webhookUpdate = z
       .max(WEBHOOK_EVENTS.length)
       .optional(),
     active: z.boolean().optional(),
+    lead_minutes: leadMinutes.optional(),
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");

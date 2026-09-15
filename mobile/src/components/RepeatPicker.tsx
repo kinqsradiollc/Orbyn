@@ -10,7 +10,7 @@ import { Chip, ChipRow } from "./Chip";
 import { DateField, NumberInput } from "./Field";
 import { Segmented } from "./Segmented";
 import { WEEK_ORDER, WEEKDAYS } from "../lib/planning";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 type Preset = "none" | "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
@@ -108,6 +108,7 @@ export function RepeatPicker({
   dueAt,
   disabled = false,
   onChange,
+  onProblem,
 }: {
   rrule: string | null | undefined;
   /** The item's date; repeating needs one. */
@@ -115,6 +116,8 @@ export function RepeatPicker({
   disabled?: boolean;
   /** The new rule, or null to stop repeating. */
   onChange: (rrule: string | null) => void;
+  /** Why the choices can't be saved yet ("pick the last date"), or null. */
+  onProblem?: (problem: string | null) => void;
 }) {
   const [state, setState] = useState(() => initial(rrule, dueAt));
   const unsupported = !!rrule && !parseRrule(rrule);
@@ -122,6 +125,11 @@ export function RepeatPicker({
   const update = (patch: Partial<typeof state>) => {
     const next = { ...state, ...patch };
     setState(next);
+    onProblem?.(
+      next.preset !== "none" && next.ends === "until" && !next.until
+        ? "Pick the last date, or choose another ending."
+        : null,
+    );
     if (next.preset === "none") {
       onChange(null);
       return;
@@ -247,13 +255,15 @@ export function RepeatPicker({
   );
 }
 
-const s = StyleSheet.create({
-  gap: { marginTop: 12 },
-  gapSmall: { marginTop: 8 },
-  summary: {
-    marginTop: 10,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.accent,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    gap: { marginTop: 12 },
+    gapSmall: { marginTop: 8 },
+    summary: {
+      marginTop: 10,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
+  }),
+);

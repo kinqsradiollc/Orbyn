@@ -1,14 +1,14 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { statusLabels, statusTones, type Status } from "@orbyn/core";
-import { colors, fonts, radii } from "../theme";
+import { statusLabels, type Status } from "@orbyn/core";
+import { colors, fonts, radii, statusTones, themed } from "../theme";
 
-const TONES = {
+const TONES = themed(() => ({
   accent: { bg: colors.accentSoft, fg: colors.accent },
   muted: { bg: colors.surfaceMuted, fg: colors.muted },
   danger: { bg: colors.dangerSoft, fg: colors.danger },
-  warning: { bg: "#fbf3e2", fg: "#a3742b" },
-} as const;
+  warning: { bg: colors.warningSoft, fg: colors.warning },
+}));
 
 export type PillTone = keyof typeof TONES;
 

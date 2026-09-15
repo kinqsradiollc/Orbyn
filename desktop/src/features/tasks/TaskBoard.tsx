@@ -1,8 +1,8 @@
 import { CalendarClock, ListChecks, MessageSquare, Users } from "lucide-react";
 import {
   dateLabel,
+  STATUSES,
   statusLabels,
-  statusOrder,
   type Item,
   type Status,
 } from "@orbyn/core";
@@ -19,6 +19,8 @@ type Props = {
   canWrite: (item: Item) => boolean;
   onOpen: (item: Item) => void;
   onSetStatus: (item: Item, status: Status) => void;
+  /** A subtask's parent title, shown above it. */
+  parentOf?: (item: Item) => string | undefined;
 };
 
 /**
@@ -32,6 +34,7 @@ export function TaskBoard({
   canWrite,
   onOpen,
   onSetStatus,
+  parentOf,
 }: Props) {
   return (
     <div className="board" style={{ "--cols": statuses.length } as never}>
@@ -65,6 +68,9 @@ export function TaskBoard({
                     onClick={() => onOpen(i)}
                     aria-label={`Open ${i.title}`}
                   >
+                    {parentOf?.(i) && (
+                      <span className="row-parent">↳ {parentOf(i)}</span>
+                    )}
                     <strong>{i.title}</strong>
                     <span className="board-card-meta">
                       {i.due_at && (
@@ -120,7 +126,7 @@ export function TaskBoard({
                           onSetStatus(i, e.target.value as Status)
                         }
                       >
-                        {statusOrder.map((s) => (
+                        {STATUSES.map((s) => (
                           <option key={s} value={s}>
                             {s === i.status
                               ? statusLabels[s]

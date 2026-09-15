@@ -1,0 +1,1154 @@
+/* Dark values for colours that keep their original light values in the
+   feature stylesheets. Generated when the light palette was restored;
+   applies only when Settings → Appearance resolves to dark. */
+
+:root[data-theme="dark"] .ai-key {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .ai-model select,
+:root[data-theme="dark"] .ai-model input {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .ai-test.ok {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .ai-test.fail {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .ai-switch {
+  background: var(--color-borderStrong);
+}
+:root[data-theme="dark"] .ai-switch::after {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-switch:focus-visible {
+  outline: 3px solid var(--color-focus);
+}
+:root[data-theme="dark"] .ai-form input,
+:root[data-theme="dark"] .ai-form select {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .ai-form input:disabled,
+:root[data-theme="dark"] .ai-form select:disabled {
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .field-hint.field-warning {
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .system-card code {
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .system-source {
+  background: var(--color-chip);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .system-source.is-database {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .system-form input:not([type="checkbox"]),
+:root[data-theme="dark"] .system-form textarea,
+:root[data-theme="dark"] .system-test input {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .system-form input:disabled {
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .system-pill.is-warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .system-pill.is-ok {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .system-pill.is-off {
+  background: var(--color-chip);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .ai-ghost {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-suggestions button {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-suggestions button:hover:not(:disabled) {
+  border-color: var(--color-borderHover);
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .ai-bubble-user {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .ai-bubble-bot {
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .ai-action {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-composer {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-composer:focus-within {
+  border-color: var(--color-borderHover);
+}
+:root[data-theme="dark"] .ai-send {
+  color: var(--color-onAccent);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .ai-send:hover:not(:disabled) {
+    background-color: var(--color-accentPressed);
+  }
+}
+:root[data-theme="dark"] .ai-summary code {
+  background: var(--color-chip);
+}
+:root[data-theme="dark"] .ai-table-wrap {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-table tbody tr:nth-child(even) {
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .ai-follow-ups button {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .ai-follow-ups button:hover:not(:disabled) {
+  border-color: var(--color-borderHover);
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .slug-prefix {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-hover);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-page-main small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-link code {
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .booking-status {
+  --tone-bg: var(--color-chip);
+  --tone-fg: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-status.is-confirmed {
+  --tone-bg: var(--color-selected);
+  --tone-fg: var(--color-selectedText);
+}
+:root[data-theme="dark"] .booking-status.is-awaiting_approval {
+  --tone-bg: var(--color-warnSoft);
+  --tone-fg: var(--color-warn);
+}
+:root[data-theme="dark"] .booking-status.is-pending {
+  --tone-bg: var(--color-infoSoft);
+  --tone-fg: var(--color-info);
+}
+:root[data-theme="dark"] .booking-status.is-declined {
+  --tone-fg: var(--color-danger);
+}
+:root[data-theme="dark"] .booking-status.is-expired {
+  --tone-fg: var(--color-textMuted);
+}
+:root[data-theme="dark"] .count-badge {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .booking-day {
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-row:hover,
+:root[data-theme="dark"] .booking-row.active {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .booking-row small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-jump button {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .booking-form .hours-range input,
+:root[data-theme="dark"] .booking-form .override-row input,
+:root[data-theme="dark"] .booking-form .override-row select,
+:root[data-theme="dark"] .booking-form .settings-field .color-row .hex-input {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"]
+  .booking-form
+  .settings-field
+  .color-row
+  input[type="color"] {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .primary.is-danger {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .primary.is-danger:hover {
+  background: var(--color-dangerPressed);
+}
+:root[data-theme="dark"] .booking-step {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .booking-step textarea,
+:root[data-theme="dark"] .booking-step input[type="datetime-local"],
+:root[data-theme="dark"] .host-note {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .public-page {
+  background: var(--color-canvas);
+}
+:root[data-theme="dark"] .date-strip button small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .booking-form-public input,
+:root[data-theme="dark"] .booking-form-public textarea {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .booking-form-public select {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .booking-accent .primary:hover {
+  background: color-mix(in srgb, var(--green) 86%, var(--color-text));
+  border-color: color-mix(in srgb, var(--green) 86%, var(--color-text));
+}
+:root[data-theme="dark"] .cal-time {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .cal-entry.is-done .cal-title {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .team-mark {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .month-head {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .month-head span {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .month-cell.outside {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .month-cell.outside .month-date {
+  color: var(--color-muted);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .month-cell:not(.is-selected):hover {
+    background: var(--color-hover);
+  }
+}
+:root[data-theme="dark"] .month-cell:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--color-focus);
+}
+:root[data-theme="dark"] .month-cell.is-selected {
+  background: var(--color-selected);
+}
+:root[data-theme="dark"] .month-cell.is-today .month-date {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .month-bar.is-event {
+  color: color-mix(
+    in srgb,
+    var(--bar-edge) var(--tint-text),
+    var(--color-text)
+  );
+}
+:root[data-theme="dark"] .month-bar.is-multi.is-task {
+  color: color-mix(in srgb, var(--tone-fg) var(--tint-text), var(--color-text));
+}
+:root[data-theme="dark"] .calendar-agenda {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .calendar-agenda h3 span {
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .agenda-empty p {
+  color: var(--color-textMuted);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .calendar-agenda-item:hover {
+    border-color: var(--color-borderHover);
+    background: var(--color-hover);
+  }
+}
+:root[data-theme="dark"] .agenda-time small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .agenda-time {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .agenda-main small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .calendar-agenda-item.done strong {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-head {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .tg-day small {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .tg-day.is-today strong {
+  color: var(--color-onAccent);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .tg-day:hover {
+    background: var(--color-hover);
+  }
+}
+:root[data-theme="dark"] .tg-label {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-hours span {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-col.is-today {
+  background-color: var(--color-sunken);
+}
+:root[data-theme="dark"] .tg-event small {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .tg-now {
+  background: var(--color-now);
+}
+:root[data-theme="dark"] .tg-now::before {
+  background: var(--color-now);
+}
+@media (max-width: 640px) {
+  :root[data-theme="dark"] .month-dots i.is-done {
+    background: var(--color-faint);
+  }
+}
+:root[data-theme="dark"] .set-picker {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-join {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .cal-block {
+  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--color-surface));
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--green) 11%, var(--color-surface)) 0 6px,
+    color-mix(in srgb, var(--green) 16%, var(--color-surface)) 6px 12px
+  );
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .cal-block.is-done .cal-title {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-resize::after {
+  background: color-mix(in srgb, var(--green) 50%, var(--color-surface));
+}
+:root[data-theme="dark"] .cal-ghost {
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .tg-band {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-chip) 0 4px,
+    transparent 4px 9px
+  );
+  border-left: 2px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .tg-band.is-travel {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-travel) 0 4px,
+    transparent 4px 9px
+  );
+  border-left-color: var(--color-travelEdge);
+}
+:root[data-theme="dark"] .tg-band span {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tg-drop {
+  background: color-mix(in srgb, var(--color-accentSoft) 80%, transparent);
+}
+:root[data-theme="dark"] .tg-zone + .tg-zone span {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .tg-zone-heads small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .agenda-day h3 span {
+  background: var(--color-chip);
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .calendar-agenda-item.is-block {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--color-surface));
+}
+:root[data-theme="dark"] .panel-hint {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .schedule-item:hover {
+  border-color: var(--color-borderHover);
+}
+:root[data-theme="dark"] .schedule-item .grip {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] .schedule-main small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .planner-form input[type="date"],
+:root[data-theme="dark"] .planner-form select {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .review-group li small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .focus-mode {
+  background: var(--color-canvas);
+}
+:root[data-theme="dark"] .focus-timer.is-running {
+  border-color: var(--color-borderHover);
+  box-shadow: 0 0 0 4px var(--color-selected);
+}
+:root[data-theme="dark"] .focus-next button:hover {
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .settings-card code {
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .settings-field input:not([type="checkbox"]),
+:root[data-theme="dark"] .settings-field select,
+:root[data-theme="dark"] .settings-field textarea,
+:root[data-theme="dark"] .settings-subform input:not([type="checkbox"]),
+:root[data-theme="dark"] .field-row select {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .settings-list-main small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tag-edit input {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .secret-box {
+  border: 1px solid var(--color-borderHover);
+  background: var(--color-selected);
+}
+:root[data-theme="dark"] .secret-box small {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .status-page {
+  background: var(--color-canvas);
+}
+:root[data-theme="dark"] .status-page .status-nav .primary {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .status-banner .icon-button {
+  background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+}
+:root[data-theme="dark"] .status-banner.is-operational {
+  background: var(--color-selected);
+  border-color: var(--color-borderHover);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .status-banner.is-degraded {
+  background: var(--color-warnSoft);
+  border-color: var(--color-warnBorder);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .status-banner.is-outage {
+  border-color: var(--color-dangerBorder);
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .status-banner.is-unknown {
+  background: var(--color-chip);
+  border-color: var(--color-borderStrong);
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .status-maintenance {
+  border: 1px solid var(--color-infoBorder);
+  background: var(--color-infoSoft);
+  color: var(--color-info);
+}
+:root[data-theme="dark"] .state-pill.is-operational {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .state-pill.is-degraded {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .state-pill.is-outage {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .state-pill.is-unknown {
+  background: var(--color-chip);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .status-bars .bar.is-none {
+  background: var(--color-track);
+}
+:root[data-theme="dark"] .status-dot.is-resolved {
+  background: var(--color-dot);
+}
+:root[data-theme="dark"] .incident-state {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .incident-state.is-ongoing {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .status-empty {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .status-skeleton i {
+  background: linear-gradient(
+    90deg,
+    var(--color-chip) 25%,
+    var(--color-sunken) 50%,
+    var(--color-chip) 75%
+  );
+}
+:root[data-theme="dark"] .drawer-backdrop {
+  background: var(--color-backdrop);
+}
+:root[data-theme="dark"] .progress-control input[type="range"]:focus-visible {
+  outline: 3px solid var(--color-focus);
+}
+:root[data-theme="dark"] .step-rename,
+:root[data-theme="dark"] .step-add input {
+  border: 1px solid var(--color-borderHover);
+}
+:root[data-theme="dark"] .update-composer:focus-within {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
+}
+:root[data-theme="dark"] .update-composer-row select {
+  border: 1px solid var(--color-borderHover);
+}
+:root[data-theme="dark"] button:focus-visible,
+:root[data-theme="dark"] a:focus-visible {
+  outline: 3px solid var(--color-focus);
+}
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] textarea:focus,
+:root[data-theme="dark"] select:focus {
+  outline: 2px solid var(--color-focusSoft);
+}
+:root[data-theme="dark"] input:focus-visible,
+:root[data-theme="dark"] textarea:focus-visible,
+:root[data-theme="dark"] select:focus-visible,
+:root[data-theme="dark"] [role="button"]:focus-visible {
+  outline: 3px solid var(--color-focus);
+}
+:root[data-theme="dark"] p {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .sidebar {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .workspace {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .avatar {
+  background: var(--color-chip);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .nav-label {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] nav button {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] nav button:hover {
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] nav button.active {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] nav button i,
+:root[data-theme="dark"] .notice i {
+  background: var(--color-accent);
+}
+:root[data-theme="dark"] .sidebar-note {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .sidebar-note > svg {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .sidebar-note button {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .settings-link {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .topbar {
+  background: color-mix(in srgb, var(--color-surface) 69%, transparent);
+  color: var(--color-muted);
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+}
+:root[data-theme="dark"] .topbar strong {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .slash {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] .icon-button {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .icon-button:hover {
+  background: var(--color-chip);
+}
+:root[data-theme="dark"] .eyebrow {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .primary {
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .primary:hover {
+  background: var(--color-accentPressed);
+}
+:root[data-theme="dark"] .secondary {
+  background: var(--color-surface);
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .text-button {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .stats {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .stats > div > span {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .stats svg {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .stats small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .card {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .section-heading h2 span {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .section-heading > svg {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .check {
+  border: 1.5px solid var(--color-borderStrong);
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .checked {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .item-main .item-meta {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .completed .item-main strong {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .empty > svg {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] .upcoming {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .upcoming:hover {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .date-tile {
+  background: var(--color-sunken);
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .date-tile small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .upcoming > span > small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .upcoming > svg {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .assistant-card {
+  background: var(--color-chip);
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .sparkle-box {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-sunken);
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .assistant-card .eyebrow {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .assistant-card p {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .assistant-card > button {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-sunken);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .abstract-orbit i {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .abstract-orbit span {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] .progress-line span {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .progress-track {
+  background: var(--color-chip);
+}
+:root[data-theme="dark"] .progress-track > div {
+  background: var(--color-dot);
+}
+:root[data-theme="dark"] .progress-card p {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] footer {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] footer svg {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .search {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .search input {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .assistant-intro > svg {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .suggestions button {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-sunken);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .chat-input {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .proposal {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .proposal > p {
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .proposal-action {
+  border-top: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .proposal-action small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .notice {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .notice > svg {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .notice small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .notice.read {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .preference small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .error {
+  color: var(--color-danger);
+  background: var(--color-dangerSoft);
+  border: 1px solid var(--color-dangerBorder);
+}
+:root[data-theme="dark"] .sync-status {
+  background: var(--color-chip);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .modal-backdrop {
+  background: var(--color-backdrop);
+}
+:root[data-theme="dark"] .modal {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .modal input,
+:root[data-theme="dark"] .modal textarea,
+:root[data-theme="dark"] .modal select,
+:root[data-theme="dark"] .auth-card input {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .danger {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .auth-page {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .auth-story {
+  background: var(--color-chip);
+}
+:root[data-theme="dark"] .auth-story p {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .auth-story > small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .orbit-art > div {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .orbit-art > span {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .role-badge {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .role-badge.owner {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .role-badge.admin,
+:root[data-theme="dark"] .role-badge.system {
+  background: var(--color-chip);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .role-badge.member {
+  background: var(--color-chip);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .role-badge.override {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .team-badge {
+  background: var(--color-selected);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .you-tag {
+  color: var(--color-accentText);
+  background: var(--color-selected);
+}
+:root[data-theme="dark"] .rbac-note,
+:root[data-theme="dark"] .view-only-note {
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .plain-fieldset:disabled input,
+:root[data-theme="dark"] .plain-fieldset:disabled textarea,
+:root[data-theme="dark"] .plain-fieldset:disabled select {
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .modal select:disabled {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .team-row {
+  background: var(--color-surface);
+}
+:root[data-theme="dark"] .team-row:hover {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .team-row.active {
+  background: var(--color-selected);
+}
+:root[data-theme="dark"] .team-avatar {
+  background: var(--color-chip);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .team-row-main small {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .inline-form input,
+:root[data-theme="dark"] .inline-form select {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .subheading h3 span {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .data-table th {
+  color: var(--color-muted);
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .data-table td {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .data-table tr.is-disabled td {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .role-select {
+  border: 1px solid var(--color-borderStrong);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+}
+:root[data-theme="dark"] .role-select:disabled {
+  background: var(--color-sunken);
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .danger-text {
+  color: var(--color-danger);
+}
+:root[data-theme="dark"] .link-button {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .status-pill.active {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .audit-action {
+  background: var(--color-chip);
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .audit-details {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tabs button {
+  background: var(--color-surface);
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .tabs button:hover {
+  background: var(--color-hover);
+}
+:root[data-theme="dark"] .tabs button.active {
+  background: var(--color-selected);
+  border-color: var(--color-borderHover);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .stat-card > span {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .stat-card svg {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .tone-todo,
+:root[data-theme="dark"] .tone-in_progress,
+:root[data-theme="dark"] .tone-blocked,
+:root[data-theme="dark"] .tone-done {
+  --tone-text: color-mix(in srgb, var(--tone-fg) 55%, var(--color-text));
+}
+:root[data-theme="dark"] .progress-bar-track {
+  background: var(--color-track);
+}
+:root[data-theme="dark"] .progress-bar-fill {
+  background: var(--tone-fg, var(--color-dot));
+}
+:root[data-theme="dark"] .progress-bar-value {
+  color: var(--color-textSoft);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .item-row:hover {
+    background: var(--color-hover);
+  }
+}
+:root[data-theme="dark"] .item-fact {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .item-chevron {
+  color: var(--color-faint);
+}
+:root[data-theme="dark"] .section-hint {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .section-empty {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .attention-card {
+  border-color: var(--color-dangerBorder);
+}
+:root[data-theme="dark"] .segmented button {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .filter-chips button {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .board-column h3 span {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .board-empty {
+  border: 1px dashed var(--color-borderStrong);
+  color: var(--color-textMuted);
+}
+@media (hover: hover) {
+  :root[data-theme="dark"] .board-card:hover {
+    border-color: var(--color-borderHover);
+  }
+}
+:root[data-theme="dark"] .board-card-meta {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .app-banner.is-maintenance {
+  background: var(--color-warnSoft);
+  border-color: var(--color-warnBorder);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .app-banner.is-update {
+  background: var(--color-selected);
+  border-color: var(--color-borderHover);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .tag-chip {
+  border: 1px solid color-mix(in srgb, var(--tag) 30%, var(--color-surface));
+  background: color-mix(in srgb, var(--tag) 10%, var(--color-surface));
+  color: color-mix(in srgb, var(--tag) var(--tint-text), var(--color-text));
+}
+:root[data-theme="dark"] .tag-chip.toggle.active {
+  background: color-mix(in srgb, var(--tag) 22%, var(--color-surface));
+}
+:root[data-theme="dark"] .filter-select {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .task-group-title {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .task-group-title span {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .list-section-title {
+  color: var(--color-muted);
+}
+:root[data-theme="dark"] .list-row.active {
+  background: var(--color-selected);
+}
+:root[data-theme="dark"] .list-row-main small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .list-edit input {
+  border: 1px solid var(--color-borderStrong);
+}
+:root[data-theme="dark"] .swatches button {
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-borderStrong);
+  color: var(--color-onAccent);
+}
+:root[data-theme="dark"] .day-toggles button {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .popover-head small {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .popover-note {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .plan-card {
+  background: var(--color-canvas);
+}
+:root[data-theme="dark"] .plan-card-head small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .plan-summary {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .plan-days h4 {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .plan-time {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .plan-title small,
+:root[data-theme="dark"] .plan-flags small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .plan-more {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .inline-outcome.ok {
+  color: var(--color-accentText);
+}
+:root[data-theme="dark"] .command-trigger {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .command-trigger:hover {
+  border-color: var(--color-borderHover);
+}
+:root[data-theme="dark"] kbd {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .command-backdrop {
+  background: var(--color-backdrop);
+}
+:root[data-theme="dark"] .command-input {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .command-bar:focus-within {
+  box-shadow:
+    0 24px 90px #1c312440,
+    0 0 0 3px color-mix(in srgb, var(--color-focus) 40%, transparent);
+}
+:root[data-theme="dark"] .command-list li[role="option"].active {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .command-list li svg {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .command-list small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .command-group,
+:root[data-theme="dark"] .command-empty {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .command-question {
+  color: var(--color-selectedText);
+}
+:root[data-theme="dark"] .notice-main > svg {
+  color: var(--color-dot);
+}
+:root[data-theme="dark"] .week-nav {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .avail-table thead th {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .avail-person small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .avail-track {
+  background: var(--color-sunken);
+}
+:root[data-theme="dark"] .avail-busy {
+  background: var(--color-accent);
+}
+:root[data-theme="dark"] .chip {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .chip.is-warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+:root[data-theme="dark"] .load-bar {
+  background: var(--color-track);
+}
+:root[data-theme="dark"] .load-value {
+  color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .slot-list small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .check-line small {
+  color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .switch-line small {
+  color: var(--color-textMuted);
+}

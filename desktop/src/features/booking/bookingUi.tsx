@@ -62,13 +62,36 @@ export function readableAccent(hex: string) {
   return out;
 }
 
-/** Custom properties that recolour a page with a booking page's colour. */
+/** Contrast against black, from 1 to 21. */
+const onBlack = (hex: string) => (luminance(hex) + 0.05) / 0.05;
+
+/**
+ * `hex`, lightened just enough for the dark theme: dark text on it (and it
+ * as text on the dark surface) stays readable. Light colours come back
+ * unchanged.
+ */
+export function readableAccentOnDark(hex: string) {
+  let rgb = channels(isHex(hex) ? hex : DEFAULT_COLOR);
+  let out = toHex(rgb);
+  for (let i = 0; i < 24 && onBlack(out) < 6; i++) {
+    rgb = rgb.map((v) => v + (255 - v) * 0.12);
+    out = toHex(rgb);
+  }
+  return out;
+}
+
+/**
+ * Custom properties that recolour a page with a booking page's colour. The
+ * element also needs the `booking-accent` class, which picks the light or
+ * dark variant for the theme (styles/theme.css).
+ */
 export function accentStyle(color: string) {
   const accent = isHex(color) ? color.toLowerCase() : DEFAULT_COLOR;
   return {
     "--accent": accent,
-    "--green": readableAccent(accent),
-    "--color-accentSoft": `color-mix(in srgb, ${accent} 12%, white)`,
+    "--accent-light": readableAccent(accent),
+    "--accent-dark": readableAccentOnDark(accent),
+    "--color-accentSoft": `color-mix(in srgb, ${accent} 12%, var(--color-surface))`,
   } as CSSProperties;
 }
 

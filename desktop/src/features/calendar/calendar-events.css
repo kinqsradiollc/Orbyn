@@ -1,0 +1,26 @@
+/* Calendar: free events and events from subscribed calendars. Existing
+   tokens only. */
+
+/* Free events don't block time: lighter, with a dashed outline. */
+.cal-entry.is-free {
+  opacity: 0.72;
+  outline: 1px dashed var(--bar-edge, var(--border));
+  outline-offset: -1px;
+}
+
+/* Events from subscribed calendars: read-only, marked with a lock. */
+.cal-entry.is-external svg,
+.calendar-agenda-item.is-external .agenda-main svg {
+  flex: none;
+  opacity: 0.7;
+}
+.calendar-agenda-item.is-external {
+  cursor: pointer;
+}
+.sub-url {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

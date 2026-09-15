@@ -1,14 +1,45 @@
 import {
+  addDays,
+  dayTime,
+  isClosed,
+  localDateKey,
+  localDaysBetween,
   occurrencesBetween,
+  weekdayOf,
+  type BufferScope,
   type BusyInterval,
   type CalendarEntry,
+  type DefaultAlerts,
   type DerivedBlock,
+  type OccurrenceChanges,
   type Place,
   type PlannerPrefs,
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { frameSpans, loadFrames } from "./frames.js";
+import { externalEntries } from "./subscriptions.js";
+
+/** Alerts new items get until someone chooses their own: 30 minutes before. */
+export const DEFAULT_ALERTS: DefaultAlerts = {
+  event: [30],
+  task: [30],
+  all_day: [30],
+};
+
+/** An entry that takes time: a timed event that isn't closed or marked free. */
+export const blocksTime = (e: CalendarEntry) =>
+  e.kind === "event" && !isClosed(e.status) && e.busy !== false && !e.all_day;
+
+/** Every timed busy event gets buffers until someone narrows it. */
+export const DEFAULT_BUFFER_SCOPE: BufferScope = {
+  personal: true,
+  team_ids: null,
+  list_ids: [],
+  min_minutes: 0,
+  only_with_others: false,
+};
 
 /** An event without an end still takes this long on the calendar. */
 export const DEFAULT_EVENT_MINUTES = 30;
@@ -30,6 +61,12 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   extra_timezones: [],
   calendar_sets: [],
   pinned_user_ids: [],
+  deadline_notice_days: 1,
+  planner_notices: { push: true, email: false },
+  default_alerts: DEFAULT_ALERTS,
+  count_blocks_as_spent: false,
+  buffer_scope: DEFAULT_BUFFER_SCOPE,
+  travel_padding_minutes: 0,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -62,65 +99,215 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     extra_timezones: row.extra_timezones,
     calendar_sets: row.calendar_sets,
     pinned_user_ids: row.pinned_user_ids,
+    deadline_notice_days: row.deadline_notice_days,
+    planner_notices: {
+      ...DEFAULT_PREFS.planner_notices!,
+      ...row.planner_notices,
+    },
+    default_alerts: { ...DEFAULT_ALERTS, ...row.default_alerts },
+    count_blocks_as_spent: row.count_blocks_as_spent,
+    buffer_scope: { ...DEFAULT_BUFFER_SCOPE, ...row.buffer_scope },
+    travel_padding_minutes: row.travel_padding_minutes,
   };
 }
+
+/** The place columns responses carry. */
+export const PLACE_COLUMNS =
+  "id, label, match, travel_minutes, mode, peak_minutes";
 
 export async function loadPlaces(db: Db, userId: string): Promise<Place[]> {
   return (
     await db.query<Place>(
-      "SELECT id, label, match, travel_minutes FROM places WHERE user_id = $1 ORDER BY label",
+      `SELECT ${PLACE_COLUMNS} FROM places WHERE user_id = $1 ORDER BY label`,
       [userId],
     )
   ).rows;
 }
 
-type EntryRow = {
+/** The item columns expanding a series needs. */
+export type SeriesRow = {
   id: string;
-  title: string;
   kind: CalendarEntry["kind"];
-  status: CalendarEntry["status"];
-  priority: CalendarEntry["priority"];
   due_at: Date;
   end_at: Date | null;
+  rrule: string | null;
+  timezone: string;
+  series_start: Date | null;
+  exdates: Date[];
+  all_day: boolean;
+};
+
+type EntryRow = SeriesRow & {
+  title: string;
+  status: CalendarEntry["status"];
+  priority: CalendarEntry["priority"];
   team_id: string | null;
   team_name: string | null;
   list_id: string | null;
   location: string;
   meeting_url: string;
-  rrule: string | null;
-  timezone: string;
-  series_start: Date | null;
-  exdates: Date[];
   version: number;
+  busy: boolean;
+  color: string | null;
+  alerts: number[];
+  attendee_count: number;
 };
+
+/** Occurrence changes by item, then by the occurrence's original start (ms). */
+export type OverrideMap = Map<string, Map<number, OccurrenceChanges>>;
+
+/** The changed occurrences of these items. */
+export async function loadOverrides(
+  db: Db,
+  itemIds: string[],
+): Promise<OverrideMap> {
+  const out: OverrideMap = new Map();
+  if (!itemIds.length) return out;
+  const rows = (
+    await db.query<{
+      item_id: string;
+      occurrence: Date;
+      data: OccurrenceChanges;
+    }>(
+      "SELECT item_id, occurrence, data FROM item_overrides WHERE item_id = ANY ($1::uuid[])",
+      [itemIds],
+    )
+  ).rows;
+  for (const r of rows) {
+    let byTime = out.get(r.item_id);
+    if (!byTime) out.set(r.item_id, (byTime = new Map()));
+    byTime.set(r.occurrence.getTime(), r.data);
+  }
+  return out;
+}
+
+/** Whole days an all-day item lasts (0 for an all-day task with no end). */
+export const allDayLength = (r: SeriesRow) =>
+  r.end_at ? Math.max(1, localDaysBetween(r.due_at, r.end_at, r.timezone)) : 0;
+
+/**
+ * Where an occurrence starting at `at` ends: the same length as the series,
+ * counted in days for all-day items so daylight-saving changes don't move
+ * them off midnight. Null when the item has no end.
+ */
+export function occurrenceEnd(r: SeriesRow, at: Date): Date | null {
+  if (!r.end_at) return null;
+  if (r.all_day) {
+    const days = allDayLength(r);
+    return dayTime(addDays(localDateKey(at, r.timezone), days), 0, r.timezone);
+  }
+  return new Date(at.getTime() + (r.end_at.getTime() - r.due_at.getTime()));
+}
+
+/** Whether `at` is an occurrence of the series (and not one skipped). */
+export function isOccurrence(r: SeriesRow, at: Date) {
+  if (!r.rrule) return false;
+  return (
+    occurrencesBetween(
+      r.series_start ?? r.due_at,
+      r.rrule,
+      r.timezone,
+      at,
+      new Date(at.getTime() + 1),
+      r.exdates,
+    ).length === 1
+  );
+}
+
+/**
+ * The occurrences of a series overlapping [from, to), each with its own
+ * start and end and the changes made to it alone. An occurrence moved into
+ * the range from outside it is included; one moved out of it isn't.
+ */
+export function expandSeries(
+  r: SeriesRow,
+  from: Date,
+  to: Date,
+  changes: Map<number, OccurrenceChanges> = new Map(),
+) {
+  const out: {
+    occurrence: Date;
+    start: Date;
+    end: Date | null;
+    changes?: OccurrenceChanges;
+  }[] = [];
+  if (!r.rrule) return out;
+  const length =
+    r.end_at && !r.all_day ? r.end_at.getTime() - r.due_at.getTime() : 0;
+  const lead = r.all_day ? allDayLength(r) * 86_400_000 + 3_600_000 : length;
+  // Tasks: finished occurrences were moved past, so start from the current one.
+  const shownFrom =
+    r.kind === "task"
+      ? new Date(Math.max(from.getTime(), r.due_at.getTime()))
+      : new Date(from.getTime() - lead);
+  const seen = new Set<number>();
+  const starts = occurrencesBetween(
+    r.series_start ?? r.due_at,
+    r.rrule,
+    r.timezone,
+    shownFrom,
+    to,
+    r.exdates,
+  );
+  for (const at of starts) seen.add(at.getTime());
+  for (const [key, c] of changes) {
+    if (seen.has(key) || !c.due_at) continue;
+    if (r.kind === "task" && key < r.due_at.getTime()) continue;
+    const at = new Date(key);
+    if (isOccurrence(r, at)) starts.push(at);
+  }
+  for (const at of starts) {
+    const c = changes.get(at.getTime());
+    const start = c?.due_at ? new Date(c.due_at) : at;
+    const end = c?.due_at
+      ? c.end_at
+        ? new Date(c.end_at)
+        : null
+      : occurrenceEnd(r, at);
+    if (start >= to || (end ?? start) < from) continue;
+    out.push({ occurrence: at, start, end, changes: c });
+  }
+  return out.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
 
 /**
  * Every occurrence of the items `userId` can see that overlaps [from, to):
- * one entry per occurrence for repeating items. A repeating task shows from
- * its current occurrence on; a repeating event shows its whole series.
+ * one entry per occurrence for repeating items, with changes made to single
+ * occurrences applied. A repeating task shows from its current occurrence
+ * on; a repeating event shows its whole series. `itemIds` limits it to some
+ * items (search).
  */
 export async function calendarEntries(
   db: Db,
   userId: string,
   from: Date,
   to: Date,
+  itemIds?: string[],
 ): Promise<CalendarEntry[]> {
   const rows = (
     await db.query<EntryRow>(
       `SELECT i.id, i.title, i.kind, i.status, i.priority, i.due_at, i.end_at,
               i.team_id, t.name AS team_name, i.list_id, i.location, i.meeting_url,
-              i.rrule, i.timezone, i.series_start, i.exdates, i.version
+              i.rrule, i.timezone, i.series_start, i.exdates, i.version,
+              i.all_day, i.busy, i.color, i.alerts,
+              (SELECT count(*)::int FROM item_attendees x WHERE x.item_id = i.id) AS attendee_count
        FROM items i LEFT JOIN teams t ON t.id = i.team_id
        WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL AND (
          (i.rrule IS NULL AND i.due_at < $3 AND coalesce(i.end_at, i.due_at) >= $2)
          OR (i.rrule IS NOT NULL AND coalesce(i.series_start, i.due_at) < $3)
-       )
+       ) AND ($4::uuid[] IS NULL OR i.id = ANY ($4::uuid[]))
        ORDER BY i.due_at LIMIT 2000`,
-      [userId, from, to],
+      [userId, from, to, itemIds ?? null],
     )
   ).rows;
+  const overrides = await loadOverrides(
+    db,
+    rows.filter((r) => r.rrule).map((r) => r.id),
+  );
   const entries: CalendarEntry[] = [];
   for (const r of rows) {
+    // Free events, all-day items and tasks never count as busy.
+    const busyOf = (busy: boolean) => r.kind === "event" && !r.all_day && busy;
     const base = {
       item_id: r.id,
       title: r.title,
@@ -134,6 +321,11 @@ export async function calendarEntries(
       meeting_url: r.meeting_url,
       rrule: r.rrule,
       version: r.version,
+      all_day: r.all_day,
+      busy: busyOf(r.busy),
+      color: r.color,
+      alerts: r.alerts.map(Number),
+      attendee_count: r.attendee_count,
     };
     if (!r.rrule) {
       entries.push({
@@ -144,32 +336,27 @@ export async function calendarEntries(
       });
       continue;
     }
-    const length = r.end_at ? r.end_at.getTime() - r.due_at.getTime() : 0;
-    // Tasks: finished occurrences were moved past, so start from the current one.
-    const seriesStart = r.series_start ?? r.due_at;
-    const shownFrom =
-      r.kind === "task"
-        ? new Date(Math.max(from.getTime(), r.due_at.getTime()))
-        : new Date(from.getTime() - length);
-    for (const at of occurrencesBetween(
-      seriesStart,
-      r.rrule,
-      r.timezone,
-      shownFrom,
-      to,
-      r.exdates,
-    ))
+    for (const o of expandSeries(r, from, to, overrides.get(r.id))) {
+      const c = o.changes ?? {};
       entries.push({
         ...base,
+        title: c.title ?? r.title,
+        location: c.location ?? r.location,
+        meeting_url: c.meeting_url ?? r.meeting_url,
+        busy: busyOf(c.busy ?? r.busy),
+        color: c.color !== undefined ? c.color : r.color,
+        alerts: c.alerts ?? base.alerts,
         // Only the current occurrence of a repeating task can be done.
         status:
-          r.kind === "task" && at.getTime() !== r.due_at.getTime()
+          r.kind === "task" && o.occurrence.getTime() !== r.due_at.getTime()
             ? "todo"
             : r.status,
-        start_at: at.toISOString(),
-        end_at: length ? new Date(at.getTime() + length).toISOString() : null,
-        occurrence: at.toISOString(),
+        start_at: o.start.toISOString(),
+        end_at: o.end ? o.end.toISOString() : null,
+        occurrence: o.occurrence.toISOString(),
+        overridden: !!o.changes,
       });
+    }
   }
   return entries.sort((a, b) => a.start_at.localeCompare(b.start_at));
 }
@@ -216,7 +403,7 @@ export function travelMinutes(
   location: string,
   places: Place[],
   fallback: number,
-): { minutes: number; label: string } | null {
+): { minutes: number; label: string; place: Place | null } | null {
   const text = location.trim();
   if (!text || isLink(text)) return null;
   const lower = text.toLowerCase();
@@ -225,9 +412,85 @@ export function travelMinutes(
   );
   if (place)
     return place.travel_minutes
-      ? { minutes: place.travel_minutes, label: place.label }
+      ? { minutes: place.travel_minutes, label: place.label, place }
       : null;
-  return fallback ? { minutes: fallback, label: text } : null;
+  return fallback ? { minutes: fallback, label: text, place: null } : null;
+}
+
+/** Local peak travel hours on weekdays: 07:00-09:00 and 16:00-18:00. */
+const PEAK_HOURS = [
+  [7 * 60, 9 * 60],
+  [16 * 60, 18 * 60],
+] as const;
+
+/**
+ * Whether a leg touches peak hours on a weekday in `timeZone`. A leg that
+ * would overlap them at its usual length takes the place's peak minutes.
+ */
+export function inPeak(start: number, end: number, timeZone: string) {
+  for (
+    let day = localDateKey(new Date(start), timeZone);
+    day <= localDateKey(new Date(end), timeZone);
+    day = addDays(day, 1)
+  ) {
+    const weekday = weekdayOf(day);
+    if (weekday === 0 || weekday === 6) continue;
+    for (const [from, to] of PEAK_HOURS)
+      if (
+        start < dayTime(day, to, timeZone).getTime() &&
+        dayTime(day, from, timeZone).getTime() < end
+      )
+        return true;
+  }
+  return false;
+}
+
+/**
+ * The minutes one travel leg takes: the usual minutes, or the place's peak
+ * minutes when the leg (at its usual length) touches peak hours, plus the
+ * person's travel padding. `edge` is the event's start (a leg there) or end
+ * (a leg back).
+ */
+function legMinutes(
+  travel: { minutes: number; place: Place | null },
+  edge: number,
+  direction: "to" | "back",
+  prefs: PlannerPrefs,
+) {
+  const usual = travel.minutes * 60000;
+  const [start, end] =
+    direction === "to" ? [edge - usual, edge] : [edge, edge + usual];
+  const peak = travel.place?.peak_minutes;
+  const minutes =
+    peak != null && inPeak(start, end, prefs.timezone) ? peak : travel.minutes;
+  return minutes ? minutes + (prefs.travel_padding_minutes ?? 0) : 0;
+}
+
+/**
+ * Whether an event gets buffers under the person's buffer scope: personal
+ * or team events as chosen, in the chosen lists, long enough, and (when
+ * asked) only meetings with others: people invited, a meeting link, or a
+ * team event.
+ */
+export function inBufferScope(e: CalendarEntry, scope: BufferScope) {
+  if (e.team_id) {
+    if (scope.team_ids && !scope.team_ids.includes(e.team_id)) return false;
+  } else if (!scope.personal) return false;
+  if (
+    scope.list_ids.length &&
+    (!e.list_id || !scope.list_ids.includes(e.list_id))
+  )
+    return false;
+  const minutes = (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000;
+  if (minutes < scope.min_minutes) return false;
+  if (
+    scope.only_with_others &&
+    !(e.attendee_count ?? 0) &&
+    !e.meeting_url.trim() &&
+    !e.team_id
+  )
+    return false;
+  return true;
 }
 
 const overlaps = (a: BusyInterval, b: BusyInterval) =>
@@ -237,8 +500,9 @@ const overlaps = (a: BusyInterval, b: BusyInterval) =>
  * Buffers and travel time around timed events, worked out from the owner's
  * preferences and places rather than stored, so they always follow the
  * events. Travel goes right before a located event, and back after the last
- * located event of the day; buffers go around meetings. Anything that would
- * run into another event is left out.
+ * located event of the day, each leg at the place's peak minutes in peak
+ * hours and with the travel padding added; buffers go around meetings in the
+ * buffer scope. Anything that would run into another event is left out.
  */
 export function derivedBlocks(
   entries: CalendarEntry[],
@@ -246,13 +510,13 @@ export function derivedBlocks(
   places: Place[],
   localDay: (at: string) => string,
 ): DerivedBlock[] {
-  const events = entries.filter(
-    (e) => e.kind === "event" && e.status !== "done" && e.end_at,
-  );
+  // Free and all-day events get no buffers or travel.
+  const events = entries.filter((e) => blocksTime(e) && e.end_at);
   const busy = events.map((e) => ({ start_at: e.start_at, end_at: e.end_at! }));
   const out: DerivedBlock[] = [];
   const shift = (at: string, minutes: number) =>
     new Date(Date.parse(at) + minutes * 60000).toISOString();
+  const scope = prefs.buffer_scope ?? DEFAULT_BUFFER_SCOPE;
   const lastLocated = new Map<string, CalendarEntry>();
   for (const e of events) {
     const minutes = (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000;
@@ -261,12 +525,17 @@ export function derivedBlocks(
       places,
       prefs.default_travel_minutes,
     );
-    const buffer = bufferMinutes(prefs, minutes);
-    if (travel) {
+    const buffer = inBufferScope(e, scope)
+      ? bufferMinutes(prefs, minutes)
+      : { before: 0, after: 0 };
+    const leg = travel
+      ? legMinutes(travel, Date.parse(e.start_at), "to", prefs)
+      : 0;
+    if (travel && leg) {
       out.push({
         kind: "travel",
         item_id: e.item_id,
-        start_at: shift(e.start_at, -travel.minutes),
+        start_at: shift(e.start_at, -leg),
         end_at: e.start_at,
         label: `Travel to ${travel.label}`,
       });
@@ -294,15 +563,19 @@ export function derivedBlocks(
       places,
       prefs.default_travel_minutes,
     )!;
-    const buffer = bufferMinutes(
-      prefs,
-      (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000,
-    ).after;
+    const buffer = inBufferScope(e, scope)
+      ? bufferMinutes(
+          prefs,
+          (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000,
+        ).after
+      : 0;
+    const leaves = Date.parse(e.end_at!) + buffer * 60000;
+    const leg = legMinutes(travel, leaves, "back", prefs);
     out.push({
       kind: "travel",
       item_id: e.item_id,
       start_at: shift(e.end_at!, buffer),
-      end_at: shift(e.end_at!, buffer + travel.minutes),
+      end_at: shift(e.end_at!, buffer + leg),
       label: "Travel back",
     });
   }
@@ -334,12 +607,19 @@ export type BusyOptions = {
   derived?: boolean;
   /** Leave these items out (a booking being moved ignores its own events). */
   excludeItemIds?: string[];
+  /**
+   * Count frames marked busy as busy. Booking pages and team time ask for
+   * this; the planner never does, since it plans inside frames.
+   */
+  frames?: boolean;
 };
 
 /**
  * When `userId` is busy in [from, to): timed events, their buffers and
- * travel, and blocks already set aside. Task due times are deadlines, not
- * busy time. Only intervals leave this function, never titles.
+ * travel, blocks already set aside, and events from calendars they subscribe
+ * to with "busy" on. Task due times are deadlines, not busy time; free and
+ * all-day events don't count. Only intervals leave this function, never
+ * titles.
  */
 export async function busyIntervals(
   db: Db,
@@ -360,9 +640,7 @@ export async function busyIntervals(
       new Date(to.getTime() + pad),
     )
   ).filter((e) => !skip.has(e.item_id));
-  const events = entries.filter(
-    (e) => e.kind === "event" && e.status !== "done",
-  );
+  const events = entries.filter(blocksTime);
   const busy: BusyInterval[] = events.map((e) => ({
     start_at: e.start_at,
     end_at:
@@ -388,6 +666,20 @@ export async function busyIntervals(
         .map((b) => ({ start_at: b.start_at, end_at: b.end_at })),
     );
   }
+  for (const e of await externalEntries(db, userId, from, to, true))
+    busy.push({ start_at: e.start_at, end_at: e.end_at });
+  if (options.frames)
+    for (const f of await loadFrames(db, userId, true))
+      for (const s of frameSpans(
+        f,
+        from.getTime(),
+        to.getTime(),
+        prefs.timezone,
+      ))
+        busy.push({
+          start_at: new Date(s.start).toISOString(),
+          end_at: new Date(s.end).toISOString(),
+        });
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
   return mergeIntervals(busy)

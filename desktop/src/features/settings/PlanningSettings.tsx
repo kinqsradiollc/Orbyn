@@ -2,24 +2,26 @@ import { useEffect, useState, type FormEvent } from "react";
 import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import {
   BREAK_LEVELS,
-  PRIORITIES,
+  TRAVEL_MODES,
+  describeRrule,
   type BreakLevel,
+  type BufferScope,
   type Frame,
   type FrameFilters,
   type Place,
   type PlannerPrefs,
-  type Priority,
   type Team,
+  type TravelMode,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { Swatches } from "../lists/ListsView";
+import { DayPicker } from "../../components/DayPicker";
 import { BREAK_LABELS } from "../calendar/PlannerPanel";
+import { FrameForm } from "./FrameForm";
 import {
   deviceTimeZone,
   minutesLabel,
-  SWATCHES,
   timeZones,
   WEEKDAY_SHORT,
   zoneCity,
@@ -34,42 +36,6 @@ const draftFrom = (p: PlannerPrefs): Draft => {
   void pinned_user_ids;
   return rest;
 };
-
-/** Toggle buttons for weekdays (0 = Sunday). */
-export function DayPicker({
-  value,
-  onChange,
-  label,
-}: {
-  value: number[];
-  onChange: (days: number[]) => void;
-  label: string;
-}) {
-  return (
-    <div className="day-toggles" role="group" aria-label={label}>
-      {WEEKDAY_SHORT.map((name, day) => {
-        const on = value.includes(day);
-        return (
-          <button
-            key={name}
-            type="button"
-            aria-pressed={on}
-            className={on ? "active" : ""}
-            onClick={() =>
-              onChange(
-                on
-                  ? value.filter((d) => d !== day)
-                  : [...value, day].sort((a, b) => a - b),
-              )
-            }
-          >
-            {name}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 const daysLabel = (days: number[]) =>
   days.join(",") === "1,2,3,4,5"
@@ -123,7 +89,7 @@ function NumberInput({
  * splits tasks, buffers and travel, extra time zones, frames and places.
  */
 export function PlanningSettings({ teams, report }: Props) {
-  const { prefs, savePrefs } = usePlanning();
+  const { prefs, savePrefs, lists } = usePlanning();
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
   const [zoneToAdd, setZoneToAdd] = useState("");
   const save = useAction(report);
@@ -145,6 +111,30 @@ export function PlanningSettings({ teams, report }: Props) {
     save.setOutcome(null);
   };
   const device = deviceTimeZone();
+
+  // Which events get buffers (all your timed busy events by default).
+  const scope: BufferScope = draft.buffer_scope ?? {
+    personal: true,
+    team_ids: null,
+    list_ids: [],
+    min_minutes: 0,
+    only_with_others: false,
+  };
+  const setScope = (patch: Partial<BufferScope>) =>
+    set("buffer_scope", { ...scope, ...patch });
+  const toggleScopeTeam = (id: string) => {
+    const current = scope.team_ids ?? teams.map((t) => t.id);
+    const next = current.includes(id)
+      ? current.filter((x) => x !== id)
+      : [...current, id];
+    setScope({ team_ids: next.length === teams.length ? null : next });
+  };
+  const toggleScopeList = (id: string) =>
+    setScope({
+      list_ids: scope.list_ids.includes(id)
+        ? scope.list_ids.filter((x) => x !== id)
+        : [...scope.list_ids, id],
+    });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -293,6 +283,76 @@ export function PlanningSettings({ teams, report }: Props) {
             </div>
           </div>
 
+          <label className="switch-line settings-field">
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              checked={draft.count_blocks_as_spent ?? false}
+              onChange={(e) => set("count_blocks_as_spent", e.target.checked)}
+            />
+            <span>
+              Count blocked time as worked when I complete a task
+              <small>
+                The past part of its time blocks is added to the time spent on
+                it.
+              </small>
+            </span>
+          </label>
+
+          <h3 className="settings-subtitle">Planner notices</h3>
+          <p className="muted">
+            Heads-ups about unfinished blocks, tasks at risk, tasks due soon and
+            clashes. They always show in Notifications.
+          </p>
+          <div className="settings-grid">
+            <NumberInput
+              id="pref-deadline"
+              label="Warn about tasks due within (days)"
+              hint="For tasks with no time set aside. 0 turns this off."
+              value={draft.deadline_notice_days ?? 1}
+              min={0}
+              max={14}
+              onChange={(n) => set("deadline_notice_days", n)}
+            />
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={draft.planner_notices?.push ?? true}
+                onChange={(e) =>
+                  set("planner_notices", {
+                    push: e.target.checked,
+                    email: draft.planner_notices?.email ?? false,
+                  })
+                }
+              />
+              <span>
+                Push notifications
+                <small>On phones signed in to the Orbyn app.</small>
+              </span>
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={draft.planner_notices?.email ?? false}
+                onChange={(e) =>
+                  set("planner_notices", {
+                    push: draft.planner_notices?.push ?? true,
+                    email: e.target.checked,
+                  })
+                }
+              />
+              <span>
+                Email
+                <small>Sent when the server has email set up.</small>
+              </span>
+            </label>
+          </div>
+
           <h3 className="settings-subtitle">Buffers and travel</h3>
           <div className="settings-grid">
             <NumberInput
@@ -331,6 +391,87 @@ export function PlanningSettings({ teams, report }: Props) {
               <span>
                 Adaptive buffers
                 <small>Longer buffers around longer events.</small>
+              </span>
+            </label>
+            <NumberInput
+              id="pref-travel-pad"
+              label="Extra travel padding (min)"
+              hint="Added to every trip, there and back."
+              value={draft.travel_padding_minutes ?? 0}
+              min={0}
+              max={30}
+              onChange={(n) => set("travel_padding_minutes", n)}
+            />
+          </div>
+          <fieldset className="check-group">
+            <legend>Which events get buffers</legend>
+            <div className="check-grid">
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={scope.personal}
+                  onChange={(e) => setScope({ personal: e.target.checked })}
+                />
+                Personal events
+              </label>
+              {teams.map((t) => (
+                <label key={t.id} className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={
+                      scope.team_ids === null || scope.team_ids.includes(t.id)
+                    }
+                    onChange={() => toggleScopeTeam(t.id)}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {lists.length > 0 && (
+            <fieldset className="check-group">
+              <legend>
+                Only events in these lists (none ticked: any list)
+              </legend>
+              <div className="check-grid">
+                {lists.map((l) => (
+                  <label key={l.id} className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={scope.list_ids.includes(l.id)}
+                      onChange={() => toggleScopeList(l.id)}
+                    />
+                    {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          <div className="settings-grid">
+            <NumberInput
+              id="pref-buffer-min"
+              label="Only events at least (min)"
+              hint="Shorter events get no buffers. 0 for every event."
+              value={scope.min_minutes}
+              min={0}
+              max={1440}
+              onChange={(n) => setScope({ min_minutes: n })}
+            />
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={scope.only_with_others}
+                onChange={(e) =>
+                  setScope({ only_with_others: e.target.checked })
+                }
+              />
+              <span>
+                Only meetings with others
+                <small>
+                  Events with people invited, a meeting link, or a team.
+                </small>
               </span>
             </label>
           </div>
@@ -409,32 +550,6 @@ export function PlanningSettings({ teams, report }: Props) {
 
 // ---- Frames ------------------------------------------------------------------
 
-type FrameDraft = {
-  name: string;
-  days: number[];
-  start_time: string;
-  end_time: string;
-  color: string;
-  filters: FrameFilters;
-};
-const blankFrame = (): FrameDraft => ({
-  name: "",
-  days: [1, 2, 3, 4, 5],
-  start_time: "09:00",
-  end_time: "12:00",
-  color: SWATCHES[2],
-  filters: {
-    priorities: [],
-    list_ids: [],
-    tag_ids: [],
-    team_ids: [],
-    min_minutes: null,
-    max_minutes: null,
-  },
-});
-const toggle = <T,>(xs: T[], x: T) =>
-  xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x];
-
 function filterSummary(f: FrameFilters, names: Map<string, string>) {
   const parts: string[] = [];
   if (f.priorities.length) parts.push(f.priorities.join(" or ") + " priority");
@@ -451,8 +566,7 @@ function filterSummary(f: FrameFilters, names: Map<string, string>) {
 function FramesEditor({ teams, report }: Props) {
   const { lists, tags } = usePlanning();
   const [frames, setFrames] = useState<Frame[] | null>(null);
-  const [editing, setEditing] = useState<string | "new" | null>(null);
-  const [draft, setDraft] = useState<FrameDraft>(blankFrame);
+  const [editing, setEditing] = useState<Frame | "new" | null>(null);
   const action = useAction(report);
 
   const load = () =>
@@ -470,29 +584,6 @@ function FramesEditor({ teams, report }: Props) {
     ...tags.map((t) => [t.id, "#" + t.name] as [string, string]),
     ...teams.map((t) => [t.id, t.name] as [string, string]),
   ]);
-  const setFilter = <K extends keyof FrameFilters>(k: K, v: FrameFilters[K]) =>
-    setDraft((d) => ({ ...d, filters: { ...d.filters, [k]: v } }));
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!draft.days.length) {
-      action.setOutcome({ ok: false, text: "Pick at least one day." });
-      return;
-    }
-    if (draft.end_time <= draft.start_time) {
-      action.setOutcome({ ok: false, text: "A frame ends after it starts." });
-      return;
-    }
-    const body = { ...draft, name: draft.name.trim() };
-    void action
-      .run(async () => {
-        if (editing === "new") await client.createFrame(body);
-        else if (editing) await client.updateFrame(editing, body);
-        await load();
-        return editing === "new" ? "Frame added." : "Frame saved.";
-      })
-      .then((ok) => ok && setEditing(null));
-  };
 
   const remove = (f: Frame) => {
     if (!window.confirm(`Delete the frame “${f.name}”?`)) return;
@@ -502,31 +593,6 @@ function FramesEditor({ teams, report }: Props) {
       return "Frame deleted.";
     });
   };
-
-  const checks = (
-    items: { id: string; name: string }[],
-    key: "list_ids" | "tag_ids" | "team_ids",
-    legend: string,
-  ) =>
-    items.length > 0 && (
-      <fieldset className="check-group">
-        <legend>{legend}</legend>
-        <div className="check-grid">
-          {items.map((x) => (
-            <label key={x.id} className="check-line">
-              <input
-                type="checkbox"
-                checked={draft.filters[key].includes(x.id)}
-                onChange={() =>
-                  setFilter(key, toggle(draft.filters[key], x.id))
-                }
-              />
-              {x.name}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-    );
 
   return (
     <section className="card settings-card" aria-labelledby="frames-title">
@@ -539,13 +605,7 @@ function FramesEditor({ teams, report }: Props) {
           </p>
         </div>
         {editing === null && (
-          <button
-            className="secondary"
-            onClick={() => {
-              setDraft(blankFrame());
-              setEditing("new");
-            }}
-          >
+          <button className="secondary" onClick={() => setEditing("new")}>
             <Plus size={14} /> New frame
           </button>
         )}
@@ -568,24 +628,15 @@ function FramesEditor({ teams, report }: Props) {
               <span className="settings-list-main">
                 <strong>{f.name}</strong>
                 <small>
-                  {daysLabel(f.days)} · {f.start_time}–{f.end_time} ·{" "}
-                  {filterSummary(f.filters, names)}
+                  {f.rrule ? describeRrule(f.rrule) : daysLabel(f.days)} ·{" "}
+                  {f.start_time}–{f.end_time}
+                  {f.busy && " · Busy"} · {filterSummary(f.filters, names)}
                 </small>
               </span>
               <button
                 className="icon-button"
                 aria-label={`Edit ${f.name}`}
-                onClick={() => {
-                  setDraft({
-                    name: f.name,
-                    days: f.days,
-                    start_time: f.start_time,
-                    end_time: f.end_time,
-                    color: f.color,
-                    filters: f.filters,
-                  });
-                  setEditing(f.id);
-                }}
+                onClick={() => setEditing(f)}
               >
                 <Pencil size={14} />
               </button>
@@ -602,154 +653,23 @@ function FramesEditor({ teams, report }: Props) {
         </ul>
       )}
       {editing !== null && (
-        <form className="settings-subform" onSubmit={submit}>
-          <h3 className="settings-subtitle">
-            {editing === "new" ? "New frame" : "Edit frame"}
-          </h3>
-          <div className="settings-grid">
-            <div className="settings-field wide">
-              <label htmlFor="frame-name">Name</label>
-              <input
-                id="frame-name"
-                required
-                maxLength={60}
-                autoFocus
-                value={draft.name}
-                placeholder="Deep work"
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </div>
-            <div className="settings-field wide">
-              <span className="settings-label">Days</span>
-              <DayPicker
-                label="Frame days"
-                value={draft.days}
-                onChange={(days) => setDraft({ ...draft, days })}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="frame-start">Starts</label>
-              <input
-                id="frame-start"
-                type="time"
-                required
-                value={draft.start_time}
-                onChange={(e) =>
-                  setDraft({ ...draft, start_time: e.target.value })
-                }
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="frame-end">Ends</label>
-              <input
-                id="frame-end"
-                type="time"
-                required
-                value={draft.end_time}
-                onChange={(e) =>
-                  setDraft({ ...draft, end_time: e.target.value })
-                }
-              />
-            </div>
-            <div className="settings-field wide">
-              <span className="settings-label">Colour</span>
-              <Swatches
-                label="Frame colour"
-                value={draft.color}
-                onChange={(color) => setDraft({ ...draft, color })}
-              />
-            </div>
-          </div>
-          <p className="muted">
-            Which tasks go here (leave blank for any task):
-          </p>
-          <fieldset className="check-group">
-            <legend>Priorities</legend>
-            <div className="check-grid">
-              {PRIORITIES.map((p: Priority) => (
-                <label key={p} className="check-line">
-                  <input
-                    type="checkbox"
-                    checked={draft.filters.priorities.includes(p)}
-                    onChange={() =>
-                      setFilter(
-                        "priorities",
-                        toggle(draft.filters.priorities, p),
-                      )
-                    }
-                  />
-                  <span className="capitalize">{p}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {checks(
-            lists.map((l) => ({
-              id: l.id,
-              name: l.team_name ? `${l.name} · ${l.team_name}` : l.name,
-            })),
-            "list_ids",
-            "Lists",
-          )}
-          {checks(
-            tags.map((t) => ({ id: t.id, name: t.name })),
-            "tag_ids",
-            "Tags",
-          )}
-          {checks(
-            teams.map((t) => ({ id: t.id, name: t.name })),
-            "team_ids",
-            "Teams",
-          )}
-          <div className="settings-grid">
-            <div className="settings-field">
-              <label htmlFor="frame-min">At least (min)</label>
-              <input
-                id="frame-min"
-                type="number"
-                min={1}
-                max={10080}
-                value={draft.filters.min_minutes ?? ""}
-                placeholder="Any"
-                onChange={(e) =>
-                  setFilter(
-                    "min_minutes",
-                    e.target.value ? Number(e.target.value) : null,
-                  )
-                }
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="frame-max">At most (min)</label>
-              <input
-                id="frame-max"
-                type="number"
-                min={1}
-                max={10080}
-                value={draft.filters.max_minutes ?? ""}
-                placeholder="Any"
-                onChange={(e) =>
-                  setFilter(
-                    "max_minutes",
-                    e.target.value ? Number(e.target.value) : null,
-                  )
-                }
-              />
-            </div>
-          </div>
-          <div className="button-row">
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setEditing(null)}
-            >
-              Cancel
-            </button>
-            <button className="primary" disabled={action.pending}>
-              {editing === "new" ? "Add frame" : "Save frame"}
-            </button>
-          </div>
-        </form>
+        <FrameForm
+          key={editing === "new" ? "new" : editing.id}
+          frame={editing === "new" ? null : editing}
+          teams={teams}
+          report={report}
+          heading={editing === "new" ? "New frame" : "Edit frame"}
+          onCancel={() => setEditing(null)}
+          onSaved={() => {
+            const added = editing === "new";
+            setEditing(null);
+            void load();
+            action.setOutcome({
+              ok: true,
+              text: added ? "Frame added." : "Frame saved.",
+            });
+          }}
+        />
       )}
       <OutcomeNote outcome={action.outcome} />
     </section>
@@ -758,12 +678,27 @@ function FramesEditor({ teams, report }: Props) {
 
 // ---- Places ------------------------------------------------------------------
 
-type PlaceDraft = { label: string; match: string; travel_minutes: number };
+type PlaceDraft = {
+  label: string;
+  match: string;
+  travel_minutes: number;
+  mode: TravelMode | null;
+  /** Minutes at rush hour; null: the same as usual. */
+  peak_minutes: number | null;
+};
 const blankPlace = (): PlaceDraft => ({
   label: "",
   match: "",
   travel_minutes: 20,
+  mode: null,
+  peak_minutes: null,
 });
+const MODE_LABELS: Record<TravelMode, string> = {
+  walk: "Walking",
+  cycle: "Cycling",
+  transit: "Public transport",
+  drive: "Driving",
+};
 
 /** Places and how long it takes to get there, for travel time around events. */
 function PlacesEditor({ report }: { report: (e: unknown) => void }) {
@@ -788,6 +723,8 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
       label: draft.label.trim(),
       match: draft.match.trim(),
       travel_minutes: draft.travel_minutes,
+      mode: draft.mode,
+      peak_minutes: draft.peak_minutes,
     };
     void action
       .run(async () => {
@@ -844,6 +781,9 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                 <small>
                   Matches “{p.match}” · {minutesLabel(p.travel_minutes)} to get
                   there
+                  {p.mode && ` · ${MODE_LABELS[p.mode]}`}
+                  {p.peak_minutes != null &&
+                    ` · ${minutesLabel(p.peak_minutes)} at rush hour`}
                 </small>
               </span>
               <button
@@ -854,6 +794,8 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                     label: p.label,
                     match: p.match,
                     travel_minutes: p.travel_minutes,
+                    mode: p.mode ?? null,
+                    peak_minutes: p.peak_minutes ?? null,
                   });
                   setEditing(p.id);
                 }}
@@ -911,6 +853,48 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                   setDraft({ ...draft, travel_minutes: Number(e.target.value) })
                 }
               />
+            </div>
+            <div className="settings-field">
+              <label htmlFor="place-mode">How you get there</label>
+              <select
+                id="place-mode"
+                value={draft.mode ?? ""}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    mode: (e.target.value || null) as TravelMode | null,
+                  })
+                }
+              >
+                <option value="">Not set</option>
+                {TRAVEL_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {MODE_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-field">
+              <label htmlFor="place-peak">At rush hour (min)</label>
+              <input
+                id="place-peak"
+                type="number"
+                min={0}
+                max={240}
+                placeholder="Same"
+                value={draft.peak_minutes ?? ""}
+                aria-describedby="place-peak-hint"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    peak_minutes:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              />
+              <small id="place-peak-hint" className="field-hint">
+                Weekdays 7–9 AM and 4–6 PM. Empty: the same as usual.
+              </small>
             </div>
           </div>
           <div className="button-row">

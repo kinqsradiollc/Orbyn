@@ -1,0 +1,11 @@
+/* Settings: a webhook's "event starting" lead time. Layout only. */
+.hook-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.hook-lead input {
+  width: 64px;
+}

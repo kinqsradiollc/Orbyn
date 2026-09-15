@@ -1,13 +1,43 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
-import { hasSystemPermission, statusHeadlines, type User } from "@orbyn/core";
+import {
+  hasSystemPermission,
+  statusHeadlines,
+  type PlannerPrefs,
+  type PlannerPrefsInput,
+  type User,
+} from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
+import { Chip, ChipRow } from "../components/Chip";
 import { Pill } from "../components/Pill";
+import { Segmented } from "../components/Segmented";
 import { client } from "../lib/api";
 import { disablePush, enablePush } from "../lib/push";
-import { colors, fonts } from "../theme";
+import {
+  colors,
+  fonts,
+  themed,
+  THEME_PREFERENCES,
+  useTheme,
+  type ThemePreference,
+} from "../theme";
 import { shared } from "../styles";
+
+/** Days before a due date to warn about a task with no time set aside. */
+const NOTICE_DAYS = [0, 1, 2, 3, 7];
+type NoticePrefs = { days: number; push: boolean; email: boolean };
+const noticePrefs = (p: PlannerPrefs): NoticePrefs => ({
+  days: p.deadline_notice_days ?? 1,
+  push: p.planner_notices?.push ?? true,
+  email: p.planner_notices?.email ?? false,
+});
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: "Automatic",
+  light: "Light",
+  dark: "Dark",
+};
 
 export function SettingsScreen({
   user,
@@ -22,6 +52,7 @@ export function SettingsScreen({
   onOpenPlanning,
   onOpenConnections,
   onOpenBooking,
+  onOpenTags,
 }: {
   user: User | null;
   busy: boolean;
@@ -35,9 +66,36 @@ export function SettingsScreen({
   onOpenPlanning: () => void;
   onOpenConnections: () => void;
   onOpenBooking: () => void;
+  onOpenTags: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
+  const theme = useTheme();
   const [statusHeadline, setStatusHeadline] = useState("");
+  const [notices, setNotices] = useState<NoticePrefs | null>(null);
+  /** Completing a task counts its blocks' past time as spent; null until loaded. */
+  const [countBlocks, setCountBlocks] = useState<boolean | null>(null);
+  const takePrefs = (p: PlannerPrefs) => {
+    setNotices(noticePrefs(p));
+    setCountBlocks(p.count_blocks_as_spent ?? false);
+  };
+  useEffect(() => {
+    let live = true;
+    client
+      .getPlannerPrefs()
+      .then((p) => {
+        if (!live) return;
+        setNotices(noticePrefs(p));
+        setCountBlocks(p.count_blocks_as_spent ?? false);
+      })
+      .catch(() => {
+        // Older servers have no planner notices; the controls stay hidden.
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const saveNotices = (input: PlannerPrefsInput) =>
+    act(async () => takePrefs(await client.updatePlannerPrefs(input)));
   useEffect(() => {
     let live = true;
     client
@@ -112,6 +170,13 @@ export function SettingsScreen({
         />
         <LinkRow
           divider
+          icon="tag"
+          title="Tags"
+          detail="Yours and your teams’"
+          onPress={onOpenTags}
+        />
+        <LinkRow
+          divider
           icon="calendar"
           title="Booking pages"
           detail="Let people book time with you"
@@ -123,6 +188,49 @@ export function SettingsScreen({
           title="Connections"
           detail="API keys, webhooks and calendar feed"
           onPress={onOpenConnections}
+        />
+      </View>
+
+      {countBlocks !== null && (
+        <>
+          <Text style={[shared.eyebrow, s.section]}>TIME TRACKING</Text>
+          <View style={shared.card}>
+            <View style={s.preference}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.prefTitle}>
+                  Count blocked time as worked when I complete a task
+                </Text>
+                <Text style={shared.small}>
+                  The time blocks you had for it, up to now, are added to its
+                  time spent. Each block counts once.
+                </Text>
+              </View>
+              <Switch
+                value={countBlocks}
+                disabled={busy}
+                trackColor={{ true: colors.accent }}
+                accessibilityLabel="Count blocked time as worked when I complete a task"
+                onValueChange={(value) =>
+                  void saveNotices({ count_blocks_as_spent: value })
+                }
+              />
+            </View>
+          </View>
+        </>
+      )}
+
+      <Text style={[shared.eyebrow, s.section]}>APPEARANCE</Text>
+      <View style={shared.card}>
+        <Text style={s.prefTitle}>Theme</Text>
+        <Text style={[shared.small, s.prefText]}>
+          Automatic follows your device’s light or dark setting.
+        </Text>
+        <Segmented
+          accessibilityLabel="Theme"
+          options={THEME_PREFERENCES}
+          labels={THEME_LABELS}
+          value={theme.preference}
+          onChange={theme.setPreference}
         />
       </View>
 
@@ -149,6 +257,55 @@ export function SettingsScreen({
             }
           />
         </View>
+        {notices && (
+          <>
+            <View style={s.divider} />
+            <Text style={s.prefTitle}>Planner notices</Text>
+            <Text style={[shared.small, s.prefText]}>
+              Work to roll forward, tasks at risk or due soon, and clashes. They
+              always show in your inbox.
+            </Text>
+            {(["push", "email"] as const).map((channel) => (
+              <View key={channel} style={[s.preference, { marginBottom: 10 }]}>
+                <Text style={[s.prefTitle, { flex: 1 }]}>
+                  {channel === "push" ? "Push" : "Email"}
+                </Text>
+                <Switch
+                  value={notices[channel]}
+                  disabled={busy}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel={`Planner notices by ${channel}`}
+                  onValueChange={(value) =>
+                    void saveNotices({ planner_notices: { [channel]: value } })
+                  }
+                />
+              </View>
+            ))}
+            <Text style={[s.prefTitle, { marginTop: 8 }]}>
+              Warn before a due date
+            </Text>
+            <Text style={[shared.small, s.prefText]}>
+              When a task has no time set aside yet.
+            </Text>
+            <ChipRow label="Days before a due date">
+              {[...new Set([...NOTICE_DAYS, notices.days])]
+                .sort((a, b) => a - b)
+                .map((n) => (
+                  <Chip
+                    key={n}
+                    label={
+                      n === 0 ? "Off" : `${n} day${n === 1 ? "" : "s"} before`
+                    }
+                    disabled={busy}
+                    selected={notices.days === n}
+                    onPress={() =>
+                      void saveNotices({ deadline_notice_days: n })
+                    }
+                  />
+                ))}
+            </ChipRow>
+          </>
+        )}
         <View style={s.divider} />
         <Text style={s.prefTitle}>Push notifications</Text>
         <Text style={[shared.small, s.prefText]}>
@@ -237,51 +394,57 @@ function LinkRow({
   );
 }
 
-const s = StyleSheet.create({
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rows: { padding: 0, overflow: "hidden" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-  },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  rowIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  account: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.display, fontSize: 20, color: colors.accent },
-  section: { marginTop: 8 },
-  preference: { flexDirection: "row", alignItems: "center", gap: 16 },
-  prefTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 3,
-  },
-  prefText: { marginBottom: 14 },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: 16,
-  },
-  signOut: { marginTop: 8 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rows: { padding: 0, overflow: "hidden" },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 18,
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    rowIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    account: { flexDirection: "row", alignItems: "center", gap: 14 },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontFamily: fonts.display,
+      fontSize: 20,
+      color: colors.accent,
+    },
+    section: { marginTop: 8 },
+    preference: { flexDirection: "row", alignItems: "center", gap: 16 },
+    prefTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 3,
+    },
+    prefText: { marginBottom: 14 },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginVertical: 16,
+    },
+    signOut: { marginTop: 8 },
+  }),
+);

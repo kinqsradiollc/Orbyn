@@ -1,5 +1,16 @@
 import { useState } from "react";
-import { Bell, CalendarCheck, CalendarClock, CalendarDays } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  FastForward,
+  Hourglass,
+  UserCheck,
+  Wand2,
+  type LucideIcon,
+} from "lucide-react";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { stagger } from "../../lib/motion";
@@ -9,22 +20,35 @@ type Props = {
   onRead: (notice: Notice) => void;
   /** Moves the clashing block in a "conflict" notice to the next free time. */
   onReschedule: (notice: Notice) => Promise<void>;
+  /** Plans unfinished blocks again and shows the plan in the calendar. */
+  onRollForward: (notice: Notice) => Promise<void>;
+  /** Opens the planner on a preview that includes the notice's task. */
+  onPlanIt: (notice: Notice) => void;
   onOpenCalendar: () => void;
+  /** Opens an item's details (the event in an "rsvp" notice). */
+  onOpenItem: (itemId: string) => void;
   /** Opens the bookings inbox on the booking in a "booking" notice's `ref`. */
   onOpenBooking: (bookingId: string) => void;
 };
 
-const ICONS = {
+const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   reminder: Bell,
   conflict: CalendarClock,
   booking: CalendarCheck,
-} as const;
+  rollforward: FastForward,
+  at_risk: AlertTriangle,
+  deadline: Hourglass,
+  rsvp: UserCheck,
+};
 
 export function NotificationsView({
   notices,
   onRead,
   onReschedule,
+  onRollForward,
+  onPlanIt,
   onOpenCalendar,
+  onOpenItem,
   onOpenBooking,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
@@ -38,6 +62,18 @@ export function NotificationsView({
           if (!n.read) onRead(n);
           onOpenBooking(id);
         };
+        // Answers to invitations point at the event.
+        const eventId = n.kind === "rsvp" ? n.item_id : undefined;
+        const openEvent = (id: string) => {
+          if (!n.read) onRead(n);
+          onOpenItem(id);
+        };
+        /** Runs a notice's action once, marking it read. */
+        const act = (fn: () => Promise<void>) => {
+          setPending(n.id);
+          if (!n.read) onRead(n);
+          void fn().finally(() => setPending(null));
+        };
         return (
           <div
             className={"notice fade-up stagger " + (n.read ? "read" : "")}
@@ -46,7 +82,13 @@ export function NotificationsView({
           >
             <button
               className="notice-main"
-              onClick={() => (bookingId ? openBooking(bookingId) : onRead(n))}
+              onClick={() =>
+                bookingId
+                  ? openBooking(bookingId)
+                  : eventId
+                    ? openEvent(eventId)
+                    : onRead(n)
+              }
             >
               <Icon size={19} />
               <span>
@@ -70,6 +112,35 @@ export function NotificationsView({
               >
                 <CalendarClock size={14} />{" "}
                 {pending === n.id ? "Moving…" : "Reschedule"}
+              </button>
+            )}
+            {n.kind === "rollforward" && (
+              <button
+                className="secondary notice-action"
+                disabled={pending === n.id}
+                onClick={() => act(() => onRollForward(n))}
+              >
+                <FastForward size={14} />{" "}
+                {pending === n.id ? "Planning…" : "Roll forward"}
+              </button>
+            )}
+            {(n.kind === "at_risk" || n.kind === "deadline") && n.item_id && (
+              <button
+                className="secondary notice-action"
+                onClick={() => {
+                  if (!n.read) onRead(n);
+                  onPlanIt(n);
+                }}
+              >
+                <Wand2 size={14} /> Plan it
+              </button>
+            )}
+            {eventId && (
+              <button
+                className="secondary notice-action"
+                onClick={() => openEvent(eventId)}
+              >
+                <UserCheck size={14} /> Open event
               </button>
             )}
             {bookingId && (
@@ -98,7 +169,7 @@ export function NotificationsView({
         <EmptyState
           icon={Bell}
           title="You’re all caught up."
-          body="Reminders, clashes and new bookings will appear here."
+          body="Reminders, answers to invitations, clashes, planner heads-ups and new bookings will appear here."
         />
       )}
     </section>

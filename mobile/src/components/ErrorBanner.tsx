@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 import { Icon } from "./Icon";
 import { FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 
 /**
  * Inline error message. Renders nothing when there is no error; tap to dismiss
@@ -35,22 +35,24 @@ export function ErrorBanner({
   );
 }
 
-const s = StyleSheet.create({
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radii.input,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  text: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.danger,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    banner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.dangerSoft,
+      borderRadius: radii.input,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      marginBottom: 16,
+    },
+    text: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      lineHeight: 19,
+      color: colors.danger,
+    },
+  }),
+);
