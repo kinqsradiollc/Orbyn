@@ -109,7 +109,14 @@ export type Notice = {
 };
 
 /** An AI plan awaiting user approval. `id` is the proposal id to apply. */
-export type Proposal = AgentReply & { id: string };
+export type Proposal = AgentReply & {
+  id: string;
+  /**
+   * Quick replies the user can tap, such as the choices in a clarifying
+   * question ("Which Dentist: Tuesday 9am or Friday 2pm?").
+   */
+  follow_ups?: string[];
+};
 
 /** A status page component's current condition. */
 export type ServiceState = "operational" | "degraded" | "outage" | "unknown";

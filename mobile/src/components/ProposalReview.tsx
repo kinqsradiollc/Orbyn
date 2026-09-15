@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   dateLabel,
   parseRichText,
@@ -12,7 +12,7 @@ import {
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
-import { FadeIn } from "../motion";
+import { FadeIn, PressableScale } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
@@ -41,7 +41,68 @@ function Inlines({ parts }: { parts: RichInline[] }) {
   );
 }
 
-/** The reply as headings, paragraphs and lists (shared parser with web). */
+const plainText = (parts: RichInline[]) => parts.map((p) => p.text).join("");
+
+/** Column width once a table has too many columns to fit and scrolls sideways. */
+const WIDE_COLUMN = 128;
+
+/** A Markdown table as a bordered grid of equal-width cells. */
+function Table({
+  header,
+  rows,
+}: {
+  header: RichInline[][];
+  rows: RichInline[][][];
+}) {
+  const columns = header.map(plainText);
+  const wide = header.length > 3;
+  const row = (cells: RichInline[][], head: boolean, r: number) => (
+    <View
+      key={head ? "head" : r}
+      style={[s.tableRow, head ? s.tableHead : r % 2 === 1 && s.tableZebra]}
+      accessible
+      accessibilityRole={head ? "header" : undefined}
+      accessibilityLabel={
+        head
+          ? `Table columns: ${columns.join(", ")}`
+          : `Row ${r + 1}: ` +
+            cells
+              .map(
+                (cell, c) =>
+                  `${columns[c] || `Column ${c + 1}`}: ${plainText(cell)}`,
+              )
+              .join(", ")
+      }
+    >
+      {cells.map((cell, c) => (
+        <View key={c} style={[s.tableCell, c > 0 && s.tableDivider]}>
+          <Text style={[s.tableText, head && s.tableHeadText]}>
+            <Inlines parts={cell} />
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+  const grid = (
+    <View style={[s.table, wide && { width: header.length * WIDE_COLUMN }]}>
+      {row(header, true, 0)}
+      {rows.map((cells, r) => row(cells, false, r))}
+    </View>
+  );
+  return wide ? (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator
+      accessibilityLabel="Table, scrolls sideways"
+    >
+      {grid}
+    </ScrollView>
+  ) : (
+    grid
+  );
+}
+
+/** The reply as headings, paragraphs, lists and tables (shared parser with web). */
 function SummaryText({ text }: { text: string }) {
   return (
     <View style={s.summary}>
@@ -50,6 +111,8 @@ function SummaryText({ text }: { text: string }) {
           <Text key={n} style={s.heading} accessibilityRole="header">
             <Inlines parts={block.inlines} />
           </Text>
+        ) : block.type === "table" ? (
+          <Table key={n} header={block.header} rows={block.rows} />
         ) : block.type === "list" ? (
           <View key={n} style={s.list}>
             {block.items.map((item, m) => (
@@ -178,6 +241,7 @@ export function ProposalReview({
   state,
   onApprove,
   onDiscard,
+  onFollowUp,
 }: {
   proposal: Proposal;
   /** Current planner items, used to name items an action refers to by id. */
@@ -189,9 +253,12 @@ export function ProposalReview({
   state?: TurnState;
   onApprove: () => void;
   onDiscard: () => void;
+  /** Sends a suggested quick reply; only the latest reply gets one. */
+  onFollowUp?: (text: string) => void;
 }) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
+  const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
   return (
     <View>
       <SummaryText text={proposal.summary} />
@@ -252,6 +319,28 @@ export function ProposalReview({
         <FadeIn style={s.status}>
           <Icon name="x" size={14} color={colors.muted} />
           <Text style={s.statusText}>Discarded</Text>
+        </FadeIn>
+      )}
+      {onFollowUp && followUps.length > 0 && (
+        <FadeIn style={s.followUps}>
+          {followUps.map((text, n) => (
+            <PressableScale
+              key={n}
+              accessibilityRole="button"
+              accessibilityLabel={text}
+              accessibilityHint="Sends this as your next message"
+              accessibilityState={{ disabled: busy }}
+              disabled={busy}
+              onPress={() => onFollowUp(text)}
+              style={({ pressed }) => [
+                s.followUp,
+                pressed && s.followUpPressed,
+                busy && { opacity: 0.5 },
+              ]}
+            >
+              <Text style={s.followUpText}>{text}</Text>
+            </PressableScale>
+          ))}
         </FadeIn>
       )}
     </View>
@@ -318,4 +407,42 @@ const s = StyleSheet.create({
   buttons: { marginTop: 12 },
   status: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
   statusText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.muted },
+  table: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.input,
+    overflow: "hidden",
+    backgroundColor: colors.background,
+  },
+  tableRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  tableHead: { borderTopWidth: 0, backgroundColor: colors.surfaceMuted },
+  tableZebra: { backgroundColor: colors.surface },
+  tableCell: { flex: 1, paddingHorizontal: 8, paddingVertical: 6 },
+  tableDivider: { borderLeftWidth: 1, borderLeftColor: colors.border },
+  tableText: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSoft,
+  },
+  tableHeadText: { fontFamily: fonts.semibold, color: colors.text },
+  followUps: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
+  followUp: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.softBorder,
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  followUpPressed: { backgroundColor: colors.accentSoft },
+  followUpText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.accent,
+  },
 });

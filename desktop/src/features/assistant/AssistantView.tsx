@@ -18,6 +18,10 @@ export function AssistantView({ items, busy, assistant }: Props) {
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const locked = busy || thinking;
+  // Quick replies only make sense on the newest assistant reply.
+  const latestReplyId = [...turns]
+    .reverse()
+    .find((t) => t.role === "assistant")?.id;
 
   // Keep the newest message in view by scrolling the conversation itself,
   // never the page, so the header and composer stay where they are.
@@ -117,6 +121,11 @@ export function AssistantView({ items, busy, assistant }: Props) {
                   state={turn.state}
                   onApply={() => void apply(turn.id)}
                   onDismiss={() => dismiss(turn.id)}
+                  onFollowUp={
+                    turn.id === latestReplyId
+                      ? (text) => void ask(text)
+                      : undefined
+                  }
                 />
               </div>
             </div>

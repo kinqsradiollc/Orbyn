@@ -48,3 +48,28 @@ test("earlier proposals are summarised for the model with their outcome", () => 
     /discarded them, so nothing changed/,
   );
 });
+
+test("Markdown tables become a header and rows", () => {
+  const blocks = parseRichText(
+    "Your week:\n\n| Day | Plan |\n|---|:---:|\n| **Fri** | Call Mum |\n| Sat | Gym | extra |\n\nThat's it.",
+  );
+  assert.deepEqual(
+    blocks.map((b) => b.type),
+    ["paragraph", "table", "paragraph"],
+  );
+  const table = blocks[1] as {
+    header: { text: string }[][];
+    rows: { text: string; bold?: boolean }[][][];
+  };
+  assert.deepEqual(
+    table.header.map((c) => c[0].text),
+    ["Day", "Plan"],
+  );
+  assert.equal(table.rows.length, 2);
+  assert.deepEqual(table.rows[0][0][0], { text: "Fri", bold: true });
+  assert.equal(
+    table.rows[1].length,
+    2,
+    "extra cells are trimmed to the header",
+  );
+});

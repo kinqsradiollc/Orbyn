@@ -1,53 +1,122 @@
 import type { FastifyInstance } from "fastify";
-import { actionSchema, chatRequest, fail } from "@orbyn/core";
-import { pool, reader, transaction } from "../../db/pool.js";
+import { actionSchema, chatRequest, fail, type ChatTurn } from "@orbyn/core";
+import { pool, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { audit } from "../../lib/audit.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
-import { askProvider } from "./provider.js";
 import { pruneActions } from "./guards.js";
-import { modelSnapshot } from "./snapshot.js";
 import { resolveAi } from "./providers/resolve.js";
+import { runAgent } from "./agent/loop.js";
+import { overview, related, type AgentContext } from "./agent/tools.js";
 
 /**
- * Propose-then-approve assistant. `/ai/chat` stores a proposal; nothing changes
+ * The request that decides whether changes are allowed. A short reply to the
+ * assistant's own question ("the second one") carries the request it answers.
+ */
+function intentOf(message: string, history: ChatTurn[]) {
+  const last = history.at(-1);
+  const asked = history.at(-2);
+  return last?.role === "assistant" &&
+    /\?\s*$/.test(last.content.trim()) &&
+    asked?.role === "user"
+    ? `${asked.content}\n${message}`
+    : message;
+}
+
+/**
+ * Propose-then-approve assistant. `/ai/chat` runs the agent (reads scoped to
+ * the user's own and team items) and stores what it proposes; nothing changes
  * until the user calls `/ai/proposals/:id/apply`, which runs atomically.
  */
 export async function aiRoutes(app: FastifyInstance) {
   app.post("/ai/chat", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const d = chatRequest.parse(r.body);
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: d.timezone });
+    } catch {
+      fail(422, "Unknown timezone");
+    }
     const ai = await resolveAi();
     if (!ai)
       fail(
         503,
         "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
-    const items = (
-      await reader(r.headers).query(
-        `SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id=i.team_id
-         WHERE ${VISIBLE_ITEMS} ORDER BY i.updated_at DESC LIMIT 100`,
-        [u.id],
-      )
-    ).rows;
-    const response = await askProvider(
-      ai,
-      d.message,
-      d.timezone,
-      modelSnapshot(items, d.timezone),
-      d.history,
-      r.log,
+    const ctx: AgentContext = {
+      user: { id: u.id, role: u.role },
+      timezone: d.timezone,
+      intentText: intentOf(d.message, d.history),
+      actions: [],
+      clarification: null,
+    };
+    let result;
+    try {
+      result = await runAgent(
+        ai,
+        ctx,
+        d.message,
+        d.history,
+        {
+          ...(await overview(ctx)),
+          matching_request: await related(ctx, d.message),
+        },
+        r.log,
+      );
+    } catch (error) {
+      // Content is never logged: it contains the user's planner.
+      r.log.error(
+        {
+          event: "ai_provider_failed",
+          reason: (error as { reason?: string }).reason ?? "unexpected",
+          provider: ai.kind,
+        },
+        "AI provider failed",
+      );
+      fail(502, "The AI provider could not answer. Please try again.");
+    }
+    let actions = result.actions;
+    if (result.legacy) {
+      // A reply in the old single-JSON format: keep only edits of items this
+      // user can see and nothing the request didn't ask for.
+      const ids = actions.flatMap((a) => (a.item_id ? [a.item_id] : []));
+      const titles = actions.flatMap((a) =>
+        a.operation === "create" && a.data ? [a.data.title.toLowerCase()] : [],
+      );
+      const items = (
+        await pool.query(
+          `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+             AND (i.id = ANY($2::uuid[]) OR lower(i.title) = ANY($3))`,
+          [u.id, ids, titles],
+        )
+      ).rows;
+      actions = pruneActions(actions, items, ctx.intentText).slice(0, 20);
+    }
+    r.log.info(
+      {
+        event: "ai_agent_turn",
+        provider: ai.kind,
+        steps: result.steps,
+        actions: actions.length,
+        partial: result.partial,
+        legacy: result.legacy,
+      },
+      "AI agent turn",
     );
-    const actions = pruneActions(response.actions, items, d.message);
     const p = (
       await pool.query(
         "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
         [u.id, JSON.stringify(actions)],
       )
     ).rows[0];
-    return { id: p.id, summary: response.summary, actions };
+    return {
+      id: p.id,
+      summary: result.summary,
+      actions,
+      follow_ups: result.follow_ups,
+    };
   });
 
   app.post("/ai/proposals/:id/apply", async (r) => {
