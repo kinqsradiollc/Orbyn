@@ -102,6 +102,10 @@ export function TeamTime({
   const [title, setTitle] = useState("Team meeting");
   const [slots, setSlots] = useState<MeetingSlot[] | null>(null);
   const [booked, setBooked] = useState("");
+  /** The most people a hand-picked search can ask about (the server's limit). */
+  const MAX_PEOPLE = 50;
+  const everyone = people.length === members.length;
+  const tooMany = !everyone && people.length > MAX_PEOPLE;
 
   const days = Array.from({ length: 7 }, (_, n) => dayStart(n, weekStart));
   const weekEnd = dayStart(7, weekStart);
@@ -154,8 +158,10 @@ export function TeamTime({
       setPinned(prefs.pinned_user_ids);
     });
 
-  const find = () =>
-    run(async () => {
+  const find = () => {
+    if (tooMany)
+      return setError(`Pick up to ${MAX_PEOPLE} people, or everyone.`);
+    return run(async () => {
       // Start on the next quarter hour, like the web.
       const from = new Date();
       from.setMinutes(Math.ceil(from.getMinutes() / 15) * 15, 0, 0);
@@ -163,12 +169,14 @@ export function TeamTime({
         from: from.toISOString(),
         to: new Date(from.getTime() + 7 * DAY_MS).toISOString(),
         duration: length,
-        user_ids: people,
+        // Everyone: the server asks about every member by default.
+        ...(everyone ? {} : { user_ids: people }),
       });
       animateLayout();
       setSlots(found.slice(0, 8));
       setBooked("");
     });
+  };
 
   const meetingTitle = () => title.trim() || "Team meeting";
 
@@ -417,6 +425,15 @@ export function TeamTime({
             );
           })}
         </ChipRow>
+        {tooMany && (
+          <Text
+            style={[shared.small, { color: colors.danger, marginTop: 8 }]}
+            accessibilityLiveRegion="polite"
+          >
+            Pick up to {MAX_PEOPLE} people, or everyone ({people.length}{" "}
+            picked).
+          </Text>
+        )}
         <Text style={[shared.label, s.labelTop]}>How long</Text>
         <ChipRow label="Meeting length">
           {LENGTHS.map((l) => (

@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   BREAK_LEVELS,
   dateLabel,
+  localDateKey,
   type BreakLevel,
   type Plan,
   type PlannedBlock,
@@ -168,7 +169,9 @@ function Body({
   const { busy, error, setError, run } = useRun();
   // A seed plan (moved forward, or from the calendar) starts from its options.
   const o = seed?.options;
-  const today = dayKeyOf(new Date());
+  /** The planner's saved zone: the server reads start_date as a day there. */
+  const [zone, setZone] = useState<string | null>(null);
+  const today = localDateKey(new Date(), zone ?? deviceTimeZone());
   const [days, setDays] = useState<(typeof DAYS)[number]>(
     o ? dayOption(o.days) : "1",
   );
@@ -178,9 +181,11 @@ function Body({
     o?.break_level ?? "normal",
   );
   const [useFrames, setUseFrames] = useState(o?.use_frames ?? true);
-  const [startDate, setStartDate] = useState(
-    o?.start_date && o.start_date >= today ? o.start_date : today,
+  /** A chosen first day, or null for today (in the planner's zone). */
+  const [startDate, setStartDate] = useState<string | null>(
+    o?.start_date && o.start_date > today ? o.start_date : null,
   );
+  const start = startDate && startDate > today ? startDate : today;
   const [scope, setScopeState] = useState<PlanScope>(
     seed?.options?.scope ?? EVERYTHING,
   );
@@ -210,12 +215,14 @@ function Body({
 
   // Start from the saved planning settings.
   useEffect(() => {
-    if (seed) return;
     let alive = true;
     client
       .getPlannerPrefs()
       .then((p) => {
         if (!alive) return;
+        setZone(p.timezone);
+        // A seed plan keeps its own options.
+        if (seed) return;
         setPad(p.pad_percent);
         setBreakLevel(p.break_level);
         setDays(dayOption(p.horizon_days));
@@ -254,7 +261,7 @@ function Body({
   const preview = () =>
     run(async () => {
       const next = await client.previewPlan({
-        start_date: startDate,
+        start_date: start,
         days: Number(days),
         pad_percent: pad,
         split,
@@ -397,7 +404,7 @@ function Body({
           <Field label="Start on">
             <DateField
               label="First day to plan"
-              value={startDate}
+              value={start}
               minimumDate={new Date()}
               onChange={(day) => day && setStartDate(day)}
             />
@@ -407,7 +414,7 @@ function Body({
             wrap
             accessibilityLabel="Days to plan"
             options={DAYS}
-            labels={startDate === today ? DAY_LABELS : undefined}
+            labels={start === today ? DAY_LABELS : undefined}
             value={days}
             onChange={setDays}
           />

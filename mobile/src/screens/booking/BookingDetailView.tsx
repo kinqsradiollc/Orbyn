@@ -152,7 +152,11 @@ export function BookingDetailView({
             </Text>
           )}
           <Detail label="Length" value={minutesLabel(lengthOf(b))} />
-          <Detail label="Booking page" value={b.page_title} />
+          {/* Bookings from an open invite have no page. */}
+          <Detail
+            label={b.page_id ? "Booking page" : "From"}
+            value={b.page_title ?? "Open invite"}
+          />
           <Detail label="Booked" value={dateLabel(b.created_at)} />
           {!!b.location && <Detail label="Location" value={b.location} />}
           {!!b.meeting_url && (

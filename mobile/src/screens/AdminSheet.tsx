@@ -239,6 +239,8 @@ function Users({
           placeholderTextColor={colors.faint}
           value={search}
           onChangeText={setSearch}
+          // The server searches up to 100 characters.
+          maxLength={100}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
