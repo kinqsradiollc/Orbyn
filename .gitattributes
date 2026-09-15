@@ -1,0 +1,16 @@
+# Keep Unix line endings in every clone, including Windows ones where git's
+# core.autocrlf would otherwise convert them. Scripts and configs run inside
+# Linux containers: a carriage return after "#!/bin/sh" makes the kernel look
+# for "/bin/sh\r" and fail with "exec ...: no such file or directory".
+* text=auto eol=lf
+
+# Binary assets are never converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

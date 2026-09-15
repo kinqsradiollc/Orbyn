@@ -92,7 +92,10 @@ services:
   postgres-replica:
     image: postgres:17-alpine
     profiles: [replica]
-    entrypoint: ["/bin/sh", "/usr/local/bin/replica-entrypoint.sh"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /usr/local/bin/replica-entrypoint.sh > /tmp/replica-entrypoint.sh && exec /bin/sh /tmp/replica-entrypoint.sh
     environment:
       PGUSER: ${POSTGRES_USER:-orbyn}
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -166,7 +169,11 @@ services:
   # Single entry point for clients; routes paths to services.
   gateway:
     image: nginxinc/nginx-unprivileged:1.28-alpine
-    entrypoint: ["/bin/sh", "/etc/orbyn-gateway/entrypoint.sh"]
+    # Strips Windows line endings from the mounted script before running it.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /etc/orbyn-gateway/entrypoint.sh > /tmp/orbyn-gateway.sh && exec /bin/sh /tmp/orbyn-gateway.sh
     environment:
       # Instances per service ("host:port ..."); point these at other machines
       # to run services elsewhere. See gateway/entrypoint.sh.
