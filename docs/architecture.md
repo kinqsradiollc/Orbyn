@@ -202,10 +202,12 @@ Matilda ignores native tools, so providers flagged `structuredOutput` use a JSON
 Guards on proposals and the older format:
 
 - **Changes:** proposal tools only work when the latest message asks for a change: a change word,
-  or a plan with a day or time that is not a question.
+  a plan with a day or time, or a polite request ("can you move…"). Questions ("what's the
+  launch plan about?") never count, even when they contain a change word.
 - **Deletions:** only when the message asks to delete, remove or cancel something.
-- **Clarifications:** a short reply to the assistant's own question counts together with the
-  question it answers.
+- **Clarifications:** a turn that ends in a question carries no proposals. Questions about tools,
+  or about which date "tomorrow" is, are refused. A short reply to the assistant's own question
+  counts together with the question it answers.
 - **Older format:** a provider that still replies with a single `{summary, actions}` object keeps
   working. Those actions are vetted as before: only items the user can see, no edits that change
   nothing, no duplicates.

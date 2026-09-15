@@ -370,7 +370,7 @@ const JSON_PROTOCOL_NOTE = (tools: ToolSpec[]) =>
   `Reply with ONE JSON object and nothing else. It has one field per tool, plus "answer".
 - To use tools: fill in the field of each tool to run now (its arguments as an object, or true for a tool without arguments), leave the other tool fields null (false for tools without arguments), and set "answer" to null.
 - To reply to the user: leave every tool field null or false, and put your reply in "answer" as a list of Markdown lines.
-For example: {"search_items": {"query": "dentist"}, "get_overview": false, "propose_create": null, ..., "answer": null}
+Shape (placeholders, not data): {"search_items": {"query": "<words from the request>"}, "propose_create": null, ..., "answer": null}
 Tools:
 ${tools
   .map(
