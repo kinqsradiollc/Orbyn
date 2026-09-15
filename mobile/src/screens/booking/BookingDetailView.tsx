@@ -16,7 +16,7 @@ import { Pill } from "../../components/Pill";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
-import { deviceTimeZone, slotLabel } from "../../lib/planning";
+import { deviceTimeZone, minutesLabel, slotLabel } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { animateLayout } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
@@ -28,6 +28,7 @@ import {
   eventActor,
   inZone,
   isOpen,
+  lengthOf,
 } from "./helpers";
 import { RescheduleSlots } from "./RescheduleSlots";
 import { SwitchRow, bookingStyles as bs } from "./ui";
@@ -97,7 +98,6 @@ export function BookingDetailView({
     );
 
   const b = booking;
-  const page = pages?.find((p) => p.id === b.page_id);
   const status = STATUS[b.status];
   const open = isOpen(b);
   const waiting = b.status === "awaiting_approval" && open;
@@ -126,7 +126,15 @@ export function BookingDetailView({
           <View style={s.head}>
             <View style={{ flex: 1 }}>
               <Text style={shared.sectionTitle}>{b.name}</Text>
-              <Text selectable style={[shared.body, s.email]}>
+              <Text
+                selectable
+                style={[s.link, s.email]}
+                accessibilityRole="link"
+                accessibilityHint="Writes them an email"
+                onPress={() =>
+                  void Linking.openURL(`mailto:${b.email}`).catch(() => {})
+                }
+              >
                 {b.email}
               </Text>
             </View>
@@ -143,7 +151,9 @@ export function BookingDetailView({
               {theirTime} for them ({b.timezone})
             </Text>
           )}
+          <Detail label="Length" value={minutesLabel(lengthOf(b))} />
           <Detail label="Booking page" value={b.page_title} />
+          <Detail label="Booked" value={dateLabel(b.created_at)} />
           {!!b.location && <Detail label="Location" value={b.location} />}
           {!!b.meeting_url && (
             <View style={s.detail}>
@@ -277,7 +287,6 @@ export function BookingDetailView({
                     <View style={s.panel}>
                       <RescheduleSlots
                         booking={b}
-                        page={page}
                         busy={busy}
                         onPick={(startAt) =>
                           void act(() =>

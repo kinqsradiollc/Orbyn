@@ -78,6 +78,7 @@ export function BookingSheet({
     >
       {top.kind === "home" ? (
         <BookingsHome
+          user={user}
           filters={filters}
           onFilters={patchFilters}
           pages={pages}

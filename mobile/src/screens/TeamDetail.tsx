@@ -194,7 +194,12 @@ export function TeamDetailPage({
         </View>
         <Text style={[shared.subtitle, s.gap]}>
           {detail.member_count} member{detail.member_count === 1 ? "" : "s"} ·{" "}
-          {detail.item_count} plan{detail.item_count === 1 ? "" : "s"}
+          {detail.item_count} plan{detail.item_count === 1 ? "" : "s"} · created{" "}
+          {new Date(detail.created_at).toLocaleDateString([], {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
         </Text>
 
         {!detail.role && (
@@ -202,6 +207,14 @@ export function TeamDetailPage({
             <Text style={shared.body}>
               You’re managing this team as a system admin. Its plans stay
               private to members.
+            </Text>
+          </View>
+        )}
+        {!!detail.role && canRead && !canWrite && (
+          <View style={shared.softCard}>
+            <Text style={shared.body}>
+              View only: you’re a viewer in {detail.name}. You can see its plans
+              but not change them.
             </Text>
           </View>
         )}
@@ -287,12 +300,22 @@ export function TeamDetailPage({
                         labels={TEAM_ROLE_LABELS}
                         value={m.role}
                         onChange={(role) => {
-                          if (role !== m.role)
+                          if (role === m.role) return;
+                          const change = () =>
                             void run(() =>
                               client.updateTeamMember(teamId, m.user_id, {
                                 role,
                               }),
                             );
+                          if (!me) return change();
+                          Alert.alert(
+                            `Change your own role to ${TEAM_ROLE_LABELS[role]}?`,
+                            "You may lose access to some controls.",
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              { text: "Change role", onPress: change },
+                            ],
+                          );
                         }}
                       />
                     )}
@@ -358,6 +381,7 @@ export function TeamDetailPage({
             members={detail.members}
             userId={user?.id}
             canWrite={canWrite}
+            onOpenItem={onOpenItem}
             onCreated={() =>
               void load(true)
                 .then(onChanged)

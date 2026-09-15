@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -23,29 +24,44 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { Field, NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";
 import { sheetStyles } from "../../components/Sheet";
+import { SmallAction } from "../../components/SmallAction";
 import { client, webOrigin } from "../../lib/api";
 import {
   LIST_COLORS,
+  deviceTimeZone,
   minutesLabel,
   parseMinutes,
   shareText,
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { animateLayout } from "../../motion";
-import { colors, fonts, themed } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
-import { AvailabilityEditor, type OverrideDraft } from "./AvailabilityEditor";
+import {
+  AvailabilityEditor,
+  type CustomWeek,
+  type OverrideDraft,
+} from "./AvailabilityEditor";
 import {
   BUFFERS,
   DEFAULT_EVENT_TITLE,
+  DEFAULT_WEEK,
   DURATIONS,
   HEX,
+  MAX_BUFFER,
+  MAX_CONFIRMATION,
+  MAX_HOSTS,
+  MAX_NOTICE,
+  MEETING_URL,
   NOTICE,
+  PLACEHOLDERS,
+  SLUG,
   bookingLink,
   eventTitlePreview,
   newKey,
   questionId,
   rangesValid,
+  readableAccent,
   slugify,
   withValue,
 } from "./helpers";
@@ -55,10 +71,22 @@ import {
   questionProblem,
   type QuestionDraft,
 } from "./QuestionsEditor";
-import { Section, SwitchRow, bookingStyles as bs } from "./ui";
+import { PresetMinutes, Section, SwitchRow, bookingStyles as bs } from "./ui";
+
+type SectionId =
+  | "basics"
+  | "availability"
+  | "scheduling"
+  | "questions"
+  | "confirmation"
+  | "colour"
+  | "cohosts";
 
 const overrideDrafts = (page: BookingPage | null): OverrideDraft[] =>
   (page?.date_overrides ?? []).map((o) => ({ key: newKey(), ...o }));
+
+const whole = (n: number, min: number, max: number) =>
+  Number.isInteger(n) && n >= min && n <= max;
 
 /** "Every 15m · 10m before, 5m after · 4 hours’ notice". */
 function schedulingSummary(p: {
@@ -108,6 +136,7 @@ export function PageEditor({
   const [description, setDescription] = useState(page?.description ?? "");
   const [durations, setDurations] = useState<number[]>(page?.durations ?? [30]);
   const [windowDays, setWindowDays] = useState(String(page?.window_days ?? 14));
+  // NaN while a custom field is empty, so Save can say what's missing.
   const [notice, setNotice] = useState(page?.min_notice_minutes ?? 240);
   const [before, setBefore] = useState(page?.buffer_before_minutes ?? 0);
   const [after, setAfter] = useState(page?.buffer_after_minutes ?? 0);
@@ -126,6 +155,15 @@ export function PageEditor({
   const [availability, setAvailability] = useState<BookingAvailability>(
     page?.availability ?? { mode: "working_hours" },
   );
+  // The custom week survives a switch to working hours and back.
+  const [kept, setKept] = useState<CustomWeek>(() =>
+    page?.availability.mode === "custom"
+      ? {
+          timezone: page.availability.timezone,
+          weekly: page.availability.weekly,
+        }
+      : { timezone: deviceTimeZone(), weekly: DEFAULT_WEEK },
+  );
   const [overrides, setOverrides] = useState(() => overrideDrafts(page));
   const [questions, setQuestions] = useState<QuestionDraft[]>(() =>
     (page?.questions ?? []).map(draftOf),
@@ -139,12 +177,20 @@ export function PageEditor({
     page?.confirmation_message ?? "",
   );
   const [color, setColor] = useState(page?.color ?? LIST_COLORS[0]);
+  // The page's owner is always a host; everyone else is a co-host.
+  const ownerId = saved?.owner_id ?? user?.id;
+  const isOwner = !!ownerId && ownerId === user?.id;
   const [hosts, setHosts] = useState<{ user_id: string; required: boolean }[]>(
     (page?.hosts ?? [])
-      .filter((h) => h.user_id !== user?.id)
+      .filter((h) => h.user_id !== page?.owner_id)
       .map((h) => ({ user_id: h.user_id, required: h.required })),
   );
   const [people, setPeople] = useState<TeamMember[]>([]);
+  const [openIds, setOpenIds] = useState<SectionId[]>(["basics"]);
+  const [tried, setTried] = useState(false);
+  const scroller = useRef<ScrollView>(null);
+  const columnY = useRef(0);
+  const offsets = useRef<Partial<Record<SectionId, number>>>({});
 
   // Teammates who can co-host, from every team you're in.
   const teamIds = teams.map((t) => t.id).join(",");
@@ -157,7 +203,7 @@ export function PageEditor({
         const seen = new Map<string, TeamMember>();
         for (const d of details)
           for (const m of d?.members ?? [])
-            if (m.user_id !== user?.id) seen.set(m.user_id, m);
+            if (m.user_id !== ownerId) seen.set(m.user_id, m);
         setPeople(
           [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
         );
@@ -166,38 +212,89 @@ export function PageEditor({
     return () => {
       alive = false;
     };
-  }, [teamIds, user?.id]);
+  }, [teamIds, ownerId]);
+
+  const changeAvailability = (next: BookingAvailability) => {
+    if (next.mode === "custom")
+      setKept({ timezone: next.timezone, weekly: next.weekly });
+    setAvailability(next);
+  };
 
   const custom = availability.mode === "custom" ? availability : null;
   const dates = overrides.map((o) => o.date);
   const days = parseMinutes(windowDays);
   const perDay = parseMinutes(maxPerDay);
   const perWeek = parseMinutes(maxPerWeek);
-  // Most mistakes are caught here so Save can say what's wrong.
-  const problem = !title.trim()
-    ? "Give the page a title."
-    : slug.trim().length < 3
-      ? "Use at least three characters for the link name."
-      : days === null || days < 1 || days > 90
-        ? "Bookable days ahead is 1 to 90."
-        : perDay !== null && (perDay < 1 || perDay > 50)
-          ? "Bookings a day is 1 to 50, or empty."
-          : perWeek !== null && (perWeek < 1 || perWeek > 200)
-            ? "Bookings a week is 1 to 200, or empty."
-            : custom && !isTimeZone(custom.timezone.trim())
-              ? "Enter a time zone like Europe/London."
-              : custom && !rangesValid(custom.weekly)
-                ? "End each weekly range after it starts."
-                : new Set(dates).size !== dates.length
-                  ? "List each date with different hours once."
-                  : !overrides.every((o) => rangesValid(o.hours))
-                    ? "End each range on your dates after it starts."
-                    : questions.map(questionProblem).find(Boolean) ||
-                      (!eventTitle.trim()
-                        ? "Give calendar events a title."
-                        : !HEX.test(color)
-                          ? "Colours look like #376c51."
-                          : "");
+  const cleanSlug = slug.trim();
+  /** The first thing to fix, in the order the sections are shown. */
+  const findProblem = (): [SectionId, string] | null => {
+    if (!title.trim()) return ["basics", "Give the page a title."];
+    if (cleanSlug.length < 3 || cleanSlug.length > 60)
+      return ["basics", "Use 3 to 60 characters for the link name."];
+    if (!SLUG.test(cleanSlug))
+      return [
+        "basics",
+        "Link names use lowercase letters and numbers, with single dashes between words.",
+      ];
+    if (meetingUrl.trim() && !MEETING_URL.test(meetingUrl.trim()))
+      return ["basics", "Meeting links start with https://."];
+    if (custom && !isTimeZone(custom.timezone.trim()))
+      return ["availability", "Pick a time zone for your hours."];
+    if (custom && !custom.weekly.length)
+      return ["availability", "Add some hours, or use your working hours."];
+    if (custom && !rangesValid(custom.weekly))
+      return ["availability", "End each weekly range after it starts."];
+    if (new Set(dates).size !== dates.length)
+      return ["availability", "List each date with different hours once."];
+    if (!overrides.every((o) => rangesValid(o.hours)))
+      return ["availability", "End each range on your dates after it starts."];
+    if (days === null || days < 1 || days > 90)
+      return ["scheduling", "Bookable days ahead is 1 to 90."];
+    if (!whole(notice, 0, MAX_NOTICE))
+      return [
+        "scheduling",
+        `Notice is 0 to ${MAX_NOTICE} minutes (two weeks).`,
+      ];
+    if (!whole(before, 0, MAX_BUFFER) || !whole(after, 0, MAX_BUFFER))
+      return [
+        "scheduling",
+        `Free time before and after is 0 to ${MAX_BUFFER} minutes.`,
+      ];
+    if (perDay !== null && (perDay < 1 || perDay > 50))
+      return ["scheduling", "Bookings a day is 1 to 50, or empty."];
+    if (perWeek !== null && (perWeek < 1 || perWeek > 200))
+      return ["scheduling", "Bookings a week is 1 to 200, or empty."];
+    const question = questions.map(questionProblem).find(Boolean);
+    if (question) return ["questions", question];
+    if (!eventTitle.trim())
+      return ["confirmation", "Give calendar events a title."];
+    if (!HEX.test(color)) return ["colour", "Colours look like #376c51."];
+    if (hosts.length > MAX_HOSTS)
+      return ["cohosts", `Pick up to ${MAX_HOSTS} co-hosts.`];
+    return null;
+  };
+  const problem = findProblem();
+
+  const sectionProps = (id: SectionId) => ({
+    open: openIds.includes(id),
+    onOpenChange: (open: boolean) =>
+      setOpenIds((ids) => (open ? [...ids, id] : ids.filter((x) => x !== id))),
+    onLayout: (e: { nativeEvent: { layout: { y: number } } }) => {
+      offsets.current[id] = e.nativeEvent.layout.y;
+    },
+  });
+
+  /** Open the section with the problem and scroll up to it. */
+  const reveal = (id: SectionId) => {
+    animateLayout();
+    setOpenIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
+    setTimeout(() => {
+      scroller.current?.scrollTo({
+        y: Math.max(0, columnY.current + (offsets.current[id] ?? 0) - 8),
+        animated: true,
+      });
+    }, 60);
+  };
 
   const save = () =>
     run(async () => {
@@ -210,7 +307,7 @@ export function PageEditor({
         id: q.id ?? questionId(q.label, taken),
       }));
       const body = {
-        slug: slug.trim(),
+        slug: cleanSlug,
         title: title.trim(),
         description: description.trim(),
         durations: [...durations].sort((a, b) => a - b),
@@ -225,7 +322,7 @@ export function PageEditor({
         meeting_url: meetingUrl.trim(),
         active,
         co_hosts: hosts,
-        color,
+        color: color.toLowerCase(),
         availability: custom
           ? { ...custom, timezone: custom.timezone.trim() }
           : availability,
@@ -254,25 +351,58 @@ export function PageEditor({
       setSaved(next);
       setSlug(next.slug);
       setQuestions(withIds);
+      setTried(false);
       onSaved(next);
     });
 
-  const link = bookingLink(saved?.slug ?? slug.trim());
+  const trySave = () => {
+    if (problem) {
+      setTried(true);
+      reveal(problem[0]);
+      return;
+    }
+    void save();
+  };
+
+  const link = bookingLink(saved?.slug ?? cleanSlug);
+  // Everyone you can pick, plus saved co-hosts who aren't in your teams.
+  const candidates = [
+    ...people.map((p) => ({
+      user_id: p.user_id,
+      name: p.name,
+      email: p.email,
+    })),
+    ...(page?.hosts ?? [])
+      .filter(
+        (h) =>
+          h.user_id !== ownerId && !people.some((p) => p.user_id === h.user_id),
+      )
+      .map((h) => ({ user_id: h.user_id, name: h.name, email: "" })),
+  ];
   const nameOf = (id: string) =>
-    people.find((p) => p.user_id === id)?.name ??
-    page?.hosts.find((h) => h.user_id === id)?.name ??
-    "Teammate";
+    candidates.find((p) => p.user_id === id)?.name ?? "Teammate";
+  const hostsFull = hosts.length >= MAX_HOSTS;
   const intervals = withValue([...SLOT_INTERVALS], slotInterval);
   const counts = saved?.counts;
+  const hexOk = HEX.test(color);
+  const accent = hexOk ? readableAccent(color) : null;
+  const light = hexOk && accent !== color.toLowerCase();
+  const titlePreview = eventTitlePreview(eventTitle, title).trim();
 
   return (
     <ScrollView
+      ref={scroller}
       contentContainerStyle={sheetStyles.body}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       automaticallyAdjustKeyboardInsets
     >
-      <View style={sheetStyles.column}>
+      <View
+        style={sheetStyles.column}
+        onLayout={(e) => {
+          columnY.current = e.nativeEvent.layout.y;
+        }}
+      >
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         {saved && (
           <View style={[shared.softCard, s.linkCard]}>
@@ -306,7 +436,11 @@ export function PageEditor({
           </View>
         )}
 
-        <Section title="Basics" initiallyOpen summary={title.trim()}>
+        <Section
+          title="Basics"
+          summary={title.trim()}
+          {...sectionProps("basics")}
+        >
           <Field label="Title">
             <TextInput
               style={shared.input}
@@ -339,6 +473,12 @@ export function PageEditor({
               placeholderTextColor={colors.faint}
               accessibilityLabel="Link name, lowercase letters, numbers and dashes"
             />
+            {!!cleanSlug && !SLUG.test(cleanSlug) && (
+              <Text style={[shared.small, bs.warn, bs.top]}>
+                Use lowercase letters and numbers, with single dashes between
+                words.
+              </Text>
+            )}
           </Field>
           <Field label="Description (optional)">
             <TextInput
@@ -407,6 +547,11 @@ export function PageEditor({
               placeholderTextColor={colors.faint}
               accessibilityLabel="Meeting link"
             />
+            {!!meetingUrl.trim() && !MEETING_URL.test(meetingUrl.trim()) && (
+              <Text style={[shared.small, bs.warn, bs.top]}>
+                Meeting links start with https://.
+              </Text>
+            )}
           </Field>
           <SwitchRow
             title="Taking bookings"
@@ -428,10 +573,12 @@ export function PageEditor({
           ]
             .filter(Boolean)
             .join(" · ")}
+          {...sectionProps("availability")}
         >
           <AvailabilityEditor
             availability={availability}
-            onChange={setAvailability}
+            onChange={changeAvailability}
+            kept={kept}
             overrides={overrides}
             onOverrides={setOverrides}
           />
@@ -446,6 +593,7 @@ export function PageEditor({
             notice,
             windowDays,
           })}
+          {...sectionProps("scheduling")}
         >
           <Field label="Offer start times every">
             <ChipRow label="Offer start times every">
@@ -460,45 +608,31 @@ export function PageEditor({
             </ChipRow>
           </Field>
           <Field label="Free time before each booking">
-            <ChipRow label="Free time before each booking">
-              {withValue(BUFFERS, before).map((b) => (
-                <Chip
-                  key={b}
-                  label={b ? minutesLabel(b) : "None"}
-                  selected={before === b}
-                  onPress={() => setBefore(b)}
-                />
-              ))}
-            </ChipRow>
+            <PresetMinutes
+              label="Free time before each booking"
+              presets={BUFFERS}
+              value={before}
+              onChange={setBefore}
+              max={MAX_BUFFER}
+            />
           </Field>
           <Field label="Free time after each booking">
-            <ChipRow label="Free time after each booking">
-              {withValue(BUFFERS, after).map((b) => (
-                <Chip
-                  key={b}
-                  label={b ? minutesLabel(b) : "None"}
-                  selected={after === b}
-                  onPress={() => setAfter(b)}
-                />
-              ))}
-            </ChipRow>
+            <PresetMinutes
+              label="Free time after each booking"
+              presets={BUFFERS}
+              value={after}
+              onChange={setAfter}
+              max={MAX_BUFFER}
+            />
           </Field>
           <Field label="Notice needed">
-            <ChipRow label="Notice needed">
-              {withValue(
-                NOTICE.map((n) => n.value),
-                notice,
-              ).map((v) => (
-                <Chip
-                  key={v}
-                  label={
-                    NOTICE.find((n) => n.value === v)?.label ?? minutesLabel(v)
-                  }
-                  selected={notice === v}
-                  onPress={() => setNotice(v)}
-                />
-              ))}
-            </ChipRow>
+            <PresetMinutes
+              label="Notice needed"
+              presets={NOTICE}
+              value={notice}
+              onChange={setNotice}
+              max={MAX_NOTICE}
+            />
           </Field>
           <Field label="Bookable up to">
             <NumberInput
@@ -540,6 +674,7 @@ export function PageEditor({
                   .join(", ")
               : "Just name and email"
           }
+          {...sectionProps("questions")}
         >
           <QuestionsEditor questions={questions} onChange={setQuestions} />
         </Section>
@@ -550,6 +685,7 @@ export function PageEditor({
             approval ? "You approve each request" : "Booked right away",
             reschedule ? "people can move bookings" : "no moving bookings",
           ].join(" · ")}
+          {...sectionProps("confirmation")}
         >
           <SwitchRow
             title="Approve each request"
@@ -565,7 +701,7 @@ export function PageEditor({
           />
           <Field
             label="Calendar event title"
-            hint={`{page}, {name} and {email} are filled in. Looks like: ${eventTitlePreview(eventTitle, title)}`}
+            hint="{page} is this page’s title; {name} and {email} are the booker’s."
           >
             <TextInput
               style={shared.input}
@@ -577,17 +713,33 @@ export function PageEditor({
               placeholderTextColor={colors.faint}
               accessibilityLabel="Calendar event title"
             />
+            <View style={s.inserts}>
+              {PLACEHOLDERS.map((p) => (
+                <SmallAction
+                  key={p}
+                  label={p}
+                  disabled={eventTitle.length + p.length >= 200}
+                  onPress={() => setEventTitle(`${eventTitle} ${p}`.trim())}
+                />
+              ))}
+            </View>
+            <Text
+              style={[shared.small, bs.top]}
+              accessibilityLiveRegion="polite"
+            >
+              Looks like: <Text style={s.strong}>{titlePreview || "–"}</Text>
+            </Text>
           </Field>
           <Field
             label="Message after booking (optional)"
-            hint="Shown once they book and in their confirmation email."
+            hint={`Shown once they book and in their confirmation email. ${confirmation.length}/${MAX_CONFIRMATION}`}
             style={bs.last}
           >
             <TextInput
               style={[shared.input, bs.multiline]}
               value={confirmation}
               onChangeText={setConfirmation}
-              maxLength={1000}
+              maxLength={MAX_CONFIRMATION}
               multiline
               textAlignVertical="top"
               placeholder="Thanks! Bring any questions you have."
@@ -597,7 +749,7 @@ export function PageEditor({
           </Field>
         </Section>
 
-        <Section title="Colour" summary={color}>
+        <Section title="Colour" summary={color} {...sectionProps("colour")}>
           <Text style={[shared.small, bs.gap]}>
             Used for buttons and highlights on the booking page.
           </Text>
@@ -623,7 +775,7 @@ export function PageEditor({
             <View
               style={[
                 s.preview,
-                { backgroundColor: HEX.test(color) ? color : colors.surface },
+                { backgroundColor: hexOk ? color : colors.surface },
               ]}
             />
             <TextInput
@@ -640,6 +792,23 @@ export function PageEditor({
               accessibilityLabel="Colour as a hex code"
             />
           </View>
+          <Text style={[shared.label, s.previewLabel]}>Button preview</Text>
+          <View
+            style={[
+              s.bookButton,
+              { backgroundColor: accent ?? colors.surfaceMuted },
+            ]}
+            accessible
+            accessibilityLabel={`Booking page button in ${accent ?? "no colour yet"}`}
+          >
+            <Text style={s.bookButtonText}>Book this time</Text>
+          </View>
+          {light && (
+            <Text style={[shared.small, s.lightNote]}>
+              This colour is light, so the booking page uses a darker shade (
+              {accent}) for buttons and links to keep them readable.
+            </Text>
+          )}
         </Section>
 
         <Section
@@ -649,70 +818,118 @@ export function PageEditor({
               ? hosts.map((h) => nameOf(h.user_id)).join(", ")
               : "Just you"
           }
+          {...sectionProps("cohosts")}
         >
           <Text style={[shared.small, bs.gap]}>
             Only times when every required host is free are offered. Optional
-            hosts join when they can.
+            hosts join when they can. Up to {MAX_HOSTS} co-hosts.
           </Text>
-          {people.length === 0 && hosts.length === 0 ? (
+          {candidates.length === 0 ? (
             <Text style={shared.small}>
-              Teammates you can add show up here.
+              People in your teams can host with you. Join or make a team to add
+              co-hosts.
             </Text>
           ) : (
-            <>
-              <ChipRow label="Co-hosts" multi>
-                {people.map((p) => {
-                  const on = hosts.some((h) => h.user_id === p.user_id);
-                  return (
-                    <Chip
-                      key={p.user_id}
-                      multi
-                      label={p.name}
-                      selected={on}
-                      onPress={() =>
+            <View style={s.hostList}>
+              {candidates.map((p, n) => {
+                const host = hosts.find((h) => h.user_id === p.user_id);
+                const blocked = !host && hostsFull;
+                return (
+                  <View key={p.user_id} style={n > 0 && bs.divider}>
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={
+                        p.email ? `${p.name}, ${p.email}` : p.name
+                      }
+                      accessibilityState={{
+                        checked: !!host,
+                        disabled: blocked,
+                      }}
+                      disabled={blocked}
+                      onPress={() => {
+                        animateLayout();
                         setHosts(
-                          on
+                          host
                             ? hosts.filter((h) => h.user_id !== p.user_id)
                             : [
                                 ...hosts,
                                 { user_id: p.user_id, required: true },
                               ],
-                        )
-                      }
-                    />
-                  );
-                })}
-              </ChipRow>
-              <View style={s.hosts}>
-                {hosts.map((h) => (
-                  <SwitchRow
-                    key={h.user_id}
-                    title={nameOf(h.user_id)}
-                    hint={h.required ? "Required" : "Optional"}
-                    value={h.required}
-                    onValueChange={(required) =>
-                      setHosts(
-                        hosts.map((x) =>
-                          x.user_id === h.user_id ? { ...x, required } : x,
-                        ),
-                      )
-                    }
-                  />
-                ))}
-              </View>
-            </>
+                        );
+                      }}
+                      style={({ pressed }) => [
+                        s.hostMain,
+                        pressed && bs.pressed,
+                        blocked && s.blocked,
+                      ]}
+                    >
+                      <View style={[s.check, !!host && s.checkOn]}>
+                        {!!host && (
+                          <Icon name="check" size={14} color={colors.white} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={bs.rowTitle} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        {!!p.email && (
+                          <Text style={shared.small} numberOfLines={1}>
+                            {p.email}
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                    {host && (
+                      <View style={s.required}>
+                        <Text style={[shared.small, { flex: 1 }]}>
+                          {host.required
+                            ? "Must be free for a time to be offered"
+                            : "Optional: joins when free"}
+                        </Text>
+                        <Switch
+                          value={host.required}
+                          trackColor={{ true: colors.accent }}
+                          accessibilityLabel={`${p.name} must be free`}
+                          onValueChange={(required) =>
+                            setHosts(
+                              hosts.map((x) =>
+                                x.user_id === p.user_id
+                                  ? { ...x, required }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+          {hostsFull && (
+            <Text style={[shared.small, bs.top]}>
+              That’s the most co-hosts a page can have.
+            </Text>
           )}
         </Section>
 
-        {!!problem && <Text style={[shared.small, s.problem]}>{problem}</Text>}
+        {!!problem && (
+          <Text
+            style={[shared.small, s.problem, tried && bs.warn]}
+            accessibilityLiveRegion="polite"
+          >
+            {problem[1]}
+          </Text>
+        )}
         <Button
           title={busy ? "Saving…" : saved ? "Save changes" : "Create page"}
           icon="check"
-          disabled={busy || !!problem || !durations.length}
-          onPress={() => void save()}
+          disabled={busy || !durations.length}
+          onPress={trySave}
         />
 
-        {saved && (
+        {saved && isOwner && (
           <Button
             destructive
             title="Delete page"
@@ -770,7 +987,59 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: colors.border,
     },
-    hosts: { marginTop: 14 },
+    previewLabel: { marginTop: 16 },
+    bookButton: {
+      alignSelf: "flex-start",
+      borderRadius: radii.input,
+      paddingVertical: 12,
+      paddingHorizontal: 18,
+    },
+    bookButtonText: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.white,
+    },
+    lightNote: { marginTop: 10, color: colors.warning },
+    inserts: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 10,
+    },
+    strong: { fontFamily: fonts.semibold, color: colors.text },
+    hostList: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      overflow: "hidden",
+    },
+    hostMain: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 52,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    blocked: { opacity: 0.45 },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    required: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingLeft: 46,
+      paddingRight: 12,
+      paddingBottom: 10,
+    },
     problem: { textAlign: "center", marginBottom: 10 },
   }),
 );

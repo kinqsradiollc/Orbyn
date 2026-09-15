@@ -40,13 +40,26 @@ const TYPE_LABELS: Record<BookingQuestion["type"], string> = {
   phone: "Phone",
 };
 
+const cleanOptions = (options: string[]) =>
+  options.map((o) => o.trim()).filter(Boolean);
+
+/** True when a choice question lists the same option twice. */
+const repeatsOption = (q: QuestionDraft) => {
+  const options = cleanOptions(q.options);
+  return new Set(options).size !== options.length;
+};
+
 /** Why a question can't be saved yet, or "". */
 export const questionProblem = (q: QuestionDraft) =>
   !q.label.trim()
     ? "Give each question a label."
-    : q.type === "choice" && q.options.filter((o) => o.trim()).length < 2
-      ? `“${q.label.trim()}” needs at least two options.`
-      : "";
+    : q.type !== "choice"
+      ? ""
+      : cleanOptions(q.options).length < 2
+        ? `“${q.label.trim()}” needs at least two options.`
+        : repeatsOption(q)
+          ? `“${q.label.trim()}” lists the same option twice.`
+          : "";
 
 /** Extra questions on the booking form, in the order they're asked. */
 export function QuestionsEditor({
@@ -158,6 +171,11 @@ export function QuestionsEditor({
                     />
                   </View>
                 ))}
+                {repeatsOption(q) && (
+                  <Text style={[shared.small, bs.warn, bs.gap]}>
+                    Each option can only be listed once.
+                  </Text>
+                )}
                 {q.options.length < MAX_OPTIONS && (
                   <View style={s.row}>
                     <SmallAction

@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { BookingAvailability } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ClockField, DateField, Field } from "../../components/Field";
@@ -10,18 +10,23 @@ import { deviceTimeZone, WEEK_ORDER, WEEKDAYS } from "../../lib/planning";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
-  DEFAULT_WEEK,
   MAX_OVERRIDES,
   MAX_RANGES,
   dayKeyOf,
   newKey,
   nextRange,
 } from "./helpers";
+import { TimeZonePicker } from "./TimeZonePicker";
 import { RemoveButton, bookingStyles as bs } from "./ui";
 
 type Range = { start: string; end: string };
 /** A date override being edited, with a local key for React. */
 export type OverrideDraft = { key: string; date: string; hours: Range[] };
+/** The page's own hours, kept while working hours are picked. */
+export type CustomWeek = Omit<
+  Extract<BookingAvailability, { mode: "custom" }>,
+  "mode"
+>;
 
 const MODES = ["working_hours", "custom"] as const;
 
@@ -31,12 +36,15 @@ function Ranges({
   onChange,
   label,
   empty,
+  extra,
 }: {
   ranges: Range[];
   onChange: (ranges: Range[]) => void;
   /** Spoken name, e.g. "Monday" or "Fri, Sep 18". */
   label: string;
   empty?: string;
+  /** More actions next to Add hours. */
+  extra?: React.ReactNode;
 }) {
   const next = nextRange(ranges);
   return (
@@ -79,16 +87,19 @@ function Ranges({
           End each range after it starts.
         </Text>
       )}
-      {next && ranges.length < MAX_RANGES && (
+      {((next && ranges.length < MAX_RANGES) || !!extra) && (
         <View style={s.add}>
-          <SmallAction
-            label="Add hours"
-            disabled={false}
-            onPress={() => {
-              animateLayout();
-              onChange([...ranges, next]);
-            }}
-          />
+          {next && ranges.length < MAX_RANGES && (
+            <SmallAction
+              label="Add hours"
+              disabled={false}
+              onPress={() => {
+                animateLayout();
+                onChange([...ranges, next]);
+              }}
+            />
+          )}
+          {extra}
         </View>
       )}
     </View>
@@ -102,16 +113,27 @@ function Ranges({
 export function AvailabilityEditor({
   availability,
   onChange,
+  kept,
   overrides,
   onOverrides,
 }: {
   availability: BookingAvailability;
   onChange: (availability: BookingAvailability) => void;
+  /** Custom hours to bring back when switching from working hours. */
+  kept: CustomWeek;
   overrides: OverrideDraft[];
   onOverrides: (overrides: OverrideDraft[]) => void;
 }) {
   const device = deviceTimeZone();
   const custom = availability.mode === "custom" ? availability : null;
+  const setWeekly = (weekly: CustomWeek["weekly"]) =>
+    custom &&
+    onChange({
+      ...custom,
+      weekly: [...weekly].sort(
+        (a, b) => a.day - b.day || (a.start < b.start ? -1 : 1),
+      ),
+    });
   const patchOverride = (key: string, patch: Partial<OverrideDraft>) =>
     onOverrides(overrides.map((o) => (o.key === key ? { ...o, ...patch } : o)));
   const addOverride = () => {
@@ -136,11 +158,7 @@ export function AvailabilityEditor({
           accessibilityLabel="Offer times during"
           onChange={(mode) => {
             animateLayout();
-            onChange(
-              mode === "custom"
-                ? { mode, timezone: device, weekly: DEFAULT_WEEK }
-                : { mode },
-            );
+            onChange(mode === "custom" ? { mode, ...kept } : { mode });
           }}
         />
       </Field>
@@ -155,16 +173,9 @@ export function AvailabilityEditor({
             label="Time zone"
             hint="The hours below are in this zone. Busy time on hosts’ calendars is still left out."
           >
-            <TextInput
-              style={shared.input}
+            <TimeZonePicker
               value={custom.timezone}
-              onChangeText={(timezone) => onChange({ ...custom, timezone })}
-              maxLength={80}
-              autoCapitalize="none"
-              autoCorrect={false}
-              placeholder="Europe/London"
-              placeholderTextColor={colors.faint}
-              accessibilityLabel="Time zone"
+              onChange={(timezone) => onChange({ ...custom, timezone })}
             />
             {custom.timezone !== device && (
               <Button
@@ -176,31 +187,45 @@ export function AvailabilityEditor({
             )}
           </Field>
           <Text style={shared.label}>Weekly hours</Text>
-          {WEEK_ORDER.map((d) => (
-            <View key={d} style={s.day}>
-              <Text style={s.dayName}>{WEEKDAYS[d]}</Text>
-              <View style={{ flex: 1 }}>
-                <Ranges
-                  label={WEEKDAYS[d]}
-                  empty="Unavailable"
-                  ranges={custom.weekly
-                    .filter((r) => r.day === d)
-                    .map(({ start, end }) => ({ start, end }))}
-                  onChange={(ranges) =>
-                    onChange({
-                      ...custom,
-                      weekly: [
+          {WEEK_ORDER.map((d) => {
+            const ranges = custom.weekly
+              .filter((r) => r.day === d)
+              .map(({ start, end }) => ({ start, end }));
+            return (
+              <View key={d} style={s.day}>
+                <Text style={s.dayName}>{WEEKDAYS[d]}</Text>
+                <View style={{ flex: 1 }}>
+                  <Ranges
+                    label={WEEKDAYS[d]}
+                    empty="Unavailable"
+                    ranges={ranges}
+                    onChange={(next) =>
+                      setWeekly([
                         ...custom.weekly.filter((r) => r.day !== d),
-                        ...ranges.map((r) => ({ day: d, ...r })),
-                      ].sort(
-                        (a, b) => a.day - b.day || (a.start < b.start ? -1 : 1),
-                      ),
-                    })
-                  }
-                />
+                        ...next.map((r) => ({ day: d, ...r })),
+                      ])
+                    }
+                    extra={
+                      ranges.length > 0 && (
+                        <SmallAction
+                          label="Copy to all days"
+                          disabled={false}
+                          onPress={() => {
+                            animateLayout();
+                            setWeekly(
+                              WEEK_ORDER.flatMap((day) =>
+                                ranges.map((r) => ({ day, ...r })),
+                              ),
+                            );
+                          }}
+                        />
+                      )
+                    }
+                  />
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </>
       )}
 
@@ -296,7 +321,7 @@ const s = themed(() =>
     empty: { paddingTop: 16, marginBottom: 8 },
     range: { marginBottom: 8 },
     dash: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
-    add: { flexDirection: "row" },
+    add: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     warn: { color: colors.danger, marginBottom: 8 },
     overrides: { marginTop: 18 },
     override: {

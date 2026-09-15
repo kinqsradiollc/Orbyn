@@ -1,26 +1,45 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
+import { Chip, ChipRow } from "../../components/Chip";
+import { NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";
 import { animateLayout } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
-/** A card with a tappable header that shows or hides its fields. */
+/**
+ * A card with a tappable header that shows or hides its fields. Pass `open`
+ * and `onOpenChange` to open it from outside (e.g. when Save finds a problem).
+ */
 export function Section({
   title,
   summary,
   initiallyOpen = false,
+  open: controlled,
+  onOpenChange,
+  onLayout,
   children,
 }: {
   title: string;
   /** One line under the title saying what's set, shown while closed. */
   summary?: string;
   initiallyOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onLayout?: (e: LayoutChangeEvent) => void;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(initiallyOpen);
+  const [own, setOwn] = useState(initiallyOpen);
+  const open = controlled ?? own;
   return (
-    <View style={[shared.card, s.section]}>
+    <View style={[shared.card, s.section]} onLayout={onLayout}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={title}
@@ -28,7 +47,8 @@ export function Section({
         accessibilityState={{ expanded: open }}
         onPress={() => {
           animateLayout();
-          setOpen((o) => !o);
+          setOwn(!open);
+          onOpenChange?.(!open);
         }}
         style={({ pressed }) => [s.header, pressed && s.pressed]}
       >
@@ -101,6 +121,69 @@ export function RemoveButton({
   );
 }
 
+/**
+ * Preset minute chips plus Custom, which shows a number field. A cleared
+ * custom field reports NaN so the form can say what's missing.
+ */
+export function PresetMinutes({
+  label,
+  presets,
+  value,
+  onChange,
+  max,
+}: {
+  label: string;
+  presets: { value: number; label: string }[];
+  value: number;
+  onChange: (minutes: number) => void;
+  max: number;
+}) {
+  const [custom, setCustom] = useState(
+    () => !presets.some((p) => p.value === value),
+  );
+  const [text, setText] = useState(Number.isFinite(value) ? String(value) : "");
+  return (
+    <>
+      <ChipRow label={label}>
+        {presets.map((p) => (
+          <Chip
+            key={p.value}
+            label={p.label}
+            selected={!custom && value === p.value}
+            onPress={() => {
+              animateLayout();
+              setCustom(false);
+              setText(String(p.value));
+              onChange(p.value);
+            }}
+          />
+        ))}
+        <Chip
+          label="Custom"
+          selected={custom}
+          onPress={() => {
+            animateLayout();
+            setCustom(true);
+          }}
+        />
+      </ChipRow>
+      {custom && (
+        <View style={s.custom}>
+          <NumberInput
+            value={text}
+            onChangeText={(t) => {
+              setText(t);
+              onChange(t ? Number(t) : NaN);
+            }}
+            suffix={`minutes, 0 to ${max}`}
+            accessibilityLabel={`${label}, in minutes from 0 to ${max}`}
+          />
+        </View>
+      )}
+    </>
+  );
+}
+
 export const bookingStyles = themed(() =>
   StyleSheet.create({
     rowTitle: {
@@ -129,6 +212,7 @@ export const bookingStyles = themed(() =>
     pair: { flexDirection: "row", alignItems: "center", gap: 8 },
     half: { flex: 1 },
     multiline: { minHeight: 80 },
+    warn: { color: colors.danger },
   }),
 );
 
@@ -174,5 +258,6 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
+    custom: { marginTop: 10 },
   }),
 );

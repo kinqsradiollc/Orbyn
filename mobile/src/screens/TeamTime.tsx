@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import type {
-  BusyInterval,
-  MeetingSlot,
-  MemberAvailability,
-  MemberWorkload,
-  TeamMember,
+import {
+  clockMinutes,
+  dateLabel,
+  dayTime,
+  freshItem,
+  weekdayOf,
+  type BusyInterval,
+  type MeetingSlot,
+  type MemberAvailability,
+  type MemberWorkload,
+  type TeamMember,
 } from "@orbyn/core";
-import { dateLabel } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
+import type { Editing } from "../components/ItemEditor";
 import { Pill } from "../components/Pill";
 import { ProgressBar } from "../components/ProgressBar";
 import { SmallAction } from "../components/SmallAction";
@@ -21,33 +26,49 @@ import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
-/** The part of each day the availability bars show. */
-const BAR_START = 7;
-const BAR_END = 21;
-const LENGTHS = [15, 30, 45, 60, 90];
+const LENGTHS = [15, 30, 45, 60, 90, 120];
+const DAY_MINUTES = 1440;
+const DAY_MS = 86_400_000;
 
-/** Busy intervals clipped to one day's bar, as fractions of its width. */
+/** "2026-09-18" for a local date. */
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Local midnight on the Monday of `d`'s week. */
+const mondayOf = (d: Date) => dayStart(-((d.getDay() + 6) % 7), d);
+
+/** A fraction of the day's bar, from minutes after local midnight. */
+const frac = (minutes: number) =>
+  Math.max(0, Math.min(DAY_MINUTES, minutes)) / DAY_MINUTES;
+
+/** A member's working window on `day`, in minutes from local midnight. */
+function workWindow(m: MemberAvailability, day: Date) {
+  const key = dayKey(day);
+  if (!m.work_days.includes(weekdayOf(key))) return null;
+  const start = dayTime(key, clockMinutes(m.work_start), m.timezone);
+  const end = dayTime(key, clockMinutes(m.work_end), m.timezone);
+  return {
+    from: (start.getTime() - day.getTime()) / 60000,
+    to: (end.getTime() - day.getTime()) / 60000,
+  };
+}
+
+/** Busy intervals clipped to one day's bar. */
 function segments(busy: BusyInterval[], day: Date) {
-  const from = new Date(day).setHours(BAR_START, 0, 0, 0);
-  const to = new Date(day).setHours(BAR_END, 0, 0, 0);
+  const start = day.getTime();
   return busy
     .map((b) => ({
-      b,
-      start: Math.max(from, Date.parse(b.start_at)),
-      end: Math.min(to, Date.parse(b.end_at)),
+      key: b.start_at,
+      from: (Date.parse(b.start_at) - start) / 60000,
+      to: (Date.parse(b.end_at) - start) / 60000,
+      label: rangeLabel(b.start_at, b.end_at),
     }))
-    .filter((x) => x.end > x.start)
-    .map((x) => ({
-      key: x.b.start_at,
-      left: (x.start - from) / (to - from),
-      width: (x.end - x.start) / (to - from),
-      label: rangeLabel(new Date(x.start), new Date(x.end)),
-    }));
+    .filter((b) => b.to > 0 && b.from < DAY_MINUTES);
 }
 
 /**
- * Team time inside a team: when each member is busy today and tomorrow (busy
- * only, never what for), who is overloaded this week, and Find a time.
+ * Team time inside a team, a week at a time: when each member works and is
+ * busy (busy only, never what for), who is overloaded, and Find a time.
  */
 export function TeamTime({
   teamId,
@@ -55,6 +76,7 @@ export function TeamTime({
   userId,
   canWrite,
   onCreated,
+  onOpenItem,
 }: {
   teamId: string;
   members: TeamMember[];
@@ -63,10 +85,15 @@ export function TeamTime({
   canWrite: boolean;
   /** After a team event is created. */
   onCreated: () => void;
+  /** Open the item editor, e.g. with a meeting time filled in. */
+  onOpenItem?: (editing: Editing) => void;
 }) {
   const { busy, error, setError, run } = useRun();
-  const [availability, setAvailability] = useState<MemberAvailability[]>([]);
-  const [workload, setWorkload] = useState<MemberWorkload[]>([]);
+  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [availability, setAvailability] = useState<MemberAvailability[] | null>(
+    null,
+  );
+  const [workload, setWorkload] = useState<MemberWorkload[] | null>(null);
   const [pinned, setPinned] = useState<string[]>([]);
   const [people, setPeople] = useState<string[]>(() =>
     members.map((m) => m.user_id),
@@ -76,34 +103,43 @@ export function TeamTime({
   const [slots, setSlots] = useState<MeetingSlot[] | null>(null);
   const [booked, setBooked] = useState("");
 
+  const days = Array.from({ length: 7 }, (_, n) => dayStart(n, weekStart));
+  const weekEnd = dayStart(7, weekStart);
+  const thisWeek = mondayOf(new Date()).getTime() === weekStart.getTime();
+  const todayKey = dayKey(new Date());
+  const weekLabel = `${days[0].toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  })} – ${days[6].toLocaleDateString([], { month: "short", day: "numeric" })}`;
+
+  useEffect(() => {
+    client
+      .getPlannerPrefs()
+      .then((prefs) => setPinned(prefs.pinned_user_ids))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    const today = dayStart(0);
+    setAvailability(null);
+    setWorkload(null);
+    const from = weekStart.toISOString();
+    const to = dayStart(7, weekStart).toISOString();
     Promise.all([
-      client.teamAvailability(
-        teamId,
-        today.toISOString(),
-        dayStart(2).toISOString(),
-      ),
-      client.teamWorkload(
-        teamId,
-        today.toISOString(),
-        dayStart(7).toISOString(),
-      ),
-      client.getPlannerPrefs().catch(() => null),
+      client.teamAvailability(teamId, from, to),
+      client.teamWorkload(teamId, from, to),
     ])
-      .then(([a, w, prefs]) => {
+      .then(([a, w]) => {
         if (!alive) return;
         animateLayout();
         setAvailability(a);
         setWorkload(w);
-        setPinned(prefs?.pinned_user_ids ?? []);
       })
       .catch((e: Error) => alive && setError(e.message));
     return () => {
       alive = false;
     };
-  }, [teamId, setError]);
+  }, [teamId, weekStart, setError]);
 
   const order = (a: { user_id: string; name: string }, b: typeof a) =>
     Number(pinned.includes(b.user_id)) - Number(pinned.includes(a.user_id)) ||
@@ -120,10 +156,12 @@ export function TeamTime({
 
   const find = () =>
     run(async () => {
+      // Start on the next quarter hour, like the web.
       const from = new Date();
+      from.setMinutes(Math.ceil(from.getMinutes() / 15) * 15, 0, 0);
       const found = await client.suggestMeetingTimes(teamId, {
         from: from.toISOString(),
-        to: dayStart(7).toISOString(),
+        to: new Date(from.getTime() + 7 * DAY_MS).toISOString(),
         duration: length,
         user_ids: people,
       });
@@ -132,10 +170,24 @@ export function TeamTime({
       setBooked("");
     });
 
+  const meetingTitle = () => title.trim() || "Team meeting";
+
+  /** Open the event in the editor to check before saving. */
+  const openInEditor = (slot: MeetingSlot) =>
+    onOpenItem?.({
+      ...freshItem(),
+      kind: "event",
+      title: meetingTitle(),
+      due_at: slot.start_at,
+      end_at: slot.end_at,
+      team_id: teamId,
+    });
+
+  /** Save the event straight away. */
   const book = (slot: MeetingSlot) =>
     run(async () => {
       await client.createItem({
-        title: title.trim() || "Team meeting",
+        title: meetingTitle(),
         kind: "event",
         due_at: slot.start_at,
         end_at: slot.end_at,
@@ -147,33 +199,48 @@ export function TeamTime({
       onCreated();
     });
 
-  const atRisk = workload
+  const atRisk = (workload ?? [])
     .flatMap((w) => w.at_risk_items ?? [])
     .sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
-
-  const days = [
-    { label: "Today", day: dayStart(0) },
-    { label: "Tomorrow", day: dayStart(1) },
-  ];
 
   return (
     <>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
 
+      <View style={s.weekHead}>
+        <Text style={[shared.eyebrow, s.weekEyebrow]}>TEAM TIME</Text>
+        <Text style={s.weekLabel} accessibilityLiveRegion="polite">
+          Week of {weekLabel}
+        </Text>
+        <View style={s.weekNav}>
+          <SmallAction
+            label="Earlier"
+            disabled={false}
+            onPress={() => setWeekStart(dayStart(-7, weekStart))}
+          />
+          <SmallAction
+            label="This week"
+            disabled={thisWeek}
+            onPress={() => setWeekStart(mondayOf(new Date()))}
+          />
+          <SmallAction
+            label="Later"
+            disabled={false}
+            onPress={() => setWeekStart(weekEnd)}
+          />
+        </View>
+      </View>
+
       <Text style={[shared.eyebrow, s.eyebrow]}>AVAILABILITY</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
-          Busy times only, never what they are. Bars run{" "}
-          {rangeLabel(
-            new Date(2000, 0, 1, BAR_START),
-            new Date(2000, 0, 1, BAR_END),
-          )}
-          .
+          Each bar is a whole day, midnight to midnight. Shaded is working
+          hours; dark marks are busy. Event details are never shared.
         </Text>
-        {availability.length === 0 && (
+        {availability === null && (
           <Text style={shared.small}>Loading availability…</Text>
         )}
-        {[...availability].sort(order).map((m, n) => {
+        {[...(availability ?? [])].sort(order).map((m, n) => {
           const me = m.user_id === userId;
           const isPinned = pinned.includes(m.user_id);
           return (
@@ -183,10 +250,15 @@ export function TeamTime({
               style={[s.member, n > 0 && s.divider]}
             >
               <View style={s.memberTop}>
-                <Text style={s.name} numberOfLines={1}>
-                  {m.name}
-                  {me ? " (you)" : ""}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.name} numberOfLines={1}>
+                    {m.name}
+                    {me ? " (you)" : ""}
+                  </Text>
+                  <Text style={shared.small} numberOfLines={1}>
+                    {m.timezone.replace(/_/g, " ")}
+                  </Text>
+                </View>
                 {!me && (
                   <SmallAction
                     label={isPinned ? "Unpin" : "Pin"}
@@ -195,28 +267,50 @@ export function TeamTime({
                   />
                 )}
               </View>
-              {days.map(({ label, day }) => {
+              {days.map((day) => {
                 const segs = segments(m.busy, day);
+                const work = workWindow(m, day);
+                const label = day.toLocaleDateString([], {
+                  weekday: "short",
+                  day: "numeric",
+                });
                 const spoken = segs.length
-                  ? `${label}: busy ${segs.map((x) => x.label).join(", ")}`
-                  : `${label}: free`;
+                  ? `busy ${segs.map((x) => x.label).join(", ")}`
+                  : work
+                    ? "free"
+                    : "not working";
+                const today = dayKey(day) === todayKey;
                 return (
                   <View
-                    key={label}
+                    key={day.toISOString()}
                     style={s.dayRow}
                     accessible
-                    accessibilityLabel={`${m.name}, ${spoken}`}
+                    accessibilityLabel={`${m.name}, ${day.toLocaleDateString(
+                      [],
+                      { weekday: "long" },
+                    )}: ${spoken}`}
                   >
-                    <Text style={s.dayLabel}>{label}</Text>
+                    <Text style={[s.dayLabel, today && s.today]}>{label}</Text>
                     <View style={s.bar}>
+                      {work && frac(work.to) > frac(work.from) && (
+                        <View
+                          style={[
+                            s.work,
+                            {
+                              left: `${frac(work.from) * 100}%`,
+                              width: `${(frac(work.to) - frac(work.from)) * 100}%`,
+                            },
+                          ]}
+                        />
+                      )}
                       {segs.map((x) => (
                         <View
                           key={x.key}
                           style={[
                             s.busy,
                             {
-                              left: `${x.left * 100}%`,
-                              width: `${Math.max(x.width * 100, 1.5)}%`,
+                              left: `${frac(x.from) * 100}%`,
+                              width: `${Math.max((frac(x.to) - frac(x.from)) * 100, 1.5)}%`,
                             },
                           ]}
                         />
@@ -230,39 +324,47 @@ export function TeamTime({
         })}
       </View>
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>WORKLOAD THIS WEEK</Text>
+      <Text style={[shared.eyebrow, s.eyebrow]}>WORKLOAD</Text>
       <View style={shared.card}>
-        {workload.length === 0 && (
+        {workload === null && (
           <Text style={shared.small}>Loading workload…</Text>
         )}
-        {[...workload].sort(order).map((w, n) => (
-          <View key={w.user_id} style={[s.member, n > 0 && s.divider]}>
-            <View style={s.memberTop}>
-              <Text style={s.name} numberOfLines={1}>
-                {w.name}
+        {[...(workload ?? [])].sort(order).map((w, n) => {
+          const pct = Math.round(w.load * 100);
+          return (
+            <View key={w.user_id} style={[s.member, n > 0 && s.divider]}>
+              <View style={s.memberTop}>
+                <Text style={s.name} numberOfLines={1}>
+                  {w.name}
+                </Text>
+                {w.overloaded && <Pill label="Overloaded" tone="danger" />}
+                {w.at_risk > 0 && (
+                  <Pill label={`${w.at_risk} at risk`} tone="warning" />
+                )}
+              </View>
+              <View style={s.loadRow}>
+                <View style={{ flex: 1 }}>
+                  <ProgressBar
+                    value={Math.min(100, pct)}
+                    height={8}
+                    color={w.overloaded ? colors.danger : colors.accent}
+                    track={colors.surfaceMuted}
+                    label={`${w.name} workload, ${pct}%`}
+                  />
+                </View>
+                <Text style={[s.pct, w.overloaded && s.over]}>{pct}%</Text>
+              </View>
+              <Text style={[shared.small, s.top]}>
+                {minutesLabel(w.assigned_minutes) || "Nothing"} of{" "}
+                {minutesLabel(w.capacity_minutes) || "no"} free time ·{" "}
+                {w.open_tasks} open
+                {w.unestimated_tasks
+                  ? ` · ${w.unestimated_tasks} without an estimate`
+                  : ""}
               </Text>
-              {w.overloaded && <Pill label="Overloaded" tone="danger" />}
-              {w.at_risk > 0 && (
-                <Pill label={`${w.at_risk} at risk`} tone="warning" />
-              )}
             </View>
-            <ProgressBar
-              value={Math.round(Math.min(1, w.load) * 100)}
-              height={8}
-              color={w.overloaded ? colors.danger : colors.accent}
-              track={colors.surfaceMuted}
-              label={`${w.name} workload`}
-            />
-            <Text style={[shared.small, s.top]}>
-              {minutesLabel(w.assigned_minutes) || "Nothing"} of{" "}
-              {minutesLabel(w.capacity_minutes) || "no"} free time ·{" "}
-              {w.open_tasks} open
-              {w.unestimated_tasks
-                ? ` · ${w.unestimated_tasks} without an estimate`
-                : ""}
-            </Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {atRisk.length > 0 && (
@@ -348,15 +450,23 @@ export function TeamTime({
         {slots && slots.length > 0 && (
           <>
             {canWrite && (
-              <TextInput
-                style={[shared.input, s.gap]}
-                value={title}
-                onChangeText={setTitle}
-                maxLength={200}
-                placeholder="Team meeting"
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="Meeting title"
-              />
+              <>
+                <TextInput
+                  style={[shared.input, s.gap]}
+                  value={title}
+                  onChangeText={setTitle}
+                  maxLength={200}
+                  placeholder="Team meeting"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Meeting title"
+                />
+                {onOpenItem && (
+                  <Text style={[shared.small, s.gap]}>
+                    Book opens the event so you can check it before saving. Add
+                    now saves it straight away.
+                  </Text>
+                )}
+              </>
             )}
             {slots.map((slot, n) => (
               <View key={slot.start_at} style={[s.slot, n > 0 && s.divider]}>
@@ -373,11 +483,28 @@ export function TeamTime({
                   </Text>
                 </View>
                 {canWrite && (
-                  <SmallAction
-                    label="Book"
-                    disabled={busy}
-                    onPress={() => void book(slot)}
-                  />
+                  <View style={s.slotActions}>
+                    {onOpenItem ? (
+                      <>
+                        <SmallAction
+                          label="Book"
+                          disabled={busy}
+                          onPress={() => openInEditor(slot)}
+                        />
+                        <SmallAction
+                          label="Add now"
+                          disabled={busy}
+                          onPress={() => void book(slot)}
+                        />
+                      </>
+                    ) : (
+                      <SmallAction
+                        label="Book"
+                        disabled={busy}
+                        onPress={() => void book(slot)}
+                      />
+                    )}
+                  </View>
                 )}
               </View>
             ))}
@@ -398,6 +525,16 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
+    weekHead: { marginTop: 8, marginBottom: 6 },
+    weekEyebrow: { marginBottom: 2 },
+    weekLabel: {
+      fontFamily: fonts.display,
+      fontSize: 17,
+      letterSpacing: -0.3,
+      color: colors.text,
+      marginBottom: 10,
+    },
+    weekNav: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     member: { paddingVertical: 10 },
     memberTop: {
       flexDirection: "row",
@@ -418,17 +555,24 @@ const s = themed(() =>
       marginTop: 4,
     },
     dayLabel: {
-      width: 64,
+      width: 52,
       fontFamily: fonts.medium,
       fontSize: 11,
       color: colors.muted,
     },
+    today: { fontFamily: fonts.semibold, color: colors.accent },
     bar: {
       flex: 1,
       height: 10,
       borderRadius: 5,
       backgroundColor: colors.surfaceMuted,
       overflow: "hidden",
+    },
+    work: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      backgroundColor: colors.accentSoft,
     },
     busy: {
       position: "absolute",
@@ -437,6 +581,15 @@ const s = themed(() =>
       backgroundColor: colors.mediumText,
       borderRadius: 3,
     },
+    loadRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    pct: {
+      width: 44,
+      textAlign: "right",
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    over: { color: colors.danger },
     find: { marginTop: 14 },
     booked: {
       fontFamily: fonts.semibold,
@@ -452,6 +605,7 @@ const s = themed(() =>
       paddingVertical: 8,
     },
     slotMain: { flex: 1, gap: 2 },
+    slotActions: { flexDirection: "row", gap: 6 },
     disrupts: { color: colors.warning },
     slotText: {
       fontFamily: fonts.medium,
