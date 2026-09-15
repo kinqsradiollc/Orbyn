@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Orbyn",
+    "slug": "orbyn",
+    "scheme": "orbyn",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orbyn.planner",
+      "requireFullScreen": false
+    },
+    "android": {
+      "package": "com.orbyn.planner",
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    },
+    "backgroundColor": "#f7f8fa"
+  }
+}

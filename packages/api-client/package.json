@@ -1,0 +1,28 @@
+{
+  "name": "@orbyn/api-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Typed fetch client for the Orbyn API, shared by the web/desktop and mobile apps.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@orbyn/core": "1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
