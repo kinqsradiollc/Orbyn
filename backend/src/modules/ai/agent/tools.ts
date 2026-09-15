@@ -675,6 +675,23 @@ async function askClarification(
   ctx: AgentContext,
   a: { question: string; options?: string[] },
 ) {
+  const asked = [a.question, ...(a.options ?? [])].join(" ");
+  if (
+    /\b(get[ _]overview|search[ _]items|get[ _]item|list[ _]teams|propose_\w+|ask_clarification|tools?)\b/i.test(
+      asked,
+    )
+  )
+    throw new Error(
+      "Ask the user about their request, never about tools. Use the tools yourself.",
+    );
+  if (
+    /\b(which|what) (date|day) is\b|\bdate (is|for) ['"]?(today|tomorrow|next)/i.test(
+      asked,
+    )
+  )
+    throw new Error(
+      "Don't ask for dates you can work out: the system message lists today and the coming days.",
+    );
   ctx.clarification = {
     question: a.question.trim(),
     options: (a.options ?? [])

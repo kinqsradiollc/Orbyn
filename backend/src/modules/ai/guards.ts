@@ -35,17 +35,25 @@ export const wantsChanges = (message: string) => CHANGE_INTENT.test(message);
 
 const DATE_OR_TIME =
   /\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week|next month|\d{1,2}(:\d{2})?\s?(am|pm)|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;
+const POLITE_REQUEST = /^\s*(can|could|would|will|please)\b/i;
 const QUESTION =
-  /\?\s*$|^\s*(what|when|where|which|who|how|why|is|are|am|do|does|did|can|could|should|would|will|show|list|summari[sz]e|tell|give me|find)\b/i;
+  /\?\s*$|^\s*(what|what's|whats|when|where|which|who|how|why|is|are|am|do|does|did|should)\b/i;
+const READ_REQUEST = /^\s*(show|list|summari[sz]e|tell|give me|find)\b/i;
 
 /**
- * Whether a message may ask for a change: a change word ("add", "move"), or
- * a plan with a day or time that is not a question ("Dinner with Sam
- * Thursday 7pm"). "What's due Friday?" and "Summarize my week" are not.
+ * Whether a message may ask for a change.
+ * - "Can you move my dentist to Friday?": a polite request with a change word.
+ * - "What's the launch plan about?", "Is the gym on Friday?": questions, never.
+ * - "Show my week": only with a change word ("find the dentist and move it").
+ * - Otherwise a change word ("add", "move"), or a plan with a day or time
+ *   ("Dinner with Sam Thursday 7pm").
  */
-export const mayChange = (message: string) =>
-  wantsChanges(message) ||
-  (DATE_OR_TIME.test(message) && !QUESTION.test(message));
+export function mayChange(message: string) {
+  if (POLITE_REQUEST.test(message)) return wantsChanges(message);
+  if (QUESTION.test(message)) return false;
+  if (READ_REQUEST.test(message)) return wantsChanges(message);
+  return wantsChanges(message) || DATE_OR_TIME.test(message);
+}
 
 /** Words that ask for something to be deleted. */
 const DELETE_INTENT =

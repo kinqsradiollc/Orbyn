@@ -596,3 +596,94 @@ test("an old-style JSON reply still works and is vetted", async () => {
     ["create"],
   );
 });
+
+test("only requests for changes may propose them", async () => {
+  const { mayChange } = await import("../src/modules/ai/guards.js");
+  for (const message of [
+    "Add milk",
+    "Can you move my dentist to Friday?",
+    "Dinner with Sam Thursday 7pm",
+    "Find the dentist appointment and move it to Friday",
+    "Push watering the plants to next week",
+  ])
+    assert.equal(mayChange(message), true, message);
+  for (const message of [
+    "What's the secret launch plan about?",
+    "What's due on Friday?",
+    "Is the gym on Friday?",
+    "Summarize my week",
+    "Show me what's due next week",
+  ])
+    assert.equal(mayChange(message), false, message);
+});
+
+test("a question proposes nothing, and asking drops earlier proposals", async () => {
+  const me = await newUser();
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_create",
+          arguments: { items: [{ title: "Secret launch plan" }] },
+        },
+      ],
+    },
+    { content: "I couldn't find it." },
+  );
+  let reply = await chat(me.token, "What's the secret launch plan about?");
+  assert.match(toolResults(requests[1])[0].error, /asked a question/);
+  assert.deepEqual(reply.actions, []);
+
+  reset({
+    tool_calls: [
+      {
+        name: "propose_create",
+        arguments: {
+          items: [
+            { title: "Team lunch", kind: "event", due_at: "2026-09-18T12:00" },
+          ],
+        },
+      },
+      {
+        name: "ask_clarification",
+        arguments: { question: "Which team?", options: ["Design", "Sales"] },
+      },
+    ],
+  });
+  reply = await chat(me.token, "Can you add a team lunch on Friday at noon?");
+  assert.equal(reply.summary, "Which team?");
+  assert.deepEqual(reply.follow_ups, ["Design", "Sales"]);
+  assert.deepEqual(reply.actions, []);
+});
+
+test("clarifying questions about tools or known dates are refused", async () => {
+  const me = await newUser();
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "ask_clarification",
+          arguments: {
+            question: "What would you like to do?",
+            options: ["Get overview", "Search items"],
+          },
+        },
+      ],
+    },
+    {
+      tool_calls: [
+        {
+          name: "ask_clarification",
+          arguments: { question: "Which date is tomorrow for you?" },
+        },
+      ],
+    },
+    { content: "Proposed **Buy milk** for tomorrow." },
+  );
+  const reply = await chat(me.token, "Add buy milk tomorrow");
+  assert.equal(requests.length, 3);
+  assert.match(toolResults(requests[1])[0].error, /never about tools/);
+  assert.match(toolResults(requests[2]).at(-1).error, /Don't ask for dates/);
+  assert.equal(reply.summary, "Proposed **Buy milk** for tomorrow.");
+  assert.deepEqual(reply.follow_ups, []);
+});

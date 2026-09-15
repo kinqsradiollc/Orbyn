@@ -24,6 +24,10 @@ export function comingDays(timezone: string, now = new Date(), count = 7) {
   }).join(", ");
 }
 
+/** Today and the coming week in one line, for next to the request. */
+export const dateReminder = (timezone: string, now = new Date()) =>
+  `Today is ${localDay(timezone, now)}. The coming days are ${comingDays(timezone, now)}.`;
+
 export const agentPrompt = (
   timezone: string,
   overview: unknown,
@@ -37,6 +41,7 @@ How you work:
 - Look things up with the tools; never guess. The overview below is only a summary: use search_items and get_item for anything else. You can only see this user's own items and their teams' items.
 - The overview's "matching_request" lists items whose titles share words with the request, with their ids: use those directly rather than searching for them again.
 - Never show item ids to the user; name items by title, day and time.
+- Ask before proposing, never after, and never ask for confirmation: the user approves every proposal anyway. A question ends your turn and discards what you proposed in it.
 - You cannot change the planner yourself. Use propose_create, propose_update and propose_delete: the user reviews and approves. Put everything the user asked for into these calls (several items per call), and propose only what they asked for.
 - To change or delete an item you need its id from search_items or get_item. If the user means one item ("the gym session") and several match, call ask_clarification listing them with their days and times. Never change or delete all of them unless the user said "all", "both" or "every".
 - Times are ISO 8601 with the user's UTC offset for that date (for example 2026-09-18T18:00:00+10:00). Events need a start time, and an end must be after the start.

@@ -8,6 +8,7 @@ import {
   PROMISED_TOOLS_NOTE,
   PROSE_ANSWER_NOTE,
   agentPrompt,
+  dateReminder,
 } from "./prompt.js";
 import {
   rejectsTools,
@@ -100,7 +101,15 @@ export async function runAgent(
           ? `${t.content.slice(0, MAX_HISTORY_CHARS)}…`
           : t.content,
     })),
-    { role: "user", content: message },
+    {
+      role: "user",
+      // In the JSON protocol the long tool description sits between the
+      // system prompt's dates and the request: repeat them next to it.
+      content:
+        startingMode(ai) === "json"
+          ? `${message}\n\n(${dateReminder(ctx.timezone)})`
+          : message,
+    },
   ];
   let mode: Mode = startingMode(ai);
   const deadline = AbortSignal.timeout(DEADLINE_MS);
@@ -111,7 +120,15 @@ export async function runAgent(
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
       try {
-        return await step(ai, fit(messages, ai), TOOL_SPECS, {
+        // The JSON protocol offers fewer tools: the overview is already in the
+        // prompt, and Matilda wandered through get_overview and list_teams.
+        const tools =
+          mode === "json"
+            ? TOOL_SPECS.filter(
+                (t) => t.name !== "get_overview" && t.name !== "list_teams",
+              )
+            : TOOL_SPECS;
+        return await step(ai, fit(messages, ai), tools, {
           mode,
           toolsAllowed,
           signal: AbortSignal.any([deadline, AbortSignal.timeout(ATTEMPT_MS)]),
@@ -181,7 +198,12 @@ export async function runAgent(
         // Keep the structured answer.
       }
     }
-    if (ctx.clarification) summary = ctx.clarification.question;
+    // A question means the model isn't sure: nothing it proposed before
+    // asking goes to the user (Matilda proposed, then asked, in live tests).
+    if (ctx.clarification) {
+      summary = ctx.clarification.question;
+      actions = [];
+    }
     if (!summary)
       summary = actions.length
         ? actions.length === 1
