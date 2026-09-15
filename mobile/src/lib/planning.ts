@@ -1,5 +1,5 @@
 import { Share } from "react-native";
-import { byDueDate, priorityScore, type Item } from "@orbyn/core";
+import { byDueDate, isClosed, priorityScore, type Item } from "@orbyn/core";
 
 /** The device's IANA time zone, sent with plans and repeating items. */
 export const deviceTimeZone = () =>
@@ -47,17 +47,18 @@ export function effortLabel(
 
 export type Size = "quick" | "medium" | "long" | "unsized";
 export const SIZES: Size[] = ["quick", "medium", "long", "unsized"];
+/** The web's size buckets: up to 15 minutes, up to an hour, longer. */
 export const SIZE_LABELS: Record<Size, string> = {
-  quick: "Under 30m",
-  medium: "30m to 2h",
-  long: "Over 2h",
+  quick: "Up to 15 min",
+  medium: "Up to 1 hour",
+  long: "Longer than 1 hour",
   unsized: "No estimate",
 };
 export const sizeOf = (item: Pick<Item, "estimate_minutes">): Size => {
   const m = item.estimate_minutes;
   if (!m) return "unsized";
-  if (m < 30) return "quick";
-  return m <= 120 ? "medium" : "long";
+  if (m <= 15) return "quick";
+  return m <= 60 ? "medium" : "long";
 };
 
 /** Most pressing first (priorityScore), then by due date. */
@@ -70,7 +71,7 @@ export const byPriority =
 export const nextUp = (items: Item[], exceptId?: string, now = new Date()) =>
   items
     .filter(
-      (i) => i.kind === "task" && i.status !== "done" && i.id !== exceptId,
+      (i) => i.kind === "task" && !isClosed(i.status) && i.id !== exceptId,
     )
     .sort(byPriority(now));
 

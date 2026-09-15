@@ -1,15 +1,18 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
+  ITEM_SORTS,
+  isClosed,
   searchItems,
   emptyPlans,
   emptySearch,
-  sameDay,
   statusLabels,
   statusOrder,
   type Item,
+  type ItemSort,
   type Priority,
   type Status,
+  type TaskList,
   type User,
 } from "@orbyn/core";
 import { Chip, ChipRow } from "../components/Chip";
@@ -20,6 +23,7 @@ import {
   SectionHeading,
   type ListHandlers,
 } from "../components/PlannerList";
+import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import {
   byPriority,
@@ -29,7 +33,6 @@ import {
   sizeOf,
   type Size,
 } from "../lib/planning";
-import { ITEM_SORTS, type ItemSort } from "@orbyn/core";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { usePlanning } from "../lib/planningContext";
 import { isOverdue } from "../lib/progress";
@@ -42,7 +45,9 @@ export const matchesSearch = (item: Item, search: string) =>
   (item.title + " " + item.notes).toLowerCase().includes(search.toLowerCase());
 
 type StatusFilter = "all" | Status;
-const STATUS_FILTERS: StatusFilter[] = ["all", ...statusOrder];
+/** Every status, closed ones last (cancelled isn't a step, but it's a status). */
+const BOARD_STATUSES: Status[] = [...statusOrder, "cancelled"];
+const STATUS_FILTERS: StatusFilter[] = ["all", ...BOARD_STATUSES];
 const statusFilterLabel = (f: StatusFilter) =>
   f === "all" ? "All" : statusLabels[f];
 
@@ -95,7 +100,7 @@ const DUE_LABELS: Record<Due, string> = {
   today: "Today",
   tomorrow: "Tomorrow",
   soon: "Due soon",
-  week: "Next 7 days",
+  week: "This week",
   none: "No date",
 };
 const PRIORITY_LABELS: Record<"any" | Priority, string> = {
@@ -104,12 +109,26 @@ const PRIORITY_LABELS: Record<"any" | Priority, string> = {
   medium: "Medium",
   low: "Low",
 };
+const GROUPS: Group[] = ["none", "list", "tag", "size"];
 const GROUP_LABELS: Record<Group, string> = {
   none: "No grouping",
   list: "By list",
   tag: "By tag",
   size: "By size",
 };
+const GROUP_KEY = "orbyn-tasks-group";
+/** The grouping chosen on this device. */
+const savedGroup = (): Group => {
+  const value = readLocal(GROUP_KEY);
+  return GROUPS.find((g) => g === value) ?? "none";
+};
+
+type Layout = "list" | "board";
+const LAYOUTS = ["list", "board"] as const;
+const LAYOUT_LABELS: Record<Layout, string> = { list: "List", board: "Board" };
+const LAYOUT_KEY = "orbyn-tasks-layout";
+const savedLayout = (): Layout =>
+  readLocal(LAYOUT_KEY) === "board" ? "board" : "list";
 
 /** Sections pinned above the list. Overdue tasks always get one. */
 type Pin = "today" | "tomorrow" | "soon";
@@ -136,6 +155,7 @@ const SORT_LABELS: Record<ItemSort, string> = {
   estimate: "Estimate",
   title: "Title",
   created: "Created",
+  position: "Manual order",
 };
 const SORT_KEY = "orbyn-task-sort";
 /** The order chosen on this device; most pressing first until then. */
@@ -148,6 +168,9 @@ const PRIORITY_RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
 const ascending = (a: number, b: number) =>
   Number.isNaN(a) ? (Number.isNaN(b) ? 0 : 1) : Number.isNaN(b) ? -1 : a - b;
 const time = (iso?: string | null) => (iso ? Date.parse(iso) : NaN);
+/** An item's place in the manual order (newer servers send it). */
+const position = (i: Item) =>
+  (i as { position?: number | null }).position ?? NaN;
 
 /**
  * The server's list orders (`GET /items?sort=`), applied to the loaded items.
@@ -174,6 +197,8 @@ function sorter(sort: ItemSort, rank: (a: Item, b: Item) => number) {
       );
     case "title":
       return by((a, b) => a.title.localeCompare(b.title));
+    case "position":
+      return by((a, b) => ascending(position(a), position(b)));
     default:
       return by((a, b) =>
         a.score === undefined && b.score === undefined
@@ -184,10 +209,10 @@ function sorter(sort: ItemSort, rank: (a: Item, b: Item) => number) {
 }
 
 /**
- * Every item in the chosen order (most pressing first unless changed, and
- * remembered on this device), with search, status tabs
- * and filters for due date, priority, list, tag, size and assignee. Items can
- * be grouped by list, tag or size.
+ * Every item in the chosen order (most pressing first unless changed), as a
+ * list or a board of status sections, both remembered on this device. Search,
+ * status tabs and filters for due date, priority, list, tag, size and
+ * assignee; the list view groups by list, tag or size.
  */
 export function TasksScreen({
   items,
@@ -195,6 +220,7 @@ export function TasksScreen({
   onSearch,
   user,
   onManageLists,
+  onManageTags,
   ...handlers
 }: ListHandlers & {
   items: Item[];
@@ -203,53 +229,60 @@ export function TasksScreen({
   user: User | null;
   /** Opens the lists sheet (create, rename, recolour, delete). */
   onManageLists: () => void;
+  /** Opens the tags sheet. */
+  onManageTags: () => void;
 }) {
   const { lists, tags, listById, tagById } = usePlanning();
   const [status, setStatus] = useState<StatusFilter>("all");
-  const [filters, setFilters] = useState<Filters>(DEFAULTS);
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...DEFAULTS,
+    group: savedGroup(),
+  }));
   const [open, setOpen] = useState<Key | "pins" | "sort" | null>(null);
   const [pins, setPins] = useState<Pin[]>(savedPins);
   const [sort, setSort] = useState<ItemSort>(savedSort);
+  const [layout, setLayout] = useState<Layout>(savedLayout);
   const now = new Date();
-  const weekEnd = dayStart(8, now);
+  /** Whether a due date falls between local midnights `from` and `to` days away. */
+  const within = (i: Item, from: number, to: number) => {
+    if (!i.due_at) return false;
+    const due = new Date(i.due_at);
+    return due >= dayStart(from, now) && due < dayStart(to, now);
+  };
 
+  // The assignee filter only means something with team items.
+  const hasTeamItems = items.some((i) => i.team_id);
+  const keys = KEYS.filter((k) => k !== "assignee" || hasTeamItems);
+  const assignee = hasTeamItems ? filters.assignee : "any";
   const people = new Map<string, string>();
   for (const i of items)
     if (i.assignee_id && i.assignee_id !== user?.id)
       people.set(i.assignee_id, i.assignee_name || "Someone");
 
   const matches = (i: Item) => {
-    const due = i.due_at ? new Date(i.due_at) : null;
     const dueOk =
       filters.due === "any" ||
-      (filters.due === "none" && !due) ||
-      (filters.due === "overdue" &&
-        !!due &&
-        due < now &&
-        i.status !== "done") ||
-      (filters.due === "today" && !!due && sameDay(due, now)) ||
-      (filters.due === "tomorrow" && !!due && sameDay(due, dayStart(1, now))) ||
-      // Due soon: the rest of the next seven days, after today and tomorrow.
-      (filters.due === "soon" &&
-        !!due &&
-        due >= dayStart(2, now) &&
-        due < weekEnd) ||
-      (filters.due === "week" &&
-        !!due &&
-        due >= dayStart(0, now) &&
-        due < weekEnd);
+      (filters.due === "none" && !i.due_at) ||
+      (filters.due === "overdue" && isOverdue(i, now)) ||
+      (filters.due === "today" && within(i, 0, 1)) ||
+      (filters.due === "tomorrow" && within(i, 1, 2)) ||
+      // Due soon: the rest of the coming week, after today and tomorrow.
+      (filters.due === "soon" && within(i, 2, 7)) ||
+      // This week: from today through Saturday (weeks start on Sunday).
+      (filters.due === "week" && within(i, 0, 7 - now.getDay()));
     const listOk =
       filters.list === "any" ||
       (filters.list === "none" ? !i.list_id : i.list_id === filters.list);
     const tagOk =
       filters.tag === "any" || (i.tag_ids ?? []).includes(filters.tag);
     const assigneeOk =
-      filters.assignee === "any" ||
-      (filters.assignee === "none"
-        ? !i.assignee_id
-        : filters.assignee === "me"
+      assignee === "any" ||
+      (assignee === "none"
+        ? // Unassigned: team items nobody has taken yet.
+          !!i.team_id && !i.assignee_id
+        : assignee === "me"
           ? !!user && i.assignee_id === user.id
-          : i.assignee_id === filters.assignee);
+          : i.assignee_id === assignee);
     return (
       dueOk &&
       listOk &&
@@ -264,19 +297,23 @@ export function TasksScreen({
   const count = (f: StatusFilter) =>
     f === "all" ? found.length : found.filter((i) => i.status === f).length;
   const order = sorter(sort, byPriority(now));
-  // Finished items always go last, whatever the order.
+  // Finished and cancelled items always go last, whatever the order.
   const visible = found
     .filter((i) => status === "all" || i.status === status)
     .sort(
       (a, b) =>
-        Number(a.status === "done") - Number(b.status === "done") ||
-        order(a, b),
+        Number(isClosed(a.status)) - Number(isClosed(b.status)) || order(a, b),
     );
   const chooseSort = (next: ItemSort) => {
     animateLayout();
     setSort(next);
     setOpen(null);
     saveLocal(SORT_KEY, next);
+  };
+  const chooseLayout = (next: Layout) => {
+    animateLayout();
+    setLayout(next);
+    saveLocal(LAYOUT_KEY, next);
   };
 
   const options: Record<
@@ -313,28 +350,25 @@ export function TasksScreen({
       { value: "none", label: "Unassigned" },
       ...[...people].map(([value, label]) => ({ value, label })),
     ],
-    group: (Object.keys(GROUP_LABELS) as Group[]).map((value) => ({
-      value,
-      label: GROUP_LABELS[value],
-    })),
+    group: GROUPS.map((value) => ({ value, label: GROUP_LABELS[value] })),
   };
   const current = (key: Key) =>
     options[key].find((o) => o.value === filters[key])?.label ?? "Any";
-  const active = KEYS.filter((k) => k !== "group" && filters[k] !== "any");
+  const active = keys.filter((k) => k !== "group" && filters[k] !== "any");
   const set = (key: Key, value: string) => {
     animateLayout();
     setFilters((f) => ({ ...f, [key]: value }));
+    if (key === "group") saveLocal(GROUP_KEY, value);
   };
 
   // Pinned sections: open tasks by when they're due, each in one section only.
   // A due filter is already a smart list, so it shows without them.
   const pinnedAs = (i: Item): "overdue" | Pin | null => {
-    if (i.status === "done" || !i.due_at) return null;
+    if (isClosed(i.status) || !i.due_at) return null;
     if (isOverdue(i, now)) return "overdue";
-    const due = new Date(i.due_at);
-    if (sameDay(due, now)) return "today";
-    if (sameDay(due, dayStart(1, now))) return "tomorrow";
-    return due >= dayStart(2, now) && due < weekEnd ? "soon" : null;
+    if (within(i, 0, 1)) return "today";
+    if (within(i, 1, 2)) return "tomorrow";
+    return within(i, 2, 7) ? "soon" : null;
   };
   const sections =
     filters.due === "any"
@@ -360,10 +394,23 @@ export function TasksScreen({
     saveLocal(PIN_KEY, next.join(",") || "none");
   };
 
+  // Lists that share a name (in different teams) get the team in their title.
+  const nameCount = new Map<string, number>();
+  for (const l of lists)
+    nameCount.set(l.name, (nameCount.get(l.name) ?? 0) + 1);
   const groups = groupItems(rest, filters.group, {
-    listName: (id) => listById.get(id)?.name,
-    tagName: (id) => tagById.get(id)?.name,
+    list: (id) => listById.get(id),
+    tag: (id) => tagById.get(id),
+    sameName: (name) => (nameCount.get(name) ?? 0) > 1,
   });
+  const rowProps = {
+    busy: handlers.busy,
+    onToggle: handlers.onToggle,
+    onOpen: handlers.onOpen,
+    canToggle: handlers.canToggle,
+    onSetStatus: handlers.onSetStatus,
+    showScore: sort === "score",
+  };
   const title = status === "all" ? "All items" : statusLabels[status];
   const empty =
     search.trim() || active.length
@@ -452,7 +499,7 @@ export function TasksScreen({
         contentContainerStyle={s.chips}
         accessibilityLabel="Filters"
       >
-        {KEYS.map((key) => {
+        {keys.map((key) => {
           const on = filters[key] !== "any" && filters[key] !== "none";
           const isGroup = key === "group";
           const shown = isGroup
@@ -553,9 +600,7 @@ export function TasksScreen({
           </ChipRow>
           {(open === "list" || open === "tag") && options[open].length <= 2 && (
             <Text style={[shared.small, s.panelHint]}>
-              {open === "list"
-                ? "No lists yet."
-                : "No tags yet. Add them when you edit a task."}
+              {open === "list" ? "No lists yet." : "No tags yet."}
             </Text>
           )}
         </View>
@@ -578,6 +623,15 @@ export function TasksScreen({
           </Text>
         </View>
       )}
+      <View style={s.layout}>
+        <Segmented
+          accessibilityLabel="Layout"
+          options={LAYOUTS}
+          labels={LAYOUT_LABELS}
+          value={layout}
+          onChange={chooseLayout}
+        />
+      </View>
       <View style={s.toolbar}>
         <PressableScale
           accessibilityRole="button"
@@ -593,7 +647,10 @@ export function TasksScreen({
           <Icon name="list" size={13} color={colors.muted} />
           <Text style={s.filterText}>Sort: {SORT_LABELS[sort]}</Text>
         </PressableScale>
-        <SmallAction label="Lists" disabled={false} onPress={onManageLists} />
+        <View style={s.toolbarActions}>
+          <SmallAction label="Tags" disabled={false} onPress={onManageTags} />
+          <SmallAction label="Lists" disabled={false} onPress={onManageLists} />
+        </View>
       </View>
       {open === "sort" && (
         <View style={s.panel}>
@@ -608,31 +665,11 @@ export function TasksScreen({
             ))}
           </ChipRow>
           <Text style={[shared.small, s.panelHint]}>
-            Finished items always come last.
+            Finished and cancelled items always come last.
           </Text>
         </View>
       )}
 
-      {sections.map((section) => (
-        <View key={section.key}>
-          <SectionHeading
-            title={
-              section.key === "overdue" ? "Overdue" : PIN_LABELS[section.key]
-            }
-            count={section.items.length}
-            hint={
-              section.key === "overdue" ? "Past due and still open" : undefined
-            }
-          />
-          <ItemRows
-            items={section.items}
-            busy={handlers.busy}
-            onToggle={handlers.onToggle}
-            onOpen={handlers.onOpen}
-            canToggle={handlers.canToggle}
-          />
-        </View>
-      ))}
       {visible.length === 0 ? (
         <>
           <SectionHeading title={title} count={0} />
@@ -642,29 +679,65 @@ export function TasksScreen({
             onAction={handlers.onAdd}
           />
         </>
+      ) : layout === "board" ? (
+        // One section per status; each card moves with "Move to…".
+        (status === "all" ? BOARD_STATUSES : [status]).map((st) => {
+          const column = visible.filter((i) => i.status === st);
+          return (
+            <View key={st}>
+              <SectionHeading
+                title={statusLabels[st]}
+                count={column.length}
+                color={statusTones[st].fg}
+              />
+              {column.length > 0 ? (
+                <ItemRows items={column} {...rowProps} moveButton />
+              ) : (
+                <View style={s.emptyColumn}>
+                  <Text style={shared.small}>Nothing here yet.</Text>
+                </View>
+              )}
+            </View>
+          );
+        })
       ) : (
-        rest.length > 0 &&
-        groups.map((g) => (
-          <View key={g.key}>
-            <SectionHeading
-              title={
-                filters.group !== "none"
-                  ? g.title
-                  : sections.length
-                    ? "Everything else"
-                    : title
-              }
-              count={g.items.length}
-            />
-            <ItemRows
-              items={g.items}
-              busy={handlers.busy}
-              onToggle={handlers.onToggle}
-              onOpen={handlers.onOpen}
-              canToggle={handlers.canToggle}
-            />
-          </View>
-        ))
+        <>
+          {sections.map((section) => (
+            <View key={section.key}>
+              <SectionHeading
+                title={
+                  section.key === "overdue"
+                    ? "Overdue"
+                    : PIN_LABELS[section.key]
+                }
+                count={section.items.length}
+                hint={
+                  section.key === "overdue"
+                    ? "Due before today and still open"
+                    : undefined
+                }
+              />
+              <ItemRows items={section.items} {...rowProps} />
+            </View>
+          ))}
+          {rest.length > 0 &&
+            groups.map((g) => (
+              <View key={g.key}>
+                <SectionHeading
+                  title={
+                    filters.group !== "none"
+                      ? g.title
+                      : sections.length
+                        ? "Everything else"
+                        : title
+                  }
+                  count={g.items.length}
+                  color={g.color}
+                />
+                <ItemRows items={g.items} {...rowProps} />
+              </View>
+            ))}
+        </>
       )}
     </>
   );
@@ -675,30 +748,41 @@ function groupItems(
   items: Item[],
   group: Group,
   names: {
-    listName: (id: string) => string | undefined;
-    tagName: (id: string) => string | undefined;
+    list: (id: string) => TaskList | undefined;
+    tag: (id: string) => { name: string; color: string } | undefined;
+    /** Whether more than one list has this name. */
+    sameName: (name: string) => boolean;
   },
 ) {
-  if (group === "none") return [{ key: "all", title: "", items }];
-  const groups = new Map<
-    string,
-    { key: string; title: string; items: Item[] }
-  >();
-  const add = (key: string, title: string, item: Item) => {
-    const g = groups.get(key) ?? { key, title, items: [] };
+  type Section = { key: string; title: string; items: Item[]; color?: string };
+  if (group === "none") return [{ key: "all", title: "", items } as Section];
+  const groups = new Map<string, Section>();
+  const add = (key: string, title: string, item: Item, color?: string) => {
+    const g = groups.get(key) ?? { key, title, items: [], color };
     g.items.push(item);
     groups.set(key, g);
   };
   for (const i of items) {
     if (group === "size") add(sizeOf(i), SIZE_LABELS[sizeOf(i)], i);
     else if (group === "list") {
-      const name = i.list_id ? names.listName(i.list_id) : undefined;
-      if (name && i.list_id) add(i.list_id, name, i);
+      const list = i.list_id ? names.list(i.list_id) : undefined;
+      if (list)
+        add(
+          list.id,
+          list.team_name && names.sameName(list.name)
+            ? `${list.name} · ${list.team_name}`
+            : list.name,
+          i,
+          list.color,
+        );
       else add("~none", "No list", i);
     } else {
-      const tagged = (i.tag_ids ?? []).filter((id) => names.tagName(id));
+      const tagged = (i.tag_ids ?? []).flatMap((id) => {
+        const tag = names.tag(id);
+        return tag ? [{ id, tag }] : [];
+      });
       if (!tagged.length) add("~none", "No tags", i);
-      for (const id of tagged) add(id, names.tagName(id)!, i);
+      for (const { id, tag } of tagged) add(id, tag.name, i, tag.color);
     }
   }
   const all = [...groups.values()];
@@ -769,11 +853,22 @@ const s = themed(() =>
       marginBottom: 12,
     },
     panelHint: { marginTop: 8 },
+    layout: { marginBottom: 12 },
     toolbar: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       marginBottom: 14,
+    },
+    toolbarActions: { flexDirection: "row", gap: 8 },
+    emptyColumn: {
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      marginBottom: 22,
     },
   }),
 );

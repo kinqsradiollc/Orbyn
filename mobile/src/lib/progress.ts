@@ -1,4 +1,4 @@
-import type { Item, Status } from "@orbyn/core";
+import { isClosed, type Item, type Status } from "@orbyn/core";
 
 /** Status the quick-complete checkbox moves an item to. */
 export const toggledStatus = (item: Item): Status =>
@@ -44,8 +44,9 @@ export const percentOf = (item: Pick<Item, "progress" | "status">) =>
     ? 100
     : Math.max(0, Math.min(100, Math.round(item.progress ?? 0)));
 
+/** Still open and due before today (the web's rule); due earlier today is today. */
 export const isOverdue = (item: Item, now = new Date()) =>
-  item.status !== "done" &&
+  !isClosed(item.status) &&
   !!item.due_at &&
-  new Date(item.due_at) < now &&
-  new Date(item.due_at).toDateString() !== now.toDateString();
+  new Date(item.due_at) <
+    new Date(now.getFullYear(), now.getMonth(), now.getDate());

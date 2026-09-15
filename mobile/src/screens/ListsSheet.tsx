@@ -8,10 +8,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { hasTeamPermission, type TaskList, type Team } from "@orbyn/core";
+import {
+  byDueDate,
+  hasTeamPermission,
+  isClosed,
+  type Item,
+  type TaskList,
+  type Team,
+} from "@orbyn/core";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { ItemRows, type ListHandlers } from "../components/PlannerList";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
@@ -35,15 +43,29 @@ const COLOR_NAMES = [
 ];
 const PERSONAL = "personal";
 
-/** Lists: your personal ones and each team's shared ones. */
+/** Handlers for the task rows shown inside a list. */
+type RowHandlers = Omit<ListHandlers, "onAdd">;
+
+/**
+ * Lists: your personal ones and each team's shared ones. Tap a list to see
+ * its tasks and add one to it; lists you can change can be renamed,
+ * recoloured or deleted there too.
+ */
 export function ListsSheet({
   visible,
   teams,
+  items,
+  handlers,
+  onNewTask,
   onClose,
   onDismiss,
 }: {
   visible: boolean;
   teams: Team[];
+  items: Item[];
+  handlers: RowHandlers;
+  /** Open the editor on a new task in this list. */
+  onNewTask: (list: TaskList) => void;
   onClose: () => void;
   onDismiss?: () => void;
 }) {
@@ -54,12 +76,27 @@ export function ListsSheet({
       onClose={onClose}
       onDismiss={onDismiss}
     >
-      <Body teams={teams} />
+      <Body
+        teams={teams}
+        items={items}
+        handlers={handlers}
+        onNewTask={onNewTask}
+      />
     </Sheet>
   );
 }
 
-function Body({ teams }: { teams: Team[] }) {
+function Body({
+  teams,
+  items,
+  handlers,
+  onNewTask,
+}: {
+  teams: Team[];
+  items: Item[];
+  handlers: RowHandlers;
+  onNewTask: (list: TaskList) => void;
+}) {
   const { lists, reload } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [name, setName] = useState("");
@@ -74,6 +111,15 @@ function Body({ teams }: { teams: Team[] }) {
   for (const t of writable) scopeLabels[t.id] = t.name;
   const canEdit = (l: TaskList) =>
     !l.team_id || writable.some((t) => t.id === l.team_id);
+  /** A list's tasks, open ones first by due date. */
+  const tasksIn = (l: TaskList) =>
+    items
+      .filter((i) => i.list_id === l.id)
+      .sort(
+        (a, b) =>
+          Number(isClosed(a.status)) - Number(isClosed(b.status)) ||
+          byDueDate(a, b),
+      );
 
   const sections = [
     {
@@ -111,7 +157,7 @@ function Body({ teams }: { teams: Team[] }) {
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
           Group tasks into lists. Team lists are shared with everyone in the
-          team.
+          team. Tap a list to see what’s in it.
         </Text>
 
         {sections.length === 0 && (
@@ -135,6 +181,8 @@ function Body({ teams }: { teams: Team[] }) {
                 <ListRow
                   key={l.id}
                   list={l}
+                  tasks={tasksIn(l)}
+                  handlers={handlers}
                   first={n === 0}
                   open={expanded === l.id}
                   editable={canEdit(l)}
@@ -143,6 +191,7 @@ function Body({ teams }: { teams: Team[] }) {
                     animateLayout();
                     setExpanded(expanded === l.id ? null : l.id);
                   }}
+                  onNewTask={() => onNewTask(l)}
                   onSave={(patch) =>
                     run(async () => {
                       await client.updateList(l.id, patch);
@@ -215,20 +264,26 @@ function Body({ teams }: { teams: Team[] }) {
 
 function ListRow({
   list,
+  tasks,
+  handlers,
   first,
   open,
   editable,
   busy,
   onToggle,
+  onNewTask,
   onSave,
   onDelete,
 }: {
   list: TaskList;
+  tasks: Item[];
+  handlers: RowHandlers;
   first: boolean;
   open: boolean;
   editable: boolean;
   busy: boolean;
   onToggle: () => void;
+  onNewTask: () => void;
   onSave: (patch: { name?: string; color?: string }) => void;
   onDelete: () => void;
 }) {
@@ -238,8 +293,8 @@ function ListRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${list.name}, ${list.item_count} open`}
-        accessibilityState={{ expanded: open, disabled: !editable }}
-        disabled={!editable}
+        accessibilityHint="Shows its tasks"
+        accessibilityState={{ expanded: open }}
         onPress={onToggle}
         style={({ pressed }) => [s.row, pressed && s.pressed]}
       >
@@ -248,45 +303,62 @@ function ListRow({
           {list.name}
         </Text>
         <Text style={shared.small}>{list.item_count} open</Text>
-        {editable && (
-          <Icon name="chevronRight" size={16} color={colors.faint} />
-        )}
+        <Icon name="chevronRight" size={16} color={colors.faint} />
       </Pressable>
       {open && (
         <View style={s.edit}>
-          <View style={s.renameRow}>
-            <TextInput
-              style={[shared.input, s.rename]}
-              value={name}
-              onChangeText={setName}
-              maxLength={80}
-              accessibilityLabel={`Rename ${list.name}`}
+          {tasks.length > 0 ? (
+            <ItemRows items={tasks} {...handlers} />
+          ) : (
+            <Text style={shared.small}>No tasks in this list yet.</Text>
+          )}
+          {editable && (
+            <Button
+              secondary
+              title="New task here"
+              icon="plus"
+              style={s.delete}
+              onPress={onNewTask}
             />
-            <SmallAction
-              label="Rename"
-              disabled={busy || !name.trim() || name.trim() === list.name}
-              onPress={() => onSave({ name: name.trim() })}
-            />
-          </View>
-          <Swatches
-            value={list.color}
-            onChange={(color) => color !== list.color && onSave({ color })}
-          />
-          <Button
-            destructive
-            title="Delete list"
-            icon="trash"
-            disabled={busy}
-            style={s.delete}
-            onPress={onDelete}
-          />
+          )}
+          {editable && (
+            <>
+              <View style={s.renameRow}>
+                <TextInput
+                  style={[shared.input, s.rename]}
+                  value={name}
+                  onChangeText={setName}
+                  maxLength={80}
+                  accessibilityLabel={`Rename ${list.name}`}
+                />
+                <SmallAction
+                  label="Rename"
+                  disabled={busy || !name.trim() || name.trim() === list.name}
+                  onPress={() => onSave({ name: name.trim() })}
+                />
+              </View>
+              <Swatches
+                value={list.color}
+                onChange={(color) => color !== list.color && onSave({ color })}
+              />
+              <Button
+                destructive
+                title="Delete list"
+                icon="trash"
+                disabled={busy}
+                style={s.delete}
+                onPress={onDelete}
+              />
+            </>
+          )}
         </View>
       )}
     </FadeIn>
   );
 }
 
-function Swatches({
+/** The list colours as a row of swatches; lists and tags share it. */
+export function Swatches({
   value,
   onChange,
 }: {

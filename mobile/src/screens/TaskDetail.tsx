@@ -135,6 +135,15 @@ function Body({
   const [composing, setComposing] = useState(false);
   const area = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(area);
+  /** Progress being chosen, saved half a second after the last tap. */
+  const [draft, setDraft] = useState<number | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (progressTimer.current) clearTimeout(progressTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -149,7 +158,16 @@ function Body({
     return () => {
       alive = false;
     };
-  }, [seed.id]);
+    // Reload when the task changes elsewhere, not only when another opens.
+  }, [
+    seed.id,
+    seed.version,
+    seed.status,
+    seed.steps_done,
+    seed.steps_total,
+    seed.updates_count,
+    seed.last_update_at,
+  ]);
 
   const item: Item = detail ?? seed;
   const team = item.team_id
@@ -165,7 +183,7 @@ function Body({
     ? steps.filter((st) => st.done).length
     : (seed.steps_done ?? 0);
   const stepsTotal = detail ? steps.length : (seed.steps_total ?? 0);
-  const percent = percentOf(item);
+  const percent = draft ?? percentOf(item);
   const tone = statusTones[item.status];
   const priority = PRIORITY[item.priority];
   const meetingUrl = item.meeting_url ?? "";
@@ -180,14 +198,20 @@ function Body({
   const run = async (fn: () => Promise<ItemDetail>) => {
     setBusy(true);
     setError("");
+    const before = item.status;
     try {
       const next = await fn();
       animateLayout();
       setDetail(next);
+      // A status change, an update or the last checklist step can finish it.
+      if (next.status === "done" && before !== "done") celebrate(next.title);
       onChanged();
       return true;
     } catch (e) {
       setError((e as Error).message);
+      // The task changed elsewhere (steps added, a newer version): reload it.
+      if ((e as { status?: number }).status === 409)
+        client.getItem(seed.id).then(setDetail, () => {});
       return false;
     } finally {
       setBusy(false);
@@ -196,9 +220,19 @@ function Body({
 
   const setStatus = (status: Status) => {
     if (status !== item.status)
-      void run(() => client.postItemUpdate(item.id, { status })).then(
-        (ok) => ok && status === "done" && celebrate(item.title),
+      void run(() => client.postItemUpdate(item.id, { status }));
+  };
+  /** Set progress by hand; saved half a second after the last change. */
+  const setProgress = (value: number) => {
+    const next = Math.max(0, Math.min(100, Math.round(value)));
+    setDraft(next);
+    if (progressTimer.current) clearTimeout(progressTimer.current);
+    progressTimer.current = setTimeout(() => {
+      progressTimer.current = null;
+      void run(() => client.postItemUpdate(item.id, { progress: next })).then(
+        () => setDraft(null),
       );
+    }, 500);
   };
   const addStep = async () => {
     const title = newStep.trim();
@@ -216,7 +250,6 @@ function Body({
       }),
     );
     if (ok) {
-      if (status === "done") celebrate(item.title);
       setNote("");
       setNoteStatus(null);
     }
@@ -362,7 +395,11 @@ function Body({
                 {stepsLabel(stepsDone, stepsTotal)} · Progress follows the
                 checklist
               </Text>
-            ) : readOnly ? null : (
+            ) : readOnly ? null : item.status === "done" ? (
+              <Text style={[shared.small, s.progressHint]}>
+                Reopen the task to change its progress.
+              </Text>
+            ) : (
               <>
                 <Text style={[shared.small, s.progressHint]}>
                   No checklist yet. Set progress by hand:
@@ -378,12 +415,7 @@ function Body({
                         accessibilityLabel={`Set progress to ${value}%`}
                         accessibilityState={{ checked: active, disabled: busy }}
                         disabled={busy}
-                        onPress={() =>
-                          !active &&
-                          void run(() =>
-                            client.postItemUpdate(item.id, { progress: value }),
-                          )
-                        }
+                        onPress={() => !active && setProgress(value)}
                         style={[
                           s.segment,
                           filled && { backgroundColor: tone.bg },
@@ -401,6 +433,34 @@ function Body({
                       </PressableScale>
                     );
                   })}
+                </View>
+                <View style={s.stepper}>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="5% less"
+                    accessibilityState={{ disabled: busy || percent <= 0 }}
+                    disabled={busy || percent <= 0}
+                    onPress={() => setProgress(percent - 5)}
+                    style={[s.stepperButton, (busy || percent <= 0) && s.faded]}
+                  >
+                    <Text style={s.stepperText}>−5%</Text>
+                  </PressableScale>
+                  <Text style={s.stepperValue} accessibilityLiveRegion="polite">
+                    {percent}%
+                  </Text>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="5% more"
+                    accessibilityState={{ disabled: busy || percent >= 100 }}
+                    disabled={busy || percent >= 100}
+                    onPress={() => setProgress(percent + 5)}
+                    style={[
+                      s.stepperButton,
+                      (busy || percent >= 100) && s.faded,
+                    ]}
+                  >
+                    <Text style={s.stepperText}>+5%</Text>
+                  </PressableScale>
                 </View>
               </>
             )}
@@ -441,6 +501,9 @@ function Body({
                 }
                 onDelete={() =>
                   void run(() => client.deleteStep(item.id, step.id))
+                }
+                onRename={(title) =>
+                  void run(() => client.updateStep(item.id, step.id, { title }))
                 }
               />
             ))}
@@ -622,7 +685,10 @@ function StatusChoice({
   );
 }
 
-/** One checklist step: tick with a pop, delete with the trash button. */
+/**
+ * One checklist step: tick with a pop, tap its title to rename it, delete
+ * with the trash button.
+ */
 function StepRow({
   step,
   first,
@@ -630,6 +696,7 @@ function StepRow({
   readOnly,
   onToggle,
   onDelete,
+  onRename,
 }: {
   step: ItemStep;
   first: boolean;
@@ -637,7 +704,24 @@ function StepRow({
   readOnly: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
 }) {
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState(step.title);
+  // Submitting blurs the field too; save once.
+  const saving = useRef(false);
+  const startRename = () => {
+    setTitle(step.title);
+    saving.current = false;
+    setRenaming(true);
+  };
+  const finishRename = () => {
+    if (saving.current) return;
+    saving.current = true;
+    setRenaming(false);
+    const next = title.trim();
+    if (next && next !== step.title) onRename(next);
+  };
   const reduced = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const was = useRef(step.done);
@@ -657,7 +741,6 @@ function StepRow({
         disabled={disabled}
         hitSlop={8}
         onPress={onToggle}
-        style={s.stepMain}
       >
         <Animated.View
           style={[s.check, step.done && s.checked, { transform: [{ scale }] }]}
@@ -666,8 +749,33 @@ function StepRow({
             <Icon name="check" size={12} color={colors.white} strokeWidth={3} />
           )}
         </Animated.View>
-        <Text style={[s.stepText, step.done && s.stepDone]}>{step.title}</Text>
       </Pressable>
+      {renaming ? (
+        <TextInput
+          style={[shared.input, s.stepRename]}
+          value={title}
+          onChangeText={setTitle}
+          autoFocus
+          maxLength={200}
+          returnKeyType="done"
+          onSubmitEditing={finishRename}
+          onBlur={finishRename}
+          accessibilityLabel={`Rename step ${step.title}`}
+        />
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={step.title}
+          accessibilityHint={readOnly ? undefined : "Renames this step"}
+          disabled={readOnly || disabled}
+          onPress={startRename}
+          style={s.stepTitle}
+        >
+          <Text style={[s.stepText, step.done && s.stepDone]}>
+            {step.title}
+          </Text>
+        </Pressable>
+      )}
       {!readOnly && (
         <Pressable
           accessibilityRole="button"
@@ -822,6 +930,37 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
+    stepper: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 16,
+    },
+    stepperButton: {
+      minWidth: 64,
+      minHeight: 40,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepperText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    stepperValue: {
+      minWidth: 48,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    faded: { opacity: 0.45 },
+    stepTitle: { flex: 1, paddingVertical: 4 },
+    stepRename: { flex: 1, minHeight: 40, paddingVertical: 8 },
     segmentText: {
       fontFamily: fonts.semibold,
       fontSize: 12,

@@ -41,9 +41,9 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled or declined",
-  "event.starting": "Event starting soon",
-  "block.started": "Time block started",
-  "task.at_risk": "Task at risk",
+  "event.starting": "An event is about to start",
+  "block.started": "A time block starts",
+  "task.at_risk": "A task is at risk",
 };
 
 /**

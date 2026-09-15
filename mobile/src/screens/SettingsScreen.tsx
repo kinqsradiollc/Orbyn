@@ -52,6 +52,7 @@ export function SettingsScreen({
   onOpenPlanning,
   onOpenConnections,
   onOpenBooking,
+  onOpenTags,
 }: {
   user: User | null;
   busy: boolean;
@@ -65,6 +66,7 @@ export function SettingsScreen({
   onOpenPlanning: () => void;
   onOpenConnections: () => void;
   onOpenBooking: () => void;
+  onOpenTags: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const theme = useTheme();
@@ -157,6 +159,13 @@ export function SettingsScreen({
           title="Planning"
           detail="Working hours, frames and places"
           onPress={onOpenPlanning}
+        />
+        <LinkRow
+          divider
+          icon="tag"
+          title="Tags"
+          detail="Yours and your teams’"
+          onPress={onOpenTags}
         />
         <LinkRow
           divider

@@ -108,6 +108,7 @@ export function RepeatPicker({
   dueAt,
   disabled = false,
   onChange,
+  onProblem,
 }: {
   rrule: string | null | undefined;
   /** The item's date; repeating needs one. */
@@ -115,6 +116,8 @@ export function RepeatPicker({
   disabled?: boolean;
   /** The new rule, or null to stop repeating. */
   onChange: (rrule: string | null) => void;
+  /** Why the choices can't be saved yet ("pick the last date"), or null. */
+  onProblem?: (problem: string | null) => void;
 }) {
   const [state, setState] = useState(() => initial(rrule, dueAt));
   const unsupported = !!rrule && !parseRrule(rrule);
@@ -122,6 +125,11 @@ export function RepeatPicker({
   const update = (patch: Partial<typeof state>) => {
     const next = { ...state, ...patch };
     setState(next);
+    onProblem?.(
+      next.preset !== "none" && next.ends === "until" && !next.until
+        ? "Pick the last date, or choose another ending."
+        : null,
+    );
     if (next.preset === "none") {
       onChange(null);
       return;

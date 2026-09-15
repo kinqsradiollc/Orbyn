@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { Item } from "@orbyn/core";
+import type { Item, Status } from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ItemCard } from "./ItemCard";
@@ -16,6 +16,8 @@ export type ListHandlers = {
   onAdd: () => void;
   /** False for items whose checkbox should be disabled (team items you only view). */
   canToggle?: (item: Item) => boolean;
+  /** Change an item's status (long-press a row, or "Move to…" on the board). */
+  onSetStatus?: (item: Item, status: Status) => void;
 };
 
 /** Section heading with a count badge, used above every list of items. */
@@ -23,15 +25,19 @@ export function SectionHeading({
   title,
   count,
   hint,
+  color,
 }: {
   title: string;
   count?: number;
   /** Short line under the heading, e.g. "Blocked or past due". */
   hint?: string;
+  /** A dot before the title: a list's, tag's or status's colour. */
+  color?: string;
 }) {
   return (
     <View style={s.headingWrap}>
       <View style={s.heading} accessibilityRole="header">
+        {!!color && <View style={[s.dot, { backgroundColor: color }]} />}
         <Text style={shared.sectionTitle}>{title}</Text>
         {count !== undefined && (
           <View style={s.count}>
@@ -51,7 +57,16 @@ export function ItemRows({
   onToggle,
   onOpen,
   canToggle,
-}: Omit<ListHandlers, "onAdd"> & { items: Item[] }) {
+  onSetStatus,
+  showScore = false,
+  moveButton = false,
+}: Omit<ListHandlers, "onAdd"> & {
+  items: Item[];
+  /** Show each item's priority score (the list is sorted by it). */
+  showScore?: boolean;
+  /** A "Move to…" status action on each card (the board). */
+  moveButton?: boolean;
+}) {
   return (
     <View style={s.list}>
       {items.map((i, n) => (
@@ -63,6 +78,9 @@ export function ItemRows({
             readOnly={canToggle ? !canToggle(i) : false}
             onToggle={onToggle}
             onOpen={onOpen}
+            onSetStatus={onSetStatus}
+            score={showScore ? i.score : undefined}
+            moveButton={moveButton}
           />
         </FadeIn>
       ))}
@@ -165,6 +183,7 @@ const s = themed(() =>
       marginBottom: 22,
     },
     center: { textAlign: "center" },
+    dot: { width: 9, height: 9, borderRadius: 5 },
     emptyText: { textAlign: "center", marginBottom: 16 },
   }),
 );

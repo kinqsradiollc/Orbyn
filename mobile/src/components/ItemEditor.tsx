@@ -67,6 +67,8 @@ type Props = {
 };
 
 const PERSONAL = "personal";
+/** The server's cap on tags per item. */
+const MAX_TAGS = 20;
 
 /** Native sheet on iOS, full-screen modal on Android; both respect safe areas. */
 export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
@@ -153,6 +155,18 @@ function Form({
   const [newTag, setNewTag] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState("");
+  /** From the repeat picker: an ending chosen without its date. */
+  const [repeatProblem, setRepeatProblem] = useState<string | null>(null);
+  const [formError, setFormError] = useState("");
+  /** The web's checks before saving: a repeat needs a date, and its last date. */
+  const save = () => {
+    const problem =
+      editing.rrule && !editing.due_at
+        ? "Repeating items need a date. Add a start time."
+        : repeatProblem;
+    setFormError(problem ?? "");
+    if (!problem) onSave();
+  };
 
   // Invitees and their answers come from the saved event (lists don't carry them).
   const itemId = "id" in editing ? editing.id : null;
@@ -239,6 +253,10 @@ function Form({
   const addTag = async () => {
     const name = newTag.trim();
     if (!name) return;
+    if (tagIds.length >= MAX_TAGS) {
+      setTagError("Up to 20 tags.");
+      return;
+    }
     const existing = scopeTags.find(
       (t) => t.name.toLowerCase() === name.toLowerCase(),
     );
@@ -334,6 +352,11 @@ function Form({
                 {lockedToTeam && (
                   <Text style={[shared.small, s.hint]}>
                     Only team admins can move this out of {savedTeam.name}.
+                  </Text>
+                )}
+                {teamId !== savedTeamId && (
+                  <Text style={[shared.small, s.hint]}>
+                    Moving it clears its list, tags and assignee.
                   </Text>
                 )}
               </Section>
@@ -546,6 +569,7 @@ function Form({
                 rrule={editing.rrule}
                 dueAt={editing.due_at}
                 disabled={readOnly}
+                onProblem={setRepeatProblem}
                 onChange={(rrule) =>
                   onChange(
                     rrule
@@ -561,57 +585,55 @@ function Form({
                 </Text>
               )}
             </Section>
-            {editing.kind === "task" && (
-              <Section label="How long will it take?">
-                <ChipRow label="Estimate">
+            <Section label="How long will it take?">
+              <ChipRow label="Estimate">
+                <Chip
+                  label="Not sure"
+                  selected={!estimate && !customEstimate}
+                  disabled={readOnly}
+                  onPress={() => {
+                    setCustomEstimate(false);
+                    onChange({ estimate_minutes: null });
+                  }}
+                />
+                {ESTIMATES.map((m) => (
                   <Chip
-                    label="Not sure"
-                    selected={!estimate && !customEstimate}
+                    key={m}
+                    label={minutesLabel(m)}
+                    accessibilityLabel={`${minutesLabel(m)} estimate`}
+                    selected={!customEstimate && estimate === m}
                     disabled={readOnly}
                     onPress={() => {
                       setCustomEstimate(false);
-                      onChange({ estimate_minutes: null });
+                      onChange({ estimate_minutes: m });
                     }}
                   />
-                  {ESTIMATES.map((m) => (
-                    <Chip
-                      key={m}
-                      label={minutesLabel(m)}
-                      accessibilityLabel={`${minutesLabel(m)} estimate`}
-                      selected={!customEstimate && estimate === m}
-                      disabled={readOnly}
-                      onPress={() => {
-                        setCustomEstimate(false);
-                        onChange({ estimate_minutes: m });
-                      }}
-                    />
-                  ))}
-                  <Chip
-                    label="Custom"
-                    selected={customEstimate}
-                    disabled={readOnly}
-                    onPress={() => setCustomEstimate(true)}
+                ))}
+                <Chip
+                  label="Custom"
+                  selected={customEstimate}
+                  disabled={readOnly}
+                  onPress={() => setCustomEstimate(true)}
+                />
+              </ChipRow>
+              {customEstimate && (
+                <View style={s.below}>
+                  <NumberInput
+                    value={estimate ? String(estimate) : ""}
+                    editable={!readOnly}
+                    placeholder="50"
+                    suffix="minutes"
+                    accessibilityLabel="Estimate in minutes"
+                    onChangeText={(text) =>
+                      onChange({
+                        estimate_minutes:
+                          Math.min(10080, Number(text) || 0) || null,
+                      })
+                    }
                   />
-                </ChipRow>
-                {customEstimate && (
-                  <View style={s.below}>
-                    <NumberInput
-                      value={estimate ? String(estimate) : ""}
-                      editable={!readOnly}
-                      placeholder="50"
-                      suffix="minutes"
-                      accessibilityLabel="Estimate in minutes"
-                      onChangeText={(text) =>
-                        onChange({
-                          estimate_minutes:
-                            Math.min(10080, Number(text) || 0) || null,
-                        })
-                      }
-                    />
-                  </View>
-                )}
-              </Section>
-            )}
+                </View>
+              )}
+            </Section>
             <Section label="List">
               {scopeLists.length ? (
                 <ChipRow label="List">
@@ -652,7 +674,9 @@ function Form({
                         label={t.name}
                         color={t.color}
                         selected={on}
-                        disabled={readOnly}
+                        disabled={
+                          readOnly || (!on && tagIds.length >= MAX_TAGS)
+                        }
                         onPress={() =>
                           onChange({
                             tag_ids: on
@@ -701,6 +725,9 @@ function Form({
                   </PressableScale>
                 </View>
               )}
+              {tagIds.length >= MAX_TAGS && (
+                <Text style={[shared.small, s.hint]}>Up to 20 tags.</Text>
+              )}
               {!!tagError && (
                 <Text accessibilityRole="alert" style={[s.error, s.below]}>
                   {tagError}
@@ -736,6 +763,20 @@ function Form({
                       onPress={() => onChange({ assignee_id: m.user_id })}
                     />
                   ))}
+                  {/* Someone who left the team stays until you pick another. */}
+                  {!!editing.assignee_id &&
+                    !members.some((m) => m.user_id === editing.assignee_id) && (
+                      <Chip
+                        label={
+                          ("assignee_name" in editing &&
+                            editing.assignee_name) ||
+                          "Current assignee"
+                        }
+                        selected
+                        disabled={readOnly}
+                        onPress={() => {}}
+                      />
+                    )}
                 </ChipRow>
               </Section>
             )}
@@ -814,6 +855,11 @@ function Form({
                 }
               />
             </Section>
+            {!!formError && (
+              <Text accessibilityRole="alert" style={s.error}>
+                {formError}
+              </Text>
+            )}
             {!!error && (
               <Text accessibilityRole="alert" style={s.error}>
                 {error}
@@ -824,7 +870,7 @@ function Form({
                 title={busy ? "Saving…" : "Save item"}
                 icon={busy ? undefined : "check"}
                 disabled={busy}
-                onPress={onSave}
+                onPress={save}
               />
             )}
             {exists && !readOnly && (

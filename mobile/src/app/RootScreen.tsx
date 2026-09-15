@@ -19,6 +19,8 @@ import {
   type Item,
   type Notice,
   type Plan,
+  type Status,
+  type TaskList,
 } from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
@@ -50,6 +52,7 @@ import { PlanningSheet } from "../screens/PlanningSheet";
 import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
+import { TagsSheet } from "../screens/TagsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
@@ -67,7 +70,8 @@ type SheetName =
   | "lists"
   | "planning"
   | "connections"
-  | "booking";
+  | "booking"
+  | "tags";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -283,6 +287,20 @@ export function RootScreen() {
         // The row may move to another group or leave this list.
         await refresh({ animate: true });
       }),
+    /** Long-press a row, or "Move to…" on the board. */
+    onSetStatus: (i: Item, status: Status) =>
+      void act(async () => {
+        await client.postItemUpdate(i.id, { status });
+        if (status === "done") celebrate(i.title);
+        await refresh({ animate: true });
+      }),
+  };
+  /** "New task here" in a list: the editor with that list and team chosen. */
+  const newInList = (list: TaskList) => {
+    setEditRepeat(null);
+    present({
+      edit: { ...freshItem(), list_id: list.id, team_id: list.team_id ?? null },
+    });
   };
   const markRead = (n: Notice) =>
     act(async () => {
@@ -502,6 +520,10 @@ export function RootScreen() {
                       setTab("AI");
                       void assistant.ask(text);
                     }}
+                    onShowAll={() => {
+                      setTab("Tasks");
+                      setSearch("");
+                    }}
                     {...listHandlers}
                   />
                 )}
@@ -512,6 +534,7 @@ export function RootScreen() {
                     onSearch={setSearch}
                     user={user}
                     onManageLists={() => setSheet("lists")}
+                    onManageTags={() => setSheet("tags")}
                     {...listHandlers}
                   />
                 )}
@@ -576,6 +599,7 @@ export function RootScreen() {
                     onOpenPlanning={() => setSheet("planning")}
                     onOpenConnections={() => setSheet("connections")}
                     onOpenBooking={openBookings}
+                    onOpenTags={() => setSheet("tags")}
                   />
                 )}
               </FadeIn>
@@ -628,6 +652,7 @@ export function RootScreen() {
           onDismiss={onSheetDismissed}
           onSwitch={setFocus}
           onChanged={planChanged}
+          readOnly={!!focus && !listHandlers.canToggle(focus)}
         />
         <PlanSheet
           visible={sheet === "plan"}
@@ -649,6 +674,15 @@ export function RootScreen() {
         />
         <ListsSheet
           visible={sheet === "lists"}
+          teams={teams}
+          items={items}
+          handlers={listHandlers}
+          onNewTask={newInList}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        />
+        <TagsSheet
+          visible={sheet === "tags"}
           teams={teams}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}

@@ -9,7 +9,10 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { ProgressBar } from "../components/ProgressBar";
 import { QuickAdd } from "../components/QuickAdd";
+import { SmallAction } from "../components/SmallAction";
+import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
 import {
   EmptyState,
@@ -35,9 +38,12 @@ export function TodayScreen({
   userId,
   onQuickAdded,
   onAsk,
+  onShowAll,
   ...handlers
 }: ListHandlers & {
   items: Item[];
+  /** Opens the Tasks tab. */
+  onShowAll: () => void;
   userId?: string;
   /** After quick add created something, so the planner reloads. */
   onQuickAdded: (item: Item) => void;
@@ -55,11 +61,18 @@ export function TodayScreen({
     inProgress,
     today: dueToday,
     upcoming,
+    done,
     doneThisWeek,
     inProgressCount,
     blockedCount,
   } = overviewItems(items, now);
   const comingUp = upcoming.slice(0, COMING_UP);
+  // Momentum, as on the web: share of plans complete, average open progress.
+  const openTasks = open.filter((i) => i.kind === "task");
+  const average = openTasks.length
+    ? openTasks.reduce((sum, i) => sum + percentOf(i), 0) / openTasks.length
+    : 0;
+  const completePct = items.length ? (done.length / items.length) * 100 : 0;
 
   const stats = [
     { label: "Open", value: open.length, color: colors.textSoft },
@@ -148,6 +161,7 @@ export function TodayScreen({
             title="Due today"
             items={dueToday}
             empty="Nothing else is due today."
+            emptyAction={{ label: "Plan something", onPress: handlers.onAdd }}
             handlers={handlers}
           />
           <Section
@@ -156,6 +170,30 @@ export function TodayScreen({
             empty="No upcoming plans yet. Your next idea can start here."
             handlers={handlers}
           />
+          <View style={s.allRow}>
+            <SmallAction
+              label="All tasks"
+              disabled={false}
+              onPress={onShowAll}
+            />
+          </View>
+          <FadeIn style={shared.card}>
+            <Text style={shared.sectionTitle}>Your momentum</Text>
+            <View
+              style={s.momentumLine}
+              accessible
+              accessibilityLabel={`${Math.round(completePct)}% of your plans complete`}
+            >
+              <Text style={s.momentumValue}>{Math.round(completePct)}%</Text>
+              <Text style={shared.small}>of your plans complete</Text>
+            </View>
+            <ProgressBar value={completePct} height={6} />
+            <Text style={[shared.small, s.momentumHint]}>
+              {openTasks.length
+                ? `Open tasks are ${Math.round(average)}% done on average.`
+                : "Progress happens one small step at a time."}
+            </Text>
+          </FadeIn>
         </>
       )}
 
@@ -183,6 +221,7 @@ function Section({
   hint,
   items,
   empty,
+  emptyAction,
   handlers,
 }: {
   title: string;
@@ -190,6 +229,8 @@ function Section({
   items: Item[];
   /** Line shown instead of rows when the section is empty. */
   empty?: string;
+  /** A button beside the empty line. */
+  emptyAction?: { label: string; onPress: () => void };
   handlers: ListHandlers;
 }) {
   return (
@@ -198,8 +239,15 @@ function Section({
       {items.length > 0 ? (
         <ItemRows items={items} {...handlers} />
       ) : (
-        <View style={s.emptyRow}>
-          <Text style={shared.small}>{empty}</Text>
+        <View style={[s.emptyRow, !!emptyAction && s.emptyWithAction]}>
+          <Text style={[shared.small, { flex: 1 }]}>{empty}</Text>
+          {emptyAction && (
+            <SmallAction
+              label={emptyAction.label}
+              disabled={handlers.busy}
+              onPress={emptyAction.onPress}
+            />
+          )}
         </View>
       )}
     </View>
@@ -241,6 +289,25 @@ const s = themed(() =>
       paddingHorizontal: 16,
       marginBottom: 22,
     },
+    emptyWithAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    allRow: { flexDirection: "row", marginTop: -8, marginBottom: 22 },
+    momentumLine: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    momentumValue: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: colors.text,
+    },
+    momentumHint: { marginTop: 10 },
     badge: {
       width: 36,
       height: 36,

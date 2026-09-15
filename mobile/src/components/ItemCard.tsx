@@ -1,10 +1,25 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Item } from "@orbyn/core";
+import {
+  Alert,
+  Animated,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  dateLabel,
+  statusLabels,
+  statusOrder,
+  type Item,
+  type Priority,
+  type Status,
+} from "@orbyn/core";
 import { Icon } from "./Icon";
 import { PlanningMeta } from "./PlanningMeta";
 import { StatusPill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
+import { SmallAction } from "./SmallAction";
 import { shortDay } from "../lib/planning";
 import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
@@ -15,6 +30,14 @@ import { colors, fonts, radii, themed, statusTones } from "../theme";
  * bar and checklist / update counts. Tapping the row opens the task detail.
  * Shrinks slightly while pressed; the check mark pops when the item becomes done.
  */
+/** Every status a task can move to, closed ones last. */
+const MOVE_STATUSES: Status[] = [...statusOrder, "cancelled"];
+const PRIORITY_NAMES: Record<Priority, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
 export function ItemCard({
   item,
   busy,
@@ -22,6 +45,9 @@ export function ItemCard({
   readOnly = false,
   onToggle,
   onOpen,
+  score,
+  onSetStatus,
+  moveButton = false,
 }: {
   item: Item;
   busy: boolean;
@@ -31,6 +57,12 @@ export function ItemCard({
   readOnly?: boolean;
   onToggle: (item: Item) => void;
   onOpen: (item: Item) => void;
+  /** The priority score, shown when the list is sorted by it. */
+  score?: number | null;
+  /** Change the status (long-press the card, or "Move to…"). */
+  onSetStatus?: (item: Item, status: Status) => void;
+  /** Show a "Move to…" status action on the card (the board). */
+  moveButton?: boolean;
 }) {
   const done = item.status === "done";
   const percent = percentOf(item);
@@ -53,6 +85,24 @@ export function ItemCard({
   ]
     .filter(Boolean)
     .join(" · ");
+  const canMove = !!onSetStatus && !readOnly && item.kind === "task";
+  const moveMenu = () =>
+    Alert.alert(item.title, `Now ${statusLabels[item.status]}`, [
+      ...MOVE_STATUSES.filter((st) => st !== item.status).map((st) => ({
+        text: `Move to ${statusLabels[st]}`,
+        onPress: () => onSetStatus?.(item, st),
+      })),
+      { text: "Cancel", style: "cancel" as const },
+    ]);
+  // Like the web's subtitle: the first line of the notes.
+  const note =
+    (item.notes ?? "")
+      .split("\n")
+      .find((line) => line.trim())
+      ?.trim() ?? "";
+  const priorityTone = { high: s.high, medium: s.medium, low: s.low }[
+    item.priority
+  ];
   return (
     <Animated.View style={[s.row, !first && s.divider, press.style]}>
       <Pressable
@@ -78,6 +128,13 @@ export function ItemCard({
         onPressIn={press.onPressIn}
         onPressOut={press.onPressOut}
         onPress={() => onOpen(item)}
+        onLongPress={canMove ? moveMenu : undefined}
+        accessibilityActions={
+          canMove ? [{ name: "longpress", label: "Change status" }] : undefined
+        }
+        onAccessibilityAction={(e) => {
+          if (canMove && e.nativeEvent.actionName === "longpress") moveMenu();
+        }}
       >
         <View style={s.top}>
           <Text numberOfLines={2} style={[s.title, done && s.done]}>
@@ -85,6 +142,11 @@ export function ItemCard({
           </Text>
           <StatusPill status={item.status} />
         </View>
+        {!!note && (
+          <Text numberOfLines={1} style={s.note}>
+            {note}
+          </Text>
+        )}
         <View style={s.meta}>
           <Icon
             name={item.kind === "event" ? "calendar" : "clock"}
@@ -97,9 +159,18 @@ export function ItemCard({
               : dateLabel(item.due_at)}
             {item.kind === "event" ? " · Event" : ""}
           </Text>
-          {item.priority === "high" && (
-            <Text style={s.high} accessibilityLabel="High priority">
-              High
+          <Text
+            style={[s.priority, priorityTone]}
+            accessibilityLabel={`${PRIORITY_NAMES[item.priority]} priority`}
+          >
+            {PRIORITY_NAMES[item.priority]}
+          </Text>
+          {score != null && (
+            <Text
+              style={s.score}
+              accessibilityLabel={`Priority score ${score.toFixed(1)}`}
+            >
+              {score.toFixed(1)}
             </Text>
           )}
           {!!item.team_name && (
@@ -126,6 +197,11 @@ export function ItemCard({
           <Text numberOfLines={1} style={s.footer}>
             {footer}
           </Text>
+        )}
+        {moveButton && canMove && (
+          <View style={s.moveRow}>
+            <SmallAction label="Move to…" disabled={busy} onPress={moveMenu} />
+          </View>
         )}
       </Pressable>
     </Animated.View>
@@ -175,17 +251,36 @@ const s = themed(() =>
       fontSize: 12,
       color: colors.muted,
     },
-    high: {
+    priority: {
       fontFamily: fonts.semibold,
       fontSize: 11,
-      color: colors.highText,
-      backgroundColor: colors.highBg,
       borderRadius: radii.pill,
       overflow: "hidden",
       paddingHorizontal: 7,
       paddingVertical: 1,
       marginLeft: 3,
     },
+    high: { color: colors.highText, backgroundColor: colors.highBg },
+    medium: { color: colors.mediumText, backgroundColor: colors.mediumBg },
+    low: { color: colors.lowText, backgroundColor: colors.lowBg },
+    score: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.textSoft,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.pill,
+      overflow: "hidden",
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      marginLeft: 3,
+    },
+    note: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.textSoft,
+      marginTop: 2,
+    },
+    moveRow: { flexDirection: "row", marginTop: 8 },
     team: {
       flexDirection: "row",
       alignItems: "center",

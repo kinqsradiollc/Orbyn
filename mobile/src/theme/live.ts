@@ -61,6 +61,8 @@ export const statusTones = themed<Record<Status, { bg: string; fg: string }>>(
     in_progress: { bg: colors.accentSoft, fg: colors.accent },
     blocked: { bg: colors.dangerSoft, fg: colors.danger },
     done: { bg: colors.soft, fg: colors.mediumText },
+    // Closed without being done: the same neutral tone as "to do".
+    cancelled: { bg: colors.lowBg, fg: colors.lowText },
   }),
 );
 
