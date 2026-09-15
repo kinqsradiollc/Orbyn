@@ -1,0 +1,260 @@
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { monthGrid, sameDay, type FrameOccurrence } from "@orbyn/core";
+import { colors, fonts, radii, themed, tint } from "../../theme";
+import { covers } from "./dates";
+import { layoutWeek, type MonthThing } from "./month";
+
+/** Bars shown per week row before "+N more". */
+const LANES = 3;
+const LANE_HEIGHT = 17;
+const DATE_HEIGHT = 26;
+const MORE_HEIGHT = 16;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * The month as a Sunday-first grid built from the calendar view: repeats as
+ * occurrences, things spanning days as bars across them, time blocks
+ * (dashed), subscribed events, planned blocks, and a mark per frame. Tap a
+ * day to see it below; "+N more" opens that day on its own.
+ */
+export function MonthView({
+  month,
+  selected,
+  things,
+  frames,
+  onSelect,
+  onMore,
+}: {
+  month: Date;
+  selected: Date;
+  things: MonthThing[];
+  frames: FrameOccurrence[];
+  onSelect: (day: Date) => void;
+  /** Open a day whose things didn't all fit. */
+  onMore: (day: Date) => void;
+}) {
+  const today = new Date();
+  return (
+    <View>
+      <View style={s.header}>
+        {WEEKDAYS.map((day) => (
+          <Text key={day} style={s.weekday}>
+            {day}
+          </Text>
+        ))}
+      </View>
+      {monthGrid(month).map((week, w) => {
+        const { bars, hidden, total } = layoutWeek(things, week, LANES);
+        return (
+          <View key={w} style={[s.week, w > 0 && s.weekDivider]}>
+            {week.map((day, c) => {
+              const active = sameDay(day, selected);
+              const isToday = sameDay(day, today);
+              const dayFrames = frames.filter((f) => covers(f, day));
+              const count = total[c];
+              return (
+                <Pressable
+                  key={day.toISOString()}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}, ${count ? `${count} on the calendar` : "nothing on the calendar"}${dayFrames.length ? `, ${dayFrames.map((f) => f.name).join(", ")}` : ""}`}
+                  accessibilityState={{ selected: active }}
+                  onPress={() => onSelect(day)}
+                  style={({ pressed }) => [
+                    s.cell,
+                    { left: `${(c / 7) * 100}%` },
+                    active && s.cellActive,
+                    pressed && s.pressed,
+                  ]}
+                >
+                  <View style={s.cellHead}>
+                    <View
+                      style={[
+                        s.date,
+                        isToday && !active && s.dateToday,
+                        active && s.dateActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          s.dateText,
+                          day.getMonth() !== month.getMonth() && s.otherMonth,
+                          isToday && s.todayText,
+                          active && s.activeText,
+                        ]}
+                      >
+                        {day.getDate()}
+                      </Text>
+                    </View>
+                    <View style={s.frameMarks}>
+                      {dayFrames.slice(0, 3).map((f) => (
+                        <View
+                          key={`${f.frame_id}-${f.start_at}`}
+                          style={[s.frameMark, { backgroundColor: f.color }]}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })}
+            {bars.map((b) => {
+              const t = b.thing;
+              return (
+                <View
+                  key={`${t.key}-${w}`}
+                  pointerEvents="none"
+                  style={[
+                    s.barWrap,
+                    {
+                      top: DATE_HEIGHT + b.lane * LANE_HEIGHT,
+                      left: `${(b.startCol / 7) * 100}%`,
+                      width: `${((b.endCol - b.startCol + 1) / 7) * 100}%`,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      s.bar,
+                      t.look === "block" || t.look === "ghost"
+                        ? {
+                            borderColor: t.color,
+                            backgroundColor:
+                              t.look === "ghost"
+                                ? tint(t.color, 0.1)
+                                : colors.surface,
+                          }
+                        : {
+                            backgroundColor: tint(t.color, 0.18),
+                            borderLeftColor: t.color,
+                          },
+                      (t.look === "block" || t.look === "ghost") && s.dashed,
+                      t.look === "external" && s.external,
+                      b.continuesBefore && s.flatLeft,
+                      b.continuesAfter && s.flatRight,
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[s.barText, t.look === "done" && s.doneText]}
+                    >
+                      {t.title}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+            {hidden.map((n, c) =>
+              n > 0 ? (
+                <Pressable
+                  key={`more-${c}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${n} more on ${week[c].toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}. Opens that day`}
+                  hitSlop={4}
+                  onPress={() => onMore(week[c])}
+                  style={[
+                    s.more,
+                    {
+                      top: DATE_HEIGHT + LANES * LANE_HEIGHT,
+                      left: `${(c / 7) * 100}%`,
+                    },
+                  ]}
+                >
+                  <Text style={s.moreText}>+{n}</Text>
+                </Pressable>
+              ) : null,
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const s = themed(() =>
+  StyleSheet.create({
+    header: { flexDirection: "row" },
+    weekday: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      color: colors.muted,
+      marginBottom: 6,
+    },
+    week: { height: DATE_HEIGHT + LANES * LANE_HEIGHT + MORE_HEIGHT + 2 },
+    weekDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    cell: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      width: `${100 / 7}%`,
+      borderRadius: 8,
+    },
+    cellActive: { backgroundColor: colors.accentSoft },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    cellHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 2,
+      paddingTop: 3,
+      paddingLeft: 3,
+    },
+    date: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dateToday: { borderWidth: 1.5, borderColor: colors.accent },
+    dateActive: { backgroundColor: colors.accent },
+    dateText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
+    otherMonth: { color: colors.faint },
+    todayText: { color: colors.accent },
+    activeText: { color: colors.white },
+    frameMarks: { flexDirection: "row", gap: 2, flexShrink: 1 },
+    frameMark: { width: 6, height: 3, borderRadius: 2 },
+    barWrap: {
+      position: "absolute",
+      height: LANE_HEIGHT,
+      paddingHorizontal: 1,
+      paddingBottom: 2,
+    },
+    bar: {
+      flex: 1,
+      borderLeftWidth: 2,
+      borderRadius: 4,
+      paddingHorizontal: 3,
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    dashed: { borderWidth: 1, borderLeftWidth: 1, borderStyle: "dashed" },
+    external: { opacity: 0.85 },
+    flatLeft: { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
+    flatRight: { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
+    barText: {
+      fontFamily: fonts.medium,
+      fontSize: 9,
+      lineHeight: 12,
+      color: colors.text,
+    },
+    doneText: { color: colors.faint, textDecorationLine: "line-through" },
+    more: {
+      position: "absolute",
+      width: `${100 / 7}%`,
+      height: MORE_HEIGHT,
+      justifyContent: "center",
+      paddingLeft: 4,
+      borderRadius: radii.pill,
+    },
+    moreText: {
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      color: colors.accent,
+    },
+  }),
+);

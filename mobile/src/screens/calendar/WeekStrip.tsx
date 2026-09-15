@@ -25,8 +25,8 @@ export function WeekStrip({
   onShiftWeek,
 }: {
   selected: Date;
-  /** What's planned on a day, for the dots. */
-  plansOn: (day: Date) => { key: string; status: Status }[];
+  /** What's planned on a day, for the dots; `color` overrides the status colour. */
+  plansOn: (day: Date) => { key: string; status: Status; color?: string }[];
   onSelect: (day: Date) => void;
   /** +1 for next week, -1 for the previous one. */
   onShiftWeek: (direction: 1 | -1) => void;
@@ -165,7 +165,7 @@ export function WeekStrip({
                         // On the green pill a status dot could vanish; use white.
                         backgroundColor: active
                           ? colors.white
-                          : statusTones[i.status].fg,
+                          : (i.color ?? statusTones[i.status].fg),
                       },
                     ]}
                   />

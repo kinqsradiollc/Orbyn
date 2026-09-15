@@ -14,6 +14,7 @@ import {
   sameDay,
   statusLabels,
   zonedParts,
+  type BusyInterval,
   type CalendarEntry,
   type DerivedBlock,
   type ExternalEntry,
@@ -23,6 +24,7 @@ import {
 } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
 import { useNow } from "../../hooks/useNow";
+import { shortDay } from "../../lib/planning";
 import { usePlanning } from "../../lib/planningContext";
 import { isReducedMotion, PressableScale } from "../../motion";
 import { colors, fonts, radii, statusTones, themed, tint } from "../../theme";
@@ -31,9 +33,12 @@ import {
   DAY_END,
   DAY_START,
   HOUR_HEIGHT,
+  addDays,
+  covers,
   hourLabel,
   layoutDay,
   offsetFor,
+  shiftDays,
   timeLabel,
   type Slot,
 } from "./dates";
@@ -54,6 +59,11 @@ const STEP = (SNAP / 60) * HOUR_HEIGHT;
 const HOLD_MS = 350;
 /** Finger travel that turns a press into a scroll before the block lifts. */
 const SLOP = 8;
+/** Sideways finger travel that moves a lifted block one day. */
+const DAY_SHIFT = 72;
+const MAX_DAY_SHIFT = 6;
+/** Width of each teammate's busy strip, and the gap after it. */
+const STRIP = 4;
 
 /** An occurrence of an item, time set aside for a task, or a planned block not saved yet. */
 export type TimelineSlot =
@@ -63,14 +73,20 @@ export type TimelineSlot =
   | (Slot & { type: "external"; external: ExternalEntry });
 
 type DragMode = "move" | "resize";
-type Drag = { id: string; start: Date; end: Date };
+type Drag = {
+  id: string;
+  start: Date;
+  end: Date;
+  /** Days it moves when dropped (dragged sideways). */
+  days: number;
+};
 /** Anything that can be dragged: a saved block, or a planned one. */
 type Movable = { id: string; start_at: string; end_at: string };
 
 /**
  * The whole hours a day needs: every timed plan and frame, plus an hour either
- * side of now today, widened to at least MIN_HOURS inside the 6am-midnight
- * window.
+ * side of now today (a quiet day that isn't today starts at 8 AM), widened
+ * to at least MIN_HOURS inside the day. "Show all 24 hours" shows the rest.
  */
 function visibleHours(
   placed: { top: number; height: number }[],
@@ -166,6 +182,9 @@ export function DayTimeline({
   onMoveGhost,
   onFrameMenu,
   onDragging,
+  keepFree = [],
+  onKeepFreeMenu,
+  mates = [],
 }: {
   day: Date;
   /** Only the entries and blocks on `day`. */
@@ -197,6 +216,17 @@ export function DayTimeline({
   onFrameMenu?: (frame: FrameOccurrence) => void;
   /** True while a block is lifted, so the page can stop scrolling. */
   onDragging?: (active: boolean) => void;
+  /** Times a plan preview keeps free, drawn as bands. */
+  keepFree?: BusyInterval[];
+  /** Options for a kept-free band (long-press). */
+  onKeepFreeMenu?: (range: BusyInterval) => void;
+  /** Teammates' busy times, as thin strips beside the hours. */
+  mates?: {
+    user_id: string;
+    name: string;
+    color: string;
+    busy: BusyInterval[];
+  }[];
 }) {
   const now = useNow(60_000);
   const { listById } = usePlanning();
@@ -204,6 +234,7 @@ export function DayTimeline({
   const dragRef = useRef<Drag | null>(null);
   /** The hours shown when a drag began, kept still until it ends. */
   const frozen = useRef<{ start: number; end: number } | null>(null);
+  const [allHours, setAllHours] = useState(false);
   const setDrag = (next: Drag | null) => {
     dragRef.current = next;
     setDragState(next);
@@ -243,16 +274,28 @@ export function DayTimeline({
     return { f, top, height: offsetFor(day, new Date(f.end_at)) - top };
   });
 
+  const freeSpans = keepFree
+    .filter((r) => covers(r, day))
+    .map((r) => {
+      const top = offsetFor(day, new Date(r.start_at));
+      return { r, top, height: offsetFor(day, new Date(r.end_at)) - top };
+    });
+
   const fitted = visibleHours(
-    [...placed, ...frameSpans],
+    [...placed, ...frameSpans, ...freeSpans],
     showNow ? nowTop : null,
   );
-  const { start, end } = (drag && frozen.current) || fitted;
+  const fitsAll = fitted.start === DAY_START && fitted.end === DAY_END;
+  const { start, end } =
+    (drag && frozen.current) ||
+    (allHours ? { start: DAY_START, end: DAY_END } : fitted);
   // layoutDay measures from DAY_START; shift everything up to the first shown hour.
   const shift = (start - DAY_START) * HOUR_HEIGHT;
   const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
   const windowHeight = (end - start) * HOUR_HEIGHT;
   const gutter = GUTTER + zones.length * ZONE_WIDTH;
+  // Teammates' strips sit between the hours and the events.
+  const stripsWidth = mates.length ? mates.length * STRIP + 2 : 0;
   const clip = <T,>(item: T, top: number, bottom: number) => ({
     item,
     top: Math.max(0, top - shift),
@@ -270,6 +313,27 @@ export function DayTimeline({
   const frameBands = frameSpans
     .map(({ f, top, height }) => clip(f, top, top + height))
     .filter((b) => b.height > 4);
+  const freeBands = freeSpans
+    .map(({ r, top, height }) => clip(r, top, top + height))
+    .filter((b) => b.height > 4);
+  const strips = mates.map((m) => ({
+    m,
+    spans: m.busy
+      .filter((b) => covers(b, day))
+      .map((b) =>
+        clip(
+          b,
+          offsetFor(day, new Date(b.start_at)),
+          offsetFor(day, new Date(b.end_at)),
+        ),
+      )
+      .filter((b) => b.height > 1),
+  }));
+  /** "To Wed, Sep 16" on a block being dragged sideways. */
+  const dayBadge = (id: string) =>
+    drag?.id === id && drag.days
+      ? `To ${shortDay(addDays(day, drag.days))}`
+      : undefined;
 
   // ---- moving and resizing blocks ----
   const midnight = new Date(day.getFullYear(), day.getMonth(), day.getDate());
@@ -286,13 +350,26 @@ export function DayTimeline({
 
   const begin = (m: Movable) => {
     frozen.current = { start, end };
-    setDrag({ id: m.id, start: new Date(m.start_at), end: new Date(m.end_at) });
+    setDrag({
+      id: m.id,
+      start: new Date(m.start_at),
+      end: new Date(m.end_at),
+      days: 0,
+    });
     onDragging?.(true);
     // A light tick where the platform has one without a haptics module.
     if (Platform.OS === "android" && !isReducedMotion()) Vibration.vibrate(10);
   };
-  const dragTo = (m: Movable, mode: DragMode, dy: number) => {
+  const dragTo = (m: Movable, mode: DragMode, dy: number, dx = 0) => {
     const win = frozen.current ?? { start, end };
+    // Sideways moves it to another day; it keeps its time.
+    const days =
+      mode === "move"
+        ? Math.max(
+            -MAX_DAY_SHIFT,
+            Math.min(MAX_DAY_SHIFT, Math.trunc(dx / DAY_SHIFT)),
+          )
+        : 0;
     let from = new Date(m.start_at);
     let to = new Date(m.end_at);
     if (Math.abs(dy) >= STEP / 2) {
@@ -319,9 +396,10 @@ export function DayTimeline({
     if (
       !current ||
       current.start.getTime() !== from.getTime() ||
-      current.end.getTime() !== to.getTime()
+      current.end.getTime() !== to.getTime() ||
+      current.days !== days
     )
-      setDrag({ id: m.id, start: from, end: to });
+      setDrag({ id: m.id, start: from, end: to, days });
   };
   /** End a drag; true when it moved (and `save` was called with the new times). */
   const finish = (
@@ -334,10 +412,12 @@ export function DayTimeline({
     setDrag(null);
     onDragging?.(false);
     if (!commit || !d) return false;
+    const from = shiftDays(d.start, d.days);
+    const to = shiftDays(d.end, d.days);
     const moved =
-      d.start.getTime() !== Date.parse(m.start_at) ||
-      d.end.getTime() !== Date.parse(m.end_at);
-    if (moved) save(d.start, d.end);
+      from.getTime() !== Date.parse(m.start_at) ||
+      to.getTime() !== Date.parse(m.end_at);
+    if (moved) save(from, to);
     return moved;
   };
   /** Screen-reader actions: a step earlier, later, longer or shorter. */
@@ -496,7 +576,48 @@ export function DayTimeline({
             </View>
           );
         })}
-        <View style={[s.events, { top: PAD_TOP, left: gutter }]}>
+        {strips.map(({ m, spans }, i) =>
+          spans.map(({ item: b, top, height }) => (
+            <View
+              key={`mate-${m.user_id}-${b.start_at}`}
+              accessible
+              accessibilityLabel={`${m.name} busy, ${timeLabel(new Date(b.start_at))} – ${timeLabel(new Date(b.end_at))}`}
+              style={[
+                s.strip,
+                {
+                  top: PAD_TOP + top,
+                  height,
+                  left: gutter + i * STRIP,
+                  backgroundColor: m.color,
+                },
+              ]}
+            />
+          )),
+        )}
+        <View style={[s.events, { top: PAD_TOP, left: gutter + stripsWidth }]}>
+          {freeBands.map(({ item: r, top, height }) => (
+            <Pressable
+              key={`free-${r.start_at}-${r.end_at}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Kept free by the plan, ${timeLabel(new Date(r.start_at))} – ${timeLabel(new Date(r.end_at))}`}
+              accessibilityHint={
+                onKeepFreeMenu ? "Long-press for options" : undefined
+              }
+              disabled={!onKeepFreeMenu}
+              {...menuProps(onKeepFreeMenu ? () => onKeepFreeMenu(r) : null)}
+              style={({ pressed }) => [
+                s.keepFree,
+                { top, height },
+                pressed && s.pressed,
+              ]}
+            >
+              {height >= 16 && (
+                <Text numberOfLines={1} style={s.keepFreeText}>
+                  Kept free
+                </Text>
+              )}
+            </Pressable>
+          ))}
           {frameBands.map(({ item: f, top, height }) => (
             <Pressable
               key={`frame-${f.frame_id}-${f.date}`}
@@ -612,11 +733,12 @@ export function DayTimeline({
                   canDrag={canDrag(m, !!onMoveGhost)}
                   lifted={lifted}
                   gripColor={colors.accent}
+                  badge={dayBadge(slot.key)}
                   accessibilityLabel={`${label}. Opens task details`}
                   onTap={() => onOpen(g.item_id)}
                   onMenu={() => onGhostMenu(g)}
                   onBegin={() => begin(m)}
-                  onDrag={(mode, dy) => dragTo(m, mode, dy)}
+                  onDrag={(mode, dy, dx) => dragTo(m, mode, dy, dx)}
                   onEnd={(commit) => finish(m, commit, pin)}
                   onAction={(name) =>
                     name === "activate"
@@ -647,11 +769,12 @@ export function DayTimeline({
                   canDrag={canDrag(b, !!onMoveBlock)}
                   lifted={lifted}
                   gripColor={color ?? colors.accent}
+                  badge={dayBadge(b.id)}
                   accessibilityLabel={`Time block for ${b.title}, ${range}. Opens task details`}
                   onTap={() => onOpen(b.item_id)}
                   onMenu={() => onBlockMenu(b)}
                   onBegin={() => begin(b)}
-                  onDrag={(mode, dy) => dragTo(b, mode, dy)}
+                  onDrag={(mode, dy, dx) => dragTo(b, mode, dy, dx)}
                   onEnd={(commit) => finish(b, commit, save)}
                   onAction={(name) =>
                     name === "activate"
@@ -779,11 +902,12 @@ export function DayTimeline({
                   canDrag={canDrag(m, true)}
                   lifted={lifted}
                   gripColor={color ?? t.fg}
+                  badge={dayBadge(slot.key)}
                   accessibilityLabel={label}
                   onTap={() => onOpen(e.item_id, e)}
                   onMenu={() => onEntryMenu(e)}
                   onBegin={() => begin(m)}
-                  onDrag={(mode, dy) => dragTo(m, mode, dy)}
+                  onDrag={(mode, dy, dx) => dragTo(m, mode, dy, dx)}
                   onEnd={(commit) => finish(m, commit, save)}
                   onAction={(name) =>
                     name === "activate"
@@ -833,6 +957,17 @@ export function DayTimeline({
           </View>
         )}
       </View>
+      {!fitsAll && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setAllHours(!allHours)}
+          style={({ pressed }) => [s.hoursToggle, pressed && s.pressed]}
+        >
+          <Text style={s.hoursToggleText}>
+            {allHours ? "Show just the busy hours" : "Show all 24 hours"}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -848,6 +983,7 @@ function DraggableBlock({
   canDrag,
   lifted,
   gripColor,
+  badge,
   accessibilityLabel,
   onTap,
   onMenu,
@@ -862,11 +998,13 @@ function DraggableBlock({
   canDrag: boolean;
   lifted: boolean;
   gripColor: string;
+  /** Shown on the block while it's dragged, e.g. the day it moves to. */
+  badge?: string;
   accessibilityLabel: string;
   onTap: () => void;
   onMenu: () => void;
   onBegin: () => void;
-  onDrag: (mode: DragMode, dy: number) => void;
+  onDrag: (mode: DragMode, dy: number, dx: number) => void;
   /** End the drag (saving it when `commit`); true when the block moved. */
   onEnd: (commit: boolean) => boolean;
   onAction: (name: string) => void;
@@ -916,7 +1054,7 @@ function DraggableBlock({
         }, HOLD_MS);
       },
       onPanResponderMove: (_, g) => {
-        if (hold.lifted) latest.current.onDrag("move", g.dy);
+        if (hold.lifted) latest.current.onDrag("move", g.dy, g.dx);
         else if (
           hold.timer &&
           (Math.abs(g.dx) > SLOP || Math.abs(g.dy) > SLOP)
@@ -953,7 +1091,7 @@ function DraggableBlock({
     PanResponder.create({
       onStartShouldSetPanResponder: () => latest.current.canDrag,
       onPanResponderGrant: () => latest.current.onBegin(),
-      onPanResponderMove: (_, g) => latest.current.onDrag("resize", g.dy),
+      onPanResponderMove: (_, g) => latest.current.onDrag("resize", g.dy, 0),
       onPanResponderTerminationRequest: () => false,
       onPanResponderRelease: () => {
         latest.current.onEnd(true);
@@ -972,7 +1110,7 @@ function DraggableBlock({
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={
           canDrag
-            ? "Hold, then drag to move. More actions move it too."
+            ? "Hold, then drag up or down to change its time, or sideways to move it to another day. More actions move it too."
             : "Hold for options"
         }
         accessibilityActions={
@@ -989,6 +1127,13 @@ function DraggableBlock({
           </View>
         )}
       </View>
+      {!!badge && (
+        <View style={s.badge} pointerEvents="none">
+          <Text style={s.badgeText} accessibilityLiveRegion="polite">
+            {badge}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -1215,5 +1360,55 @@ const s = themed(() =>
       marginTop: 1,
     },
     nowLine: { flex: 1, height: 2, backgroundColor: colors.danger },
+    keepFree: {
+      position: "absolute",
+      left: 0,
+      right: 3,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.faint,
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 8,
+      justifyContent: "center",
+    },
+    keepFreeText: {
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      color: colors.muted,
+    },
+    strip: {
+      position: "absolute",
+      width: STRIP - 1,
+      borderRadius: 2,
+      opacity: 0.85,
+    },
+    hoursToggle: {
+      alignItems: "center",
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    hoursToggleText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+    },
+    badge: {
+      position: "absolute",
+      top: -10,
+      right: 4,
+      borderRadius: radii.pill,
+      backgroundColor: colors.accent,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      zIndex: 3,
+      elevation: 5,
+    },
+    badgeText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.white,
+    },
   }),
 );

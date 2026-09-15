@@ -35,6 +35,7 @@ import {
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import {
+  isConflict,
   pinBlock,
   remakePlan,
   removeBlock,
@@ -42,6 +43,7 @@ import {
   setKeepFree,
   setLength,
   setScope,
+  unpinBlock,
 } from "../lib/plans";
 import { usePlanStale } from "../hooks/usePlanStale";
 import { useRun } from "../hooks/useRun";
@@ -79,6 +81,9 @@ const atClock = (day: string, clock: string) => {
   return new Date(y, m - 1, d, h, min);
 };
 const blockKey = (b: PlannedBlock) => `${b.item_id}-${b.start_at}`;
+/** The day option for a number of days (1 to 7). */
+const dayOption = (n: number) =>
+  DAYS[Math.min(7, Math.max(1, Math.round(n) || 1)) - 1];
 const toggle = (ids: string[], id: string) =>
   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 
@@ -161,10 +166,21 @@ function Body({
 }) {
   const { lists } = usePlanning();
   const { busy, error, setError, run } = useRun();
-  const [days, setDays] = useState<(typeof DAYS)[number]>("1");
-  const [pad, setPad] = useState(15);
-  const [split, setSplit] = useState(true);
-  const [breakLevel, setBreakLevel] = useState<BreakLevel>("normal");
+  // A seed plan (moved forward, or from the calendar) starts from its options.
+  const o = seed?.options;
+  const today = dayKeyOf(new Date());
+  const [days, setDays] = useState<(typeof DAYS)[number]>(
+    o ? dayOption(o.days) : "1",
+  );
+  const [pad, setPad] = useState(o?.pad_percent ?? 15);
+  const [split, setSplit] = useState(o?.split ?? true);
+  const [breakLevel, setBreakLevel] = useState<BreakLevel>(
+    o?.break_level ?? "normal",
+  );
+  const [useFrames, setUseFrames] = useState(o?.use_frames ?? true);
+  const [startDate, setStartDate] = useState(
+    o?.start_date && o.start_date >= today ? o.start_date : today,
+  );
   const [scope, setScopeState] = useState<PlanScope>(
     seed?.options?.scope ?? EVERYTHING,
   );
@@ -190,7 +206,7 @@ function Body({
     from: string;
     to: string;
   } | null>(null);
-  const stale = usePlanStale(saved ? null : plan);
+  const [stale, markStale] = usePlanStale(saved ? null : plan);
 
   // Start from the saved planning settings.
   useEffect(() => {
@@ -202,6 +218,7 @@ function Body({
         if (!alive) return;
         setPad(p.pad_percent);
         setBreakLevel(p.break_level);
+        setDays(dayOption(p.horizon_days));
       })
       .catch(() => {
         // The defaults above still make a sensible plan.
@@ -219,7 +236,14 @@ function Body({
   const change = (fn: (p: Plan) => Promise<Plan>) =>
     run(async () => {
       if (!plan) return;
-      const next = await fn(plan);
+      let next: Plan;
+      try {
+        next = await fn(plan);
+      } catch (e) {
+        // Expired or replaced: say so, and offer Refresh.
+        if (isConflict(e)) return markStale();
+        throw e;
+      }
       animateLayout();
       setPlan(next);
       setMoving(null);
@@ -230,11 +254,18 @@ function Body({
   const preview = () =>
     run(async () => {
       const next = await client.previewPlan({
+        start_date: startDate,
         days: Number(days),
         pad_percent: pad,
         split,
         break_level: breakLevel,
+        use_frames: useFrames,
         timezone: deviceTimeZone(),
+        // A seed plan keeps its tasks and the times it keeps free.
+        ...(o?.item_ids ? { item_ids: o.item_ids } : {}),
+        ...(o
+          ? { keep_free: o.keep_free, exclude_item_ids: o.exclude_item_ids }
+          : {}),
         ...(isEverything(scope) ? {} : { scope }),
       });
       animateLayout();
@@ -362,127 +393,160 @@ function Body({
             ? "Here’s a plan to look over. Tune it if you like; nothing changes until you apply it."
             : "Orbyn fits your open tasks into free working time around your events. Nothing is saved until you apply the plan."}
         </Text>
-        {!seed && (
-          <View style={shared.card}>
-            <Text style={shared.label}>How many days?</Text>
-            <Segmented
-              wrap
-              accessibilityLabel="Days to plan"
-              options={DAYS}
-              labels={DAY_LABELS}
-              value={days}
-              onChange={setDays}
+        <View style={shared.card}>
+          <Field label="Start on">
+            <DateField
+              label="First day to plan"
+              value={startDate}
+              minimumDate={new Date()}
+              onChange={(day) => day && setStartDate(day)}
             />
-            <Text style={[shared.label, s.labelTop]}>Pad estimates by</Text>
-            <ChipRow label="Pad estimates by">
-              {pads.map((n) => (
-                <Chip
-                  key={n}
-                  label={`${n}%`}
-                  accessibilityLabel={`${n}% extra time`}
-                  selected={pad === n}
-                  onPress={() => setPad(n)}
-                />
-              ))}
-            </ChipRow>
-            <Text style={[shared.small, s.hint]}>
-              Extra time for the unexpected.
-            </Text>
-            <Text style={[shared.label, s.labelTop]}>
-              Breaks between blocks
-            </Text>
-            <Segmented
-              accessibilityLabel="Breaks between blocks"
-              options={BREAK_LEVELS}
-              labels={BREAK_LABELS}
-              value={breakLevel}
-              onChange={setBreakLevel}
-            />
-            <View style={s.switchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.switchTitle}>Split long tasks</Text>
-                <Text style={shared.small}>
-                  Long tasks become several sessions.
-                </Text>
-              </View>
-              <Switch
-                value={split}
-                trackColor={{ true: colors.accent }}
-                accessibilityLabel="Split long tasks"
-                onValueChange={setSplit}
+          </Field>
+          <Text style={shared.label}>How many days?</Text>
+          <Segmented
+            wrap
+            accessibilityLabel="Days to plan"
+            options={DAYS}
+            labels={startDate === today ? DAY_LABELS : undefined}
+            value={days}
+            onChange={setDays}
+          />
+          <Text style={[shared.label, s.labelTop]}>Pad estimates by</Text>
+          <ChipRow label="Pad estimates by">
+            {pads.map((n) => (
+              <Chip
+                key={n}
+                label={`${n}%`}
+                accessibilityLabel={`${n}% extra time`}
+                selected={pad === n}
+                onPress={() => setPad(n)}
               />
+            ))}
+          </ChipRow>
+          <View style={s.stepper}>
+            <SmallAction
+              label="−5%"
+              disabled={pad <= 0}
+              onPress={() => setPad(Math.max(0, pad - 5))}
+            />
+            <Text style={s.stepperValue} accessibilityLiveRegion="polite">
+              {pad}% extra time
+            </Text>
+            <SmallAction
+              label="+5%"
+              disabled={pad >= 100}
+              onPress={() => setPad(Math.min(100, pad + 5))}
+            />
+          </View>
+          <Text style={[shared.small, s.hint]}>
+            Extra time for the unexpected, 0 to 100%.
+          </Text>
+          <Text style={[shared.label, s.labelTop]}>Breaks between blocks</Text>
+          <Segmented
+            accessibilityLabel="Breaks between blocks"
+            options={BREAK_LEVELS}
+            labels={BREAK_LABELS}
+            value={breakLevel}
+            onChange={setBreakLevel}
+          />
+          <View style={s.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.switchTitle}>Split long tasks</Text>
+              <Text style={shared.small}>
+                Long tasks become several sessions.
+              </Text>
             </View>
-            <Button
-              title={
-                busy && !plan
-                  ? "Planning…"
+            <Switch
+              value={split}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel="Split long tasks"
+              onValueChange={setSplit}
+            />
+          </View>
+          <View style={s.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.switchTitle}>Use frames</Text>
+              <Text style={shared.small}>
+                Put tasks in the frames that match them, when you have any.
+              </Text>
+            </View>
+            <Switch
+              value={useFrames}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel="Use frames"
+              onValueChange={setUseFrames}
+            />
+          </View>
+          <Button
+            title={
+              busy && !plan
+                ? "Planning…"
+                : seed
+                  ? "Plan again with these options"
                   : plan
                     ? "Preview again"
                     : "Preview plan"
-              }
-              icon="sparkles"
-              disabled={busy}
-              style={s.preview}
-              onPress={() => void preview()}
-            />
-          </View>
-        )}
+            }
+            icon="sparkles"
+            disabled={busy}
+            style={s.preview}
+            onPress={() => void preview()}
+          />
+        </View>
 
-        {!seed && (
-          <View style={shared.card}>
-            <Text style={shared.label}>Plan tasks from</Text>
-            <ChipRow label="Plan tasks from" multi>
+        <View style={shared.card}>
+          <Text style={shared.label}>Plan tasks from</Text>
+          <ChipRow label="Plan tasks from" multi>
+            <Chip
+              multi
+              label="Personal"
+              disabled={busy}
+              selected={scope.personal}
+              onPress={() =>
+                chooseScope({ ...scope, personal: !scope.personal })
+              }
+            />
+            {teams.map((t) => (
               <Chip
+                key={t.id}
                 multi
-                label="Personal"
+                label={t.name}
                 disabled={busy}
-                selected={scope.personal}
-                onPress={() =>
-                  chooseScope({ ...scope, personal: !scope.personal })
-                }
+                selected={teamOn(t.id)}
+                onPress={() => toggleTeam(t.id)}
               />
-              {teams.map((t) => (
-                <Chip
-                  key={t.id}
-                  multi
-                  label={t.name}
-                  disabled={busy}
-                  selected={teamOn(t.id)}
-                  onPress={() => toggleTeam(t.id)}
-                />
-              ))}
-            </ChipRow>
-            <Text style={[shared.small, s.hint]}>
-              Team tasks count when they’re assigned to you.
-            </Text>
-            {lists.length > 0 && (
-              <>
-                <Text style={[shared.label, s.labelTop]}>Only these lists</Text>
-                <ChipRow label="Only these lists" multi>
-                  {lists.map((l) => (
-                    <Chip
-                      key={l.id}
-                      multi
-                      color={l.color}
-                      label={l.name}
-                      disabled={busy}
-                      selected={scope.list_ids.includes(l.id)}
-                      onPress={() =>
-                        chooseScope({
-                          ...scope,
-                          list_ids: toggle(scope.list_ids, l.id),
-                        })
-                      }
-                    />
-                  ))}
-                </ChipRow>
-                <Text style={[shared.small, s.hint]}>
-                  None chosen means any list.
-                </Text>
-              </>
-            )}
-          </View>
-        )}
+            ))}
+          </ChipRow>
+          <Text style={[shared.small, s.hint]}>
+            Team tasks count when they’re assigned to you.
+          </Text>
+          {lists.length > 0 && (
+            <>
+              <Text style={[shared.label, s.labelTop]}>Only these lists</Text>
+              <ChipRow label="Only these lists" multi>
+                {lists.map((l) => (
+                  <Chip
+                    key={l.id}
+                    multi
+                    color={l.color}
+                    label={l.name}
+                    disabled={busy}
+                    selected={scope.list_ids.includes(l.id)}
+                    onPress={() =>
+                      chooseScope({
+                        ...scope,
+                        list_ids: toggle(scope.list_ids, l.id),
+                      })
+                    }
+                  />
+                ))}
+              </ChipRow>
+              <Text style={[shared.small, s.hint]}>
+                None chosen means any list.
+              </Text>
+            </>
+          )}
+        </View>
 
         {tunable && stale && (
           <View style={s.stale} accessibilityRole="alert">
@@ -533,6 +597,7 @@ function Body({
                           },
                           onRemove: (b) =>
                             void change((p) => removeBlock(p, b)),
+                          onUnpin: (b) => void change((p) => unpinBlock(p, b)),
                         }
                       : undefined
                   }
@@ -787,6 +852,19 @@ const s = themed(() =>
     intro: { marginTop: 0, marginBottom: 18 },
     labelTop: { marginTop: 18 },
     hint: { marginTop: 8 },
+    stepper: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: 10,
+    },
+    stepperValue: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
     switchRow: {
       flexDirection: "row",
       alignItems: "center",

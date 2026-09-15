@@ -1,12 +1,18 @@
-import type {
-  BusyInterval,
-  Plan,
-  PlannedBlock,
-  PlanScope,
-  PlanTuneInput,
+import {
+  HttpError,
+  type BusyInterval,
+  type Plan,
+  type PlannedBlock,
+  type PlanScope,
+  type PlanTuneInput,
 } from "@orbyn/core";
 import { client } from "./api";
 import { deviceTimeZone } from "./planning";
+
+/** A 409: the plan expired or was replaced, so it can't be tuned any more. */
+export const isConflict = (e: unknown) =>
+  (e instanceof HttpError && e.statusCode === 409) ||
+  (e as { status?: number } | null)?.status === 409;
 
 /**
  * Tuning a proposed plan. Every change asks the server to make the plan again
@@ -100,6 +106,10 @@ export const pinBlock = (
     ],
   });
 
+/** Let a pinned block move again; the plan places it wherever fits best. */
+export const unpinBlock = (plan: Plan, block: PlannedBlock) =>
+  tune(plan, { pinned_blocks: pinsWithout(plan, block) });
+
 export const setKeepFree = (plan: Plan, keep_free: BusyInterval[]) =>
   tune(plan, { keep_free });
 
@@ -117,7 +127,7 @@ export async function remakePlan(plan: Plan): Promise<Plan> {
     return await tune(plan, {});
   } catch (e) {
     const o = plan.options;
-    if ((e as { status?: number }).status !== 409 || !o) throw e;
+    if (!isConflict(e) || !o) throw e;
     const fresh = await client.previewPlan({
       start_date: o.start_date,
       days: o.days,

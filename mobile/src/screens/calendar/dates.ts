@@ -1,5 +1,5 @@
-/** First hour on the day timeline (6am) and the hour it ends (midnight). */
-export const DAY_START = 6;
+/** The day timeline covers the whole day: midnight to midnight. */
+export const DAY_START = 0;
 export const DAY_END = 24;
 /** Points per hour row. */
 export const HOUR_HEIGHT = 56;
@@ -8,9 +8,25 @@ const MIN_BLOCK = 30;
 /** Default length of a timed task and of an event without an end. */
 const TASK_MINUTES = 30;
 const EVENT_MINUTES = 60;
+const DAY_MS = 86_400_000;
 
 export const addDays = (d: Date, n: number) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+/** Local midnight of `d`'s day. */
+export const startOfDay = (d: Date) =>
+  new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+/** The same wall-clock time `n` days later (DST-safe). */
+export const shiftDays = (d: Date, n: number) =>
+  new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + n,
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+  );
 
 /** Sunday of the week containing `d`, matching the Sunday-first month grid. */
 export const startOfWeek = (d: Date) =>
@@ -19,6 +35,14 @@ export const startOfWeek = (d: Date) =>
 export const weekDays = (start: Date) =>
   Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
+/** Whole calendar days from `a` to `b` (DST-safe). */
+export const daysBetween = (a: Date, b: Date) =>
+  Math.round(
+    (Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
+      Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) /
+      DAY_MS,
+  );
+
 /** "6 AM", "12 PM", in the device locale. */
 export const hourLabel = (hour: number) =>
   new Date(2000, 0, 1, hour).toLocaleTimeString([], { hour: "numeric" });
@@ -26,11 +50,55 @@ export const hourLabel = (hour: number) =>
 export const timeLabel = (d: Date) =>
   d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
+/**
+ * The range shown, like the web: "Tuesday, September 15, 2026" for one day,
+ * "Sep 13 – 19, 2026" or "Sep 27 – Oct 3, 2026" for several.
+ */
+export function rangeTitle(days: Date[]) {
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (days.length === 1)
+    return first.toLocaleDateString([], {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  const sameMonth = first.getMonth() === last.getMonth();
+  const start = first.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+  });
+  const end = last.toLocaleDateString(
+    [],
+    sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" },
+  );
+  return `${start} – ${end}, ${last.getFullYear()}`;
+}
+
+/** Anything on the calendar with a start and maybe an end. */
+type Timed = { start_at: string; end_at: string | null; all_day?: boolean };
+
+/**
+ * Whether something is on `day`: all-day ones on each day up to their
+ * (exclusive) end, timed ones on every day they run into, and ones with only
+ * a start on the day they start.
+ */
+export function covers(x: Timed, day: Date) {
+  const from = startOfDay(day).getTime();
+  const to = addDays(day, 1).getTime();
+  const start = Date.parse(x.start_at);
+  const end = x.end_at ? Date.parse(x.end_at) : NaN;
+  if (x.all_day) {
+    const until = end > start ? end : start + DAY_MS;
+    return start < to && until > from;
+  }
+  return start < to && (end > start ? end : start + 1) > from;
+}
+
 /** Minutes since local midnight of `day` (may be negative or past 1440). */
 const minutesInto = (day: Date, at: Date) =>
-  (at.getTime() -
-    new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()) /
-  60_000;
+  (at.getTime() - startOfDay(day).getTime()) / 60_000;
 
 /** Y offset on the timeline for a moment on `day`. */
 export const offsetFor = (day: Date, at: Date) =>
@@ -60,9 +128,9 @@ export type Placed<T extends Slot> = {
 
 /**
  * Split a day's slots into timeline blocks and the "All day / no time" row.
- * All-day slots (by their flag, never guessed from a midnight start), or ones
- * entirely outside the visible 6am-midnight window, go in the row. Overlapping blocks share the
- * width side by side, like a desktop calendar.
+ * All-day slots (by their flag, never guessed from a midnight start) go in
+ * the row; timed ones that run over midnight are clipped to this day.
+ * Overlapping blocks share the width side by side, like a desktop calendar.
  */
 export function layoutDay<T extends Slot>(slots: T[], day: Date) {
   const allDay: T[] = [];
@@ -77,12 +145,14 @@ export function layoutDay<T extends Slot>(slots: T[], day: Date) {
           (slot.kind === "event" ? EVENT_MINUTES : TASK_MINUTES) * 60_000,
       );
     const endMin = Math.min(minutesInto(day, end), DAY_END * 60);
-    const untimed = !!slot.allDay;
-    if (untimed || endMin <= DAY_START * 60) {
+    if (slot.allDay || endMin <= DAY_START * 60) {
       allDay.push(slot);
       continue;
     }
-    const from = Math.max(startMin, DAY_START * 60);
+    const from = Math.min(
+      Math.max(startMin, DAY_START * 60),
+      DAY_END * 60 - MIN_BLOCK,
+    );
     const to = Math.max(endMin, from + MIN_BLOCK);
     blocks.push({
       slot,

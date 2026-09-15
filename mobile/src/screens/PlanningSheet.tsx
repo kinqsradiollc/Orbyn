@@ -12,7 +12,11 @@ import {
 import {
   BREAK_LEVELS,
   PRIORITIES,
+  TRAVEL_MODES,
+  isTimeZone,
   type BreakLevel,
+  type BufferScope,
+  type TravelMode,
   type Frame,
   type Place,
   type FrameFilters,
@@ -27,6 +31,7 @@ import { ClockField, Field, NumberInput } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import {
   clockDisplay,
@@ -42,6 +47,12 @@ import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { TimeZonePicker } from "./booking/TimeZonePicker";
+
+/** Days Plan my day covers unless you choose otherwise. */
+const HORIZONS = ["1", "2", "3", "4", "5", "6", "7"] as const;
+/** Most extra time zones beside the calendar's hours. */
+const MAX_ZONES = 3;
 
 const BREAK_LABELS: Record<BreakLevel, string> = {
   none: "None",
@@ -68,9 +79,37 @@ type Form = {
   after: string;
   adaptive: boolean;
   travel: string;
+  horizon: (typeof HORIZONS)[number];
+  zones: string[];
+  /** Which events get buffers; `team_ids` null means all your teams. */
+  scope: Omit<BufferScope, "min_minutes"> & { min: string };
+  travelPad: string;
 };
 
+/** Most minutes added to every travel time. */
+const MAX_TRAVEL_PAD = 30;
+const MODE_OPTIONS = ["none", ...TRAVEL_MODES] as const;
+const MODE_LABELS: Record<(typeof MODE_OPTIONS)[number], string> = {
+  none: "Not set",
+  walk: "Walk",
+  cycle: "Cycle",
+  transit: "Transit",
+  drive: "Drive",
+};
+
+const scopeForm = (b: BufferScope | undefined): Form["scope"] => ({
+  personal: b?.personal ?? true,
+  team_ids: b?.team_ids ?? null,
+  list_ids: b?.list_ids ?? [],
+  only_with_others: b?.only_with_others ?? false,
+  min: String(b?.min_minutes ?? 0),
+});
+
 const toForm = (p: PlannerPrefs): Form => ({
+  scope: scopeForm(p.buffer_scope),
+  travelPad: String(p.travel_padding_minutes ?? 0),
+  horizon: HORIZONS[Math.min(7, Math.max(1, p.horizon_days || 1)) - 1],
+  zones: (p.extra_timezones ?? []).slice(0, MAX_ZONES),
   timezone: p.timezone,
   work_days: p.work_days,
   work_start: p.work_start,
@@ -214,7 +253,7 @@ export function PlanningSheet({
 }
 
 function Body({ teams }: { teams: Team[] }) {
-  const { listById, tagById } = usePlanning();
+  const { lists, listById, tagById } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [form, setForm] = useState<Form | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -247,7 +286,18 @@ function Body({ teams }: { teams: Team[] }) {
       if (!form) return;
       if (form.work_end <= form.work_start)
         throw new Error("Your working day ends after it starts.");
+      if (form.zones.some((z) => !isTimeZone(z)))
+        throw new Error("Pick a zone for each extra time zone, or remove it.");
+      if (new Set(form.zones).size !== form.zones.length)
+        throw new Error("List each extra time zone once.");
       const num = (text: string) => parseMinutes(text) ?? undefined;
+      const pad = parseMinutes(form.travelPad) ?? 0;
+      if (pad < 0 || pad > MAX_TRAVEL_PAD)
+        throw new Error(`Travel padding is 0 to ${MAX_TRAVEL_PAD} minutes.`);
+      const shortest = parseMinutes(form.scope.min) ?? 0;
+      if (shortest < 0 || shortest > 1440)
+        throw new Error("The shortest event is 0 to 1440 minutes.");
+      const { min: _min, ...scope } = form.scope;
       const p = await client.updatePlannerPrefs({
         timezone: form.timezone,
         work_days: form.work_days,
@@ -261,6 +311,10 @@ function Body({ teams }: { teams: Team[] }) {
         buffer_after_minutes: num(form.after),
         adaptive_buffers: form.adaptive,
         default_travel_minutes: num(form.travel),
+        horizon_days: Number(form.horizon),
+        extra_timezones: form.zones,
+        buffer_scope: { ...scope, min_minutes: shortest },
+        travel_padding_minutes: pad,
       });
       setForm(toForm(p));
       setSaved(true);
@@ -359,8 +413,64 @@ function Body({ teams }: { teams: Team[] }) {
               </View>
             </View>
 
+            <Text style={[shared.eyebrow, s.eyebrow]}>EXTRA TIME ZONES</Text>
+            <View style={shared.card}>
+              <Text style={[shared.small, s.zoneHint]}>
+                Shown beside the hours on the calendar, up to {MAX_ZONES}.
+              </Text>
+              {form.zones.map((zone, n) => (
+                <View key={n} style={[s.pair, s.zoneRow]}>
+                  <View style={{ flex: 1 }}>
+                    <TimeZonePicker
+                      value={zone}
+                      onChange={(next) =>
+                        patch({
+                          zones: form.zones.map((z, i) => (i === n ? next : z)),
+                        })
+                      }
+                    />
+                  </View>
+                  <SmallAction
+                    destructive
+                    label="Remove"
+                    disabled={busy}
+                    onPress={() => {
+                      animateLayout();
+                      patch({ zones: form.zones.filter((_, i) => i !== n) });
+                    }}
+                  />
+                </View>
+              ))}
+              {form.zones.length < MAX_ZONES ? (
+                <Button
+                  secondary
+                  title="Add a time zone"
+                  icon="plus"
+                  style={s.inline}
+                  onPress={() => {
+                    animateLayout();
+                    patch({ zones: [...form.zones, ""] });
+                  }}
+                />
+              ) : (
+                <Text style={shared.small}>That’s the most zones shown.</Text>
+              )}
+            </View>
+
             <Text style={[shared.eyebrow, s.eyebrow]}>THE PLANNER</Text>
             <View style={shared.card}>
+              <Field
+                label="Days to plan"
+                hint="How many days Plan my day covers unless you pick another number."
+              >
+                <Segmented
+                  wrap
+                  accessibilityLabel="Days to plan by default"
+                  options={HORIZONS}
+                  value={form.horizon}
+                  onChange={(horizon) => patch({ horizon })}
+                />
+              </Field>
               <Field
                 label="Pad estimates by"
                 hint="Extra time for the unexpected."
@@ -436,16 +546,134 @@ function Body({ teams }: { teams: Team[] }) {
                   onValueChange={(adaptive) => patch({ adaptive })}
                 />
               </View>
+              <Text style={[shared.label, s.subhead]}>
+                Which events get buffers
+              </Text>
+              <View style={s.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.switchTitle}>Personal events</Text>
+                  <Text style={shared.small}>
+                    Events not shared with a team.
+                  </Text>
+                </View>
+                <Switch
+                  value={form.scope.personal}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel="Buffers around personal events"
+                  onValueChange={(personal) =>
+                    patch({ scope: { ...form.scope, personal } })
+                  }
+                />
+              </View>
+              {teams.length > 0 && (
+                <Field
+                  label="Team events"
+                  hint="None chosen: no team events get buffers."
+                >
+                  <ChipRow label="Teams whose events get buffers" multi>
+                    {teams.map((t) => {
+                      const all = teams.map((x) => x.id);
+                      const ids = form.scope.team_ids ?? all;
+                      return (
+                        <Chip
+                          key={t.id}
+                          multi
+                          label={t.name}
+                          selected={ids.includes(t.id)}
+                          onPress={() => {
+                            const next = toggleId(ids, t.id);
+                            patch({
+                              scope: {
+                                ...form.scope,
+                                // Every team: null, so new teams count too.
+                                team_ids: all.every((id) => next.includes(id))
+                                  ? null
+                                  : next,
+                              },
+                            });
+                          }}
+                        />
+                      );
+                    })}
+                  </ChipRow>
+                </Field>
+              )}
+              {lists.length > 0 && (
+                <Field
+                  label="Only events in these lists"
+                  hint="None chosen: events in any list."
+                >
+                  <ChipRow label="Lists whose events get buffers" multi>
+                    {lists.map((l) => (
+                      <Chip
+                        key={l.id}
+                        multi
+                        color={l.color}
+                        label={l.name}
+                        selected={form.scope.list_ids.includes(l.id)}
+                        onPress={() =>
+                          patch({
+                            scope: {
+                              ...form.scope,
+                              list_ids: toggleId(form.scope.list_ids, l.id),
+                            },
+                          })
+                        }
+                      />
+                    ))}
+                  </ChipRow>
+                </Field>
+              )}
+              <Field
+                label="Shortest event"
+                hint="Shorter events get no buffer. 0 for every length."
+              >
+                <NumberInput
+                  value={form.scope.min}
+                  onChangeText={(min) =>
+                    patch({ scope: { ...form.scope, min } })
+                  }
+                  suffix="minutes"
+                  accessibilityLabel="Shortest event that gets buffers, in minutes"
+                />
+              </Field>
+              <View style={s.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.switchTitle}>Only meetings with others</Text>
+                  <Text style={shared.small}>
+                    Events with people invited, a meeting link, or a team.
+                  </Text>
+                </View>
+                <Switch
+                  value={form.scope.only_with_others}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel="Buffers only around meetings with others"
+                  onValueChange={(only_with_others) =>
+                    patch({ scope: { ...form.scope, only_with_others } })
+                  }
+                />
+              </View>
               <Field
                 label="Default travel time"
                 hint="For events with a location that doesn’t match one of your places."
-                style={s.last}
               >
                 <NumberInput
                   value={form.travel}
                   onChangeText={(travel) => patch({ travel })}
                   suffix="minutes"
                   accessibilityLabel="Default travel time, in minutes"
+                />
+              </Field>
+              <Field
+                label="Travel padding"
+                hint={`Extra minutes added to every trip, 0 to ${MAX_TRAVEL_PAD}.`}
+                style={s.last}
+              >
+                <NumberInput
+                  value={form.travelPad}
+                  onChangeText={(travelPad) => patch({ travelPad })}
+                  suffix="minutes"
+                  accessibilityLabel={`Travel padding, 0 to ${MAX_TRAVEL_PAD} minutes`}
                 />
               </Field>
             </View>
@@ -578,7 +806,13 @@ function Body({ teams }: { teams: Team[] }) {
                 key={p.id}
                 first={n === 0}
                 title={p.label}
-                detail={`“${p.match}” · ${p.travel_minutes} min travel`}
+                detail={[
+                  `“${p.match}”`,
+                  `${p.travel_minutes} min travel${p.peak_minutes != null ? ` (${p.peak_minutes} at rush hour)` : ""}`,
+                  p.mode ? MODE_LABELS[p.mode] : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
                 onPress={() => {
                   animateLayout();
                   setEditingPlace(p);
@@ -1059,6 +1293,8 @@ function PlaceForm({
     label: string;
     match: string;
     travel_minutes: number;
+    mode: TravelMode | null;
+    peak_minutes: number | null;
   }) => void;
   onDelete?: () => void;
   onCancel: () => void;
@@ -1066,7 +1302,17 @@ function PlaceForm({
   const [label, setLabel] = useState(place?.label ?? "");
   const [match, setMatch] = useState(place?.match ?? "");
   const [travel, setTravel] = useState(String(place?.travel_minutes ?? 20));
+  const [mode, setMode] = useState<(typeof MODE_OPTIONS)[number]>(
+    place?.mode ?? "none",
+  );
+  const [peak, setPeak] = useState(
+    place?.peak_minutes != null ? String(place.peak_minutes) : "",
+  );
   const minutes = parseMinutes(travel);
+  const peakMinutes = parseMinutes(peak);
+  const tooLong =
+    (minutes !== null && minutes > 240) ||
+    (peakMinutes !== null && peakMinutes > 240);
   return (
     <FadeIn style={[s.form, !first && s.divider]}>
       <Field label="Name">
@@ -1102,15 +1348,46 @@ function PlaceForm({
           accessibilityLabel="Travel time in minutes"
         />
       </Field>
+      <Field
+        label="Rush-hour minutes (optional)"
+        hint="Used on weekdays 7–9 AM and 4–6 PM. Leave empty for the usual time."
+      >
+        <NumberInput
+          value={peak}
+          onChangeText={setPeak}
+          placeholder="Same"
+          suffix="minutes"
+          accessibilityLabel="Travel time at rush hour, in minutes"
+        />
+      </Field>
+      <Field label="How you get there" hint="A label only.">
+        <Segmented
+          wrap
+          accessibilityLabel="How you get there"
+          options={MODE_OPTIONS}
+          labels={MODE_LABELS}
+          value={mode}
+          onChange={setMode}
+        />
+      </Field>
+      {tooLong && (
+        <Text style={[shared.small, s.problem]}>
+          Travel times go up to 240 minutes.
+        </Text>
+      )}
       <Button
         title="Save place"
         icon="check"
-        disabled={busy || !label.trim() || !match.trim() || minutes === null}
+        disabled={
+          busy || !label.trim() || !match.trim() || minutes === null || tooLong
+        }
         onPress={() =>
           onSave({
             label: label.trim(),
             match: match.trim(),
             travel_minutes: minutes ?? 0,
+            mode: mode === "none" ? null : mode,
+            peak_minutes: peakMinutes,
           })
         }
       />
@@ -1138,6 +1415,10 @@ const s = themed(() =>
     value: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     inline: { marginTop: 10, marginBottom: 0 },
     pair: { flexDirection: "row", gap: 12 },
+    zoneHint: { marginBottom: 12 },
+    subhead: { marginTop: 4, marginBottom: 12 },
+    problem: { color: colors.danger, marginBottom: 12 },
+    zoneRow: { alignItems: "center", marginBottom: 10 },
     half: { flex: 1 },
     last: { marginBottom: 0 },
     switchRow: {

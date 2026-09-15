@@ -40,6 +40,8 @@ export function PlanView({
     busy: boolean;
     onMove: (block: PlannedBlock) => void;
     onRemove: (block: PlannedBlock) => void;
+    /** Let a pinned block move again; shown on pinned blocks. */
+    onUnpin?: (block: PlannedBlock) => void;
   };
   /** Shown under a block, such as the form that moves it. */
   below?: (block: PlannedBlock) => React.ReactNode;
@@ -111,6 +113,13 @@ export function PlanView({
                       disabled={actions.busy}
                       onPress={() => actions.onMove(b)}
                     />
+                    {b.pinned && actions.onUnpin && (
+                      <SmallAction
+                        label="Unpin"
+                        disabled={actions.busy}
+                        onPress={() => actions.onUnpin?.(b)}
+                      />
+                    )}
                     <SmallAction
                       label="Remove"
                       disabled={actions.busy}
