@@ -42,8 +42,10 @@ export UPSTREAM_AI="$(servers "$AI_SERVERS")"
 export UPSTREAM_STATUS="$(servers "$STATUS_SERVERS")"
 export RESOLVER REAL_IP="$(real_ip)" LIMIT_EXEMPT="$(exempt)"
 
-envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_STATUS} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
-  < /etc/orbyn-gateway/nginx.conf.template > /tmp/nginx.conf
+# tr drops Windows line endings a checkout may have added to the template.
+tr -d '\r' < /etc/orbyn-gateway/nginx.conf.template |
+  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_STATUS} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
+  > /tmp/nginx.conf
 
 [ "${RENDER_ONLY:-}" = "1" ] && exit 0
 exec nginx -c /tmp/nginx.conf -g 'daemon off;'
