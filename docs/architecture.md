@@ -197,8 +197,9 @@ under a schema, so the server does the looking up and the model decides once:
 2. **Answer:** a question gets one plain Markdown answer.
 3. **Plan:** a change request gets one `{summary, actions}` plan under a strict JSON Schema.
 4. **Validate:** each action goes through the same proposal tools as the agent, so scoping,
-   per-item checks, delete intent and the same-title rule all apply. Empty notes in an update keep
-   the saved notes.
+   per-item checks, delete intent and the same-title rule all apply. Items are shown to the model
+   with short ids (`i1`, `i2`, …) that the server maps back, because Matilda mistyped full UUIDs.
+   Empty notes in an update keep the saved notes.
 5. **Repair:** if anything was refused, one repair call gets the reasons. Whatever is still refused
    is listed to the user under "Not proposed".
 
