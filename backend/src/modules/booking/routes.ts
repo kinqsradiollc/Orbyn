@@ -641,6 +641,44 @@ export async function bookingRoutes(app: FastifyInstance) {
     return detail(db, id);
   });
 
+  // Times a host can move a booking to: its own time and events don't
+  // count as busy, the page may be switched off, and notice doesn't apply.
+  app.get("/bookings/:id/slots", async (r) => {
+    const u = await authenticate(r);
+    const q = rescheduleSlotsQuery.parse(r.query);
+    const db = reader(r.headers);
+    const booking = (
+      await db.query<BookingRow>("SELECT * FROM bookings WHERE id = $1", [
+        idParam(r),
+      ])
+    ).rows[0];
+    if (!booking) fail(404, "Booking not found");
+    const page = await requirePage(db, booking.page_id, u, false).catch(() =>
+      fail(404, "Booking not found"),
+    );
+    const duration = Math.round(
+      (booking.end_at.getTime() - booking.start_at.getTime()) / 60_000,
+    );
+    const firstDay = q.date ?? localDateKey(new Date(), q.timezone);
+    const from = dayTime(firstDay, 0, q.timezone);
+    const to = dayTime(addDays(firstDay, q.days), 0, q.timezone);
+    const now = Date.now();
+    const slots = await availableSlots(db, page, duration, from, to, {
+      now: new Date(now - page.min_notice_minutes * 60_000),
+      ignoreBookingId: booking.id,
+      ignoreItemIds: booking.item_ids,
+    });
+    return {
+      timezone: q.timezone,
+      duration,
+      slots: slots.filter(
+        (s) =>
+          Date.parse(s.start_at) > now &&
+          s.start_at !== booking.start_at.toISOString(),
+      ),
+    };
+  });
+
   app.post("/bookings/:id/approve", async (r) => {
     const u = await authenticate(r);
     return transaction(async (db) => {

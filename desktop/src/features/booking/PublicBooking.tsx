@@ -1,20 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
-  CalendarCheck,
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
   Clock,
   Globe,
   MailCheck,
   MapPin,
   Orbit,
+  ShieldCheck,
   Video,
 } from "lucide-react";
 import {
-  addDays,
   localDateKey,
+  type BookingQuestion,
   type BookingReceipt,
   type BusyInterval,
   type HttpError,
@@ -27,6 +24,9 @@ import {
   minutesLabel,
   timeZones,
 } from "../../lib/planning";
+import { Message, accentStyle, whenLabel } from "./bookingUi";
+import { ManageBooking } from "./ManageBooking";
+import { SlotPicker } from "./SlotPicker";
 import "./booking.css";
 
 type Props = {
@@ -35,10 +35,14 @@ type Props = {
   onHome?: () => void;
 };
 
+/** Paths under /book/ that are links from emails, never page slugs. */
+const LINKS = new Set(["confirm", "cancel", "manage"]);
+
 /**
  * Public booking pages, no sign-in: `/book/:slug` to pick a time,
- * `/book/confirm/:token` from the confirmation email, and
- * `/book/cancel/:token` to cancel.
+ * `/book/confirm/:token` from the confirmation email,
+ * `/book/manage/:token` to move or cancel, and `/book/cancel/:token` from
+ * older emails.
  */
 export function PublicBooking({ path, onHome }: Props) {
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
@@ -68,7 +72,9 @@ export function PublicBooking({ path, onHome }: Props) {
           <Confirm token={token} />
         ) : first === "cancel" && token ? (
           <Cancel token={token} />
-        ) : first ? (
+        ) : first === "manage" && token ? (
+          <ManageBooking token={token} />
+        ) : first && !LINKS.has(first) ? (
           <BookPage slug={first} />
         ) : (
           <Message
@@ -82,39 +88,84 @@ export function PublicBooking({ path, onHome }: Props) {
   );
 }
 
-function Message({
-  title,
-  body,
-  tone = "info",
+const Required = () => (
+  <span className="required-mark" aria-hidden="true">
+    {" "}
+    *
+  </span>
+);
+
+/** One of the page's own questions, as the right kind of field. */
+function QuestionField({
+  question: q,
+  value,
+  onChange,
 }: {
-  title: string;
-  body: string;
-  tone?: "info" | "ok";
+  question: BookingQuestion;
+  value: string;
+  onChange: (value: string) => void;
 }) {
+  // A few choices read best as radios; longer lists fold into a menu.
+  if (q.type === "choice" && q.options.length <= 5)
+    return (
+      <fieldset className="booking-choice">
+        <legend>
+          {q.label}
+          {q.required && <Required />}
+        </legend>
+        {q.options.map((o) => (
+          <label key={o}>
+            <input
+              type="radio"
+              name={"q-" + q.id}
+              value={o}
+              checked={value === o}
+              required={q.required}
+              onChange={() => onChange(o)}
+            />
+            {o}
+          </label>
+        ))}
+      </fieldset>
+    );
   return (
-    <section
-      className={"public-card public-message fade-up is-" + tone}
-      role="status"
-    >
-      {tone === "ok" ? <CircleCheck size={30} /> : <CalendarCheck size={30} />}
-      <h1>{title}</h1>
-      <p>{body}</p>
-    </section>
+    <label>
+      {q.label}
+      {q.required && <Required />}
+      {q.type === "choice" ? (
+        <select
+          required={q.required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          <option value="">Choose one</option>
+          {q.options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : q.type === "long_text" ? (
+        <textarea
+          rows={3}
+          maxLength={2000}
+          required={q.required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          type={q.type === "phone" ? "tel" : "text"}
+          autoComplete={q.type === "phone" ? "tel" : undefined}
+          maxLength={q.type === "phone" ? 40 : 2000}
+          required={q.required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </label>
   );
 }
-
-const whenLabel = (start: string, end: string, timeZone: string) => {
-  const s = new Date(start);
-  const day = s.toLocaleDateString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone,
-  });
-  const t = (d: Date) =>
-    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", timeZone });
-  return `${day}, ${t(s)} – ${t(new Date(end))}`;
-};
 
 function BookPage({ slug }: { slug: string }) {
   const [tz, setTz] = useState(deviceTimeZone);
@@ -130,6 +181,7 @@ function BookPage({ slug }: { slug: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
   const [formError, setFormError] = useState("");
   const [receipt, setReceipt] = useState<BookingReceipt | null>(null);
@@ -184,19 +236,44 @@ function BookPage({ slug }: { slug: string }) {
       : "Book a time · Orbyn";
   }, [page]);
 
-  if (receipt)
-    return receipt.needs_confirmation ? (
+  if (receipt) {
+    const when = whenLabel(receipt.start_at, receipt.end_at, tz);
+    if (receipt.needs_confirmation)
+      return (
+        <Message
+          accent={page?.color}
+          title="Check your email to confirm"
+          body={`We sent a link to ${email}. Open it to confirm ${when}. ${
+            receipt.needs_approval
+              ? "The host will then confirm the request."
+              : "The time is held for you until then."
+          }`}
+        />
+      );
+    if (receipt.needs_approval || receipt.status === "awaiting_approval")
+      return (
+        <Message
+          accent={page?.color}
+          tone="ok"
+          title="Request sent"
+          body={`${page?.title ?? "Your request"} · ${when}. The host will confirm this request. We'll email ${email} when they do.`}
+        />
+      );
+    return (
       <Message
-        title="Check your email to confirm"
-        body={`We sent a link to ${email}. Open it to confirm ${whenLabel(receipt.start_at, receipt.end_at, tz)}. The time is held for you until then.`}
-      />
-    ) : (
-      <Message
+        accent={page?.color}
         tone="ok"
         title="You're booked"
-        body={`${page?.title ?? "Your booking"} · ${whenLabel(receipt.start_at, receipt.end_at, tz)}. A confirmation is on its way to ${email}.`}
-      />
+        body={`${page?.title ?? "Your booking"} · ${when}. A confirmation is on its way to ${email}.`}
+      >
+        {receipt.confirmation_message && (
+          <p className="booking-confirmation-message">
+            {receipt.confirmation_message}
+          </p>
+        )}
+      </Message>
     );
+  }
 
   if (!page)
     return loading ? (
@@ -210,25 +287,23 @@ function BookPage({ slug }: { slug: string }) {
       />
     );
 
-  const byDay = new Map<string, BusyInterval[]>();
-  for (const s of page.slots) {
-    const key = localDateKey(new Date(s.start_at), tz);
-    byDay.set(key, [...(byDay.get(key) ?? []), s]);
-  }
-  const strip = Array.from({ length: 7 }, (_, n) => addDays(date, n));
-  const shownDay =
-    day && byDay.has(day) ? day : (strip.find((k) => byDay.has(k)) ?? null);
-  const times = shownDay ? (byDay.get(shownDay) ?? []) : [];
-  const keyLabel = (key: string, opts: Intl.DateTimeFormatOptions) =>
-    new Date(key + "T12:00:00Z").toLocaleDateString([], {
-      ...opts,
-      timeZone: "UTC",
-    });
   const zones = timeZones();
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!slot || !duration) return;
+    const missing = page.questions.find(
+      (q) => q.required && !answers[q.id]?.trim(),
+    );
+    if (missing) {
+      setFormError(`Please answer “${missing.label}”.`);
+      return;
+    }
+    const given: Record<string, string> = {};
+    for (const q of page.questions) {
+      const a = answers[q.id]?.trim();
+      if (a) given[q.id] = a;
+    }
     setSending(true);
     setFormError("");
     try {
@@ -240,6 +315,7 @@ function BookPage({ slug }: { slug: string }) {
           email: email.trim(),
           note: note.trim(),
           timezone: tz,
+          answers: given,
         }),
       );
     } catch (err) {
@@ -255,7 +331,8 @@ function BookPage({ slug }: { slug: string }) {
 
   return (
     <section
-      className="public-card booking-public fade-up"
+      className="public-card booking-public booking-accent fade-up"
+      style={accentStyle(page.color)}
       aria-labelledby="book-title"
     >
       <div className="booking-intro">
@@ -273,6 +350,12 @@ function BookPage({ slug }: { slug: string }) {
             <li>
               <Video size={14} aria-hidden="true" /> Video link sent when you
               book
+            </li>
+          )}
+          {page.requires_approval && (
+            <li>
+              <ShieldCheck size={14} aria-hidden="true" /> The host confirms
+              each request
             </li>
           )}
           <li>
@@ -335,6 +418,7 @@ function BookPage({ slug }: { slug: string }) {
           </p>
           <label>
             Your name
+            <Required />
             <input
               required
               autoFocus
@@ -346,6 +430,7 @@ function BookPage({ slug }: { slug: string }) {
           </label>
           <label>
             Email
+            <Required />
             <input
               type="email"
               required
@@ -355,6 +440,14 @@ function BookPage({ slug }: { slug: string }) {
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
+          {page.questions.map((q) => (
+            <QuestionField
+              key={q.id}
+              question={q}
+              value={answers[q.id] ?? ""}
+              onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))}
+            />
+          ))}
           <label>
             Anything to share? (optional)
             <textarea
@@ -369,85 +462,33 @@ function BookPage({ slug }: { slug: string }) {
               {formError}
             </div>
           )}
+          {page.requires_approval && (
+            <p className="booking-approval-note">
+              <ShieldCheck size={14} aria-hidden="true" /> The host will confirm
+              this request.
+            </p>
+          )}
           <button className="primary wide" disabled={sending}>
-            {sending ? "Booking…" : "Book this time"}
+            {sending
+              ? "Sending…"
+              : page.requires_approval
+                ? "Request this time"
+                : "Book this time"}
           </button>
         </form>
       ) : (
-        <div className="booking-picker">
-          <div className="date-strip-head">
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Earlier days"
-              disabled={date <= today}
-              onClick={() =>
-                setDate(addDays(date, -7) < today ? today : addDays(date, -7))
-              }
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <strong>
-              {keyLabel(strip[0], { month: "long", day: "numeric" })} –{" "}
-              {keyLabel(strip[6], { month: "long", day: "numeric" })}
-            </strong>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Later days"
-              onClick={() => setDate(addDays(date, 7))}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-          <div className="date-strip" role="group" aria-label="Days">
-            {strip.map((k) => {
-              const count = byDay.get(k)?.length ?? 0;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={shownDay === k}
-                  className={shownDay === k ? "active" : ""}
-                  disabled={!count}
-                  aria-label={`${keyLabel(k, { weekday: "long", month: "long", day: "numeric" })}, ${count} ${count === 1 ? "time" : "times"}`}
-                  onClick={() => setDay(k)}
-                >
-                  <small>{keyLabel(k, { weekday: "short" })}</small>
-                  <strong>{keyLabel(k, { day: "numeric" })}</strong>
-                </button>
-              );
-            })}
-          </div>
-          {loading ? (
-            <p className="muted">Finding free times…</p>
-          ) : loadError ? (
-            <div className="error" role="alert">
-              {loadError}
-            </div>
-          ) : times.length ? (
-            <ul className="time-grid" aria-label="Free times">
-              {times.map((s) => (
-                <li key={s.start_at}>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => setSlot(s)}
-                  >
-                    {new Date(s.start_at).toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit",
-                      timeZone: tz,
-                    })}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">
-              No free times these days. Try the next week.
-            </p>
-          )}
+        <div>
+          <SlotPicker
+            tz={tz}
+            date={date}
+            onDateChange={setDate}
+            slots={page.slots}
+            loading={loading}
+            error={loadError}
+            onPick={setSlot}
+            day={day}
+            onDayChange={setDay}
+          />
           {formError && (
             <div className="error" role="alert">
               {formError}
@@ -483,15 +524,32 @@ function Confirm({ token }: { token: string }) {
     );
   if (state.kind === "error")
     return <Message title="We couldn't confirm that" body={state.text} />;
+  const { receipt } = state;
+  const when = whenLabel(receipt.start_at, receipt.end_at, deviceTimeZone());
+  if (receipt.status === "awaiting_approval" || receipt.needs_approval)
+    return (
+      <Message
+        tone="ok"
+        title="Email confirmed"
+        body={`${when}. The host will confirm this request. We'll email you when they do.`}
+      />
+    );
   return (
     <Message
       tone="ok"
       title="You're booked"
-      body={`${whenLabel(state.receipt.start_at, state.receipt.end_at, deviceTimeZone())}. The details are in your email.`}
-    />
+      body={`${when}. The details are in your email.`}
+    >
+      {receipt.confirmation_message && (
+        <p className="booking-confirmation-message">
+          {receipt.confirmation_message}
+        </p>
+      )}
+    </Message>
   );
 }
 
+/** The separate cancel link from older emails. */
 function Cancel({ token }: { token: string }) {
   const [state, setState] = useState<"ask" | "sending" | "done">("ask");
   const [error, setError] = useState("");

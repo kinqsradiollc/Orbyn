@@ -177,6 +177,12 @@ test("pages set their own hours, date overrides, interval and buffers", async ()
   const alias = await newPage(host.token, { buffer_minutes: 10 });
   assert.equal(alias.buffer_before_minutes, 10);
   assert.equal(alias.buffer_after_minutes, 10);
+  const reserved = await call(host.token, "POST", "/booking-pages", {
+    slug: "manage",
+    title: "Manage",
+    durations: [30],
+  });
+  assert.ok([400, 422].includes(reserved.status), reserved.raw.body);
   const bad = await call(host.token, "POST", "/booking-pages", {
     slug: `pg-${randomUUID().slice(0, 8)}`,
     title: "Bad",
@@ -442,6 +448,28 @@ test("hosts track every booking in one inbox", async () => {
   assert.equal(
     (await call(stranger.token, "POST", `/bookings/${rita.body.id}/cancel`, {}))
       .status,
+    404,
+  );
+
+  // Hosts can move a booking over its own time, never onto someone else's.
+  const hostSlots = await call(
+    host.token,
+    "GET",
+    `/bookings/${omar.body.id}/slots?timezone=${encodeURIComponent(TZ)}&date=${day(2)}&days=1`,
+  );
+  assert.equal(hostSlots.status, 200, hostSlots.raw.body);
+  const starts = hostSlots.body.slots.map((s: Json) => s.start_at);
+  assert.ok(starts.includes(open[9]));
+  assert.ok(!starts.includes(open[8]));
+  assert.ok(!starts.includes(open[0]));
+  assert.equal(
+    (
+      await call(
+        stranger.token,
+        "GET",
+        `/bookings/${omar.body.id}/slots?timezone=UTC`,
+      )
+    ).status,
     404,
   );
 

@@ -578,6 +578,11 @@ const slug = z
   .regex(
     /^[a-z0-9]+(-[a-z0-9]+)*$/,
     "Use lowercase letters, numbers and single dashes",
+  )
+  // The web app uses these paths for booking links, so no page can have them.
+  .refine(
+    (s) => !["manage", "confirm", "cancel"].includes(s),
+    "That link is reserved. Try another.",
   );
 const durations = z.array(z.number().int().min(5).max(480)).min(1).max(4);
 const coHosts = z

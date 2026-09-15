@@ -53,8 +53,7 @@ export function RescheduleSlots({
     setSlots(null);
     setProblem("");
     client
-      .getPublicBookingPage(page.slug, {
-        duration: length,
+      .getBookingSlots(booking.id, {
         date: from,
         days: DAYS,
         timezone: deviceTimeZone(),

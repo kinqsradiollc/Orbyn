@@ -545,6 +545,18 @@ export class OrbynClient {
       { raw: true },
     );
   }
+  /** Free times a host can move a booking to (ignores its own time and notice). */
+  getBookingSlots(
+    id: string,
+    params: { date?: string; days?: number; timezone: string },
+  ) {
+    const q = new URLSearchParams({ timezone: params.timezone });
+    if (params.date) q.set("date", params.date);
+    if (params.days) q.set("days", String(params.days));
+    return this.request<
+      Pick<PublicBookingPage, "timezone" | "duration" | "slots">
+    >(`/bookings/${id}/slots?${q}`);
+  }
   getBooking(id: string) {
     return this.request<BookingDetail>(`/bookings/${id}`);
   }
