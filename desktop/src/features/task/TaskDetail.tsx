@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CalendarClock,
   Check,
+  Crosshair,
   Eye,
+  MapPin,
+  Video,
   ListChecks,
   MessageSquare,
   Pencil,
@@ -27,6 +30,7 @@ import { stagger } from "../../lib/motion";
 import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
+import { ItemFacts } from "../../components/ItemFacts";
 import "./task.css";
 
 type Props = {
@@ -40,6 +44,8 @@ type Props = {
   suspended?: boolean;
   onClose: () => void;
   onEdit: (item: Item) => void;
+  /** Opens focus mode for this task. */
+  onFocus?: (item: Item) => void;
   /** Refresh the planner after a change. */
   onChanged: () => Promise<void>;
   /** Planner error handler (signs out on 401). */
@@ -74,6 +80,7 @@ export function TaskDetail({
   suspended,
   onClose,
   onEdit,
+  onFocus,
   onChanged,
   onError,
 }: Props) {
@@ -295,7 +302,24 @@ export function TaskDetail({
             <span className={"priority " + current.priority}>
               {current.priority} priority
             </span>
+            {current.location && (
+              <span className="drawer-fact">
+                <MapPin size={14} aria-hidden="true" />
+                {current.location}
+              </span>
+            )}
+            {current.meeting_url && (
+              <a
+                className="drawer-fact link-button"
+                href={current.meeting_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Video size={14} aria-hidden="true" /> Meeting link
+              </a>
+            )}
           </div>
+          <ItemFacts item={current} className="drawer-planning" />
           {canWrite ? (
             <div
               className="status-picker"
@@ -621,6 +645,11 @@ export function TaskDetail({
         </div>
 
         <div className="drawer-foot">
+          {onFocus && current.kind === "task" && current.status !== "done" && (
+            <button className="primary" onClick={() => onFocus(current)}>
+              <Crosshair size={15} /> Focus
+            </button>
+          )}
           <button className="secondary" onClick={() => onEdit(current)}>
             {canWrite ? (
               <>

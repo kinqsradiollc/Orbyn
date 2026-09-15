@@ -17,6 +17,7 @@ import {
   TEAM_ROLES,
   type HttpError,
   type Item,
+  type ItemInput,
   type TeamDetail as TeamDetailData,
   type TeamMember,
   type TeamRole,
@@ -28,6 +29,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { RoleBadge } from "../../components/RoleBadge";
 import { stagger } from "../../lib/motion";
+import { TeamPlanning } from "./TeamPlanning";
 
 /** Planner plumbing shared by the Teams and Admin views. */
 export type TeamActions = {
@@ -41,7 +43,8 @@ export type TeamActions = {
   onOpenItem: (item: Item) => void;
   /** Whether you can change this item (false for team viewers). */
   canWrite: (item: Item) => boolean;
-  onNewTeamItem: (teamId: string) => void;
+  /** Starts a new team item, optionally prefilled (a meeting time). */
+  onNewTeamItem: (teamId: string, draft?: Partial<ItemInput>) => void;
   onToggle: (item: Item) => void;
 };
 
@@ -352,6 +355,16 @@ export function TeamDetail({
             <UserPlus size={15} /> Add member
           </button>
         </form>
+      )}
+
+      {!override && hasTeamPermission(team.role, "items:read") && (
+        <TeamPlanning
+          team={team}
+          userId={user?.id}
+          canWrite={canWrite}
+          report={report}
+          onNewEvent={(draft) => onNewTeamItem(team.id, draft)}
+        />
       )}
 
       {!override && (

@@ -17,7 +17,7 @@ type Props = {
 };
 
 /** Colors and markers for an item in any calendar view. */
-export function entryClass(i: Item) {
+export function entryClass(i: Pick<Item, "kind" | "priority" | "status">) {
   return [
     "cal-entry",
     i.kind === "event" ? `is-event prio-${i.priority}` : `is-task`,

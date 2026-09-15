@@ -1,14 +1,5 @@
 import type { Item } from "@orbyn/core";
-import {
-  addDays,
-  daysBetween,
-  firstDay,
-  isAllDay,
-  isMultiDay,
-  isOnDay,
-  itemSpan,
-  lastDay,
-} from "./dates";
+import { addDays, daysBetween, firstDay, isMultiDay, lastDay } from "./dates";
 
 /** A bar in a month week row, placed on a lane across columns. */
 export type WeekBar = {
@@ -78,9 +69,11 @@ export function layoutWeek(items: Item[], week: Date[], maxLanes: number) {
   return { bars, hidden };
 }
 
-/** A timed item placed in a day column of the week/day time grid. */
-export type PlacedEvent = {
-  item: Item;
+/** Something with a start and end to place in a day column. */
+export type Span<T> = { key: string; start: Date; end: Date; data: T };
+
+/** A span placed in a day column of the week/day time grid. */
+export type Placed<T> = Span<T> & {
   /** Minutes from the top of the grid. */
   top: number;
   /** Length in minutes (at least `minMinutes`). */
@@ -91,16 +84,16 @@ export type PlacedEvent = {
 };
 
 /**
- * Timed items on `day`, positioned by start and sized by duration between
- * `startHour` and `endHour`. Overlapping items sit side by side.
+ * Spans that touch `day`, positioned by start and sized by duration between
+ * `startHour` and `endHour`. Overlapping spans sit side by side.
  */
-export function layoutDay(
-  items: Item[],
+export function layoutSpans<T>(
+  spans: Span<T>[],
   day: Date,
   startHour: number,
   endHour: number,
   minMinutes = 24,
-): PlacedEvent[] {
+): Placed<T>[] {
   const gridStart = new Date(
     day.getFullYear(),
     day.getMonth(),
@@ -110,21 +103,20 @@ export function layoutDay(
   const gridEnd = addDays(day, 0).setHours(endHour, 0, 0, 0);
   const total = (gridEnd - gridStart) / 60000;
 
-  const placed = items
-    .filter((i) => isOnDay(i, day) && !isAllDay(i))
-    .map((item) => {
-      const span = itemSpan(item)!;
-      let top = (span.start.getTime() - gridStart) / 60000;
-      let bottom = (span.end.getTime() - gridStart) / 60000;
-      // Keep early and late items visible at the edges of the grid.
+  const placed = spans
+    .filter((s) => s.start.getTime() < gridEnd && s.end.getTime() > gridStart)
+    .map((s) => {
+      let top = (s.start.getTime() - gridStart) / 60000;
+      let bottom = (s.end.getTime() - gridStart) / 60000;
+      // Keep early and late spans visible at the edges of the grid.
       top = Math.min(Math.max(top, 0), total - minMinutes);
       bottom = Math.min(Math.max(bottom, top + minMinutes), total);
-      return { item, top, height: bottom - top, col: 0, cols: 1 };
+      return { ...s, top, height: bottom - top, col: 0, cols: 1 };
     })
     .sort((a, b) => a.top - b.top || b.height - a.height);
 
-  // Sweep clusters of overlapping items; give each a free column.
-  let cluster: PlacedEvent[] = [];
+  // Sweep clusters of overlapping spans; give each a free column.
+  let cluster: Placed<T>[] = [];
   let columnEnds: number[] = [];
   let clusterEnd = -Infinity;
   const close = () => {

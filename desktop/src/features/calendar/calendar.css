@@ -605,3 +605,477 @@
     --gutter: 48px;
   }
 }
+
+/* ---- Calendar page: grid beside the planner and tasks to place ---- */
+.calendar-page.with-side {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 20px;
+  align-items: start;
+}
+.calendar-page .calendar {
+  margin-bottom: 24px;
+}
+.calendar-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.calendar-side .card {
+  margin: 0;
+}
+.calendar-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.set-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #6f7b72;
+}
+.set-picker select {
+  max-width: 170px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.planner-toggle {
+  padding: 7px 12px;
+}
+.planner-toggle.active {
+  border-color: var(--green);
+  background: var(--color-accentSoft);
+  color: var(--green);
+}
+
+/* Slots in the time grid hold an entry, block or ghost (plus Join / resize). */
+.tg-slot {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+}
+.tg-slot > .tg-event {
+  position: static;
+  width: 100%;
+  height: 100%;
+}
+.tg-slot.is-dragging {
+  z-index: 4;
+  opacity: 0.85;
+}
+.tg-join {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--green);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  text-decoration: none;
+}
+.cal-block {
+  border: 1px solid color-mix(in srgb, var(--green) 45%, white);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--green) 11%, white) 0 6px,
+    color-mix(in srgb, var(--green) 16%, white) 6px 12px
+  );
+  color: #24402f;
+  font-size: 11px;
+  text-align: left;
+  cursor: grab;
+  touch-action: auto;
+}
+.cal-block:active {
+  cursor: grabbing;
+}
+.cal-block .cal-title svg {
+  flex: none;
+  color: var(--green);
+}
+.cal-block.is-done .cal-title {
+  color: #7f897f;
+  text-decoration: line-through;
+}
+.tg-resize {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 0;
+  height: 7px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.tg-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 22px;
+  height: 3px;
+  margin-left: -11px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--green) 50%, white);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.tg-slot:hover .tg-resize::after {
+  opacity: 1;
+}
+.cal-ghost {
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 6px;
+  border: 1.5px dashed var(--green);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accentSoft) 70%, transparent);
+  color: #2f5a41;
+  font-size: 11px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cal-ghost .cal-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.cal-ghost small {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.cal-ghost.is-short {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+/* Buffers and travel: subtle hatched bands behind everything else. */
+.tg-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    #eef1ec 0 4px,
+    transparent 4px 9px
+  );
+  border-left: 2px solid #d5ddd5;
+  pointer-events: none;
+  overflow: hidden;
+}
+.tg-band.is-travel {
+  background: repeating-linear-gradient(
+    45deg,
+    #f3eee5 0 4px,
+    transparent 4px 9px
+  );
+  border-left-color: #dcc9a9;
+}
+.tg-band span {
+  font-size: 9px;
+  color: #6f7b72;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg-drop {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 3;
+  height: 24px;
+  padding: 2px 6px;
+  border: 2px dashed var(--green);
+  border-radius: 6px;
+  background: #e7f0eacc;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 650;
+  pointer-events: none;
+}
+/* Extra time-zone columns. */
+.tg-hours {
+  display: flex;
+}
+.tg-zone {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.tg-zone + .tg-zone span {
+  color: #8a948c;
+}
+.tg-zone-heads {
+  display: flex;
+  align-items: flex-end;
+  padding: 4px 0;
+}
+.tg-zone-heads small {
+  flex: 1;
+  min-width: 0;
+  padding-right: 6px;
+  font-size: 9px;
+  line-height: 1.25;
+  text-align: right;
+  color: #6f7b72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Agenda. */
+.agenda-list {
+  display: grid;
+  gap: 18px;
+  padding: 18px 20px 22px;
+  border-top: 1px solid var(--border);
+}
+.agenda-day h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.agenda-day h3 span {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #eef2ec;
+  color: #5f6b62;
+  font:
+    600 11px "DM Sans",
+    sans-serif;
+}
+.agenda-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.agenda-row .calendar-agenda-item {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-agenda-item.is-block {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--green) 40%, white);
+}
+.agenda-join {
+  align-self: center;
+  text-decoration: none;
+  padding: 8px 12px;
+}
+
+/* Side panels. */
+.panel-hint {
+  margin: -10px 23px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6f7b72;
+}
+.schedule-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 12px;
+  display: grid;
+  gap: 6px;
+}
+.schedule-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  cursor: grab;
+}
+.schedule-item:hover {
+  border-color: #d3ddd3;
+}
+.schedule-item .grip {
+  flex: none;
+  color: #aab3ad;
+}
+.schedule-main {
+  flex: 1;
+  min-width: 0;
+}
+.schedule-main strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-main small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: #6f7b72;
+}
+.panel-more {
+  margin: 0 23px 14px;
+}
+.planner-panel .section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.planner-panel .section-heading h2 svg {
+  color: var(--green);
+}
+.planner-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 12px;
+  padding: 0 20px 16px;
+}
+.planner-form > label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+}
+.planner-form .wide {
+  grid-column: 1 / -1;
+}
+.planner-form input[type="date"],
+.planner-form select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 9px;
+  border: 1px solid #dfe5dc;
+  border-radius: 6px;
+  background: #fff;
+  color: #3f5038;
+  font-size: 12px;
+}
+.planner-form input[type="range"] {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  accent-color: var(--green);
+}
+.planner-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.panel-outcome {
+  margin: 0 20px 12px !important;
+}
+.planner-result {
+  padding: 0 14px 6px;
+}
+.planner-review {
+  padding: 12px 20px 18px;
+  border-top: 1px solid var(--color-divider);
+}
+.planner-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.planner-review h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.planner-review .panel-hint {
+  margin: 6px 0 0;
+}
+.review-group {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.review-group > strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.review-group.is-risk > strong {
+  color: var(--color-danger);
+}
+.review-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.review-group-head .secondary {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.review-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.review-group li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.review-group li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.review-group li small {
+  display: block;
+  color: #6f7b72;
+  font-size: 11px;
+}
+.review-group .link-button {
+  flex: none;
+}
+
+@media (max-width: 1250px) {
+  .calendar-page.with-side {
+    grid-template-columns: 1fr;
+  }
+  .calendar-side {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: start;
+  }
+}
+@media (max-width: 640px) {
+  .calendar-tools {
+    width: 100%;
+  }
+  .calendar-tools .segmented {
+    width: 100%;
+  }
+  .calendar-tools .segmented button {
+    flex: 1;
+    justify-content: center;
+  }
+  .agenda-list {
+    padding: 14px;
+  }
+}

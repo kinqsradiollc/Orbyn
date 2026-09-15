@@ -5,6 +5,7 @@ import { stagger } from "../lib/motion";
 import { progressOf, stepsLabel, updatesLabel } from "../lib/tasks";
 import { StatusPill } from "./StatusPill";
 import { ProgressBar } from "./ProgressBar";
+import { ItemFacts } from "./ItemFacts";
 
 type Props = {
   item: Item;
@@ -90,6 +91,7 @@ export function ItemRow({
             {updates && <span className="item-fact">{updates}</span>}
           </span>
         )}
+        <ItemFacts item={i} />
       </button>
       <span className="item-tags">
         {i.team_id && i.team_name && (
