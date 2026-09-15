@@ -12,12 +12,15 @@ export function InboxScreen({
   busy,
   onRead,
   onReschedule,
+  onOpenBooking,
 }: {
   notices: Notice[];
   busy: boolean;
   onRead: (notice: Notice) => void;
   /** Move the clashing time block in a "conflict" notice to the next free time. */
   onReschedule: (notice: Notice) => void;
+  /** Open the booking a "booking" notice is about (its `ref`). */
+  onOpenBooking: (notice: Notice) => void;
 }) {
   if (!notices.length)
     return (
@@ -27,7 +30,7 @@ export function InboxScreen({
         </View>
         <Text style={shared.sectionTitle}>You’re all caught up.</Text>
         <Text style={[shared.subtitle, { textAlign: "center" }]}>
-          Deadline reminders will appear here.
+          Deadline reminders and booking updates will appear here.
         </Text>
       </FadeIn>
     );
@@ -35,15 +38,20 @@ export function InboxScreen({
     <View style={s.list}>
       {notices.map((n, i) => {
         const conflict = n.kind === "conflict" && !!n.ref;
+        const booking = n.kind === "booking" && !!n.ref;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={n.title + (n.read ? "" : ", unread")}
               accessibilityHint={
-                n.read ? undefined : "Marks this reminder as read"
+                booking
+                  ? "Opens this booking"
+                  : n.read
+                    ? undefined
+                    : "Marks this reminder as read"
               }
-              onPress={() => onRead(n)}
+              onPress={() => (booking ? onOpenBooking(n) : onRead(n))}
               style={({ pressed }) => [
                 s.row,
                 !n.read && s.unread,
@@ -52,7 +60,7 @@ export function InboxScreen({
             >
               <View style={s.icon}>
                 <Icon
-                  name={conflict ? "alert" : "bell"}
+                  name={conflict ? "alert" : booking ? "calendar" : "bell"}
                   size={16}
                   color={colors.accent}
                 />
@@ -65,7 +73,11 @@ export function InboxScreen({
                 <Text style={s.body}>{n.body}</Text>
                 <Text style={shared.small}>
                   {dateLabel(n.created_at)}
-                  {n.read ? " · Read" : " · Tap to mark read"}
+                  {booking
+                    ? " · Tap to open"
+                    : n.read
+                      ? " · Read"
+                      : " · Tap to mark read"}
                 </Text>
               </View>
             </Pressable>

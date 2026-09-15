@@ -10,13 +10,15 @@ const TONES = {
   warning: { bg: "#fbf3e2", fg: "#a3742b" },
 } as const;
 
+export type PillTone = keyof typeof TONES;
+
 /** Small rounded label for roles and states (Owner, Admin, Disabled…). */
 export function Pill({
   label,
   tone = "muted",
 }: {
   label: string;
-  tone?: keyof typeof TONES;
+  tone?: PillTone;
 }) {
   const t = TONES[tone];
   return (
