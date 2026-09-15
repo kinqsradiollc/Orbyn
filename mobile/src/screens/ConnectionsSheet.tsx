@@ -36,7 +36,10 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "item.completed": "Item completed",
   "item.deleted": "Item deleted",
   "block.scheduled": "Time scheduled",
+  "booking.requested": "Booking requested",
   "booking.confirmed": "Booking confirmed",
+  "booking.rescheduled": "Booking moved",
+  "booking.cancelled": "Booking cancelled or declined",
 };
 
 /**

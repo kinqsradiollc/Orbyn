@@ -10,6 +10,8 @@ type Props = {
   /** Moves the clashing block in a "conflict" notice to the next free time. */
   onReschedule: (notice: Notice) => Promise<void>;
   onOpenCalendar: () => void;
+  /** Opens the bookings inbox on the booking in a "booking" notice's `ref`. */
+  onOpenBooking: (bookingId: string) => void;
 };
 
 const ICONS = {
@@ -23,19 +25,29 @@ export function NotificationsView({
   onRead,
   onReschedule,
   onOpenCalendar,
+  onOpenBooking,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
     <section className="card">
       {notices.map((n, index) => {
         const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
+        // Booking notices point at a booking (`ref`), not an item.
+        const bookingId = n.kind === "booking" ? n.ref : undefined;
+        const openBooking = (id: string) => {
+          if (!n.read) onRead(n);
+          onOpenBooking(id);
+        };
         return (
           <div
             className={"notice fade-up stagger " + (n.read ? "read" : "")}
             style={stagger(index)}
             key={n.id}
           >
-            <button className="notice-main" onClick={() => onRead(n)}>
+            <button
+              className="notice-main"
+              onClick={() => (bookingId ? openBooking(bookingId) : onRead(n))}
+            >
               <Icon size={19} />
               <span>
                 <strong>{n.title}</strong>
@@ -60,7 +72,15 @@ export function NotificationsView({
                 {pending === n.id ? "Moving…" : "Reschedule"}
               </button>
             )}
-            {n.kind === "booking" && (
+            {bookingId && (
+              <button
+                className="secondary notice-action"
+                onClick={() => openBooking(bookingId)}
+              >
+                <CalendarCheck size={14} /> Open booking
+              </button>
+            )}
+            {n.kind === "booking" && !bookingId && (
               <button
                 className="secondary notice-action"
                 onClick={() => {

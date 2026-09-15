@@ -11,6 +11,7 @@ export function Segmented<T extends string>({
   value,
   onChange,
   labels,
+  badges,
   wrap = false,
   disabled = false,
   accessibilityLabel,
@@ -20,6 +21,8 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   /** Display text per option; options without a label are shown capitalised. */
   labels?: Partial<Record<T, string>>;
+  /** A count shown after an option's text, e.g. requests waiting; 0 hides it. */
+  badges?: Partial<Record<T, number>>;
   wrap?: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
@@ -33,11 +36,15 @@ export function Segmented<T extends string>({
       {options.map((option) => {
         const active = option === value;
         const label = labels?.[option];
+        const badge = badges?.[option] ?? 0;
         return (
           <Pressable
             key={option}
             accessibilityRole="radio"
             accessibilityState={{ checked: active, disabled }}
+            accessibilityLabel={
+              badge > 0 ? `${label ?? option}, ${badge}` : undefined
+            }
             disabled={disabled}
             onPress={() => onChange(option)}
             style={[s.segment, wrap && s.chip, active && s.segmentActive]}
@@ -52,6 +59,11 @@ export function Segmented<T extends string>({
             >
               {label ?? option}
             </Text>
+            {badge > 0 && (
+              <View style={s.badge}>
+                <Text style={s.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+              </View>
+            )}
           </Pressable>
         );
       })}
@@ -71,6 +83,8 @@ const s = StyleSheet.create({
   segment: {
     flex: 1,
     minHeight: 40,
+    flexDirection: "row",
+    gap: 6,
     borderRadius: radii.input - 3,
     alignItems: "center",
     justifyContent: "center",
@@ -96,4 +110,14 @@ const s = StyleSheet.create({
   segmentText: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
   capitalize: { textTransform: "capitalize" },
   segmentTextActive: { fontFamily: fonts.semibold, color: colors.accent },
+  badge: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    backgroundColor: colors.highText,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.white },
 });

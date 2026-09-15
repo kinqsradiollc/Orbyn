@@ -54,21 +54,21 @@ rate limited separately from the rest of the API.
 
 ### Data model
 
-| Table                                        | Purpose                                                                                     |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `users`                                      | Account, argon2 password hash, `email_reminders` preference.                                |
-| `sessions`                                   | Hashed bearer tokens with expiry.                                                           |
-| `items`                                      | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe. |
-| `devices`                                    | Expo push tokens per user. A token belongs to exactly one user.                             |
-| `notifications`                              | Reminder outbox. One row per item version, channel, and destination. Also the in-app tray.  |
-| `proposals`                                  | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                |
-| `lists`, `tags`, `item_tags`                 | Personal or team lists and tags on items.                                                   |
-| `time_blocks`                                | Time each person set aside to work on a task.                                               |
-| `planner_prefs`, `frames`, `places`          | How each person works: hours, padding, breaks, buffers, travel, work windows, places.       |
-| `plans`                                      | Generated plans waiting to be applied. Expire after an hour.                                |
-| `booking_pages`, `booking_hosts`, `bookings` | Public booking pages, their hosts, and the bookings made on them.                           |
-| `api_keys`, `webhooks`, `webhook_deliveries` | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                    |
-| `migrations`                                 | Applied migration file names.                                                               |
+| Table                                                          | Purpose                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                |
+| `sessions`                                                     | Hashed bearer tokens with expiry.                                                           |
+| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe. |
+| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                             |
+| `notifications`                                                | Reminder outbox. One row per item version, channel, and destination. Also the in-app tray.  |
+| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                |
+| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                   |
+| `time_blocks`                                                  | Time each person set aside to work on a task.                                               |
+| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, work windows, places.       |
+| `plans`                                                        | Generated plans waiting to be applied. Expire after an hour.                                |
+| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.  |
+| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                    |
+| `migrations`                                                   | Applied migration file names.                                                               |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
@@ -289,10 +289,15 @@ Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
 - **Team time**: availability returns busy intervals only; workload compares each member's free
   working time with the estimates of this team's open tasks assigned to them; meeting suggestions
   intersect everyone's free time and rank slots that would split someone's focus time last.
-- **Booking pages**: free slots intersect every required host's free time, minus held bookings,
-  with the page's buffer, notice and daily limit. Bookings take an advisory lock per page, so two
-  people can't book the same time. With SMTP set up a booking waits for its email link; the
-  confirmed booking becomes an event on each host's calendar through `mutate()`.
+- **Booking pages**: free slots (`booking/availability.ts`) intersect the page's hours (custom
+  weekly hours or each host's working hours, with date overrides) with every required host's free
+  time, minus held bookings, keeping the page's buffers, notice, interval and daily and weekly
+  limits. Bookings take an advisory lock per page, so two people can't book the same time. With
+  SMTP set up a booking waits for its email link; pages that need approval hold the time until a
+  host decides. `booking/service.ts` owns every step (confirm, approve, decline, cancel,
+  reschedule): each lands on `booking_events`, the confirmed booking becomes an event on each
+  host's calendar through `mutate()`, and moves update those events in place. Bookers manage a
+  booking through one link whose token is kept encrypted, so every email repeats it.
 - **API keys and webhooks**: keys (`ok_…`) are stored hashed and act as their owner, except in
   the admin console. Webhook events are queued in the same transaction as the change (so a
   rolled-back change sends nothing) and delivered by the notifier's lanes with an HMAC-SHA256

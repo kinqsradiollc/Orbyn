@@ -384,23 +384,46 @@ Teammates see each other's busy intervals only, never what the time is for.
 
 ## Booking pages
 
-| Method and path                                      | Who            | Body / result                                                                                                                                               |
-| ---------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /booking-pages`                                 | signed in      | Pages you own or host                                                                                                                                       |
-| `POST /booking-pages`                                | signed in      | `slug`, `title`, `durations`, window, notice, buffer, daily limit, location, meeting link, `co_hosts` (from your teams) → `201`; `409` if the slug is taken |
-| `PUT/DELETE /booking-pages/:id`                      | owner          | Change or delete                                                                                                                                            |
-| `GET /booking-pages/:id/bookings`                    | owner, hosts   | Upcoming and recent bookings                                                                                                                                |
-| `POST /booking-pages/:id/bookings/:bookingId/cancel` | owner, hosts   | Cancels, removes the events, emails the booker                                                                                                              |
-| `GET /book/:slug?duration=&date=&days=&timezone=`    | anyone         | Title, hosts and free `slots`                                                                                                                               |
-| `POST /book/:slug`                                   | anyone, 10/min | `{ start_at, duration, name, email, note?, timezone? }` → `201` receipt; `409` if the time was taken                                                        |
-| `POST /book/confirm/:token`                          | anyone         | The link from the confirmation email                                                                                                                        |
-| `POST /book/cancel/:token`                           | anyone         | The cancel link from the booking email                                                                                                                      |
+| Method and path                                       | Who            | Body / result                                                                                                      |
+| ----------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /booking-pages`                                  | signed in      | Pages you own or host, each with `counts` (`upcoming`, `needs_approval`)                                           |
+| `POST /booking-pages`                                 | signed in      | The page (see below) and `co_hosts` (from your teams) → `201`; `409` if the slug is taken                          |
+| `PUT/DELETE /booking-pages/:id`                       | owner          | Change any of the same fields, or delete                                                                           |
+| `GET /bookings?view=&page_id=&q=&limit=&offset=`      | owner, hosts   | Bookings across your pages → `{ rows, total }`; `view` is `upcoming`, `needs_approval`, `past`, `cancelled`, `all` |
+| `GET /bookings/stats?page_id=`                        | owner, hosts   | Counts, cancellation rate, the next booking and per-page totals                                                    |
+| `GET /bookings/export.csv?view=&page_id=&q=`          | owner, hosts   | The same bookings as CSV (up to 5,000)                                                                             |
+| `GET /bookings/:id`                                   | owner, hosts   | One booking with its answers, the page's questions and its timeline                                                |
+| `POST /bookings/:id/approve` · `/decline`             | owner, hosts   | Decide on a request; decline takes `{ reason? }` and emails the booker                                             |
+| `POST /bookings/:id/cancel`                           | owner, hosts   | `{ reason? }`: removes the events and emails the booker                                                            |
+| `GET /bookings/:id/slots?date=&days=&timezone=`       | owner, hosts   | Times a host can move it to (its own time, notice and a switched-off page don't get in the way)                    |
+| `POST /bookings/:id/reschedule`                       | owner, hosts   | `{ start_at }`: moves the booking and its events; `409` if the time isn't free                                     |
+| `PUT /bookings/:id/no-show` · `/note`                 | owner, hosts   | `{ no_show }` once a confirmed booking has started; `{ host_note }` (private to hosts)                             |
+| `GET /booking-pages/:id/bookings`                     | owner, hosts   | Older apps: one page's upcoming and recent bookings                                                                |
+| `POST /booking-pages/:id/bookings/:bookingId/cancel`  | owner, hosts   | Older apps: cancel one                                                                                             |
+| `GET /book/:slug?duration=&date=&days=&timezone=`     | anyone         | Title, hosts, colour, questions and free `slots`                                                                   |
+| `POST /book/:slug`                                    | anyone, 10/min | `{ start_at, duration, name, email, note?, timezone?, answers? }` → `201` receipt; `409` if the time was taken     |
+| `POST /book/confirm/:token`                           | anyone         | The link from the confirmation email                                                                               |
+| `GET /book/manage/:token`                             | anyone         | The booker's own booking, from the link in every email                                                             |
+| `GET /book/manage/:token/slots?date=&days=&timezone=` | anyone         | Free times to move it to                                                                                           |
+| `POST /book/manage/:token/reschedule` · `/cancel`     | anyone, 10/min | `{ start_at }` to move (if the page allows it), `{ reason? }` to cancel                                            |
+| `POST /book/cancel/:token`                            | anyone         | The cancel link from older booking emails                                                                          |
 
-Free slots are working time every required host has free (events, buffers, travel and time blocks
-count as busy), minus bookings still held, with the page's buffer, notice and daily limit. With
-SMTP set up a booking waits for its email link (the time is held for 30 minutes); without it,
-bookings are confirmed at once. A confirmed booking adds an event to every host's calendar and
-an in-app notice.
+A page sets its `durations`, `window_days`, `min_notice_minutes`, `buffer_before_minutes`,
+`buffer_after_minutes`, `slot_interval_minutes` (5–60), `max_per_day` and `max_per_week`; its
+hours (`availability`: the hosts' working hours, or `{ mode: "custom", timezone, weekly }`) and
+`date_overrides` (`{ date, hours }`, where no hours closes the day); up to ten `questions` (`text`,
+`long_text`, `choice`, `phone`, each optionally required); `requires_approval`,
+`allow_reschedule`, `color`, `event_title` (with `{page}`, `{name}`, `{email}`) and
+`confirmation_message`.
+
+Free slots are the page's hours that every required host has free (events, buffers, travel and
+time blocks count as busy), minus bookings still held, keeping the page's buffers either side, its
+notice and its limits. Start times step by the interval from local midnight. With SMTP set up a
+booking waits for its email link (the time is held for 30 minutes); without it, it goes straight
+on. Pages that need approval then hold the time until a host approves or declines, or until it
+starts. A confirmed booking adds an event to every host's calendar; every step lands on the
+booking's timeline, and hosts get in-app notices (`kind: "booking"`, `ref` = the booking) for new,
+requested, moved and cancelled bookings.
 
 ## API keys, webhooks and the calendar feed
 
@@ -421,7 +444,8 @@ Other tools reach Orbyn through these; nothing is synced out of this server.
 | `GET /calendar/feed/:token.ics` | The feed, as iCalendar, for other calendar apps to subscribe to                       |
 
 API keys act as you, except in the admin console. Webhook events: `item.created`,
-`item.updated`, `item.completed`, `item.deleted`, `block.scheduled` and `booking.confirmed`.
+`item.updated`, `item.completed`, `item.deleted`, `block.scheduled`, `booking.requested`,
+`booking.confirmed`, `booking.rescheduled` and `booking.cancelled`.
 Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
 HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried

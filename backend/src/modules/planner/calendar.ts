@@ -332,6 +332,8 @@ export type BusyOptions = {
   excludeBlockIds?: string[];
   /** Count buffers and travel as busy. */
   derived?: boolean;
+  /** Leave these items out (a booking being moved ignores its own events). */
+  excludeItemIds?: string[];
 };
 
 /**
@@ -349,12 +351,15 @@ export async function busyIntervals(
   const prefs = await loadPrefs(db, userId);
   // Look a little either side, so travel and buffers at the edges count.
   const pad = 4 * 3_600_000;
-  const entries = await calendarEntries(
-    db,
-    userId,
-    new Date(from.getTime() - pad),
-    new Date(to.getTime() + pad),
-  );
+  const skip = new Set(options.excludeItemIds ?? []);
+  const entries = (
+    await calendarEntries(
+      db,
+      userId,
+      new Date(from.getTime() - pad),
+      new Date(to.getTime() + pad),
+    )
+  ).filter((e) => !skip.has(e.item_id));
   const events = entries.filter(
     (e) => e.kind === "event" && e.status !== "done",
   );

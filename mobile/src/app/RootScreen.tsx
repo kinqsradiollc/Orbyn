@@ -113,6 +113,8 @@ export function RootScreen() {
   const [focus, setFocus] = useState<Item | null>(null);
   /** A plan to open the Plan my day sheet on (unfinished work moved forward). */
   const [planSeed, setPlanSeed] = useState<Plan | null>(null);
+  /** The booking to open the Booking sheet on (from a notification). */
+  const [bookingId, setBookingId] = useState<string | null>(null);
   /** Modal waiting for the sheet's dismiss animation before it opens (iOS). */
   const pending = useRef<Next | null>(null);
   /** Sheets to reopen, most recent last, once the modal above them closes. */
@@ -207,6 +209,17 @@ export function RootScreen() {
       if (!n.read) await client.markNotificationRead(n.id);
       await refresh();
     });
+  /** A "booking" notice: open that booking (`ref`) and mark the notice read. */
+  const openBookingNotice = (n: Notice) => {
+    if (!n.ref) return markRead(n);
+    setBookingId(n.ref);
+    present({ sheet: "booking" });
+    if (!n.read) void markRead(n);
+  };
+  const openBookings = () => {
+    setBookingId(null);
+    setSheet("booking");
+  };
   const openFocus = (item: Item) => {
     setFocus(item);
     present({ sheet: "focus" });
@@ -356,6 +369,7 @@ export function RootScreen() {
                   busy={busy}
                   onRead={markRead}
                   onReschedule={reschedule}
+                  onOpenBooking={openBookingNotice}
                 />
               )}
               {tab === "Settings" && (
@@ -371,7 +385,7 @@ export function RootScreen() {
                   onOpenStatus={() => setSheet("status")}
                   onOpenPlanning={() => setSheet("planning")}
                   onOpenConnections={() => setSheet("connections")}
-                  onOpenBooking={() => setSheet("booking")}
+                  onOpenBooking={openBookings}
                 />
               )}
             </FadeIn>
@@ -443,6 +457,7 @@ export function RootScreen() {
           visible={sheet === "booking"}
           user={user}
           teams={teams}
+          bookingId={bookingId}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         />

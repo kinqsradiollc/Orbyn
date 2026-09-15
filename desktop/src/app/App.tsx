@@ -41,7 +41,10 @@ import type { TeamActions } from "../features/teams/TeamDetail";
 import { AdminView } from "../features/admin/AdminView";
 import { TaskDetail } from "../features/task/TaskDetail";
 import { FocusMode } from "../features/focus/FocusMode";
-import { BookingView } from "../features/booking/BookingView";
+import {
+  BookingView,
+  type BookingFocus,
+} from "../features/booking/BookingView";
 import { PublicBooking } from "../features/booking/PublicBooking";
 import type { View } from "./views";
 import "../styles/planning.css";
@@ -94,6 +97,8 @@ export function App() {
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  /** The booking to open in the bookings inbox (from a notification). */
+  const [bookingFocus, setBookingFocus] = useState<BookingFocus | null>(null);
   const isPublicBooking = !nativeDesktop && path.startsWith("/book/");
 
   useEffect(() => {
@@ -211,6 +216,13 @@ export function App() {
     setMobileNav(false);
     setQuery("");
     setPlanRequest(null);
+    setBookingFocus(null);
+  };
+
+  /** The bookings inbox, with one booking open. */
+  const openBooking = (id: string) => {
+    navigate("Booking");
+    setBookingFocus({ id, key: Date.now() });
   };
 
   /** Shows a plan in the calendar's planner (from the assistant). */
@@ -414,7 +426,12 @@ export function App() {
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
               {view === "Booking" && (
-                <BookingView user={user} teams={teams} report={report} />
+                <BookingView
+                  user={user}
+                  teams={teams}
+                  report={report}
+                  focus={bookingFocus}
+                />
               )}
               {view === "Admin" && isAdmin && (
                 <AdminView
@@ -428,6 +445,7 @@ export function App() {
                   onRead={planner.markRead}
                   onReschedule={reschedule}
                   onOpenCalendar={() => navigate("Calendar")}
+                  onOpenBooking={openBooking}
                 />
               )}
               {view === "Settings" && (
