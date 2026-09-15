@@ -8,7 +8,6 @@ import {
   PROMISED_TOOLS_NOTE,
   PROSE_ANSWER_NOTE,
   agentPrompt,
-  dateReminder,
 } from "./prompt.js";
 import {
   rejectsTools,
@@ -105,15 +104,7 @@ export async function runAgent(
           ? `${t.content.slice(0, MAX_HISTORY_CHARS)}…`
           : t.content,
     })),
-    {
-      role: "user",
-      // In the JSON protocol the long tool description sits between the
-      // system prompt's dates and the request: repeat them next to it.
-      content:
-        startingMode(ai) === "json"
-          ? `${message}\n\n(${dateReminder(ctx.timezone)})`
-          : message,
-    },
+    { role: "user", content: message },
   ];
   let mode: Mode = startingMode(ai);
   const deadline = AbortSignal.timeout(DEADLINE_MS);

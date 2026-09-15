@@ -54,9 +54,9 @@ const PLAN_RULES = `Reply with one JSON object that has "summary" and "actions".
 - "summary" is your answer to the user in friendly Markdown, one line per entry: say exactly which changes you propose (titles, days, times) and that they need the user's approval. Never claim anything is saved.
 - "actions" are the changes, all of them in this one reply and only what the user asked for:
   - create: {"operation": "create", "data": {the new item}}
-  - update: {"operation": "update", "item_id": "<id from the planner data>", "data": {"title": <the new or current title>, and ONLY the fields that change; null for every other field}}
-  - delete: {"operation": "delete", "item_id": "<id from the planner data>"}, only when the user asked to delete, remove or cancel it.
-- Use ids from the planner data only. If the item isn't there, say you couldn't find it and propose nothing for it.
+  - update: {"operation": "update", "item_id": "<the item's id from the planner data, like i3>", "data": {"title": <the new or current title>, and ONLY the fields that change; null for every other field}}
+  - delete: {"operation": "delete", "item_id": "<the item's id, like i3>"}, only when the user asked to delete, remove or cancel it.
+- Items in the planner data have short ids (i1, i2, …): copy them exactly. If the item isn't there, say you couldn't find it and propose nothing for it.
 - If you can't tell which item the user means (several match), or an event has no time, ask one short question in "summary" and return no actions. Never ask for confirmation: the user approves every proposal anyway.
 - Times are ISO 8601 with the user's UTC offset for that date. A task with a day but no time is due at 09:00 that day. Events need a start time, and an end after it.`;
 
@@ -123,6 +123,34 @@ export function readPlan(content: string): Plan {
   };
 }
 
+/**
+ * The planner data with each item's id replaced by a short one ("i1", "i2",
+ * …), and the map back. Matilda mistyped 36-character UUIDs in live tests,
+ * so an update could never find its item.
+ */
+export function withShortIds(data: unknown) {
+  const ids = new Map<string, string>();
+  const shortOf = new Map<string, string>();
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (!value || typeof value !== "object") return value;
+    const copy = Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, walk(v)]),
+    ) as Record<string, unknown>;
+    if (typeof copy.id === "string" && typeof copy.title === "string") {
+      let short = shortOf.get(copy.id);
+      if (!short) {
+        short = `i${shortOf.size + 1}`;
+        shortOf.set(copy.id, short);
+        ids.set(short, copy.id);
+      }
+      copy.id = short;
+    }
+    return copy;
+  };
+  return { data: walk(data), ids };
+}
+
 type Refusal = { forModel: string; forUser: string };
 
 /**
@@ -132,6 +160,7 @@ type Refusal = { forModel: string; forUser: string };
 async function propose(
   ctx: AgentContext,
   actions: Record<string, unknown>[],
+  ids: Map<string, string>,
 ): Promise<Refusal[]> {
   ctx.actions = [];
   const refused: Refusal[] = [];
@@ -143,7 +172,11 @@ async function propose(
     const fields: Record<string, unknown> = Object.fromEntries(
       DRAFT_KEYS.filter((k) => k in raw).map((k) => [k, raw[k]]),
     );
-    const id = typeof action.item_id === "string" ? action.item_id : "";
+    const given =
+      typeof action.item_id === "string"
+        ? action.item_id.trim().replace(/^#/, "")
+        : "";
+    const id = ids.get(given) ?? given;
     const operation = String(action.operation ?? "");
     // An update that sends empty notes would wipe the saved notes: the
     // schema makes every field required, so "" usually means "unchanged".
@@ -232,13 +265,14 @@ export async function runGraph(
         ? `${t.content.slice(0, MAX_HISTORY_CHARS)}…`
         : t.content,
   }));
+  const shown = withShortIds(data);
   const messages: ChatMessage[] = [
     {
       role: "system",
       content: graphPrompt(ctx.timezone, change ? "plan" : "answer"),
     },
     ...turns,
-    { role: "user", content: graphRequest(ctx.timezone, data, message) },
+    { role: "user", content: graphRequest(ctx.timezone, shown.data, message) },
   ];
   let calls = 0;
 
@@ -303,7 +337,7 @@ export async function runGraph(
 
   const first = await ask(messages, true);
   let plan = first.plan!;
-  let refused = await propose(ctx, plan.actions);
+  let refused = await propose(ctx, plan.actions, shown.ids);
   if (refused.length && !deadline.aborted) {
     try {
       const again = await ask(
@@ -322,7 +356,7 @@ export async function runGraph(
         true,
       );
       plan = again.plan!;
-      refused = await propose(ctx, plan.actions);
+      refused = await propose(ctx, plan.actions, shown.ids);
     } catch {
       // Keep what the first plan got through.
     }

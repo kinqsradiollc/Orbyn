@@ -209,6 +209,29 @@ test("what stays refused after the repair is told to the user", async () => {
   assert.match(reply.summary, /No item with that id/);
 });
 
+test("the model sees short item ids, mapped back on the server", async () => {
+  const me = await newUser();
+  const groceries = await addItem(me.token, { title: "Buy groceries" });
+  reset(
+    plan("Proposed moving **Buy groceries** to Thursday.", [
+      {
+        operation: "update",
+        item_id: "i1",
+        data: { title: "Buy groceries", due_at: "2026-09-17T17:00" },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  const sent = requests[0].body.messages.at(-1)!.content;
+  assert.match(sent, /"id":"i1","title":"Buy groceries"/);
+  assert.doesNotMatch(sent, new RegExp(groceries.id));
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [groceries.id],
+  );
+});
+
 test("invalid plans twice are a provider error", async () => {
   const me = await newUser();
   reset("not json", "still not json");
