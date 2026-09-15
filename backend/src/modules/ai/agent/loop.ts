@@ -19,6 +19,7 @@ import {
   type StepResult,
 } from "./protocol.js";
 import { runTool, TOOL_SPECS, type AgentContext } from "./tools.js";
+import { runGraph } from "./graph.js";
 
 /**
  * The agent loop, after BrainRouter's runTurn: one loop of model call, then
@@ -92,6 +93,9 @@ export async function runAgent(
   overview: unknown,
   log?: FastifyBaseLogger,
 ): Promise<AgentResult> {
+  // Providers that are weak at multi-step tool use get the fixed graph.
+  if (ai.structuredOutput)
+    return runGraph(ai, ctx, message, history, overview, log);
   const messages: AgentMessage[] = [
     { role: "system", content: agentPrompt(ctx.timezone, overview) },
     ...history.slice(-12).map((t) => ({

@@ -186,18 +186,31 @@ more: Maincode's Matilda answers in prose unless it is given the reply schema, s
 `structuredOutput` receive it as `response_format` (strict JSON Schema), and providers with request
 `limits` get messages clipped and the oldest history dropped first.
 
-Matilda ignores native tools, so providers flagged `structuredOutput` use a JSON protocol:
+**Matilda gets a fixed graph** (`agent/graph.ts`), used for providers flagged `structuredOutput`.
+Matilda ignores native tools. In live tests under every JSON tool protocol it wandered between
+tools, asked the user which tool to use, and invented items. It does write reliable single plans
+under a schema, so the server does the looking up and the model decides once:
 
-- **Step format:** each step returns one JSON object with a field per tool and an `answer`. A tool
-  field holds the tool's arguments, or null when unused; tools without arguments take true or
-  false. A strict JSON Schema enforces the shape, and the system message always describes every
-  tool. Named fields replaced a list of `anyOf` tool shapes: with the list, Matilda kept choosing
-  the same single tool in live tests. The older `{"tool_calls": [...]}` list is still read.
-- **History:** earlier tool calls are replayed as a sentence ("I called the tool search_items with
-  …"), and results as `[Tool result: name]` messages.
-- **Fallback:** a provider that rejects native tools with a 400 switches to the same protocol.
-- **Prose answer:** when a structured answer is short, one more call without tools writes it as
-  prose.
+1. **Retrieve:** the server gathers the overview plus the items matching the request. They go into
+   the user message with the request, where Matilda reads them; it gives system-prompt data little
+   weight.
+2. **Answer:** a question gets one plain Markdown answer.
+3. **Plan:** a change request gets one `{summary, actions}` plan under a strict JSON Schema.
+4. **Validate:** each action goes through the same proposal tools as the agent, so scoping,
+   per-item checks, delete intent and the same-title rule all apply. Empty notes in an update keep
+   the saved notes.
+5. **Repair:** if anything was refused, one repair call gets the reasons. Whatever is still refused
+   is listed to the user under "Not proposed".
+
+That is at most three model calls, each retried once within the same deadline.
+
+The agent's JSON tool protocol remains as a fallback for providers that reject native tools with a
+400:
+
+- **Step format:** one field per tool plus `answer`, enforced by a strict schema, with every tool
+  described in the system message.
+- **History:** earlier calls are replayed as sentences, and results as `[Tool result: name]`
+  messages.
 
 Guards on proposals and the older format:
 
