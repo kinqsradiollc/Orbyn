@@ -341,6 +341,35 @@ test("the days a request names are worked out on the server", async () => {
   assert.equal(namedDays("Summarize my plans", TZ, now), "");
 });
 
+test("a delete of an item the request doesn't name is refused", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  const groceries = await addItem(me.token, {
+    title: "Buy groceries",
+    due_at: soon,
+  });
+  const both = plan("Cancelled.", [
+    { operation: "delete", item_id: gym.id },
+    { operation: "delete", item_id: groceries.id },
+  ]);
+  reset(both, both);
+  const r = await chat(me.token, "Cancel the gym session");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [gym.id],
+  );
+  assert.match(
+    r.json().summary,
+    /Buy groceries: The user didn't name this item/,
+  );
+});
+
 test("invalid plans twice are a provider error", async () => {
   const me = await newUser();
   reset("not json", "still not json");

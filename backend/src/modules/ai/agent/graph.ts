@@ -158,7 +158,10 @@ export function withShortIds(data: unknown) {
   return { data: walk(data), ids, titles };
 }
 
-type Shown = ReturnType<typeof withShortIds>;
+/** The planner data as shown, plus the ids of the items the request names. */
+type Shown = ReturnType<typeof withShortIds> & { named: Set<string> };
+
+const ALL_OF_THEM = /\b(all|both|every|everything|each)\b/i;
 
 /**
  * The item an update means. Matilda once copied the id from the line above
@@ -214,7 +217,8 @@ function planned(
     n,
     operation,
     id: operation === "update" ? meantItem(id, title, shown) : id,
-    title,
+    // Deletes carry no data: name the item from what was shown.
+    title: title || shown.titles.get(id) || "",
     fields,
   };
 }
@@ -300,7 +304,17 @@ async function propose(
     }
   }
 
-  const deletes = of("delete");
+  // A delete must be of an item the request names (its title shares words
+  // with the request), unless the user asked for all of something: Matilda
+  // once proposed deleting the groceries alongside "the gym session".
+  const deletes = of("delete").filter((p) => {
+    if (shown.named.has(p.id) || ALL_OF_THEM.test(ctx.intentText)) return true;
+    refuse(
+      p,
+      "The user didn't name this item. Delete only items named in the request.",
+    );
+    return false;
+  });
   if (deletes.length) {
     const results = await perItem("propose_delete", deletes, (list) => ({
       ids: list.map((p) => p.id),
@@ -354,7 +368,15 @@ export async function runGraph(
         ? `${t.content.slice(0, MAX_HISTORY_CHARS)}…`
         : t.content,
   }));
-  const shown = withShortIds(data);
+  // The items whose titles match the request: the only ones a delete may touch.
+  const matching =
+    (data as { matching_request?: { id?: unknown }[] }).matching_request ?? [];
+  const shown: Shown = {
+    ...withShortIds(data),
+    named: new Set(
+      matching.flatMap((i) => (typeof i.id === "string" ? [i.id] : [])),
+    ),
+  };
   const messages: ChatMessage[] = [
     {
       role: "system",
