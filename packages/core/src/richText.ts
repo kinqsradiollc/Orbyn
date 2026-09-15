@@ -14,7 +14,9 @@ export type RichInline = {
 export type RichBlock =
   | { type: "heading"; inlines: RichInline[] }
   | { type: "paragraph"; inlines: RichInline[] }
-  | { type: "list"; ordered: boolean; items: RichInline[][] };
+  | { type: "list"; ordered: boolean; items: RichInline[][] }
+  /** A Markdown table: `| a | b |` rows under a `|---|---|` separator. */
+  | { type: "table"; header: RichInline[][]; rows: RichInline[][][] };
 
 const INLINE =
   /\*\*(.+?)\*\*|__(.+?)__|`([^`\n]+)`|\*([^*\s](?:[^*]*[^*\s])?)\*/g;
@@ -46,11 +48,41 @@ const BOLD_LINE = /^\*\*([^*]+?)\*\*:?$/;
 const BULLET = /^\s*[-*•+]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+
+const cells = (line: string) =>
+  line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => parseInline(cell.trim()));
 
 export function parseRichText(text: string): RichBlock[] {
   const blocks: RichBlock[] = [];
-  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
-    const line = raw.trimEnd();
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n].trimEnd();
+    // A table: a header row, a separator row, then body rows.
+    if (
+      TABLE_ROW.test(line) &&
+      n + 1 < lines.length &&
+      TABLE_SEPARATOR.test(lines[n + 1])
+    ) {
+      const header = cells(line);
+      const rows: RichInline[][][] = [];
+      n += 2;
+      while (n < lines.length && TABLE_ROW.test(lines[n])) {
+        const row = cells(lines[n]);
+        // Pad or trim to the header's width so renderers get a clean grid.
+        rows.push(header.map((_, c) => row[c] ?? []));
+        n++;
+      }
+      n--;
+      blocks.push({ type: "table", header, rows });
+      continue;
+    }
     if (!line.trim() || RULE.test(line)) continue;
     const heading = line.trim().match(HEADING) ?? line.trim().match(BOLD_LINE);
     const bullet = heading ? null : line.match(BULLET);

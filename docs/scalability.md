@@ -130,7 +130,7 @@ permission checks inside writes) always use the primary. Reads that tolerate
 a moment of replication lag go to `DATABASE_READ_URL` when it is set:
 
 - item lists and task detail, notifications, the team list;
-- the AI assistant's planner snapshot;
+- the AI assistant's planner lookups;
 - the admin console (users, teams, audit log, stats);
 - the public status report.
 

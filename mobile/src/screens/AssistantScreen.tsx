@@ -31,6 +31,10 @@ export function AssistantScreen({
     assistant;
   const locked = busy || thinking;
   const canSend = !locked && !!message.trim();
+  // Quick replies only make sense on the newest assistant reply.
+  const latestReplyId = [...turns]
+    .reverse()
+    .find((t) => t.role === "assistant")?.id;
 
   return (
     <>
@@ -105,6 +109,11 @@ export function AssistantScreen({
                   state={turn.state}
                   onApprove={() => apply(turn.id)}
                   onDiscard={() => discard(turn.id)}
+                  onFollowUp={
+                    turn.id === latestReplyId
+                      ? (text) => void ask(text)
+                      : undefined
+                  }
                 />
               </View>
             </FadeIn>

@@ -38,7 +38,7 @@ export class ProviderError extends Error {
   }
 }
 
-const trimSlash = (url: string) => url.replace(/\/+$/, "");
+export const trimSlash = (url: string) => url.replace(/\/+$/, "");
 
 function describeStatus(status: number, detail = "") {
   const says = detail ? ` The provider says: ${detail}` : "";
@@ -94,10 +94,10 @@ function keyFor(
   return ai.local || isLoopback(ai.baseUrl) ? LOCAL_PLACEHOLDER_KEY : "";
 }
 
-type Connection = Pick<ResolvedAi, "format" | "apiKey" | "baseUrl"> &
+export type Connection = Pick<ResolvedAi, "format" | "apiKey" | "baseUrl"> &
   Partial<Pick<ResolvedAi, "local" | "defaultApiKey">>;
 
-function headers(ai: Connection): Record<string, string> {
+export function headers(ai: Connection): Record<string, string> {
   // Anthropic's native API and Azure use their own key headers.
   if (ai.format === "anthropic")
     return {
@@ -114,7 +114,7 @@ function headers(ai: Connection): Record<string, string> {
   };
 }
 
-async function send(
+export async function send(
   url: string,
   init: RequestInit,
   signal: AbortSignal,
@@ -146,7 +146,7 @@ async function send(
   return response;
 }
 
-async function json<T>(response: Response): Promise<T> {
+export async function json<T>(response: Response): Promise<T> {
   try {
     return (await response.json()) as T;
   } catch (error) {
@@ -163,14 +163,14 @@ async function json<T>(response: Response): Promise<T> {
   }
 }
 
-const truncated = () =>
+export const truncated = () =>
   new ProviderError(
     "truncated",
     "The provider cut the reply off before it finished.",
   );
 
 /** Text from a content string or an array of content parts. */
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -185,7 +185,10 @@ function textOf(content: unknown): string {
 }
 
 /** A 200 reply that is really an error (OpenRouter and others send these). */
-function throwIfErrorEnvelope(body: { error?: unknown; type?: unknown }) {
+export function throwIfErrorEnvelope(body: {
+  error?: unknown;
+  type?: unknown;
+}) {
   if (body.type === "error" || (body.error && body.error !== null)) {
     const error = body.error as { message?: string } | string | undefined;
     const detail = typeof error === "string" ? error : (error?.message ?? "");

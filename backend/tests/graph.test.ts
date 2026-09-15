@@ -1,0 +1,403 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { createServer, type IncomingMessage } from "node:http";
+import { randomUUID } from "node:crypto";
+// Connects only to a verified test database (see setup.ts).
+import "./setup.js";
+
+/**
+ * The fixed graph used for providers flagged `structuredOutput` (Matilda):
+ * a stand-in registered as a Matilda provider answers each call in turn, and
+ * the plan's actions go through the real proposal tools.
+ */
+type Request = {
+  body: {
+    messages: { role: string; content: string }[];
+    response_format?: { json_schema?: { name?: string } };
+  };
+};
+let replies: string[] = [];
+let requests: Request[] = [];
+
+const read = (req: IncomingMessage) =>
+  new Promise<string>((resolve) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => resolve(body));
+  });
+
+const provider = createServer(async (req, res) => {
+  requests.push({ body: JSON.parse((await read(req)) || "{}") });
+  const content = replies.shift() ?? "Done.";
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      choices: [{ finish_reason: "stop", message: { content } }],
+    }),
+  );
+});
+await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
+const providerUrl = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
+
+process.env.SMTP_HOST = "";
+const { buildApp } = await import("../src/app.js");
+const { pool } = await import("../src/db/pool.js");
+const { migrate } = await import("../src/db/migrate.js");
+const app = await buildApp();
+
+const TZ = "Australia/Melbourne";
+const auth = (token: string) => ({ authorization: `Bearer ${token}` });
+let caller = 0;
+const address = () => `10.6.${Math.floor(++caller / 250)}.${caller % 250}`;
+
+async function newUser() {
+  const r = await app.inject({
+    method: "POST",
+    url: "/auth/register",
+    remoteAddress: address(),
+    payload: {
+      email: `graph-${randomUUID()}@example.com`,
+      password: "a-long-test-password",
+      name: "Graph tester",
+    },
+  });
+  assert.equal(r.statusCode, 201);
+  return { token: r.json().token as string };
+}
+
+async function addItem(token: string, data: Record<string, unknown>) {
+  const r = await app.inject({
+    method: "POST",
+    url: "/items",
+    headers: auth(token),
+    payload: { kind: "task", ...data },
+  });
+  assert.equal(r.statusCode, 201, r.body);
+  return r.json() as { id: string; version: number };
+}
+
+async function chat(token: string, message: string) {
+  return app.inject({
+    method: "POST",
+    url: "/ai/chat",
+    remoteAddress: address(),
+    headers: auth(token),
+    payload: { message, timezone: TZ },
+  });
+}
+
+/** A reply in the plan schema's shape (summary as lines). */
+const plan = (summary: string, actions: unknown[]) =>
+  JSON.stringify({ summary: [summary], actions });
+
+before(async () => {
+  await migrate();
+  const standIn = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('matilda', 'Graph stand-in', $1) RETURNING id",
+      [providerUrl],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id=$1, model='matilda' WHERE id",
+    [standIn],
+  );
+});
+
+after(async () => {
+  await app.close();
+  await pool.end();
+  provider.close();
+});
+
+const reset = (...next: string[]) => {
+  replies = next;
+  requests = [];
+};
+
+test("a question gets one plain Markdown answer", async () => {
+  const me = await newUser();
+  await addItem(me.token, {
+    title: "Buy groceries",
+    due_at: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  reset("You have **Buy groceries** tomorrow.");
+  const r = await chat(me.token, "What's on this week?");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(r.json().summary, "You have **Buy groceries** tomorrow.");
+  assert.deepEqual(r.json().actions, []);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.response_format, undefined);
+  // The planner data travels with the request, where Matilda reads it.
+  const request = requests[0].body.messages.at(-1)!;
+  assert.equal(request.role, "user");
+  assert.match(request.content, /<orbyn_data>[\s\S]*Buy groceries/);
+  assert.match(request.content, /My request: What's on this week\?/);
+});
+
+test("a change is one plan, checked item by item and repaired once", async () => {
+  const me = await newUser();
+  const groceries = await addItem(me.token, {
+    title: "Buy groceries",
+    notes: "Oat milk",
+  });
+  const update = {
+    operation: "update",
+    item_id: groceries.id,
+    version: null,
+    data: { title: "Buy groceries", notes: "", due_at: "2026-09-17T17:00" },
+  };
+  reset(
+    plan("Proposed.", [
+      update,
+      { operation: "create", data: { title: "Standup", kind: "event" } },
+    ]),
+    plan("Proposed both.", [
+      update,
+      {
+        operation: "create",
+        data: { title: "Standup", kind: "event", due_at: "2026-09-18T09:30" },
+      },
+    ]),
+  );
+  const r = await chat(
+    me.token,
+    "Move buy groceries to Thursday 5pm and add a standup event",
+  );
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(requests.length, 2);
+  assert.equal(
+    requests[0].body.response_format?.json_schema?.name,
+    "orbyn_reply",
+  );
+  assert.match(
+    requests[1].body.messages.at(-1)!.content,
+    /Events require a start time/,
+  );
+  const reply = r.json();
+  assert.equal(reply.summary, "Proposed both.");
+  assert.equal(reply.actions.length, 2);
+  type Proposed = {
+    operation: string;
+    item_id: string;
+    version: number;
+    data: Record<string, unknown>;
+  };
+  const moved = reply.actions.find((a: Proposed) => a.operation === "update");
+  const created = reply.actions.find((a: Proposed) => a.operation === "create");
+  assert.equal(moved.item_id, groceries.id);
+  assert.equal(moved.version, groceries.version);
+  // Empty notes in an update keep the saved notes.
+  assert.equal(moved.data.notes, "Oat milk");
+  assert.equal(moved.data.due_at, "2026-09-17T17:00:00+10:00");
+  assert.equal(created.data.due_at, "2026-09-18T09:30:00+10:00");
+});
+
+test("what stays refused after the repair is told to the user", async () => {
+  const me = await newUser();
+  const other = await newUser();
+  const mine = await addItem(me.token, { title: "Water the plants" });
+  const theirs = await addItem(other.token, { title: "Their plan" });
+  const actions = [
+    { operation: "delete", item_id: mine.id },
+    {
+      operation: "update",
+      item_id: theirs.id,
+      data: { title: "Their plan", status: "done" },
+    },
+  ];
+  reset(plan("Done.", actions), plan("Done.", actions));
+  const r = await chat(me.token, "Push watering the plants to next week");
+  assert.equal(r.statusCode, 200, r.body);
+  const reply = r.json();
+  assert.deepEqual(reply.actions, []);
+  assert.match(reply.summary, /_Not proposed:_/);
+  assert.match(reply.summary, /didn't ask to delete/);
+  assert.match(reply.summary, /No item with that id/);
+});
+
+test("the model sees short item ids, mapped back on the server", async () => {
+  const me = await newUser();
+  const groceries = await addItem(me.token, { title: "Buy groceries" });
+  reset(
+    plan("Proposed moving **Buy groceries** to Thursday.", [
+      {
+        operation: "update",
+        item_id: "i1",
+        data: { title: "Buy groceries", due_at: "2026-09-17T17:00" },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  const sent = requests[0].body.messages.at(-1)!.content;
+  assert.match(sent, /"id":"i1","title":"Buy groceries"/);
+  assert.doesNotMatch(sent, new RegExp(groceries.id));
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [groceries.id],
+  );
+});
+
+test("one named item with several matches is never half-proposed", async () => {
+  const me = await newUser();
+  const wednesday = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: "2026-09-16T07:00:00+10:00",
+  });
+  const friday = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: "2026-09-18T07:00:00+10:00",
+  });
+  reset(
+    plan("Cancelled both.", [
+      { operation: "delete", item_id: wednesday.id },
+      { operation: "delete", item_id: friday.id },
+    ]),
+    plan("Which gym session: Wed 16 or Fri 18 Sept?", []),
+  );
+  const r = await chat(me.token, "Cancel the gym session");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(r.json().actions, []);
+  assert.equal(r.json().summary, "Which gym session: Wed 16 or Fri 18 Sept?");
+  assert.match(
+    requests[1].body.messages.at(-1)!.content,
+    /Several items with this title/,
+  );
+});
+
+test("an update refused only for a stale end time goes through without it", async () => {
+  const me = await newUser();
+  const report = await addItem(me.token, {
+    title: "Quarterly report",
+    due_at: "2026-09-18T12:00:00+10:00",
+  });
+  reset(
+    plan("Marked the report in progress.", [
+      {
+        operation: "update",
+        item_id: report.id,
+        data: {
+          title: "Quarterly report",
+          status: "in_progress",
+          end_at: "2026-09-01T00:00",
+        },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Mark the quarterly report as in progress");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(requests.length, 1);
+  const [action] = r.json().actions;
+  assert.equal(action.data.status, "in_progress");
+  assert.equal(action.data.end_at, null);
+  assert.doesNotMatch(r.json().summary, /Not proposed/);
+});
+
+test("an update whose title names another shown item goes to that item", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  const groceries = await addItem(me.token, { title: "Buy groceries" });
+  reset(
+    plan("Proposed moving **Buy groceries** to Thursday.", [
+      {
+        operation: "update",
+        item_id: gym.id,
+        data: { title: "Buy groceries", due_at: "2026-09-17T17:00" },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [groceries.id],
+  );
+});
+
+test("the days a request names are worked out on the server", async () => {
+  const { namedDays } = await import("../src/modules/ai/agent/prompt.js");
+  // Tuesday 15 September 2026, midday in Melbourne.
+  const now = new Date("2026-09-15T02:00:00Z");
+  const days = namedDays(
+    "Add milk tomorrow, call mum Friday 6pm and renew passport next Tuesday",
+    TZ,
+    now,
+  );
+  assert.match(days, /tomorrow = Wed 16 Sept? \(2026-09-16\)/);
+  assert.match(days, /friday = Fri 18 Sept? \(2026-09-18\)/);
+  assert.match(days, /next tuesday = Tue 22 Sept? \(2026-09-22\)/);
+  assert.match(
+    namedDays("Lunch next Friday", TZ, now),
+    /next friday = Fri 25 Sept? \(2026-09-25\)/,
+  );
+  assert.equal(namedDays("Summarize my plans", TZ, now), "");
+});
+
+test("a delete of an item the request doesn't name is refused", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  const groceries = await addItem(me.token, {
+    title: "Buy groceries",
+    due_at: soon,
+  });
+  const both = plan("Cancelled.", [
+    { operation: "delete", item_id: gym.id },
+    { operation: "delete", item_id: groceries.id },
+  ]);
+  reset(both, both);
+  const r = await chat(me.token, "Cancel the gym session");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [gym.id],
+  );
+  assert.match(
+    r.json().summary,
+    /Buy groceries: The user didn't name this item/,
+  );
+});
+
+test("an update of an item the request doesn't name is refused", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  await addItem(me.token, { title: "Buy groceries", due_at: soon });
+  // The wrong item, with its own title, so the title check can't catch it.
+  const wrong = plan("Moved.", [
+    {
+      operation: "update",
+      item_id: gym.id,
+      data: { title: "Gym session", due_at: "2026-09-17T17:00" },
+    },
+  ]);
+  reset(wrong, wrong);
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(r.json().actions, []);
+  assert.match(r.json().summary, /Gym session: The user didn't name this item/);
+});
+
+test("invalid plans twice are a provider error", async () => {
+  const me = await newUser();
+  reset("not json", "still not json");
+  const r = await chat(me.token, "Add a task to call mum");
+  assert.equal(r.statusCode, 502);
+  assert.equal(requests.length, 2);
+});

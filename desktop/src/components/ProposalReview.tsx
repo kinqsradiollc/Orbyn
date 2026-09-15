@@ -22,6 +22,8 @@ type Props = {
   state?: TurnState;
   onApply: () => void;
   onDismiss: () => void;
+  /** Sends a suggested quick reply; only the latest reply gets one. */
+  onFollowUp?: (text: string) => void;
 };
 
 const OPERATION = {
@@ -43,7 +45,48 @@ function Inlines({ parts }: { parts: RichInline[] }) {
   );
 }
 
-/** The reply as headings, paragraphs and lists (shared parser with mobile). */
+/** A Markdown table; it scrolls sideways on its own so it never widens the page. */
+function Table({
+  header,
+  rows,
+}: {
+  header: RichInline[][];
+  rows: RichInline[][][];
+}) {
+  return (
+    <div
+      className="ai-table-wrap"
+      role="region"
+      aria-label="Table"
+      tabIndex={0}
+    >
+      <table className="ai-table">
+        <thead>
+          <tr>
+            {header.map((cell, c) => (
+              <th key={c} scope="col">
+                <Inlines parts={cell} />
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, r) => (
+            <tr key={r}>
+              {row.map((cell, c) => (
+                <td key={c}>
+                  <Inlines parts={cell} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The reply as headings, paragraphs, lists and tables (shared parser with mobile). */
 export function SummaryText({ text }: { text: string }) {
   return (
     <div className="ai-summary">
@@ -52,6 +95,8 @@ export function SummaryText({ text }: { text: string }) {
           <h4 key={n}>
             <Inlines parts={block.inlines} />
           </h4>
+        ) : block.type === "table" ? (
+          <Table key={n} header={block.header} rows={block.rows} />
         ) : block.type === "list" ? (
           block.ordered ? (
             <ol key={n}>
@@ -180,9 +225,11 @@ export function ProposalReview({
   state,
   onApply,
   onDismiss,
+  onFollowUp,
 }: Props) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
+  const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
   return (
     <div className="ai-proposal">
       <SummaryText text={proposal.summary} />
@@ -234,6 +281,24 @@ export function ProposalReview({
         <p className="ai-status">
           <X size={14} /> Discarded
         </p>
+      )}
+      {onFollowUp && followUps.length > 0 && (
+        <div
+          className="ai-follow-ups"
+          role="group"
+          aria-label="Suggested replies"
+        >
+          {followUps.map((text, n) => (
+            <button
+              key={n}
+              type="button"
+              disabled={busy}
+              onClick={() => onFollowUp(text)}
+            >
+              {text}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

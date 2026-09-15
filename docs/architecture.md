@@ -124,13 +124,38 @@ changes. Editing a title or notes does not resend a reminder that was already de
 
 ### AI assistant
 
-The assistant is deliberately a **propose-then-approve** loop:
+The assistant is deliberately a **propose-then-approve** agent, built like BrainRouter's agent
+loop (`backend/src/modules/ai/agent/`):
 
-1. `POST /ai/chat` sends the user's message, timezone, and a snapshot of up to 100 most recently
-   updated items to the configured provider with a system prompt that demands strict JSON matching
-   the `agentReply` schema (a `summary` plus up to 20 `actions`).
-2. The reply is validated with zod. Anything malformed is rejected with HTTP 502; nothing is
-   written to the planner at this stage. The validated actions are stored as a `proposal`.
+1. `POST /ai/chat` runs a short tool loop. The model gets a system prompt with the user's local
+   date, a small planner overview and tools, and calls the tools until it can answer: at most 8
+   model calls, the last with tools turned off. Before the first call, the server looks up the
+   user's items whose titles share words with the request. It adds them to the overview as
+   `matching_request`, with their ids, so a change like "move buy groceries to Thursday" usually
+   needs no search round trip. This keeps weaker tool users such as Matilda steady.
+   - **Read tools:** `get_overview`, `search_items` (words, status, type, priority, team, due-date
+     range), `get_item` (notes, checklist, recent updates) and `list_teams`. Every query is scoped on
+     the server, using the session's user id, to the user's own personal items and their teams'
+     items. Ids from anywhere else look like missing items, and nothing the model sends can widen
+     the scope.
+   - **Proposal tools:** `propose_create` (several items per call), `propose_update` (by id, with
+     only the fields that change merged onto the saved item; two calls for one item combine),
+     `propose_delete`, and `ask_clarification`. `ask_clarification` asks one question with up to 4
+     options, returned as `follow_ups`, and ends the turn.
+   - **Per-item results:** each proposed item is validated on its own. The tool reports what was
+     accepted and why the rest was not, so the model can fix it in the same turn. Reasons include
+     an event with no start, a duplicate, a team the user can only view, or more than 20 changes.
+     Nothing is written at this stage; the accepted actions are stored as a `proposal`.
+2. Guards from BrainRouter keep the loop stable:
+   - An empty answer, or a reply that only announces what it will do, gets a nudge (two in
+     total).
+   - The same call repeated a third time is refused.
+   - Several items with the same title can't all be changed or deleted when the user named one
+     ("cancel the gym session"). The model is told to ask which one, unless the message says
+     all, both, every or each, or uses the plural.
+   - Tool results are capped at 8,000 characters.
+   - Unknown tools and invalid arguments come back as errors the model can correct.
+   - A provider failure is retried once, then answered with HTTP 502.
 3. The client shows the summary and the proposed changes. When the user accepts,
    `POST /ai/proposals/:id/apply` runs every action through `mutate()` inside one transaction. A
    single failing action (wrong version, item belonging to someone else) rolls back the whole batch.
@@ -146,9 +171,11 @@ BrainRouter's common OpenAI-compatible profile: `Authorization: Bearer`, a blank
 Responses API for GPT and o-series models on its own endpoint, as in BrainRouter; Anthropic's
 native API gets `max_tokens: 8192`. Cloud keys are required (except opencode) and must be at
 least 16 characters; known prefixes (`sk-`, `sk-or-v1-`, `dsk-`, `mc_live_`) only produce a
-warning. Deliberate differences: Matilda uses its OpenAI-compatible endpoint with a JSON schema
-(BrainRouter drives its native SSE chat for tool calls, which this assistant does not need, and
-only the schema produced reliable plans in live tests); Azure keeps its `api-key` header; and
+warning. Deliberate differences: Matilda uses its OpenAI-compatible endpoint, with the agent's tool calls
+carried inside a JSON-schema reply. BrainRouter drives Matilda's native SSE chat for tool calls
+instead, but there the platform web-searches client tool results on every round trip, which
+cannot be switched off. That would send private planner data to a web search, so Orbyn does not
+use it. Azure keeps its `api-key` header; and
 Anthropic model listing uses `x-api-key`, which its API requires.
 
 Providers are added by admins in the admin console and stored in `ai_providers`; the active
@@ -157,19 +184,72 @@ chosen the assistant answers 503. Adapters speak the OpenAI, Anthropic and Azure
 so any OpenAI-compatible service (including local LM Studio or Ollama) works too. Some providers need
 more: Maincode's Matilda answers in prose unless it is given the reply schema, so providers flagged
 `structuredOutput` receive it as `response_format` (strict JSON Schema), and providers with request
-`limits` get trimmed history and planner snapshots. Before a proposal is stored, the backend
-drops actions a model got wrong: edits or deletions of items that were not in the snapshot, edits
-that change nothing, and creates that duplicate an existing item. Timestamps without an offset get
-the user's local offset. Proposals are kept only when the latest message asks for a
-change, and deletions only when it asks to delete, remove or cancel something. The planner
-snapshot is sent in the user's local time with only the fields the model needs, and each earlier
-reply in the history carries a note saying whether its changes were approved or discarded, so a
-model never repeats them. Providers flagged `structuredOutput` (Matilda) answer questions that
-change nothing in plain Markdown and use the reply schema only for change requests. Each provider
+`limits` get messages clipped and the oldest history dropped first.
+
+**Matilda gets a fixed graph** (`agent/graph.ts`), used for providers flagged `structuredOutput`.
+Matilda ignores native tools. In live tests under every JSON tool protocol it wandered between
+tools, asked the user which tool to use, and invented items. It does write reliable single plans
+under a schema, so the server does the looking up and the model decides once:
+
+1. **Retrieve:** the server gathers the overview plus the items matching the request. They go into
+   the user message with the request, where Matilda reads them; it gives system-prompt data little
+   weight. The server also works out the days the request names ("tomorrow = Wed 16 Sept
+   (2026-09-16)"; "next Tuesday" is the Tuesday of the following week), because Matilda misplaced
+   them even with a calendar.
+2. **Answer:** a question gets one plain Markdown answer.
+3. **Plan:** a change request gets one `{summary, actions}` plan under a strict JSON Schema.
+4. **Validate:** the actions go through the same proposal tools as the agent: each create on its
+   own, all updates in one call and all deletes in another. So scoping, per-item checks, delete
+   intent and the same-title rule all apply to the whole plan. Validation also corrects for common
+   model mistakes:
+   - Items are shown to the model with short ids (`i1`, `i2`, …) that the server maps back,
+     because Matilda mistyped full UUIDs.
+   - When an update's title names a different shown item, and exactly one, that item is the one
+     changed, because Matilda once copied the id from the neighbouring item.
+   - Empty notes in an update keep the saved notes.
+   - An update refused only for an end before its start is retried without the end.
+   - An update or delete of a shown item must be of an item the request names, meaning its title
+     shares words with the request, unless the user asked for all, both or every one. Matilda
+     once moved the gym session when asked to move the groceries, and proposed deleting the
+     groceries along with "the gym session".
+5. **Repair:** if anything was refused, one repair call gets the reasons. Whatever is still refused
+   is listed to the user under "Not proposed".
+
+That is at most three model calls, each retried once within the same deadline.
+
+The agent's JSON tool protocol remains as a fallback for providers that reject native tools with a
+400:
+
+- **Step format:** one field per tool plus `answer`, enforced by a strict schema, with every tool
+  described in the system message.
+- **History:** earlier calls are replayed as sentences, and results as `[Tool result: name]`
+  messages.
+
+Guards on proposals and the older format:
+
+- **Changes:** proposal tools only work when the latest message asks for a change: a change word,
+  a plan with a day or time, or a polite request ("can you move…"). Questions ("what's the
+  launch plan about?") never count, even when they contain a change word.
+- **Deletions:** only when the message asks to delete, remove or cancel something.
+- **Clarifications:** a turn that ends in a question carries no proposals. Questions about tools,
+  or about which date "tomorrow" is, are refused. A short reply to the assistant's own question
+  counts together with the question it answers.
+- **Older format:** a provider that still replies with a single `{summary, actions}` object keeps
+  working. Those actions are vetted as before: only items the user can see, no edits that change
+  nothing, no duplicates.
+
+Times and history:
+
+- Timestamps without an offset get the user's local offset.
+- Tool results use the user's local time and only the fields the model needs.
+- Each earlier reply in the history carries a note saying whether its changes were approved or
+  discarded, so a model never repeats them.
+
+Each provider
 attempt gets 45 seconds within a 110-second deadline (BrainRouter's 120-second chat timeout and
 45-second Matilda stall limit); the API client allows 120 seconds and the proxies 125. Replies are
 rendered on web and mobile by one shared parser (`parseRichText` in `@orbyn/core`): headings,
-paragraphs, bulleted and numbered lists, bold, italic and code. Planner content
+paragraphs, bulleted and numbered lists, tables, bold, italic and code. Planner content
 is passed to the model as data, and the prompt instructs it to treat titles and notes as untrusted.
 
 ## Desktop / web (`desktop/`)

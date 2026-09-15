@@ -226,11 +226,23 @@ Up to 100 most recent in-app reminders: `{ "id", "title", "body", "read", "creat
     },
     { "operation": "create", "data": { "title": "..." } },
     { "operation": "delete", "item_id": "uuid", "version": 1 }
-  ]
+  ],
+  "follow_ups": []
 }
 ```
 
-Nothing is saved by this call. Pure summaries return an empty `actions` array.
+Nothing is saved by this call.
+
+- **Answers:** pure summaries return an empty `actions` array.
+- **Lookups:** the assistant looks things up with tools that only see the caller's own and team
+  items.
+- **Several changes:** one message can hold up to 20 changes.
+- **Clarifying questions:** when the request is ambiguous, `summary` is a question and
+  `follow_ups` holds up to 4 suggested replies to send back as the next `message`.
+
+An optional `history` (up to 12 earlier `{ "role": "user" | "assistant", "content" }` turns) gives
+the conversation context. Returns `502` when the provider fails twice or returns an invalid plan,
+and `503` when no provider is set up.
 
 ### `POST /ai/proposals/:id/apply` (auth)
 
