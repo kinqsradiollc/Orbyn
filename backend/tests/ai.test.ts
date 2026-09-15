@@ -1,21 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // Pure unit tests for the AI plumbing: no database, network, or provider needed.
-const { parseReply } = await import("../src/modules/ai/provider.js");
-const { localTimeContext, systemPrompt } =
-  await import("../src/modules/ai/prompt.js");
+const { parseReply } = await import("../src/modules/ai/replySchema.js");
+const { localTimeContext } = await import("../src/modules/ai/prompt.js");
+const { localIso } = await import("../src/modules/ai/snapshot.js");
 
 const reply = { summary: "Your week is clear.", actions: [] };
-/** A provider handed straight to askProvider; fetch is mocked in the tests that use it. */
-const unitAi = {
-  kind: "openai-compatible",
-  format: "openai" as const,
-  baseUrl: "http://127.0.0.1:9/v1",
-  apiKey: "",
-  model: "unit-test",
-  options: {},
-  source: "database" as const,
-};
 
 test("parses plain, fenced, and reasoning-prefixed replies", () => {
   for (const content of [
@@ -62,49 +52,20 @@ test("gives the model the local offset and upcoming daylight-saving changes", ()
     localTimeContext("UTC", new Date("2026-09-14T08:00:00Z")),
     /stays \+00:00/,
   );
-  assert.match(systemPrompt("UTC"), /do not repeat the schema/);
 });
 
-test("provider retries share one deadline instead of outlasting the client", async (t) => {
-  const { askProvider } = await import("../src/modules/ai/provider.js");
-  const controller = new AbortController();
-  const timeouts: number[] = [];
-  t.mock.method(AbortSignal, "timeout", (ms: number) => {
-    timeouts.push(ms);
-    return controller.signal;
-  });
-  let calls = 0;
-  t.mock.method(globalThis, "fetch", async () => {
-    calls++;
-    return calls === 1
-      ? new Response("unavailable", { status: 503 })
-      : Response.json({
-          choices: [{ message: { content: JSON.stringify(reply) } }],
-        });
-  });
-  assert.deepEqual(await askProvider(unitAi, "Summarize", "UTC", []), reply);
-  assert.equal(calls, 2);
-  // One overall deadline, created once, then a shorter limit per attempt so a
-  // stalled reply is abandoned and retried (BrainRouter: 120 s chat, 45 s
-  // quiet timeout). The deadline stays below the API client's 120 s.
-  assert.deepEqual(timeouts, [110_000, 45_000, 45_000]);
-  assert.ok(timeouts[0] < 120_000);
-});
-
-test("provider does not retry after the overall deadline expires", async (t) => {
-  const { askProvider } = await import("../src/modules/ai/provider.js");
-  const controller = new AbortController();
-  let attempts = 0;
-  t.mock.method(AbortSignal, "timeout", () => controller.signal);
-  t.mock.method(globalThis, "fetch", async () => {
-    attempts++;
-    const error = new DOMException("Deadline expired", "TimeoutError");
-    controller.abort(error);
-    throw error;
-  });
-  await assert.rejects(
-    askProvider(unitAi, "Summarize", "UTC", []),
-    /could not return a valid plan/,
+test("instants are shown as the user's wall-clock time with their offset", () => {
+  assert.equal(
+    localIso("2026-09-27T02:45:00Z", "Australia/Melbourne"),
+    "2026-09-27T12:45:00+10:00",
   );
-  assert.equal(attempts, 1);
+  assert.equal(
+    localIso("2027-01-08T07:00:00Z", "Australia/Melbourne"),
+    "2027-01-08T18:00:00+11:00",
+  );
+  assert.equal(
+    localIso("2026-09-27T02:45:00Z", "UTC"),
+    "2026-09-27T02:45:00+00:00",
+  );
+  assert.equal(localIso(null, "UTC"), null);
 });

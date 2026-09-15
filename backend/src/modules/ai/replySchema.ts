@@ -1,4 +1,11 @@
-import { KINDS, PRIORITIES, STATUSES } from "@orbyn/core";
+import {
+  agentReply,
+  KINDS,
+  PRIORITIES,
+  STATUSES,
+  type AgentReply,
+} from "@orbyn/core";
+import { offsetAt } from "./prompt.js";
 
 /**
  * The assistant's reply as a strict JSON Schema, sent as `response_format`
@@ -136,4 +143,55 @@ export function dropNulls(value: unknown): unknown {
       return cleaned;
     }),
   };
+}
+
+const NAIVE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/;
+
+/**
+ * Timestamps without an offset are the user's wall-clock time (models such as
+ * Matilda sometimes drop it): add the user's offset for that date rather than
+ * rejecting the whole reply.
+ */
+function addMissingOffsets(value: unknown, timezone?: string): unknown {
+  if (!timezone || !value || typeof value !== "object") return value;
+  const actions = (value as { actions?: unknown }).actions;
+  if (!Array.isArray(actions)) return value;
+  for (const action of actions) {
+    const data = action && typeof action === "object" ? action.data : null;
+    if (!data || typeof data !== "object") continue;
+    for (const key of ["due_at", "end_at"]) {
+      const at = data[key];
+      if (typeof at !== "string" || !NAIVE_TIME.test(at)) continue;
+      const full = at.length === 16 ? `${at}:00` : at;
+      data[key] = full + offsetAt(timezone, new Date(`${full}Z`));
+    }
+  }
+  return value;
+}
+
+/**
+ * A reply in the older single-JSON format (`{summary, actions}`), which the
+ * agent loop still accepts from providers that answer without tools. Tolerates
+ * reasoning blocks, code fences, prose around the JSON, and small models that
+ * echo the JSON schema with their answer nested under "properties".
+ */
+export function parseReply(content: string, timezone?: string): AgentReply {
+  let text = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) text = fenced[1];
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) text = text.slice(start, end + 1);
+  let value: unknown = JSON.parse(text);
+  if (
+    value &&
+    typeof value === "object" &&
+    !("summary" in value) &&
+    "properties" in value &&
+    value.properties &&
+    typeof value.properties === "object" &&
+    "summary" in value.properties
+  )
+    value = value.properties;
+  return agentReply.parse(addMissingOffsets(dropNulls(value), timezone));
 }
