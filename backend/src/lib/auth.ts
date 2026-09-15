@@ -25,7 +25,35 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   name: u.name as string,
   email_reminders: u.email_reminders as boolean,
   role: u.role as SystemRole,
+  handle: (u.handle as string | null | undefined) ?? null,
+  bio: (u.bio as string | undefined) ?? "",
 });
+
+/** API key ids by key hash, so rate limiting needn't ask the database each time. */
+const keyIds = new Map<string, { id: string | null; at: number }>();
+const KEY_CACHE_MS = 60_000;
+
+/**
+ * The id of the personal API key a request is signed with, or null (no key,
+ * or not a valid one). Rate limits count API-key requests per key.
+ */
+export async function apiKeyId(r: FastifyRequest): Promise<string | null> {
+  const token = r.headers.authorization?.match(/^Bearer (ok_\S+)$/)?.[1];
+  if (!token) return null;
+  const hash = digest(token);
+  const hit = keyIds.get(hash);
+  if (hit && Date.now() - hit.at < KEY_CACHE_MS) return hit.id;
+  const id =
+    (
+      await pool.query<{ id: string }>(
+        "SELECT id FROM api_keys WHERE key_hash = $1",
+        [hash],
+      )
+    ).rows[0]?.id ?? null;
+  if (keyIds.size > 5000) keyIds.clear();
+  keyIds.set(hash, { id, at: Date.now() });
+  return id;
+}
 
 export const DISABLED_MESSAGE =
   "This account has been disabled. Contact your Orbyn administrator.";

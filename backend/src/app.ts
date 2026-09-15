@@ -16,6 +16,8 @@ import { plannerRoutes } from "./modules/planner/routes.js";
 import { teamPlanningRoutes } from "./modules/teams/planning.js";
 import { accessRoutes } from "./modules/access/routes.js";
 import { bookingRoutes } from "./modules/booking/routes.js";
+import { inviteRoutes } from "./modules/booking/invites.js";
+import { profileRoutes } from "./modules/booking/profile.js";
 import { rsvpRoutes } from "./modules/items/attendees.js";
 import { subscriptionRoutes } from "./modules/planner/subscriptions.js";
 
@@ -42,6 +44,8 @@ export const serviceModules: Record<
     teamPlanningRoutes,
     accessRoutes,
     bookingRoutes,
+    inviteRoutes,
+    profileRoutes,
     rsvpRoutes,
     subscriptionRoutes,
   ],

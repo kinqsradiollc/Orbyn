@@ -14,6 +14,15 @@ import {
   type Credentials,
   type Item,
   type ItemDetail,
+  type ItemPositionInput,
+  type ItemSyncPage,
+  type InviteBookingRequest,
+  type OpenInvite,
+  type OpenInviteInput,
+  type Profile,
+  type ProfileInput,
+  type PublicInvite,
+  type PublicProfile,
   type Status,
   type ItemInput,
   type Notice,
@@ -304,6 +313,8 @@ export class OrbynClient {
       assignee_id?: string;
       /** List order; newest first when omitted. Every item carries its `score`. */
       sort?: ItemSort;
+      /** Only the subtasks of this task. */
+      parent_id?: string;
     } = {},
   ) {
     const q = new URLSearchParams();
@@ -316,10 +327,38 @@ export class OrbynClient {
       "tag_id",
       "assignee_id",
       "sort",
+      "parent_id",
     ] as const)
       if (params[key]) q.set(key, params[key]!);
     const suffix = q.size ? `?${q}` : "";
     return this.request<Item[]>(`/items${suffix}`);
+  }
+  /**
+   * Incremental sync: items changed after `updated_after` (or after a
+   * previous page's `next_cursor`), oldest change first, and with
+   * `include_deleted` the items deleted since.
+   */
+  syncItems(params: {
+    updated_after?: string;
+    cursor?: string;
+    include_deleted?: boolean;
+    limit?: number;
+    team_id?: string;
+  }) {
+    const q = new URLSearchParams();
+    if (params.updated_after) q.set("updated_after", params.updated_after);
+    if (params.cursor) q.set("cursor", params.cursor);
+    if (params.include_deleted) q.set("include_deleted", "1");
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.team_id) q.set("team_id", params.team_id);
+    return this.request<ItemSyncPage>(`/items?${q}`);
+  }
+  /** Move an item in its manual order (doesn't change its version). */
+  moveItem(id: string, input: ItemPositionInput) {
+    return this.request<Item>(`/items/${id}/position`, {
+      method: "PUT",
+      body: input,
+    });
   }
   /** Add minutes worked (focus timer). */
   logTime(itemId: string, minutes: number) {
@@ -810,7 +849,62 @@ export class OrbynClient {
     );
   }
 
+  // ---- open invites ----
+  listOpenInvites() {
+    return this.request<OpenInvite[]>("/open-invites");
+  }
+  /** A one-off link offering hand-picked windows; its `url` is the link to send. */
+  createOpenInvite(input: OpenInviteInput) {
+    return this.request<OpenInvite>("/open-invites", {
+      method: "POST",
+      body: input,
+    });
+  }
+  getOpenInvite(id: string) {
+    return this.request<OpenInvite>(`/open-invites/${id}`);
+  }
+  /** Withdraw an invite (a booking made from it is cancelled). */
+  cancelOpenInvite(id: string) {
+    return this.request<void>(`/open-invites/${id}`, { method: "DELETE" });
+  }
+  /** Public: an open invite and its free times, from its link. */
+  getPublicInvite(token: string, timezone: string) {
+    return this.request<PublicInvite>(
+      `/invite/${encodeURIComponent(token)}?${new URLSearchParams({ timezone })}`,
+      { anonymous: true },
+    );
+  }
+  /** Public: pick a time from an open invite (booked at once). */
+  bookInvite(token: string, input: InviteBookingRequest) {
+    return this.request<BookingReceipt>(
+      `/invite/${encodeURIComponent(token)}`,
+      { method: "POST", body: input, anonymous: true },
+    );
+  }
+
+  // ---- profile page ----
+  getProfile() {
+    return this.request<Profile>("/me/profile");
+  }
+  /** `handle: null` removes your page. */
+  updateProfile(input: ProfileInput) {
+    return this.request<Profile>("/me/profile", { method: "PUT", body: input });
+  }
+  /** Public: someone's profile page and their booking pages. */
+  getPublicProfile(handle: string) {
+    return this.request<PublicProfile>(`/u/${encodeURIComponent(handle)}`, {
+      anonymous: true,
+    });
+  }
+
   // ---- API keys and webhooks ----
+  /** Public: the OpenAPI description of the API, as YAML. */
+  openApiSpec() {
+    return this.request<string>("/openapi.yaml", {
+      anonymous: true,
+      raw: true,
+    });
+  }
   listApiKeys() {
     return this.request<ApiKey[]>("/me/api-keys");
   }

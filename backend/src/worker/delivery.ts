@@ -1,4 +1,6 @@
+import { isClosed } from "@orbyn/core";
 import { transaction, type Db } from "../db/pool.js";
+import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
 
@@ -44,17 +46,25 @@ export async function deliverOne(): Promise<boolean> {
             )
           ).rowCount
         : true;
+    // A booker's reminder is written now, with the booking as it is.
+    const bookerMail =
+      n.kind === "booker_reminder" && (await emailEnabled())
+        ? await bookerReminder(db, n.ref)
+        : null;
+    if (bookerMail) Object.assign(n, bookerMail);
     const stale =
-      n.kind === "invite"
-        ? await inviteStale(db, n)
-        : PLANNER_KINDS.includes(n.kind)
-          ? await plannerNoticeStale(db, n, item)
-          : !item ||
-            !item.can_see ||
-            item.disabled ||
-            item.status === "done" ||
-            item.reminder_version !== n.item_version ||
-            (n.channel === "email" && !item.email_reminders);
+      n.kind === "booker_reminder"
+        ? !bookerMail
+        : n.kind === "invite"
+          ? await inviteStale(db, n)
+          : PLANNER_KINDS.includes(n.kind)
+            ? await plannerNoticeStale(db, n, item)
+            : !item ||
+              !item.can_see ||
+              item.disabled ||
+              isClosed(item.status) ||
+              item.reminder_version !== n.item_version ||
+              (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,
@@ -157,7 +167,7 @@ async function plannerNoticeStale(
   if (!who || who.disabled || n.read) return true;
   if (n.channel === "email" && !who.email) return true;
   if (n.channel === "push" && !who.push) return true;
-  if (n.item_id && (!item || !item.can_see || item.status === "done"))
+  if (n.item_id && (!item || !item.can_see || isClosed(item.status)))
     return true;
   if (n.kind === "conflict") {
     const block = await db.query(

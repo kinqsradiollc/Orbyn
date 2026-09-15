@@ -25,8 +25,15 @@ import type {
   frameInput,
   frameSkipInput,
   frameUpdate,
+  bufferScopeInput,
+  inviteBookingRequest,
   itemData,
+  itemLinkInput,
+  itemPositionInput,
   ITEM_SORTS,
+  openInviteInput,
+  profileInput,
+  TRAVEL_MODES,
   KINDS,
   listInput,
   listUpdate,
@@ -85,9 +92,35 @@ export type Item = ItemInput & {
    * events and finished tasks.
    */
   score?: number | null;
+  /** Manual order among items with the same parent, list or space. */
+  position?: number;
+  /** max(0, estimate − spent); null without an estimate. */
+  remaining_minutes?: number | null;
+  /** Subtasks that aren't cancelled, and how many of them are done. */
+  child_count?: number;
+  children_done?: number;
 };
 
 export type ItemSort = (typeof ITEM_SORTS)[number];
+
+/** A web link on a task. */
+export type ItemLink = z.output<typeof itemLinkInput> & {
+  id: string;
+  position: number;
+};
+
+/** An item deleted since the sync point (only its id and when). */
+export type DeletedItem = { id: string; deleted_at: string };
+
+/** One page of `GET /items?updated_after=` (incremental sync), oldest change first. */
+export type ItemSyncPage = {
+  items: Item[];
+  /** Present when `include_deleted=1`. */
+  deleted: DeletedItem[];
+  /** Pass back as `cursor` for the next page, or later for what changed since. */
+  next_cursor: string;
+  has_more: boolean;
+};
 
 export type User = {
   id: string;
@@ -95,6 +128,31 @@ export type User = {
   email: string;
   email_reminders: boolean;
   role: SystemRole;
+  /** Your public profile's address (/u/<handle>), if you made one. */
+  handle?: string | null;
+  bio?: string;
+};
+
+/** Your public profile, as you edit it. */
+export type Profile = {
+  handle: string | null;
+  bio: string;
+  /** The page's address, or null without a handle. */
+  url: string | null;
+};
+
+/** What /u/<handle> shows: a name, a short bio and active booking pages. */
+export type PublicProfile = {
+  name: string;
+  handle: string;
+  bio: string;
+  pages: {
+    title: string;
+    slug: string;
+    description: string;
+    durations: number[];
+    color: string;
+  }[];
 };
 
 export type Team = {
@@ -356,6 +414,8 @@ export type ItemDetail = Item & {
   attendees?: Attendee[];
   /** Occurrences of a repeating item changed on their own. */
   overrides?: ItemOverride[];
+  /** Web links, in order. */
+  links?: ItemLink[];
 };
 
 export type AttendeeStatus = "needs_action" | (typeof RSVP_STATUSES)[number];
@@ -564,7 +624,15 @@ export type PlannerPrefs = {
   planner_notices?: PlannerNotices;
   /** Alerts new items get when created without any. */
   default_alerts?: DefaultAlerts;
+  /** Completing a task adds its blocks' past time to its time spent (once). */
+  count_blocks_as_spent?: boolean;
+  /** Which events get buffers. */
+  buffer_scope?: BufferScope;
+  /** Minutes added to every travel leg. */
+  travel_padding_minutes?: number;
 };
+
+export type BufferScope = z.output<typeof bufferScopeInput>;
 
 export type PlannerNotices = { push: boolean; email: boolean };
 
@@ -606,7 +674,13 @@ export type Place = {
   label: string;
   match: string;
   travel_minutes: number;
+  /** How you get there (a label only). */
+  mode?: TravelMode | null;
+  /** Minutes on weekdays 07:00-09:00 and 16:00-18:00; null: the same as usual. */
+  peak_minutes?: number | null;
 };
+
+export type TravelMode = (typeof TRAVEL_MODES)[number];
 
 /** A block the planner proposes. */
 export type PlannedBlock = {
@@ -803,6 +877,13 @@ export type BookingPage = {
   counts: { upcoming: number; needs_approval: number };
   created_at: string;
   updated_at: string;
+  /** A team's page (its owners and admins manage it); null for your own. */
+  team_id?: string | null;
+  team_name?: string | null;
+  /** Whether you can change the page (its owner, or a team owner or admin). */
+  can_edit?: boolean;
+  /** Minutes before the meeting the booker is emailed a reminder. */
+  remind_before_minutes?: number[];
 };
 
 /**
@@ -840,6 +921,8 @@ export type Booking = {
   timezone: string;
   created_at: string;
   updated_at: string;
+  /** Set for a booking made from an open invite (then `page_id` is null). */
+  invite_id?: string | null;
 };
 
 /** One step in a booking's history. */
@@ -942,9 +1025,56 @@ export type ManagedBooking = {
     location: string;
     has_meeting_link: boolean;
     hosts: string[];
+    /** True when the booking came from an open invite (no page to book again from). */
+    invite?: boolean;
   };
   can_reschedule: boolean;
   can_cancel: boolean;
+};
+
+/**
+ * open: waiting for someone to pick a time. booked: someone did. expired:
+ * its time ran out. cancelled: its owner withdrew it.
+ */
+export type OpenInviteStatus = "open" | "booked" | "expired" | "cancelled";
+
+/** A one-off link offering hand-picked windows, as its owner sees it. */
+export type OpenInvite = {
+  id: string;
+  title: string;
+  duration: number;
+  windows: BusyInterval[];
+  location: string;
+  meeting_url: string;
+  co_hosts: { user_id: string; name: string }[];
+  remind_before_minutes: number[];
+  status: OpenInviteStatus;
+  expires_at: string;
+  /** The private link to send (`<APP_URL>/invite/<token>`). */
+  url: string;
+  booking: {
+    id: string;
+    name: string;
+    email: string;
+    start_at: string;
+    end_at: string;
+    status: BookingStatus;
+  } | null;
+  created_at: string;
+};
+
+/** What someone with an open invite's link sees. */
+export type PublicInvite = {
+  title: string;
+  hosts: string[];
+  duration: number;
+  location: string;
+  has_meeting_link: boolean;
+  status: OpenInviteStatus;
+  expires_at: string;
+  timezone: string;
+  /** Free start times inside the windows (empty unless open). */
+  slots: BusyInterval[];
 };
 
 // ---- API keys, webhooks, calendar feed ------------------------------------------
@@ -966,6 +1096,8 @@ export type Webhook = {
   id: string;
   url: string;
   events: WebhookEvent[];
+  /** Minutes before a busy event that `event.starting` is sent. */
+  lead_minutes?: number;
   active: boolean;
   last_status: number | null;
   last_error: string | null;
@@ -1048,6 +1180,12 @@ export type CalendarSubscriptionUpdate = z.input<
 export type CalendarFeedSettingsInput = z.input<
   typeof calendarFeedSettingsInput
 >;
+export type ItemPositionInput = z.input<typeof itemPositionInput>;
+export type ItemLinkInput = z.input<typeof itemLinkInput>;
+export type BufferScopeInput = z.input<typeof bufferScopeInput>;
+export type OpenInviteInput = z.input<typeof openInviteInput>;
+export type InviteBookingRequest = z.input<typeof inviteBookingRequest>;
+export type ProfileInput = z.input<typeof profileInput>;
 export type WebhookInput = z.input<typeof webhookInput>;
 export type WebhookUpdate = z.input<typeof webhookUpdate>;
 export type WebhookTestResult = {

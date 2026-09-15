@@ -308,6 +308,7 @@ export async function editFollowing(
       all_day: pick(data.all_day, item.all_day),
       busy: pick(data.busy, item.busy),
       color: pick(data.color, item.color),
+      parent_id: pick(data.parent_id, item.parent_id),
       alerts: pick(data.alerts, item.alerts.map(Number)),
       attendees: pick(
         data.attendees,

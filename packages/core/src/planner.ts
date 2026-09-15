@@ -1,4 +1,5 @@
 import { sameDay } from "./dates.js";
+import { isClosed } from "./schemas.js";
 import type { Item, ItemInput } from "./types.js";
 
 /** Default values for a new, unsaved item. */
@@ -29,6 +30,7 @@ const PLANNING_FIELDS = [
   "busy",
   "color",
   "alerts",
+  "parent_id",
 ] as const;
 
 /**
@@ -65,7 +67,8 @@ export type PlannerGroups = {
 
 /** Buckets used by the Overview / Today screens on every client. */
 export function groupItems(items: Item[], now = new Date()): PlannerGroups {
-  const pending = items.filter((i) => i.status !== "done");
+  // Cancelled items are closed: neither pending nor done.
+  const pending = items.filter((i) => !isClosed(i.status));
   const done = items.filter((i) => i.status === "done");
   const today = pending
     .filter((i) => i.due_at && sameDay(new Date(i.due_at), now))

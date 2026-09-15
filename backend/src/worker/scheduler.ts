@@ -1,4 +1,5 @@
 import { transaction } from "../db/pool.js";
+import { expireInvites } from "../modules/booking/invites.js";
 import { emailEnabled } from "./channels/email.js";
 
 /**
@@ -51,7 +52,7 @@ export async function enqueue() {
     SELECT 'inapp' AS channel,u.id::text AS destination
     UNION ALL SELECT 'email',u.email WHERE u.email_reminders AND $1::boolean
     UNION ALL SELECT 'push',d.token FROM devices d WHERE d.user_id=u.id
-   ) c WHERE i.status <> 'done' AND i.due_at IS NOT NULL AND a.minutes IS NOT NULL
+   ) c WHERE i.status NOT IN ('done', 'cancelled') AND i.due_at IS NOT NULL AND a.minutes IS NOT NULL
     AND NOT (i.due_at = ANY (i.exdates))
     -- Bounded by the longest alert (4 weeks) plus a day of catch-up, so each
     -- cycle scans a small index range, not every item ever created.
@@ -60,6 +61,34 @@ export async function enqueue() {
     AND x.at > now() - interval '1 day'
    ON CONFLICT(item_id,item_version,channel,destination,kind,ref) DO NOTHING`,
       [await emailEnabled()],
+    );
+    // Reminders to bookers before confirmed bookings, by email: the latest
+    // value whose time has come, once per booking, start time and value, and
+    // none whose time had already passed when the booking was made.
+    await db.query(
+      `INSERT INTO notifications (user_id, item_id, item_version, channel, destination,
+         title, body, state, kind, ref)
+       SELECT coalesce(p.owner_id, oi.owner_id), NULL, 0, 'email', b.email,
+         'Reminder: ' || coalesce(p.title, oi.title), '', 'pending', 'booker_reminder',
+         b.id || ':' || round(extract(epoch FROM b.start_at))::bigint || ':' || r.minutes
+       FROM bookings b
+       LEFT JOIN booking_pages p ON p.id = b.page_id
+       LEFT JOIN open_invites oi ON oi.id = b.invite_id
+       CROSS JOIN LATERAL (
+         SELECT min(m) AS minutes
+         FROM unnest(coalesce(p.remind_before_minutes, oi.remind_before_minutes)) m
+         WHERE b.start_at - make_interval(mins => m) <= now()
+           AND b.start_at - make_interval(mins => m) > b.created_at
+       ) r
+       WHERE $1::boolean AND b.status = 'confirmed' AND r.minutes IS NOT NULL
+         AND b.start_at > now() AND b.start_at <= now() + interval '8 days'
+       ON CONFLICT DO NOTHING`,
+      [await emailEnabled()],
+    );
+    await expireInvites(db);
+    // Deleted-item records (for incremental sync) are kept for 90 days.
+    await db.query(
+      "DELETE FROM deleted_items WHERE deleted_at < now() - interval '90 days'",
     );
     await db.query("DELETE FROM sessions WHERE expires_at<now()");
     await db.query(

@@ -2,6 +2,7 @@ import {
   addDays,
   clockMinutes,
   dayTime,
+  isClosed,
   priorityScore,
   weekdayOf,
   type BreakLevel,
@@ -33,6 +34,9 @@ export type SchedulerTask = {
   list_id: string | null;
   tag_ids: string[];
   team_id: string | null;
+  /** Open subtasks, and the minutes they still need between them. */
+  open_children?: number;
+  children_remaining?: number;
 };
 
 export type SchedulerInput = {
@@ -70,6 +74,33 @@ export type SchedulerResult = {
 
 /** A task without an estimate is planned as this long. */
 export const DEFAULT_ESTIMATE_MINUTES = 30;
+
+/**
+ * Minutes a task still needs for itself (before time already set aside).
+ * A task's estimate covers its subtasks: while it has open subtasks, they
+ * are planned on their own, and the parent keeps only what its estimate has
+ * beyond theirs (nothing when it has no estimate). So the work counted is
+ * the sum of the subtasks' remaining estimates or the parent's own,
+ * whichever is more, and never twice.
+ */
+export function remainingOf(t: {
+  estimate_minutes: number | null;
+  spent_minutes: number;
+  open_children?: number;
+  children_remaining?: number;
+}) {
+  if (t.open_children)
+    return t.estimate_minutes == null
+      ? 0
+      : Math.max(
+          0,
+          t.estimate_minutes - t.spent_minutes - (t.children_remaining ?? 0),
+        );
+  return Math.max(
+    0,
+    (t.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES) - t.spent_minutes,
+  );
+}
 const GRID_MINUTES = 5;
 const MAX_SESSIONS = 12;
 /** Rest after a session of 45 minutes or more. */
@@ -248,7 +279,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   if (pinned.length) free = subtract(free, pinned);
 
   const ranked = input.tasks
-    .filter((t) => t.status !== "done")
+    .filter((t) => !isClosed(t.status))
     .map((t) => ({ task: t, score: scoreOf(t) }))
     .sort(
       (a, b) =>
@@ -272,8 +303,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     }
     const estimate = task.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES;
     const remaining =
-      estimate -
-      task.spent_minutes -
+      remainingOf(task) -
       task.scheduled_minutes -
       (pinnedMinutes.get(task.id) ?? 0);
     if (remaining <= 0) continue;

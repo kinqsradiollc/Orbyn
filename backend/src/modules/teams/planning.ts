@@ -16,8 +16,8 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { busyIntervals, loadPrefs } from "../planner/calendar.js";
-import { freeSpans, workingSpans } from "../planner/plans.js";
-import { DEFAULT_ESTIMATE_MINUTES } from "../planner/scheduler.js";
+import { CHILD_COLUMNS, freeSpans, workingSpans } from "../planner/plans.js";
+import { remainingOf } from "../planner/scheduler.js";
 import { teamMembers } from "./routes.js";
 
 /**
@@ -159,20 +159,19 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
             due_at: Date | null;
             estimate_minutes: number | null;
             spent_minutes: number;
+            open_children: number;
+            children_remaining: number;
           }>(
-            `SELECT id, title, due_at, estimate_minutes, spent_minutes FROM items
-             WHERE team_id = $1 AND assignee_id = $2 AND kind = 'task' AND status <> 'done'
-               AND (due_at IS NULL OR due_at < $3)`,
+            `SELECT i.id, i.title, i.due_at, i.estimate_minutes, i.spent_minutes, ${CHILD_COLUMNS}
+             FROM items i
+             WHERE i.team_id = $1 AND i.assignee_id = $2 AND i.kind = 'task'
+               AND i.status NOT IN ('done', 'cancelled')
+               AND (i.due_at IS NULL OR i.due_at < $3)`,
             [teamId, m.user_id, to],
           )
         ).rows;
         let assigned = 0;
         let atRisk = 0;
-        const remainingOf = (t: (typeof tasks)[number]) =>
-          Math.max(
-            0,
-            (t.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES) - t.spent_minutes,
-          );
         // Tasks due soonest take the free time first.
         const sorted = [...tasks].sort(
           (a, b) =>

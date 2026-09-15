@@ -2,6 +2,7 @@ import {
   addDays,
   dayTime,
   fail,
+  isClosed,
   isLocalMidnight,
   itemData,
   localDateKey,
@@ -47,11 +48,39 @@ export type ItemRow = Item & {
   busy: boolean;
   color: string | null;
   alerts: number[];
+  parent_id: string | null;
+  position: number;
 };
 
-/** Item columns for responses: the team and assignee names and tag ids. */
+/**
+ * Item columns for responses: the team and assignee names, tag ids, the time
+ * left (estimate − spent, never below 0) and subtask counts (cancelled
+ * subtasks aren't counted).
+ */
 export const ITEM_COLUMNS = `i.*, t.name AS team_name, a.name AS assignee_name,
-  coalesce((SELECT array_agg(it.tag_id ORDER BY it.tag_id) FROM item_tags it WHERE it.item_id = i.id), '{}') AS tag_ids`;
+  coalesce((SELECT array_agg(it.tag_id ORDER BY it.tag_id) FROM item_tags it WHERE it.item_id = i.id), '{}') AS tag_ids,
+  CASE WHEN i.estimate_minutes IS NULL THEN NULL
+       ELSE greatest(0, i.estimate_minutes - i.spent_minutes) END AS remaining_minutes,
+  (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status <> 'cancelled') AS child_count,
+  (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status = 'done') AS children_done`;
+
+/** Subtasks go this many levels deep at most (a task, its subtask, and theirs). */
+export const MAX_SUBTASK_DEPTH = 3;
+
+/**
+ * SQL predicate (on alias `x`) for the items sharing a manual order with an
+ * item: the same parent, else the same list, else the same space (a team,
+ * or someone's personal items). Arguments are parameter references.
+ */
+export const siblingsOf = (
+  parent: string,
+  list: string,
+  team: string,
+  user: string,
+) => `CASE WHEN ${parent}::uuid IS NOT NULL THEN x.parent_id = ${parent}::uuid
+  WHEN ${list}::uuid IS NOT NULL THEN x.parent_id IS NULL AND x.list_id = ${list}::uuid
+  WHEN ${team}::uuid IS NOT NULL THEN x.parent_id IS NULL AND x.list_id IS NULL AND x.team_id = ${team}::uuid
+  ELSE x.parent_id IS NULL AND x.list_id IS NULL AND x.team_id IS NULL AND x.user_id = ${user}::uuid END`;
 export const ITEM_FROM = `items i LEFT JOIN teams t ON t.id = i.team_id LEFT JOIN users a ON a.id = i.assignee_id`;
 
 /** One item as the API returns it. */
@@ -167,6 +196,200 @@ async function checkAssignee(
   if (!member.rowCount) fail(422, "Assign team items to someone in the team.");
 }
 
+/**
+ * A subtask's parent must be a task the actor can see, in the same space
+ * (the same team, or both personal to the same person), with no loops and
+ * at most three levels in all.
+ */
+async function checkParent(
+  db: Db,
+  actor: Actor,
+  parentId: string,
+  itemId: string | null,
+  teamId: string | null,
+  owner: string,
+) {
+  const parent = (
+    await db.query<{ user_id: string; team_id: string | null; kind: Kind }>(
+      "SELECT user_id, team_id, kind FROM items WHERE id = $1",
+      [parentId],
+    )
+  ).rows[0];
+  const hidden = "That parent task isn't one you can see.";
+  if (!parent) fail(422, hidden);
+  const visible = parent.team_id
+    ? (
+        await db.query(
+          "SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2",
+          [parent.team_id, actor.id],
+        )
+      ).rowCount
+    : parent.user_id === actor.id;
+  if (!visible) fail(422, hidden);
+  if (parent.kind !== "task") fail(422, "Subtasks go under a task.");
+  const same = teamId
+    ? parent.team_id === teamId
+    : !parent.team_id && parent.user_id === owner;
+  if (!same)
+    fail(
+      422,
+      teamId
+        ? "A team task's parent must be one of this team's tasks."
+        : "A personal task's parent must be one of your personal tasks.",
+    );
+  // The parent and everything above it.
+  const above = (
+    await db.query<{ id: string }>(
+      `WITH RECURSIVE up (id, parent_id, depth) AS (
+         SELECT id, parent_id, 1 FROM items WHERE id = $1
+         UNION ALL
+         SELECT i.id, i.parent_id, up.depth + 1 FROM items i JOIN up ON i.id = up.parent_id
+         WHERE up.depth < 10)
+       SELECT id FROM up`,
+      [parentId],
+    )
+  ).rows.map((r) => r.id);
+  if (itemId && above.includes(itemId))
+    fail(422, "A task can't be a subtask of itself or of its own subtasks.");
+  // The item and the levels of subtasks below it.
+  const height = itemId
+    ? (
+        await db.query<{ n: number }>(
+          `WITH RECURSIVE down (id, depth) AS (
+             SELECT id, 1 FROM items WHERE id = $1
+             UNION ALL
+             SELECT c.id, down.depth + 1 FROM items c JOIN down ON c.parent_id = down.id
+             WHERE down.depth < 10)
+           SELECT max(depth)::int AS n FROM down`,
+          [itemId],
+        )
+      ).rows[0].n
+    : 1;
+  if (above.length + height > MAX_SUBTASK_DEPTH)
+    fail(422, `Subtasks go ${MAX_SUBTASK_DEPTH} levels deep at most.`);
+}
+
+/** Replace an item's links, keeping their order. */
+async function setLinks(
+  db: Db,
+  itemId: string,
+  links: { url: string; title: string }[],
+) {
+  await db.query("DELETE FROM item_links WHERE item_id = $1", [itemId]);
+  if (links.length)
+    await db.query(
+      `INSERT INTO item_links (item_id, url, title, position)
+       SELECT $1, l.url, l.title, l.n - 1
+       FROM unnest($2::text[], $3::text[]) WITH ORDINALITY AS l (url, title, n)`,
+      [itemId, links.map((l) => l.url), links.map((l) => l.title ?? "")],
+    );
+}
+
+/** Parents' subtask counts changed: mark them changed for incremental sync. */
+async function touch(db: Db, ids: (string | null | undefined)[]) {
+  const set = [...new Set(ids.filter((id): id is string => !!id))];
+  if (set.length)
+    await db.query(
+      "UPDATE items SET updated_at = now() WHERE id = ANY ($1::uuid[])",
+      [set],
+    );
+}
+
+/**
+ * Record items about to be deleted (with all their subtasks), so incremental
+ * sync can report them to whoever could see them: the owner of a personal
+ * item, or the item's team. Returns every item recorded.
+ */
+export async function recordDeletions(db: Db, ids: string[]) {
+  if (!ids.length) return [];
+  return (
+    await db.query<{
+      id: string;
+      title: string;
+      user_id: string;
+      team_id: string | null;
+    }>(
+      `WITH RECURSIVE tree (id) AS (
+         SELECT id FROM items WHERE id = ANY ($1::uuid[])
+         UNION
+         SELECT c.id FROM items c JOIN tree ON c.parent_id = tree.id),
+       recorded AS (
+         INSERT INTO deleted_items (item_id, user_id, team_id)
+         SELECT i.id, i.user_id, i.team_id FROM items i JOIN tree ON tree.id = i.id
+         ON CONFLICT (item_id) DO UPDATE SET deleted_at = now()
+         RETURNING item_id)
+       SELECT i.id, i.title, i.user_id, i.team_id
+       FROM items i JOIN recorded r ON r.item_id = i.id`,
+      [ids],
+    )
+  ).rows;
+}
+
+/**
+ * With `count_blocks_as_spent` on, completing a task adds the past time of
+ * its blocks to its time spent. Each block counts once, even if the task is
+ * reopened and completed again.
+ */
+export async function countBlocksAsSpent(
+  db: Db,
+  actorId: string,
+  itemId: string,
+) {
+  if (!(await loadPrefs(db, actorId)).count_blocks_as_spent) return;
+  await db.query(
+    `WITH counted AS (
+       UPDATE time_blocks SET counted = true
+       WHERE item_id = $1 AND NOT counted AND start_at < now()
+       RETURNING extract(epoch FROM (least(end_at, now()) - start_at)) / 60 AS minutes)
+     UPDATE items SET spent_minutes = spent_minutes
+       + coalesce((SELECT round(sum(minutes))::int FROM counted), 0)
+     WHERE id = $1`,
+    [itemId],
+  );
+}
+
+/**
+ * Move an item in its manual order: before or after another item in the
+ * same place, or to an index. The items in that place are numbered again
+ * from 0. Like checklist steps, this doesn't change the edit version.
+ */
+export async function moveItem(
+  db: Db,
+  item: ItemRow,
+  to: { before_id?: string; after_id?: string; position?: number },
+) {
+  const scope = [item.parent_id, item.list_id, item.team_id, item.user_id];
+  // One reorder at a time per place.
+  await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+    `position:${scope.map((s) => s ?? "").join(":")}`,
+  ]);
+  const order = (
+    await db.query<{ id: string }>(
+      `SELECT x.id FROM items x WHERE ${siblingsOf("$1", "$2", "$3", "$4")}
+       ORDER BY x.position, x.created_at, x.id`,
+      scope,
+    )
+  ).rows
+    .map((r) => r.id)
+    .filter((id) => id !== item.id);
+  const other = to.before_id ?? to.after_id;
+  let index: number;
+  if (other !== undefined) {
+    if (other === item.id) fail(422, "Pick another item to move it next to.");
+    const at = order.indexOf(other);
+    if (at < 0)
+      fail(422, "That item isn't in the same list, so it can't go next to it.");
+    index = to.before_id ? at : at + 1;
+  } else index = Math.min(to.position ?? 0, order.length);
+  order.splice(index, 0, item.id);
+  await db.query(
+    `UPDATE items x SET position = v.n - 1, updated_at = now()
+     FROM unnest($1::uuid[]) WITH ORDINALITY AS v (id, n)
+     WHERE x.id = v.id AND x.position IS DISTINCT FROM (v.n - 1)::int`,
+    [order],
+  );
+}
+
 async function setTags(db: Db, itemId: string, tagIds: string[]) {
   await db.query("DELETE FROM item_tags WHERE item_id = $1", [itemId]);
   if (tagIds.length)
@@ -260,14 +483,18 @@ export async function mutate(
       fail(409, "This item changed. Refresh and try again.");
     if (operation === "delete") {
       const invited = await inviteSnapshot(db, item.id);
+      // Its subtasks go with it; sync hears about every one.
+      const gone = await recordDeletions(db, [item.id]);
       await db.query("DELETE FROM items WHERE id=$1", [item_id]);
+      await touch(db, [item.parent_id]);
       if (invited)
         await queueCancellations(db, invited.item, invited.people, false);
-      await queueWebhooks(db, "item.deleted", item, {
-        id: item.id,
-        title: item.title,
-        team_id: item.team_id,
-      });
+      for (const g of [item, ...gone.filter((g) => g.id !== item!.id)])
+        await queueWebhooks(db, "item.deleted", g, {
+          id: g.id,
+          title: g.title,
+          team_id: g.team_id,
+        });
       return null;
     }
   }
@@ -279,6 +506,9 @@ export async function mutate(
     const tagIds = d.tag_ids ?? [];
     await checkPlacement(db, actor.id, d.team_id, listId, tagIds);
     await checkAssignee(db, d.team_id, d.assignee_id ?? null);
+    const parentId = d.parent_id ?? null;
+    if (parentId)
+      await checkParent(db, actor, parentId, null, d.team_id, actor.id);
     const prefs = await loadPrefs(db, actor.id);
     const allDay = d.all_day ?? false;
     // An all-day item keeps its days in the planner's zone unless it has its own.
@@ -296,10 +526,12 @@ export async function mutate(
         `INSERT INTO items (title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
            assignee_id, location, meeting_url, rrule, timezone, series_start,
-           all_day, busy, color, alerts)
+           all_day, busy, color, alerts, parent_id, position)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
-           $19,$20,$21,$22::smallint[])
+           $19,$20,$21,$22::smallint[],$23,
+           (SELECT coalesce(max(x.position), -1) + 1 FROM items x
+            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}))
          RETURNING id`,
         [
           d.title,
@@ -324,10 +556,13 @@ export async function mutate(
           d.busy ?? true,
           d.color ?? null,
           alerts,
+          parentId,
         ],
       )
     ).rows[0];
     await setTags(db, created.id, tagIds);
+    if (d.links?.length) await setLinks(db, created.id, d.links);
+    await touch(db, [parentId]);
     if (d.attendees?.length) {
       await syncAttendees(db, created.id, d.attendees);
       await queueInvites(db, created.id);
@@ -369,6 +604,30 @@ export async function mutate(
   const assignee = keep(d.assignee_id, moved ? null : current.assignee_id);
   await checkPlacement(db, owner, d.team_id, listId, tagIds);
   await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
+  // A subtask moved to another space leaves its parent, like its list.
+  const parentId =
+    d.kind === "task"
+      ? keep(d.parent_id, moved ? null : current.parent_id)
+      : null;
+  if (parentId && (parentId !== current.parent_id || moved))
+    await checkParent(db, actor, parentId, current.id, d.team_id, owner);
+  if (moved || d.kind !== "task") {
+    const children = (
+      await db.query("SELECT 1 FROM items WHERE parent_id = $1 LIMIT 1", [
+        current.id,
+      ])
+    ).rowCount;
+    if (children)
+      fail(
+        422,
+        moved
+          ? "Move or detach its subtasks first."
+          : "A task with subtasks stays a task.",
+      );
+  }
+  // A new parent, list or space puts it at the end of the order there.
+  const reorder =
+    parentId !== current.parent_id || listId !== current.list_id || moved;
   const rrule = keep(d.rrule, current.rrule);
   const allDay = keep(d.all_day, current.all_day);
   let timezone = keep(d.timezone, current.timezone);
@@ -451,9 +710,14 @@ export async function mutate(
        progress=$12, estimate_minutes=$13, list_id=$14, assignee_id=$15,
        location=$16, meeting_url=$17, rrule=$18, timezone=$19, series_start=$20,
        exdates=$21::timestamptz[], all_day=$22, busy=$23, color=$24,
-       alerts=$25::smallint[], version=version+1,
+       alerts=$25::smallint[], parent_id=$26, version=version+1,
+       position = CASE WHEN $27::boolean
+         THEN (SELECT coalesce(max(x.position), -1) + 1 FROM items x
+               WHERE ${siblingsOf("$26", "$14", "$9", "$10")} AND x.id <> $11)
+         ELSE position END,
        reminder_version = CASE WHEN due_at IS DISTINCT FROM $6::timestamptz
-         OR alerts IS DISTINCT FROM $25::smallint[] OR (status='done' AND $4 <> 'done')
+         OR alerts IS DISTINCT FROM $25::smallint[]
+         OR (status IN ('done', 'cancelled') AND $4 NOT IN ('done', 'cancelled'))
          OR team_id IS DISTINCT FROM $9::uuid
          THEN reminder_version + 1 ELSE reminder_version END,
        updated_at = now()
@@ -484,9 +748,14 @@ export async function mutate(
       keep(d.busy, current.busy),
       keep(d.color, current.color),
       alerts,
+      parentId,
+      reorder,
     ],
   );
   await setTags(db, current.id, tagIds);
+  if (d.links !== undefined) await setLinks(db, current.id, d.links);
+  if (parentId !== current.parent_id || status !== current.status)
+    await touch(db, [current.parent_id, parentId]);
 
   // Changes to single occurrences stay only while they're still occurrences.
   if (!rrule)
@@ -571,8 +840,11 @@ export async function mutate(
       [current.id],
     );
   }
-  // Time set aside for work that's finished isn't needed any more.
+  // Completing counts the blocks' past time as spent (when asked to).
   if (d.status === "done" && current.status !== "done")
+    await countBlocksAsSpent(db, actor.id, current.id);
+  // Time set aside for work that's finished or cancelled isn't needed any more.
+  if (isClosed(d.status) && !isClosed(current.status))
     await db.query(
       "DELETE FROM time_blocks WHERE item_id = $1 AND start_at > now()",
       [current.id],

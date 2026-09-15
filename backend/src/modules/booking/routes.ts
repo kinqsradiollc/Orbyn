@@ -11,6 +11,7 @@ import {
   bookingsQuery,
   bookingStatsQuery,
   dayTime,
+  DEFAULT_BOOKER_REMINDERS,
   fail,
   localDateKey,
   noShowInput,
@@ -33,6 +34,13 @@ import { encryptSecret } from "../../lib/secrets.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
 import { availableSlots, type PageRow } from "./availability.js";
 import {
+  checkCoHosts,
+  managesTeam,
+  PAGE_COLUMNS,
+  pageById,
+  pageFor,
+} from "./pages.js";
+import {
   answerLines,
   appLink,
   approve,
@@ -52,32 +60,25 @@ import {
  * and track every booking in one inbox. Public routes only ever see free
  * times and the booker's own booking.
  */
-const PAGE_COLUMNS = `p.id, p.owner_id, p.slug, p.title, p.description, p.durations, p.window_days,
-  p.min_notice_minutes, p.buffer_before_minutes, p.buffer_after_minutes, p.slot_interval_minutes,
-  p.max_per_day, p.max_per_week, p.location, p.meeting_url, p.active, p.color, p.availability,
-  p.date_overrides, p.questions, p.requires_approval, p.allow_reschedule, p.event_title,
-  p.confirmation_message, p.created_at, p.updated_at,
-  coalesce((SELECT json_agg(json_build_object('user_id', h.user_id, 'name', u.name, 'required', h.required)
-                            ORDER BY h.required DESC, u.name)
-            FROM booking_hosts h JOIN users u ON u.id = h.user_id WHERE h.page_id = p.id), '[]') AS hosts,
-  json_build_object(
-    'upcoming', (SELECT count(*)::int FROM bookings b
-                 WHERE b.page_id = p.id AND b.status = 'confirmed' AND b.end_at >= now()),
-    'needs_approval', (SELECT count(*)::int FROM bookings b
-                       WHERE b.page_id = p.id AND b.status = 'awaiting_approval' AND b.hold_until > now())
-  ) AS counts`;
+/** Pages `$1` owns, hosts, or manages as an owner or admin of the page's team. */
+const MY_PAGES = `SELECT id FROM booking_pages WHERE owner_id = $1
+  UNION SELECT page_id FROM booking_hosts WHERE user_id = $1
+  UNION SELECT bp.id FROM booking_pages bp JOIN team_members tm
+    ON tm.team_id = bp.team_id AND tm.user_id = $1 AND tm.role IN ('owner', 'admin')`;
 
-/** Bookings on pages `$1` owns or hosts. */
-const MINE = `b.page_id IN (SELECT id FROM booking_pages WHERE owner_id = $1
-                            UNION SELECT page_id FROM booking_hosts WHERE user_id = $1)`;
+/** Bookings on pages `$1` owns, hosts or manages, and from open invites they host. */
+const MINE = `(b.page_id IN (${MY_PAGES})
+  OR b.invite_id IN (SELECT id FROM open_invites WHERE owner_id = $1 OR $1 = ANY (co_host_ids)))`;
 
-const BOOKING_SELECT = `SELECT b.id, b.page_id, p.title AS page_title, p.slug AS page_slug,
+const BOOKING_SELECT = `SELECT b.id, b.page_id, b.invite_id,
+  coalesce(p.title, oi.title) AS page_title, coalesce(p.slug, '') AS page_slug,
   b.start_at, b.end_at, b.name, b.email, b.note, b.answers,
   CASE WHEN b.status IN ('pending', 'awaiting_approval') AND b.hold_until <= now()
        THEN 'expired' ELSE b.status END AS status,
   b.no_show, b.host_note, b.cancel_reason, b.cancelled_by, b.reschedule_count, b.timezone,
   b.created_at, b.updated_at
-  FROM bookings b JOIN booking_pages p ON p.id = b.page_id`;
+  FROM bookings b LEFT JOIN booking_pages p ON p.id = b.page_id
+  LEFT JOIN open_invites oi ON oi.id = b.invite_id`;
 
 const VIEWS: Record<BookingView, { where: string; order: string }> = {
   upcoming: {
@@ -106,15 +107,6 @@ const taken = (error: unknown) =>
     ? fail(409, SLUG_TAKEN)
     : Promise.reject(error);
 
-async function pageById(db: Queryable, id: string) {
-  return (
-    await db.query<PageRow>(
-      `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.id = $1`,
-      [id],
-    )
-  ).rows[0];
-}
-
 async function pageBySlug(db: Queryable, slug: string) {
   return (
     await db.query<PageRow>(
@@ -124,7 +116,19 @@ async function pageBySlug(db: Queryable, slug: string) {
   ).rows[0];
 }
 
-/** Owners manage a page; any host can see and act on its bookings. */
+/**
+ * Who may edit a page: its owner, or an owner or admin of the page's team.
+ * Who may see and act on its bookings: those, and its hosts. An open
+ * invite's owner and co-hosts are its hosts.
+ */
+async function canEdit(db: Queryable, page: PageRow, u: UserRow) {
+  if (page.owner_id === u.id) return true;
+  return !!page.team_id && (await managesTeam(db, page.team_id, u.id));
+}
+const canHost = async (db: Queryable, page: PageRow, u: UserRow) =>
+  page.hosts.some((h) => h.user_id === u.id) || (await canEdit(db, page, u));
+
+/** A page `u` may edit (`owner`), or whose bookings they may act on. */
 async function requirePage(
   db: Queryable,
   id: string,
@@ -134,27 +138,30 @@ async function requirePage(
   const page = await pageById(db, id);
   if (
     !page ||
-    (owner
-      ? page.owner_id !== u.id
-      : !page.hosts.some((h) => h.user_id === u.id))
+    !(owner ? await canEdit(db, page, u) : await canHost(db, page, u))
   )
     fail(404, "Booking page not found");
   return page;
 }
 
-/** Co-hosts must share a team with the owner. */
-async function checkCoHosts(db: Db, ownerId: string, ids: string[]) {
-  const others = [...new Set(ids.filter((id) => id !== ownerId))];
-  if (!others.length) return;
-  const ok = (
-    await db.query<{ n: number }>(
-      `SELECT count(DISTINCT m.user_id)::int AS n FROM team_members m
-       WHERE m.user_id = ANY ($2::uuid[])
-         AND m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`,
-      [ownerId, others],
-    )
-  ).rows[0].n;
-  if (ok !== others.length) fail(422, "Co-hosts must be in one of your teams.");
+/** The page or open invite of a booking `u` may act on. */
+async function requireBookingPage(
+  db: Queryable,
+  booking: { page_id: string | null; invite_id: string | null },
+  u: UserRow,
+) {
+  const page = await pageFor(db, booking);
+  if (!page || !(await canHost(db, page, u))) fail(404, "Booking not found");
+  return page;
+}
+
+/** Only an owner or admin of a team can make or take a page into it. */
+async function requireTeamManager(db: Queryable, teamId: string, u: UserRow) {
+  if (!(await managesTeam(db, teamId, u.id)))
+    fail(
+      403,
+      "Only the team's owners and admins can manage its booking pages.",
+    );
 }
 
 async function setHosts(
@@ -176,7 +183,14 @@ async function setHosts(
 
 type PageFields = Omit<
   BookingPage,
-  "id" | "owner_id" | "hosts" | "counts" | "created_at" | "updated_at"
+  | "id"
+  | "owner_id"
+  | "hosts"
+  | "counts"
+  | "created_at"
+  | "updated_at"
+  | "team_name"
+  | "can_edit"
 >;
 
 /** Every stored page column, in the order the queries below use. */
@@ -205,6 +219,8 @@ const pageValues = (p: PageFields) => [
   p.allow_reschedule,
   p.event_title,
   p.confirmation_message,
+  p.team_id ?? null,
+  p.remind_before_minutes ?? DEFAULT_BOOKER_REMINDERS,
 ];
 
 /** Lock a booking that `u` can act on, with its page. */
@@ -216,21 +232,18 @@ async function bookingFor(db: Db, id: string, u: UserRow) {
     )
   ).rows[0];
   if (!booking) fail(404, "Booking not found");
-  const page = await requirePage(db, booking.page_id, u, false).catch(() =>
-    fail(404, "Booking not found"),
-  );
+  const page = await requireBookingPage(db, booking, u);
   await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [page.id]);
   return { booking, page };
 }
 
 async function detail(db: Queryable, id: string): Promise<BookingDetail> {
   const row = (
-    await db.query<Booking & { page_id: string }>(
-      `${BOOKING_SELECT} WHERE b.id = $1`,
-      [id],
-    )
+    await db.query<
+      Booking & { page_id: string | null; invite_id: string | null }
+    >(`${BOOKING_SELECT} WHERE b.id = $1`, [id])
   ).rows[0];
-  const page = (await pageById(db, row.page_id))!;
+  const page = (await pageFor(db, row))!;
   const events = (
     await db.query<BookingDetail["events"][number]>(
       `SELECT e.id, e.kind, e.actor, u.name AS actor_name, e.detail, e.created_at
@@ -318,7 +331,7 @@ async function managed(db: Db, token: string) {
       404,
       "This link isn't valid. Check the latest email about your booking.",
     );
-  const page = (await pageById(db, booking.page_id))!;
+  const page = (await pageFor(db, booking))!;
   return { booking, page };
 }
 
@@ -352,6 +365,7 @@ function managedView(booking: BookingRow, page: PageRow): ManagedBooking {
       location: page.location,
       has_meeting_link: !!page.meeting_url,
       hosts: page.hosts.map((h) => h.name),
+      invite: !!page.invite,
     },
     can_reschedule: open && page.allow_reschedule && booking.start_at > now,
     can_cancel: open,
@@ -364,12 +378,17 @@ const tokenParam = (params: unknown) =>
 export async function bookingRoutes(app: FastifyInstance) {
   // ---- managing pages (signed in) ----------------------------------------------
 
+  // Your pages, pages you host, and your teams' pages.
   app.get("/booking-pages", async (r) => {
     const u = await authenticate(r);
     return (
       await reader(r.headers).query<BookingPage>(
-        `SELECT ${PAGE_COLUMNS} FROM booking_pages p
+        `SELECT ${PAGE_COLUMNS},
+           (p.owner_id = $1 OR p.team_id IN (SELECT team_id FROM team_members
+              WHERE user_id = $1 AND role IN ('owner', 'admin'))) AS can_edit
+         FROM booking_pages p
          WHERE p.owner_id = $1 OR p.id IN (SELECT page_id FROM booking_hosts WHERE user_id = $1)
+           OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
          ORDER BY p.created_at DESC`,
         [u.id],
       )
@@ -380,10 +399,12 @@ export async function bookingRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = bookingPageInput.parse(r.body);
     const page = await transaction(async (db) => {
+      if (d.team_id) await requireTeamManager(db, d.team_id, u);
       await checkCoHosts(
         db,
         u.id,
         d.co_hosts.map((h) => h.user_id),
+        d.team_id,
       );
       const fields: PageFields = {
         ...d,
@@ -397,15 +418,17 @@ export async function bookingRoutes(app: FastifyInstance) {
                window_days, min_notice_minutes, buffer_before_minutes, buffer_after_minutes,
                slot_interval_minutes, max_per_day, max_per_week, location, meeting_url, active,
                color, availability, date_overrides, questions, requires_approval,
-               allow_reschedule, event_title, confirmation_message)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+               allow_reschedule, event_title, confirmation_message, team_id,
+               remind_before_minutes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+               $24,$25::smallint[])
              RETURNING id`,
             [u.id, ...pageValues(fields)],
           )
           .catch(taken)
       ).rows[0];
       await setHosts(db, id, u.id, d.co_hosts);
-      return pageById(db, id);
+      return { ...(await pageById(db, id)), can_edit: true };
     });
     reply.code(201);
     return page;
@@ -416,14 +439,23 @@ export async function bookingRoutes(app: FastifyInstance) {
     const d = bookingPageUpdate.parse(r.body);
     return transaction(async (db) => {
       const current = await requirePage(db, idParam(r), u, true);
-      if (d.co_hosts)
-        await checkCoHosts(
-          db,
-          u.id,
-          d.co_hosts.map((h) => h.user_id),
-        );
       const { buffer_minutes, co_hosts, ...changes } = d;
       const next: PageFields = { ...current, ...changes };
+      const team = next.team_id ?? null;
+      // Taking a page into a team needs its owner or admin role there; making
+      // a team's page personal again is for its owner.
+      if (team !== (current.team_id ?? null)) {
+        if (team) await requireTeamManager(db, team, u);
+        else if (current.owner_id !== u.id)
+          fail(403, "Only the page's owner can take it out of the team.");
+      }
+      if (co_hosts || team !== (current.team_id ?? null))
+        await checkCoHosts(
+          db,
+          current.owner_id,
+          (co_hosts ?? current.hosts).map((h) => h.user_id),
+          team,
+        );
       if (buffer_minutes !== undefined) {
         next.buffer_before_minutes = d.buffer_before_minutes ?? buffer_minutes;
         next.buffer_after_minutes = d.buffer_after_minutes ?? buffer_minutes;
@@ -435,13 +467,14 @@ export async function bookingRoutes(app: FastifyInstance) {
              buffer_after_minutes=$9, slot_interval_minutes=$10, max_per_day=$11,
              max_per_week=$12, location=$13, meeting_url=$14, active=$15, color=$16,
              availability=$17, date_overrides=$18, questions=$19, requires_approval=$20,
-             allow_reschedule=$21, event_title=$22, confirmation_message=$23, updated_at=now()
+             allow_reschedule=$21, event_title=$22, confirmation_message=$23,
+             team_id=$24, remind_before_minutes=$25::smallint[], updated_at=now()
            WHERE id=$1`,
           [current.id, ...pageValues(next)],
         )
         .catch(taken);
-      if (co_hosts) await setHosts(db, current.id, u.id, co_hosts);
-      return pageById(db, current.id);
+      if (co_hosts) await setHosts(db, current.id, current.owner_id, co_hosts);
+      return { ...(await pageById(db, current.id)), can_edit: true };
     });
   });
 
@@ -549,7 +582,7 @@ export async function bookingRoutes(app: FastifyInstance) {
            count(b.id) FILTER (WHERE b.status = 'awaiting_approval' AND b.hold_until > now())::int AS needs_approval,
            count(b.id)::int AS total
          FROM booking_pages p LEFT JOIN bookings b ON b.page_id = p.id
-         WHERE p.owner_id = $1 OR p.id IN (SELECT page_id FROM booking_hosts WHERE user_id = $1)
+         WHERE p.id IN (${MY_PAGES})
          GROUP BY p.id ORDER BY p.created_at DESC`,
         [u.id],
       )
@@ -573,7 +606,7 @@ export async function bookingRoutes(app: FastifyInstance) {
       await reader(r.headers).query<
         Booking & { questions: PageRow["questions"] }
       >(
-        `${BOOKING_SELECT.replace("SELECT b.id", "SELECT p.questions, b.id")}
+        `${BOOKING_SELECT.replace("SELECT b.id", "SELECT coalesce(p.questions, '[]') AS questions, b.id")}
          WHERE ${MINE} AND ${view.where} AND ($2::uuid IS NULL OR b.page_id = $2)
          ORDER BY ${view.order}, b.id LIMIT 5000`,
         [u.id, q.page_id ?? null],
@@ -629,15 +662,13 @@ export async function bookingRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const db = reader(r.headers);
     const row = (
-      await db.query<{ page_id: string }>(
-        "SELECT page_id FROM bookings WHERE id = $1",
+      await db.query<{ page_id: string | null; invite_id: string | null }>(
+        "SELECT page_id, invite_id FROM bookings WHERE id = $1",
         [id],
       )
     ).rows[0];
     if (!row) fail(404, "Booking not found");
-    await requirePage(db, row.page_id, u, false).catch(() =>
-      fail(404, "Booking not found"),
-    );
+    await requireBookingPage(db, row, u);
     return detail(db, id);
   });
 
@@ -653,9 +684,7 @@ export async function bookingRoutes(app: FastifyInstance) {
       ])
     ).rows[0];
     if (!booking) fail(404, "Booking not found");
-    const page = await requirePage(db, booking.page_id, u, false).catch(() =>
-      fail(404, "Booking not found"),
-    );
+    const page = await requireBookingPage(db, booking, u);
     const duration = Math.round(
       (booking.end_at.getTime() - booking.start_at.getTime()) / 60_000,
     );
@@ -875,7 +904,7 @@ export async function bookingRoutes(app: FastifyInstance) {
           fail(404, "This link has already been used or isn't valid.");
         if (booking.status !== "pending" || booking.hold_until <= new Date())
           fail(410, "This booking expired. Book again.");
-        const page = await pageById(db, booking.page_id);
+        const page = await pageFor(db, booking);
         if (!page?.active) fail(404, "This booking page is switched off.");
         await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [page.id]);
         await logEvent(db, booking.id, "email_confirmed", { actor: "booker" });
@@ -960,7 +989,7 @@ export async function bookingRoutes(app: FastifyInstance) {
           404,
           "This booking was already cancelled or the link isn't valid.",
         );
-      const page = (await pageById(db, booking.page_id))!;
+      const page = (await pageFor(db, booking))!;
       await cancel(db, booking, page, { actor: "booker" }, "");
       return { cancelled: true };
     });

@@ -88,6 +88,17 @@ data:
         proxy_pass http://orbyn_api/;
       }
 
+      # Public booking, invite, profile and RSVP pages may be embedded in
+      # other sites (an iframe) and aren't for search engines; every other
+      # page stays unframeable (X-Frame-Options above).
+      location ~ ^/(book|invite|u|rsvp)/ {
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header Content-Security-Policy "frame-ancestors *" always;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        try_files /index.html =404;
+      }
+
       location / {
         try_files $uri $uri/ /index.html;
       }

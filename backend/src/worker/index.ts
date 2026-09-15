@@ -9,6 +9,7 @@ import {
   scanPlanningNotices,
 } from "./planning.js";
 import { deliverWebhookOne } from "./webhooks.js";
+import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 
 /** Planner upkeep runs at most this often. */
@@ -51,6 +52,9 @@ export async function runWorker() {
         if (Date.now() - lastPlanning >= PLANNING_MS) {
           await advanceRepeating();
           await scanConflicts();
+          // Scheduled webhook events: event.starting and block.started.
+          await scanEventStarting();
+          await scanBlocksStarted();
           lastPlanning = Date.now();
         }
         if (Date.now() - lastNotices >= NOTICES_MS) {

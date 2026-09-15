@@ -45,6 +45,7 @@ import {
   derivedBlocks,
   loadPlaces,
   loadPrefs,
+  PLACE_COLUMNS,
   timeBlocks,
 } from "./calendar.js";
 import {
@@ -180,14 +181,18 @@ export async function plannerRoutes(app: FastifyInstance) {
            pad_percent, split_after_minutes, min_block_minutes, break_level, horizon_days,
            buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
            default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
-           deadline_notice_days, planner_notices, default_alerts, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, now())
+           deadline_notice_days, planner_notices, default_alerts, count_blocks_as_spent,
+           buffer_scope, travel_padding_minutes, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+           $21,$22,$23, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
            buffer_after_minutes=$12, adaptive_buffers=$13, default_travel_minutes=$14,
            extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17,
-           deadline_notice_days=$18, planner_notices=$19, default_alerts=$20, updated_at=now()`,
+           deadline_notice_days=$18, planner_notices=$19, default_alerts=$20,
+           count_blocks_as_spent=$21, buffer_scope=$22, travel_padding_minutes=$23,
+           updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -209,6 +214,9 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.deadline_notice_days,
           JSON.stringify(next.planner_notices),
           JSON.stringify(next.default_alerts),
+          next.count_blocks_as_spent ?? false,
+          JSON.stringify(next.buffer_scope),
+          next.travel_padding_minutes ?? 0,
         ],
       );
       return loadPrefs(db, u.id);
@@ -343,9 +351,9 @@ export async function plannerRoutes(app: FastifyInstance) {
     const d = placeInput.parse(r.body);
     const place = (
       await pool.query<Place>(
-        `INSERT INTO places (user_id, label, match, travel_minutes) VALUES ($1, $2, $3, $4)
-         RETURNING id, label, match, travel_minutes`,
-        [u.id, d.label, d.match, d.travel_minutes],
+        `INSERT INTO places (user_id, label, match, travel_minutes, mode, peak_minutes)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${PLACE_COLUMNS}`,
+        [u.id, d.label, d.match, d.travel_minutes, d.mode, d.peak_minutes],
       )
     ).rows[0];
     reply.code(201);
@@ -358,14 +366,20 @@ export async function plannerRoutes(app: FastifyInstance) {
     const place = (
       await pool.query<Place>(
         `UPDATE places SET label = coalesce($3, label), match = coalesce($4, match),
-           travel_minutes = coalesce($5, travel_minutes)
-         WHERE id = $1 AND user_id = $2 RETURNING id, label, match, travel_minutes`,
+           travel_minutes = coalesce($5, travel_minutes),
+           mode = CASE WHEN $6 THEN $7 ELSE mode END,
+           peak_minutes = CASE WHEN $8 THEN $9::smallint ELSE peak_minutes END
+         WHERE id = $1 AND user_id = $2 RETURNING ${PLACE_COLUMNS}`,
         [
           idParam(r),
           u.id,
           d.label ?? null,
           d.match ?? null,
           d.travel_minutes ?? null,
+          d.mode !== undefined,
+          d.mode ?? null,
+          d.peak_minutes !== undefined,
+          d.peak_minutes ?? null,
         ],
       )
     ).rows[0];
@@ -584,7 +598,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     const block = await transaction(async (db) => {
       const b = await ownBlock(db, idParam(r), u.id);
       const open = await db.query(
-        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status <> 'done' AND ${VISIBLE_ITEMS}`,
+        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
         [u.id, b.item_id],
       );
       if (!open.rowCount) fail(409, "This task is done or no longer yours.");
@@ -688,7 +702,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           (x) => x.start_at < b.end_at && b.start_at < x.end_at,
         );
         const open = await db.query(
-          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status <> 'done' AND ${VISIBLE_ITEMS}`,
+          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
           [u.id, b.item_id],
         );
         if (clash || !open.rowCount) {

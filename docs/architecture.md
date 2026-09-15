@@ -71,6 +71,9 @@ rate limited separately from the rest of the API.
 | `item_overrides`                                               | One occurrence of a repeating item changed on its own, keyed by its original start.             |
 | `item_attendees`                                               | People invited to an event by email, their answer, and their RSVP token (hashed and encrypted). |
 | `calendar_subscriptions`, `external_events`                    | Calendars read by ICS link, and their events as last fetched (read-only).                       |
+| `item_links`                                                   | Web links on a task, in order.                                                                  |
+| `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                 |
+| `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.      |
 | `migrations`                                                   | Applied migration file names.                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
@@ -137,6 +140,14 @@ team it leaves.
 changes (or the current occurrence is changed or removed on its own). Editing a title or notes does not resend a reminder that was already delivered. Reminder
 text shows the due time in each recipient's planner time zone (`orbyn_local_time()`, which falls
 back to UTC for a zone Postgres doesn't know).
+
+Reminders to bookers use the email lane too (`booker_reminder`, never in the app): each cycle
+queues, for every confirmed booking starting within 8 days, the latest of its page's (or open
+invite's) `remind_before_minutes` whose time has come and hadn't yet when it was booked. The
+`ref` is `<booking>:<start>:<minutes>`, unique among booker reminders, so each goes once per
+booking, start time and value. The email is written at delivery (`bookerReminder()`), so it
+carries the current manage link without storing it, and is cancelled when the booking was
+cancelled or moved, has started, or SMTP is gone.
 
 Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) use the same outbox and lanes.
 They are always in-app, and go to push and email when the person's `planner_notices` preference
@@ -330,6 +341,24 @@ other calendars only through their ICS links.
   the outbox's unique keys, and delivered like conflicts.
 - **Blocks**: besides moving and rescheduling, a block can be duplicated at a chosen time or into
   the next free working time after it, for another session on the same task.
+- **Subtasks and order** (`modules/items/service.ts`): a subtask is a task with a `parent_id`
+  in the same space as its parent, three levels at most and without loops (`checkParent()`, on
+  every write through `mutate()`). Deleting a task deletes its subtasks. The planner, at-risk and
+  due-soon notices and team workload all count a task's own work with `remainingOf()`
+  (`scheduler.ts`): while it has open subtasks, only what its estimate has beyond theirs, so the
+  work counted is the larger of the two and never both. Manual order (`position`) is kept per
+  place (the parent, else the list, else the space); `moveItem()` renumbers a place under an
+  advisory lock and, like checklist steps, leaves `version` alone.
+- **Closed tasks**: `done` and `cancelled` both close a task (`isClosed()` in `@orbyn/core`):
+  the planner, busy time, reminders, notices, scores and counts treat them alike. Only completing
+  counts progress, fires `item.completed`, moves a repeating task on and, with
+  `count_blocks_as_spent`, adds its blocks' past time to `spent_minutes` (each block once, marked
+  `counted`).
+- **Buffers and travel**: `derivedBlocks()` gives buffers only to events in the person's
+  `buffer_scope` (personal, teams, lists, a minimum length, meetings with others: invitees, a
+  meeting link or a team), and times each travel leg with the place's `peak_minutes` when it
+  touches weekday peak hours (07:00–09:00, 16:00–18:00 local), plus `travel_padding_minutes`.
+  A place's `mode` is only a label; there's no routing service.
 - **Team time**: availability returns busy intervals only; workload compares each member's free
   working time with the estimates of this team's open tasks assigned to them, and lists the tasks
   at risk (those due soonest take the free time first); meeting suggestions intersect everyone's
@@ -343,11 +372,30 @@ other calendars only through their ICS links.
   reschedule): each lands on `booking_events`, the confirmed booking becomes an event on each
   host's calendar through `mutate()`, and moves update those events in place. Bookers manage a
   booking through one link whose token is kept encrypted, so every email repeats it.
+- **Open invites, team pages and profiles** (`booking/invites.ts`, `pages.ts`, `profile.ts`): an
+  open invite stands in for a page (`inviteAsPage()`) whose hours are its windows, so the same
+  booking steps, manage link, timeline, webhooks and inbox serve it; `availableSlots()` gives an
+  invite the windows minus every host's busy time, on the quarter hour. Picking a time books it
+  in the same transaction under the invite's advisory lock; a booker cancelling reopens it, and
+  the notifier marks it expired at `expires_at`. A page with a `team_id` is managed by the team's
+  owners and admins and hosted by its members. `/u/<handle>` lists the active pages someone owns
+  or hosts. Public booking, invite, profile and RSVP responses carry `X-Robots-Tag: noindex`, and
+  only those web pages may be framed (the web container's nginx).
 - **API keys and webhooks**: keys (`ok_…`) are stored hashed and act as their owner, except in
   the admin console. Webhook events are queued in the same transaction as the change (so a
   rolled-back change sends nothing) and delivered by the notifier's lanes with an HMAC-SHA256
   signature and backoff. Webhook URLs must resolve to public addresses, checked on save and before
   every delivery (`lib/netguard.ts`), so users can't make the server call its own network.
+  `event.starting` and `block.started` are found by the notifier every minute
+  (`worker/webhookEvents.ts`) and `task.at_risk` comes with the at-risk notice; a delivery's
+  `dedupe_key` (unique per webhook) keeps each to once per occurrence, block start or task and
+  day. Rate limits count API-key requests per key (its id, looked up once a minute) and others per
+  address, with `RateLimit-*` headers. `GET /openapi.yaml` serves `docs/openapi.yaml`.
+- **Incremental sync**: `GET /items?updated_after=` reads items by `(updated_at, id)` from a
+  cursor holding the exact microsecond, merged with `deleted_items`, the tombstones `mutate()` (and
+  booking cancellations) write before deleting, with the audience at the time. Changes that
+  don't touch the version (steps, time logged, order, a subtask's status on its parent) still move
+  `updated_at`, so sync sees them.
 - **Events**: all-day items store local midnights in their zone (their end is the midnight after
   the last day, counted in days so daylight saving can't move it) and are never busy; events
   marked free aren't either, and neither gets buffers or travel. `busyIntervals()` is where both

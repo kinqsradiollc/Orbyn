@@ -36,6 +36,7 @@ import {
 import { loadFrames } from "./frames.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
+  remainingOf,
   schedule,
   type SchedulerResult,
   type SchedulerTask,
@@ -71,6 +72,17 @@ const stateOf = (d: Partial<PlanState>): PlanState => ({
 type Candidate = SchedulerTask & { version: number };
 
 /**
+ * A task's open subtasks and the minutes they still need (on alias `i`), so
+ * a parent's own estimate isn't counted on top of them (`remainingOf`).
+ */
+export const CHILD_COLUMNS = `
+  (SELECT count(*)::int FROM items c
+   WHERE c.parent_id = i.id AND c.status NOT IN ('done', 'cancelled')) AS open_children,
+  coalesce((SELECT sum(greatest(0, coalesce(c.estimate_minutes, ${DEFAULT_ESTIMATE_MINUTES}) - c.spent_minutes))
+            FROM items c WHERE c.parent_id = i.id AND c.status NOT IN ('done', 'cancelled')), 0)::int
+    AS children_remaining`;
+
+/**
  * Open tasks the planner considers: your personal tasks and team tasks
  * assigned to you, narrowed by `scope`. Naming tasks (`only`) lets it plan
  * any task you can see; `include` adds tasks you can see to either.
@@ -93,9 +105,10 @@ async function candidateTasks(
               coalesce((SELECT sum(extract(epoch FROM (b.end_at - greatest(b.start_at, now()))) / 60)
                         FROM time_blocks b
                         WHERE b.item_id = i.id AND b.user_id = $1 AND b.end_at > now()), 0)::int
-                AS scheduled_minutes
+                AS scheduled_minutes,
+              ${CHILD_COLUMNS}
        FROM items i
-       WHERE i.kind = 'task' AND i.status <> 'done' AND (
+       WHERE i.kind = 'task' AND i.status NOT IN ('done', 'cancelled') AND (
          (i.id = ANY ($3::uuid[]) AND ${VISIBLE_ITEMS})
          OR CASE WHEN $2::uuid[] IS NULL
            THEN (($4::boolean AND i.team_id IS NULL AND i.user_id = $1)
@@ -215,6 +228,8 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
             t.list_id,
             t.team_id,
             t.tag_ids,
+            t.open_children,
+            t.children_remaining,
           ]),
       }),
     )
@@ -343,9 +358,7 @@ function planTasks(
       );
     const estimate = state.estimates[t.id] ?? t.estimate_minutes;
     const remaining =
-      (estimate ?? DEFAULT_ESTIMATE_MINUTES) -
-      t.spent_minutes -
-      t.scheduled_minutes;
+      remainingOf({ ...t, estimate_minutes: estimate }) - t.scheduled_minutes;
     const unplaced = result.unplaced.find((u) => u.item_id === t.id);
     const included = !excluded.has(t.id);
     let reason: string | null = null;
@@ -669,7 +682,7 @@ export async function unfinishedBlocks(
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.end_at < $2 AND b.end_at > $2 - interval '14 days'
-         AND i.status <> 'done' AND ${VISIBLE_ITEMS}
+         AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}
          AND NOT EXISTS (SELECT 1 FROM time_blocks f
                          WHERE f.item_id = b.item_id AND f.user_id = $1 AND f.start_at >= $2)
        ORDER BY b.start_at`,
@@ -710,11 +723,7 @@ export async function atRiskFor(
   const atRisk: AtRiskTask[] = [];
   for (const t of due) {
     const dueAt = Date.parse(t.due_at!);
-    const estimate = t.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES;
-    const remaining = Math.max(
-      0,
-      estimate - t.spent_minutes - t.scheduled_minutes,
-    );
+    const remaining = Math.max(0, remainingOf(t) - t.scheduled_minutes);
     if (!remaining) continue;
     const freeMinutes = Math.round(
       free.reduce(

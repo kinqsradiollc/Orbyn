@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
   editScopeQuery,
   fail,
+  isClosed,
   itemData,
+  itemPositionInput,
   itemsQuery,
   parseQuickAdd,
   priorityScore,
@@ -15,6 +17,7 @@ import {
   timeLogInput,
   type ItemDetail,
   type ItemSort,
+  type ItemSyncPage,
   type OccurrenceChanges,
   type QuickAddCreated,
   type QuickAddList,
@@ -35,9 +38,12 @@ import {
   skipOccurrence,
 } from "./occurrences.js";
 import {
+  countBlocksAsSpent,
   ITEM_COLUMNS,
   ITEM_FROM,
+  loadItem,
   lockItem,
+  moveItem,
   mutate,
   recomputeProgress,
   requireItemAccess,
@@ -95,7 +101,13 @@ export async function itemDetail(
     ...o.data,
     occurrence: o.occurrence.toISOString(),
   }));
-  return { ...item, steps, updates, attendees, overrides };
+  const links = (
+    await run(
+      "SELECT id, url, title, position FROM item_links WHERE item_id = $1 ORDER BY position, id",
+      [id],
+    )
+  ).rows;
+  return { ...item, steps, updates, attendees, overrides, links };
 }
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
@@ -107,7 +119,29 @@ const ORDER: Record<Exclude<ItemSort, "score">, string> = {
     "CASE i.priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC, i.due_at NULLS LAST, i.id",
   estimate: "i.estimate_minutes NULLS LAST, i.due_at NULLS LAST, i.id",
   title: "lower(i.title), i.id",
+  position: "i.position, i.created_at, i.id",
 };
+
+/**
+ * A place in the change history: a time in microseconds since 1970 and an
+ * id, so items changed in the same microsecond keep a stable order.
+ */
+type SyncPoint = { us: bigint; id: string };
+const LAST_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+const encodeCursor = (p: SyncPoint) =>
+  Buffer.from(`${p.us}.${p.id}`).toString("base64url");
+function decodeCursor(cursor: string): SyncPoint {
+  const [us, id] = Buffer.from(cursor, "base64url").toString().split(".");
+  if (!/^\d{1,20}$/.test(us ?? "") || !z.uuid().safeParse(id).success)
+    fail(422, "That cursor isn't valid. Start again with updated_after.");
+  return { us: BigInt(us), id };
+}
+/** A row's place in the change history, from Postgres to the microsecond. */
+const SYNC_US = (column: string) =>
+  `(extract(epoch FROM ${column}) * 1000000)::bigint::text AS sync_us`;
+/** "Changed after this point", on a time column and an id column. */
+const AFTER = (time: string, id: string, us: string, after: string) =>
+  `(${time}, ${id}) > (timestamptz 'epoch' + ${us}::bigint * interval '1 microsecond', ${after}::uuid)`;
 /** Most items a score-sorted list ranks before taking the page asked for. */
 const MAX_SCORED = 5000;
 
@@ -122,9 +156,9 @@ type ScoreRow = {
   created_at: Date | string;
 };
 
-/** The priority score of an open task; null for events and finished tasks. */
+/** The priority score of an open task; null for events and closed tasks. */
 const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
-  i.kind === "task" && i.status !== "done"
+  i.kind === "task" && !isClosed(i.status)
     ? priorityScore(
         { ...i, due_at: i.due_at ? new Date(i.due_at).toISOString() : null },
         now,
@@ -147,7 +181,8 @@ export async function itemRoutes(app: FastifyInstance) {
            AND ($3::uuid IS NULL OR i.list_id=$3)
            AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$4))
            AND ($5::uuid IS NULL OR i.assignee_id=$5)
-           AND NOT EXISTS (SELECT 1 FROM unnest($6::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)`;
+           AND NOT EXISTS (SELECT 1 FROM unnest($6::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)
+           AND ($7::uuid IS NULL OR i.parent_id=$7)`;
     const filters = [
       u.id,
       q.team_id ?? null,
@@ -155,10 +190,83 @@ export async function itemRoutes(app: FastifyInstance) {
       q.tag_id ?? null,
       q.assignee_id ?? null,
       words,
+      q.parent_id ?? null,
     ];
     const now = new Date();
     let rows: (ScoreRow & Record<string, unknown>)[];
     let slot: number | null = null;
+    const withScores = async (list: typeof rows) => {
+      // The score's size term needs today's largest free slot; only look it
+      // up when there's an open task to score.
+      if (
+        slot === null &&
+        list.some((i) => i.kind === "task" && !isClosed(i.status))
+      )
+        slot = await largestFreeMinutes(db, u.id, now);
+      return list.map((i) => ({ ...i, score: scoreOf(i, now, slot ?? 0) }));
+    };
+
+    // Incremental sync: what changed after a point, oldest change first, with
+    // deleted items as tombstones, and a cursor to carry on from.
+    if (q.updated_after || q.cursor) {
+      const from: SyncPoint = q.cursor
+        ? decodeCursor(q.cursor)
+        : { us: BigInt(Date.parse(q.updated_after!)) * 1000n, id: LAST_ID };
+      const changed = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS}, ${SYNC_US("i.updated_at")} FROM ${ITEM_FROM}
+           WHERE ${where} AND ${AFTER("i.updated_at", "i.id", "$8", "$9")}
+           ORDER BY i.updated_at, i.id LIMIT $10`,
+          [...filters, from.us.toString(), from.id, q.limit + 1],
+        )
+      ).rows as (ScoreRow & { sync_us: string } & Record<string, unknown>)[];
+      const deleted = q.include_deleted
+        ? (
+            await db.query<{ id: string; deleted_at: Date; sync_us: string }>(
+              `SELECT d.item_id AS id, d.deleted_at, ${SYNC_US("d.deleted_at")}
+               FROM deleted_items d
+               WHERE ((d.team_id IS NULL AND d.user_id = $1)
+                   OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+                 AND ($2::uuid IS NULL OR d.team_id = $2)
+                 AND ${AFTER("d.deleted_at", "d.item_id", "$3", "$4")}
+               ORDER BY d.deleted_at, d.item_id LIMIT $5`,
+              [
+                u.id,
+                q.team_id ?? null,
+                from.us.toString(),
+                from.id,
+                q.limit + 1,
+              ],
+            )
+          ).rows
+        : [];
+      // One stream in change order; a page takes the first `limit` of it.
+      const stream = [
+        ...changed.map(({ sync_us, ...item }) => ({
+          at: BigInt(sync_us),
+          id: item.id,
+          item,
+        })),
+        ...deleted.map((d) => ({
+          at: BigInt(d.sync_us),
+          id: d.id,
+          gone: { id: d.id, deleted_at: new Date(d.deleted_at).toISOString() },
+        })),
+      ].sort((a, b) =>
+        a.at === b.at ? a.id.localeCompare(b.id) : a.at < b.at ? -1 : 1,
+      );
+      const page = stream.slice(0, q.limit);
+      const last = page.at(-1);
+      return {
+        items: await withScores(
+          page.flatMap((p) => ("item" in p ? [p.item] : [])),
+        ),
+        deleted: page.flatMap((p) => ("gone" in p ? [p.gone] : [])),
+        next_cursor: encodeCursor(last ? { us: last.at, id: last.id } : from),
+        has_more: stream.length > q.limit,
+      } as unknown as ItemSyncPage;
+    }
+
     if (q.sort === "score") {
       // Rank every match by score, then load the page asked for.
       const ranked = (
@@ -196,18 +304,25 @@ export async function itemRoutes(app: FastifyInstance) {
       rows = (
         await db.query(
           `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE ${where}
-           ORDER BY ${ORDER[q.sort]} LIMIT $7 OFFSET $8`,
+           ORDER BY ${ORDER[q.sort]} LIMIT $8 OFFSET $9`,
           [...filters, q.limit, q.offset],
         )
       ).rows;
-    // The score's size term needs today's largest free slot; only look it up
-    // when there's an open task to score.
-    if (
-      slot === null &&
-      rows.some((i) => i.kind === "task" && i.status !== "done")
-    )
-      slot = await largestFreeMinutes(db, u.id, now);
-    return rows.map((i) => ({ ...i, score: scoreOf(i, now, slot ?? 0) }));
+    return withScores(rows);
+  });
+
+  // Manual order. Like checklist steps, this doesn't change the edit
+  // version, so an open editor never conflicts because of a drag.
+  app.put("/items/:id/position", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = itemPositionInput.parse(r.body);
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      await moveItem(db, item, d);
+      return loadItem(db, id);
+    });
   });
 
   // Minutes worked with the focus timer. Like checklist steps, this doesn't
@@ -429,17 +544,21 @@ export async function itemRoutes(app: FastifyInstance) {
         "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
         [id],
       );
-      if (d.status)
+      if (d.status) {
         await db.query(
           `UPDATE items SET
              status = $1::text,
              progress = CASE WHEN $1::text = 'done' THEN 100 ELSE progress END,
-             reminder_version = CASE WHEN status = 'done' AND $1::text <> 'done'
+             reminder_version = CASE WHEN status IN ('done', 'cancelled')
+               AND $1::text NOT IN ('done', 'cancelled')
                THEN reminder_version + 1 ELSE reminder_version END,
              updated_at = now()
            WHERE id = $2`,
           [d.status, id],
         );
+        if (d.status === "done" && item.status !== "done")
+          await countBlocksAsSpent(db, u.id, id);
+      }
       if (d.progress !== undefined)
         await db.query(
           `UPDATE items SET

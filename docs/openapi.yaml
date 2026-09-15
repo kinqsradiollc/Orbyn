@@ -1,0 +1,1175 @@
+openapi: 3.1.0
+info:
+  title: Orbyn API
+  version: "1"
+  summary: Tasks, events, time blocks and webhooks, for scripts and automation tools.
+  description: |
+    The part of Orbyn's API that automation tools (Zapier, Make, n8n, your own
+    scripts) use. Everything is served from your own Orbyn server; nothing is
+    synced anywhere else. The full reference, including planning, teams and
+    booking pages, is docs/api.md.
+
+    **Authentication.** Create a personal API key in Settings → Connections
+    (or `POST /me/api-keys`) and send it as `Authorization: Bearer ok_…`. A key
+    acts as you, except in the admin console. Session tokens from
+    `POST /auth/login` work the same way.
+
+    **Errors** are `{ "message": "..." }` with the status codes below. `404`
+    also covers records that belong to someone else.
+
+    **Rate limits.** Requests signed with an API key count against that key
+    (wherever they come from); other requests count per IP address. The
+    default is 180 requests a minute (an admin can change it), and some routes
+    have their own, stricter limit (10 a minute: sign-in, creating keys and
+    webhooks, public booking). Every response carries `RateLimit-Limit`,
+    `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window
+    resets); a `429` also carries `Retry-After` (seconds).
+
+    **Priorities.** Orbyn has three priorities. Tools that use a 0–9 scale
+    (1 highest, 9 lowest, 0 none) map them as: 1–3 → `high`, 4–6 and 0 →
+    `medium`, 7–9 → `low`; and back as `high` → 1, `medium` → 5, `low` → 9.
+
+    **Automation recipes.** Triggers: the `item.created`, `item.completed`
+    and `event.starting` webhooks. Actions: create a task or event
+    (`POST /items`, or `POST /items/quick` for one line of text), and find
+    events (`GET /calendar/search`). Polling tools use incremental sync
+    (`GET /items?updated_after=…`).
+  license:
+    name: Proprietary
+servers:
+  - url: http://localhost:8008
+    description: Docker (through the gateway)
+  - url: http://localhost:8080/api
+    description: Through the web container
+security:
+  - bearer: []
+tags:
+  - name: Auth
+  - name: Items
+  - name: Lists and tags
+  - name: Calendar
+  - name: Time blocks
+  - name: Webhooks
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Create an account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session
+      responses:
+        "204": { description: Signed out }
+  /me:
+    get:
+      tags: [Auth]
+      summary: Who the token belongs to
+      responses:
+        "200":
+          description: The signed-in user
+          headers: { $ref: "#/components/headers/RateLimitSet" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /me/api-keys:
+    get:
+      tags: [Auth]
+      summary: Your API keys
+      responses:
+        "200":
+          description: Keys (never the keys themselves)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ApiKey" }
+    post:
+      tags: [Auth]
+      summary: Create an API key (10 a minute)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 80 }
+      responses:
+        "201":
+          description: The key, shown once
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiKey"
+                  - type: object
+                    required: [key]
+                    properties:
+                      key:
+                        {
+                          type: string,
+                          description: "ok_…; send as Authorization: Bearer",
+                        }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /me/api-keys/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revoke an API key
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /items:
+    get:
+      tags: [Items]
+      summary: List items, or sync what changed
+      description: |
+        Without `updated_after` or `cursor`: a page of your personal items and
+        your teams' items (newest first by default), as an array.
+
+        **Incremental sync.** With `updated_after` (or a previous page's
+        `next_cursor` as `cursor`), items changed after that point, oldest
+        change first, as `{ items, deleted, next_cursor, has_more }`. Keep the
+        last `next_cursor` and ask again later for what changed since. With
+        `include_deleted=1`, items deleted since are listed in `deleted`
+        (kept for 90 days). Filters apply to `items`; `team_id` applies to
+        `deleted` too.
+      parameters:
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 500, default: 200 },
+          }
+        - {
+            name: offset,
+            in: query,
+            description: Not used when syncing,
+            schema: { type: integer, minimum: 0, default: 0 },
+          }
+        - { name: team_id, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: q,
+            in: query,
+            description: Words in the title or notes,
+            schema: { type: string, maxLength: 100 },
+          }
+        - { name: list_id, in: query, schema: { type: string, format: uuid } }
+        - { name: tag_id, in: query, schema: { type: string, format: uuid } }
+        - {
+            name: assignee_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: parent_id,
+            in: query,
+            description: Only the subtasks of this task,
+            schema: { type: string, format: uuid },
+          }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              [newest, score, due, priority, estimate, title, created, position]
+            default: newest
+        - {
+            name: updated_after,
+            in: query,
+            description: Sync from this time,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: cursor,
+            in: query,
+            description: Sync from a previous page's next_cursor,
+            schema: { type: string },
+          }
+        - {
+            name: include_deleted,
+            in: query,
+            schema:
+              { type: string, enum: ["0", "1", "true", "false"], default: "0" },
+          }
+      responses:
+        "200":
+          description: Items, or a sync page
+          headers: { $ref: "#/components/headers/RateLimitSet" }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: "#/components/schemas/Item" }
+                  - $ref: "#/components/schemas/ItemSyncPage"
+        "422": { $ref: "#/components/responses/Invalid" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [Items]
+      summary: Create a task or event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ItemInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /items/quick:
+    post:
+      tags: [Items]
+      summary: Create an item from one line of text
+      description: |
+        Parsed without AI: `;place`, `@person`, `>list`, `#tag`, `!`/`!!`/`!!!`
+        priority, dates ("tomorrow", "fri", "sep 20"), times ("3pm",
+        "15:00-16:30"), lengths ("for 2h") and `~45m` estimates. With
+        `preview: true` nothing is saved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  {
+                    type: string,
+                    maxLength: 500,
+                    examples: ["Lunch with @anna tomorrow 1pm ;Cafe Roma"],
+                  }
+                timezone:
+                  {
+                    type: string,
+                    description: IANA zone; your planner zone by default,
+                  }
+                preview: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  item: { $ref: "#/components/schemas/Item" }
+                  chips:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        text: { type: string }
+                        value: {}
+        "200": { description: "A preview: `{ input, chips }`" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /items/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Items]
+      summary: One item with its checklist, updates, invitees, links and changed occurrences
+      responses:
+        "200":
+          description: The item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Items]
+      summary: Update an item
+      description: |
+        Send every item field plus the current `version`; planning fields left
+        out keep their saved values. A stale version answers `409`. For a
+        repeating item, `?scope=this|following&occurrence=<start>` changes one
+        occurrence or it and the rest.
+      parameters:
+        - {
+            name: scope,
+            in: query,
+            schema:
+              { type: string, enum: [this, following, all], default: all },
+          }
+        - {
+            name: occurrence,
+            in: query,
+            schema: { type: string, format: date-time },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/ItemInput"
+                - type: object
+                  required: [version]
+                  properties:
+                    version: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Saved, one version on
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Invalid" }
+    delete:
+      tags: [Items]
+      summary: Delete an item (and its subtasks)
+      parameters:
+        - {
+            name: version,
+            in: query,
+            required: true,
+            schema: { type: integer },
+          }
+        - {
+            name: scope,
+            in: query,
+            schema:
+              { type: string, enum: [this, following, all], default: all },
+          }
+        - {
+            name: occurrence,
+            in: query,
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /items/{id}/position:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [Items]
+      summary: Move an item in its manual order
+      description: |
+        Before or after another item in the same place (the same parent, else
+        the same list, else your personal items or the team's), or to an index.
+        Doesn't change the item's version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Exactly one of the three.
+              properties:
+                before_id: { type: string, format: uuid }
+                after_id: { type: string, format: uuid }
+                position: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: The item
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /items/{id}/time:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Items]
+      summary: Log minutes worked (adds to spent_minutes)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes]
+              properties:
+                minutes: { type: integer, minimum: 1, maximum: 1440 }
+      responses:
+        "200":
+          description: The item detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemDetail" }
+
+  /lists:
+    get:
+      tags: [Lists and tags]
+      summary: Your lists and your teams' lists
+      responses:
+        "200":
+          description: Lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TaskList" }
+    post:
+      tags: [Lists and tags]
+      summary: Create a list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 80 }
+                color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+                team_id: { type: [string, "null"], format: uuid }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskList" }
+  /lists/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [Lists and tags]
+      summary: Rename, recolour or reorder a list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 80 }
+                color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+                position: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: The list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TaskList" }
+    delete:
+      tags: [Lists and tags]
+      summary: Delete a list (its items stay)
+      responses:
+        "204": { description: Deleted }
+  /tags:
+    get:
+      tags: [Lists and tags]
+      summary: Your tags and your teams' tags
+      responses:
+        "200":
+          description: Tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tag" }
+    post:
+      tags: [Lists and tags]
+      summary: Create a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 40 }
+                color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+                team_id: { type: [string, "null"], format: uuid }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /tags/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [Lists and tags]
+      summary: Rename or recolour a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 40 }
+                color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+      responses:
+        "200":
+          description: The tag
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tag" }
+    delete:
+      tags: [Lists and tags]
+      summary: Delete a tag
+      responses:
+        "204": { description: Deleted }
+
+  /calendar:
+    get:
+      tags: [Calendar]
+      summary: Everything on your calendar in a range (62 days at most)
+      parameters:
+        - {
+            name: from,
+            in: query,
+            required: true,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: to,
+            in: query,
+            required: true,
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        "200":
+          description: Entries (one per occurrence), blocks, buffers and travel, frames and subscribed events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  timezone: { type: string }
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/CalendarEntry" }
+                  blocks:
+                    type: array
+                    items: { $ref: "#/components/schemas/TimeBlock" }
+                  derived:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [buffer, travel] }
+                        item_id: { type: string, format: uuid }
+                        start_at: { type: string, format: date-time }
+                        end_at: { type: string, format: date-time }
+                        label: { type: string }
+                  frames: { type: array, items: { type: object } }
+                  external: { type: array, items: { type: object } }
+  /calendar/search:
+    get:
+      tags: [Calendar]
+      summary: Find events
+      description: |
+        Your events and dated tasks (and events from calendars you subscribe
+        to) whose title, notes or location contain every word of `q`. A year
+        either side of today unless `from`/`to` are given (800 days at most).
+        Each occurrence of a repeating item is its own result. Soonest first,
+        up to 100. This is the "find events" action for automation tools.
+      parameters:
+        - {
+            name: q,
+            in: query,
+            required: true,
+            schema: { type: string, minLength: 1, maxLength: 100 },
+          }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  q: { type: string }
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  results:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/CalendarEntry"
+                        - type: object
+                          properties:
+                            source: { type: string, enum: [item, external] }
+
+  /blocks:
+    get:
+      tags: [Time blocks]
+      summary: Your time blocks in a range
+      parameters:
+        - {
+            name: from,
+            in: query,
+            required: true,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: to,
+            in: query,
+            required: true,
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        "200":
+          description: Blocks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TimeBlock" }
+    post:
+      tags: [Time blocks]
+      summary: Set time aside for a task (24 hours at most)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [item_id, start_at, end_at]
+              properties:
+                item_id: { type: string, format: uuid }
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeBlock" }
+  /blocks/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [Time blocks]
+      summary: Move or resize a block
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_at, end_at]
+              properties:
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: The block
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimeBlock" }
+    delete:
+      tags: [Time blocks]
+      summary: Delete a block
+      responses:
+        "204": { description: Deleted }
+
+  /me/webhooks:
+    get:
+      tags: [Webhooks]
+      summary: Your webhooks and their last delivery
+      responses:
+        "200":
+          description: Webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Webhook" }
+    post:
+      tags: [Webhooks]
+      summary: Add a webhook (10 a minute, up to 10 webhooks)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  {
+                    type: string,
+                    description: "https://…; must reach a public address",
+                  }
+                events:
+                  type: array
+                  items: { $ref: "#/components/schemas/WebhookEvent" }
+                lead_minutes:
+                  type: integer
+                  minimum: 0
+                  maximum: 120
+                  default: 15
+                  description: How long before a busy event `event.starting` is sent
+      responses:
+        "201":
+          description: The webhook, with its signing secret (shown once)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Webhook"
+                  - type: object
+                    required: [secret]
+                    properties:
+                      secret: { type: string }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /me/webhooks/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [Webhooks]
+      summary: Change a webhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string }
+                events:
+                  type: array
+                  items: { $ref: "#/components/schemas/WebhookEvent" }
+                active: { type: boolean }
+                lead_minutes: { type: integer, minimum: 0, maximum: 120 }
+      responses:
+        "200":
+          description: The webhook
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Webhook" }
+    delete:
+      tags: [Webhooks]
+      summary: Remove a webhook
+      responses:
+        "204": { description: Removed }
+  /me/webhooks/{id}/test:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    post:
+      tags: [Webhooks]
+      summary: Send a ping now
+      responses:
+        "200":
+          description: What the endpoint answered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  status: { type: [integer, "null"] }
+                  error: { type: [string, "null"] }
+
+webhooks:
+  item.created:
+    post:
+      summary: An item was created
+      description: "`data` is the item."
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Any 2xx answer counts as delivered } }
+  item.updated:
+    post:
+      summary: An item was changed
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  item.completed:
+    post:
+      summary: A task was completed (not sent for cancelled tasks)
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  item.deleted:
+    post:
+      summary: "An item was deleted (`data`: id, title, team_id), once per subtask too"
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  block.scheduled:
+    post:
+      summary: A plan's time blocks were saved
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  block.started:
+    post:
+      summary: "A time block started (`data`: id, item_id, title, start_at, end_at)"
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  event.starting:
+    post:
+      summary: A busy event starts within the webhook's lead_minutes
+      description: |
+        Once per occurrence (and again if it's moved). `data`: item_id, title,
+        start_at, end_at, occurrence, location, meeting_url, team_id,
+        lead_minutes. Free, all-day and closed events aren't sent.
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  task.at_risk:
+    post:
+      summary: A task can't get enough time before it's due
+      description: |
+        Sent with the planner's at-risk notice, at most once a day per task.
+        `data`: item_id, title, due_at, remaining_minutes, free_minutes, reason.
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  booking.requested:
+    post:
+      summary: A booking waits for a host's approval
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  booking.confirmed:
+    post:
+      summary: A booking was confirmed
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  booking.rescheduled:
+    post:
+      summary: A booking was moved
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  booking.cancelled:
+    post:
+      summary: A booking was cancelled or declined
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: A personal API key (`ok_…`) or a session token.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  headers:
+    RateLimitSet:
+      RateLimit-Limit:
+        description: Requests allowed in the window
+        schema: { type: integer }
+      RateLimit-Remaining:
+        description: Requests left in the window
+        schema: { type: integer }
+      RateLimit-Reset:
+        description: Seconds until the window resets
+        schema: { type: integer }
+  requestBodies:
+    Delivery:
+      description: |
+        A JSON `POST` with `X-Orbyn-Event`, `X-Orbyn-Delivery`,
+        `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, the
+        HMAC-SHA256 of `"<timestamp>.<body>"` with the webhook's secret.
+        Failures are retried with backoff, up to 8 attempts.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [event, occurred_at, data]
+            properties:
+              event: { $ref: "#/components/schemas/WebhookEvent" }
+              occurred_at: { type: string, format: date-time }
+              data: { type: object }
+  responses:
+    Unauthorized:
+      description: Missing, expired or revoked token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Not found, including records that aren't yours
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: A stale version, a duplicate, or a state that doesn't allow it
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Invalid:
+      description: Validation failed; `message` lists why
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          description: Seconds to wait before trying again
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+    Credentials:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 10, maxLength: 128 }
+        name: { type: string, maxLength: 80 }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        name: { type: string }
+        email_reminders: { type: boolean }
+        role: { type: string, enum: [admin, member] }
+        handle: { type: [string, "null"] }
+        bio: { type: string }
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: "#/components/schemas/User" }
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+    Status:
+      type: string
+      enum: [todo, in_progress, blocked, done, cancelled]
+      description: Done and cancelled close a task; cancelled isn't completed.
+    Priority:
+      type: string
+      enum: [low, medium, high]
+    ItemInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 200 }
+        notes: { type: string, maxLength: 10000 }
+        kind: { type: string, enum: [task, event], default: task }
+        status: { $ref: "#/components/schemas/Status" }
+        priority: { $ref: "#/components/schemas/Priority" }
+        due_at:
+          {
+            type: [string, "null"],
+            format: date-time,
+            description: "An event's start; a task's due time",
+          }
+        end_at: { type: [string, "null"], format: date-time }
+        team_id: { type: [string, "null"], format: uuid }
+        estimate_minutes:
+          { type: [integer, "null"], minimum: 1, maximum: 10080 }
+        list_id: { type: [string, "null"], format: uuid }
+        tag_ids:
+          { type: array, maxItems: 20, items: { type: string, format: uuid } }
+        assignee_id: { type: [string, "null"], format: uuid }
+        parent_id:
+          {
+            type: [string, "null"],
+            format: uuid,
+            description: "The task this is a subtask of (tasks only, three levels at most)",
+          }
+        location: { type: string, maxLength: 300 }
+        meeting_url: { type: string, maxLength: 500 }
+        rrule: { type: [string, "null"], examples: ["FREQ=WEEKLY;BYDAY=MO,WE"] }
+        timezone: { type: string }
+        all_day: { type: boolean }
+        busy: { type: boolean }
+        color: { type: [string, "null"], pattern: "^#[0-9a-fA-F]{6}$" }
+        alerts:
+          {
+            type: array,
+            maxItems: 5,
+            items: { type: integer, minimum: 0, maximum: 40320 },
+          }
+        attendees:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [email]
+            properties:
+              email: { type: string, format: email }
+              name: { type: string }
+        links:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [url]
+            properties:
+              url: { type: string, pattern: "^https?://" }
+              title: { type: string, maxLength: 200 }
+    Item:
+      allOf:
+        - $ref: "#/components/schemas/ItemInput"
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            version: { type: integer }
+            user_id: { type: string, format: uuid }
+            team_name: { type: [string, "null"] }
+            progress: { type: integer, minimum: 0, maximum: 100 }
+            spent_minutes: { type: integer }
+            remaining_minutes:
+              {
+                type: [integer, "null"],
+                description: "max(0, estimate − spent)",
+              }
+            position: { type: integer }
+            child_count:
+              { type: integer, description: Subtasks that aren't cancelled }
+            children_done: { type: integer }
+            score:
+              {
+                type: [number, "null"],
+                description: The priority score (null for events and closed tasks),
+              }
+            series_start: { type: [string, "null"], format: date-time }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    ItemDetail:
+      allOf:
+        - $ref: "#/components/schemas/Item"
+        - type: object
+          properties:
+            steps: { type: array, items: { type: object } }
+            updates: { type: array, items: { type: object } }
+            attendees: { type: array, items: { type: object } }
+            overrides: { type: array, items: { type: object } }
+            links:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  url: { type: string }
+                  title: { type: string }
+                  position: { type: integer }
+    ItemSyncPage:
+      type: object
+      required: [items, deleted, next_cursor, has_more]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Item" }
+        deleted:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              deleted_at: { type: string, format: date-time }
+        next_cursor: { type: string }
+        has_more: { type: boolean }
+    TaskList:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        team_id: { type: [string, "null"], format: uuid }
+        name: { type: string }
+        color: { type: string }
+        position: { type: integer }
+        item_count: { type: integer }
+    Tag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        team_id: { type: [string, "null"], format: uuid }
+        name: { type: string }
+        color: { type: string }
+    CalendarEntry:
+      type: object
+      properties:
+        item_id: { type: string, format: uuid }
+        title: { type: string }
+        kind: { type: string, enum: [task, event] }
+        status: { $ref: "#/components/schemas/Status" }
+        start_at: { type: string, format: date-time }
+        end_at: { type: [string, "null"], format: date-time }
+        occurrence: { type: [string, "null"], format: date-time }
+        location: { type: string }
+        meeting_url: { type: string }
+        all_day: { type: boolean }
+        busy: { type: boolean }
+        team_id: { type: [string, "null"], format: uuid }
+    TimeBlock:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        item_id: { type: string, format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        source: { type: string, enum: [manual, planner] }
+        title: { type: string }
+    WebhookEvent:
+      type: string
+      enum:
+        - item.created
+        - item.updated
+        - item.completed
+        - item.deleted
+        - block.scheduled
+        - booking.requested
+        - booking.confirmed
+        - booking.rescheduled
+        - booking.cancelled
+        - event.starting
+        - block.started
+        - task.at_risk
+    Webhook:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string }
+        events:
+          type: array
+          items: { $ref: "#/components/schemas/WebhookEvent" }
+        lead_minutes: { type: integer }
+        active: { type: boolean }
+        last_status: { type: [integer, "null"] }
+        last_error: { type: [string, "null"] }
+        last_delivered_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }

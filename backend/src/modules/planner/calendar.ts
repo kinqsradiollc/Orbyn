@@ -1,9 +1,12 @@
 import {
   addDays,
   dayTime,
+  isClosed,
   localDateKey,
   localDaysBetween,
   occurrencesBetween,
+  weekdayOf,
+  type BufferScope,
   type BusyInterval,
   type CalendarEntry,
   type DefaultAlerts,
@@ -25,9 +28,18 @@ export const DEFAULT_ALERTS: DefaultAlerts = {
   all_day: [30],
 };
 
-/** An entry that takes time: a timed event that isn't done or marked free. */
+/** An entry that takes time: a timed event that isn't closed or marked free. */
 export const blocksTime = (e: CalendarEntry) =>
-  e.kind === "event" && e.status !== "done" && e.busy !== false && !e.all_day;
+  e.kind === "event" && !isClosed(e.status) && e.busy !== false && !e.all_day;
+
+/** Every timed busy event gets buffers until someone narrows it. */
+export const DEFAULT_BUFFER_SCOPE: BufferScope = {
+  personal: true,
+  team_ids: null,
+  list_ids: [],
+  min_minutes: 0,
+  only_with_others: false,
+};
 
 /** An event without an end still takes this long on the calendar. */
 export const DEFAULT_EVENT_MINUTES = 30;
@@ -52,6 +64,9 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   deadline_notice_days: 1,
   planner_notices: { push: true, email: false },
   default_alerts: DEFAULT_ALERTS,
+  count_blocks_as_spent: false,
+  buffer_scope: DEFAULT_BUFFER_SCOPE,
+  travel_padding_minutes: 0,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -90,13 +105,20 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
       ...row.planner_notices,
     },
     default_alerts: { ...DEFAULT_ALERTS, ...row.default_alerts },
+    count_blocks_as_spent: row.count_blocks_as_spent,
+    buffer_scope: { ...DEFAULT_BUFFER_SCOPE, ...row.buffer_scope },
+    travel_padding_minutes: row.travel_padding_minutes,
   };
 }
+
+/** The place columns responses carry. */
+export const PLACE_COLUMNS =
+  "id, label, match, travel_minutes, mode, peak_minutes";
 
 export async function loadPlaces(db: Db, userId: string): Promise<Place[]> {
   return (
     await db.query<Place>(
-      "SELECT id, label, match, travel_minutes FROM places WHERE user_id = $1 ORDER BY label",
+      `SELECT ${PLACE_COLUMNS} FROM places WHERE user_id = $1 ORDER BY label`,
       [userId],
     )
   ).rows;
@@ -381,7 +403,7 @@ export function travelMinutes(
   location: string,
   places: Place[],
   fallback: number,
-): { minutes: number; label: string } | null {
+): { minutes: number; label: string; place: Place | null } | null {
   const text = location.trim();
   if (!text || isLink(text)) return null;
   const lower = text.toLowerCase();
@@ -390,9 +412,85 @@ export function travelMinutes(
   );
   if (place)
     return place.travel_minutes
-      ? { minutes: place.travel_minutes, label: place.label }
+      ? { minutes: place.travel_minutes, label: place.label, place }
       : null;
-  return fallback ? { minutes: fallback, label: text } : null;
+  return fallback ? { minutes: fallback, label: text, place: null } : null;
+}
+
+/** Local peak travel hours on weekdays: 07:00-09:00 and 16:00-18:00. */
+const PEAK_HOURS = [
+  [7 * 60, 9 * 60],
+  [16 * 60, 18 * 60],
+] as const;
+
+/**
+ * Whether a leg touches peak hours on a weekday in `timeZone`. A leg that
+ * would overlap them at its usual length takes the place's peak minutes.
+ */
+export function inPeak(start: number, end: number, timeZone: string) {
+  for (
+    let day = localDateKey(new Date(start), timeZone);
+    day <= localDateKey(new Date(end), timeZone);
+    day = addDays(day, 1)
+  ) {
+    const weekday = weekdayOf(day);
+    if (weekday === 0 || weekday === 6) continue;
+    for (const [from, to] of PEAK_HOURS)
+      if (
+        start < dayTime(day, to, timeZone).getTime() &&
+        dayTime(day, from, timeZone).getTime() < end
+      )
+        return true;
+  }
+  return false;
+}
+
+/**
+ * The minutes one travel leg takes: the usual minutes, or the place's peak
+ * minutes when the leg (at its usual length) touches peak hours, plus the
+ * person's travel padding. `edge` is the event's start (a leg there) or end
+ * (a leg back).
+ */
+function legMinutes(
+  travel: { minutes: number; place: Place | null },
+  edge: number,
+  direction: "to" | "back",
+  prefs: PlannerPrefs,
+) {
+  const usual = travel.minutes * 60000;
+  const [start, end] =
+    direction === "to" ? [edge - usual, edge] : [edge, edge + usual];
+  const peak = travel.place?.peak_minutes;
+  const minutes =
+    peak != null && inPeak(start, end, prefs.timezone) ? peak : travel.minutes;
+  return minutes ? minutes + (prefs.travel_padding_minutes ?? 0) : 0;
+}
+
+/**
+ * Whether an event gets buffers under the person's buffer scope: personal
+ * or team events as chosen, in the chosen lists, long enough, and (when
+ * asked) only meetings with others: people invited, a meeting link, or a
+ * team event.
+ */
+export function inBufferScope(e: CalendarEntry, scope: BufferScope) {
+  if (e.team_id) {
+    if (scope.team_ids && !scope.team_ids.includes(e.team_id)) return false;
+  } else if (!scope.personal) return false;
+  if (
+    scope.list_ids.length &&
+    (!e.list_id || !scope.list_ids.includes(e.list_id))
+  )
+    return false;
+  const minutes = (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000;
+  if (minutes < scope.min_minutes) return false;
+  if (
+    scope.only_with_others &&
+    !(e.attendee_count ?? 0) &&
+    !e.meeting_url.trim() &&
+    !e.team_id
+  )
+    return false;
+  return true;
 }
 
 const overlaps = (a: BusyInterval, b: BusyInterval) =>
@@ -402,8 +500,9 @@ const overlaps = (a: BusyInterval, b: BusyInterval) =>
  * Buffers and travel time around timed events, worked out from the owner's
  * preferences and places rather than stored, so they always follow the
  * events. Travel goes right before a located event, and back after the last
- * located event of the day; buffers go around meetings. Anything that would
- * run into another event is left out.
+ * located event of the day, each leg at the place's peak minutes in peak
+ * hours and with the travel padding added; buffers go around meetings in the
+ * buffer scope. Anything that would run into another event is left out.
  */
 export function derivedBlocks(
   entries: CalendarEntry[],
@@ -417,6 +516,7 @@ export function derivedBlocks(
   const out: DerivedBlock[] = [];
   const shift = (at: string, minutes: number) =>
     new Date(Date.parse(at) + minutes * 60000).toISOString();
+  const scope = prefs.buffer_scope ?? DEFAULT_BUFFER_SCOPE;
   const lastLocated = new Map<string, CalendarEntry>();
   for (const e of events) {
     const minutes = (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000;
@@ -425,12 +525,17 @@ export function derivedBlocks(
       places,
       prefs.default_travel_minutes,
     );
-    const buffer = bufferMinutes(prefs, minutes);
-    if (travel) {
+    const buffer = inBufferScope(e, scope)
+      ? bufferMinutes(prefs, minutes)
+      : { before: 0, after: 0 };
+    const leg = travel
+      ? legMinutes(travel, Date.parse(e.start_at), "to", prefs)
+      : 0;
+    if (travel && leg) {
       out.push({
         kind: "travel",
         item_id: e.item_id,
-        start_at: shift(e.start_at, -travel.minutes),
+        start_at: shift(e.start_at, -leg),
         end_at: e.start_at,
         label: `Travel to ${travel.label}`,
       });
@@ -458,15 +563,19 @@ export function derivedBlocks(
       places,
       prefs.default_travel_minutes,
     )!;
-    const buffer = bufferMinutes(
-      prefs,
-      (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000,
-    ).after;
+    const buffer = inBufferScope(e, scope)
+      ? bufferMinutes(
+          prefs,
+          (Date.parse(e.end_at!) - Date.parse(e.start_at)) / 60000,
+        ).after
+      : 0;
+    const leaves = Date.parse(e.end_at!) + buffer * 60000;
+    const leg = legMinutes(travel, leaves, "back", prefs);
     out.push({
       kind: "travel",
       item_id: e.item_id,
       start_at: shift(e.end_at!, buffer),
-      end_at: shift(e.end_at!, buffer + travel.minutes),
+      end_at: shift(e.end_at!, buffer + leg),
       label: "Travel back",
     });
   }

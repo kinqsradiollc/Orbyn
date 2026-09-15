@@ -17,7 +17,8 @@ import {
   openTasks,
   unfinishedBlocks,
 } from "../modules/planner/plans.js";
-import { DEFAULT_ESTIMATE_MINUTES } from "../modules/planner/scheduler.js";
+import { remainingOf } from "../modules/planner/scheduler.js";
+import { queueWebhooks } from "../lib/webhooks.js";
 import { emailEnabled } from "./channels/email.js";
 
 /**
@@ -40,7 +41,7 @@ export async function advanceRepeating(now = new Date()) {
       `SELECT i.id, i.due_at, i.end_at, i.rrule, i.timezone, i.series_start, i.exdates
        FROM items i
        LEFT JOIN item_overrides o ON o.item_id = i.id AND o.occurrence = i.due_at
-       WHERE i.rrule IS NOT NULL AND i.kind = 'event' AND i.status <> 'done'
+       WHERE i.rrule IS NOT NULL AND i.kind = 'event' AND i.status NOT IN ('done', 'cancelled')
          AND coalesce((o.data->>'end_at')::timestamptz, (o.data->>'due_at')::timestamptz,
                       i.end_at, i.due_at) < $1
          AND i.due_at > $1 - interval '30 days'
@@ -193,7 +194,7 @@ const ACTIVE_USERS = `
   WHERE ($2::uuid[] IS NULL OR a.user_id = ANY ($2::uuid[]))
     AND (EXISTS (SELECT 1 FROM time_blocks b WHERE b.user_id = a.user_id
                   AND b.end_at > $1::timestamptz - interval '14 days' AND b.end_at < $1)
-      OR EXISTS (SELECT 1 FROM items i WHERE i.kind = 'task' AND i.status <> 'done'
+      OR EXISTS (SELECT 1 FROM items i WHERE i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
                   AND i.due_at > $1 AND i.due_at < $1::timestamptz + interval '14 days'
                   AND ((i.team_id IS NULL AND i.user_id = a.user_id) OR i.assignee_id = a.user_id)))
   ORDER BY a.user_id LIMIT 1000`;
@@ -252,7 +253,7 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
     }
 
     const atRisk = await atRiskFor(pool, user_id, now);
-    for (const t of atRisk)
+    for (const t of atRisk) {
       await notify(
         {
           userId: user_id,
@@ -264,6 +265,22 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
         },
         email,
       );
+      // With the notice, once per task per day, to this person's webhooks.
+      await queueWebhooks(
+        pool,
+        "task.at_risk",
+        { user_id, team_id: null },
+        {
+          item_id: t.item_id,
+          title: t.title,
+          due_at: t.due_at,
+          remaining_minutes: t.remaining_minutes,
+          free_minutes: t.free_minutes,
+          reason: t.reason,
+        },
+        `at_risk:${t.item_id}:${today}`,
+      );
+    }
 
     const days = prefs.deadline_notice_days ?? 1;
     if (!days) continue;
@@ -273,10 +290,7 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
       if (!t.due_at || flagged.has(t.id)) continue;
       const due = Date.parse(t.due_at);
       if (due <= now.getTime() || due > horizon) continue;
-      const left =
-        (t.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES) -
-        t.spent_minutes -
-        t.scheduled_minutes;
+      const left = remainingOf(t) - t.scheduled_minutes;
       // Time already blocked out for the rest of it: nothing to warn about.
       if (left <= 0) continue;
       await notify(

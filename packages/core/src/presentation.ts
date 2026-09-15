@@ -178,6 +178,7 @@ export const statusLabels: Record<Status, string> = {
   in_progress: "In progress",
   blocked: "Blocked",
   done: "Done",
+  cancelled: "Cancelled",
 };
 
 export const statusTones: Record<Status, { bg: string; fg: string }> = {
@@ -185,9 +186,13 @@ export const statusTones: Record<Status, { bg: string; fg: string }> = {
   in_progress: { bg: colors.accentSoft, fg: colors.accent },
   blocked: { bg: colors.dangerSoft, fg: colors.danger },
   done: { bg: colors.soft, fg: colors.mediumText },
+  cancelled: { bg: colors.surfaceMuted, fg: colors.muted },
 };
 
-/** Statuses in the order people move through them. */
+/**
+ * Statuses in the order people move through them. Cancelled isn't a step,
+ * so it isn't listed; it closes a task like done does.
+ */
 export const statusOrder: Status[] = ["todo", "in_progress", "blocked", "done"];
 
 /** Explain why the in-progress section can be empty despite a nonzero total. */
