@@ -184,6 +184,68 @@ export function PresetMinutes({
   );
 }
 
+/** Reminder times offered for emails to bookers (the server takes 10 to 10080). */
+const REMINDER_PRESETS = [10, 30, 60, 120, 240, 1440, 2880, 10080];
+/** Most reminders a page or invite can have. */
+export const MAX_REMINDERS = 3;
+
+/** "10 minutes", "1 hour", "2 days", "1 week" before. */
+export function reminderLabel(minutes: number) {
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (minutes % 10080 === 0) return unit(minutes / 10080, "week");
+  if (minutes % 1440 === 0) return unit(minutes / 1440, "day");
+  if (minutes % 60 === 0) return unit(minutes / 60, "hour");
+  return unit(minutes, "minute");
+}
+
+/**
+ * Up to three reminder emails to the booker, as chips; saved values that
+ * aren't presets show too. Kept longest first, like the server.
+ */
+export function ReminderChips({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (minutes: number[]) => void;
+}) {
+  const options = [...new Set([...REMINDER_PRESETS, ...value])].sort(
+    (a, b) => a - b,
+  );
+  const full = value.length >= MAX_REMINDERS;
+  return (
+    <>
+      <ChipRow label="Remind them before" multi>
+        {options.map((m) => {
+          const on = value.includes(m);
+          return (
+            <Chip
+              key={m}
+              multi
+              label={reminderLabel(m)}
+              selected={on}
+              disabled={!on && full}
+              accessibilityLabel={`${reminderLabel(m)} before`}
+              onPress={() =>
+                onChange(
+                  (on ? value.filter((x) => x !== m) : [...value, m]).sort(
+                    (a, b) => b - a,
+                  ),
+                )
+              }
+            />
+          );
+        })}
+      </ChipRow>
+      <Text style={[shared.small, s.custom]}>
+        {value.length
+          ? `Emailed ${value.map(reminderLabel).join(" and ")} before. Up to ${MAX_REMINDERS}.`
+          : "No reminder emails."}
+      </Text>
+    </>
+  );
+}
+
 export const bookingStyles = themed(() =>
   StyleSheet.create({
     rowTitle: {

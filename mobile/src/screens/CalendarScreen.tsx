@@ -175,6 +175,7 @@ export function CalendarScreen({
   onDragging,
   onOpenOccurrence,
   onFocus,
+  onScrollTo,
   ...handlers
 }: ListHandlers & {
   items: Item[];
@@ -195,6 +196,11 @@ export function CalendarScreen({
   onOpenOccurrence: (item: Item, occurrence: OccurrenceRef | null) => void;
   /** Start a focus session on a task; "Start focus" shows when given. */
   onFocus?: (item: Item) => void;
+  /** Scroll the page to `y` below the top of `view` (the timeline asks once per day or view). */
+  onScrollTo?: (
+    view: React.ComponentRef<typeof View> | null,
+    y: number,
+  ) => void;
 }) {
   const { listById } = usePlanning();
   const [mode, setModeState] = useState<Mode>(() => {
@@ -930,6 +936,20 @@ export function CalendarScreen({
       ]),
     ).then(() => setKeepForm(null));
   };
+  /** A range drawn on empty time in the timeline (hold, then drag). */
+  const keepRange = (start: Date, end: Date) => {
+    if (keepFree.length >= 20) return;
+    void tunePreview((p) =>
+      setKeepFree(p, [
+        ...(p.options?.keep_free ?? []),
+        { start_at: start.toISOString(), end_at: end.toISOString() },
+      ]),
+    ).then(() =>
+      AccessibilityInfo.announceForAccessibility(
+        `Keeping ${slotLabel(start.toISOString(), end.toISOString())} free`,
+      ),
+    );
+  };
   const applyPreview = () =>
     act(async () => {
       if (!preview) return;
@@ -997,7 +1017,8 @@ export function CalendarScreen({
             {planned} block{planned === 1 ? "" : "s"} proposed
             {preview.days > 1 ? ` over ${preview.days} days` : ""}. Hold a faint
             block to move it (sideways for another day; it stays where you put
-            it), or for options. Nothing is saved until you apply the plan.
+            it), or for options. Hold empty time and drag to keep it free.
+            Nothing is saved until you apply the plan.
           </Text>
           {stale && (
             <View style={s.stale} accessibilityRole="alert">
@@ -1315,6 +1336,13 @@ export function CalendarScreen({
             zones={zones}
             keepFree={keepFree}
             onKeepFreeMenu={live ? keepFreeMenu : undefined}
+            onKeepFree={
+              live && !handlers.busy && keepFree.length < 20
+                ? keepRange
+                : undefined
+            }
+            scrollKey={`${mode}-${selected.toDateString()}`}
+            onScrollTo={onScrollTo}
             mates={mates}
             onOpen={openItem}
             onBlockMenu={blockMenu}

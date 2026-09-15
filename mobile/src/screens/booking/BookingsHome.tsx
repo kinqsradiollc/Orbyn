@@ -43,6 +43,8 @@ import {
   dayKeyOf,
   lengthOf,
 } from "./helpers";
+import { InviteList } from "./Invites";
+import { ProfileCard } from "./ProfileCard";
 import { bookingStyles as bs } from "./ui";
 
 const ROWS = 30;
@@ -51,7 +53,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** What the Bookings tab shows; kept by the sheet so it survives opening a booking. */
 export type BookingFilters = {
-  tab: "bookings" | "pages";
+  tab: "bookings" | "pages" | "invites";
   view: BookingView;
   q: string;
   pageId: string | null;
@@ -69,6 +71,7 @@ export function BookingsHome({
   onPages,
   onOpenPage,
   onOpenBooking,
+  onNewInvite,
 }: {
   user: User | null;
   filters: BookingFilters;
@@ -77,6 +80,8 @@ export function BookingsHome({
   onPages: (pages: BookingPage[]) => void;
   onOpenPage: (page: BookingPage | null) => void;
   onOpenBooking: (booking: Booking) => void;
+  /** Opens the Offer times form. */
+  onNewInvite: () => void;
 }) {
   const { busy, error, setError, run } = useRun();
   const [refreshing, setRefreshing] = useState(false);
@@ -190,9 +195,9 @@ export function BookingsHome({
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Segmented
-          options={["bookings", "pages"] as const}
+          options={["bookings", "pages", "invites"] as const}
           value={tab}
-          labels={{ bookings: "Bookings", pages: "Pages" }}
+          labels={{ bookings: "Bookings", pages: "Pages", invites: "Invites" }}
           badges={{ bookings: needsApproval }}
           accessibilityLabel="Show"
           onChange={(t) => {
@@ -201,14 +206,19 @@ export function BookingsHome({
           }}
         />
         <View style={s.gap} />
-        {tab === "pages" ? (
-          <PageList
-            pages={pages}
-            busy={busy}
-            userId={user?.id}
-            onOpen={onOpenPage}
-            onShowBookings={showBookings}
-          />
+        {tab === "invites" ? (
+          <InviteList onNew={onNewInvite} />
+        ) : tab === "pages" ? (
+          <>
+            <ProfileCard />
+            <PageList
+              pages={pages}
+              busy={busy}
+              userId={user?.id}
+              onOpen={onOpenPage}
+              onShowBookings={showBookings}
+            />
+          </>
         ) : (
           <>
             <Stats stats={stats} />
@@ -526,6 +536,7 @@ function PageList({
               .map((h) => h.name);
             const owner = p.hosts.find((h) => h.user_id === p.owner_id)?.name;
             const summary = [
+              !!p.team_id && `${p.team_name ?? "Team"} page`,
               `${p.counts.upcoming} upcoming`,
               `up to ${plural(p.window_days, "day")} ahead`,
               p.requires_approval && "approval on",
@@ -578,11 +589,13 @@ function PageList({
                       </Text>
                     )}
                     <Text style={shared.small}>
-                      You’re a co-host here, so you can share it and see its
-                      bookings.{" "}
-                      {owner
-                        ? `Only ${owner} can change it.`
-                        : "Only its owner can change it."}
+                      {p.team_id
+                        ? `This is ${p.team_name ?? "your team"}’s page: you can share it and see its bookings. Its owners and admins can change it.`
+                        : `You’re a co-host here, so you can share it and see its bookings. ${
+                            owner
+                              ? `Only ${owner} can change it.`
+                              : "Only its owner can change it."
+                          }`}
                     </Text>
                   </View>
                 )}

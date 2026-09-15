@@ -3,6 +3,7 @@ import type { BookingPage, Team, User } from "@orbyn/core";
 import { Sheet } from "../components/Sheet";
 import { BookingDetailView } from "./booking/BookingDetailView";
 import { BookingsHome, type BookingFilters } from "./booking/BookingsHome";
+import { InviteEditor } from "./booking/Invites";
 import { PageEditor } from "./booking/PageEditor";
 
 export { bookingLink } from "./booking/helpers";
@@ -10,7 +11,14 @@ export { bookingLink } from "./booking/helpers";
 type Screen =
   | { kind: "home" }
   | { kind: "page"; page: BookingPage | null }
-  | { kind: "booking"; id: string };
+  | { kind: "booking"; id: string }
+  | { kind: "invite" };
+
+const TITLES: Record<Exclude<Screen["kind"], "page">, string> = {
+  home: "Bookings",
+  booking: "Booking",
+  invite: "Offer times",
+};
 
 const HOME: Screen = { kind: "home" };
 const FILTERS: BookingFilters = {
@@ -60,13 +68,11 @@ export function BookingSheet({
     onClose();
   };
   const title =
-    top.kind === "home"
-      ? "Bookings"
-      : top.kind === "booking"
-        ? "Booking"
-        : top.page
-          ? "Booking page"
-          : "New booking page";
+    top.kind === "page"
+      ? top.page
+        ? "Booking page"
+        : "New booking page"
+      : TITLES[top.kind];
 
   return (
     <Sheet
@@ -85,6 +91,14 @@ export function BookingSheet({
           onPages={onPages}
           onOpenPage={(page) => push({ kind: "page", page })}
           onOpenBooking={(b) => push({ kind: "booking", id: b.id })}
+          onNewInvite={() => push({ kind: "invite" })}
+        />
+      ) : top.kind === "invite" ? (
+        <InviteEditor
+          onDone={() => {
+            patchFilters({ tab: "invites" });
+            pop();
+          }}
         />
       ) : top.kind === "page" ? (
         <PageEditor

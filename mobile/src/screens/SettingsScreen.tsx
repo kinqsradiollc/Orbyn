@@ -72,11 +72,21 @@ export function SettingsScreen({
   const theme = useTheme();
   const [statusHeadline, setStatusHeadline] = useState("");
   const [notices, setNotices] = useState<NoticePrefs | null>(null);
+  /** Completing a task counts its blocks' past time as spent; null until loaded. */
+  const [countBlocks, setCountBlocks] = useState<boolean | null>(null);
+  const takePrefs = (p: PlannerPrefs) => {
+    setNotices(noticePrefs(p));
+    setCountBlocks(p.count_blocks_as_spent ?? false);
+  };
   useEffect(() => {
     let live = true;
     client
       .getPlannerPrefs()
-      .then((p) => live && setNotices(noticePrefs(p)))
+      .then((p) => {
+        if (!live) return;
+        setNotices(noticePrefs(p));
+        setCountBlocks(p.count_blocks_as_spent ?? false);
+      })
       .catch(() => {
         // Older servers have no planner notices; the controls stay hidden.
       });
@@ -85,9 +95,7 @@ export function SettingsScreen({
     };
   }, []);
   const saveNotices = (input: PlannerPrefsInput) =>
-    act(async () =>
-      setNotices(noticePrefs(await client.updatePlannerPrefs(input))),
-    );
+    act(async () => takePrefs(await client.updatePlannerPrefs(input)));
   useEffect(() => {
     let live = true;
     client
@@ -182,6 +190,34 @@ export function SettingsScreen({
           onPress={onOpenConnections}
         />
       </View>
+
+      {countBlocks !== null && (
+        <>
+          <Text style={[shared.eyebrow, s.section]}>TIME TRACKING</Text>
+          <View style={shared.card}>
+            <View style={s.preference}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.prefTitle}>
+                  Count blocked time as worked when I complete a task
+                </Text>
+                <Text style={shared.small}>
+                  The time blocks you had for it, up to now, are added to its
+                  time spent. Each block counts once.
+                </Text>
+              </View>
+              <Switch
+                value={countBlocks}
+                disabled={busy}
+                trackColor={{ true: colors.accent }}
+                accessibilityLabel="Count blocked time as worked when I complete a task"
+                onValueChange={(value) =>
+                  void saveNotices({ count_blocks_as_spent: value })
+                }
+              />
+            </View>
+          </View>
+        </>
+      )}
 
       <Text style={[shared.eyebrow, s.section]}>APPEARANCE</Text>
       <View style={shared.card}>

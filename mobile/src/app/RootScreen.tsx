@@ -133,6 +133,9 @@ export function RootScreen() {
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
   const scroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  /** The page's content column, and how far down the scroll content it starts. */
+  const content = useRef<React.ComponentRef<typeof View>>(null);
+  const contentY = useRef(0);
   /** The space above the tab bar; on the AI tab it makes room for the keyboard. */
   const keyboardArea = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(keyboardArea, tab === "AI");
@@ -379,10 +382,20 @@ export function RootScreen() {
         // Progress is owned by the checklist and the task sheet; omitting it
         // keeps the saved value (sending it while steps exist is a 409).
         const { progress: _progress, ...fields } = itemBody(editing);
-        // Invitees are sent only once edited: the list replaces the saved one.
-        const body = editing.attendees
-          ? { ...fields, attendees: editing.attendees }
-          : fields;
+        // Invitees and links are sent only once edited: each list replaces
+        // the saved one. Links go as { url, title } (ids are the server's).
+        const body = {
+          ...fields,
+          ...(editing.attendees ? { attendees: editing.attendees } : {}),
+          ...(editing.links
+            ? {
+                links: editing.links.map(({ url, title }) => ({
+                  url,
+                  title: title ?? "",
+                })),
+              }
+            : {}),
+        };
         const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
         if (repeat) {
           const scope = await askScope(editing.kind, "save");
@@ -431,6 +444,27 @@ export function RootScreen() {
   const sidePadding = {
     paddingLeft: insets.left + spacing.page,
     paddingRight: insets.right + spacing.page,
+  };
+  /**
+   * Scroll the page so `y` points below the top of `view` show near the
+   * top. Called once per change by whoever asks (the calendar on a new day
+   * or view), never from a layout or content-size callback.
+   */
+  const scrollToView = (
+    view: React.ComponentRef<typeof View> | null,
+    y: number,
+  ) => {
+    const column = content.current;
+    if (!view || !column) return;
+    view.measureLayout(
+      column,
+      (_x, top) =>
+        scroller.current?.scrollTo({
+          y: Math.max(0, contentY.current + top + y - 24),
+          animated: !isReducedMotion(),
+        }),
+      () => {},
+    );
   };
 
   return (
@@ -485,7 +519,15 @@ export function RootScreen() {
               />
             }
           >
-            <View style={s.column}>
+            <View
+              ref={content}
+              collapsable={false}
+              // Only records where the column starts; it never scrolls.
+              onLayout={(e) => {
+                contentY.current = e.nativeEvent.layout.y;
+              }}
+              style={s.column}
+            >
               <Text style={shared.eyebrow}>
                 {today
                   .toLocaleDateString([], {
@@ -535,6 +577,13 @@ export function RootScreen() {
                     user={user}
                     onManageLists={() => setSheet("lists")}
                     onManageTags={() => setSheet("tags")}
+                    onDragging={setDragging}
+                    onReorder={(i, place) =>
+                      void act(async () => {
+                        await client.moveItem(i.id, place);
+                        await refresh({ animate: true });
+                      })
+                    }
                     {...listHandlers}
                   />
                 )}
@@ -549,6 +598,8 @@ export function RootScreen() {
                     onPreviewDone={() => setPreview(null)}
                     onDragging={setDragging}
                     onOpenOccurrence={openTask}
+                    onFocus={openFocus}
+                    onScrollTo={scrollToView}
                     {...listHandlers}
                   />
                 )}
@@ -638,7 +689,13 @@ export function RootScreen() {
         <TaskDetail
           visible={sheet === "task"}
           item={task}
+          items={items}
           teams={teams}
+          onOpenItem={(i) => {
+            // Switch in place: a subtask or the task above it.
+            setTaskOccurrence(null);
+            setTask(i);
+          }}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onEdit={editItem}

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +13,7 @@ import {
 import {
   dateLabel,
   hasTeamPermission,
+  isClosed,
   statusLabels,
   statusOrder,
   type Item,
@@ -27,6 +28,7 @@ import { Button } from "../components/Button";
 import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { LinkedText } from "../components/LinkedText";
 import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
@@ -36,7 +38,13 @@ import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
 import { canJoin } from "../lib/planning";
-import { percentOf, stepsLabel, timeAgo } from "../lib/progress";
+import {
+  leftLabel,
+  percentOf,
+  stepsLabel,
+  subtasksLabel,
+  timeAgo,
+} from "../lib/progress";
 import {
   animateLayout,
   FadeIn,
@@ -48,6 +56,10 @@ import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
+/** Every status, closed ones last. */
+const STATUS_CHOICES: Status[] = [...statusOrder, "cancelled"];
+/** A task, its subtasks and theirs: the server's limit. */
+const MAX_LEVELS = 3;
 
 const PRIORITY = themed<
   Record<Priority, { bg: string; fg: string; label: string }>
@@ -69,17 +81,23 @@ const PRIORITY = themed<
 export function TaskDetail({
   visible,
   item,
+  items,
   teams,
   onClose,
   onDismiss,
   onEdit,
   onFocus,
   onChanged,
+  onOpenItem,
 }: {
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
   item: Item | null;
+  /** Everything loaded, for the task's parent and subtasks. */
+  items: Item[];
   teams: Team[];
+  /** Show another task here (a subtask, or the task above). */
+  onOpenItem: (item: Item) => void;
   onClose: () => void;
   /** iOS: called once the dismiss animation has finished. */
   onDismiss?: () => void;
@@ -101,10 +119,12 @@ export function TaskDetail({
         <Body
           key={item.id}
           seed={item}
+          items={items}
           teams={teams}
           onEdit={onEdit}
           onFocus={onFocus}
           onChanged={onChanged}
+          onOpenItem={onOpenItem}
         />
       )}
       <CelebrationHost />
@@ -114,17 +134,24 @@ export function TaskDetail({
 
 function Body({
   seed,
+  items,
   teams,
   onEdit,
   onFocus,
   onChanged,
+  onOpenItem,
 }: {
   seed: Item;
+  items: Item[];
   teams: Team[];
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
+  onOpenItem: (item: Item) => void;
 }) {
+  const [newSubtask, setNewSubtask] = useState("");
+  /** The task above, when it isn't among the loaded items. */
+  const [fetchedParent, setFetchedParent] = useState<Item | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -192,7 +219,86 @@ function Body({
     { meeting_url: meetingUrl, start_at: item.due_at, end_at: item.end_at },
     now,
   );
-  const canWork = item.kind === "task" && item.status !== "done" && !readOnly;
+  const canWork = item.kind === "task" && !isClosed(item.status) && !readOnly;
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const parent = item.parent_id
+    ? (byId.get(item.parent_id) ??
+      (fetchedParent?.id === item.parent_id ? fetchedParent : null))
+    : null;
+  const parentId = item.parent_id ?? null;
+  const parentKnown = !parentId || byId.has(parentId);
+  useEffect(() => {
+    if (!parentId || parentKnown) return;
+    let alive = true;
+    client
+      .getItem(parentId)
+      .then((p) => alive && setFetchedParent(p))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [parentId, parentKnown]);
+  /** 1 for a task, 2 for a subtask, 3 for a subtask's subtask. */
+  let level = 1;
+  for (
+    let p = item.parent_id, guard = 0;
+    p && guard < MAX_LEVELS;
+    p = byId.get(p)?.parent_id, guard++
+  )
+    level++;
+  const subtasks = items
+    .filter((i) => i.parent_id === item.id)
+    .sort(
+      (a, b) =>
+        Number(isClosed(a.status)) - Number(isClosed(b.status)) ||
+        (a.position ?? 0) - (b.position ?? 0),
+    );
+  const canAddSubtask =
+    item.kind === "task" &&
+    !readOnly &&
+    !isClosed(item.status) &&
+    level < MAX_LEVELS;
+  const links = detail?.links ?? [];
+  const left = leftLabel(item);
+  const addSubtask = async () => {
+    const title = newSubtask.trim();
+    if (!title || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.createItem({
+        title,
+        kind: "task",
+        status: "todo",
+        priority: item.priority,
+        parent_id: item.id,
+        team_id: item.team_id ?? null,
+        list_id: item.list_id ?? null,
+      });
+      animateLayout();
+      setNewSubtask("");
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancelTask = () =>
+    Alert.alert(
+      "Cancel this task?",
+      subtasks.length
+        ? "It leaves your plans and its time blocks are removed. Its subtasks stay as they are. You can reopen it later."
+        : "It leaves your plans and its time blocks are removed. You can reopen it later.",
+      [
+        { text: "Keep it", style: "cancel" },
+        {
+          text: "Cancel task",
+          style: "destructive",
+          onPress: () => setStatus("cancelled"),
+        },
+      ],
+    );
 
   /** Run a change; the server answers with the fresh detail. */
   const run = async (fn: () => Promise<ItemDetail>) => {
@@ -258,9 +364,17 @@ function Body({
     const {
       steps: _steps,
       updates: _updates,
+      links: saved,
       ...rest
     } = detail ?? ({ ...seed, steps: [], updates: [] } as ItemDetail);
-    onEdit({ ...rest, team_name: teamName });
+    // The editor sends links as { url, title } only (ids are the server's).
+    onEdit({
+      ...rest,
+      team_name: teamName,
+      ...(saved
+        ? { links: saved.map(({ url, title }) => ({ url, title })) }
+        : {}),
+    });
   };
   const canPost =
     !busy && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
@@ -283,6 +397,24 @@ function Body({
 
           {/* Header */}
           <FadeIn style={s.header}>
+            {!!item.parent_id && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  parent ? `Subtask of ${parent.title}` : "Subtask"
+                }
+                accessibilityHint={parent ? "Opens that task" : undefined}
+                disabled={!parent}
+                hitSlop={6}
+                onPress={() => parent && onOpenItem(parent)}
+                style={({ pressed }) => [s.crumb, pressed && { opacity: 0.6 }]}
+              >
+                <Icon name="chevronLeft" size={13} color={colors.accent} />
+                <Text style={s.crumbText} numberOfLines={1}>
+                  {parent ? `Subtask of ${parent.title}` : "Subtask"}
+                </Text>
+              </Pressable>
+            )}
             <View style={s.headerTop}>
               <StatusPill status={item.status} />
               {item.kind === "event" && <Text style={s.kind}>Event</Text>}
@@ -316,6 +448,14 @@ function Body({
                   </Text>
                 </View>
               )}
+              {!!left && (
+                <View style={[s.chip, s.progressChip]}>
+                  <Icon name="clock" size={11} color={colors.textSoft} />
+                  <Text style={[s.chipText, { color: colors.textSoft }]}>
+                    {left}
+                  </Text>
+                </View>
+              )}
             </View>
             <PlanningMeta item={item} large />
             {!!item.location && (
@@ -324,7 +464,46 @@ function Body({
                 <Text style={s.metaText}>{item.location}</Text>
               </View>
             )}
-            {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
+            {!!item.notes && (
+              <LinkedText
+                text={item.notes}
+                style={s.notes}
+                onError={setError}
+              />
+            )}
+            {links.length > 0 && (
+              <View style={s.links} accessibilityLabel="Links">
+                {links.map((l, n) => (
+                  <Pressable
+                    key={`${l.url}-${n}`}
+                    accessibilityRole="link"
+                    accessibilityLabel={l.title || l.url}
+                    accessibilityHint="Opens in your browser"
+                    onPress={() =>
+                      void Linking.openURL(l.url).catch(() =>
+                        setError("That link couldn’t be opened."),
+                      )
+                    }
+                    style={({ pressed }) => [
+                      s.link,
+                      pressed && { backgroundColor: colors.surfaceMuted },
+                    ]}
+                  >
+                    <Icon name="link" size={14} color={colors.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.linkTitle} numberOfLines={1}>
+                        {l.title || l.url}
+                      </Text>
+                      {!!l.title && (
+                        <Text style={shared.small} numberOfLines={1}>
+                          {l.url}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             {!!meetingUrl && (
               <View style={s.meeting}>
                 <Button
@@ -466,6 +645,108 @@ function Body({
             )}
           </FadeIn>
 
+          {/* Subtasks */}
+          {item.kind === "task" && (subtasks.length > 0 || canAddSubtask) && (
+            <FadeIn index={2} style={shared.card}>
+              <View style={s.cardHeading}>
+                <Text style={shared.sectionTitle} accessibilityRole="header">
+                  Subtasks
+                </Text>
+                {subtasks.length > 0 && (
+                  <Text style={s.counter}>
+                    {subtasksLabel(item) ||
+                      `${subtasks.filter((c) => c.status === "done").length} of ${subtasks.length}`}
+                  </Text>
+                )}
+              </View>
+              {!subtasks.length && (
+                <Text style={[shared.small, s.gapBelow]}>
+                  Split bigger work into tasks of their own, each with its own
+                  date and estimate.
+                </Text>
+              )}
+              {subtasks.map((c, n) => (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${c.title}, ${statusLabels[c.status]}, ${percentOf(c)}%`}
+                  accessibilityHint="Opens this subtask"
+                  onPress={() => onOpenItem(c)}
+                  style={({ pressed }) => [
+                    s.subtask,
+                    n > 0 && s.stepDivider,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[s.stepText, isClosed(c.status) && s.stepDone]}
+                      numberOfLines={2}
+                    >
+                      {c.title}
+                    </Text>
+                    <Text style={shared.small} numberOfLines={1}>
+                      {[
+                        `${percentOf(c)}%`,
+                        c.due_at ? dateLabel(c.due_at) : "",
+                        leftLabel(c),
+                        subtasksLabel(c),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  </View>
+                  <StatusPill status={c.status} />
+                  <Icon name="chevronRight" size={16} color={colors.faint} />
+                </Pressable>
+              ))}
+              {canAddSubtask && (
+                <View style={s.addRow}>
+                  <TextInput
+                    style={[shared.input, s.addInput]}
+                    value={newSubtask}
+                    onChangeText={setNewSubtask}
+                    maxLength={200}
+                    placeholder="Add subtask"
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="done"
+                    submitBehavior="submit"
+                    onSubmitEditing={() => void addSubtask()}
+                    accessibilityLabel="New subtask title"
+                  />
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Add subtask"
+                    accessibilityState={{
+                      disabled: busy || !newSubtask.trim(),
+                    }}
+                    disabled={busy || !newSubtask.trim()}
+                    onPress={() => void addSubtask()}
+                    style={[
+                      s.addButton,
+                      (busy || !newSubtask.trim()) && { opacity: 0.45 },
+                    ]}
+                  >
+                    <Icon
+                      name="plus"
+                      size={18}
+                      color={colors.white}
+                      strokeWidth={2.2}
+                    />
+                  </PressableScale>
+                </View>
+              )}
+              {item.kind === "task" &&
+                !readOnly &&
+                level >= MAX_LEVELS &&
+                !subtasks.length && (
+                  <Text style={shared.small}>
+                    Tasks go three levels deep, so this one can’t have subtasks.
+                  </Text>
+                )}
+            </FadeIn>
+          )}
+
           {/* Checklist */}
           <FadeIn index={2} style={shared.card}>
             <View style={s.cardHeading}>
@@ -570,6 +851,15 @@ function Body({
             icon="arrowRight"
             onPress={openEditor}
           />
+          {item.kind === "task" && !readOnly && !isClosed(item.status) && (
+            <Button
+              destructive
+              title="Cancel task"
+              icon="x"
+              disabled={busy}
+              onPress={cancelTask}
+            />
+          )}
         </View>
       </ScrollView>
       {/* Fixed under the scrolling detail, and above the keyboard. */}
@@ -653,7 +943,7 @@ function StatusChoice({
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
     >
-      {statusOrder.map((status) => {
+      {STATUS_CHOICES.map((status) => {
         const active = status === value;
         const t = statusTones[status];
         return (
@@ -866,6 +1156,47 @@ const s = themed(() =>
     progressChip: { backgroundColor: colors.surfaceMuted },
     chipText: { fontFamily: fonts.semibold, fontSize: 11 },
     notes: { ...shared.body, marginTop: 12 },
+    crumb: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: 4,
+      marginBottom: 10,
+      maxWidth: "100%",
+    },
+    crumbText: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+    },
+    links: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      overflow: "hidden",
+    },
+    link: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 44,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+    },
+    linkTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.accent,
+    },
+    subtask: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 52,
+      paddingVertical: 10,
+    },
     viewOnly: {
       flexDirection: "row",
       alignItems: "center",

@@ -22,6 +22,7 @@ import {
   ItemRows,
   SectionHeading,
   type ListHandlers,
+  type Place,
 } from "../components/PlannerList";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
@@ -221,6 +222,8 @@ export function TasksScreen({
   user,
   onManageLists,
   onManageTags,
+  onReorder,
+  onDragging,
   ...handlers
 }: ListHandlers & {
   items: Item[];
@@ -231,6 +234,10 @@ export function TasksScreen({
   onManageLists: () => void;
   /** Opens the tags sheet. */
   onManageTags: () => void;
+  /** Manual order: move a task before or after another in its place. */
+  onReorder?: (item: Item, place: Place) => void;
+  /** A row is being dragged: the page holds still. */
+  onDragging?: (dragging: boolean) => void;
 }) {
   const { lists, tags, listById, tagById } = usePlanning();
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -410,6 +417,14 @@ export function TasksScreen({
     canToggle: handlers.canToggle,
     onSetStatus: handlers.onSetStatus,
     showScore: sort === "score",
+  };
+  const manual = sort === "position" && !!onReorder;
+  // The list nests subtasks under their tasks; in manual order rows drag.
+  const listRowProps = {
+    ...rowProps,
+    nest: true,
+    onReorder: manual ? onReorder : undefined,
+    onDragging,
   };
   const title = status === "all" ? "All items" : statusLabels[status];
   const empty =
@@ -669,6 +684,13 @@ export function TasksScreen({
           </Text>
         </View>
       )}
+      {manual && layout === "list" && visible.length > 1 && (
+        <Text style={[shared.small, s.manualHint]}>
+          Long-press a task and drag it to reorder, or hold it for Move up and
+          Move down. Tasks move among others in the same list, or under the same
+          task.
+        </Text>
+      )}
 
       {visible.length === 0 ? (
         <>
@@ -717,7 +739,7 @@ export function TasksScreen({
                     : undefined
                 }
               />
-              <ItemRows items={section.items} {...rowProps} />
+              <ItemRows items={section.items} {...listRowProps} />
             </View>
           ))}
           {rest.length > 0 &&
@@ -734,7 +756,7 @@ export function TasksScreen({
                   count={g.items.length}
                   color={g.color}
                 />
-                <ItemRows items={g.items} {...rowProps} />
+                <ItemRows items={g.items} {...listRowProps} />
               </View>
             ))}
         </>
@@ -854,6 +876,7 @@ const s = themed(() =>
     },
     panelHint: { marginTop: 8 },
     layout: { marginBottom: 12 },
+    manualHint: { marginTop: -4, marginBottom: 14 },
     toolbar: {
       flexDirection: "row",
       alignItems: "center",

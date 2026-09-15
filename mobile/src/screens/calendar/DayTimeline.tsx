@@ -184,7 +184,10 @@ export function DayTimeline({
   onDragging,
   keepFree = [],
   onKeepFreeMenu,
+  onKeepFree,
   mates = [],
+  scrollKey,
+  onScrollTo,
 }: {
   day: Date;
   /** Only the entries and blocks on `day`. */
@@ -220,6 +223,15 @@ export function DayTimeline({
   keepFree?: BusyInterval[];
   /** Options for a kept-free band (long-press). */
   onKeepFreeMenu?: (range: BusyInterval) => void;
+  /** With a plan preview: hold empty time and drag to keep a range free. */
+  onKeepFree?: (start: Date, end: Date) => void;
+  /** Changes when the day or view changes: the page scrolls to the right hour once. */
+  scrollKey?: string;
+  /** Scroll the page to `y` below the top of `view`. */
+  onScrollTo?: (
+    view: React.ComponentRef<typeof View> | null,
+    y: number,
+  ) => void;
   /** Teammates' busy times, as thin strips beside the hours. */
   mates?: {
     user_id: string;
@@ -239,6 +251,16 @@ export function DayTimeline({
     dragRef.current = next;
     setDragState(next);
   };
+  /** A range being drawn on empty time to keep free, in px from the top shown hour. */
+  const [draw, setDrawState] = useState<{ from: number; to: number } | null>(
+    null,
+  );
+  const drawRef = useRef<{ from: number; to: number } | null>(null);
+  const setDraw = (next: { from: number; to: number } | null) => {
+    drawRef.current = next;
+    setDrawState(next);
+  };
+  const body = useRef<React.ComponentRef<typeof View>>(null);
   const listColor = (id: string | null) =>
     id ? listById.get(id)?.color : undefined;
   const ghostKey = (g: PlannedBlock) => `ghost-${g.item_id}-${g.start_at}`;
@@ -287,8 +309,29 @@ export function DayTimeline({
   );
   const fitsAll = fitted.start === DAY_START && fitted.end === DAY_END;
   const { start, end } =
-    (drag && frozen.current) ||
+    ((drag || draw) && frozen.current) ||
     (allHours ? { start: DAY_START, end: DAY_END } : fitted);
+
+  // Scroll the page to an hour before now today, or 8 AM on another day:
+  // once per new day or view (the key), never on a re-render or a layout.
+  const scrollInfo = useRef({ start, end, isToday, now, onScrollTo });
+  scrollInfo.current = { start, end, isToday, now, onScrollTo };
+  useEffect(() => {
+    if (!scrollKey) return;
+    const frame = requestAnimationFrame(() => {
+      const info = scrollInfo.current;
+      if (!info.onScrollTo) return;
+      const hour = info.isToday
+        ? info.now.getHours() + info.now.getMinutes() / 60 - 1
+        : QUIET_START;
+      const shown = Math.min(info.end, Math.max(info.start, hour));
+      info.onScrollTo(
+        body.current,
+        PAD_TOP + (shown - info.start) * HOUR_HEIGHT,
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollKey]);
   // layoutDay measures from DAY_START; shift everything up to the first shown hour.
   const shift = (start - DAY_START) * HOUR_HEIGHT;
   const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
@@ -442,6 +485,47 @@ export function DayTimeline({
     if (next) save(new Date(next[0]), new Date(next[1]));
   };
 
+  // ---- drawing a range to keep free (plan preview) ----
+  const clampY = (y: number) =>
+    Math.max(0, Math.min((end - start) * HOUR_HEIGHT, y));
+  /** Minutes after midnight at `y` px below the top shown hour, snapped. */
+  const minuteAt = (
+    y: number,
+    win: { start: number },
+    round: "floor" | "ceil",
+  ) => win.start * 60 + Math[round]((y / HOUR_HEIGHT) * (60 / SNAP)) * SNAP;
+  const beginDraw = (y: number) => {
+    frozen.current = { start, end };
+    const at = clampY(y);
+    setDraw({ from: at, to: at });
+    onDragging?.(true);
+    if (Platform.OS === "android" && !isReducedMotion()) Vibration.vibrate(10);
+  };
+  const moveDraw = (y: number) => {
+    const d = drawRef.current;
+    if (d) setDraw({ from: d.from, to: clampY(y) });
+  };
+  const endDraw = (commit: boolean) => {
+    const d = drawRef.current;
+    const win = frozen.current ?? { start, end };
+    frozen.current = null;
+    setDraw(null);
+    onDragging?.(false);
+    if (!commit || !d || !onKeepFree) return;
+    const from = minuteAt(Math.min(d.from, d.to), win, "floor");
+    const to = minuteAt(Math.max(d.from, d.to), win, "ceil");
+    if (to - from >= SNAP) onKeepFree(atMinute(from), atMinute(to));
+  };
+  const drawLabel = (() => {
+    if (!draw) return "";
+    const win = frozen.current ?? { start, end };
+    const from = minuteAt(Math.min(draw.from, draw.to), win, "floor");
+    const to = minuteAt(Math.max(draw.from, draw.to), win, "ceil");
+    return to - from >= SNAP
+      ? `Keep free ${timeLabel(atMinute(from))} – ${timeLabel(atMinute(to))}`
+      : "Drag to keep time free";
+  })();
+
   const menuProps = (menu: (() => void) | null) => {
     if (!menu) return {};
     return {
@@ -546,6 +630,8 @@ export function DayTimeline({
         </View>
       </View>
       <View
+        ref={body}
+        collapsable={false}
         accessibilityLabel={
           zones.length
             ? `Day timeline, with times in ${zones.map(zoneCity).join(", ")}`
@@ -595,6 +681,36 @@ export function DayTimeline({
           )),
         )}
         <View style={[s.events, { top: PAD_TOP, left: gutter + stripsWidth }]}>
+          {/* Empty time, behind everything: hold and drag to keep it free. */}
+          {!!onKeepFree && (
+            <DrawLayer
+              height={windowHeight}
+              onBegin={beginDraw}
+              onMove={moveDraw}
+              onEnd={endDraw}
+            />
+          )}
+          {!!draw && (
+            <View
+              pointerEvents="none"
+              style={[
+                s.keepFree,
+                s.drawing,
+                {
+                  top: Math.min(draw.from, draw.to),
+                  height: Math.max(4, Math.abs(draw.to - draw.from)),
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={s.keepFreeText}
+                accessibilityLiveRegion="polite"
+              >
+                {drawLabel}
+              </Text>
+            </View>
+          )}
           {freeBands.map(({ item: r, top, height }) => (
             <Pressable
               key={`free-${r.start_at}-${r.end_at}`}
@@ -969,6 +1085,90 @@ export function DayTimeline({
         </Pressable>
       )}
     </View>
+  );
+}
+
+/**
+ * Empty time under the day's blocks: hold it, then drag up or down to draw a
+ * range (the plan preview keeps it free). Before the hold a swipe scrolls
+ * the page as usual. Screen readers use the "Keep a time free…" form.
+ */
+function DrawLayer({
+  height,
+  onBegin,
+  onMove,
+  onEnd,
+}: {
+  height: number;
+  onBegin: (y: number) => void;
+  onMove: (y: number) => void;
+  onEnd: (commit: boolean) => void;
+}) {
+  const latest = useRef({ onBegin, onMove, onEnd });
+  latest.current = { onBegin, onMove, onEnd };
+  const hold = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    lifted: boolean;
+    y: number;
+  }>({ timer: null, lifted: false, y: 0 }).current;
+  const cancelHold = () => {
+    if (hold.timer) clearTimeout(hold.timer);
+    hold.timer = null;
+  };
+  // Never leave the page locked if the timeline goes away mid-draw.
+  useEffect(
+    () => () => {
+      cancelHold();
+      if (hold.lifted) {
+        hold.lifted = false;
+        latest.current.onEnd(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      // A swipe on empty time still scrolls the page until the hold.
+      onShouldBlockNativeResponder: () => false,
+      onPanResponderGrant: (e) => {
+        hold.lifted = false;
+        hold.y = e.nativeEvent.locationY;
+        hold.timer = setTimeout(() => {
+          hold.timer = null;
+          hold.lifted = true;
+          latest.current.onBegin(hold.y);
+        }, HOLD_MS);
+      },
+      onPanResponderMove: (_, g) => {
+        if (hold.lifted) latest.current.onMove(hold.y + g.dy);
+        else if (hold.timer && (Math.abs(g.dx) > SLOP || Math.abs(g.dy) > SLOP))
+          cancelHold();
+      },
+      onPanResponderTerminationRequest: () => !hold.lifted,
+      onPanResponderRelease: () => {
+        cancelHold();
+        if (!hold.lifted) return;
+        hold.lifted = false;
+        latest.current.onEnd(true);
+      },
+      onPanResponderTerminate: () => {
+        cancelHold();
+        if (hold.lifted) {
+          hold.lifted = false;
+          latest.current.onEnd(false);
+        }
+      },
+    }),
+  ).current;
+  return (
+    <View
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+      style={[s.drawLayer, { height }]}
+      {...pan.panHandlers}
+    />
   );
 }
 
@@ -1377,6 +1577,9 @@ const s = themed(() =>
       fontSize: 10,
       color: colors.muted,
     },
+    /** The range being drawn: the kept-free look, outlined in the accent. */
+    drawing: { borderColor: colors.accent, zIndex: 3, elevation: 3 },
+    drawLayer: { position: "absolute", left: 0, right: 0, top: 0 },
     strip: {
       position: "absolute",
       width: STRIP - 1,

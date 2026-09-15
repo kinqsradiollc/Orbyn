@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type AlertButton,
 } from "react-native";
 import {
   dateLabel,
@@ -21,15 +22,16 @@ import { StatusPill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
 import { SmallAction } from "./SmallAction";
 import { shortDay } from "../lib/planning";
-import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
+import {
+  leftLabel,
+  percentOf,
+  stepsLabel,
+  subtasksLabel,
+  updatesLabel,
+} from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
 
-/**
- * One planner row: quick-complete checkbox, title, status pill, a slim progress
- * bar and checklist / update counts. Tapping the row opens the task detail.
- * Shrinks slightly while pressed; the check mark pops when the item becomes done.
- */
 /** Every status a task can move to, closed ones last. */
 const MOVE_STATUSES: Status[] = [...statusOrder, "cancelled"];
 const PRIORITY_NAMES: Record<Priority, string> = {
@@ -37,7 +39,15 @@ const PRIORITY_NAMES: Record<Priority, string> = {
   medium: "Medium",
   low: "Low",
 };
+/** Indent per subtask level. */
+const INDENT = 22;
 
+/**
+ * One planner row: quick-complete checkbox, title, status pill, a slim progress
+ * bar and checklist / update counts. Tapping the row opens the task detail.
+ * Shrinks slightly while pressed; the check mark pops when the item becomes done.
+ * Subtasks sit indented under their task, which can fold them away.
+ */
 export function ItemCard({
   item,
   busy,
@@ -48,6 +58,11 @@ export function ItemCard({
   score,
   onSetStatus,
   moveButton = false,
+  depth = 0,
+  subtasks,
+  onMoveBy,
+  onDragStart,
+  onDragRelease,
 }: {
   item: Item;
   busy: boolean;
@@ -63,14 +78,26 @@ export function ItemCard({
   onSetStatus?: (item: Item, status: Status) => void;
   /** Show a "Move to…" status action on the card (the board). */
   moveButton?: boolean;
+  /** How deep a subtask sits under the rows above it (0 for a task). */
+  depth?: number;
+  /** Its subtasks in this list, shown or folded away. */
+  subtasks?: { count: number; open: boolean; onToggle: () => void };
+  /** Manual order: move up (-1) or down (1) past the next task in its place. */
+  onMoveBy?: { up: boolean; down: boolean; move: (dir: -1 | 1) => void };
+  /** Manual order: a long press picks the row up to drag. */
+  onDragStart?: (item: Item) => void;
+  /** The finger lifted after a long press; true when the row was dragged. */
+  onDragRelease?: () => boolean;
 }) {
   const done = item.status === "done";
+  const cancelled = item.status === "cancelled";
   const percent = percentOf(item);
   const tone = statusTones[item.status];
   const reduced = useReducedMotion();
   const press = usePressScale();
   const tick = useRef(new Animated.Value(1)).current;
   const wasDone = useRef(done);
+  const longPressed = useRef(false);
   useEffect(() => {
     if (done && !wasDone.current && !reduced) {
       tick.setValue(0.6);
@@ -81,19 +108,47 @@ export function ItemCard({
   const showProgress = item.kind === "task" || percent > 0;
   const footer = [
     stepsLabel(item.steps_done, item.steps_total),
+    subtasks ? "" : subtasksLabel(item),
+    leftLabel(item),
     updatesLabel(item),
   ]
     .filter(Boolean)
     .join(" · ");
   const canMove = !!onSetStatus && !readOnly && item.kind === "task";
-  const moveMenu = () =>
+  const canReorder = !!onMoveBy && !readOnly;
+  /** Status changes and, in manual order, moving up or down. */
+  const menu = () => {
+    const buttons: AlertButton[] = [];
+    if (canReorder && onMoveBy.up)
+      buttons.push({ text: "Move up", onPress: () => onMoveBy.move(-1) });
+    if (canReorder && onMoveBy.down)
+      buttons.push({ text: "Move down", onPress: () => onMoveBy.move(1) });
+    if (canMove)
+      for (const st of MOVE_STATUSES)
+        if (st !== item.status)
+          buttons.push({
+            text:
+              st === "cancelled"
+                ? "Cancel task"
+                : `Move to ${statusLabels[st]}`,
+            style: st === "cancelled" ? "destructive" : "default",
+            onPress: () => onSetStatus?.(item, st),
+          });
+    if (!buttons.length) return;
     Alert.alert(item.title, `Now ${statusLabels[item.status]}`, [
-      ...MOVE_STATUSES.filter((st) => st !== item.status).map((st) => ({
-        text: `Move to ${statusLabels[st]}`,
-        onPress: () => onSetStatus?.(item, st),
-      })),
-      { text: "Cancel", style: "cancel" as const },
+      ...buttons,
+      { text: "Close", style: "cancel" },
     ]);
+  };
+  const actions = [
+    ...(canMove ? [{ name: "longpress", label: "Change status" }] : []),
+    ...(canReorder && onMoveBy.up
+      ? [{ name: "moveUp", label: "Move up" }]
+      : []),
+    ...(canReorder && onMoveBy.down
+      ? [{ name: "moveDown", label: "Move down" }]
+      : []),
+  ];
   // Like the web's subtitle: the first line of the notes.
   const note =
     (item.notes ?? "")
@@ -104,7 +159,14 @@ export function ItemCard({
     item.priority
   ];
   return (
-    <Animated.View style={[s.row, !first && s.divider, press.style]}>
+    <Animated.View
+      style={[
+        s.row,
+        !first && s.divider,
+        depth > 0 && { paddingLeft: 16 + depth * INDENT },
+        press.style,
+      ]}
+    >
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done, disabled: busy || readOnly }}
@@ -122,22 +184,45 @@ export function ItemCard({
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Open ${item.title}`}
-        accessibilityHint="Shows steps, progress and updates"
+        accessibilityLabel={`Open ${item.title}${depth > 0 ? ", subtask" : ""}`}
+        accessibilityHint={
+          onDragStart && canReorder
+            ? "Shows steps, progress and updates. Long-press and drag to reorder."
+            : "Shows steps, progress and updates"
+        }
         style={({ pressed }) => [s.main, pressed && { opacity: 0.6 }]}
         onPressIn={press.onPressIn}
-        onPressOut={press.onPressOut}
+        onPressOut={() => {
+          press.onPressOut();
+          if (!longPressed.current) return;
+          longPressed.current = false;
+          // Held without moving: the menu, as without manual order.
+          if (!onDragRelease?.()) menu();
+        }}
         onPress={() => onOpen(item)}
-        onLongPress={canMove ? moveMenu : undefined}
-        accessibilityActions={
-          canMove ? [{ name: "longpress", label: "Change status" }] : undefined
+        onLongPress={
+          onDragStart && canReorder
+            ? () => {
+                longPressed.current = true;
+                onDragStart(item);
+              }
+            : canMove || canReorder
+              ? menu
+              : undefined
         }
+        accessibilityActions={actions.length ? actions : undefined}
         onAccessibilityAction={(e) => {
-          if (canMove && e.nativeEvent.actionName === "longpress") moveMenu();
+          const name = e.nativeEvent.actionName;
+          if (name === "longpress" && canMove) menu();
+          else if (name === "moveUp") onMoveBy?.move(-1);
+          else if (name === "moveDown") onMoveBy?.move(1);
         }}
       >
         <View style={s.top}>
-          <Text numberOfLines={2} style={[s.title, done && s.done]}>
+          <Text
+            numberOfLines={2}
+            style={[s.title, done && s.done, cancelled && s.cancelled]}
+          >
             {item.title}
           </Text>
           <StatusPill status={item.status} />
@@ -198,9 +283,30 @@ export function ItemCard({
             {footer}
           </Text>
         )}
+        {subtasks && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${subtasksLabel(item) || `${subtasks.count} subtasks`}, ${subtasks.open ? "shown" : "hidden"}`}
+            accessibilityHint={
+              subtasks.open ? "Hides its subtasks" : "Shows its subtasks"
+            }
+            accessibilityState={{ expanded: subtasks.open }}
+            hitSlop={8}
+            onPress={subtasks.onToggle}
+            style={s.subtasks}
+          >
+            <View style={subtasks.open && s.turned}>
+              <Icon name="chevronRight" size={13} color={colors.accent} />
+            </View>
+            <Text style={s.subtasksText}>
+              {subtasksLabel(item) ||
+                `${subtasks.count} subtask${subtasks.count === 1 ? "" : "s"}`}
+            </Text>
+          </Pressable>
+        )}
         {moveButton && canMove && (
           <View style={s.moveRow}>
-            <SmallAction label="Move to…" disabled={busy} onPress={moveMenu} />
+            <SmallAction label="Move to…" disabled={busy} onPress={menu} />
           </View>
         )}
       </Pressable>
@@ -244,6 +350,7 @@ const s = themed(() =>
       color: colors.text,
     },
     done: { color: colors.faint, textDecorationLine: "line-through" },
+    cancelled: { color: colors.faint },
     meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
     metaText: {
       flexShrink: 1,
@@ -317,5 +424,19 @@ const s = themed(() =>
       color: colors.muted,
       marginTop: 6,
     },
+    subtasks: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
+      gap: 4,
+      marginTop: 8,
+      minHeight: 24,
+    },
+    subtasksText: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.accent,
+    },
+    turned: { transform: [{ rotate: "90deg" }] },
   }),
 );

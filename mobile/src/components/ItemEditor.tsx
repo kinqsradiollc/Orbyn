@@ -15,6 +15,7 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
+  MAX_ITEM_LINKS as MAX_LINKS,
   dateLabel,
   hasTeamPermission,
   statusLabels,
@@ -69,6 +70,11 @@ type Props = {
 const PERSONAL = "personal";
 /** The server's cap on tags per item. */
 const MAX_TAGS = 20;
+/** Every status, closed ones last. */
+const STATUS_OPTIONS = [...statusOrder, "cancelled"] as const;
+type LinkDraft = { url: string; title: string };
+/** Web links: http or https only. */
+const LINK_URL = /^https?:\/\/\S+$/i;
 
 /** Native sheet on iOS, full-screen modal on Android; both respect safe areas. */
 export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
@@ -176,6 +182,8 @@ function Form({
   const [statuses, setStatuses] = useState<Map<string, AttendeeStatus>>(
     () => new Map(),
   );
+  /** Links saved on the item (rows in lists don't carry them). */
+  const [savedLinks, setSavedLinks] = useState<LinkDraft[]>([]);
   useEffect(() => {
     if (!itemId) return;
     let alive = true;
@@ -183,6 +191,12 @@ function Form({
       .getItem(itemId)
       .then((d) => {
         if (!alive) return;
+        setSavedLinks(
+          (d.links ?? []).map(({ url, title }) => ({
+            url,
+            title: title ?? "",
+          })),
+        );
         // The detail carries full invitees (with answers), not the input shape.
         const people = (d.attendees ?? []) as Attendee[];
         setSavedPeople(
@@ -197,6 +211,8 @@ function Form({
   }, [itemId]);
   // Sent only once changed: the list replaces the saved invitees.
   const people = editing.attendees ?? savedPeople;
+  // Likewise links: sending the list replaces the saved ones.
+  const links: LinkDraft[] = editing.links ?? savedLinks;
   const alerts =
     editing.alerts ??
     (editing.reminder_minutes != null ? [editing.reminder_minutes] : []);
@@ -384,7 +400,7 @@ function Form({
                 wrap
                 disabled={readOnly}
                 accessibilityLabel="Status"
-                options={statusOrder}
+                options={STATUS_OPTIONS}
                 labels={statusLabels}
                 value={editing.status}
                 onChange={(status) => onChange({ status })}
@@ -846,6 +862,13 @@ function Form({
                 onChangeText={(notes) => onChange({ notes })}
               />
             </Section>
+            <Section label="Links">
+              <LinksField
+                links={links}
+                disabled={readOnly}
+                onChange={(next) => onChange({ links: next })}
+              />
+            </Section>
             <Section label="Alerts">
               <AlertsField
                 alerts={alerts}
@@ -901,6 +924,125 @@ function Form({
         </ScrollView>
       </KeyboardAvoidingView>
     </>
+  );
+}
+
+/** Web links on the item: a title (optional) and an address, up to 20. */
+function LinksField({
+  links,
+  disabled,
+  onChange,
+}: {
+  links: LinkDraft[];
+  disabled: boolean;
+  onChange: (links: LinkDraft[]) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [problem, setProblem] = useState("");
+  const full = links.length >= MAX_LINKS;
+  const add = () => {
+    const clean = url.trim();
+    if (!LINK_URL.test(clean)) {
+      setProblem("Links start with http:// or https://.");
+      return;
+    }
+    if (links.some((l) => l.url === clean)) {
+      setProblem("That link is already here.");
+      return;
+    }
+    onChange([...links, { url: clean, title: title.trim() }]);
+    setUrl("");
+    setTitle("");
+    setProblem("");
+  };
+  return (
+    <View>
+      {links.length === 0 && disabled && (
+        <Text style={shared.small}>No links.</Text>
+      )}
+      {links.map((l, n) => (
+        <View key={`${l.url}-${n}`} style={[s.linkRow, n > 0 && s.linkDivider]}>
+          <Icon name="link" size={14} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.linkTitle} numberOfLines={1}>
+              {l.title || l.url}
+            </Text>
+            {!!l.title && (
+              <Text style={shared.small} numberOfLines={1}>
+                {l.url}
+              </Text>
+            )}
+          </View>
+          {!disabled && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${l.title || l.url}`}
+              hitSlop={8}
+              onPress={() => onChange(links.filter((_, i) => i !== n))}
+              style={s.linkRemove}
+            >
+              <Icon name="x" size={16} color={colors.muted} />
+            </Pressable>
+          )}
+        </View>
+      ))}
+      {!disabled && !full && (
+        <View style={links.length > 0 && s.below}>
+          <TextInput
+            style={shared.input}
+            value={url}
+            onChangeText={(t) => {
+              setUrl(t);
+              if (problem) setProblem("");
+            }}
+            maxLength={2000}
+            placeholder="https://"
+            placeholderTextColor={colors.faint}
+            keyboardType="url"
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Link address"
+          />
+          <View style={[s.tagRow, s.below]}>
+            <TextInput
+              style={[shared.input, s.tagInput]}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={200}
+              placeholder="Title (optional)"
+              placeholderTextColor={colors.faint}
+              returnKeyType="done"
+              onSubmitEditing={add}
+              accessibilityLabel="Link title, optional"
+            />
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Add link"
+              accessibilityState={{ disabled: !url.trim() }}
+              disabled={!url.trim()}
+              onPress={add}
+              style={[s.tagAdd, !url.trim() && { opacity: 0.45 }]}
+            >
+              <Icon
+                name="plus"
+                size={18}
+                color={colors.white}
+                strokeWidth={2.2}
+              />
+            </PressableScale>
+          </View>
+        </View>
+      )}
+      {!!problem && (
+        <Text style={[shared.small, s.hint, { color: colors.danger }]}>
+          {problem}
+        </Text>
+      )}
+      {full && !disabled && (
+        <Text style={[shared.small, s.hint]}>Up to {MAX_LINKS} links.</Text>
+      )}
+    </View>
   );
 }
 
@@ -1011,6 +1153,29 @@ const s = themed(() =>
     below: { marginTop: 10 },
     switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     tagRow: { flexDirection: "row", gap: 8 },
+    linkRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 48,
+      paddingVertical: 6,
+    },
+    linkDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    linkTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    linkRemove: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
     tagAdd: {
       width: 44,

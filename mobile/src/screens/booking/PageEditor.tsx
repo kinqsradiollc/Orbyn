@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import {
+  DEFAULT_BOOKER_REMINDERS,
   SLOT_INTERVALS,
   isTimeZone,
   type BookingAvailability,
@@ -23,6 +24,7 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Field, NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";
+import { Segmented } from "../../components/Segmented";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client, webOrigin } from "../../lib/api";
@@ -57,6 +59,7 @@ import {
   PLACEHOLDERS,
   SLUG,
   bookingLink,
+  canEditPage,
   eventTitlePreview,
   newKey,
   questionId,
@@ -71,7 +74,14 @@ import {
   questionProblem,
   type QuestionDraft,
 } from "./QuestionsEditor";
-import { PresetMinutes, Section, SwitchRow, bookingStyles as bs } from "./ui";
+import {
+  PresetMinutes,
+  ReminderChips,
+  Section,
+  SwitchRow,
+  bookingStyles as bs,
+  reminderLabel,
+} from "./ui";
 
 type SectionId =
   | "basics"
@@ -79,8 +89,12 @@ type SectionId =
   | "scheduling"
   | "questions"
   | "confirmation"
+  | "reminders"
   | "colour"
   | "cohosts";
+
+/** "Whose page" when it's yours rather than a team's. */
+const ME = "me";
 
 const overrideDrafts = (page: BookingPage | null): OverrideDraft[] =>
   (page?.date_overrides ?? []).map((o) => ({ key: newKey(), ...o }));
@@ -177,6 +191,15 @@ export function PageEditor({
     page?.confirmation_message ?? "",
   );
   const [color, setColor] = useState(page?.color ?? LIST_COLORS[0]);
+  /** The team the page belongs to, or null for your own. */
+  const [teamId, setTeamId] = useState<string | null>(page?.team_id ?? null);
+  const [reminders, setReminders] = useState<number[]>(
+    page?.remind_before_minutes ?? DEFAULT_BOOKER_REMINDERS,
+  );
+  /** Which of your teams each teammate is in (team pages host their own). */
+  const [teamsOf, setTeamsOf] = useState<Map<string, Set<string>>>(
+    () => new Map(),
+  );
   // The page's owner is always a host; everyone else is a co-host.
   const ownerId = saved?.owner_id ?? user?.id;
   const isOwner = !!ownerId && ownerId === user?.id;
@@ -201,12 +224,19 @@ export function PageEditor({
       .then((details) => {
         if (!alive) return;
         const seen = new Map<string, TeamMember>();
-        for (const d of details)
-          for (const m of d?.members ?? [])
+        const of = new Map<string, Set<string>>();
+        details.forEach((d, n) => {
+          for (const m of d?.members ?? []) {
+            const set = of.get(m.user_id) ?? new Set<string>();
+            set.add(ids[n]);
+            of.set(m.user_id, set);
             if (m.user_id !== ownerId) seen.set(m.user_id, m);
+          }
+        });
         setPeople(
           [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
         );
+        setTeamsOf(of);
       })
       .catch(() => {});
     return () => {
@@ -220,6 +250,23 @@ export function PageEditor({
     setAvailability(next);
   };
 
+  /** Everyone listed is in the page's team (unknown until members load). */
+  const inTeam = (userIds: string[]) =>
+    !teamId ||
+    !teamsOf.size ||
+    userIds.every((id) => teamsOf.get(id)?.has(teamId));
+  // Team owners and admins can make and move pages into their teams; only
+  // the page's owner can take a team page back.
+  const managed = teams.filter((t) => t.role === "owner" || t.role === "admin");
+  const ownerLabels: Record<string, string> = { [ME]: "Me" };
+  for (const t of managed) ownerLabels[t.id] = t.name;
+  if (teamId && !ownerLabels[teamId])
+    ownerLabels[teamId] = saved?.team_name ?? page?.team_name ?? "Team";
+  const ownerOptions = [
+    ...(isOwner ? [ME] : []),
+    ...managed.map((t) => t.id),
+    ...(teamId && !managed.some((t) => t.id === teamId) ? [teamId] : []),
+  ];
   const custom = availability.mode === "custom" ? availability : null;
   const dates = overrides.map((o) => o.date);
   const days = parseMinutes(windowDays);
@@ -271,6 +318,8 @@ export function PageEditor({
     if (!HEX.test(color)) return ["colour", "Colours look like #376c51."];
     if (hosts.length > MAX_HOSTS)
       return ["cohosts", `Pick up to ${MAX_HOSTS} co-hosts.`];
+    if (teamId && !inTeam(hosts.map((h) => h.user_id)))
+      return ["cohosts", "Co-hosts of a team page must be in the team."];
     return null;
   };
   const problem = findProblem();
@@ -343,6 +392,8 @@ export function PageEditor({
         allow_reschedule: reschedule,
         event_title: eventTitle.trim(),
         confirmation_message: confirmation.trim(),
+        team_id: teamId,
+        remind_before_minutes: reminders,
       };
       const next = saved
         ? await client.updateBookingPage(saved.id, body)
@@ -367,11 +418,13 @@ export function PageEditor({
   const link = bookingLink(saved?.slug ?? cleanSlug);
   // Everyone you can pick, plus saved co-hosts who aren't in your teams.
   const candidates = [
-    ...people.map((p) => ({
-      user_id: p.user_id,
-      name: p.name,
-      email: p.email,
-    })),
+    ...people
+      .filter((p) => inTeam([p.user_id]))
+      .map((p) => ({
+        user_id: p.user_id,
+        name: p.name,
+        email: p.email,
+      })),
     ...(page?.hosts ?? [])
       .filter(
         (h) =>
@@ -441,6 +494,25 @@ export function PageEditor({
           summary={title.trim()}
           {...sectionProps("basics")}
         >
+          {ownerOptions.length > 1 && (
+            <Field
+              label="Whose page"
+              hint={
+                teamId
+                  ? "Everyone in the team sees it; its owners and admins can change it. Co-hosts come from the team."
+                  : "Only you can change it."
+              }
+            >
+              <Segmented
+                wrap
+                accessibilityLabel="Whose page"
+                options={ownerOptions}
+                labels={ownerLabels}
+                value={teamId ?? ME}
+                onChange={(v) => setTeamId(v === ME ? null : v)}
+              />
+            </Field>
+          )}
           <Field label="Title">
             <TextInput
               style={shared.input}
@@ -749,6 +821,22 @@ export function PageEditor({
           </Field>
         </Section>
 
+        <Section
+          title="Reminders"
+          summary={
+            reminders.length
+              ? `Emailed ${reminders.map(reminderLabel).join(" and ")} before`
+              : "No reminder emails"
+          }
+          {...sectionProps("reminders")}
+        >
+          <Text style={[shared.small, bs.gap]}>
+            People who book get an email before the meeting with a link to move
+            or cancel it.
+          </Text>
+          <ReminderChips value={reminders} onChange={setReminders} />
+        </Section>
+
         <Section title="Colour" summary={color} {...sectionProps("colour")}>
           <Text style={[shared.small, bs.gap]}>
             Used for buttons and highlights on the booking page.
@@ -929,7 +1017,7 @@ export function PageEditor({
           onPress={trySave}
         />
 
-        {saved && isOwner && (
+        {saved && canEditPage(saved, user?.id) && (
           <Button
             destructive
             title="Delete page"

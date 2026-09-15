@@ -44,6 +44,32 @@ export const percentOf = (item: Pick<Item, "progress" | "status">) =>
     ? 100
     : Math.max(0, Math.min(100, Math.round(item.progress ?? 0)));
 
+/**
+ * "45m left" from the server's `remaining_minutes` (estimate minus time
+ * spent), "No time left" once it's used up, or "" without an estimate or
+ * once the task is closed.
+ */
+export function leftLabel(
+  item: Pick<Item, "remaining_minutes" | "status" | "kind">,
+) {
+  const left = item.remaining_minutes;
+  if (item.kind !== "task" || left == null || isClosed(item.status)) return "";
+  if (left <= 0) return "No time left";
+  const h = Math.floor(left / 60);
+  const m = Math.round(left % 60);
+  return `${h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`} left`;
+}
+
+/** "2 of 5 subtasks", or "" for a task without any. */
+export const subtasksLabel = (
+  item: Pick<Item, "child_count" | "children_done">,
+) => {
+  const total = item.child_count ?? 0;
+  return total > 0
+    ? `${item.children_done ?? 0} of ${total} subtask${total === 1 ? "" : "s"}`
+    : "";
+};
+
 /** Still open and due before today (the web's rule); due earlier today is today. */
 export const isOverdue = (item: Item, now = new Date()) =>
   !isClosed(item.status) &&
