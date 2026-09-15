@@ -109,9 +109,14 @@ export async function createService(
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ZodError)
-      return reply
-        .code(422)
-        .send({ message: err.issues.map((i) => i.message).join("; ") });
+      return reply.code(422).send({
+        // Name the field, so a rejected value says which one to fix.
+        message: err.issues
+          .map(
+            (i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message,
+          )
+          .join("; "),
+      });
     const e = err as Error & { statusCode?: number; code?: string };
     if (e.code === "23505")
       return reply.code(409).send({ message: "This record already exists." });
@@ -149,8 +154,17 @@ export async function createService(
   app.get("/live", async () => ({ status: "ok", service: name }));
 
   /** Readiness: this instance can serve traffic, including the database. */
-  app.get("/health", async () => {
-    await pool.query("SELECT 1");
+  app.get("/health", async (_r, reply) => {
+    try {
+      await pool.query("SELECT 1");
+    } catch {
+      // Not ready (503), so load balancers route around this instance.
+      return reply.code(503).send({
+        status: "unavailable",
+        service: name,
+        message: "The database isn't reachable.",
+      });
+    }
     return {
       status: "ok",
       service: name,

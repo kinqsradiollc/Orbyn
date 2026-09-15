@@ -517,17 +517,21 @@ export async function bookingRoutes(app: FastifyInstance) {
     });
   });
 
+  /** Search text as ILIKE patterns: every word must be in the name or email. */
+  const searchWords = (text?: string) =>
+    (text ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 5)
+      .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+
   // ---- tracking bookings (signed in) ----------------------------------------------
 
   app.get("/bookings", async (r) => {
     const u = await authenticate(r);
     const q = bookingsQuery.parse(r.query);
     const view = VIEWS[q.view];
-    const words = (q.q ?? "")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 5)
-      .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+    const words = searchWords(q.q);
     const rows = (
       await reader(r.headers).query<Booking & { total: number }>(
         `${BOOKING_SELECT.replace("SELECT b.id", "SELECT count(*) OVER()::int AS total, b.id")}
@@ -608,8 +612,10 @@ export async function bookingRoutes(app: FastifyInstance) {
       >(
         `${BOOKING_SELECT.replace("SELECT b.id", "SELECT coalesce(p.questions, '[]') AS questions, b.id")}
          WHERE ${MINE} AND ${view.where} AND ($2::uuid IS NULL OR b.page_id = $2)
+           AND NOT EXISTS (SELECT 1 FROM unnest($3::text[]) w
+                           WHERE (b.name || ' ' || b.email) NOT ILIKE w)
          ORDER BY ${view.order}, b.id LIMIT 5000`,
-        [u.id, q.page_id ?? null],
+        [u.id, q.page_id ?? null, searchWords(q.q)],
       )
     ).rows;
     const header = [

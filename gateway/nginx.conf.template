@@ -86,6 +86,12 @@ ${UPSTREAM_STATUS}
     keepalive 16;
   }
 
+  # The scheme the browser used: kept from a TLS proxy in front, else our own.
+  map $http_x_forwarded_proto $fwd_proto {
+    default $http_x_forwarded_proto;
+    "" $scheme;
+  }
+
   server {
     listen 8080;
     client_max_body_size 64k;
@@ -95,7 +101,7 @@ ${UPSTREAM_STATUS}
     proxy_set_header Connection "";
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $fwd_proto;
     # Internal connections take milliseconds; a short connect timeout means a
     # copy that just stopped costs about a second before the next one is tried.
     proxy_connect_timeout 1s;
@@ -151,7 +157,7 @@ ${UPSTREAM_STATUS}
     proxy_set_header Connection "";
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $fwd_proto;
     proxy_connect_timeout 1s;
     proxy_read_timeout 125s;
     proxy_next_upstream error timeout http_502 http_503;
@@ -164,6 +170,13 @@ ${UPSTREAM_STATUS}
     }
 
     location /api/ {
+      # A proxy_set_header here replaces the server's, so all are restated.
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      # Links the API builds (the calendar feed) need the /api it sits under.
+      proxy_set_header X-Forwarded-Prefix /api;
       proxy_pass http://127.0.0.1:8080/;
     }
 

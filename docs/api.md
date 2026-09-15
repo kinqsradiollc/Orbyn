@@ -1,21 +1,23 @@
 # API reference
 
 Base URL: `http://localhost:8008` in Docker, `http://localhost:8000` when running locally. Through
-the web container it is also reachable at `http://localhost:8080/api`.
+the web container it is also reachable at `http://localhost:8080/api`. A proxy that serves the API
+under a path sends `X-Forwarded-Prefix` (and keeps `X-Forwarded-Proto`), so links the API builds,
+such as the calendar feed, point at that path.
 
 All request and response bodies are JSON. Authenticated routes need
 `Authorization: Bearer <token>`. Errors have the shape `{ "message": "..." }`.
 
-| Status | Meaning                                                           |
-| ------ | ----------------------------------------------------------------- |
-| 401    | Missing, expired, or revoked session                              |
-| 403    | Signed in but not allowed: wrong role, or the account is disabled |
-| 404    | Not found, including records that belong to another user          |
-| 409    | Version conflict, duplicate record, or expired proposal           |
-| 422    | Validation error; `message` lists the failing rules               |
-| 429    | Rate limited (see [Rate limits](#rate-limits))                    |
-| 502    | AI provider returned an error or invalid plan                     |
-| 503    | AI is not configured on the server                                |
+| Status | Meaning                                                                       |
+| ------ | ----------------------------------------------------------------------------- |
+| 401    | Missing, expired, or revoked session                                          |
+| 403    | Signed in but not allowed: wrong role, or the account is disabled             |
+| 404    | Not found, including records that belong to another user                      |
+| 409    | Version conflict, duplicate record, or expired proposal                       |
+| 422    | Validation error; `message` names each failing field and rule, e.g. `slug: …` |
+| 429    | Rate limited (see [Rate limits](#rate-limits))                                |
+| 502    | AI provider returned an error or invalid plan                                 |
+| 503    | AI is not configured on the server                                            |
 
 ## Rate limits
 
@@ -71,11 +73,14 @@ with 0 for none, map 1–3 to `high`, 4–6 and 0 to `medium` and 7–9 to `low`
 }
 ```
 
-→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders" } }`
+→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders", "role", "handle", "bio" } }`
+
+The email is trimmed and lowercased; a blank or missing `name` becomes "My space".
 
 ### `POST /auth/login`
 
-Same body shape (`name` is ignored). → `200` with the same response as register.
+`{ "email", "password" }` (`name` is ignored). → `200` with the same response as register. A wrong
+email or password is always `401`, whatever its length: the sign-up password rules aren't applied.
 
 ### `POST /auth/logout` (auth)
 

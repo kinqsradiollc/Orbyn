@@ -244,7 +244,7 @@ export async function plannerRoutes(app: FastifyInstance) {
         [
           u.id,
           d.name,
-          d.days ?? daysForRule(rrule!),
+          rrule ? daysForRule(rrule) : d.days,
           d.start_time,
           d.end_time,
           JSON.stringify(d.filters),
@@ -281,8 +281,9 @@ export async function plannerRoutes(app: FastifyInstance) {
       if (ruleChanged && next.rrule) {
         const tz = next.timezone ?? (await loadPrefs(db, u.id)).timezone;
         seriesStart = localDateKey(new Date(), tz);
-        if (!d.days) next.days = daysForRule(next.rrule);
       }
+      // A rule decides the weekdays; `days` mirrors it for older apps.
+      if (next.rrule) next.days = daysForRule(next.rrule);
       const frame = (
         await db.query<Frame>(
           `UPDATE frames SET name=$2, days=$3, start_time=$4, end_time=$5, filters=$6,

@@ -8,6 +8,8 @@ export default defineConfig({
       "/api": {
         target: process.env.API_PROXY_URL || "http://localhost:8008",
         rewrite: (p) => p.replace(/^\/api/, ""),
+        // Links the API builds (the calendar feed) need the /api prefix.
+        headers: { "X-Forwarded-Prefix": "/api" },
       },
     },
   },

@@ -346,6 +346,9 @@ export class OrbynClient {
     team_id?: string;
   }) {
     const q = new URLSearchParams();
+    // Without either, GET /items is the ordinary list, not a sync page.
+    if (!params.updated_after && !params.cursor)
+      throw new Error("syncItems needs updated_after or cursor");
     if (params.updated_after) q.set("updated_after", params.updated_after);
     if (params.cursor) q.set("cursor", params.cursor);
     if (params.include_deleted) q.set("include_deleted", "1");

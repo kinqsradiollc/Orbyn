@@ -25,11 +25,25 @@ export const MAX_REMINDER_MINUTES = 10080;
 
 export const credentials = z.object({
   email: z
-    .email()
-    .max(254)
+    .string()
+    .trim()
+    .pipe(z.email().max(254))
     .transform((s) => s.toLowerCase()),
   password: z.string().min(10).max(128),
-  name: z.string().trim().min(1).max(80).default("My space"),
+  // A blank name means "use the default", not a validation error.
+  name: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((s) => s || "My space"),
+});
+
+/** Signing in checks the password itself, not the sign-up rules, so a
+ * wrong short password is "incorrect" (401), never a validation error. */
+export const loginCredentials = z.object({
+  email: credentials.shape.email,
+  password: z.string().min(1).max(128),
 });
 
 /** A video-call link; empty for none. */

@@ -49,6 +49,8 @@ type Row = {
   due_at: Date | null;
   end_at: Date | null;
   reminder_minutes: number;
+  /** Minutes before, from the item's alerts column (ITEM_SELECT is i.*). */
+  alerts: number[] | null;
   team_id: string | null;
   team_name: string | null;
   progress: number;
@@ -539,7 +541,7 @@ const savedData = (row: Row) =>
     priority: row.priority,
     due_at: row.due_at ? row.due_at.toISOString() : null,
     end_at: row.end_at ? row.end_at.toISOString() : null,
-    reminder_minutes: row.reminder_minutes,
+    alerts: row.alerts ?? [],
     team_id: row.team_id,
   });
 
