@@ -98,7 +98,7 @@ Services started:
 | `migrate`  | One-shot container that applies `backend/migrations/*.sql` then exits. |
 | `api`      | The HTTP API. Waits for migrations to finish. Has a health check.      |
 | `worker`   | Schedules and delivers reminders (in-app, email, push).                |
-| `desktop`  | The web app served by nginx, proxying `/api/` to the API.              |
+| `desktop`  | internal `desktop:8080`                                                | Web app files; served through the gateway's web port |
 | `mailpit`  | Local SMTP sink with a web inbox at <http://localhost:8025>.           |
 
 Useful commands:
@@ -114,18 +114,18 @@ docker compose down -v                  # stop and delete the database volume
 
 `docker compose up -d --build` starts the backend as separate services behind a gateway:
 
-| Service            | Reached at                | Notes                                                |
-| ------------------ | ------------------------- | ---------------------------------------------------- |
-| `desktop`          | <http://localhost:8080>   | Web app; `/api` goes to the gateway                  |
-| `gateway`          | <http://localhost:8008>   | API entry point for web, mobile, and desktop apps    |
-| `api`              | internal `api:8000`       | Planner API                                          |
-| `ai`               | internal `ai:8000`        | Assistant and AI provider settings                   |
-| `status`           | internal `status:8000`    | Status probes; public report at `/status`            |
-| `notifier`         | no port                   | Reminder delivery                                    |
-| `postgres`         | `localhost:5433`          | Database                                             |
-| `pgbouncer`        | internal `pgbouncer:6432` | Connection pooler every service connects through     |
-| `postgres-replica` | `localhost:5434`          | Streaming read replica (`replica` profile, optional) |
-| `mailpit`          | <http://localhost:8025>   | Local email inbox                                    |
+| Service            | Reached at                                          | Notes                                                                   |
+| ------------------ | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `desktop`          | <http://localhost:8080>                             | Web app; `/api` goes to the gateway                                     |
+| `gateway`          | <http://localhost:8080> and <http://localhost:8008> | The only service with host ports: the web app (with `/api`) and the API |
+| `api`              | internal `api:8000`                                 | Planner API                                                             |
+| `ai`               | internal `ai:8000`                                  | Assistant and AI provider settings                                      |
+| `status`           | internal `status:8000`                              | Status probes; public report at `/status`                               |
+| `notifier`         | no port                                             | Reminder delivery                                                       |
+| `postgres`         | `localhost:5433`                                    | Database                                                                |
+| `pgbouncer`        | internal `pgbouncer:6432`                           | Connection pooler every service connects through                        |
+| `postgres-replica` | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                    |
+| `mailpit`          | <http://localhost:8025>                             | Local email inbox                                                       |
 
 To spread services across machines, add a read replica, or run on Kubernetes, see
 [scalability.md](scalability.md) and [deploy/k8s](../deploy/k8s/README.md).

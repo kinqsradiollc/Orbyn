@@ -10,6 +10,7 @@ import {
   formatUptime,
   serviceStateLabels,
   statusHeadlines,
+  type Maintenance,
   type ServiceState,
   type StatusComponent,
   type StatusIncident,
@@ -17,6 +18,7 @@ import {
 } from "@orbyn/core";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { formatUntil, maintenanceTone } from "../components/MaintenanceBanner";
 import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
@@ -162,6 +164,9 @@ export function StatusSheet({
             </Text>
           ) : (
             <>
+              {report.maintenance?.enabled && (
+                <MaintenanceNotice maintenance={report.maintenance} />
+              )}
               <Headline report={report} now={now} />
               <Text style={[shared.eyebrow, s.section]}>COMPONENTS</Text>
               {report.components.map((c, n) => (
@@ -180,6 +185,31 @@ export function StatusSheet({
         </View>
       </ScrollView>
     </Sheet>
+  );
+}
+
+/** Shown above the headline while an admin has maintenance mode on. */
+function MaintenanceNotice({ maintenance }: { maintenance: Maintenance }) {
+  return (
+    <FadeIn style={s.maintenance}>
+      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.fg }]}>
+        <Icon name="clock" size={18} color={colors.white} strokeWidth={2.2} />
+      </View>
+      <View style={{ flex: 1 }} accessible accessibilityRole="alert">
+        <Text style={[s.bannerTitle, { color: maintenanceTone.fg }]}>
+          Maintenance in progress
+        </Text>
+        <Text style={shared.body}>
+          {maintenance.message.trim() ||
+            "You can view everything, but changes are paused."}
+        </Text>
+        {maintenance.until && (
+          <Text style={[shared.small, s.until]}>
+            Expected back {formatUntil(maintenance.until)}
+          </Text>
+        )}
+      </View>
+    </FadeIn>
   );
 }
 
@@ -311,6 +341,18 @@ function Incidents({
 
 const s = StyleSheet.create({
   section: { marginTop: 8 },
+  maintenance: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: maintenanceTone.border,
+    backgroundColor: maintenanceTone.bg,
+    padding: 18,
+    marginBottom: 12,
+  },
+  until: { marginTop: 4 },
   banner: {
     flexDirection: "row",
     alignItems: "center",

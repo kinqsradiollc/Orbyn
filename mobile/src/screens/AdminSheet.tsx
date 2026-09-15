@@ -12,6 +12,7 @@ import {
   type AdminOverview,
   type AdminUser,
   type AuditEntry,
+  type Maintenance,
   type Team,
   type User,
 } from "@orbyn/core";
@@ -29,14 +30,14 @@ import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 import { AdminAi } from "./AdminAi";
+import { AdminSystem } from "./AdminSystem";
 import { TeamDetailPage } from "./TeamDetail";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
-type Segment = "overview" | "users" | "teams" | "audit" | "ai";
+type Segment = "overview" | "users" | "teams" | "audit" | "ai" | "system";
 
-const SEGMENTS = ["overview", "users", "teams", "audit"] as const;
-const SEGMENTS_WITH_AI = [...SEGMENTS, "ai"] as const;
-const SEGMENT_LABELS = { ai: "AI" } as const;
+const SEGMENTS: Segment[] = ["overview", "users", "teams", "audit"];
+const SEGMENT_LABELS = { ai: "AI", system: "System" } as const;
 const AUDIT_PAGE = 30;
 
 /**
@@ -54,6 +55,7 @@ export function AdminSheet({
   onClose,
   onDismiss,
   onOpenItem,
+  onMaintenance,
 }: {
   visible: boolean;
   user: User | null;
@@ -65,10 +67,18 @@ export function AdminSheet({
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem: (editing: Editing) => void;
+  /** New maintenance state after an admin switches it, for the app banner. */
+  onMaintenance: (m: Maintenance) => void;
 }) {
   const [segment, setSegment] = useState<Segment>("overview");
   const [team, setTeam] = useState<string | null>(null);
   const canManageAi = hasSystemPermission(user?.role, "ai:manage");
+  const canManageSystem = hasSystemPermission(user?.role, "system:manage");
+  const segments: Segment[] = [
+    ...SEGMENTS,
+    ...(canManageAi ? (["ai"] as const) : []),
+    ...(canManageSystem ? (["system"] as const) : []),
+  ];
   const banner = <ErrorBanner error={error} onDismiss={clearError} />;
   const close = () => {
     setTeam(null);
@@ -107,10 +117,10 @@ export function AdminSheet({
             {banner}
             <Segmented
               accessibilityLabel="Admin section"
-              options={canManageAi ? SEGMENTS_WITH_AI : SEGMENTS}
+              options={segments}
               labels={SEGMENT_LABELS}
-              // Five segments truncate "Overview" as a fixed row; let them flow.
-              wrap={canManageAi}
+              // Five or more segments truncate "Overview" as a fixed row; let them flow.
+              wrap={segments.length > SEGMENTS.length}
               value={segment}
               onChange={setSegment}
             />
@@ -125,6 +135,13 @@ export function AdminSheet({
             {segment === "audit" && <Audit act={act} busy={busy} />}
             {segment === "ai" && canManageAi && (
               <AdminAi act={act} busy={busy} />
+            )}
+            {segment === "system" && canManageSystem && (
+              <AdminSystem
+                act={act}
+                busy={busy}
+                onMaintenance={onMaintenance}
+              />
             )}
           </View>
         </ScrollView>

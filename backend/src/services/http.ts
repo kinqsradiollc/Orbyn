@@ -37,6 +37,10 @@ export async function createService(
       ],
     },
     bodyLimit: 65536,
+    // While a copy shuts down during a deploy, keep answering requests that
+    // arrive on connections the gateway already holds, instead of replying
+    // 503; the gateway moves to the new copies as those connections close.
+    return503OnClosing: false,
     // Behind the gateway, the client address arrives in X-Forwarded-For.
     // Only enable where services are not reachable directly.
     trustProxy: env.TRUST_PROXY === "true",

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { sameDay, statusLabels, statusTones, type Item } from "@orbyn/core";
 import { PressableScale } from "../../motion";
 import { colors, fonts, radii } from "../../theme";
@@ -16,16 +16,42 @@ import {
 
 const GUTTER = 56;
 const PAD_TOP = 10;
-const VIEW_HEIGHT = 440;
-const HOURS = Array.from(
-  { length: DAY_END - DAY_START + 1 },
-  (_, i) => DAY_START + i,
-);
+/** Fewest hours shown, so a quiet day still reads as a day. */
+const MIN_HOURS = 8;
+/** Where a quiet day that isn't today starts. */
+const QUIET_START = 8;
 
 /**
- * Hour rows from 6am to midnight with the day's plans placed by start time
- * and sized by duration; overlapping plans sit side by side. Untimed plans
- * go in the "All day / no time" row. Today shows a red current-time line.
+ * The whole hours a day needs: every timed plan, plus an hour either side of
+ * now today, widened to at least MIN_HOURS inside the 6am-midnight window.
+ */
+function visibleHours(
+  placed: { top: number; height: number }[],
+  nowTop: number | null,
+) {
+  const toHour = (y: number) => DAY_START + y / HOUR_HEIGHT;
+  const anchors: number[] = [];
+  for (const p of placed) anchors.push(toHour(p.top), toHour(p.top + p.height));
+  if (nowTop !== null) anchors.push(toHour(nowTop) - 1, toHour(nowTop) + 1);
+  if (!anchors.length) anchors.push(QUIET_START);
+  let start = Math.max(DAY_START, Math.floor(Math.min(...anchors)));
+  let end = Math.min(DAY_END, Math.ceil(Math.max(...anchors)));
+  if (end - start < MIN_HOURS) {
+    end = Math.min(DAY_END, start + MIN_HOURS);
+    start = Math.max(DAY_START, end - MIN_HOURS);
+  }
+  return { start, end };
+}
+
+/**
+ * Hour rows covering the day's plans (and now, today), with plans placed by
+ * start time and sized by duration; overlapping plans sit side by side.
+ * Untimed plans go in the "All day / no time" row. Today shows a red
+ * current-time line.
+ *
+ * The timeline is drawn at full height and never scrolls by itself: it sits
+ * inside the page ScrollView, and a nested vertical ScrollView here took every
+ * swipe that started on it, so the page seemed to scroll without moving.
  */
 export function DayTimeline({
   day,
@@ -42,29 +68,16 @@ export function DayTimeline({
     const timer = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(timer);
   }, []);
-  const scroll = useRef<ScrollView>(null);
   const { placed, allDay } = layoutDay(items, day);
   const isToday = sameDay(day, now);
   const nowTop = offsetFor(day, now);
   const showNow =
     isToday && nowTop >= 0 && nowTop <= (DAY_END - DAY_START) * HOUR_HEIGHT;
 
-  // Scroll to the current hour today, otherwise to the first plan (or 8am).
-  const dayKey = day.toDateString();
-  const firstTop = placed[0]?.top;
-  useEffect(() => {
-    const target = isToday
-      ? nowTop - HOUR_HEIGHT
-      : (firstTop ?? 2 * HOUR_HEIGHT) - HOUR_HEIGHT / 2;
-    const y = Math.max(0, target);
-    const t = setTimeout(
-      () => scroll.current?.scrollTo({ y, animated: false }),
-      0,
-    );
-    return () => clearTimeout(t);
-    // Only when the day changes, not on every minute tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dayKey]);
+  const { start, end } = visibleHours(placed, showNow ? nowTop : null);
+  // layoutDay measures from DAY_START; shift everything up to the first shown hour.
+  const shift = (start - DAY_START) * HOUR_HEIGHT;
+  const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
 
   return (
     <View style={s.card}>
@@ -97,94 +110,82 @@ export function DayTimeline({
           )}
         </View>
       </View>
-      <ScrollView
-        ref={scroll}
-        style={{ height: VIEW_HEIGHT }}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
+      <View
         accessibilityLabel="Day timeline"
+        style={{ height: (end - start) * HOUR_HEIGHT + PAD_TOP * 2 }}
       >
-        <View
-          style={{
-            height: (DAY_END - DAY_START) * HOUR_HEIGHT + PAD_TOP * 2,
-          }}
-        >
-          {HOURS.map((hour) => (
-            <View
-              key={hour}
-              style={[
-                s.hour,
-                { top: PAD_TOP + (hour - DAY_START) * HOUR_HEIGHT },
-              ]}
-              importantForAccessibility="no-hide-descendants"
-            >
-              <Text style={s.hourLabel}>{hourLabel(hour % 24)}</Text>
-              <View style={s.hourLine} />
-            </View>
-          ))}
-          <View style={[s.events, { top: PAD_TOP }]}>
-            {placed.map((p) => {
-              const t = statusTones[p.item.status];
-              const compact = p.height < 44;
-              const range = `${timeLabel(p.start)} – ${timeLabel(p.end)}`;
-              return (
-                <View
-                  key={p.item.id}
-                  style={{
-                    position: "absolute",
-                    top: p.top,
-                    height: p.height,
-                    left: `${(p.column / p.columns) * 100}%`,
-                    width: `${100 / p.columns}%`,
-                    paddingRight: 3,
-                    paddingBottom: 2,
-                  }}
+        {hours.map((hour) => (
+          <View
+            key={hour}
+            style={[s.hour, { top: PAD_TOP + (hour - start) * HOUR_HEIGHT }]}
+            importantForAccessibility="no-hide-descendants"
+          >
+            <Text style={s.hourLabel}>{hourLabel(hour % 24)}</Text>
+            <View style={s.hourLine} />
+          </View>
+        ))}
+        <View style={[s.events, { top: PAD_TOP }]}>
+          {placed.map((p) => {
+            const t = statusTones[p.item.status];
+            const compact = p.height < 44;
+            const range = `${timeLabel(p.start)} – ${timeLabel(p.end)}`;
+            return (
+              <View
+                key={p.item.id}
+                style={{
+                  position: "absolute",
+                  top: p.top - shift,
+                  height: p.height,
+                  left: `${(p.column / p.columns) * 100}%`,
+                  width: `${100 / p.columns}%`,
+                  paddingRight: 3,
+                  paddingBottom: 2,
+                }}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${p.item.title}, ${range}, ${statusLabels[p.item.status]}. Opens task details`}
+                  onPress={() => onOpen(p.item)}
+                  style={({ pressed }) => [
+                    s.event,
+                    { backgroundColor: t.bg, borderLeftColor: t.fg },
+                    pressed && { opacity: 0.7 },
+                  ]}
                 >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`${p.item.title}, ${range}, ${statusLabels[p.item.status]}. Opens task details`}
-                    onPress={() => onOpen(p.item)}
-                    style={({ pressed }) => [
-                      s.event,
-                      { backgroundColor: t.bg, borderLeftColor: t.fg },
-                      pressed && { opacity: 0.7 },
+                  <Text
+                    numberOfLines={compact ? 1 : 2}
+                    style={[
+                      s.eventTitle,
+                      p.item.status === "done" && s.doneText,
                     ]}
                   >
+                    {p.item.title}
+                  </Text>
+                  {!compact && (
                     <Text
-                      numberOfLines={compact ? 1 : 2}
-                      style={[
-                        s.eventTitle,
-                        p.item.status === "done" && s.doneText,
-                      ]}
+                      numberOfLines={1}
+                      style={[s.eventTime, { color: t.fg }]}
                     >
-                      {p.item.title}
+                      {range}
                     </Text>
-                    {!compact && (
-                      <Text
-                        numberOfLines={1}
-                        style={[s.eventTime, { color: t.fg }]}
-                      >
-                        {range}
-                      </Text>
-                    )}
-                  </Pressable>
-                </View>
-              );
-            })}
-          </View>
-          {showNow && (
-            <View
-              pointerEvents="none"
-              accessible
-              accessibilityLabel={`Current time, ${timeLabel(now)}`}
-              style={[s.now, { top: PAD_TOP + nowTop - 1 }]}
-            >
-              <View style={s.nowDot} />
-              <View style={s.nowLine} />
-            </View>
-          )}
+                  )}
+                </Pressable>
+              </View>
+            );
+          })}
         </View>
-      </ScrollView>
+        {showNow && (
+          <View
+            pointerEvents="none"
+            accessible
+            accessibilityLabel={`Current time, ${timeLabel(now)}`}
+            style={[s.now, { top: PAD_TOP + nowTop - shift - 1 }]}
+          >
+            <View style={s.nowDot} />
+            <View style={s.nowLine} />
+          </View>
+        )}
+      </View>
     </View>
   );
 }

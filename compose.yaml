@@ -184,17 +184,22 @@ services:
       - /bin/sh
       - -c
       - tr -d '\r' < /etc/orbyn-gateway/entrypoint.sh > /tmp/orbyn-gateway.sh && exec /bin/sh /tmp/orbyn-gateway.sh
+    stop_signal: SIGQUIT
     environment:
       # Instances per service ("host:port ..."); point these at other machines
       # to run services elsewhere. See gateway/entrypoint.sh.
       API_SERVERS: ${GATEWAY_API_SERVERS:-api:8000}
       AI_SERVERS: ${GATEWAY_AI_SERVERS:-ai:8000}
       STATUS_SERVERS: ${GATEWAY_STATUS_SERVERS:-status:8000}
+      WEB_SERVERS: ${GATEWAY_WEB_SERVERS:-desktop:8080}
       RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
       TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
       RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-127.0.0.1/32 192.168.65.0/24}
     volumes: ["./gateway:/etc/orbyn-gateway:ro"]
-    ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8080"]
+    # The gateway is the only service with host ports: the API and the web app.
+    ports:
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8080"
+      - "${WEB_PORT:-8080}:8081"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -209,8 +214,15 @@ services:
       dockerfile: desktop/Dockerfile
       args:
         GIT_SHA: ${GIT_SHA:-dev}
-    ports: ["${WEB_PORT:-8080}:8080"]
-    depends_on: [gateway]
+    # nginx finishes in-flight requests on SIGQUIT (SIGTERM drops them).
+    stop_signal: SIGQUIT
+    # Served through the gateway's web port, so copies roll over without downtime.
+    deploy: { replicas: "${WEB_REPLICAS:-2}" }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   mailpit:

@@ -72,6 +72,14 @@ ${UPSTREAM_API}
 ${UPSTREAM_AI}
     keepalive 32;
   }
+  # The web app's static files (desktop image); several copies roll over
+  # without downtime because only the gateway holds host ports.
+  upstream web {
+    zone web 64k;
+    least_conn;
+${UPSTREAM_WEB}
+    keepalive 32;
+  }
   upstream status {
     zone status 64k;
 ${UPSTREAM_STATUS}
@@ -88,11 +96,16 @@ ${UPSTREAM_STATUS}
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 5s;
+    # Internal connections take milliseconds; a short connect timeout means a
+    # copy that just stopped costs about a second before the next one is tried.
+    proxy_connect_timeout 1s;
     proxy_read_timeout 125s;
     # Retry another replica only for idempotent requests (nginx's default).
     proxy_next_upstream error timeout http_502 http_503;
-    proxy_next_upstream_tries 2;
+    # While old and new copies overlap during a deploy, try up to four within
+    # 5 seconds so a request never lands on two stopped copies in a row.
+    proxy_next_upstream_tries 4;
+    proxy_next_upstream_timeout 5s;
 
     location = /health {
       access_log off;
@@ -119,6 +132,43 @@ ${UPSTREAM_STATUS}
     location / {
       limit_req zone=per_client burst=100 nodelay;
       proxy_pass http://api;
+    }
+
+    error_page 502 503 504 = @unavailable;
+    location @unavailable {
+      return 503 '{"message":"Orbyn is briefly unavailable. Please try again."}';
+    }
+  }
+
+  # The web port: the app's pages from the web copies, and /api through this
+  # gateway's own API entry point above (so routing and limits are shared).
+  server {
+    listen 8081;
+    client_max_body_size 64k;
+    limit_conn conn_per_client 200;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 125s;
+    proxy_next_upstream error timeout http_502 http_503;
+    proxy_next_upstream_tries 4;
+    proxy_next_upstream_timeout 5s;
+
+    location = /health {
+      access_log off;
+      return 200 '{"status":"ok","service":"gateway"}';
+    }
+
+    location /api/ {
+      proxy_pass http://127.0.0.1:8080/;
+    }
+
+    location / {
+      proxy_pass http://web;
     }
 
     error_page 502 503 504 = @unavailable;

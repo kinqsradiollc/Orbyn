@@ -76,10 +76,16 @@ while its replacement starts. The script instead:
 3. for each backend service, starts new copies beside the old ones, waits until they pass their
    health checks and the gateway has picked them up (it re-resolves every 10 seconds), then stops
    the old copies gracefully so in-flight requests finish;
-4. replaces the gateway and web app only when they changed (nginx starts in about a second).
+4. replaces the gateway only when its configuration or image changed (nginx starts in about a
+   second), and says why.
+
+The gateway is the only container with host ports: it serves the API port (`API_PORT`) and the web
+port (`WEB_PORT`). The web app runs behind it like every other service, so it rolls over without
+downtime too.
 
 If a new copy fails its health check, the old copies keep serving and the script stops with the
-new copies' logs. The API and assistant run two copies by default (`API_REPLICAS`, `AI_REPLICAS`;
+new copies' logs. The API, assistant and web app run two copies by default (`API_REPLICAS`,
+`AI_REPLICAS`, `WEB_REPLICAS`;
 `STATUS_REPLICAS` and `NOTIFIER_REPLICAS` default to one), so a crash or restart of one copy is
 also absorbed.
 

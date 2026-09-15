@@ -11,7 +11,7 @@
 # copies. If a new copy fails, the old ones keep serving and the deploy stops.
 #
 # Copies per service come from .env: API_REPLICAS (default 2), AI_REPLICAS (2),
-# STATUS_REPLICAS (1), NOTIFIER_REPLICAS (1). Settings that live in the app
+# WEB_REPLICAS (2), STATUS_REPLICAS (1), NOTIFIER_REPLICAS (1). Settings that live in the app
 # (Admin -> System) need no deploy at all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -105,17 +105,42 @@ rollout() {
     docker rm "$id" >/dev/null
   done
   compose up -d --no-deps --no-recreate --scale "$svc=$want" "$svc" >/dev/null
+  # Wait out the gateway's DNS cache before the next service starts, so a
+  # new container can't reuse a just-freed address that the gateway still
+  # maps to this service.
+  sleep "${DRAIN_SECONDS:-12}"
 }
 
 rollout api "$(setting API_REPLICAS 2)"
 rollout ai "$(setting AI_REPLICAS 2)"
 rollout status "$(setting STATUS_REPLICAS 1)"
 rollout notifier "$(setting NOTIFIER_REPLICAS 1)"
+rollout desktop "$(setting WEB_REPLICAS 2)"
 
 # The gateway and web app publish fixed ports, so they are replaced in place,
 # and only when they changed (nginx starts in about a second).
-log "Updating the gateway and web app (only if changed)"
-compose up -d --no-deps gateway desktop
+# Why the gateway's running container differs from compose.yaml, or nothing
+# when it matches. Its image tag is pinned in compose.yaml, so the
+# configuration fingerprint covers image changes too.
+gateway_change() {
+  local id want_hash have_hash
+  id=$(compose ps -q gateway | head -1)
+  [ -z "$id" ] && { echo "not running"; return; }
+  want_hash=$(compose config --hash gateway | awk '{print $2}')
+  have_hash=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$id")
+  [ "$want_hash" != "$have_hash" ] && echo "configuration changed"
+}
+
+# The gateway holds the host ports, so it is replaced in place, and only when
+# its configuration changed (nginx starts in about a second).
+log "Checking the gateway"
+reason=$(gateway_change)
+if [ -n "$reason" ]; then
+  compose up -d --no-deps gateway
+  echo "Gateway replaced: $reason (about a second of reconnects)."
+else
+  echo "Gateway unchanged."
+fi
 compose up -d --no-deps mailpit 2>/dev/null || true
 
 log "Deployed $GIT_SHA"

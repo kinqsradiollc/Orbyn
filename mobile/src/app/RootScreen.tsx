@@ -23,6 +23,7 @@ import { Brand } from "../components/Brand";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { ItemEditor, type Editing } from "../components/ItemEditor";
+import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
@@ -72,6 +73,8 @@ export function RootScreen() {
     setError,
     busy,
     refreshing,
+    maintenance,
+    setMaintenance,
     act,
     refresh,
     signIn,
@@ -222,6 +225,14 @@ export function RootScreen() {
           </PressableScale>
         </View>
       </View>
+      <View style={sidePadding}>
+        <View style={s.column}>
+          <MaintenanceBanner
+            maintenance={maintenance}
+            admin={hasSystemPermission(user?.role, "system:manage")}
+          />
+        </View>
+      </View>
       <ScrollView
         style={s.scroll}
         contentContainerStyle={[s.content, sidePadding]}
@@ -363,6 +374,7 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenItem={openFromSheet}
+          onMaintenance={setMaintenance}
         />
       )}
     </View>
