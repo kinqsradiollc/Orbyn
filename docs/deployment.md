@@ -7,27 +7,39 @@ change for a real deployment.
 
 Two images are built from the repository root:
 
-| Dockerfile           | Image role                               | Commands                                                                                               |
-| -------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `backend/Dockerfile` | API, worker, and migrations (same image) | `node backend/dist/server.js` (default), `node backend/dist/worker.js`, `node backend/dist/migrate.js` |
-| `desktop/Dockerfile` | Static web app behind unprivileged nginx | nginx                                                                                                  |
+| Dockerfile             | Image role                                       | Commands                                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/Dockerfile`   | Every backend service and migrations (one image) | `node backend/dist/services/api.js`, `.../services/ai.js`, `.../services/status.js`, `.../services/notifier.js`, `node backend/dist/migrate.js`; `server.js` runs all in one |
+| `desktop/Dockerfile`   | Static web app behind unprivileged nginx         | nginx                                                                                                                                                                        |
+| `pgbouncer/Dockerfile` | Connection pooler (Alpine's PgBouncer)           | Configured from environment at start                                                                                                                                         |
+
+The gateway uses the stock `nginxinc/nginx-unprivileged` image with `gateway/` mounted.
 
 Both are multi-stage, run as non-root, and use `node:22-bookworm-slim` / `nginx-unprivileged`.
 
 ```bash
 docker build -f backend/Dockerfile -t orbyn-backend .
 docker build -f desktop/Dockerfile -t orbyn-web .
+docker build -t orbyn-pgbouncer pgbouncer
 ```
+
+For Kubernetes manifests (deployments, autoscaling, ingress, network policies), see
+[deploy/k8s](../deploy/k8s/README.md). For multi-host topology, replicas and capacity, see
+[scalability.md](scalability.md).
 
 ## Checklist
 
-1. **Secrets.** Set a strong `POSTGRES_PASSWORD`, a real `AI_API_KEY`, and SMTP credentials. Use
+1. **Secrets.** Set a strong `POSTGRES_PASSWORD`, SMTP credentials, and `SECRETS_KEY`. AI providers are added
+   by admins in the app, not in `.env`. Use
    your platform's secret store rather than a committed `.env`.
-2. **Database.** Either keep the `postgres` service with a backed-up volume or point
-   `DATABASE_URL` at a managed PostgreSQL 15+ instance and drop the service. Run the `migrate`
-   command once per deploy before starting new API/worker containers.
-3. **TLS.** Put a reverse proxy (Caddy, Traefik, nginx, a cloud load balancer) in front of the web
-   container and the API. The mobile app and browsers must reach the API over HTTPS in production.
+2. **Database.** Prefer a managed PostgreSQL 15+ with automated backups, failover and read
+   replicas. Point `DATABASE_URL` at its pooler (or PgBouncer) and `DATABASE_READ_URL` at a replica
+   endpoint. Run the `migrate` command once per deploy, directly against the primary, before
+   starting new service containers.
+3. **TLS and load balancing.** Put a load balancer (a cloud load balancer, Caddy, Traefik) in front
+   of two or more gateways and the web container. The mobile app and browsers must reach the API
+   over HTTPS. Set `GATEWAY_TRUSTED_PROXIES` to the load balancer's ranges so rate limits see real
+   client addresses, and leave `GATEWAY_RATE_LIMIT_EXEMPT` empty.
 4. **CORS.** Set `CORS_ORIGINS` to your web origin(s), for example `https://app.example.com`.
 5. **Email.** Set `DOCKER_SMTP_HOST` (or `SMTP_HOST` outside Compose) to your relay along with
    `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, and a `SMTP_FROM` on a domain you
@@ -36,9 +48,11 @@ docker build -f desktop/Dockerfile -t orbyn-web .
    account, `EXPO_ACCESS_TOKEN` on the worker.
 7. **Ports.** Keep the API bound to the internal network and expose only the proxy. The default
    Compose binds the API and Postgres to loopback.
-8. **Scaling.** Run one or more `api` replicas behind the proxy and one or more `worker` replicas.
-   Workers coordinate through Postgres locks and are safe to scale horizontally.
-9. **Health.** `GET /health` on the API is suitable for load balancer and orchestrator probes.
+8. **Scaling.** Run several `api` and `ai` instances, two `status` instances and one or more
+   `notifier` instances, on one host or many. List them in `GATEWAY_API_SERVERS` and friends when
+   they run on other machines. See [scalability.md](scalability.md).
+9. **Health.** Every HTTP service serves `GET /live` (liveness, no database) and `GET /health`
+   (readiness, includes the database). The gateway answers `GET /health` itself.
 10. **Logs.** The API logs JSON to stdout with the authorization header and passwords redacted; the
     worker logs retry events as JSON. Ship stdout to your log system.
 11. **Desktop installers.** `npm run package -w desktop` builds dmg/nsis/AppImage. Set
@@ -48,3 +62,29 @@ docker build -f desktop/Dockerfile -t orbyn-web .
 ## Backups
 
 Everything lives in PostgreSQL. A nightly `pg_dump` of the `orbyn` database is a complete backup.
+
+## Scaling services
+
+On one host, scale a service with `docker compose up -d --scale api=3 --scale ai=2`. The gateway
+re-resolves service names, so new instances receive traffic without a restart. To spread services
+across machines, run the backend image on each host and point the gateway at them:
+
+```bash
+GATEWAY_API_SERVERS="10.0.1.10:8000 10.0.1.11:8000" \
+GATEWAY_AI_SERVERS="10.0.2.10:8000" \
+GATEWAY_STATUS_SERVERS="10.0.3.10:8000" \
+docker compose up -d gateway
+```
+
+Running more than one `notifier` or `status` instance is safe: reminder delivery and status
+recording coordinate through PostgreSQL locks. Keep instances x `DB_POOL_MAX` within PgBouncer's
+`max_client_conn`. The full guide, with measured numbers and a capacity plan, is
+[scalability.md](scalability.md).
+
+## Secrets key
+
+`SECRETS_KEY` is optional. Without it, Orbyn generates a key on first use and keeps it in the
+database, so AI provider keys saved from the admin console work with no setup. In production, set
+`SECRETS_KEY` so the key lives outside the database: a leaked database dump then cannot reveal
+saved keys. Keys saved before you set it keep working. Back `SECRETS_KEY` up with the database;
+without it, keys saved while it was set cannot be decrypted and admins must re-enter them.

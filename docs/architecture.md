@@ -1,34 +1,49 @@
 # Architecture
 
-Orbyn is three deployables plus PostgreSQL. The clients never talk to the database or to the AI
-provider directly; everything goes through the backend API.
+Orbyn is a set of backend services, two client apps and PostgreSQL. The clients never talk to the
+database or to AI providers directly; everything goes through the gateway.
 
 ```
- desktop (web / Electron)  ──┐
-                             ├──► api (Fastify) ──► PostgreSQL ◄── worker (reminders)
- mobile (Expo)             ──┘        │                               │
-                                      ▼                               ├──► SMTP (email)
-                         OpenAI-compatible provider                   └──► Expo Push (mobile)
+ web / Electron ─┐                  ┌─► api ─────┐
+                 ├─► load balancer ─► gateway ──┼─► ai ──────┼─► PgBouncer ─► Postgres primary
+ mobile (Expo) ──┘    (production)  └─► status ──┘                  │        └─► read replicas
+                                       notifier ─► SMTP, Expo Push ┘
 ```
 
-## Backend (`backend/`)
+## Services
 
-| File             | Responsibility                                                                     |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `src/config.ts`  | Loads `.env` and validates configuration with zod.                                 |
-| `src/db.ts`      | pg connection pool and a `transaction()` helper.                                   |
-| `src/migrate.ts` | Applies `migrations/*.sql` in order under an advisory lock. Idempotent.            |
-| `src/schemas.ts` | zod schemas for credentials, items, AI actions, device tokens.                     |
-| `src/planner.ts` | `mutate()`: the single code path for create/update/delete with optimistic locking. |
-| `src/app.ts`     | Fastify app: auth, items, devices, notifications, AI chat and proposal apply.      |
-| `src/ai.ts`      | Calls any OpenAI-compatible `/chat/completions` endpoint and validates the reply.  |
-| `src/worker.ts`  | Reminder scheduler and delivery loop.                                              |
-| `src/server.ts`  | Process entry for the API.                                                         |
+One backend image runs each service with a different command. They scale independently and can
+live on different machines; see [scalability.md](scalability.md).
 
-The API and worker are the same Docker image with different commands, so they scale
-independently. Several worker replicas can run at once: scheduling is serialized with a Postgres
-advisory lock, while delivery uses `FOR UPDATE SKIP LOCKED` so replicas never process the same
-notification twice.
+| Service    | Entry point            | Owns                                                                       |
+| ---------- | ---------------------- | -------------------------------------------------------------------------- |
+| `api`      | `services/api.ts`      | Auth, profile, items, steps and updates, teams, admin console, devices     |
+| `ai`       | `services/ai.ts`       | Assistant chat, proposals, AI provider settings (`/ai/*`)                  |
+| `status`   | `services/status.ts`   | Probes every service every 30 s and serves the public `GET /status` report |
+| `notifier` | `services/notifier.ts` | Reminder scheduling and delivery; heartbeat for the status page            |
+| `migrate`  | `migrate.ts`           | Applies `migrations/*.sql` in order under an advisory lock, then exits     |
+| gateway    | `gateway/` (nginx)     | Routes `/ai/*` to ai, `/status` to status, everything else to api          |
+
+`server.ts` runs every module in one process for local development and tests.
+`services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
+with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
+
+## Backend (`backend/src`)
+
+| Path              | Responsibility                                                                  |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `config/env.ts`   | Loads `.env` and validates configuration with zod                               |
+| `db/pool.ts`      | Primary and optional read-replica pools, `reader()`, `transaction()`            |
+| `modules/<name>/` | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
+| `modules/items/`  | `mutate()`, the single write path with optimistic locking, plus progress        |
+| `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
+| `worker/`         | Reminder scheduler and delivery lanes                                           |
+| `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
+
+Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
+while delivery uses `FOR UPDATE SKIP LOCKED` so instances never process the same notification
+twice. Reads that tolerate brief replication lag use `reader()`, which picks the replica unless the
+client has just written (read-your-writes).
 
 ### Authentication
 
@@ -53,15 +68,51 @@ Every item write goes through `mutate()` and requires the current `version`. A s
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
 statement with `user_id`, and cross-tenant access returns 404 rather than 403.
 
+### Access control
+
+Roles and permissions are defined once in `packages/core/src/rbac.ts` and enforced only on the
+server; the clients use the same helpers to decide what to show.
+
+**System roles.** `admin` or `member`. The first account on a fresh database, and any email in
+`ADMIN_EMAILS`, becomes an admin. Admins can open the admin console: see counts, list and search
+accounts, change roles, disable or delete accounts, manage any team, and read the audit log.
+Disabling an account signs it out everywhere and stops its reminders. The last active admin
+cannot be demoted, disabled, or deleted.
+
+**Team roles.**
+
+| Permission                   | Owner | Admin | Member | Viewer |
+| ---------------------------- | :---: | :---: | :----: | :----: |
+| See the team and its members |   ✓   |   ✓   |   ✓    |   ✓    |
+| Read team items              |   ✓   |   ✓   |   ✓    |   ✓    |
+| Create, edit, delete items   |   ✓   |   ✓   |   ✓    |        |
+| Add, change, remove members  |   ✓   |  ✓\*  |        |        |
+| Rename the team              |   ✓   |   ✓   |        |        |
+| Delete the team              |   ✓   |       |        |        |
+
+\* Team admins manage members and viewers only and cannot grant admin or owner. A team always keeps
+at least one owner.
+
+**Privacy.** System admins manage every team as an owner would, but the override never covers
+reading or writing items: admins cannot see anyone's personal items or a team's items unless they
+are a member. Non-members get `404` for a team, so team existence does not leak.
+
+**Enforcement points.** `lib/auth.ts` rejects disabled accounts and checks system permissions;
+`lib/teams.ts` resolves team roles; `modules/items/service.ts` checks them on every item write,
+including AI proposals, so the assistant can never do more than the person approving it. Moving an
+item into a team needs write access there; moving it out needs member-management rights in the
+team it leaves.
+
 ### Reminder pipeline
 
 1. Every 10 seconds the worker runs `enqueue()`. For each open item whose `due_at` minus
    `reminder_minutes` has passed, it inserts one notification per channel: `inapp` always,
    `email` if the user has email reminders on and SMTP is configured, and `push` for every
-   registered device. The unique key `(item_id, item_version, channel, destination)` makes this
+   registered device. Personal items notify their owner; team items notify every active member. The unique key `(item_id, item_version, channel, destination)` makes this
    idempotent, so restarting or running many workers never double-sends.
 2. `deliverOne()` claims a pending row with `SKIP LOCKED`, re-checks that the item is still open,
-   still on the same `reminder_version`, and that the destination is still valid. If not, the row
+   still on the same `reminder_version`, that the recipient is still active and can still see the
+   item, and that the destination is still valid. If not, the row
    is cancelled. This is how completing a task or changing its date suppresses stale reminders.
 3. Email goes out over SMTP with a stable `Message-ID`. Push goes to the Expo push service; the
    ticket id is stored and the row moves to `receipt` state, then the receipt is checked 15 minutes
@@ -85,10 +136,41 @@ The assistant is deliberately a **propose-then-approve** loop:
    single failing action (wrong version, item belonging to someone else) rolls back the whole batch.
    Applying is idempotent.
 
-Because the provider only needs the OpenAI chat completions shape, `AI_BASE_URL` can point at
-OpenAI, Azure, OpenRouter, Groq, Together, a local Ollama or vLLM server, and so on. Planner
-content is passed to the model as data, and the prompt instructs it to treat titles and notes as
-untrusted.
+**Consistent with BrainRouter.** The provider catalog in `packages/core/src/aiProviders.ts`
+mirrors BrainRouter's: its built-in chat providers in the same order, then its declarative starter
+set, with the same ids, labels, endpoints and picker visibility (a test pins this). Calls follow
+BrainRouter's common OpenAI-compatible profile: `Authorization: Bearer`, a blank key sent as
+`local` for local servers and as opencode's `public` key, model lists read from `data[]` or
+`models[]`, error-envelope and empty-choice replies treated as failures, reasoning text used when
+`content` is empty, and `finish_reason: "length"` treated as a cut-off reply. OpenAI uses the
+Responses API for GPT and o-series models on its own endpoint, as in BrainRouter; Anthropic's
+native API gets `max_tokens: 8192`. Cloud keys are required (except opencode) and must be at
+least 16 characters; known prefixes (`sk-`, `sk-or-v1-`, `dsk-`, `mc_live_`) only produce a
+warning. Deliberate differences: Matilda uses its OpenAI-compatible endpoint with a JSON schema
+(BrainRouter drives its native SSE chat for tool calls, which this assistant does not need, and
+only the schema produced reliable plans in live tests); Azure keeps its `api-key` header; and
+Anthropic model listing uses `x-api-key`, which its API requires.
+
+Providers are added by admins in the admin console and stored in `ai_providers`; the active
+provider and model live in `ai_settings`. There is no server-settings fallback: with no provider
+chosen the assistant answers 503. Adapters speak the OpenAI, Anthropic and Azure OpenAI formats,
+so any OpenAI-compatible service (including local LM Studio or Ollama) works too. Some providers need
+more: Maincode's Matilda answers in prose unless it is given the reply schema, so providers flagged
+`structuredOutput` receive it as `response_format` (strict JSON Schema), and providers with request
+`limits` get trimmed history and planner snapshots. Before a proposal is stored, the backend
+drops actions a model got wrong: edits or deletions of items that were not in the snapshot, edits
+that change nothing, and creates that duplicate an existing item. Timestamps without an offset get
+the user's local offset. Proposals are kept only when the latest message asks for a
+change, and deletions only when it asks to delete, remove or cancel something. The planner
+snapshot is sent in the user's local time with only the fields the model needs, and each earlier
+reply in the history carries a note saying whether its changes were approved or discarded, so a
+model never repeats them. Providers flagged `structuredOutput` (Matilda) answer questions that
+change nothing in plain Markdown and use the reply schema only for change requests. Each provider
+attempt gets 45 seconds within a 110-second deadline (BrainRouter's 120-second chat timeout and
+45-second Matilda stall limit); the API client allows 120 seconds and the proxies 125. Replies are
+rendered on web and mobile by one shared parser (`parseRichText` in `@orbyn/core`): headings,
+paragraphs, bulleted and numbered lists, bold, italic and code. Planner content
+is passed to the model as data, and the prompt instructs it to treat titles and notes as untrusted.
 
 ## Desktop / web (`desktop/`)
 
@@ -129,6 +211,11 @@ The mobile app shares its look with the web app so both read as one product:
   `react-native-svg`; only the shapes the app needs are included rather than the whole icon pack.
   `src/components/Brand.tsx` is the Orbit mark, the "orbyn" wordmark, and the green dot, matching
   the desktop `.brand`.
+- **Motion.** `motion` and `staggerDelay` in `packages/core/src/presentation.ts` define one set of
+  durations, stagger, travel distance, press scale, and easing curves. The web app exposes them as
+  CSS variables and keyframes in `desktop/src/styles/motion.css`; the mobile app uses them with
+  React Native's `Animated` and `LayoutAnimation`, with no extra animation library. Both apps turn
+  animation off when the user has asked their system for reduced motion.
 - **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large

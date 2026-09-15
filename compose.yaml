@@ -1,3 +1,35 @@
+# Orbyn as microservices. Every backend service runs from the same image with a
+# different command; only the gateway and the web app are published.
+#
+#   clients -> gateway :8008 -> api | ai | status -> pgbouncer -> postgres
+#   web :8080 (static app) -> /api -> gateway
+#   notifier (reminders) and status (probes) run in the background.
+#   Scale any service: docker compose up -d --scale api=3 --scale ai=2
+
+x-backend: &backend
+  build: { context: ., dockerfile: backend/Dockerfile }
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+
+x-backend-env: &backend-env
+  # Services reach Postgres through PgBouncer; migrations connect directly.
+  DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-orbyn}
+  # Optional read replica, e.g. through PgBouncer's "<db>_read" route.
+  DATABASE_READ_URL: ${DOCKER_DATABASE_READ_URL:-}
+  DB_POOL_MAX: ${DB_POOL_MAX:-20}
+  RATE_LIMIT_PER_MINUTE: ${SERVICE_RATE_LIMIT_PER_MINUTE:-1200}
+  SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
+  PORT: 8000
+  TRUST_PROXY: "true"
+
+x-http-health: &http-health
+  test: ["CMD", "node", "-e", "fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -6,55 +38,165 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-orbyn}
     ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
-    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # First start only: allow streaming replicas (see the replica profile).
+      - ./deploy/postgres/primary-replication.sh:/docker-entrypoint-initdb.d/10-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 15
     restart: unless-stopped
-  migrate:
-    build: {context: ., dockerfile: backend/Dockerfile}
-    env_file: .env
+
+  # Throwaway database for the test suite: separate server, data kept in memory,
+  # marked as a test database on creation. Start with
+  #   docker compose --profile test up -d postgres-test
+  postgres-test:
+    image: postgres:17-alpine
+    profiles: [test]
     environment:
+      POSTGRES_USER: orbyn
+      POSTGRES_PASSWORD: orbyn-test
+      POSTGRES_DB: orbyn_test
+    ports: ["127.0.0.1:${TEST_POSTGRES_PORT:-55434}:5432"]
+    tmpfs: ["/var/lib/postgresql/data"]
+    volumes: ["./backend/tests/db/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbyn -d orbyn_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Connection pooler between every service and Postgres.
+  pgbouncer:
+    build: { context: ./pgbouncer }
+    environment:
+      DB_USER: ${POSTGRES_USER:-orbyn}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      DB_NAME: ${POSTGRES_DB:-orbyn}
+      PRIMARY_HOST: postgres
+      # Set to postgres-replica (with the replica profile) to add "<db>_read".
+      READ_HOST: ${PGBOUNCER_READ_HOST:-}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Streaming read replica. Start with the "replica" profile, then point
+  # DOCKER_DATABASE_READ_URL at pgbouncer:6432/<db>_read. See docs/scalability.md.
+  postgres-replica:
+    image: postgres:17-alpine
+    profiles: [replica]
+    entrypoint: ["/bin/sh", "/usr/local/bin/replica-entrypoint.sh"]
+    environment:
+      PGUSER: ${POSTGRES_USER:-orbyn}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PRIMARY_HOST: postgres
+    ports: ["127.0.0.1:${REPLICA_PORT:-5434}:5432"]
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+      - ./deploy/postgres/replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$PGUSER"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend
+    environment:
+      <<: *backend-env
       DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
     command: ["node", "backend/dist/migrate.js"]
+    restart: "no"
     depends_on:
-      postgres: {condition: service_healthy}
+      postgres: { condition: service_healthy }
+
+  # Accounts, items, teams, devices, notifications, admin console.
   api:
-    build: {context: ., dockerfile: backend/Dockerfile}
-    env_file: .env
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
-      SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
-    ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8000"]
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/api.js"]
+    healthcheck: *http-health
     depends_on:
-      migrate: {condition: service_completed_successfully}
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # The assistant; the only service that talks to AI providers.
+  ai:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/ai.js"]
+    healthcheck: *http-health
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Schedules and delivers reminders; reports liveness by heartbeat.
+  notifier:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/notifier.js"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Probes every component and serves the public status report.
+  status:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      STATUS_GATEWAY_URL: http://gateway:8080
+      STATUS_API_URL: http://api:8000
+      STATUS_AI_URL: http://ai:8000
+    command: ["node", "backend/dist/services/status.js"]
+    healthcheck: *http-health
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Single entry point for clients; routes paths to services.
+  gateway:
+    image: nginxinc/nginx-unprivileged:1.28-alpine
+    entrypoint: ["/bin/sh", "/etc/orbyn-gateway/entrypoint.sh"]
+    environment:
+      # Instances per service ("host:port ..."); point these at other machines
+      # to run services elsewhere. See gateway/entrypoint.sh.
+      API_SERVERS: ${GATEWAY_API_SERVERS:-api:8000}
+      AI_SERVERS: ${GATEWAY_AI_SERVERS:-ai:8000}
+      STATUS_SERVERS: ${GATEWAY_STATUS_SERVERS:-status:8000}
+      RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
+      TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
+      RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-127.0.0.1/32 192.168.65.0/24}
+    volumes: ["./gateway:/etc/orbyn-gateway:ro"]
+    ports: ["${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8080"]
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 10
+    depends_on: [api, ai, status]
     restart: unless-stopped
-  worker:
-    build: {context: ., dockerfile: backend/Dockerfile}
-    env_file: .env
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-orbyn}
-      SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
-    command: ["node", "backend/dist/worker.js"]
-    depends_on:
-      migrate: {condition: service_completed_successfully}
-    restart: unless-stopped
+
   desktop:
-    build: {context: ., dockerfile: desktop/Dockerfile}
+    build: { context: ., dockerfile: desktop/Dockerfile }
     ports: ["${WEB_PORT:-8080}:8080"]
-    depends_on:
-      api: {condition: service_healthy}
+    depends_on: [gateway]
     restart: unless-stopped
+
   mailpit:
     image: axllent/mailpit:v1.29
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
     restart: unless-stopped
+
 volumes:
   postgres_data:
+  postgres_replica_data:

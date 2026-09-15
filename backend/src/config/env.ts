@@ -12,13 +12,12 @@ const schema = z.object({
   DATABASE_URL: z
     .string()
     .default("postgres://orbyn:orbyn@localhost:5432/orbyn"),
+  /** Optional read replica (or its PgBouncer alias) for reads that tolerate a little lag. */
+  DATABASE_READ_URL: z.string().default(""),
   PORT: z.coerce.number().default(8000),
   CORS_ORIGINS: z
     .string()
     .default("http://localhost:5173,http://localhost:8080"),
-  AI_BASE_URL: z.url().default("https://api.openai.com/v1"),
-  AI_API_KEY: z.string().default(""),
-  AI_MODEL: z.string().default(""),
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().default(1025),
   SMTP_USER: z.string().default(""),
@@ -26,7 +25,34 @@ const schema = z.object({
   SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   SMTP_FROM: z.string().default("Orbyn <reminders@orbyn.local>"),
   EXPO_ACCESS_TOKEN: z.string().default(""),
+  /** Comma-separated emails that are always system admins. */
+  ADMIN_EMAILS: z.string().default(""),
+  /** 32 random bytes, base64. Encrypts credentials stored in the database. */
+  SECRETS_KEY: z.string().default(""),
+  /** "true" when services sit behind the gateway and should trust X-Forwarded-For. */
+  TRUST_PROXY: z.enum(["true", "false"]).default("false"),
+  /** How often the status service probes each component. */
+  STATUS_INTERVAL_MS: z.coerce.number().int().min(5000).default(30000),
+  /** Where the status service reaches each component; empty means this process. */
+  STATUS_GATEWAY_URL: z.string().default(""),
+  STATUS_API_URL: z.string().default(""),
+  STATUS_AI_URL: z.string().default(""),
+  /** Database connections each service process keeps (to Postgres or PgBouncer). */
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
+  /**
+   * Requests per minute each client may make to a service. 0 leaves general
+   * limiting to the gateway; sign-in and AI routes always keep their own limits.
+   */
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).default(180),
+  /** Parallel delivery lanes in the reminder service. */
+  NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
 });
 
 export type Env = z.infer<typeof schema>;
 export const env: Env = schema.parse(process.env);
+
+export const adminEmails = new Set(
+  env.ADMIN_EMAILS.split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
+);

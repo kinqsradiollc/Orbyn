@@ -1,19 +1,34 @@
-import { useState } from "react";
 import { ArrowRight, Orbit } from "lucide-react";
 import type { AuthMode } from "../../hooks/usePlanner";
 
 type Props = {
+  initialMode?: AuthMode;
+  onNavigate: (path: string) => void;
+  onHome?: () => void;
   busy: boolean;
   error: string;
   onClearError: () => void;
   onSubmit: (mode: AuthMode, values: Record<string, string>) => void;
 };
 
-export function AuthPage({ busy, error, onClearError, onSubmit }: Props) {
-  const [register, setRegister] = useState(true);
+export function AuthPage({
+  initialMode = "register",
+  onNavigate,
+  onHome,
+  busy,
+  error,
+  onClearError,
+  onSubmit,
+}: Props) {
+  const register = initialMode === "register";
   return (
     <div className="auth-page">
-      <div className="auth-story">
+      {onHome && (
+        <button className="text-button auth-home-link" onClick={onHome}>
+          ← Back to Orbyn
+        </button>
+      )}
+      <div className="auth-story fade-in motion-slow">
         <div className="brand">
           <Orbit /> orbyn<span>•</span>
         </div>
@@ -41,7 +56,7 @@ export function AuthPage({ busy, error, onClearError, onSubmit }: Props) {
         <small>Thoughtfully planned. Entirely yours.</small>
       </div>
       <main className="auth-form">
-        <div className="auth-card">
+        <div className="auth-card fade-up motion-slow">
           <span className="eyebrow">WELCOME TO YOUR SPACE</span>
           <h2>
             {register ? "A fresh start awaits." : "Good to have you back."}
@@ -111,7 +126,7 @@ export function AuthPage({ busy, error, onClearError, onSubmit }: Props) {
           <button
             className="text-button"
             onClick={() => {
-              setRegister(!register);
+              onNavigate(register ? "/login" : "/signup");
               onClearError();
             }}
           >

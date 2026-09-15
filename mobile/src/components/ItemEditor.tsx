@@ -13,9 +13,18 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { dateLabel, type Item, type ItemInput } from "@orbyn/core";
+import {
+  dateLabel,
+  hasTeamPermission,
+  statusLabels,
+  statusOrder,
+  type Item,
+  type ItemInput,
+  type Team,
+} from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
+import { Segmented } from "./Segmented";
 import { colors, fonts, radii, spacing } from "../theme";
 import { shared } from "../styles";
 
@@ -27,22 +36,30 @@ type Picker = { field: DateField; mode: "date" | "time" };
 
 type Props = {
   editing: Editing | null;
+  /** Your teams, for the "Share with" picker and the viewer read-only check. */
+  teams: Team[];
   busy: boolean;
   error: string;
-  onChange: (editing: Editing) => void;
+  /** Only the fields that changed; the parent merges them into its latest copy. */
+  onChange: (patch: Partial<ItemInput>) => void;
   onSave: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** iOS: called after the sheet has finished animating away. */
+  onDismissed?: () => void;
 };
 
+const PERSONAL = "personal";
+
 /** Native sheet on iOS, full-screen modal on Android; both respect safe areas. */
-export function ItemEditor({ editing, onClose, ...form }: Props) {
+export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
   return (
     <Modal
       visible={!!editing}
       animationType="slide"
       presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
       onRequestClose={onClose}
+      onDismiss={onDismissed}
     >
       <SafeAreaProvider>
         <SafeAreaView
@@ -59,6 +76,7 @@ export function ItemEditor({ editing, onClose, ...form }: Props) {
 /** Mounted only while something is being edited, so picker state resets on close. */
 function Form({
   editing,
+  teams,
   busy,
   error,
   onChange,
@@ -67,12 +85,37 @@ function Form({
   onClose,
 }: Omit<Props, "editing"> & { editing: Editing }) {
   const [picker, setPicker] = useState<Picker | null>(null);
+  const setDate = (field: DateField, value: string | null) =>
+    onChange(field === "due_at" ? { due_at: value } : { end_at: value });
+  // The team the item was saved in when the editor opened; moving it out needs members:manage there.
+  const [savedTeamId] = useState(editing.team_id ?? null);
   const exists = "id" in editing;
+  const teamId = editing.team_id ?? null;
+  const team = teams.find((t) => t.id === teamId);
+  const savedTeam = teams.find((t) => t.id === savedTeamId);
+  const readOnly = !!team && !hasTeamPermission(team.role, "items:write");
+  const lockedToTeam =
+    exists &&
+    !!savedTeam &&
+    !hasTeamPermission(savedTeam.role, "members:manage");
+  const shareTargets = lockedToTeam
+    ? [savedTeam]
+    : teams.filter((t) => hasTeamPermission(t.role, "items:write"));
+  const shareOptions = [
+    ...(lockedToTeam ? [] : [PERSONAL]),
+    ...shareTargets.map((t) => t.id),
+  ];
+  const shareLabels: Record<string, string> = { [PERSONAL]: "Personal" };
+  for (const t of shareTargets) shareLabels[t.id] = t.name;
   return (
     <>
       <View style={s.header}>
         <Text style={s.headerTitle}>
-          {exists ? "Edit your plan" : "Make a little plan"}
+          {readOnly
+            ? "View plan"
+            : exists
+              ? "Edit your plan"
+              : "Make a little plan"}
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -94,29 +137,72 @@ function Form({
           keyboardDismissMode="interactive"
         >
           <View style={s.column}>
+            {readOnly && (
+              <View style={s.viewOnly}>
+                <Icon name="users" size={16} color={colors.accent} />
+                <Text style={s.viewOnlyText}>
+                  View only — you’re a viewer in {team?.name}
+                </Text>
+              </View>
+            )}
             <Section label="What’s the plan?">
               <TextInput
+                editable={!readOnly}
                 style={[shared.input, s.titleInput]}
                 value={editing.title}
-                onChangeText={(title) => onChange({ ...editing, title })}
+                onChangeText={(title) => onChange({ title })}
                 maxLength={200}
                 placeholder="Something worth making time for"
                 placeholderTextColor={colors.faint}
                 autoFocus={!exists}
               />
             </Section>
+            {!readOnly && shareOptions.length > 1 && (
+              <Section label="Share with">
+                <Segmented
+                  wrap
+                  accessibilityLabel="Share with"
+                  options={shareOptions}
+                  labels={shareLabels}
+                  value={teamId ?? PERSONAL}
+                  onChange={(value) =>
+                    onChange({ team_id: value === PERSONAL ? null : value })
+                  }
+                />
+                {lockedToTeam && (
+                  <Text style={[shared.small, s.hint]}>
+                    Only team admins can move this out of {savedTeam.name}.
+                  </Text>
+                )}
+              </Section>
+            )}
             <Section label="Type">
               <Segmented
+                disabled={readOnly}
+                accessibilityLabel="Type"
                 options={["task", "event"] as const}
                 value={editing.kind}
-                onChange={(kind) => onChange({ ...editing, kind })}
+                onChange={(kind) => onChange({ kind })}
               />
             </Section>
             <Section label="Priority">
               <Segmented
+                disabled={readOnly}
+                accessibilityLabel="Priority"
                 options={["low", "medium", "high"] as const}
                 value={editing.priority}
-                onChange={(priority) => onChange({ ...editing, priority })}
+                onChange={(priority) => onChange({ priority })}
+              />
+            </Section>
+            <Section label="Status">
+              <Segmented
+                wrap
+                disabled={readOnly}
+                accessibilityLabel="Status"
+                options={statusOrder}
+                labels={statusLabels}
+                value={editing.status}
+                onChange={(status) => onChange({ status })}
               />
             </Section>
             {(["due_at", "end_at"] as const).map((field) => (
@@ -131,6 +217,7 @@ function Form({
                       (field === "due_at" ? "Due date: " : "End date: ") +
                       dateLabel(editing[field])
                     }
+                    disabled={readOnly}
                     onPress={() => setPicker({ field, mode: "date" })}
                     style={({ pressed }) => [
                       s.dateButton,
@@ -152,14 +239,14 @@ function Form({
                       {dateLabel(editing[field])}
                     </Text>
                   </Pressable>
-                  {editing[field] && (
+                  {editing[field] && !readOnly && (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Clear time"
                       hitSlop={8}
                       onPress={() => {
                         if (picker?.field === field) setPicker(null);
-                        onChange({ ...editing, [field]: null });
+                        setDate(field, null);
                       }}
                       style={s.clear}
                     >
@@ -199,10 +286,7 @@ function Form({
                           0,
                           0,
                         );
-                      onChange({
-                        ...editing,
-                        [picker.field]: current.toISOString(),
-                      });
+                      setDate(picker.field, current.toISOString());
                       if (Platform.OS === "android")
                         setPicker(
                           picker.mode === "date"
@@ -219,10 +303,7 @@ function Form({
                     style={{ marginBottom: 0 }}
                     onPress={() => {
                       if (!editing[picker.field])
-                        onChange({
-                          ...editing,
-                          [picker.field]: new Date().toISOString(),
-                        });
+                        setDate(picker.field, new Date().toISOString());
                       setPicker(
                         picker.mode === "date"
                           ? { ...picker, mode: "time" }
@@ -236,22 +317,24 @@ function Form({
             <Section label="Notes">
               <TextInput
                 style={[shared.input, s.notes]}
+                editable={!readOnly}
                 multiline
                 textAlignVertical="top"
                 value={editing.notes}
                 maxLength={10000}
                 placeholder="Anything worth remembering"
                 placeholderTextColor={colors.faint}
-                onChangeText={(notes) => onChange({ ...editing, notes })}
+                onChangeText={(notes) => onChange({ notes })}
               />
             </Section>
             <Section label="Remind me before (minutes)">
               <TextInput
                 style={shared.input}
                 keyboardType="number-pad"
+                editable={!readOnly}
                 value={String(editing.reminder_minutes)}
                 onChangeText={(value) =>
-                  onChange({ ...editing, reminder_minutes: Number(value) || 0 })
+                  onChange({ reminder_minutes: Number(value) || 0 })
                 }
               />
             </Section>
@@ -260,13 +343,15 @@ function Form({
                 {error}
               </Text>
             )}
-            <Button
-              title={busy ? "Saving…" : "Save item"}
-              icon={busy ? undefined : "check"}
-              disabled={busy}
-              onPress={onSave}
-            />
-            {exists && (
+            {!readOnly && (
+              <Button
+                title={busy ? "Saving…" : "Save item"}
+                icon={busy ? undefined : "check"}
+                disabled={busy}
+                onPress={onSave}
+              />
+            )}
+            {exists && !readOnly && (
               <Button
                 destructive
                 title="Delete item"
@@ -309,37 +394,6 @@ function Section({
   );
 }
 
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: readonly T[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <View style={s.segmented} accessibilityRole="radiogroup">
-      {options.map((option) => {
-        const active = option === value;
-        return (
-          <Pressable
-            key={option}
-            accessibilityRole="radio"
-            accessibilityState={{ checked: active }}
-            onPress={() => onChange(option)}
-            style={[s.segment, active && s.segmentActive]}
-          >
-            <Text style={[s.segmentText, active && s.segmentTextActive]}>
-              {option}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
   sheet: { flex: 1, backgroundColor: colors.background },
   header: {
@@ -369,34 +423,6 @@ const s = StyleSheet.create({
   column: { width: "100%", maxWidth: 600, alignSelf: "center" },
   section: { marginBottom: 18 },
   titleInput: { fontFamily: fonts.medium, fontSize: 17 },
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.input,
-    padding: 3,
-  },
-  segment: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: radii.input - 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentActive: {
-    backgroundColor: colors.surface,
-    shadowColor: "#1d2b23",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.muted,
-    textTransform: "capitalize",
-  },
-  segmentTextActive: { fontFamily: fonts.semibold, color: colors.accent },
   dateRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   dateButton: {
     flex: 1,
@@ -431,6 +457,22 @@ const s = StyleSheet.create({
     marginBottom: 18,
   },
   notes: { minHeight: 100 },
+  hint: { marginTop: 8 },
+  viewOnly: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.input,
+    padding: 12,
+    marginBottom: 18,
+  },
+  viewOnlyText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    color: colors.accent,
+  },
   error: {
     fontFamily: fonts.medium,
     fontSize: 13,

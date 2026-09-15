@@ -1,9 +1,20 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { FastifyRequest } from "fastify";
-import { fail, type AuthResponse, type User } from "@orbyn/core";
+import {
+  fail,
+  hasSystemPermission,
+  type AuthResponse,
+  type SystemPermission,
+  type SystemRole,
+  type User,
+} from "@orbyn/core";
 import { pool } from "../db/pool.js";
 
-export type UserRow = User & { password_hash: string };
+export type UserRow = User & {
+  password_hash: string;
+  disabled: boolean;
+  created_at: string;
+};
 
 export const digest = (s: string) =>
   createHash("sha256").update(s).digest("hex");
@@ -13,9 +24,13 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   email: u.email as string,
   name: u.name as string,
   email_reminders: u.email_reminders as boolean,
+  role: u.role as SystemRole,
 });
 
-/** Resolve the bearer token on a request to its user, or fail with 401. */
+export const DISABLED_MESSAGE =
+  "This account has been disabled. Contact your Orbyn administrator.";
+
+/** Resolve the bearer token on a request to its user, or fail with 401/403. */
 export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
@@ -26,6 +41,18 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
     )
   ).rows[0];
   if (!u) fail(401, "Session expired. Please sign in again.");
+  if (u.disabled) fail(403, DISABLED_MESSAGE);
+  return u;
+}
+
+/** Authenticate and require a system permission (admin console routes). */
+export async function authorize(
+  r: FastifyRequest,
+  permission: SystemPermission,
+): Promise<UserRow> {
+  const u = await authenticate(r);
+  if (!hasSystemPermission(u.role, permission))
+    fail(403, "You don't have permission to do that.");
   return u;
 }
 

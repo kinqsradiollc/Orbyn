@@ -1,0 +1,129 @@
+# API gateway template, rendered by entrypoint.sh from environment variables so
+# the same file works on one Docker host or with services spread across
+# machines. Routes each path to the service that owns it; keep in step with
+# serviceModules in backend/src/app.ts. ${NAME} placeholders are filled in at
+# start; nginx's own $variables are left alone.
+
+worker_processes auto;
+worker_rlimit_nofile 65535;
+pid /tmp/nginx.pid;
+
+events {
+  worker_connections 8192;
+  multi_accept on;
+}
+
+http {
+  # Writable paths for the unprivileged image.
+  client_body_temp_path /tmp/client_temp;
+  proxy_temp_path /tmp/proxy_temp;
+  fastcgi_temp_path /tmp/fastcgi_temp;
+  uwsgi_temp_path /tmp/uwsgi_temp;
+  scgi_temp_path /tmp/scgi_temp;
+
+  default_type application/json;
+  server_tokens off;
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+  keepalive_timeout 65s;
+  keepalive_requests 10000;
+  access_log /dev/stdout combined buffer=64k flush=5s;
+
+  gzip on;
+  gzip_comp_level 5;
+  gzip_min_length 1024;
+  gzip_types application/json text/plain;
+  gzip_vary on;
+
+  # DNS used to re-resolve service names, so scaling or restarting a service
+  # never needs a gateway restart. Docker's DNS by default (GATEWAY_RESOLVER).
+  resolver ${RESOLVER} valid=10s ipv6=off;
+
+  # Real client addresses when a load balancer sits in front (GATEWAY_TRUSTED_PROXIES).
+${REAL_IP}
+
+  # Per-client limits. Addresses in GATEWAY_RATE_LIMIT_EXEMPT (by default
+  # loopback and Docker Desktop's host network, for local load tests) are not
+  # limited. In production leave it empty and set GATEWAY_TRUSTED_PROXIES.
+  geo $limit_key {
+    default $binary_remote_addr;
+${LIMIT_EXEMPT}
+  }
+  limit_req_zone $limit_key zone=per_client:20m rate=50r/s;
+  limit_conn_zone $limit_key zone=conn_per_client:10m;
+  limit_req_status 429;
+  limit_conn_status 429;
+
+  # Micro-cache for the public status report.
+  proxy_cache_path /tmp/status_cache levels=1 keys_zone=status_cache:1m max_size=10m inactive=1m use_temp_path=off;
+
+  # Load-balanced, keep-alive connections to every instance of each service.
+  # Server lists come from GATEWAY_API_SERVERS and friends ("host:port ...").
+  upstream api {
+    zone api 64k;
+    least_conn;
+${UPSTREAM_API}
+    keepalive 128;
+  }
+  upstream ai {
+    zone ai 64k;
+    least_conn;
+${UPSTREAM_AI}
+    keepalive 32;
+  }
+  upstream status {
+    zone status 64k;
+${UPSTREAM_STATUS}
+    keepalive 16;
+  }
+
+  server {
+    listen 8080;
+    client_max_body_size 64k;
+    limit_conn conn_per_client 200;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 125s;
+    # Retry another replica only for idempotent requests (nginx's default).
+    proxy_next_upstream error timeout http_502 http_503;
+    proxy_next_upstream_tries 2;
+
+    location = /health {
+      access_log off;
+      return 200 '{"status":"ok","service":"gateway"}';
+    }
+
+    # AI assistant service.
+    location /ai/ {
+      limit_req zone=per_client burst=40 nodelay;
+      proxy_pass http://ai;
+    }
+
+    # Public status report, cached for 10 seconds.
+    location = /status {
+      proxy_cache status_cache;
+      proxy_cache_valid 200 10s;
+      proxy_cache_lock on;
+      proxy_cache_use_stale error timeout updating http_500 http_502 http_503;
+      add_header X-Cache-Status $upstream_cache_status always;
+      proxy_pass http://status;
+    }
+
+    # Everything else: the planner API.
+    location / {
+      limit_req zone=per_client burst=100 nodelay;
+      proxy_pass http://api;
+    }
+
+    error_page 502 503 504 = @unavailable;
+    location @unavailable {
+      return 503 '{"message":"Orbyn is briefly unavailable. Please try again."}';
+    }
+  }
+}

@@ -1,0 +1,56 @@
+# Non-secret settings shared by every backend service (api, ai, status,
+# notifier, migrate). Each variable is defined in backend/src/config/env.ts.
+# Secrets live in the orbyn-secrets Secret (see secrets.example.yaml).
+#
+# Pods read these only at start. After changing them, roll the workloads:
+#   kubectl -n orbyn rollout restart deploy/api deploy/ai deploy/status deploy/notifier
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orbyn-config
+  labels:
+    app.kubernetes.io/name: orbyn
+data:
+  PORT: "8000"
+  # Services sit behind the ingress controller (and, for /api, the web nginx),
+  # so they read the client address from X-Forwarded-For. Safe only because a
+  # NetworkPolicy stops anything else from reaching them (networkpolicy.yaml).
+  TRUST_PROXY: "true"
+
+  # Connections per pool per process. Each process keeps one pool to the
+  # primary and, when DATABASE_READ_URL is set, one more to the replica.
+  # Keep replicas x DB_POOL_MAX (x2 with a replica) under the pooler's client
+  # limit. The README works through the numbers.
+  DB_POOL_MAX: "20"
+
+  # Per-client requests per minute inside each service. Most per-client
+  # limiting happens at the ingress; this is a backstop. Sign-in and AI routes
+  # always keep their own stricter limits.
+  RATE_LIMIT_PER_MINUTE: "1200"
+
+  # Parallel delivery lanes per notifier replica.
+  NOTIFIER_CONCURRENCY: "8"
+
+  # Browser origins allowed to call the API host directly. The web app on
+  # app.orbyn.example calls same-origin /api, which needs no CORS, but list it
+  # anyway in case the app is built with VITE_API_URL=https://api.orbyn.example.
+  CORS_ORIGINS: "https://app.orbyn.example"
+
+  # Where the status service probes each component, as in-cluster Service DNS
+  # names. It requests <url>/health. If you deploy into a namespace other than
+  # "orbyn", change the namespace segment here.
+  # The "gateway" component becomes the web app, whose nginx answers /health
+  # (web.yaml). Set STATUS_GATEWAY_URL to "" to hide that component.
+  STATUS_GATEWAY_URL: "http://web.orbyn.svc.cluster.local:8080"
+  STATUS_API_URL: "http://api.orbyn.svc.cluster.local:8000"
+  STATUS_AI_URL: "http://ai.orbyn.svc.cluster.local:8000"
+  STATUS_INTERVAL_MS: "30000"
+
+  # AI providers are added by admins in the app and stored in the database.
+
+  # Outbound email for reminders (notifier). The password lives in the Secret.
+  SMTP_HOST: "smtp.example.com" # placeholder
+  SMTP_PORT: "587"
+  SMTP_SECURE: "false" # "true" for implicit TLS on port 465
+  SMTP_USER: "reminders@orbyn.example" # placeholder
+  SMTP_FROM: "Orbyn <reminders@orbyn.example>"

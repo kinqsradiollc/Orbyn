@@ -1,6 +1,7 @@
 import { Bell } from "lucide-react";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
+import { stagger } from "../../lib/motion";
 
 type Props = {
   notices: Notice[];
@@ -10,9 +11,10 @@ type Props = {
 export function NotificationsView({ notices, onRead }: Props) {
   return (
     <section className="card">
-      {notices.map((n) => (
+      {notices.map((n, index) => (
         <button
-          className={"notice " + (n.read ? "read" : "")}
+          className={"notice fade-up stagger " + (n.read ? "read" : "")}
+          style={stagger(index)}
           key={n.id}
           onClick={() => onRead(n)}
         >

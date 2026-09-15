@@ -7,10 +7,21 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/server.js",
-    "worker": "node dist/worker.js",
+    "start": "node dist/services/api.js",
+    "worker": "node dist/services/notifier.js",
     "migrate": "tsx src/migrate.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "admin:grant": "tsx src/grant-admin.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "dev:api": "tsx watch src/services/api.ts",
+    "dev:ai": "tsx watch src/services/ai.ts",
+    "dev:status": "tsx watch src/services/status.ts",
+    "dev:notifier": "tsx watch src/services/notifier.ts",
+    "start:ai": "node dist/services/ai.js",
+    "start:status": "node dist/services/status.js",
+    "start:notifier": "node dist/services/notifier.js",
+    "start:all": "node dist/server.js",
+    "load": "tsx scripts/load.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
@@ -28,6 +39,7 @@
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.18.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@orbyn/api-client": "1.0.0"
   }
 }

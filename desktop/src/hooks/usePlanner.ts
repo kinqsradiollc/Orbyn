@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  itemBody,
   type HttpError,
   type Item,
   type Notice,
+  type Status,
+  type Team,
   type User,
 } from "@orbyn/core";
 import { client } from "../lib/api";
@@ -21,6 +22,9 @@ export function usePlanner() {
   const [user, setUser] = useState<User | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  /** Bumps after every successful refresh so dependent views can reload. */
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -28,44 +32,66 @@ export function usePlanner() {
   tokenRef.current = token;
   const refreshSeq = useRef(0);
 
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     session.clear();
     setToken("");
     setUser(null);
     setItems([]);
     setNotices([]);
-  };
+    setTeams([]);
+  }, []);
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    const seq = ++refreshSeq.current;
-    setLoading(true);
-    try {
-      const all = await client.listAllItems(500);
-      const [u, n] = await Promise.all([
-        client.me(),
-        client.listNotifications(),
-      ]);
-      if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-      setItems(all);
-      setUser(u);
-      setNotices(n);
-    } finally {
-      if (tokenRef.current === token) setLoading(false);
-    }
-  }, [token]);
+  /** Surface an error in the banner; a 401 signs the user out. */
+  const report = useCallback(
+    (e: unknown) => {
+      setError((e as Error).message);
+      if ((e as HttpError).status === 401) clearSession();
+    },
+    [clearSession],
+  );
+
+  const lastData = useRef("");
+  /**
+   * Reload planner data. Background refreshes pass `silent`: no loading
+   * indicator, and nothing re-renders when the data is unchanged.
+   */
+  const refresh = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!token) return;
+      const seq = ++refreshSeq.current;
+      if (!options?.silent) setLoading(true);
+      try {
+        const all = await client.listAllItems(500);
+        const [u, n, t] = await Promise.all([
+          client.me(),
+          client.listNotifications(),
+          client.listTeams(),
+        ]);
+        if (tokenRef.current !== token || seq !== refreshSeq.current) return;
+        const snapshot = JSON.stringify([all, u, n, t]);
+        if (options?.silent && snapshot === lastData.current) return;
+        lastData.current = snapshot;
+        setItems(all);
+        setUser(u);
+        setNotices(n);
+        setTeams(t);
+        setRevision((r) => r + 1);
+      } finally {
+        if (tokenRef.current === token && !options?.silent) setLoading(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
       try {
-        if (document.visibilityState === "visible") await refresh();
+        if (document.visibilityState === "visible")
+          await refresh({ silent: true });
       } catch (e) {
-        if (alive) {
-          setError((e as Error).message);
-          if ((e as HttpError).status === 401) clearSession();
-        }
+        if (alive) report(e);
       }
       if (alive) timer = setTimeout(loop, 30000);
     };
@@ -74,7 +100,7 @@ export function usePlanner() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [refresh]);
+  }, [refresh, report]);
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -82,8 +108,7 @@ export function usePlanner() {
     try {
       await fn();
     } catch (e) {
-      setError((e as Error).message);
-      if ((e as HttpError).status === 401) clearSession();
+      report(e);
     } finally {
       setBusy(false);
     }
@@ -113,14 +138,23 @@ export function usePlanner() {
       clearSession();
     });
 
-  const toggleItem = (i: Item) =>
+  /** Status changes go through the timeline so everyone sees who moved what. */
+  const setItemStatus = (i: Item, status: Status) =>
     act(async () => {
-      await client.updateItem(i.id, {
-        ...itemBody(i),
-        status: i.status === "done" ? "todo" : "done",
-      });
+      await client.postItemUpdate(i.id, { status });
       await refresh();
     });
+
+  /** Quick-complete: done, or back to in progress / to do when reopened. */
+  const toggleItem = (i: Item) =>
+    setItemStatus(
+      i,
+      i.status !== "done"
+        ? "done"
+        : (i.progress ?? 0) > 0
+          ? "in_progress"
+          : "todo",
+    );
 
   const markRead = (n: Notice) =>
     act(async () => {
@@ -138,16 +172,20 @@ export function usePlanner() {
     user,
     items,
     notices,
+    teams,
+    revision,
     error,
     setError,
     busy,
     loading,
     refresh,
     act,
+    report,
     clearSession,
     authenticate,
     logout,
     toggleItem,
+    setItemStatus,
     markRead,
     setEmailReminders,
   };

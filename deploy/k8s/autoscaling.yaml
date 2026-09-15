@@ -1,0 +1,192 @@
+# HorizontalPodAutoscalers and PodDisruptionBudgets for the backend services.
+# (The web app's HPA and PDB are in web.yaml; PgBouncer's PDB is in pgbouncer.yaml.)
+#
+# CPU targets are a percentage of the container's CPU *request*, so requests
+# must be set (they are). The HPA needs metrics-server, or another
+# resource-metrics API, in the cluster.
+#
+# Scaling up is quick; scaling down waits 5 minutes so bursty traffic does
+# not flap. Every added replica also adds DB_POOL_MAX (x2 with a read replica)
+# client connections to the pooler. The README has the numbers.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  minReplicas: 3
+  maxReplicas: 50
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 4
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 20
+          periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai
+  minReplicas: 2
+  maxReplicas: 20
+  # AI requests mostly wait on the provider, so CPU understates load. If
+  # replicas saturate while CPU stays low, scale on in-flight requests
+  # instead (for example a Prometheus Adapter or KEDA metric).
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: status
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: status
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: status
+  # Load is small: probes every 30s per replica, plus /status reads. Two
+  # replicas are for availability; four is plenty.
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: notifier
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: notifier
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: notifier
+  minReplicas: 2
+  maxReplicas: 10
+  # CPU is only a proxy here. The real signal is the reminder backlog (due
+  # but undelivered rows). Scaling on it with KEDA's PostgreSQL scaler is a
+  # better fit once it is measured.
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 600
+---
+# PodDisruptionBudgets cap voluntary disruptions (node drains, cluster
+# upgrades); they do not protect against node crashes. unhealthyPodEvictionPolicy
+# lets a drain evict pods that are already failing, so a crash-looping pod
+# cannot block node maintenance.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 50%
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: ai
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: ai
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: status
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: status
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: status
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notifier
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: notifier
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: notifier

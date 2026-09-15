@@ -7,6 +7,29 @@ assistant (any OpenAI-compatible provider) can summarize your planner and propos
 updates, and deletes that you approve before they are saved. A background worker sends in-app,
 email, and mobile push reminders as deadlines approach.
 
+## Roles and teams
+
+Accounts are either **admins** or **members**. The first account, and any email in `ADMIN_EMAILS`,
+is an admin. Admins get an admin console in the web and mobile apps to see usage, manage accounts
+and roles, disable or delete users, manage any team, and read the audit log. They never see the
+contents of other people's items.
+
+Anyone can create a **team** and share tasks and events with it. Team roles are owner, admin,
+member, and viewer. Every team member gets the reminders for team items. See
+[architecture](docs/architecture.md#access-control) for the full permission matrix.
+
+## Services and status
+
+The backend runs as separate services (API, AI assistant, reminders, status) behind an nginx
+gateway. A public status page shows uptime for each part of Orbyn. Admins connect AI providers
+such as OpenAI, Anthropic, Gemini, Azure OpenAI, OpenRouter, Groq, LM Studio, or Ollama from the
+admin console; keys are stored encrypted. See [architecture](docs/architecture.md#services).
+
+Every service is stateless and can run as many instances as needed, on one host or many machines,
+behind a load balancer. PgBouncer pools database connections, and lag-tolerant reads can go to
+read replicas. See [scalability](docs/scalability.md) for the topology, measured load test results
+and a capacity plan for a million users.
+
 ## Repository layout
 
 Orbyn is an npm workspaces monorepo. Shared code lives in `packages/`, and each deployable app
@@ -20,6 +43,9 @@ lives in its own top-level folder.
 | `desktop/`             | `@orbyn/desktop`    | React + Vite web app, also packaged as an Electron desktop app. Organised by `features/`.   |
 | `mobile/`              | `@orbyn/mobile`     | Expo (React Native) app for iOS and Android. Organised by `screens/`.                       |
 | `docs/`                |                     | Setup, architecture, API reference, deployment, and mobile guides.                          |
+| `gateway/`             |                     | nginx gateway template, rendered from environment settings at start.                        |
+| `pgbouncer/`           |                     | Connection pooler image with primary and read-replica routes.                               |
+| `deploy/`              |                     | Kubernetes manifests (`deploy/k8s`) and Postgres replication scripts.                       |
 
 ```
 orbyn/
@@ -64,9 +90,8 @@ Then open:
 Create an account in the web app, add a task with a due date, and a reminder lands in Mailpit
 and in the in-app notification tray when the reminder window opens.
 
-To enable the AI assistant, set `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` in `.env` and run
-`docker compose up -d` again. Any provider that speaks the OpenAI chat completions API works
-(OpenAI, Azure OpenAI, OpenRouter, Groq, Together, Ollama, vLLM, LM Studio, and so on).
+To enable the AI assistant, sign in as an admin and open **Admin → AI** to add a provider and
+choose its model. Nothing AI-related goes in `.env`; see [setup](docs/setup.md#ai-providers).
 
 ## Quick start (local development)
 
@@ -76,7 +101,7 @@ docker compose up -d postgres mailpit
 npm install
 npm run build:packages        # compile the shared packages first
 npm run migrate
-npm run dev:api               # API on http://localhost:8000
+PORT=8008 npm run dev:api     # API on http://localhost:8008
 npm run dev:web               # web app on http://localhost:5173 (proxies /api to the backend)
 ```
 
@@ -95,6 +120,8 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 - [API reference](docs/api.md) - all HTTP endpoints
 - [Mobile guide](docs/mobile.md) - running on a device, push notifications, EAS builds
 - [Deployment](docs/deployment.md) - production checklist
+- [Scalability](docs/scalability.md) - multi-host topology, load balancer, replicas, capacity plan
+- [Kubernetes](deploy/k8s/README.md) - manifests with autoscaling, ingress and network policies
 
 ## Scripts
 
@@ -121,11 +148,19 @@ All commands run from the repository root.
 
 ## Tests
 
-The backend suite uses a real PostgreSQL database and refuses to run against anything not named
-`orbyn_test`:
+The backend tests use their own throwaway PostgreSQL, separate from the app's database:
 
 ```bash
-docker run -d --name orbyn-test-postgres -p 127.0.0.1:55432:5432 \
-  -e POSTGRES_USER=orbyn -e POSTGRES_PASSWORD=orbyn-test -e POSTGRES_DB=orbyn_test postgres:17-alpine
-DATABASE_URL=postgres://orbyn:orbyn-test@127.0.0.1:55432/orbyn_test npm test
+docker compose --profile test up -d postgres-test
+TEST_DATABASE_URL=postgres://orbyn:orbyn-test@localhost:55434/orbyn_test npm test
 ```
+
+`TEST_DATABASE_URL` can also live in `.env`. Three safeguards keep tests away from real data:
+
+- Tests read only `TEST_DATABASE_URL`, never `DATABASE_URL`.
+- The database name must end in `_test`.
+- The database must carry the marker `orbyn.environment = 'test'`, which the test container sets when
+  it is created. Development and production databases never have it, so the suite refuses to run
+  against them even if the URL is wrong.
+
+The test database keeps its data in memory; stopping it discards everything.

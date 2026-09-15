@@ -1,7 +1,9 @@
-import React from "react";
-import { Alert, StyleSheet, Switch, Text, View } from "react-native";
-import type { User } from "@orbyn/core";
+import React, { useEffect, useState } from "react";
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { hasSystemPermission, statusHeadlines, type User } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { Icon, type IconName } from "../components/Icon";
+import { Pill } from "../components/Pill";
 import { client } from "../lib/api";
 import { disablePush, enablePush } from "../lib/push";
 import { colors, fonts } from "../theme";
@@ -13,13 +15,33 @@ export function SettingsScreen({
   act,
   onUser,
   onSignOut,
+  teamCount,
+  onOpenTeams,
+  onOpenAdmin,
+  onOpenStatus,
 }: {
   user: User | null;
   busy: boolean;
   act: (fn: () => Promise<void>) => Promise<void>;
   onUser: (user: User) => void;
   onSignOut: () => void;
+  teamCount: number;
+  onOpenTeams: () => void;
+  onOpenAdmin: () => void;
+  onOpenStatus: () => void;
 }) {
+  const isAdmin = hasSystemPermission(user?.role, "admin:access");
+  const [statusHeadline, setStatusHeadline] = useState("");
+  useEffect(() => {
+    let live = true;
+    client
+      .getStatus()
+      .then((r) => live && setStatusHeadline(statusHeadlines[r.state]))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
     <>
       <View style={[shared.card, s.account]}>
@@ -29,13 +51,49 @@ export function SettingsScreen({
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={shared.sectionTitle} numberOfLines={1}>
-            {user?.name}
-          </Text>
+          <View style={s.nameRow}>
+            <Text
+              style={[shared.sectionTitle, { flexShrink: 1 }]}
+              numberOfLines={1}
+            >
+              {user?.name}
+            </Text>
+            {isAdmin && <Pill label="Admin" tone="accent" />}
+          </View>
           <Text style={shared.small} numberOfLines={1}>
             {user?.email}
           </Text>
         </View>
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>WORKSPACE</Text>
+      <View style={[shared.card, s.rows]}>
+        <LinkRow
+          icon="users"
+          title="Teams"
+          detail={
+            teamCount
+              ? `${teamCount} team${teamCount === 1 ? "" : "s"}`
+              : "Share plans with others"
+          }
+          onPress={onOpenTeams}
+        />
+        <LinkRow
+          divider
+          icon="activity"
+          title="Service status"
+          detail={statusHeadline || "Uptime and incidents"}
+          onPress={onOpenStatus}
+        />
+        {isAdmin && (
+          <LinkRow
+            divider
+            icon="shieldCheck"
+            title="Admin console"
+            detail="Users, teams and activity"
+            onPress={onOpenAdmin}
+          />
+        )}
       </View>
 
       <Text style={[shared.eyebrow, s.section]}>STAY IN THE LOOP</Text>
@@ -96,8 +154,8 @@ export function SettingsScreen({
       <Text style={[shared.eyebrow, s.section]}>AI PROVIDER</Text>
       <View style={shared.card}>
         <Text style={shared.body}>
-          Your server administrator configures the provider URL, API key, and
-          model. Keys stay on the backend, never on this device.
+          An admin connects the AI provider in Admin → AI. Keys stay on the
+          server, never on this device.
         </Text>
       </View>
 
@@ -112,7 +170,65 @@ export function SettingsScreen({
   );
 }
 
+/** Tappable settings row: icon, title, detail, chevron. */
+function LinkRow({
+  icon,
+  title,
+  detail,
+  divider = false,
+  onPress,
+}: {
+  icon: IconName;
+  title: string;
+  detail: string;
+  divider?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.row,
+        divider && s.rowDivider,
+        pressed && { backgroundColor: colors.surfaceMuted },
+      ]}
+    >
+      <View style={s.rowIcon}>
+        <Icon name={icon} size={18} color={colors.accent} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.prefTitle}>{title}</Text>
+        <Text style={shared.small}>{detail}</Text>
+      </View>
+      <Icon name="chevronRight" size={18} color={colors.faint} />
+    </Pressable>
+  );
+}
+
 const s = StyleSheet.create({
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rows: { padding: 0, overflow: "hidden" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   account: { flexDirection: "row", alignItems: "center", gap: 14 },
   avatar: {
     width: 48,

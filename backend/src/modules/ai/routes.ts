@@ -1,10 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { actionSchema, chatRequest, fail } from "@orbyn/core";
-import { pool, transaction } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
+import { audit } from "../../lib/audit.js";
+import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { askProvider } from "./provider.js";
+import { pruneActions } from "./guards.js";
+import { modelSnapshot } from "./snapshot.js";
+import { resolveAi } from "./providers/resolve.js";
 
 /**
  * Propose-then-approve assistant. `/ai/chat` stores a proposal; nothing changes
@@ -14,20 +19,35 @@ export async function aiRoutes(app: FastifyInstance) {
   app.post("/ai/chat", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const d = chatRequest.parse(r.body);
+    const ai = await resolveAi();
+    if (!ai)
+      fail(
+        503,
+        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
+      );
     const items = (
-      await pool.query(
-        "SELECT * FROM items WHERE user_id=$1 ORDER BY updated_at DESC LIMIT 100",
+      await reader(r.headers).query(
+        `SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id=i.team_id
+         WHERE ${VISIBLE_ITEMS} ORDER BY i.updated_at DESC LIMIT 100`,
         [u.id],
       )
     ).rows;
-    const response = await askProvider(d.message, d.timezone, items);
+    const response = await askProvider(
+      ai,
+      d.message,
+      d.timezone,
+      modelSnapshot(items, d.timezone),
+      d.history,
+      r.log,
+    );
+    const actions = pruneActions(response.actions, items, d.message);
     const p = (
       await pool.query(
         "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
-        [u.id, JSON.stringify(response.actions)],
+        [u.id, JSON.stringify(actions)],
       )
     ).rows[0];
-    return { id: p.id, ...response };
+    return { id: p.id, summary: response.summary, actions };
   });
 
   app.post("/ai/proposals/:id/apply", async (r) => {
@@ -43,9 +63,18 @@ export async function aiRoutes(app: FastifyInstance) {
       if (p.applied) return { applied: true };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
-      for (const raw of p.actions)
-        await mutate(db, u.id, actionSchema.parse(raw));
+      for (const raw of p.actions) await mutate(db, u, actionSchema.parse(raw));
       await db.query("UPDATE proposals SET applied=true WHERE id=$1", [p.id]);
+      await audit(
+        {
+          actorId: u.id,
+          action: "ai.proposal_applied",
+          targetType: "proposal",
+          targetId: p.id,
+          details: { actions: p.actions.length },
+        },
+        db,
+      );
       return { applied: true };
     });
   });

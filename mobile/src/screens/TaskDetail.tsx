@@ -1,0 +1,819 @@
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import {
+  dateLabel,
+  hasTeamPermission,
+  statusLabels,
+  statusOrder,
+  statusTones,
+  type Item,
+  type ItemDetail,
+  type ItemStep,
+  type ItemUpdate,
+  type Priority,
+  type Status,
+  type Team,
+} from "@orbyn/core";
+import { Button } from "../components/Button";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { Icon } from "../components/Icon";
+import { StatusPill } from "../components/Pill";
+import { ProgressBar } from "../components/ProgressBar";
+import { Sheet, sheetStyles } from "../components/Sheet";
+import { client } from "../lib/api";
+import { percentOf, stepsLabel, timeAgo } from "../lib/progress";
+import {
+  animateLayout,
+  FadeIn,
+  pop,
+  PressableScale,
+  useReducedMotion,
+} from "../motion";
+import { colors, fonts, radii } from "../theme";
+import { shared } from "../styles";
+
+const PROGRESS_STEPS = [0, 25, 50, 75, 100];
+
+const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
+  high: { bg: colors.highBg, fg: colors.highText, label: "High priority" },
+  medium: {
+    bg: colors.mediumBg,
+    fg: colors.mediumText,
+    label: "Medium priority",
+  },
+  low: { bg: colors.lowBg, fg: colors.lowText, label: "Low priority" },
+};
+
+/**
+ * Task detail sheet: status, progress, checklist and the updates timeline.
+ * Opened by tapping a task anywhere. "Edit details" hands off to ItemEditor
+ * (RootScreen closes this sheet first and reopens it afterwards).
+ */
+export function TaskDetail({
+  visible,
+  item,
+  teams,
+  onClose,
+  onDismiss,
+  onEdit,
+  onChanged,
+}: {
+  visible: boolean;
+  /** The row that was tapped; shown straight away while the detail loads. */
+  item: Item | null;
+  teams: Team[];
+  onClose: () => void;
+  /** iOS: called once the dismiss animation has finished. */
+  onDismiss?: () => void;
+  /** Opens the full editor for this item. */
+  onEdit: (item: Item) => void;
+  /** Called after every change so lists and counts refresh. */
+  onChanged: () => void;
+}) {
+  return (
+    <Sheet
+      visible={visible}
+      title={item?.kind === "event" ? "Event" : "Task"}
+      onClose={onClose}
+      onDismiss={onDismiss}
+    >
+      {item && (
+        <Body
+          key={item.id}
+          seed={item}
+          teams={teams}
+          onEdit={onEdit}
+          onChanged={onChanged}
+        />
+      )}
+    </Sheet>
+  );
+}
+
+function Body({
+  seed,
+  teams,
+  onEdit,
+  onChanged,
+}: {
+  seed: Item;
+  teams: Team[];
+  onEdit: (item: Item) => void;
+  onChanged: () => void;
+}) {
+  const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [newStep, setNewStep] = useState("");
+  const [note, setNote] = useState("");
+  const [noteStatus, setNoteStatus] = useState<Status | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    client
+      .getItem(seed.id)
+      .then((d) => {
+        if (!alive) return;
+        animateLayout();
+        setDetail(d);
+      })
+      .catch((e: Error) => alive && setError(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [seed.id]);
+
+  const item: Item = detail ?? seed;
+  const team = item.team_id
+    ? teams.find((t) => t.id === item.team_id)
+    : undefined;
+  const readOnly = !!team && !hasTeamPermission(team.role, "items:write");
+  const teamName = item.team_name ?? team?.name ?? seed.team_name;
+  const steps = (detail?.steps ?? [])
+    .slice()
+    .sort((a, b) => a.position - b.position);
+  const updates = detail?.updates ?? [];
+  const stepsDone = detail
+    ? steps.filter((st) => st.done).length
+    : (seed.steps_done ?? 0);
+  const stepsTotal = detail ? steps.length : (seed.steps_total ?? 0);
+  const percent = percentOf(item);
+  const tone = statusTones[item.status];
+  const priority = PRIORITY[item.priority];
+
+  /** Run a change; the server answers with the fresh detail. */
+  const run = async (fn: () => Promise<ItemDetail>) => {
+    setBusy(true);
+    setError("");
+    try {
+      const next = await fn();
+      animateLayout();
+      setDetail(next);
+      onChanged();
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setStatus = (status: Status) => {
+    if (status !== item.status)
+      void run(() => client.postItemUpdate(item.id, { status }));
+  };
+  const addStep = async () => {
+    const title = newStep.trim();
+    if (!title) return;
+    if (await run(() => client.addStep(item.id, { title }))) setNewStep("");
+  };
+  const postNote = async () => {
+    const body = note.trim();
+    const status = noteStatus && noteStatus !== item.status ? noteStatus : null;
+    if (!body && !status) return;
+    const ok = await run(() =>
+      client.postItemUpdate(item.id, {
+        ...(body ? { body } : {}),
+        ...(status ? { status } : {}),
+      }),
+    );
+    if (ok) {
+      setNote("");
+      setNoteStatus(null);
+    }
+  };
+  const openEditor = () => {
+    const {
+      steps: _steps,
+      updates: _updates,
+      ...rest
+    } = detail ?? ({ ...seed, steps: [], updates: [] } as ItemDetail);
+    onEdit({ ...rest, team_name: teamName });
+  };
+  const canPost =
+    !busy && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
+        <View style={sheetStyles.column}>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+
+          {/* Header */}
+          <FadeIn style={s.header}>
+            <View style={s.headerTop}>
+              <StatusPill status={item.status} />
+              {item.kind === "event" && <Text style={s.kind}>Event</Text>}
+            </View>
+            <Text style={s.title} accessibilityRole="header">
+              {item.title}
+            </Text>
+            <View style={s.metaRow}>
+              <View style={s.metaItem}>
+                <Icon name="clock" size={14} color={colors.muted} />
+                <Text style={s.metaText}>
+                  {dateLabel(item.due_at)}
+                  {item.end_at
+                    ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                    : ""}
+                </Text>
+              </View>
+              <View style={[s.chip, { backgroundColor: priority.bg }]}>
+                <Text style={[s.chipText, { color: priority.fg }]}>
+                  {priority.label}
+                </Text>
+              </View>
+              {!!teamName && (
+                <View
+                  style={[s.chip, s.teamChip]}
+                  accessibilityLabel={`Team: ${teamName}`}
+                >
+                  <Icon name="users" size={11} color={colors.accent} />
+                  <Text style={[s.chipText, { color: colors.accent }]}>
+                    {teamName}
+                  </Text>
+                </View>
+              )}
+            </View>
+            {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
+          </FadeIn>
+
+          {readOnly && (
+            <View style={s.viewOnly}>
+              <Icon name="users" size={16} color={colors.accent} />
+              <Text style={s.viewOnlyText}>
+                View only — you’re a viewer in {teamName}. You can read steps
+                and updates but not change them.
+              </Text>
+            </View>
+          )}
+
+          {/* Status */}
+          <Text style={shared.label}>Status</Text>
+          <StatusChoice
+            value={item.status}
+            disabled={readOnly || busy}
+            onChange={setStatus}
+            accessibilityLabel="Task status"
+          />
+
+          {/* Progress */}
+          <FadeIn index={1} style={[shared.card, s.progressCard]}>
+            <View style={s.progressTop}>
+              <Text style={shared.sectionTitle}>Progress</Text>
+              <Text style={[s.bigPercent, { color: tone.fg }]}>{percent}%</Text>
+            </View>
+            <ProgressBar
+              value={percent}
+              height={10}
+              color={tone.fg}
+              track={colors.surfaceMuted}
+              label={`${item.title} progress`}
+            />
+            {stepsTotal > 0 ? (
+              <Text style={[shared.small, s.progressHint]}>
+                {stepsLabel(stepsDone, stepsTotal)} · Progress follows the
+                checklist
+              </Text>
+            ) : readOnly ? null : (
+              <>
+                <Text style={[shared.small, s.progressHint]}>
+                  No checklist yet. Set progress by hand:
+                </Text>
+                <View style={s.segments} accessibilityRole="radiogroup">
+                  {PROGRESS_STEPS.map((value) => {
+                    const active = percent === value;
+                    const filled = value > 0 && percent >= value;
+                    return (
+                      <PressableScale
+                        key={value}
+                        accessibilityRole="radio"
+                        accessibilityLabel={`Set progress to ${value}%`}
+                        accessibilityState={{ checked: active, disabled: busy }}
+                        disabled={busy}
+                        onPress={() =>
+                          !active &&
+                          void run(() =>
+                            client.postItemUpdate(item.id, { progress: value }),
+                          )
+                        }
+                        style={[
+                          s.segment,
+                          filled && { backgroundColor: tone.bg },
+                          active && { borderColor: tone.fg },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            s.segmentText,
+                            (filled || active) && { color: tone.fg },
+                          ]}
+                        >
+                          {value}%
+                        </Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+          </FadeIn>
+
+          {/* Checklist */}
+          <FadeIn index={2} style={shared.card}>
+            <View style={s.cardHeading}>
+              <Text style={shared.sectionTitle} accessibilityRole="header">
+                Checklist
+              </Text>
+              {stepsTotal > 0 && (
+                <Text style={s.counter}>
+                  {stepsDone} of {stepsTotal}
+                </Text>
+              )}
+            </View>
+            {!detail && stepsTotal > 0 && (
+              <Text style={shared.small}>Loading steps…</Text>
+            )}
+            {detail && !steps.length && (
+              <Text style={[shared.small, s.gapBelow]}>
+                Break this into small steps. Progress updates as you tick them
+                off.
+              </Text>
+            )}
+            {steps.map((step, n) => (
+              <StepRow
+                key={step.id}
+                step={step}
+                first={n === 0}
+                disabled={readOnly || busy}
+                readOnly={readOnly}
+                onToggle={() =>
+                  void run(() =>
+                    client.updateStep(item.id, step.id, { done: !step.done }),
+                  )
+                }
+                onDelete={() =>
+                  void run(() => client.deleteStep(item.id, step.id))
+                }
+              />
+            ))}
+            {!readOnly && (
+              <View style={s.addRow}>
+                <TextInput
+                  style={[shared.input, s.addInput]}
+                  value={newStep}
+                  onChangeText={setNewStep}
+                  maxLength={200}
+                  placeholder="Add a step"
+                  placeholderTextColor={colors.faint}
+                  returnKeyType="done"
+                  submitBehavior="submit"
+                  onSubmitEditing={() => void addStep()}
+                  accessibilityLabel="New step title"
+                />
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Add step"
+                  accessibilityState={{ disabled: busy || !newStep.trim() }}
+                  disabled={busy || !newStep.trim()}
+                  onPress={() => void addStep()}
+                  style={[
+                    s.addButton,
+                    (busy || !newStep.trim()) && { opacity: 0.45 },
+                  ]}
+                >
+                  <Icon
+                    name="plus"
+                    size={18}
+                    color={colors.white}
+                    strokeWidth={2.2}
+                  />
+                </PressableScale>
+              </View>
+            )}
+          </FadeIn>
+
+          {/* Updates */}
+          <FadeIn index={3} style={shared.card}>
+            <View style={s.cardHeading}>
+              <Text style={shared.sectionTitle} accessibilityRole="header">
+                Updates
+              </Text>
+              {updates.length > 0 && (
+                <Text style={s.counter}>{updates.length}</Text>
+              )}
+            </View>
+            {!readOnly && (
+              <View style={s.composer}>
+                <TextInput
+                  style={[shared.input, s.noteInput]}
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                  maxLength={2000}
+                  textAlignVertical="top"
+                  placeholder="Share progress, a blocker or a win…"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Update text"
+                />
+                <Text style={[shared.label, s.composerLabel]}>
+                  Change status (optional)
+                </Text>
+                <StatusChoice
+                  compact
+                  value={noteStatus}
+                  disabled={busy}
+                  onChange={(st) =>
+                    setNoteStatus((prev) => (prev === st ? null : st))
+                  }
+                  accessibilityLabel="Status to set with this update"
+                />
+                <Button
+                  title={busy ? "Posting…" : "Post update"}
+                  icon={busy ? undefined : "arrowRight"}
+                  disabled={!canPost}
+                  onPress={() => void postNote()}
+                  style={s.post}
+                />
+              </View>
+            )}
+            {detail && !updates.length && (
+              <Text style={shared.small}>
+                No updates yet.
+                {readOnly ? "" : " Post one to keep everyone in the loop."}
+              </Text>
+            )}
+            {updates.map((u, n) => (
+              <UpdateRow key={u.id} update={u} first={n === 0} />
+            ))}
+          </FadeIn>
+
+          <Button
+            secondary
+            title={readOnly ? "View all details" : "Edit details"}
+            icon="arrowRight"
+            onPress={openEditor}
+          />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+/** Four colored status chips. `value` null means none chosen (composer). */
+function StatusChoice({
+  value,
+  onChange,
+  disabled,
+  compact = false,
+  accessibilityLabel,
+}: {
+  value: Status | null;
+  onChange: (status: Status) => void;
+  disabled: boolean;
+  compact?: boolean;
+  accessibilityLabel: string;
+}) {
+  return (
+    <View
+      style={[s.statusRow, compact && s.statusRowCompact]}
+      accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
+    >
+      {statusOrder.map((status) => {
+        const active = status === value;
+        const t = statusTones[status];
+        return (
+          <PressableScale
+            key={status}
+            accessibilityRole="radio"
+            accessibilityLabel={statusLabels[status]}
+            accessibilityState={{ checked: active, disabled }}
+            disabled={disabled}
+            onPress={() => onChange(status)}
+            style={[
+              s.statusChip,
+              compact && s.statusChipCompact,
+              active && { backgroundColor: t.bg, borderColor: t.fg },
+              disabled && !active && { opacity: 0.55 },
+            ]}
+          >
+            <View style={[s.statusDot, { backgroundColor: t.fg }]} />
+            <Text
+              numberOfLines={1}
+              style={[s.statusText, active && { color: t.fg }]}
+            >
+              {statusLabels[status]}
+            </Text>
+          </PressableScale>
+        );
+      })}
+    </View>
+  );
+}
+
+/** One checklist step: tick with a pop, delete with the trash button. */
+function StepRow({
+  step,
+  first,
+  disabled,
+  readOnly,
+  onToggle,
+  onDelete,
+}: {
+  step: ItemStep;
+  first: boolean;
+  disabled: boolean;
+  readOnly: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const reduced = useReducedMotion();
+  const scale = useRef(new Animated.Value(1)).current;
+  const was = useRef(step.done);
+  useEffect(() => {
+    if (step.done && !was.current && !reduced) {
+      scale.setValue(0.6);
+      pop(scale, 1.2).start();
+    }
+    was.current = step.done;
+  }, [step.done, reduced, scale]);
+  return (
+    <View style={[s.step, !first && s.stepDivider]}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityLabel={step.title}
+        accessibilityState={{ checked: step.done, disabled }}
+        disabled={disabled}
+        hitSlop={8}
+        onPress={onToggle}
+        style={s.stepMain}
+      >
+        <Animated.View
+          style={[s.check, step.done && s.checked, { transform: [{ scale }] }]}
+        >
+          {step.done && (
+            <Icon name="check" size={12} color={colors.white} strokeWidth={3} />
+          )}
+        </Animated.View>
+        <Text style={[s.stepText, step.done && s.stepDone]}>{step.title}</Text>
+      </Pressable>
+      {!readOnly && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Delete step ${step.title}`}
+          disabled={disabled}
+          hitSlop={8}
+          onPress={onDelete}
+          style={({ pressed }) => [s.trash, pressed && s.trashPressed]}
+        >
+          <Icon name="trash" size={16} color={colors.muted} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+/** A timeline entry: avatar initial, name, time, body and change chips. */
+function UpdateRow({ update, first }: { update: ItemUpdate; first: boolean }) {
+  const initial = (update.author_name || "?").trim().charAt(0).toUpperCase();
+  return (
+    <FadeIn style={[s.update, !first && s.stepDivider]}>
+      <View style={s.avatar}>
+        <Text style={s.avatarText}>{initial}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <View style={s.updateTop}>
+          <Text style={s.author} numberOfLines={1}>
+            {update.author_name || "Someone"}
+          </Text>
+          <Text style={shared.small}>{timeAgo(update.created_at)}</Text>
+        </View>
+        {!!update.body && <Text style={s.updateBody}>{update.body}</Text>}
+        {(update.status || update.progress !== null) && (
+          <View style={s.changes}>
+            {update.status && <StatusPill status={update.status} />}
+            {update.progress !== null && (
+              <View style={[s.chip, s.progressChip]}>
+                <Text style={[s.chipText, { color: colors.textSoft }]}>
+                  Progress {update.progress}%
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    </FadeIn>
+  );
+}
+
+const s = StyleSheet.create({
+  header: { marginBottom: 18 },
+  headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
+  title: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.6,
+    color: colors.text,
+    marginTop: 10,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  metaText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: radii.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  teamChip: { backgroundColor: colors.accentSoft },
+  progressChip: { backgroundColor: colors.surfaceMuted },
+  chipText: { fontFamily: fonts.semibold, fontSize: 11 },
+  notes: { ...shared.body, marginTop: 12 },
+  viewOnly: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.input,
+    padding: 12,
+    marginBottom: 18,
+  },
+  viewOnlyText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.accent,
+  },
+  statusRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 18,
+  },
+  statusRowCompact: { marginBottom: 12, gap: 6 },
+  statusChip: {
+    flexGrow: 1,
+    flexBasis: "45%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    minHeight: 44,
+    borderRadius: radii.input,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 10,
+  },
+  statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusText: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.textSoft,
+  },
+  progressCard: { gap: 12 },
+  progressTop: { flexDirection: "row", alignItems: "baseline" },
+  bigPercent: {
+    marginLeft: "auto",
+    fontFamily: fonts.display,
+    fontSize: 26,
+    letterSpacing: -0.6,
+  },
+  progressHint: { marginTop: -2 },
+  segments: { flexDirection: "row", gap: 6 },
+  segment: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentText: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  cardHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  counter: {
+    marginLeft: "auto",
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.muted,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 6,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  gapBelow: { marginBottom: 12 },
+  step: { flexDirection: "row", alignItems: "center", minHeight: 46 },
+  stepDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  stepMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  check: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: "#cfd7ce",
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+  stepText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  stepDone: { color: colors.faint, textDecorationLine: "line-through" },
+  trash: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trashPressed: { backgroundColor: colors.dangerSoft },
+  addRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  addInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.input,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  composer: { marginBottom: 14 },
+  noteInput: { minHeight: 76 },
+  composerLabel: { marginTop: 12 },
+  post: { marginBottom: 0 },
+  update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
+  updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+  author: {
+    flexShrink: 1,
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    color: colors.text,
+  },
+  updateBody: { ...shared.body, marginTop: 3 },
+  changes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+});

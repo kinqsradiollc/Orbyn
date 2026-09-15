@@ -14,6 +14,8 @@ import { Brand } from "../components/Brand";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import type { SignInInput } from "../hooks/usePlanner";
+import { FadeIn, animateLayout } from "../motion";
+import { motion } from "@orbyn/core";
 import { colors, fonts } from "../theme";
 import { shared } from "../styles";
 
@@ -53,92 +55,107 @@ export function AuthScreen({
         ]}
       >
         <View style={s.column}>
-          <Brand size={30} />
-          <Text style={[shared.eyebrow, s.eyebrow]}>
-            A LITTLE CLARITY. A LOT MORE POSSIBILITY.
-          </Text>
-          <Text style={s.hero}>
-            {register ? "A fresh start\nawaits." : "Welcome\nback."}
-          </Text>
-          <Text style={[shared.subtitle, s.intro]}>
-            {register
-              ? "Create your account and find your flow."
-              : "Your plans are right where you left them."}
-          </Text>
-          {register && (
-            <Field label="Your name">
+          {/* Logo, headline, form and actions rise in one after another. */}
+          <FadeIn index={0} duration={motion.slow}>
+            <Brand size={30} />
+          </FadeIn>
+          <FadeIn index={2} duration={motion.slow}>
+            <Text style={[shared.eyebrow, s.eyebrow]}>
+              A LITTLE CLARITY. A LOT MORE POSSIBILITY.
+            </Text>
+            <Text style={s.hero}>
+              {register ? "A fresh start\nawaits." : "Welcome\nback."}
+            </Text>
+            <Text style={[shared.subtitle, s.intro]}>
+              {register
+                ? "Create your account and find your flow."
+                : "Your plans are right where you left them."}
+            </Text>
+          </FadeIn>
+          <FadeIn index={4} duration={motion.slow}>
+            {register && (
+              <Field label="Your name">
+                <TextInput
+                  style={shared.input}
+                  placeholder="Alex Morgan"
+                  placeholderTextColor={colors.faint}
+                  value={name}
+                  onChangeText={setName}
+                  maxLength={80}
+                  autoComplete="name"
+                  textContentType="name"
+                  returnKeyType="next"
+                />
+              </Field>
+            )}
+            <Field label="Email address">
               <TextInput
                 style={shared.input}
-                placeholder="Alex Morgan"
+                placeholder="you@example.com"
                 placeholderTextColor={colors.faint}
-                value={name}
-                onChangeText={setName}
-                maxLength={80}
-                autoComplete="name"
-                textContentType="name"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
                 returnKeyType="next"
               />
             </Field>
-          )}
-          <Field label="Email address">
-            <TextInput
-              style={shared.input}
-              placeholder="you@example.com"
-              placeholderTextColor={colors.faint}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="email"
-              textContentType="emailAddress"
-              returnKeyType="next"
+            <Field label="Password">
+              <TextInput
+                style={shared.input}
+                placeholder="At least 10 characters"
+                placeholderTextColor={colors.faint}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                maxLength={128}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete={register ? "new-password" : "current-password"}
+                textContentType={register ? "newPassword" : "password"}
+              />
+            </Field>
+          </FadeIn>
+          <FadeIn index={6} duration={motion.slow}>
+            <ErrorBanner error={error} />
+            <Button
+              title={
+                busy
+                  ? "One moment…"
+                  : register
+                    ? "Create your space"
+                    : "Sign in"
+              }
+              icon={busy ? undefined : "arrowRight"}
+              disabled={busy}
+              onPress={() =>
+                act(async () => {
+                  await signIn({ email, password, name, register });
+                  setPassword("");
+                })
+              }
             />
-          </Field>
-          <Field label="Password">
-            <TextInput
-              style={shared.input}
-              placeholder="At least 10 characters"
-              placeholderTextColor={colors.faint}
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              maxLength={128}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete={register ? "new-password" : "current-password"}
-              textContentType={register ? "newPassword" : "password"}
-            />
-          </Field>
-          <ErrorBanner error={error} />
-          <Button
-            title={
-              busy ? "One moment…" : register ? "Create your space" : "Sign in"
-            }
-            icon={busy ? undefined : "arrowRight"}
-            disabled={busy}
-            onPress={() =>
-              act(async () => {
-                await signIn({ email, password, name, register });
-                setPassword("");
-              })
-            }
-          />
-          <Pressable
-            accessibilityRole="button"
-            style={s.switch}
-            onPress={() => {
-              setRegister(!register);
-              clearError();
-            }}
-          >
-            <Text style={s.switchText}>
-              {register ? "Already have an account? " : "New to Orbyn? "}
-              <Text style={s.switchLink}>
-                {register ? "Sign in" : "Create an account"}
+            <Pressable
+              accessibilityRole="button"
+              style={s.switch}
+              onPress={() => {
+                // The name field slides in or out with the mode switch.
+                animateLayout();
+                setRegister(!register);
+                clearError();
+              }}
+            >
+              <Text style={s.switchText}>
+                {register ? "Already have an account? " : "New to Orbyn? "}
+                <Text style={s.switchLink}>
+                  {register ? "Sign in" : "Create an account"}
+                </Text>
               </Text>
-            </Text>
-          </Pressable>
+            </Pressable>
+          </FadeIn>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

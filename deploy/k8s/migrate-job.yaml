@@ -1,0 +1,93 @@
+# One-shot database migrations: applies backend/migrations/*.sql not yet
+# recorded. Run it BEFORE each rollout, so new code never meets an old schema:
+#   - CI step:  delete the old Job, apply this one with the new image tag,
+#               `kubectl wait --for=condition=complete`, then `kubectl apply -k`
+#               (see README).
+#   - Argo CD:  uncomment the PreSync hook annotations below and add this file
+#               to kustomization.yaml.
+#   - Helm:     if you ever wrap these manifests in a chart, use the
+#               pre-install,pre-upgrade hook annotations.
+#
+# It is not in kustomization.yaml: a Job's pod template is immutable, so a plain
+# `kubectl apply -k` with a new tag would fail on the old Job, and it would also
+# start in parallel with the Deployments rather than before them.
+#
+# Concurrent or repeated runs are safe: migrate.ts takes a Postgres advisory
+# lock and skips files already recorded.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: orbyn-migrate
+  namespace: orbyn
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: migrate
+  # annotations:
+  #   argocd.argoproj.io/hook: PreSync
+  #   argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+  #   # Helm equivalent:
+  #   # helm.sh/hook: pre-install,pre-upgrade
+  #   # helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  # Kept for a day so logs can be read, then garbage-collected.
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" in the official Node images (see api.yaml)
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          # Placeholder: must be the same tag the Deployments are about to run.
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/migrate.js"]
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            # "env" overrides "envFrom". Migrations go straight to the primary,
+            # not through a transaction pooler, as in compose.yaml.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: MIGRATE_DATABASE_URL
+            - name: DATABASE_READ_URL
+              value: ""
+            - name: DB_POOL_MAX
+              value: "2"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

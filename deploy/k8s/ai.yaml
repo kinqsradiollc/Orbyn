@@ -1,0 +1,150 @@
+# AI assistant: chat, applying proposals, and admin AI provider settings. The
+# only service that calls AI providers. Stateless. The ingress sends /ai/* here.
+# Replica count is left to the HPA (autoscaling.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: ai
+spec:
+  # No "replicas": the HPA owns the count. Setting it here would reset the
+  # count on every apply.
+  revisionHistoryLimit: 5
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: ai
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: ai
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Assistant calls can run up to the 75s proxy timeout: 10s preStop, up to
+      # 75s draining a request, plus a margin.
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        # The image says "USER node", a name rather than a number, so the
+        # kubelet cannot check runAsNonRoot without an explicit UID. 1000 is
+        # "node" in the official Node images.
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # Soft spreading: replicas are balanced across zones and nodes, but
+      # scheduling never blocks when a zone is full or down. For strict zone
+      # spreading, switch the zone rule to DoNotSchedule.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: ai
+          matchLabelKeys: [pod-template-hash]
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: orbyn
+              app.kubernetes.io/component: ai
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: ai
+          # Placeholder: set the real registry and tag with the kustomization
+          # "images" entry, or `kustomize edit set image`.
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/services/ai.js"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            # Keep the V8 heap below the memory limit so Node collects garbage
+            # before the kernel OOM-kills it.
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # /live: process up, no database; restarts only a hung process.
+          # /health: checks the database; gates traffic.
+          # /live must exist in the image, or pods crash-loop (see README).
+          startupProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            # Stay up while the endpoint is removed and the ingress controller
+            # stops sending new requests; only then does SIGTERM arrive.
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: ai
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: ai
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

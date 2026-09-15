@@ -1,12 +1,7 @@
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import { StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 import { Icon, type IconName } from "./Icon";
+import { PressableScale } from "../motion";
 import { colors, fonts, radii } from "../theme";
 
 export function Button({
@@ -34,7 +29,7 @@ export function Button({
       ? colors.accent
       : colors.white;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
@@ -49,7 +44,7 @@ export function Button({
     >
       <Text style={[s.text, { color: tint }]}>{title}</Text>
       {icon && <Icon name={icon} size={16} color={tint} strokeWidth={2} />}
-    </Pressable>
+    </PressableScale>
   );
 }
 

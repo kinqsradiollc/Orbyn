@@ -2,17 +2,21 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-// This suite requires an isolated PostgreSQL database, never a production database.
-if (!process.env.DATABASE_URL?.includes("orbyn_test"))
-  throw new Error("Set DATABASE_URL to an isolated database named orbyn_test");
+// Connects only to a verified test database (see setup.ts).
+import "./setup.js";
 let providerResponse: unknown = {
   summary: "Your week looks clear.",
   actions: [],
 };
 let providerStatus = 200;
+let lastProviderRequest: { messages: { role: string; content: string }[] } = {
+  messages: [],
+};
 const provider = createServer((req, res) => {
-  req.resume();
+  let body = "";
+  req.on("data", (chunk) => (body += chunk));
   req.on("end", () => {
+    lastProviderRequest = JSON.parse(body || "{}");
     res.writeHead(providerStatus, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
@@ -22,8 +26,7 @@ const provider = createServer((req, res) => {
   });
 });
 await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
-process.env.AI_BASE_URL = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
-process.env.AI_MODEL = "test-provider";
+const providerUrl = `http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`;
 process.env.SMTP_HOST = "";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
@@ -58,6 +61,18 @@ const clean = (i: Record<string, unknown>) => ({
 });
 before(async () => {
   await migrate();
+  // The assistant uses the stand-in provider, chosen as an admin would in the
+  // console (there is no server-settings fallback).
+  const standIn = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('openai-compatible', 'Stand-in', $1) RETURNING id",
+      [providerUrl],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id=$1, model='test-provider' WHERE id",
+    [standIn],
+  );
   for (const name of ["alice", "bob"]) {
     const r = await app.inject({
       method: "POST",
@@ -83,6 +98,7 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [
     [aliceId, bobId],
   ]);
+  await pool.query("DELETE FROM ai_providers WHERE name='Stand-in'");
   await app.close();
   await pool.end();
   provider.close();
@@ -262,11 +278,29 @@ test("AI proposal batch rolls back when an action targets another user", async (
     payload: { message: "Change things" },
   });
   assert.equal(r.statusCode, 200);
+  // The model cannot see Bob's item, so an action on it is dropped up front.
+  assert.deepEqual(
+    r.json().actions.map((a: { operation: string }) => a.operation),
+    ["create"],
+  );
+  // Apply still rolls the whole batch back if one action is forbidden.
+  const forged = (
+    await pool.query(
+      "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
+      [
+        aliceId,
+        JSON.stringify([
+          { operation: "create", data: payload("Must rollback") },
+          { operation: "delete", item_id: b.id, version: 1 },
+        ]),
+      ],
+    )
+  ).rows[0].id;
   assert.equal(
     (
       await app.inject({
         method: "POST",
-        url: `/ai/proposals/${r.json().id}/apply`,
+        url: `/ai/proposals/${forged}/apply`,
         headers: headers(alice),
       })
     ).statusCode,
@@ -282,6 +316,32 @@ test("AI proposal batch rolls back when an action targets another user", async (
     0,
   );
 });
+test("the assistant forwards conversation history to the provider", async () => {
+  providerResponse = { summary: "Tomorrow is clear too.", actions: [] };
+  const r = await app.inject({
+    method: "POST",
+    url: "/ai/chat",
+    headers: headers(alice),
+    payload: {
+      message: "And tomorrow?",
+      timezone: "UTC",
+      history: [
+        { role: "user", content: "What is on today?" },
+        { role: "assistant", content: "Nothing today." },
+      ],
+    },
+  });
+  assert.equal(r.statusCode, 200);
+  const messages = lastProviderRequest.messages;
+  assert.deepEqual(
+    messages.map((m) => m.role),
+    ["system", "user", "assistant", "user"],
+  );
+  assert.equal(messages[1].content, "What is on today?");
+  assert.equal(messages[2].content, "Nothing today.");
+  assert.match(messages[3].content, /And tomorrow\?/);
+});
+
 test("AI provider errors and invalid outputs are handled", async () => {
   providerResponse = {
     summary: "Invalid",

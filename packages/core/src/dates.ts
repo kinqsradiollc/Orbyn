@@ -46,6 +46,6 @@ export function monthGrid(month: Date): Date[][] {
       cursor.setDate(cursor.getDate() + 1);
     }
     weeks.push(week);
-  } while (cursor.getMonth() === month.getMonth());
+  } while (weeks.length < 6);
   return weeks;
 }

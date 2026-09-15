@@ -1,13 +1,10 @@
-import { ArrowRight, ArrowUpRight, Sparkles } from "lucide-react";
-import type { Item } from "@orbyn/core";
+import { useEffect, useRef } from "react";
+import { ArrowUp, ArrowUpRight, RotateCcw, Sparkles } from "lucide-react";
+import { assistantSuggestions as SUGGESTIONS, type Item } from "@orbyn/core";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { Assistant } from "../../hooks/useAssistant";
-
-const SUGGESTIONS = [
-  "Summarize my week",
-  "What needs my attention?",
-  "Help me plan tomorrow",
-];
+import { stagger } from "../../lib/motion";
+import "./assistant.css";
 
 type Props = {
   items: Item[];
@@ -16,57 +13,171 @@ type Props = {
 };
 
 export function AssistantView({ items, busy, assistant }: Props) {
-  const { message, setMessage, proposal, ask, apply, dismiss } = assistant;
+  const { message, setMessage, turns, thinking, ask, apply, dismiss, reset } =
+    assistant;
+  const threadRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const locked = busy || thinking;
+
+  // Keep the newest message in view by scrolling the conversation itself,
+  // never the page, so the header and composer stay where they are.
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
+  }, [turns.length, thinking]);
+
+  // Grow the composer with its content, up to a limit.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 180) + "px";
+  }, [message]);
+
+  const send = () => {
+    if (!locked && message.trim()) void ask();
+  };
+
   return (
-    <section className="card chat">
-      <div className="assistant-intro">
-        <Sparkles size={30} />
-        <h2>What’s on your mind?</h2>
-        <p>
-          Ask for a summary, create a plan, or adjust your existing items.
-          <br />
-          You’ll review all changes before they’re saved.
-        </p>
-        <div className="suggestions">
-          {SUGGESTIONS.map((s) => (
-            <button key={s} disabled={busy} onClick={() => ask(s)}>
-              {s}
-              <ArrowUpRight size={14} />
-            </button>
-          ))}
+    <section className="card ai-chat">
+      <header className="ai-chat-head">
+        <span className="ai-avatar">
+          <Sparkles size={16} />
+        </span>
+        <div className="ai-chat-title">
+          <strong>Orbyn assistant</strong>
+          <small>
+            {thinking
+              ? "Thinking…"
+              : "Summaries, plans, and changes you approve"}
+          </small>
         </div>
+        {turns.length > 0 && (
+          <button
+            type="button"
+            className="ai-ghost"
+            onClick={reset}
+            disabled={thinking}
+          >
+            <RotateCcw size={14} /> New conversation
+          </button>
+        )}
+      </header>
+
+      <div className="ai-thread" aria-live="polite" ref={threadRef}>
+        {turns.length === 0 && (
+          <div className="ai-empty">
+            <span className="ai-empty-mark">
+              <Sparkles size={26} />
+            </span>
+            <h2>What’s on your mind?</h2>
+            <p>
+              Ask for a summary, plan your day, or change items in plain
+              language. You’ll review every change before it’s saved.
+            </p>
+            <div className="ai-suggestions">
+              {SUGGESTIONS.map((s, n) => (
+                <button
+                  key={s.title}
+                  className="fade-up stagger"
+                  style={stagger(n)}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => void ask(s.title)}
+                >
+                  <strong>{s.title}</strong>
+                  <span>{s.hint}</span>
+                  <ArrowUpRight size={14} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {turns.map((turn) =>
+          turn.role === "user" ? (
+            <div key={turn.id} className="ai-row ai-row-user">
+              <div className="ai-bubble ai-bubble-user">{turn.text}</div>
+            </div>
+          ) : (
+            <div key={turn.id} className="ai-row">
+              <span className="ai-avatar ai-avatar-small">
+                <Sparkles size={13} />
+              </span>
+              <div className="ai-bubble ai-bubble-bot">
+                <ProposalReview
+                  proposal={turn.proposal}
+                  items={items}
+                  before={turn.before}
+                  busy={locked}
+                  state={turn.state}
+                  onApply={() => void apply(turn.id)}
+                  onDismiss={() => dismiss(turn.id)}
+                />
+              </div>
+            </div>
+          ),
+        )}
+
+        {thinking && (
+          <div className="ai-row">
+            <span className="ai-avatar ai-avatar-small">
+              <Sparkles size={13} />
+            </span>
+            <div
+              className="ai-bubble ai-bubble-bot ai-typing"
+              role="status"
+              aria-label="Orbyn is thinking"
+            >
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        )}
       </div>
-      {proposal && (
-        <ProposalReview
-          proposal={proposal}
-          items={items}
-          busy={busy}
-          onApply={() => void apply()}
-          onDismiss={dismiss}
-        />
-      )}
+
       <form
-        className="chat-input"
+        className="ai-composer"
         onSubmit={(e) => {
           e.preventDefault();
-          void ask();
+          send();
         }}
       >
-        <input
+        <textarea
+          ref={inputRef}
+          rows={1}
           aria-label="Message your assistant"
           placeholder="Make a little space. Ask Orbyn…"
           value={message}
           maxLength={4000}
           onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              send();
+            }
+          }}
         />
-        <button className="primary" disabled={busy || !message.trim()}>
-          {busy ? "Thinking…" : "Send"}
-          <ArrowRight size={16} />
+        <button
+          className="ai-send"
+          aria-label="Send"
+          disabled={locked || !message.trim()}
+        >
+          <ArrowUp size={18} />
         </button>
       </form>
-      <small className="muted">
-        Your request and up to 100 recent items are shared with your configured
-        AI provider.
+      <small className="ai-note">
+        Enter to send, Shift+Enter for a new line. Your request and up to 100
+        recent items are shared with your configured AI provider.
       </small>
     </section>
   );
