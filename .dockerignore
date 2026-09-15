@@ -6,6 +6,8 @@
 .env
 .env.*
 docs
+# Except the API description the backend serves at /openapi.yaml.
+!docs/openapi.yaml
 .github
 # Mobile sources are never built in Docker; only its manifest is needed for npm ci.
 mobile/**
