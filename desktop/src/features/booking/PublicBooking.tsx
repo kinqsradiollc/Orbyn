@@ -27,6 +27,7 @@ import {
 import { Message, accentStyle, whenLabel } from "./bookingUi";
 import { ManageBooking } from "./ManageBooking";
 import { SlotPicker } from "./SlotPicker";
+import { useNoIndex } from "../../hooks/useNoIndex";
 import "./booking.css";
 
 type Props = {
@@ -45,6 +46,8 @@ const LINKS = new Set(["confirm", "cancel", "manage"]);
  * older emails.
  */
 export function PublicBooking({ path, onHome }: Props) {
+  // Booking and manage links are private to whoever has them.
+  useNoIndex();
   const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
   const [, first, token] = parts;
   return (

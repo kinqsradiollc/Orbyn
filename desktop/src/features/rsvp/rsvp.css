@@ -1,0 +1,40 @@
+/* The public invitation page. Layout on the booking pages' shell, existing
+   tokens only. */
+.rsvp-card h1 {
+  margin-bottom: 14px;
+  overflow-wrap: anywhere;
+}
+.rsvp-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+.rsvp-facts li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.rsvp-facts svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--green);
+}
+.rsvp-for {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.rsvp-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.rsvp-answers button {
+  flex: 1 1 120px;
+}

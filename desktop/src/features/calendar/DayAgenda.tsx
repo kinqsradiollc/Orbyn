@@ -9,7 +9,11 @@ import { StatusPill } from "../../components/StatusPill";
 import { firstDay, isAllDay, isMultiDay, lastDay, timeLabel } from "./dates";
 import { listLook } from "./MonthView";
 
-type Props = { day: Date; items: Item[]; onOpen: (item: Item) => void };
+type Props = {
+  day: Date;
+  items: Item[];
+  onOpen: (item: Item, anchor?: DOMRect) => void;
+};
 
 /**
  * The selected day's items beside the month grid on wide screens and below it
@@ -38,7 +42,7 @@ export function DayAgenda({ day, items, onOpen }: Props) {
                 day.getMonth(),
                 day.getDate(),
               ).getTime();
-            const look = listLook(i.list_id, listById);
+            const look = listLook(i.list_id, listById, i.color);
             return (
               <button
                 key={i.id}
@@ -48,7 +52,9 @@ export function DayAgenda({ day, items, onOpen }: Props) {
                   look.className
                 }
                 style={{ ...stagger(n), ...look.style }}
-                onClick={() => onOpen(i)}
+                onClick={(e) =>
+                  onOpen(i, e.currentTarget.getBoundingClientRect())
+                }
               >
                 <span className="agenda-time">
                   {continued ? (

@@ -6,13 +6,14 @@ import {
   type DragEvent,
   type PointerEvent,
 } from "react";
-import { Pin, Sparkles, Timer, Users, Video, X } from "lucide-react";
+import { Lock, Pin, Sparkles, Timer, Users, Video, X } from "lucide-react";
 import {
   sameDay,
   statusLabels,
   type BusyInterval,
   type CalendarEntry,
   type DerivedBlock,
+  type ExternalEntry,
   type FrameOccurrence,
   type PlannedBlock,
   type TimeBlock,
@@ -33,6 +34,7 @@ import {
   entryEnd,
   entryKey,
   entryOnDay,
+  externalKey,
   isAllDayEntry,
   TASK_MIME,
 } from "./model";
@@ -47,6 +49,7 @@ type Cell =
   | { type: "block"; block: TimeBlock }
   /** Where an Alt-dragged block's copy will go. */
   | { type: "copy"; block: TimeBlock }
+  | { type: "external"; event: ExternalEntry }
   | { type: "ghost"; ghost: PlannedBlock; id: string };
 
 type Props = {
@@ -79,7 +82,7 @@ type Props = {
   onChangeBlock: (block: TimeBlock, start: Date, end: Date) => void;
   /** A block Alt/Option-dragged: copy it to `start`. */
   onDuplicateBlock: (block: TimeBlock, start: Date) => void;
-  /** Events and timed tasks you can drag (not repeating ones, for now). */
+  /** Events and timed tasks you can drag (not view-only ones). */
   canDragEntry: (entry: CalendarEntry) => boolean;
   /** An entry dragged to a new time, or resized from its bottom edge. */
   onChangeEntry: (
@@ -90,6 +93,9 @@ type Props = {
   ) => void;
   /** Dragging across empty time (when not keeping time free): a new event. */
   onCreateRange: (start: Date, end: Date) => void;
+  /** Events from subscribed calendars: read-only, never dragged. */
+  external: ExternalEntry[];
+  onExternal: (event: ExternalEntry, anchor: DOMRect) => void;
   /** Teammates' busy times, as thin strips at the side of each day. */
   teammates: MateBusy[];
   /** The picked time, marked in the grid ("C" makes an event there). */
@@ -150,7 +156,8 @@ function onDay(start: string, end: string, dayStart: number, dayEnd: number) {
  * blocks (drag to move, drag the bottom edge to resize, Alt-drag to copy),
  * frames as tinted bands, buffers and travel as hatched bands, plan-preview
  * ghosts (drag to pin, × to remove while tuning), events and timed tasks
- * (drag to move, events also resize; not repeating ones yet), dragging across
+ * (drag to move, events also resize), events from subscribed calendars
+ * (read-only), dragging across
  * empty time (a new event, or keep-free while tuning), teammates' busy times
  * as thin strips, extra time-zone columns, and a drop target for tasks
  * dragged from the side list.
@@ -180,6 +187,8 @@ export function CalendarGrid({
   onChangeEntry,
   onCreateRange,
   teammates,
+  external,
+  onExternal,
   slot,
   onSelectSlot,
 }: Props) {
@@ -396,6 +405,14 @@ export function CalendarGrid({
           data: { type: "entry" as const, entry },
         };
       }),
+    ...external
+      .filter((x) => !isAllDayEntry(x))
+      .map((x) => ({
+        key: externalKey(x),
+        start: new Date(x.start_at),
+        end: new Date(x.end_at),
+        data: { type: "external" as const, event: x },
+      })),
     ...shownBlocks.map((block) => ({
       key: "b:" + block.id,
       start: new Date(block.start_at),
@@ -470,10 +487,28 @@ export function CalendarGrid({
         </span>
         {days.map((d) => (
           <div className="tg-allday-cell" key={d.toISOString()}>
+            {external
+              .filter((x) => isAllDayEntry(x) && entryOnDay(x, d))
+              .map((x) => (
+                <button
+                  key={externalKey(x)}
+                  className="cal-entry is-event is-external has-list"
+                  style={{ "--list": x.color } as CSSProperties}
+                  title={`${x.title} · ${x.name}`}
+                  aria-label={`${x.title} (from ${x.name}, all day, read-only)`}
+                  aria-haspopup="dialog"
+                  onClick={(ev) =>
+                    onExternal(x, ev.currentTarget.getBoundingClientRect())
+                  }
+                >
+                  <Lock size={10} aria-hidden="true" />
+                  <span className="cal-title">{x.title}</span>
+                </button>
+              ))}
             {entries
               .filter((e) => isAllDayEntry(e) && entryOnDay(e, d))
               .map((e) => {
-                const look = listLook(e.list_id, listById);
+                const look = listLook(e.list_id, listById, e.color);
                 return (
                   <button
                     key={entryKey(e)}
@@ -613,7 +648,6 @@ export function CalendarGrid({
                     const e = cell.entry;
                     const dragged = moving?.id === p.key ? moving : null;
                     const draggable = canDragEntry(e);
-                    const repeating = !!(e.occurrence || e.rrule);
                     const time = dragged
                       ? spanLabel(
                           dragged.start.toISOString(),
@@ -622,7 +656,7 @@ export function CalendarGrid({
                       : e.end_at
                         ? spanLabel(e.start_at, e.end_at)
                         : timeLabel(new Date(e.start_at));
-                    const look = listLook(e.list_id, listById);
+                    const look = listLook(e.list_id, listById, e.color);
                     return (
                       <div
                         key={p.key}
@@ -638,11 +672,6 @@ export function CalendarGrid({
                             look.className
                           }
                           style={look.style}
-                          title={
-                            repeating
-                              ? `Open it to change a repeating ${e.kind === "event" ? "event" : "task"}`
-                              : undefined
-                          }
                           onPointerDown={
                             draggable
                               ? (ev) =>
@@ -723,6 +752,35 @@ export function CalendarGrid({
                             <Video size={11} aria-hidden="true" /> Join
                           </a>
                         )}
+                      </div>
+                    );
+                  }
+                  if (cell.type === "external") {
+                    const x = cell.event;
+                    return (
+                      <div key={p.key} className="tg-slot" style={place}>
+                        <button
+                          className={
+                            "cal-entry is-event tg-event is-external has-list" +
+                            (short ? " is-short" : "") +
+                            (x.busy ? "" : " is-free")
+                          }
+                          style={{ "--list": x.color } as CSSProperties}
+                          aria-label={`${x.title} (from ${x.name}, ${spanLabel(x.start_at, x.end_at)}, read-only)`}
+                          aria-haspopup="dialog"
+                          onClick={(ev) =>
+                            onExternal(
+                              x,
+                              ev.currentTarget.getBoundingClientRect(),
+                            )
+                          }
+                        >
+                          <span className="cal-title">
+                            <Lock size={10} aria-hidden="true" />
+                            {x.title}
+                          </span>
+                          <small>{spanLabel(x.start_at, x.end_at)}</small>
+                        </button>
                       </div>
                     );
                   }

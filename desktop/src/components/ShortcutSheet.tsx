@@ -34,6 +34,21 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
     ],
   },
   {
+    title: "Quick add, typed in the command bar",
+    keys: [
+      { keys: [";"], label: "A place: ;Cafe Roma" },
+      { keys: ["@"], label: "Someone: @anna, or an email to invite" },
+      { keys: [">"], label: "A list: >Work" },
+      { keys: ["#"], label: "A tag: #urgent" },
+      { keys: ["!", "!!", "!!!"], label: "Low, medium or high priority" },
+      {
+        keys: ["fri 3pm"],
+        label: "When: tomorrow, next friday, sep 20, 3-4pm, all day",
+      },
+      { keys: ["for 1h"], label: "How long (~45m for an estimate)" },
+    ],
+  },
+  {
     title: "Command bar",
     keys: [
       { keys: ["↑", "↓"], label: "Move through results" },

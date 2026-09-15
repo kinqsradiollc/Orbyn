@@ -50,6 +50,8 @@ import {
   type BookingFocus,
 } from "../features/booking/BookingView";
 import { PublicBooking } from "../features/booking/PublicBooking";
+import { RsvpPage } from "../features/rsvp/RsvpPage";
+import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import type { View } from "./views";
 import "../styles/planning.css";
 
@@ -88,6 +90,13 @@ export function App() {
   const [view, setView] = useState<View>("Overview");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  /** The occurrence being edited, when the editor opened from a repeating entry. */
+  const [editOccurrence, setEditOccurrence] = useState<OccurrenceRef | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!editing) setEditOccurrence(null);
+  }, [editing]);
   /** Team prefilled in the editor when a new item starts from a team page. */
   const [draftTeamId, setDraftTeamId] = useState<string | null>(null);
   /** Other prefilled fields for a new item (a meeting time, a list). */
@@ -104,7 +113,9 @@ export function App() {
   const [mobileNav, setMobileNav] = useState(false);
   /** The booking to open in the bookings inbox (from a notification). */
   const [bookingFocus, setBookingFocus] = useState<BookingFocus | null>(null);
-  const isPublicBooking = !nativeDesktop && path.startsWith("/book/");
+  // Public pages from emailed links: booking pages and invitations.
+  const isPublicBooking =
+    !nativeDesktop && (path.startsWith("/book/") || path.startsWith("/rsvp/"));
 
   useEffect(() => {
     if (token && (path === "/login" || path === "/signup"))
@@ -286,6 +297,18 @@ export function App() {
       include: [n.item_id],
     });
   };
+  /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
+  const openItemById = (id: string) => {
+    const found = items.find((i) => i.id === id);
+    if (found) setOpenTask(found);
+    else client.getItem(id).then(setOpenTask, report);
+  };
+  /** Shows a day in the calendar (from an event search result). */
+  const jumpToDate = (day: Date) => {
+    navigate("Calendar");
+    setCalendarDate(day);
+    setCalendarMode("day");
+  };
   const reschedule = async (n: Notice) => {
     if (!n.ref) return;
     try {
@@ -296,17 +319,17 @@ export function App() {
     }
   };
 
-  const saveItem = (data: ItemInput) => {
+  const saveItem = (data: ItemInput, options: EditOptions = {}) => {
     if (!editing) return;
     const target = editing;
     void act(async () => {
       if (target === "new") await client.createItem(data);
       else {
-        await client.updateItem(target.id, {
-          ...data,
-          status: target.status,
-          version: target.version,
-        });
+        await client.updateItem(
+          target.id,
+          { ...data, status: target.status, version: target.version },
+          options,
+        );
         // Status changes go through the timeline so they're recorded.
         if (data.status !== target.status) {
           await client.postItemUpdate(target.id, { status: data.status });
@@ -318,11 +341,11 @@ export function App() {
     });
   };
 
-  const deleteItem = () => {
+  const deleteItem = (options: EditOptions = {}) => {
     if (!editing || editing === "new") return;
     const target = editing;
     void act(async () => {
-      await client.deleteItem(target.id, target.version);
+      await client.deleteItem(target.id, target.version, options);
       setEditing(null);
       if (openTask?.id === target.id) setOpenTask(null);
       await refresh();
@@ -341,7 +364,11 @@ export function App() {
 
   // Public booking pages: no sign-in, no app shell.
   if (isPublicBooking)
-    return <PublicBooking path={path} onHome={() => navigatePath("/")} />;
+    return path.startsWith("/rsvp/") ? (
+      <RsvpPage path={path} onHome={() => navigatePath("/")} />
+    ) : (
+      <PublicBooking path={path} onHome={() => navigatePath("/")} />
+    );
 
   if (!nativeDesktop && path === "/")
     return <HomePage signedIn={!!token} onNavigate={navigatePath} />;
@@ -446,7 +473,10 @@ export function App() {
                   teams={teams}
                   canWrite={canWrite}
                   onOpen={openItem}
-                  onEditItem={setEditing}
+                  onEditItem={(item, occurrence) => {
+                    setEditing(item);
+                    setEditOccurrence(occurrence ?? null);
+                  }}
                   onFocus={startFocus}
                   date={calendarDate}
                   onDateChange={setCalendarDate}
@@ -498,6 +528,7 @@ export function App() {
                   onReschedule={reschedule}
                   onRollForward={rollForward}
                   onPlanIt={planIt}
+                  onOpenItem={openItemById}
                   onOpenCalendar={() => navigate("Calendar")}
                   onOpenBooking={openBooking}
                 />
@@ -559,6 +590,7 @@ export function App() {
             onClose={() => setEditing(null)}
             onSave={saveItem}
             onDelete={deleteItem}
+            occurrence={editing === "new" ? null : editOccurrence}
           />
         )}
         {commandOpen && (
@@ -573,6 +605,9 @@ export function App() {
             onOpenPlan={openPlan}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
+            teams={teams}
+            userId={user?.id}
+            onJumpToDate={jumpToDate}
             report={report}
           />
         )}

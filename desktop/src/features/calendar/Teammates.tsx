@@ -44,7 +44,7 @@ export type Teammates = ReturnType<typeof useTeammates>;
 /**
  * "Show teammates": the people in your teams (pinned people first), up to
  * five chosen (remembered on this device), and their busy times in
- * [from, to), merged across the teams you share with each. Members load
+ * [from, to), from one availability request. Members load
  * the first time they're needed; busy times load while `active`.
  */
 export function useTeammates(
@@ -108,24 +108,12 @@ export function useTeammates(
       setBusy({});
       return;
     }
-    const teamIds = [
-      ...new Set(
-        mates
-          .filter((m) => selected.includes(m.user_id))
-          .flatMap((m) => m.teamIds),
-      ),
-    ];
     let alive = true;
-    Promise.all(
-      teamIds.map((id) => client.teamAvailability(id, fromIso, toIso)),
-    ).then(
-      (lists) => {
+    client.availability(selected, fromIso, toIso).then(
+      (people) => {
         if (!alive) return;
         const next: Record<string, BusyInterval[]> = {};
-        for (const list of lists)
-          for (const a of list)
-            if (selected.includes(a.user_id))
-              (next[a.user_id] ??= []).push(...a.busy);
+        for (const a of people) next[a.user_id] = a.busy;
         setBusy(next);
       },
       (e) => alive && report(e),

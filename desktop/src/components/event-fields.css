@@ -1,0 +1,136 @@
+/* Event fields in the item editor (alerts, invitees, colour, all day,
+   busy or free), the repeating-item scope dialog and quick-add chips in the
+   command bar. Layout, with existing tokens only. */
+.event-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-bottom: 18px;
+}
+.event-toggles .field-hint {
+  flex-basis: 100%;
+  margin: -4px 0 0;
+}
+.event-field {
+  min-width: 0;
+  margin: 0 0 18px;
+  padding: 0;
+  border: 0;
+}
+.event-field legend {
+  margin-bottom: 7px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 500;
+}
+.event-field .text-button {
+  padding: 4px 0;
+}
+.event-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.event-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.modal .event-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.modal .event-add-row input,
+.modal .event-add-row select {
+  display: inline-block;
+  flex: 1 1 150px;
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+}
+.modal .event-add-row input[type="number"] {
+  flex: 0 0 80px;
+}
+.rsvp-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-lowBg);
+  color: var(--color-lowText);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rsvp-chip.is-accepted {
+  background: var(--color-accentSoft);
+  color: var(--color-accent);
+}
+.rsvp-chip.is-tentative {
+  background: var(--color-highBg);
+  color: var(--color-highText);
+}
+.rsvp-chip.is-declined {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.event-colors .swatch-none {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border);
+  background: var(--color-surface);
+  color: var(--muted);
+}
+
+/* This one / this and following / all. */
+.scope-dialog {
+  width: 420px;
+  max-width: 100%;
+}
+.scope-body {
+  margin: 0;
+  padding: 14px 22px 4px;
+  font-size: 13px;
+}
+.scope-options {
+  display: grid;
+  gap: 8px;
+  padding: 12px 22px;
+}
+.scope-options .secondary {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+.scope-options small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.scope-dialog .button-row {
+  padding: 0 22px 18px;
+}
+
+/* Quick add in the command bar: what the text was read as. */
+.quick-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.quick-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}

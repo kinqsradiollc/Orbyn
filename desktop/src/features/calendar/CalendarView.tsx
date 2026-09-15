@@ -16,6 +16,8 @@ import {
   startOfDay,
   type CalendarEntry,
   type CalendarSet,
+  type EditScope,
+  type ExternalEntry,
   type FrameOccurrence,
   type HttpError,
   type Item,
@@ -41,7 +43,8 @@ import { MonthView } from "./MonthView";
 import { DayAgenda } from "./DayAgenda";
 import { CalendarGrid } from "./CalendarGrid";
 import { AgendaList } from "./AgendaList";
-import { BlockMenu, EntryMenu, FrameMenu } from "./CalendarMenus";
+import { BlockMenu, EntryMenu, ExternalMenu, FrameMenu } from "./CalendarMenus";
+import { ScopeDialog, type OccurrenceRef } from "../../components/ScopeDialog";
 import { BlockDialog } from "./BlockDialog";
 import { CalendarSetsDialog } from "./CalendarSets";
 import { FrameDialog } from "./FrameDialog";
@@ -50,9 +53,17 @@ import { PlannerPanel } from "./PlannerPanel";
 import { useCalendarData } from "./useCalendarData";
 import { usePlanTuning } from "./usePlanTuning";
 import { TeammatesLegend, TeammatesMenu, useTeammates } from "./Teammates";
-import { entryAsItem, entryKey, inSet, itemIdOf } from "./model";
+import {
+  entryAsItem,
+  entryKey,
+  externalAsItem,
+  externalKey,
+  inSet,
+  itemIdOf,
+} from "./model";
 import "./calendar.css";
 import "./calendar-drag.css";
+import "./calendar-events.css";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda";
 
@@ -84,7 +95,7 @@ type Props = {
   canWrite: (item: Item) => boolean;
   onOpen: (item: Item) => void;
   /** Opens the item editor (to edit a whole series). */
-  onEditItem: (item: Item) => void;
+  onEditItem: (item: Item, occurrence?: OccurrenceRef) => void;
   onFocus: (item: Item) => void;
   /** The selected day; also decides which month / week is shown. */
   date: Date;
@@ -116,6 +127,7 @@ type Menu =
   | { kind: "entry"; entry: CalendarEntry; anchor: DOMRect }
   | { kind: "block"; block: TimeBlock; anchor: DOMRect }
   | { kind: "frame"; frame: FrameOccurrence; anchor: DOMRect }
+  | { kind: "external"; event: ExternalEntry; anchor: DOMRect }
   | null;
 type Dialog =
   | { kind: "schedule"; item: Item }
@@ -210,6 +222,7 @@ export function CalendarView({
   const blocks = (data?.blocks ?? []).filter((b) => inSet(activeSet, b));
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
   const frames = data?.frames ?? [];
+  const external = data?.external ?? [];
   const gridMode = mode === "week" || mode === "day";
 
   // ---- teammates' busy times ----
@@ -347,18 +360,34 @@ export function CalendarView({
   };
 
   // ---- dragging events and timed tasks ----
-  /** Not repeating ones (that needs a this/following/all choice), nor view-only ones. */
+  /** Not view-only ones; repeating ones ask which occurrences to move. */
   const canDragEntry = (e: CalendarEntry) => {
-    if (e.occurrence || e.rrule) return false;
     const item = itemMap.get(e.item_id);
     return !item || canWrite(item);
   };
-  /** Save a dragged entry's new time; it shows there at once and goes back on failure. */
-  const moveEntry = async (
+  /** A dragged repeating entry waiting for "this one / following / all". */
+  const [scopeAsk, setScopeAsk] = useState<{
+    entry: CalendarEntry;
+    start: Date;
+    end: Date;
+    resized: boolean;
+  } | null>(null);
+  const moveEntry = (
     entry: CalendarEntry,
     start: Date,
     end: Date,
     resized: boolean,
+  ) => {
+    if (entry.occurrence) setScopeAsk({ entry, start, end, resized });
+    else void saveMove(entry, start, end, resized);
+  };
+  /** Save a dragged entry's new time; it shows there at once and goes back on failure. */
+  const saveMove = async (
+    entry: CalendarEntry,
+    start: Date,
+    end: Date,
+    resized: boolean,
+    scope?: EditScope,
   ) => {
     const startIso = start.toISOString();
     // A task without an end keeps none; moving only changes its due time.
@@ -383,17 +412,38 @@ export function CalendarView({
           : await client.getItem(entry.item_id);
       // The full body, as the editor sends it; planning and event fields
       // left out keep their saved values.
-      await client.updateItem(item.id, {
-        title: item.title,
-        notes: item.notes ?? "",
-        kind: item.kind,
-        status: item.status,
-        priority: item.priority,
-        due_at: startIso,
-        end_at: endIso,
-        team_id: item.team_id ?? null,
-        version: item.version,
-      });
+      // "All" moves the whole series by the same amount; "this" and
+      // "following" take the occurrence's new times.
+      const whole = scope === "all" && !!item.due_at;
+      const dueIso = whole
+        ? new Date(
+            Date.parse(item.due_at!) +
+              (start.getTime() - Date.parse(entry.start_at)),
+          ).toISOString()
+        : startIso;
+      const dueEnd =
+        whole && endIso
+          ? new Date(
+              Date.parse(dueIso) + (end.getTime() - start.getTime()),
+            ).toISOString()
+          : endIso;
+      await client.updateItem(
+        item.id,
+        {
+          title: item.title,
+          notes: item.notes ?? "",
+          kind: item.kind,
+          status: item.status,
+          priority: item.priority,
+          due_at: dueIso,
+          end_at: dueEnd,
+          team_id: item.team_id ?? null,
+          version: item.version,
+        },
+        entry.occurrence && scope
+          ? { scope, occurrence: entry.occurrence }
+          : {},
+      );
       await onChanged();
     } catch (e) {
       if ((e as HttpError).status === 401) report(e);
@@ -525,7 +575,7 @@ export function CalendarView({
     newEvent,
     slot,
   };
-  const blocked = !shortcuts || !!menu || !!dialog || !!matesMenu;
+  const blocked = !shortcuts || !!menu || !!dialog || !!matesMenu || !!scopeAsk;
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
@@ -583,8 +633,21 @@ export function CalendarView({
         : mode === "agenda"
           ? "two weeks"
           : "day";
-  const monthItems = entries.map((e) => entryAsItem(e, itemMap));
-  const openKey = (i: Item) => withItem(itemIdOf(i.id), onOpen);
+  const monthItems = [
+    ...entries.map((e) => entryAsItem(e, itemMap)),
+    ...external.map(externalAsItem),
+  ];
+  const externalById = new Map(external.map((x) => [externalKey(x), x]));
+  /** Open an item from the month grid or day list; external events show their details. */
+  const openKey = (i: Item, anchor?: DOMRect) => {
+    const x = externalById.get(i.id);
+    if (!x) return withItem(itemIdOf(i.id), onOpen);
+    setMenu({
+      kind: "external",
+      event: x,
+      anchor: anchor ?? new DOMRect(window.innerWidth / 2 - 150, 160, 300, 0),
+    });
+  };
   const zones = (prefs?.extra_timezones ?? []).slice(0, 3);
   const showSide = mode !== "month";
   const menuEntry = menu?.kind === "entry" ? menu.entry : null;
@@ -800,6 +863,10 @@ export function CalendarView({
               })
             }
             teammates={mates.shown}
+            external={external}
+            onExternal={(event, anchor) =>
+              setMenu({ kind: "external", event, anchor })
+            }
             slot={slot}
             onSelectSlot={setSlot}
           />
@@ -808,6 +875,10 @@ export function CalendarView({
         {mode === "agenda" && (
           <AgendaList
             days={agendaDays}
+            external={external}
+            onExternal={(event, anchor) =>
+              setMenu({ kind: "external", event, anchor })
+            }
             entries={entries}
             blocks={blocks}
             onEntry={(entry, anchor) =>
@@ -854,7 +925,21 @@ export function CalendarView({
           canComplete={canComplete(menu.entry)}
           onClose={() => setMenu(null)}
           onOpen={() => withItem(menu.entry.item_id, onOpen)}
-          onEditSeries={() => withItem(menu.entry.item_id, onEditItem)}
+          onEditSeries={() => {
+            const e = menu.entry;
+            withItem(e.item_id, (item) =>
+              onEditItem(
+                item,
+                e.occurrence
+                  ? {
+                      occurrence: e.occurrence,
+                      start_at: e.start_at,
+                      end_at: e.end_at,
+                    }
+                  : undefined,
+              ),
+            );
+          }}
           onFocus={() => withItem(menu.entry.item_id, onFocus)}
           onComplete={() =>
             void complete(menu.entry.item_id, !!menu.entry.occurrence)
@@ -896,6 +981,13 @@ export function CalendarView({
           anchor={matesMenu}
           teammates={mates}
           onClose={() => setMatesMenu(null)}
+        />
+      )}
+      {menu?.kind === "external" && (
+        <ExternalMenu
+          event={menu.event}
+          anchor={menu.anchor}
+          onClose={() => setMenu(null)}
         />
       )}
       {menu?.kind === "frame" && (
@@ -948,6 +1040,18 @@ export function CalendarView({
           onSave={async (next) => {
             await planning.savePrefs({ calendar_sets: next });
             if (setId && !next.some((s) => s.id === setId)) chooseSet("");
+          }}
+        />
+      )}
+      {scopeAsk && (
+        <ScopeDialog
+          kind={scopeAsk.entry.kind}
+          action="move"
+          onCancel={() => setScopeAsk(null)}
+          onChoose={(scope) => {
+            const a = scopeAsk;
+            setScopeAsk(null);
+            void saveMove(a.entry, a.start, a.end, a.resized, scope);
           }}
         />
       )}

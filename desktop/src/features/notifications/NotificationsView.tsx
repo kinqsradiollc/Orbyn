@@ -7,6 +7,7 @@ import {
   CalendarDays,
   FastForward,
   Hourglass,
+  UserCheck,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
@@ -24,6 +25,8 @@ type Props = {
   /** Opens the planner on a preview that includes the notice's task. */
   onPlanIt: (notice: Notice) => void;
   onOpenCalendar: () => void;
+  /** Opens an item's details (the event in an "rsvp" notice). */
+  onOpenItem: (itemId: string) => void;
   /** Opens the bookings inbox on the booking in a "booking" notice's `ref`. */
   onOpenBooking: (bookingId: string) => void;
 };
@@ -35,6 +38,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   rollforward: FastForward,
   at_risk: AlertTriangle,
   deadline: Hourglass,
+  rsvp: UserCheck,
 };
 
 export function NotificationsView({
@@ -44,6 +48,7 @@ export function NotificationsView({
   onRollForward,
   onPlanIt,
   onOpenCalendar,
+  onOpenItem,
   onOpenBooking,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
@@ -56,6 +61,12 @@ export function NotificationsView({
         const openBooking = (id: string) => {
           if (!n.read) onRead(n);
           onOpenBooking(id);
+        };
+        // Answers to invitations point at the event.
+        const eventId = n.kind === "rsvp" ? n.item_id : undefined;
+        const openEvent = (id: string) => {
+          if (!n.read) onRead(n);
+          onOpenItem(id);
         };
         /** Runs a notice's action once, marking it read. */
         const act = (fn: () => Promise<void>) => {
@@ -71,7 +82,13 @@ export function NotificationsView({
           >
             <button
               className="notice-main"
-              onClick={() => (bookingId ? openBooking(bookingId) : onRead(n))}
+              onClick={() =>
+                bookingId
+                  ? openBooking(bookingId)
+                  : eventId
+                    ? openEvent(eventId)
+                    : onRead(n)
+              }
             >
               <Icon size={19} />
               <span>
@@ -118,6 +135,14 @@ export function NotificationsView({
                 <Wand2 size={14} /> Plan it
               </button>
             )}
+            {eventId && (
+              <button
+                className="secondary notice-action"
+                onClick={() => openEvent(eventId)}
+              >
+                <UserCheck size={14} /> Open event
+              </button>
+            )}
             {bookingId && (
               <button
                 className="secondary notice-action"
@@ -144,7 +169,7 @@ export function NotificationsView({
         <EmptyState
           icon={Bell}
           title="You’re all caught up."
-          body="Reminders, clashes, planner heads-ups and new bookings will appear here."
+          body="Reminders, answers to invitations, clashes, planner heads-ups and new bookings will appear here."
         />
       )}
     </section>

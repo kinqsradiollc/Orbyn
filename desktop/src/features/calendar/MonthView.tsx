@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Users } from "lucide-react";
+import { Lock, Users } from "lucide-react";
 import {
   monthGrid,
   sameDay,
@@ -22,18 +22,22 @@ type Props = {
   onSelect: (day: Date) => void;
   /** "+N more": show that day on its own. */
   onOpenDay: (day: Date) => void;
-  onOpen: (item: Item) => void;
+  onOpen: (item: Item, anchor?: DOMRect) => void;
   /** Frames on these days, shown as small marks beside the date. */
   frames?: FrameOccurrence[];
 };
 
 /** Colors and markers for an item in any calendar view. */
-export function entryClass(i: Pick<Item, "kind" | "priority" | "status">) {
+export function entryClass(
+  i: Pick<Item, "kind" | "priority" | "status" | "busy" | "all_day">,
+) {
   return [
     "cal-entry",
     i.kind === "event" ? `is-event prio-${i.priority}` : `is-task`,
     `tone-${i.status}`,
     i.status === "done" ? "is-done" : "",
+    // Free events are drawn lighter; all-day ones are never busy anyway.
+    i.kind === "event" && i.busy === false && !i.all_day ? "is-free" : "",
   ].join(" ");
 }
 
@@ -44,8 +48,10 @@ export function entryClass(i: Pick<Item, "kind" | "priority" | "status">) {
 export function listLook(
   listId: string | null | undefined,
   lists: Map<string, TaskList>,
+  /** The item's own colour, which wins over its list's. */
+  own?: string | null,
 ): { className: string; style?: CSSProperties } {
-  const color = listId ? lists.get(listId)?.color : undefined;
+  const color = own || (listId ? lists.get(listId)?.color : undefined);
   return color
     ? { className: " has-list", style: { "--list": color } as CSSProperties }
     : { className: "" };
@@ -133,7 +139,7 @@ export function MonthView({
                   {dayItems.length > 0 && (
                     <span className="month-dots" aria-hidden="true">
                       {dayItems.slice(0, 3).map((i) => {
-                        const look = listLook(i.list_id, listById);
+                        const look = listLook(i.list_id, listById, i.color);
                         return (
                           <i
                             key={i.id}
@@ -150,7 +156,7 @@ export function MonthView({
             {bars.map((b) => {
               const i = b.item;
               const timed = i.due_at && !isAllDay(i) && !b.continuesBefore;
-              const look = listLook(i.list_id, listById);
+              const look = listLook(i.list_id, listById, i.color);
               return (
                 <button
                   key={i.id}
@@ -173,7 +179,9 @@ export function MonthView({
                   }}
                   title={entryLabel(i)}
                   aria-label={entryLabel(i)}
-                  onClick={() => onOpen(i)}
+                  onClick={(e) =>
+                    onOpen(i, e.currentTarget.getBoundingClientRect())
+                  }
                 >
                   {i.kind === "task" && (
                     <i className="dot" aria-hidden="true" />
@@ -184,6 +192,9 @@ export function MonthView({
                     </span>
                   )}
                   <span className="cal-title">{i.title}</span>
+                  {i.id.startsWith("x:") && (
+                    <Lock size={10} className="team-mark" aria-hidden="true" />
+                  )}
                   {i.team_id && (
                     <Users size={10} className="team-mark" aria-hidden="true" />
                   )}

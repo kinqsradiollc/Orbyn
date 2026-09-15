@@ -4,9 +4,12 @@ import {
   freshItem,
   fromDateTimeLocal,
   hasTeamPermission,
+  localDateKey,
   statusLabels,
   statusOrder,
   toDateTimeLocal,
+  type Attendee,
+  type EditScope,
   type Item,
   type ItemInput,
   type Kind,
@@ -27,6 +30,17 @@ import {
 } from "../lib/planning";
 import { RepeatPicker } from "./RepeatPicker";
 import { TagPicker } from "./TagPicker";
+import {
+  AlertsPicker,
+  ColorPicker,
+  InviteesPicker,
+  type Invitee,
+} from "./EventFields";
+import {
+  ScopeDialog,
+  type EditOptions,
+  type OccurrenceRef,
+} from "./ScopeDialog";
 
 type Props = {
   editing: Item | "new";
@@ -36,23 +50,36 @@ type Props = {
   defaultTeamId?: string | null;
   /** Prefilled fields for a new item (a meeting time, a list). */
   draft?: Partial<ItemInput> | null;
+  /** One occurrence of a repeating item, when opened from the calendar. */
+  occurrence?: OccurrenceRef | null;
   busy: boolean;
   error: string;
   onClose: () => void;
-  onSave: (data: ItemInput) => void;
-  onDelete: () => void;
+  /** For a repeating item, `options` says which occurrences it changes. */
+  onSave: (data: ItemInput, options?: EditOptions) => void;
+  onDelete: (options?: EditOptions) => void;
 };
 
+/** Local midnight of a "YYYY-MM-DD" day, `add` days on. */
+const midnight = (key: string, add = 0) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d + add);
+};
+const today = () => localDateKey(new Date(), deviceTimeZone());
+
 /**
- * Create/edit modal. Submits the full `ItemInput` (including `team_id` and
- * the planning fields); the caller adds the version. Team items you can only
- * view (viewer role) open read-only.
+ * Create/edit modal. Submits the full `ItemInput` (including `team_id`, the
+ * planning fields and, for events, all day, busy or free, colour, alerts and
+ * invitees); the caller adds the version. Changes to a repeating item first
+ * ask which occurrences they cover. Team items you can only view (viewer
+ * role) open read-only.
  */
 export function ItemEditor({
   editing,
   teams,
   defaultTeamId = null,
   draft,
+  occurrence,
   busy,
   error,
   onClose,
@@ -85,9 +112,49 @@ export function ItemEditor({
   const [repeat, setRepeat] = useState(() =>
     repeatDraft(base.rrule, base.due_at),
   );
-  const [dueValue, setDueValue] = useState(toDateTimeLocal(base.due_at));
+
+  // Times: an occurrence keeps its own; whole days are dates in the item's zone.
+  const zone = base.timezone ?? deviceTimeZone();
+  const startIso = occurrence?.start_at ?? base.due_at;
+  const endIso = occurrence ? occurrence.end_at : base.end_at;
+  const [allDay, setAllDay] = useState(!!base.all_day);
+  const [dueValue, setDueValue] = useState(
+    base.all_day ? "" : toDateTimeLocal(startIso),
+  );
+  const [endValue, setEndValue] = useState(
+    base.all_day ? "" : toDateTimeLocal(endIso),
+  );
+  const [startDay, setStartDay] = useState(
+    base.all_day && startIso ? localDateKey(new Date(startIso), zone) : "",
+  );
+  const [endDay, setEndDay] = useState(
+    base.all_day && endIso
+      ? localDateKey(new Date(Date.parse(endIso) - 1), zone)
+      : "",
+  );
+
+  const [busyTime, setBusyTime] = useState(base.busy ?? true);
+  const [color, setColor] = useState<string | null>(base.color ?? null);
+  /** Null: a new item nobody changed the alerts of (it gets your defaults). */
+  const [alerts, setAlerts] = useState<number[] | null>(
+    existing
+      ? (existing.alerts ??
+          (existing.reminder_minutes != null
+            ? [existing.reminder_minutes]
+            : []))
+      : (draft?.alerts ?? null),
+  );
+  const [invitees, setInvitees] = useState<Invitee[]>(() =>
+    (draft?.attendees ?? []).map((a) => ({ email: a.email, name: a.name })),
+  );
+  const [inviteesState, setInviteesState] = useState<
+    "loading" | "ready" | "failed"
+  >(existing?.kind === "event" ? "loading" : "ready");
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [formError, setFormError] = useState("");
+  /** A save or delete waiting for "this one / following / all". */
+  const [pendingSave, setPendingSave] = useState<ItemInput | null>(null);
+  const [askDelete, setAskDelete] = useState(false);
 
   const currentTeam = base.team_id
     ? teams.find((t) => t.id === base.team_id)
@@ -110,6 +177,12 @@ export function ItemEditor({
     base.team_id && !writable.some((t) => t.id === base.team_id)
       ? [{ id: base.team_id, name: teamName }, ...writable]
       : writable;
+  const repeating = !!existing?.rrule;
+  const occurrenceStart = occurrence?.occurrence ?? existing?.due_at;
+  const withScope = (scope: EditScope): EditOptions => ({
+    scope,
+    occurrence: occurrenceStart ?? undefined,
+  });
 
   // Team items can be assigned to someone in the team.
   useEffect(() => {
@@ -125,11 +198,43 @@ export function ItemEditor({
     };
   }, [teamId]);
 
+  // A saved event's invitees and their answers come with its details.
+  const existingId = existing?.kind === "event" ? existing.id : null;
+  useEffect(() => {
+    if (!existingId) return;
+    let alive = true;
+    client.getItem(existingId).then(
+      (d) => {
+        if (!alive) return;
+        setInvitees(
+          ((d.attendees ?? []) as Attendee[]).map((a) => ({
+            email: a.email,
+            name: a.name || undefined,
+            status: a.status,
+          })),
+        );
+        setInviteesState("ready");
+      },
+      () => alive && setInviteesState("failed"),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [existingId]);
+
   // Personal items use personal lists and tags; team items use the team's.
   const inScope = (x: { team_id: string | null }) =>
     teamId ? x.team_id === teamId : x.team_id === null;
   const lists = planning.lists.filter(inScope);
   const tags = planning.tags.filter(inScope);
+
+  /** Your default alerts for a new item of this kind. */
+  const defaults = (): number[] => {
+    const d = planning.prefs?.default_alerts as
+      Record<string, number[] | undefined> | undefined;
+    return d?.[allDay ? "all_day" : kind] ?? [30];
+  };
+  const shownAlerts = alerts ?? defaults();
 
   const changeTeam = (next: string | null) => {
     setTeamId(next);
@@ -137,6 +242,17 @@ export function ItemEditor({
     setListId(null);
     setTagIds([]);
     setAssigneeId(null);
+  };
+
+  const toggleAllDay = (on: boolean) => {
+    if (on === allDay) return;
+    setAllDay(on);
+    if (on) {
+      const start = dueValue ? dueValue.slice(0, 10) : today();
+      const end = endValue ? endValue.slice(0, 10) : start;
+      setStartDay(start);
+      setEndDay(end > start ? end : start);
+    } else if (!dueValue) setDueValue(`${startDay || today()}T09:00`);
   };
 
   const createTag = async (name: string) => {
@@ -186,7 +302,29 @@ export function ItemEditor({
             e.preventDefault();
             if (readOnly) return;
             const d = new FormData(e.currentTarget);
-            const dueAt = fromDateTimeLocal(d.get("due_at") as string | null);
+            let dueAt: string | null;
+            let endAt: string | null;
+            if (allDay) {
+              if (!startDay) {
+                setFormError("All-day items need a date.");
+                return;
+              }
+              // Whole days: midnight to the midnight after the last day.
+              const last = endDay && endDay >= startDay ? endDay : startDay;
+              dueAt = midnight(startDay).toISOString();
+              endAt = midnight(last, 1).toISOString();
+            } else {
+              dueAt = fromDateTimeLocal(dueValue || null);
+              endAt = fromDateTimeLocal(endValue || null);
+            }
+            if (kind === "event" && !dueAt) {
+              setFormError("Events need a start time.");
+              return;
+            }
+            if (endAt && (!dueAt || Date.parse(endAt) <= Date.parse(dueAt))) {
+              setFormError("The end must be after the start.");
+              return;
+            }
             const rrule = rruleFromDraft(repeat);
             if (rrule && !dueAt) {
               setFormError("Repeating items need a date. Add a start time.");
@@ -201,15 +339,14 @@ export function ItemEditor({
               return;
             }
             setFormError("");
-            onSave({
+            const data: ItemInput = {
               title: String(d.get("title")),
               notes: String(d.get("notes")),
               kind,
               priority: d.get("priority") as Priority,
               status: d.get("status") as Status,
               due_at: dueAt,
-              end_at: fromDateTimeLocal(d.get("end_at") as string | null),
-              reminder_minutes: Number(d.get("reminder_minutes")),
+              end_at: endAt,
               team_id: teamId,
               estimate_minutes: estimate,
               list_id: listId,
@@ -218,8 +355,22 @@ export function ItemEditor({
               location: location.trim(),
               meeting_url: meetingUrl.trim(),
               rrule,
-              ...(rrule ? { timezone: deviceTimeZone() } : {}),
-            });
+              all_day: allDay,
+              ...(rrule || allDay ? { timezone: deviceTimeZone() } : {}),
+              ...(kind === "event" ? { busy: busyTime } : {}),
+              color,
+              // Untouched on a new item: the server uses your defaults.
+              ...(alerts !== null ? { alerts } : {}),
+              ...(kind === "event" && inviteesState === "ready"
+                ? {
+                    attendees: invitees.map(({ email, name }) =>
+                      name ? { email, name } : { email },
+                    ),
+                  }
+                : {}),
+            };
+            if (repeating) setPendingSave(data);
+            else onSave(data);
           }}
         >
           {readOnly && (
@@ -239,6 +390,53 @@ export function ItemEditor({
                 placeholder="Something worth making time for"
               />
             </label>
+            <div className="event-toggles">
+              <div className="segmented" role="group" aria-label="Timing">
+                <button
+                  type="button"
+                  aria-pressed={!allDay}
+                  className={!allDay ? "active" : ""}
+                  onClick={() => toggleAllDay(false)}
+                >
+                  At a time
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={allDay}
+                  className={allDay ? "active" : ""}
+                  onClick={() => toggleAllDay(true)}
+                >
+                  All day
+                </button>
+              </div>
+              {kind === "event" && (
+                <div className="segmented" role="group" aria-label="Show as">
+                  <button
+                    type="button"
+                    aria-pressed={busyTime}
+                    className={busyTime ? "active" : ""}
+                    onClick={() => setBusyTime(true)}
+                  >
+                    Busy
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={!busyTime}
+                    className={!busyTime ? "active" : ""}
+                    onClick={() => setBusyTime(false)}
+                  >
+                    Free
+                  </button>
+                </div>
+              )}
+              {kind === "event" && (allDay || !busyTime) && (
+                <small className="field-hint">
+                  {allDay
+                    ? "All-day events never block your time."
+                    : "Free time doesn't block your planner, booking pages or teammates."}
+                </small>
+              )}
+            </div>
             <div className="form-grid">
               <label>
                 Type
@@ -283,23 +481,51 @@ export function ItemEditor({
                   </small>
                 </label>
               )}
-              <label>
-                Due / start time
-                <input
-                  name="due_at"
-                  type="datetime-local"
-                  value={dueValue}
-                  onChange={(e) => setDueValue(e.target.value)}
-                />
-              </label>
-              <label>
-                End time (optional)
-                <input
-                  name="end_at"
-                  type="datetime-local"
-                  defaultValue={toDateTimeLocal(base.end_at)}
-                />
-              </label>
+              {allDay ? (
+                <>
+                  <label>
+                    Starts
+                    <input
+                      type="date"
+                      required
+                      value={startDay}
+                      onChange={(e) => {
+                        setStartDay(e.target.value);
+                        if (endDay && e.target.value > endDay)
+                          setEndDay(e.target.value);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Last day
+                    <input
+                      type="date"
+                      value={endDay}
+                      min={startDay || undefined}
+                      onChange={(e) => setEndDay(e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label>
+                    Due / start time
+                    <input
+                      type="datetime-local"
+                      value={dueValue}
+                      onChange={(e) => setDueValue(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    End time (optional)
+                    <input
+                      type="datetime-local"
+                      value={endValue}
+                      onChange={(e) => setEndValue(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
               <label>
                 Estimate
                 <select
@@ -383,29 +609,36 @@ export function ItemEditor({
               )}
             </div>
             {kind === "event" && (
-              <div className="form-grid">
-                <label>
-                  Location
-                  <input
-                    maxLength={300}
-                    value={location}
-                    placeholder="Office, a café, an address…"
-                    onChange={(e) => setLocation(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Meeting link
-                  <input
-                    type="url"
-                    maxLength={500}
-                    value={meetingUrl}
-                    placeholder="https://"
-                    pattern="https?://\S+"
-                    title="Meeting links start with https://"
-                    onChange={(e) => setMeetingUrl(e.target.value)}
-                  />
-                </label>
-              </div>
+              <>
+                <div className="form-grid">
+                  <label>
+                    Location
+                    <input
+                      maxLength={300}
+                      value={location}
+                      placeholder="Office, a café, an address…"
+                      onChange={(e) => setLocation(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Meeting link
+                    <input
+                      type="url"
+                      maxLength={500}
+                      value={meetingUrl}
+                      placeholder="https://"
+                      pattern="https?://\S+"
+                      title="Meeting links start with https://"
+                      onChange={(e) => setMeetingUrl(e.target.value)}
+                    />
+                  </label>
+                </div>
+                <InviteesPicker
+                  value={invitees}
+                  onChange={setInvitees}
+                  state={inviteesState}
+                />
+              </>
             )}
             <TagPicker
               tags={tags}
@@ -413,10 +646,11 @@ export function ItemEditor({
               onChange={setTagIds}
               onCreate={readOnly ? undefined : createTag}
             />
+            <ColorPicker value={color} onChange={setColor} />
             <RepeatPicker
               value={repeat}
               onChange={setRepeat}
-              hasDate={!!dueValue}
+              hasDate={!!(allDay ? startDay : dueValue)}
             />
             <label>
               Notes
@@ -428,17 +662,12 @@ export function ItemEditor({
                 placeholder="A few details, a big idea…"
               />
             </label>
+            <AlertsPicker
+              value={shownAlerts}
+              onChange={setAlerts}
+              hint={alerts === null ? "Your default alerts." : undefined}
+            />
             <div className="form-grid">
-              <label>
-                Remind me before (minutes)
-                <input
-                  name="reminder_minutes"
-                  type="number"
-                  min={0}
-                  max={10080}
-                  defaultValue={base.reminder_minutes}
-                />
-              </label>
               <label>
                 Share with
                 <select
@@ -479,7 +708,8 @@ export function ItemEditor({
                 className="danger"
                 disabled={busy}
                 onClick={() => {
-                  if (window.confirm("Delete this item?")) onDelete();
+                  if (repeating) setAskDelete(true);
+                  else if (window.confirm("Delete this item?")) onDelete();
                 }}
               >
                 <Trash2 size={16} /> Delete
@@ -496,6 +726,29 @@ export function ItemEditor({
           </div>
         </form>
       </section>
+      {pendingSave && (
+        <ScopeDialog
+          kind={kind}
+          action="save"
+          onCancel={() => setPendingSave(null)}
+          onChoose={(scope) => {
+            const data = pendingSave;
+            setPendingSave(null);
+            onSave(data, withScope(scope));
+          }}
+        />
+      )}
+      {askDelete && (
+        <ScopeDialog
+          kind={kind}
+          action="delete"
+          onCancel={() => setAskDelete(false)}
+          onChoose={(scope) => {
+            setAskDelete(false);
+            onDelete(withScope(scope));
+          }}
+        />
+      )}
     </div>
   );
 }

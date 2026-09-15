@@ -4,6 +4,7 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
+  Lock,
   MapPin,
   Pencil,
   SkipForward,
@@ -14,6 +15,7 @@ import {
   dateLabel,
   describeRrule,
   type CalendarEntry,
+  type ExternalEntry,
   type FrameOccurrence,
   type TimeBlock,
 } from "@orbyn/core";
@@ -119,7 +121,7 @@ export function EntryMenu({
         {e.occurrence && canWrite && (
           <>
             <button onClick={act(onEditSeries)}>
-              <Pencil size={14} /> Edit the series
+              <Pencil size={14} /> Edit…
             </button>
             <button onClick={act(onSkip)}>
               <SkipForward size={14} /> Skip this occurrence
@@ -253,6 +255,49 @@ export function FrameMenu({
         <button onClick={act(onSkip)}>
           <SkipForward size={14} /> Skip this day
         </button>
+      </div>
+    </Popover>
+  );
+}
+
+/** An event from a subscribed calendar: its details, read-only. */
+export function ExternalMenu({
+  event: x,
+  anchor,
+  onClose,
+}: {
+  event: ExternalEntry;
+  anchor: DOMRect;
+  onClose: () => void;
+}) {
+  const last = new Date(Date.parse(x.end_at) - 1).toISOString();
+  const when = x.all_day
+    ? shortDay(x.start_at) +
+      (shortDay(last) !== shortDay(x.start_at) ? ` – ${shortDay(last)}` : "") +
+      " · all day"
+    : `${shortDay(x.start_at)}, ${spanLabel(x.start_at, x.end_at)}`;
+  return (
+    <Popover anchor={anchor} label={x.title} onClose={onClose}>
+      <div className="popover-head">
+        <small className="eyebrow">{x.name.toUpperCase()}</small>
+        <strong>{x.title}</strong>
+        <small>
+          <CalendarClock size={12} aria-hidden="true" /> {when}
+        </small>
+        {x.location && (
+          <small>
+            <MapPin size={12} aria-hidden="true" /> {x.location}
+          </small>
+        )}
+        <small>
+          <Lock size={12} aria-hidden="true" /> Read-only, from a subscribed
+          calendar. {x.busy ? "Counts as busy." : "Doesn't count as busy."}
+        </small>
+      </div>
+      <div className="popover-actions">
+        <small className="popover-note">
+          Change it in the app it comes from.
+        </small>
       </div>
     </Popover>
   );

@@ -43,10 +43,9 @@ export const lastDay = (i: Item) =>
 export const isMultiDay = (i: Item) =>
   !!i.due_at && lastDay(i).getTime() > firstDay(i).getTime();
 
-/** No specific time: multi-day items and items due at local midnight without an end. */
+/** No specific time: whole-day items (`all_day`) and items spanning several days. */
 export const isAllDay = (i: Item) =>
-  !!i.due_at &&
-  (isMultiDay(i) || (!i.end_at && minutesOf(new Date(i.due_at)) === 0));
+  !!i.due_at && (!!i.all_day || isMultiDay(i));
 
 /** The item is on `day` (including every day a multi-day item spans). */
 export const isOnDay = (i: Item, day: Date) => {

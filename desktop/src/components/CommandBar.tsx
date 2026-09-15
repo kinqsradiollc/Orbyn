@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ArrowLeft,
   CalendarCheck,
   CalendarDays,
+  CalendarPlus,
   CircleCheck,
   Keyboard,
   ListChecks,
@@ -17,27 +25,46 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
+  parseQuickAdd,
   searchItems,
+  type CalendarSearchResult,
   type Item,
   type Plan,
   type Proposal,
+  type QuickAddChip,
+  type QuickAddMember,
+  type Team,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { celebrate } from "../lib/celebrate";
+import { usePlanning } from "../app/planning";
 import type { View } from "../app/views";
-import { deviceTimeZone, errorText, nextUp } from "../lib/planning";
+import {
+  deviceTimeZone,
+  errorText,
+  fromDayKey,
+  minutesLabel,
+  nextUp,
+} from "../lib/planning";
 import { ProposalReview } from "./ProposalReview";
+import "./event-fields.css";
 
 type Props = {
   items: Item[];
+  /** Your teams: quick add finds teammates by name ("@anna"). */
+  teams: Team[];
+  /** You, so quick add can assign you but never invites you. */
+  userId?: string;
   onClose: () => void;
   onOpenItem: (item: Item) => void;
   onNewItem: () => void;
   onPlanDay: () => void;
   onNavigate: (view: View) => void;
+  /** Shows a day in the calendar (from an event search result). */
+  onJumpToDate: (date: Date) => void;
   onApplyPlan: (plan: Plan) => Promise<string>;
   onOpenPlan: (plan: Plan) => void;
-  /** Refresh the planner after the assistant's changes are applied. */
+  /** Refresh the planner after something is created or applied. */
   onApplied: () => Promise<void>;
   /** Opens the keyboard shortcut sheet. */
   onShowShortcuts: () => void;
@@ -51,6 +78,8 @@ type Command = {
   text: string;
   hint?: string;
   icon: LucideIcon;
+  /** A heading shown above the first command of a group. */
+  group?: string;
   run: () => void;
 };
 
@@ -61,27 +90,61 @@ type Ask = {
   error: string;
 };
 
+/** A quick-add chip as a short readable label. */
+function chipLabel(c: QuickAddChip) {
+  switch (c.kind) {
+    case "date":
+      return fromDayKey(c.value).toLocaleDateString([], {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      });
+    case "time":
+      return c.value.replace("-", "–");
+    case "duration":
+      return minutesLabel(Number(c.value));
+    case "estimate":
+      return `~${minutesLabel(Number(c.value))}`;
+    case "all_day":
+      return "All day";
+    case "priority":
+      return `${c.value} priority`;
+    case "location":
+      return `At ${c.value}`;
+    default:
+      return c.text;
+  }
+}
+
 /**
- * ⌘K / Ctrl+K: find a task, jump somewhere, or ask the assistant. Arrow keys
- * move through results, Enter runs one, Escape closes.
+ * ⌘K / Ctrl+K: find a task or an event, jump somewhere, add something from
+ * one line ("Lunch with @anna fri 1pm ;Cafe Roma"), or ask the assistant.
+ * Arrow keys move through results, Enter runs one, Escape closes.
  */
 export function CommandBar({
   items,
+  teams,
+  userId,
   onClose,
   onOpenItem,
   onNewItem,
   onPlanDay,
   onNavigate,
+  onJumpToDate,
   onApplyPlan,
   onOpenPlan,
   onApplied,
   onShowShortcuts,
   report,
 }: Props) {
+  const { lists, tags } = usePlanning();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [members, setMembers] = useState<QuickAddMember[]>([]);
+  const [events, setEvents] = useState<CalendarSearchResult[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
 
@@ -91,11 +154,96 @@ export function CommandBar({
     return () => opener?.focus?.();
   }, []);
 
+  // Teammates, for "@name" in quick add.
+  useEffect(() => {
+    if (!teams.length) return;
+    let alive = true;
+    Promise.all(teams.map((t) => client.getTeam(t.id))).then(
+      (details) => {
+        if (!alive) return;
+        const byId = new Map<string, QuickAddMember>();
+        for (const team of details)
+          for (const m of team.members) {
+            const known = byId.get(m.user_id);
+            if (known) known.team_ids.push(team.id);
+            else
+              byId.set(m.user_id, {
+                user_id: m.user_id,
+                name: m.name,
+                email: m.email,
+                team_ids: [team.id],
+              });
+          }
+        setMembers([...byId.values()]);
+      },
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [teams]);
+
   const go = (fn: () => void) => () => {
     onClose();
     fn();
   };
   const q = query.trim();
+
+  // Events, past and future, once there's something to look for.
+  useEffect(() => {
+    if (q.length < 2) {
+      setEvents([]);
+      return;
+    }
+    let alive = true;
+    const id = setTimeout(() => {
+      client.searchCalendar(q).then(
+        (r) => alive && setEvents(r.results.slice(0, 5)),
+        () => alive && setEvents([]),
+      );
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [q]);
+
+  // What the text would make as an item, parsed here without AI.
+  const quick = useMemo(() => {
+    if (!q) return null;
+    try {
+      return parseQuickAdd(q, {
+        timeZone: deviceTimeZone(),
+        lists: lists.map((l) => ({
+          id: l.id,
+          name: l.name,
+          team_id: l.team_id,
+        })),
+        tags: tags.map((t) => ({ id: t.id, name: t.name, team_id: t.team_id })),
+        members,
+        selfId: userId,
+      });
+    } catch {
+      return null;
+    }
+  }, [q, lists, tags, members, userId]);
+
+  const createQuick = async () => {
+    setBusy(true);
+    setNotice("");
+    try {
+      const { item } = await client.quickAdd(q, deviceTimeZone());
+      await onApplied();
+      onClose();
+      onOpenItem(item);
+    } catch (e) {
+      if ((e as { status?: number }).status === 401) report(e);
+      setNotice(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const actions: Command[] = [
     {
       id: "new",
@@ -179,8 +327,44 @@ export function CommandBar({
         ? "Event"
         : "Task",
     icon: i.status === "done" ? CircleCheck : Search,
+    group: q ? "Tasks" : "Next up",
     run: go(() => onOpenItem(i)),
   }));
+  const eventCommands = events.map((e, n): Command => ({
+    id: "event-" + n,
+    text: e.title,
+    label: e.title,
+    hint:
+      dateLabel(e.start_at) + (e.source === "external" ? ` · ${e.name}` : ""),
+    icon: CalendarDays,
+    group: "Events",
+    run: go(() => onJumpToDate(new Date(e.start_at))),
+  }));
+  const chips = (quick?.chips ?? []).filter((c) => c.kind !== "kind");
+  const quickCommand: Command | null =
+    quick && quick.input.title
+      ? {
+          id: "quick",
+          text: q,
+          label: (
+            <>
+              {quick.input.kind === "event" ? "Create event" : "Create task"}:{" "}
+              <em>“{quick.input.title}”</em>
+              {chips.length > 0 && (
+                <span className="quick-chips">
+                  {chips.map((c, n) => (
+                    <span key={n} className="quick-chip">
+                      {chipLabel(c)}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </>
+          ),
+          icon: quick.input.kind === "event" ? CalendarPlus : Plus,
+          run: () => void createQuick(),
+        }
+      : null;
   const askCommand: Command | null = q
     ? {
         id: "ask",
@@ -194,12 +378,17 @@ export function CommandBar({
         run: () => void startAsk(q),
       }
     : null;
-  // Questions go to the assistant first; short words look for things.
-  const question = /\?$/.test(q) || q.split(/\s+/).length >= 4;
+  // Questions go to the assistant first; text quick add understood makes
+  // the item first; short words look for things.
+  const question = /\?$/.test(q) || (!chips.length && words.length >= 4);
+  const quickFirst = !!quickCommand && !question && chips.length > 0;
   const commands = [
     ...(askCommand && question ? [askCommand] : []),
+    ...(quickCommand && quickFirst ? [quickCommand] : []),
     ...tasks,
+    ...eventCommands,
     ...matchingActions,
+    ...(quickCommand && !quickFirst ? [quickCommand] : []),
     ...(askCommand && !question ? [askCommand] : []),
   ];
   const current = Math.min(active, Math.max(0, commands.length - 1));
@@ -288,7 +477,7 @@ export function CommandBar({
         className="command-bar scale-in"
         role="dialog"
         aria-modal="true"
-        aria-label="Search or ask"
+        aria-label="Search, add or ask"
       >
         {ask ? (
           <div className="command-ask">
@@ -341,13 +530,15 @@ export function CommandBar({
                   commands[current] ? "cmd-" + commands[current].id : undefined
                 }
                 aria-autocomplete="list"
-                aria-label="Search tasks, pick an action, or ask the assistant"
-                placeholder="Search tasks, jump somewhere, or ask…"
+                aria-label="Search, add something, or ask the assistant"
+                placeholder="Search, add “Lunch fri 1pm”, or ask…"
                 value={query}
                 maxLength={4000}
+                disabled={busy}
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setActive(0);
+                  setNotice("");
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "ArrowDown") {
@@ -367,34 +558,44 @@ export function CommandBar({
               />
               <kbd>Esc</kbd>
             </div>
+            {notice && (
+              <div className="error" role="alert">
+                {notice}
+              </div>
+            )}
             <ul
               id="command-list"
               role="listbox"
               aria-label="Results"
               className="command-list"
             >
-              {!q && tasks.length > 0 && (
-                <li role="presentation" className="command-group">
-                  Next up
-                </li>
-              )}
               {commands.map((c, n) => {
                 const Icon = c.icon;
+                const heading =
+                  c.group && c.group !== commands[n - 1]?.group
+                    ? c.group
+                    : null;
                 return (
-                  <li
-                    key={c.id}
-                    id={"cmd-" + c.id}
-                    role="option"
-                    aria-selected={n === current}
-                    className={n === current ? "active" : ""}
-                    onMouseEnter={() => setActive(n)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={c.run}
-                  >
-                    <Icon size={15} aria-hidden="true" />
-                    <span className="command-label">{c.label}</span>
-                    {c.hint && <small>{c.hint}</small>}
-                  </li>
+                  <Fragment key={c.id}>
+                    {heading && (
+                      <li role="presentation" className="command-group">
+                        {heading}
+                      </li>
+                    )}
+                    <li
+                      id={"cmd-" + c.id}
+                      role="option"
+                      aria-selected={n === current}
+                      className={n === current ? "active" : ""}
+                      onMouseEnter={() => setActive(n)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={c.run}
+                    >
+                      <Icon size={15} aria-hidden="true" />
+                      <span className="command-label">{c.label}</span>
+                      {c.hint && <small>{c.hint}</small>}
+                    </li>
+                  </Fragment>
                 );
               })}
               {!commands.length && (

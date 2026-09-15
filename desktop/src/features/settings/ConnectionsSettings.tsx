@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
-  CalendarSync,
   Copy,
   KeyRound,
   Plus,
@@ -19,10 +18,12 @@ import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
+import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
 
 type Props = { report: (e: unknown) => void };
 
-const EVENT_LABELS: Record<WebhookEvent, string> = {
+/** Labels for the events we know; newer ones show their name. */
+const EVENT_LABELS: Partial<Record<WebhookEvent, string>> = {
   "item.created": "Item created",
   "item.updated": "Item updated",
   "item.completed": "Item completed",
@@ -56,7 +57,8 @@ function OnceSecret({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * API keys, webhooks and the calendar feed: how other tools work with Orbyn.
+ * API keys, webhooks, the calendar feed and subscribed calendars: how other
+ * tools work with Orbyn.
  * Everything is served from this server; nothing is sent anywhere else
  * unless you add a webhook.
  */
@@ -76,7 +78,8 @@ export function ConnectionsSettings({ report }: Props) {
       </section>
       <ApiKeys report={report} />
       <Webhooks report={report} />
-      <CalendarFeed report={report} />
+      <CalendarFeedCard report={report} />
+      <CalendarSubscriptions report={report} />
     </>
   );
 }
@@ -324,7 +327,7 @@ function Webhooks({ report }: Props) {
                     )
                   }
                 />
-                {EVENT_LABELS[ev]}
+                {EVENT_LABELS[ev] ?? ev}
               </label>
             ))}
           </div>
@@ -333,79 +336,6 @@ function Webhooks({ report }: Props) {
           <Plus size={14} /> Add webhook
         </button>
       </form>
-      <OutcomeNote outcome={action.outcome} />
-    </section>
-  );
-}
-
-function CalendarFeed({ report }: Props) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const action = useAction(report);
-
-  const create = () =>
-    void action.run(async () => {
-      const feed = await client.createCalendarFeed();
-      setUrl(feed.url);
-      setCopied(false);
-      return url
-        ? "Made a new link. The old one no longer works."
-        : "Your private link is ready.";
-    });
-  const turnOff = () => {
-    if (
-      !window.confirm(
-        "Turn off the calendar feed? Subscribed apps stop updating.",
-      )
-    )
-      return;
-    void action.run(async () => {
-      await client.deleteCalendarFeed();
-      setUrl(null);
-      return "The calendar feed is off. Any old link no longer works.";
-    });
-  };
-
-  return (
-    <section className="card settings-card" aria-labelledby="feed-title">
-      <h2 id="feed-title">
-        <CalendarSync size={16} aria-hidden="true" /> Calendar feed
-      </h2>
-      <p className="muted">
-        In Apple Calendar, Google Calendar or Outlook, choose “Subscribe to
-        calendar” (or “From URL”) and paste your private link.
-      </p>
-      {url && (
-        <div className="secret-box">
-          <strong>Your private link</strong>
-          <div className="secret-row">
-            <code>{url}</code>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => void copyText(url).then(setCopied)}
-            >
-              <Copy size={13} /> {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <small>
-            Anyone with this link can see your calendar. Keep it private.
-          </small>
-        </div>
-      )}
-      <div className="button-row start">
-        <button className="primary" disabled={action.pending} onClick={create}>
-          <CalendarSync size={14} />{" "}
-          {url ? "Replace link" : "Create or replace private link"}
-        </button>
-        <button
-          className="secondary"
-          disabled={action.pending}
-          onClick={turnOff}
-        >
-          Turn off feed
-        </button>
-      </div>
       <OutcomeNote outcome={action.outcome} />
     </section>
   );
