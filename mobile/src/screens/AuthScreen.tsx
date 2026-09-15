@@ -16,7 +16,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import type { SignInInput } from "../hooks/usePlanner";
 import { FadeIn, animateLayout } from "../motion";
 import { motion } from "@orbyn/core";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 export function AuthScreen({
@@ -177,21 +177,27 @@ function Field({
   );
 }
 
-const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1, justifyContent: "center" },
-  column: { width: "100%", maxWidth: 440, alignSelf: "center" },
-  eyebrow: { marginTop: 36 },
-  hero: {
-    fontFamily: fonts.display,
-    fontSize: 38,
-    lineHeight: 44,
-    letterSpacing: -1.4,
-    color: colors.text,
-  },
-  intro: { marginBottom: 28 },
-  field: { marginBottom: 16 },
-  switch: { alignItems: "center", paddingVertical: 12 },
-  switchText: { fontFamily: fonts.regular, fontSize: 14, color: colors.muted },
-  switchLink: { fontFamily: fonts.semibold, color: colors.accent },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    scroll: { flexGrow: 1, justifyContent: "center" },
+    column: { width: "100%", maxWidth: 440, alignSelf: "center" },
+    eyebrow: { marginTop: 36 },
+    hero: {
+      fontFamily: fonts.display,
+      fontSize: 38,
+      lineHeight: 44,
+      letterSpacing: -1.4,
+      color: colors.text,
+    },
+    intro: { marginBottom: 28 },
+    field: { marginBottom: 16 },
+    switch: { alignItems: "center", paddingVertical: 12 },
+    switchText: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      color: colors.muted,
+    },
+    switchLink: { fontFamily: fonts.semibold, color: colors.accent },
+  }),
+);

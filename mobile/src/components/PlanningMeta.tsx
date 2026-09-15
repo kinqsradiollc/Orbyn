@@ -4,7 +4,7 @@ import { describeRrule, type Item, type Tag } from "@orbyn/core";
 import { Icon, type IconName } from "./Icon";
 import { effortLabel } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 
 /**
  * List, tags, repeat pattern, assignee and estimate / time spent, as small
@@ -107,25 +107,27 @@ function Meta({
   );
 }
 
-const s = StyleSheet.create({
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 6 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    maxWidth: 200,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.pill,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  chipLarge: { paddingHorizontal: 9, paddingVertical: 4, maxWidth: 260 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  text: {
-    flexShrink: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 10,
-    color: colors.textSoft,
-  },
-  textLarge: { fontSize: 12 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    row: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 6 },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      maxWidth: 200,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.pill,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    chipLarge: { paddingHorizontal: 9, paddingVertical: 4, maxWidth: 260 },
+    dot: { width: 7, height: 7, borderRadius: 4 },
+    text: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      color: colors.textSoft,
+    },
+    textLarge: { fontSize: 12 },
+  }),
+);

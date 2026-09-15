@@ -17,7 +17,7 @@ import { client } from "../lib/api";
 import { dayStart, minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 /** The part of each day the availability bars show. */
@@ -327,9 +327,18 @@ export function TeamTime({
             )}
             {slots.map((slot, n) => (
               <View key={slot.start_at} style={[s.slot, n > 0 && s.divider]}>
-                <Text style={s.slotText}>
-                  {slotLabel(slot.start_at, slot.end_at)}
-                </Text>
+                <View style={s.slotMain}>
+                  <Text style={s.slotText}>
+                    {slotLabel(slot.start_at, slot.end_at)}
+                  </Text>
+                  <Text
+                    style={[shared.small, slot.disruption > 0 && s.disrupts]}
+                  >
+                    {slot.disruption > 0
+                      ? "Breaks someone’s focus time"
+                      : "No one’s focus time is split"}
+                  </Text>
+                </View>
                 {canWrite && (
                   <SmallAction
                     label="Book"
@@ -346,71 +355,75 @@ export function TeamTime({
   );
 }
 
-const s = StyleSheet.create({
-  eyebrow: { marginTop: 8 },
-  gap: { marginBottom: 12 },
-  top: { marginTop: 6 },
-  labelTop: { marginTop: 14 },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  member: { paddingVertical: 10 },
-  memberTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 6,
-  },
-  name: {
-    flex: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.text,
-  },
-  dayRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 4,
-  },
-  dayLabel: {
-    width: 64,
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    color: colors.muted,
-  },
-  bar: {
-    flex: 1,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.surfaceMuted,
-    overflow: "hidden",
-  },
-  busy: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.mediumText,
-    borderRadius: 3,
-  },
-  find: { marginTop: 14 },
-  booked: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.accent,
-    marginBottom: 10,
-  },
-  slot: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 48,
-  },
-  slotText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.text,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    eyebrow: { marginTop: 8 },
+    gap: { marginBottom: 12 },
+    top: { marginTop: 6 },
+    labelTop: { marginTop: 14 },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    member: { paddingVertical: 10 },
+    memberTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 6,
+    },
+    name: {
+      flex: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    dayRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: 4,
+    },
+    dayLabel: {
+      width: 64,
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      color: colors.muted,
+    },
+    bar: {
+      flex: 1,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.surfaceMuted,
+      overflow: "hidden",
+    },
+    busy: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      backgroundColor: colors.mediumText,
+      borderRadius: 3,
+    },
+    find: { marginTop: 14 },
+    booked: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+      marginBottom: 10,
+    },
+    slot: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 48,
+      paddingVertical: 8,
+    },
+    slotMain: { flex: 1, gap: 2 },
+    disrupts: { color: colors.warning },
+    slotText: {
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      color: colors.text,
+    },
+  }),
+);

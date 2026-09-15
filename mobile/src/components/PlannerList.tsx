@@ -5,7 +5,7 @@ import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ItemCard } from "./ItemCard";
 import { FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 export type ListHandlers = {
@@ -141,24 +141,30 @@ export function PlannerList({
   );
 }
 
-const s = StyleSheet.create({
-  headingWrap: { marginBottom: 10, gap: 2 },
-  heading: { flexDirection: "row", alignItems: "center", gap: 8 },
-  count: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  countText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 22,
-  },
-  center: { textAlign: "center" },
-  emptyText: { textAlign: "center", marginBottom: 16 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    headingWrap: { marginBottom: 10, gap: 2 },
+    heading: { flexDirection: "row", alignItems: "center", gap: 8 },
+    count: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    countText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.muted,
+    },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 22,
+    },
+    center: { textAlign: "center" },
+    emptyText: { textAlign: "center", marginBottom: 16 },
+  }),
+);

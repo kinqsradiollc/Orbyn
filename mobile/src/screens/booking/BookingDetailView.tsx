@@ -19,7 +19,7 @@ import { client } from "../../lib/api";
 import { deviceTimeZone, slotLabel } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { animateLayout } from "../../motion";
-import { colors, fonts } from "../../theme";
+import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
   EVENT_LABELS,
@@ -442,31 +442,33 @@ function ReasonPanel({
   );
 }
 
-const s = StyleSheet.create({
-  head: { flexDirection: "row", gap: 10, marginBottom: 14 },
-  email: { marginTop: 2 },
-  pills: { flexDirection: "row", marginBottom: 14 },
-  detail: { marginBottom: 14 },
-  theirs: { marginTop: -8, marginBottom: 14 },
-  link: { fontFamily: fonts.medium, fontSize: 14, color: colors.accent },
-  approve: { padding: 16 },
-  panel: { marginTop: 10, marginBottom: 12 },
-  noteActions: { flexDirection: "row", marginTop: 10 },
-  event: { flexDirection: "row", gap: 12 },
-  rail: { alignItems: "center", width: 10 },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 4,
-    backgroundColor: colors.dot,
-  },
-  line: { flex: 1, width: 2, backgroundColor: colors.divider, marginTop: 2 },
-  eventBody: { flex: 1, paddingBottom: 14 },
-  eventTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 2,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    head: { flexDirection: "row", gap: 10, marginBottom: 14 },
+    email: { marginTop: 2 },
+    pills: { flexDirection: "row", marginBottom: 14 },
+    detail: { marginBottom: 14 },
+    theirs: { marginTop: -8, marginBottom: 14 },
+    link: { fontFamily: fonts.medium, fontSize: 14, color: colors.accent },
+    approve: { padding: 16 },
+    panel: { marginTop: 10, marginBottom: 12 },
+    noteActions: { flexDirection: "row", marginTop: 10 },
+    event: { flexDirection: "row", gap: 12 },
+    rail: { alignItems: "center", width: 10 },
+    dot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginTop: 4,
+      backgroundColor: colors.dot,
+    },
+    line: { flex: 1, width: 2, backgroundColor: colors.divider, marginTop: 2 },
+    eventBody: { flex: 1, paddingBottom: 14 },
+    eventTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+      marginBottom: 2,
+    },
+  }),
+);

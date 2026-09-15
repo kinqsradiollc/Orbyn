@@ -27,7 +27,7 @@ import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const EVENT_LABELS: Record<WebhookEvent, string> = {
@@ -454,50 +454,57 @@ function Body() {
   );
 }
 
-const s = StyleSheet.create({
-  privacy: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
-  eyebrow: { marginTop: 8 },
-  gap: { marginBottom: 12 },
-  secret: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 14,
-  },
-  code: {
-    fontFamily: "Menlo",
-    fontSize: 13,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  actions: { flexDirection: "row", gap: 10, marginTop: 8 },
-  flex: { flex: 1, marginBottom: 0 },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  rowTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  hook: {
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  hookTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-  status: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  error: { color: colors.danger, marginTop: 6 },
-  test: { color: colors.accent, marginTop: 6 },
-  formTop: { marginTop: 14 },
-  last: { marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    privacy: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+    eyebrow: { marginTop: 8 },
+    gap: { marginBottom: 12 },
+    secret: {
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 14,
+    },
+    code: {
+      fontFamily: "Menlo",
+      fontSize: 13,
+      color: colors.text,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 10,
+    },
+    actions: { flexDirection: "row", gap: 10, marginTop: 8 },
+    flex: { flex: 1, marginBottom: 0 },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    rowTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    hook: {
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    hookTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+    status: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+    },
+    error: { color: colors.danger, marginTop: 6 },
+    test: { color: colors.accent, marginTop: 6 },
+    formTop: { marginTop: 14 },
+    last: { marginBottom: 0 },
+  }),
+);

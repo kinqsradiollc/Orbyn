@@ -11,7 +11,7 @@ import {
   slotLabel,
 } from "../../lib/planning";
 import { animateLayout } from "../../motion";
-import { colors } from "../../theme";
+import { colors, themed } from "../../theme";
 import { shared } from "../../styles";
 import { dayKeyLabel, dayKeyOf, lengthOf } from "./helpers";
 import { bookingStyles as bs } from "./ui";
@@ -158,13 +158,15 @@ export function RescheduleSlots({
   );
 }
 
-const s = StyleSheet.create({
-  nav: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  range: { flex: 1, textAlign: "center" },
-  warn: { color: colors.danger },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    nav: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 12,
+    },
+    range: { flex: 1, textAlign: "center" },
+    warn: { color: colors.danger },
+  }),
+);

@@ -7,7 +7,7 @@ import { Segmented } from "../../components/Segmented";
 import { SmallAction } from "../../components/SmallAction";
 import { animateLayout } from "../../motion";
 import { deviceTimeZone, WEEK_ORDER, WEEKDAYS } from "../../lib/planning";
-import { colors, fonts } from "../../theme";
+import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
   DEFAULT_WEEK,
@@ -275,35 +275,37 @@ export function AvailabilityEditor({
   );
 }
 
-const s = StyleSheet.create({
-  note: { marginBottom: 18 },
-  inline: { marginTop: 10, marginBottom: 0 },
-  day: {
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  dayName: {
-    width: 38,
-    paddingTop: 15,
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.text,
-  },
-  empty: { paddingTop: 16, marginBottom: 8 },
-  range: { marginBottom: 8 },
-  dash: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
-  add: { flexDirection: "row" },
-  warn: { color: colors.danger, marginBottom: 8 },
-  overrides: { marginTop: 18 },
-  override: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  overrideHours: { marginTop: 12 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    note: { marginBottom: 18 },
+    inline: { marginTop: 10, marginBottom: 0 },
+    day: {
+      flexDirection: "row",
+      gap: 12,
+      paddingVertical: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    dayName: {
+      width: 38,
+      paddingTop: 15,
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    empty: { paddingTop: 16, marginBottom: 8 },
+    range: { marginBottom: 8 },
+    dash: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
+    add: { flexDirection: "row" },
+    warn: { color: colors.danger, marginBottom: 8 },
+    overrides: { marginTop: 18 },
+    override: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 12,
+    },
+    overrideHours: { marginTop: 12 },
+  }),
+);

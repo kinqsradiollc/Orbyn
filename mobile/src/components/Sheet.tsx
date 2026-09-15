@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "./Icon";
-import { colors, fonts, spacing } from "../theme";
+import { colors, fonts, spacing, themed } from "../theme";
 
 /**
  * Page sheet shared by Teams and the Admin console: the same Modal pattern as
@@ -85,30 +85,32 @@ export const sheetStyles = StyleSheet.create({
   column: { width: "100%", maxWidth: 600, alignSelf: "center" },
 });
 
-const s = StyleSheet.create({
-  sheet: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: spacing.page,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  title: {
-    flex: 1,
-    fontFamily: fonts.display,
-    fontSize: 18,
-    letterSpacing: -0.4,
-    color: colors.text,
-  },
-  round: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    sheet: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: spacing.page,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    title: {
+      flex: 1,
+      fontFamily: fonts.display,
+      fontSize: 18,
+      letterSpacing: -0.4,
+      color: colors.text,
+    },
+    round: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

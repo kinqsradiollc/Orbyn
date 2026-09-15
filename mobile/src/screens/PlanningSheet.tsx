@@ -15,8 +15,10 @@ import {
   type BreakLevel,
   type Frame,
   type Place,
+  type FrameFilters,
   type PlannerPrefs,
   type Priority,
+  type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
@@ -29,13 +31,16 @@ import { client } from "../lib/api";
 import {
   clockDisplay,
   deviceTimeZone,
+  LIST_COLORS,
+  minutesLabel,
   parseMinutes,
   WEEK_ORDER,
   WEEKDAYS,
 } from "../lib/planning";
+import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const BREAK_LABELS: Record<BreakLevel, string> = {
@@ -89,16 +94,32 @@ const daysLabel = (days: number[]) =>
           .map((d) => WEEKDAYS[d])
           .join(", ");
 
+/** "30m or longer", "Up to 1h", "15m to 45m", or "" for any size. */
+const sizeLabel = (min: number | null, max: number | null) =>
+  min && max
+    ? `${minutesLabel(min)} to ${minutesLabel(max)}`
+    : min
+      ? `${minutesLabel(min)} or longer`
+      : max
+        ? `Up to ${minutesLabel(max)}`
+        : "";
+
+const toggleId = (ids: string[], id: string) =>
+  ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+
 /**
  * Settings → Planning: when you work and how the planner fills that time,
  * plus frames (time kept for a kind of work) and places (travel time).
  */
 export function PlanningSheet({
   visible,
+  teams,
   onClose,
   onDismiss,
 }: {
   visible: boolean;
+  /** For frames that take one team's tasks. */
+  teams: Team[];
   onClose: () => void;
   onDismiss?: () => void;
 }) {
@@ -109,12 +130,13 @@ export function PlanningSheet({
       onClose={onClose}
       onDismiss={onDismiss}
     >
-      <Body />
+      <Body teams={teams} />
     </Sheet>
   );
 }
 
-function Body() {
+function Body({ teams }: { teams: Team[] }) {
+  const { listById, tagById } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [form, setForm] = useState<Form | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -165,6 +187,25 @@ function Body() {
       setForm(toForm(p));
       setSaved(true);
     });
+
+  /** When a frame runs and which tasks it takes. */
+  const frameDetail = (f: Frame) => {
+    const { priorities, list_ids, tag_ids, team_ids } = f.filters;
+    const names = (ids: string[], name: (id: string) => string | undefined) =>
+      ids.map(name).filter(Boolean).join(", ");
+    return [
+      `${daysLabel(f.days)} · ${clockDisplay(f.start_time)} – ${clockDisplay(f.end_time)}`,
+      priorities.length
+        ? `${priorities.map((p) => PRIORITY_LABELS[p]).join(", ")} priority`
+        : "",
+      names(list_ids, (id) => listById.get(id)?.name),
+      names(tag_ids, (id) => tagById.get(id)?.name),
+      names(team_ids, (id) => teams.find((t) => t.id === id)?.name),
+      sizeLabel(f.filters.min_minutes, f.filters.max_minutes),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  };
 
   const reloadFrames = async () => setFrames(await client.listFrames());
   const reloadPlaces = async () => setPlaces(await client.listPlaces());
@@ -351,6 +392,7 @@ function Body() {
               <FrameForm
                 key={f.id}
                 frame={f}
+                teams={teams}
                 busy={busy}
                 first={n === 0}
                 onCancel={() => setEditingFrame(null)}
@@ -382,11 +424,8 @@ function Body() {
                 key={f.id}
                 first={n === 0}
                 title={f.name}
-                detail={`${daysLabel(f.days)} · ${clockDisplay(f.start_time)} – ${clockDisplay(f.end_time)}${
-                  f.filters.priorities.length
-                    ? ` · ${f.filters.priorities.map((p) => PRIORITY_LABELS[p]).join(", ")} priority`
-                    : ""
-                }`}
+                detail={frameDetail(f)}
+                color={f.color}
                 onPress={() => {
                   animateLayout();
                   setEditingFrame(f);
@@ -396,6 +435,7 @@ function Body() {
           )}
           {editingFrame === "new" ? (
             <FrameForm
+              teams={teams}
               busy={busy}
               first={!frames.length}
               onCancel={() => setEditingFrame(null)}
@@ -493,11 +533,14 @@ function Body() {
 function Row({
   title,
   detail,
+  color,
   first,
   onPress,
 }: {
   title: string;
   detail: string;
+  /** A colour dot before the title (frames). */
+  color?: string;
   first: boolean;
   onPress: () => void;
 }) {
@@ -513,6 +556,7 @@ function Row({
         pressed && s.pressed,
       ]}
     >
+      {!!color && <View style={[s.colorDot, { backgroundColor: color }]} />}
       <View style={{ flex: 1 }}>
         <Text style={s.rowTitle}>{title}</Text>
         <Text style={shared.small}>{detail}</Text>
@@ -548,8 +592,13 @@ function AddRow({
   );
 }
 
+/**
+ * Create or edit a frame: its name, days and hours, which tasks it takes
+ * (priorities, lists, tags, teams, size; none chosen means any) and its colour.
+ */
 function FrameForm({
   frame,
+  teams,
   busy,
   first,
   onSave,
@@ -557,6 +606,7 @@ function FrameForm({
   onCancel,
 }: {
   frame?: Frame;
+  teams: Team[];
   busy: boolean;
   first: boolean;
   onSave: (input: {
@@ -564,11 +614,13 @@ function FrameForm({
     days: number[];
     start_time: string;
     end_time: string;
-    filters: Frame["filters"] | { priorities: Priority[] };
+    filters: FrameFilters;
+    color: string;
   }) => void;
   onDelete?: () => void;
   onCancel: () => void;
 }) {
+  const { lists, tags } = usePlanning();
   const [name, setName] = useState(frame?.name ?? "");
   const [days, setDays] = useState(frame?.days ?? [1, 2, 3, 4, 5]);
   const [start, setStart] = useState(frame?.start_time ?? "09:00");
@@ -576,6 +628,21 @@ function FrameForm({
   const [priorities, setPriorities] = useState<Priority[]>(
     frame?.filters.priorities ?? [],
   );
+  const [listIds, setListIds] = useState(frame?.filters.list_ids ?? []);
+  const [tagIds, setTagIds] = useState(frame?.filters.tag_ids ?? []);
+  const [teamIds, setTeamIds] = useState(frame?.filters.team_ids ?? []);
+  const [min, setMin] = useState(String(frame?.filters.min_minutes ?? ""));
+  const [max, setMax] = useState(String(frame?.filters.max_minutes ?? ""));
+  const [color, setColor] = useState<string>(frame?.color ?? LIST_COLORS[0]);
+  const minMinutes = parseMinutes(min);
+  const maxMinutes = parseMinutes(max);
+  const outOfRange = (m: number | null) => m !== null && (m < 1 || m > 10080);
+  const sizeError =
+    outOfRange(minMinutes) || outOfRange(maxMinutes)
+      ? "Sizes run from 1 to 10080 minutes."
+      : minMinutes !== null && maxMinutes !== null && maxMinutes < minMinutes
+        ? "The longest size is at least the shortest."
+        : "";
   return (
     <FadeIn style={[s.form, !first && s.divider]}>
       <Field label="Name">
@@ -638,6 +705,113 @@ function FrameForm({
           })}
         </ChipRow>
       </Field>
+      <Field
+        label="Only these lists"
+        hint={lists.length ? "None chosen means any list." : "No lists yet."}
+      >
+        {lists.length > 0 && (
+          <ChipRow label="Lists" multi>
+            {lists.map((l) => (
+              <Chip
+                key={l.id}
+                multi
+                color={l.color}
+                label={l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                selected={listIds.includes(l.id)}
+                onPress={() => setListIds(toggleId(listIds, l.id))}
+              />
+            ))}
+          </ChipRow>
+        )}
+      </Field>
+      <Field
+        label="Only these tags"
+        hint={tags.length ? "None chosen means any tag." : "No tags yet."}
+      >
+        {tags.length > 0 && (
+          <ChipRow label="Tags" multi>
+            {tags.map((t) => (
+              <Chip
+                key={t.id}
+                multi
+                color={t.color}
+                label={t.name}
+                selected={tagIds.includes(t.id)}
+                onPress={() => setTagIds(toggleId(tagIds, t.id))}
+              />
+            ))}
+          </ChipRow>
+        )}
+      </Field>
+      {teams.length > 0 && (
+        <Field
+          label="Only these teams"
+          hint="None chosen means personal and team tasks alike."
+        >
+          <ChipRow label="Teams" multi>
+            {teams.map((t) => (
+              <Chip
+                key={t.id}
+                multi
+                label={t.name}
+                selected={teamIds.includes(t.id)}
+                onPress={() => setTeamIds(toggleId(teamIds, t.id))}
+              />
+            ))}
+          </ChipRow>
+        </Field>
+      )}
+      <View style={s.pair}>
+        <Field label="Shortest task" style={s.half}>
+          <NumberInput
+            value={min}
+            onChangeText={setMin}
+            suffix="min"
+            placeholder="Any"
+            accessibilityLabel="Only tasks estimated at least this many minutes"
+          />
+        </Field>
+        <Field label="Longest task" style={s.half}>
+          <NumberInput
+            value={max}
+            onChangeText={setMax}
+            suffix="min"
+            placeholder="Any"
+            accessibilityLabel="Only tasks estimated at most this many minutes"
+          />
+        </Field>
+      </View>
+      {!!sizeError && (
+        <Text style={[shared.small, s.warn, s.sizeWarn]}>{sizeError}</Text>
+      )}
+      <Field label="Colour">
+        <View
+          style={s.swatches}
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Frame colour"
+        >
+          {LIST_COLORS.map((c, n) => (
+            <Pressable
+              key={c}
+              accessibilityRole="radio"
+              accessibilityLabel={`Colour ${n + 1} of ${LIST_COLORS.length}`}
+              accessibilityState={{ checked: color === c }}
+              hitSlop={4}
+              onPress={() => setColor(c)}
+              style={[s.swatch, { backgroundColor: c }]}
+            >
+              {color === c && (
+                <Icon
+                  name="check"
+                  size={14}
+                  color={colors.white}
+                  strokeWidth={3}
+                />
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </Field>
       {end <= start && (
         <Text style={[shared.small, s.warn]}>
           A frame ends after it starts.
@@ -646,14 +820,22 @@ function FrameForm({
       <Button
         title="Save frame"
         icon="check"
-        disabled={busy || !name.trim() || end <= start}
+        disabled={busy || !name.trim() || end <= start || !!sizeError}
         onPress={() =>
           onSave({
             name: name.trim(),
             days,
             start_time: start,
             end_time: end,
-            filters: frame ? { ...frame.filters, priorities } : { priorities },
+            filters: {
+              priorities,
+              list_ids: listIds,
+              tag_ids: tagIds,
+              team_ids: teamIds,
+              min_minutes: minMinutes,
+              max_minutes: maxMinutes,
+            },
+            color,
           })
         }
       />
@@ -759,57 +941,69 @@ function PlaceForm({
   );
 }
 
-const s = StyleSheet.create({
-  intro: { marginTop: 0, marginBottom: 18 },
-  eyebrow: { marginTop: 8 },
-  sectionHint: { marginTop: -2, marginBottom: 10 },
-  value: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  inline: { marginTop: 10, marginBottom: 0 },
-  pair: { flexDirection: "row", gap: 12 },
-  half: { flex: 1 },
-  last: { marginBottom: 0 },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 18,
-  },
-  switchTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 3,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 52,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  rowTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  addText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.accent },
-  form: { padding: 16 },
-  formActions: { flexDirection: "row", gap: 10 },
-  flex: { flex: 1 },
-  warn: { color: colors.danger, marginBottom: 10 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    intro: { marginTop: 0, marginBottom: 18 },
+    eyebrow: { marginTop: 8 },
+    sectionHint: { marginTop: -2, marginBottom: 10 },
+    value: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    inline: { marginTop: 10, marginBottom: 0 },
+    pair: { flexDirection: "row", gap: 12 },
+    half: { flex: 1 },
+    last: { marginBottom: 0 },
+    switchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 18,
+    },
+    switchTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 3,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 52,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    rowTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    addText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.accent },
+    form: { padding: 16 },
+    formActions: { flexDirection: "row", gap: 10 },
+    flex: { flex: 1 },
+    warn: { color: colors.danger, marginBottom: 10 },
+    sizeWarn: { marginTop: -8 },
+    colorDot: { width: 10, height: 10, borderRadius: 5 },
+    swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    swatch: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

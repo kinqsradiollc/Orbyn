@@ -32,7 +32,7 @@ import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamTime } from "./TeamTime";
 
@@ -440,61 +440,71 @@ export function TeamDetailPage({
   );
 }
 
-const s = StyleSheet.create({
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  gap: { marginBottom: 14 },
-  eyebrow: { marginTop: 8 },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  member: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.display, fontSize: 15, color: colors.accent },
-  memberName: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 1,
-  },
-  memberActions: { paddingHorizontal: 16, paddingBottom: 14, gap: 10 },
-  removeButton: { marginBottom: 0 },
-  addButton: { marginTop: 12, marginBottom: 0 },
-  heading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 10,
-  },
-  count: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  countText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
-  footer: { marginTop: 18 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    gap: { marginBottom: 14 },
+    eyebrow: { marginTop: 8 },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    member: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    avatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontFamily: fonts.display,
+      fontSize: 15,
+      color: colors.accent,
+    },
+    memberName: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 1,
+    },
+    memberActions: { paddingHorizontal: 16, paddingBottom: 14, gap: 10 },
+    removeButton: { marginBottom: 0 },
+    addButton: { marginTop: 12, marginBottom: 0 },
+    heading: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 10,
+    },
+    count: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    countText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.muted,
+    },
+    footer: { marginTop: 18 },
+  }),
+);

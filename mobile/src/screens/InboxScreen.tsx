@@ -4,7 +4,7 @@ import { dateLabel, type Notice } from "@orbyn/core";
 import { Icon } from "../components/Icon";
 import { SmallAction } from "../components/SmallAction";
 import { FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 export function InboxScreen({
@@ -97,57 +97,59 @@ export function InboxScreen({
   );
 }
 
-const s = StyleSheet.create({
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-  },
-  row: { flexDirection: "row", gap: 12, padding: 16 },
-  actions: {
-    flexDirection: "row",
-    paddingLeft: 62,
-    paddingRight: 16,
-    paddingBottom: 14,
-    marginTop: -6,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  unread: { backgroundColor: "#f6f9f4" },
-  icon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dot: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.highText,
-    borderWidth: 1.5,
-    borderColor: colors.surface,
-  },
-  title: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 3,
-  },
-  body: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.textSoft,
-    marginBottom: 6,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+    },
+    row: { flexDirection: "row", gap: 12, padding: 16 },
+    actions: {
+      flexDirection: "row",
+      paddingLeft: 62,
+      paddingRight: 16,
+      paddingBottom: 14,
+      marginTop: -6,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    unread: { backgroundColor: colors.unread },
+    icon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dot: {
+      position: "absolute",
+      top: 0,
+      right: 0,
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      backgroundColor: colors.highText,
+      borderWidth: 1.5,
+      borderColor: colors.surface,
+    },
+    title: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 3,
+    },
+    body: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.textSoft,
+      marginBottom: 6,
+    },
+  }),
+);

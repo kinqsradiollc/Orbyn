@@ -21,6 +21,7 @@ import {
 } from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
+import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { ItemEditor, type Editing } from "../components/ItemEditor";
@@ -49,7 +50,7 @@ import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
 import { TodayScreen } from "../screens/TodayScreen";
-import { colors, spacing } from "../theme";
+import { colors, spacing, themed } from "../theme";
 import { shared } from "../styles";
 
 type SheetName =
@@ -119,6 +120,10 @@ export function RootScreen() {
   const pending = useRef<Next | null>(null);
   /** Sheets to reopen, most recent last, once the modal above them closes. */
   const back = useRef<SheetName[]>([]);
+  /** An unapplied plan shown as faint blocks on the calendar. */
+  const [preview, setPreview] = useState<Plan | null>(null);
+  /** A time block is being dragged: the page holds still. */
+  const [dragging, setDragging] = useState(false);
 
   if (!ready)
     return (
@@ -192,7 +197,9 @@ export function RootScreen() {
     },
     onToggle: (i: Item) =>
       act(async () => {
-        await client.postItemUpdate(i.id, { status: toggledStatus(i) });
+        const status = toggledStatus(i);
+        await client.postItemUpdate(i.id, { status });
+        if (status === "done") celebrate(i.title);
         // The row may move to another group or leave this list.
         await refresh({ animate: true });
       }),
@@ -295,6 +302,7 @@ export function RootScreen() {
         </View>
         <ScrollView
           style={s.scroll}
+          scrollEnabled={!dragging}
           contentContainerStyle={[s.content, sidePadding]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
@@ -353,6 +361,9 @@ export function RootScreen() {
                   items={items}
                   act={act}
                   onChanged={planChanged}
+                  preview={preview}
+                  onPreviewDone={() => setPreview(null)}
+                  onDragging={setDragging}
                   {...listHandlers}
                 />
               )}
@@ -378,7 +389,10 @@ export function RootScreen() {
                   busy={busy}
                   act={act}
                   onUser={setUser}
-                  onSignOut={signOut}
+                  onSignOut={() => {
+                    setPreview(null);
+                    signOut();
+                  }}
                   teamCount={teams.length}
                   onOpenTeams={() => setSheet("teams")}
                   onOpenAdmin={() => setSheet("admin")}
@@ -399,6 +413,7 @@ export function RootScreen() {
             setSearch("");
           }}
         />
+        <CelebrationHost bottom={Math.max(insets.bottom, 10) + 64} />
         <ItemEditor
           editing={editing}
           teams={teams}
@@ -435,7 +450,16 @@ export function RootScreen() {
           seed={planSeed}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
-          onApplied={planChanged}
+          onApplied={() => {
+            setPreview(null);
+            planChanged();
+          }}
+          onShowOnCalendar={(plan) => {
+            setPreview(plan);
+            setTab("Calendar");
+            setSearch("");
+            closeSheet();
+          }}
         />
         <ListsSheet
           visible={sheet === "lists"}
@@ -445,6 +469,7 @@ export function RootScreen() {
         />
         <PlanningSheet
           visible={sheet === "planning"}
+          teams={teams}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         />
@@ -499,33 +524,39 @@ export function RootScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  header: {
-    backgroundColor: colors.background,
-    paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    maxWidth: spacing.maxContent,
-    alignSelf: "center",
-  },
-  add: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addPressed: { backgroundColor: colors.accentPressed },
-  scroll: { flex: 1 },
-  content: { paddingTop: 22, paddingBottom: 32 },
-  column: { width: "100%", maxWidth: spacing.maxContent, alignSelf: "center" },
-  subtitle: { marginBottom: 20 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    header: {
+      backgroundColor: colors.background,
+      paddingBottom: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      width: "100%",
+      maxWidth: spacing.maxContent,
+      alignSelf: "center",
+    },
+    add: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    addPressed: { backgroundColor: colors.accentPressed },
+    scroll: { flex: 1 },
+    content: { paddingTop: 22, paddingBottom: 32 },
+    column: {
+      width: "100%",
+      maxWidth: spacing.maxContent,
+      alignSelf: "center",
+    },
+    subtitle: { marginBottom: 20 },
+  }),
+);

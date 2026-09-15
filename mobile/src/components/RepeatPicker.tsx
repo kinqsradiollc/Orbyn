@@ -10,7 +10,7 @@ import { Chip, ChipRow } from "./Chip";
 import { DateField, NumberInput } from "./Field";
 import { Segmented } from "./Segmented";
 import { WEEK_ORDER, WEEKDAYS } from "../lib/planning";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 type Preset = "none" | "daily" | "weekdays" | "weekly" | "monthly" | "yearly";
@@ -247,13 +247,15 @@ export function RepeatPicker({
   );
 }
 
-const s = StyleSheet.create({
-  gap: { marginTop: 12 },
-  gapSmall: { marginTop: 8 },
-  summary: {
-    marginTop: 10,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    color: colors.accent,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    gap: { marginTop: 12 },
+    gapSmall: { marginTop: 8 },
+    summary: {
+      marginTop: 10,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
+  }),
+);

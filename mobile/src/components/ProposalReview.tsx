@@ -13,14 +13,14 @@ import { Button } from "./Button";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
 import { FadeIn, PressableScale } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
-const OPERATION = {
+const OPERATION = themed(() => ({
   create: { label: "New", bg: colors.accentSoft, fg: colors.accent },
   update: { label: "Update", bg: colors.mediumBg, fg: colors.mediumText },
   delete: { label: "Delete", bg: colors.dangerSoft, fg: colors.danger },
-} as const;
+}));
 
 function Inlines({ parts }: { parts: RichInline[] }) {
   return (
@@ -347,102 +347,118 @@ export function ProposalReview({
   );
 }
 
-const s = StyleSheet.create({
-  summary: { gap: 8 },
-  heading: {
-    fontFamily: fonts.bold,
-    fontSize: 15,
-    lineHeight: 21,
-    color: colors.text,
-    marginTop: 4,
-  },
-  bold: { fontFamily: fonts.semibold, color: colors.text },
-  italic: { fontStyle: "italic" },
-  code: {
-    fontFamily: "Menlo",
-    fontSize: 13,
-    backgroundColor: colors.surfaceMuted,
-  },
-  list: { gap: 6 },
-  bulletRow: { flexDirection: "row", gap: 8 },
-  bulletText: { flex: 1 },
-  bulletDot: {
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.accent,
-  },
-  actions: { gap: 8, marginTop: 12 },
-  action: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    padding: 12,
-    gap: 8,
-  },
-  actionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  op: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 3 },
-  opText: { fontFamily: fonts.semibold, fontSize: 11 },
-  actionTitle: {
-    flex: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-  },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.pill,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  chipText: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    color: colors.textSoft,
-  },
-  notes: { flexBasis: "100%", marginTop: 2 },
-  diff: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSoft },
-  buttons: { marginTop: 12 },
-  status: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 12 },
-  statusText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.muted },
-  table: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    overflow: "hidden",
-    backgroundColor: colors.background,
-  },
-  tableRow: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  tableHead: { borderTopWidth: 0, backgroundColor: colors.surfaceMuted },
-  tableZebra: { backgroundColor: colors.surface },
-  tableCell: { flex: 1, paddingHorizontal: 8, paddingVertical: 6 },
-  tableDivider: { borderLeftWidth: 1, borderLeftColor: colors.border },
-  tableText: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textSoft,
-  },
-  tableHeadText: { fontFamily: fonts.semibold, color: colors.text },
-  followUps: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 12 },
-  followUp: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.softBorder,
-    borderRadius: radii.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  followUpPressed: { backgroundColor: colors.accentSoft },
-  followUpText: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    color: colors.accent,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    summary: { gap: 8 },
+    heading: {
+      fontFamily: fonts.bold,
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.text,
+      marginTop: 4,
+    },
+    bold: { fontFamily: fonts.semibold, color: colors.text },
+    italic: { fontStyle: "italic" },
+    code: {
+      fontFamily: "Menlo",
+      fontSize: 13,
+      backgroundColor: colors.surfaceMuted,
+    },
+    list: { gap: 6 },
+    bulletRow: { flexDirection: "row", gap: 8 },
+    bulletText: { flex: 1 },
+    bulletDot: {
+      fontFamily: fonts.bold,
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.accent,
+    },
+    actions: { gap: 8, marginTop: 12 },
+    action: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      padding: 12,
+      gap: 8,
+    },
+    actionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+    op: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 3 },
+    opText: { fontFamily: fonts.semibold, fontSize: 11 },
+    actionTitle: {
+      flex: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    chip: {
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.pill,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+    },
+    chipText: {
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.textSoft,
+    },
+    notes: { flexBasis: "100%", marginTop: 2 },
+    diff: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSoft },
+    buttons: { marginTop: 12 },
+    status: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 12,
+    },
+    statusText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.muted,
+    },
+    table: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      overflow: "hidden",
+      backgroundColor: colors.background,
+    },
+    tableRow: {
+      flexDirection: "row",
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    tableHead: { borderTopWidth: 0, backgroundColor: colors.surfaceMuted },
+    tableZebra: { backgroundColor: colors.surface },
+    tableCell: { flex: 1, paddingHorizontal: 8, paddingVertical: 6 },
+    tableDivider: { borderLeftWidth: 1, borderLeftColor: colors.border },
+    tableText: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSoft,
+    },
+    tableHeadText: { fontFamily: fonts.semibold, color: colors.text },
+    followUps: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 12,
+    },
+    followUp: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.softBorder,
+      borderRadius: radii.pill,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    followUpPressed: { backgroundColor: colors.accentSoft },
+    followUpText: {
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.accent,
+    },
+  }),
+);

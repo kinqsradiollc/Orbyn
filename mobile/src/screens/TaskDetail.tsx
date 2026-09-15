@@ -16,7 +16,6 @@ import {
   hasTeamPermission,
   statusLabels,
   statusOrder,
-  statusTones,
   type Item,
   type ItemDetail,
   type ItemStep,
@@ -26,6 +25,7 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { StatusPill } from "../components/Pill";
@@ -44,12 +44,14 @@ import {
   PressableScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
 
-const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
+const PRIORITY = themed<
+  Record<Priority, { bg: string; fg: string; label: string }>
+>(() => ({
   high: { bg: colors.highBg, fg: colors.highText, label: "High priority" },
   medium: {
     bg: colors.mediumBg,
@@ -57,7 +59,7 @@ const PRIORITY: Record<Priority, { bg: string; fg: string; label: string }> = {
     label: "Medium priority",
   },
   low: { bg: colors.lowBg, fg: colors.lowText, label: "Low priority" },
-};
+}));
 
 /**
  * Task detail sheet: status, progress, checklist and the updates timeline.
@@ -105,6 +107,7 @@ export function TaskDetail({
           onChanged={onChanged}
         />
       )}
+      <CelebrationHost />
     </Sheet>
   );
 }
@@ -189,7 +192,9 @@ function Body({
 
   const setStatus = (status: Status) => {
     if (status !== item.status)
-      void run(() => client.postItemUpdate(item.id, { status }));
+      void run(() => client.postItemUpdate(item.id, { status })).then(
+        (ok) => ok && status === "done" && celebrate(item.title),
+      );
   };
   const addStep = async () => {
     const title = newStep.trim();
@@ -207,6 +212,7 @@ function Body({
       }),
     );
     if (ok) {
+      if (status === "done") celebrate(item.title);
       setNote("");
       setNoteStatus(null);
     }
@@ -681,198 +687,204 @@ function UpdateRow({ update, first }: { update: ItemUpdate; first: boolean }) {
   );
 }
 
-const s = StyleSheet.create({
-  header: { marginBottom: 18 },
-  headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 24,
-    lineHeight: 30,
-    letterSpacing: -0.6,
-    color: colors.text,
-    marginTop: 10,
-  },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 10,
-  },
-  metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  metaLine: { marginTop: 10 },
-  meeting: { marginTop: 14, gap: 6 },
-  join: { marginBottom: 0 },
-  metaText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: radii.pill,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  teamChip: { backgroundColor: colors.accentSoft },
-  progressChip: { backgroundColor: colors.surfaceMuted },
-  chipText: { fontFamily: fonts.semibold, fontSize: 11 },
-  notes: { ...shared.body, marginTop: 12 },
-  viewOnly: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.input,
-    padding: 12,
-    marginBottom: 18,
-  },
-  viewOnlyText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.accent,
-  },
-  statusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 18,
-  },
-  statusRowCompact: { marginBottom: 12, gap: 6 },
-  statusChip: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    minHeight: 44,
-    borderRadius: radii.input,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 10,
-  },
-  statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.textSoft,
-  },
-  progressCard: { gap: 12 },
-  progressTop: { flexDirection: "row", alignItems: "baseline" },
-  bigPercent: {
-    marginLeft: "auto",
-    fontFamily: fonts.display,
-    fontSize: 26,
-    letterSpacing: -0.6,
-  },
-  progressHint: { marginTop: -2 },
-  segments: { flexDirection: "row", gap: 6 },
-  segment: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segmentText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.muted,
-  },
-  cardHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  counter: {
-    marginLeft: "auto",
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.muted,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 6,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  gapBelow: { marginBottom: 12 },
-  step: { flexDirection: "row", alignItems: "center", minHeight: 46 },
-  stepDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  stepMain: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 10,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: "#cfd7ce",
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  stepText: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.text,
-  },
-  stepDone: { color: colors.faint, textDecorationLine: "line-through" },
-  trash: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  trashPressed: { backgroundColor: colors.dangerSoft },
-  addRow: { flexDirection: "row", gap: 8, marginTop: 10 },
-  addInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.input,
-    backgroundColor: colors.accent,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  composer: { marginBottom: 14 },
-  noteInput: { minHeight: 76 },
-  composerLabel: { marginTop: 12 },
-  post: { marginBottom: 0 },
-  update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
-  updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  author: {
-    flexShrink: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 14,
-    color: colors.text,
-  },
-  updateBody: { ...shared.body, marginTop: 3 },
-  changes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    header: { marginBottom: 18 },
+    headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+    kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
+    title: {
+      fontFamily: fonts.display,
+      fontSize: 24,
+      lineHeight: 30,
+      letterSpacing: -0.6,
+      color: colors.text,
+      marginTop: 10,
+    },
+    metaRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 10,
+    },
+    metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+    metaLine: { marginTop: 10 },
+    meeting: { marginTop: 14, gap: 6 },
+    join: { marginBottom: 0 },
+    metaText: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      borderRadius: radii.pill,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+    },
+    teamChip: { backgroundColor: colors.accentSoft },
+    progressChip: { backgroundColor: colors.surfaceMuted },
+    chipText: { fontFamily: fonts.semibold, fontSize: 11 },
+    notes: { ...shared.body, marginTop: 12 },
+    viewOnly: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.input,
+      padding: 12,
+      marginBottom: 18,
+    },
+    viewOnlyText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.accent,
+    },
+    statusRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 18,
+    },
+    statusRowCompact: { marginBottom: 12, gap: 6 },
+    statusChip: {
+      flexGrow: 1,
+      flexBasis: "45%",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      minHeight: 44,
+      borderRadius: radii.input,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 10,
+    },
+    statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    progressCard: { gap: 12 },
+    progressTop: { flexDirection: "row", alignItems: "baseline" },
+    bigPercent: {
+      marginLeft: "auto",
+      fontFamily: fonts.display,
+      fontSize: 26,
+      letterSpacing: -0.6,
+    },
+    progressHint: { marginTop: -2 },
+    segments: { flexDirection: "row", gap: 6 },
+    segment: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 10,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    segmentText: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.muted,
+    },
+    cardHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    counter: {
+      marginLeft: "auto",
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.muted,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: 6,
+      overflow: "hidden",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    gapBelow: { marginBottom: 12 },
+    step: { flexDirection: "row", alignItems: "center", minHeight: 46 },
+    stepDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    stepMain: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 10,
+    },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+    stepText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.text,
+    },
+    stepDone: { color: colors.faint, textDecorationLine: "line-through" },
+    trash: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    trashPressed: { backgroundColor: colors.dangerSoft },
+    addRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+    addInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+    addButton: {
+      width: 44,
+      height: 44,
+      borderRadius: radii.input,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    composer: { marginBottom: 14 },
+    noteInput: { minHeight: 76 },
+    composerLabel: { marginTop: 12 },
+    post: { marginBottom: 0 },
+    update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
+    avatar: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
+    updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+    author: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    updateBody: { ...shared.body, marginTop: 3 },
+    changes: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  }),
+);

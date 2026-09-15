@@ -6,7 +6,7 @@ import { Field } from "../../components/Field";
 import { Segmented } from "../../components/Segmented";
 import { SmallAction } from "../../components/SmallAction";
 import { animateLayout } from "../../motion";
-import { colors, fonts } from "../../theme";
+import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { MAX_OPTIONS, MAX_QUESTIONS, newKey } from "./helpers";
 import { RemoveButton, SwitchRow, bookingStyles as bs } from "./ui";
@@ -210,25 +210,31 @@ export function QuestionsEditor({
   );
 }
 
-const s = StyleSheet.create({
-  question: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
-    paddingBottom: 0,
-    marginBottom: 12,
-  },
-  head: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  number: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textSoft },
-  moves: { flexDirection: "row", gap: 6 },
-  option: { marginBottom: 8 },
-  row: { flexDirection: "row" },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    question: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 12,
+      paddingBottom: 0,
+      marginBottom: 12,
+    },
+    head: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
+    number: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    moves: { flexDirection: "row", gap: 6 },
+    option: { marginBottom: 8 },
+    row: { flexDirection: "row" },
+  }),
+);

@@ -24,7 +24,7 @@ import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { FadeIn, PressableScale } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
@@ -663,89 +663,100 @@ function ProviderForm({
   );
 }
 
-const s = StyleSheet.create({
-  keyWarning: { color: "#9a5b12", marginTop: 6 },
-  section: { marginTop: 8 },
-  center: { textAlign: "center" },
-  gapBelow: { marginBottom: 14 },
-  cardHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
-  },
-  kv: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  kvValue: {
-    flexShrink: 1,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.text,
-  },
-  flushButton: { marginTop: 10, marginBottom: 0 },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  rowMain: { flex: 1, gap: 2 },
-  rowTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  expand: { paddingHorizontal: 16, paddingBottom: 14 },
-  input: { marginBottom: 12 },
-  chipCaption: { marginBottom: 8 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
-  chip: {
-    maxWidth: "100%",
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-  },
-  chipActive: {
-    backgroundColor: colors.accentSoft,
-    borderColor: colors.softBorder,
-  },
-  chipText: { fontFamily: fonts.medium, fontSize: 12, color: colors.textSoft },
-  chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },
-  testText: {
-    fontFamily: fonts.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    marginBottom: 12,
-  },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 8 },
-  group: { marginBottom: 6 },
-  groupGap: { marginTop: 10 },
-  hint: { marginTop: 8, marginBottom: 14 },
-  keyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: -4,
-    marginBottom: 14,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    keyWarning: { color: colors.warning, marginTop: 6 },
+    section: { marginTop: 8 },
+    center: { textAlign: "center" },
+    gapBelow: { marginBottom: 14 },
+    cardHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 8,
+    },
+    kv: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    kvValue: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      color: colors.text,
+    },
+    flushButton: { marginTop: 10, marginBottom: 0 },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    rowTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    rowMain: { flex: 1, gap: 2 },
+    rowTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
+    name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    expand: { paddingHorizontal: 16, paddingBottom: 14 },
+    input: { marginBottom: 12 },
+    chipCaption: { marginBottom: 8 },
+    chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
+    chip: {
+      maxWidth: "100%",
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 11,
+      paddingVertical: 6,
+    },
+    chipActive: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.softBorder,
+    },
+    chipText: {
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.textSoft,
+    },
+    chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },
+    testText: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      lineHeight: 19,
+      marginBottom: 12,
+    },
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 8,
+    },
+    group: { marginBottom: 6 },
+    groupGap: { marginTop: 10 },
+    hint: { marginTop: 8, marginBottom: 14 },
+    keyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: -4,
+      marginBottom: 14,
+    },
+  }),
+);

@@ -4,10 +4,24 @@ import { hasSystemPermission, statusHeadlines, type User } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
 import { Pill } from "../components/Pill";
+import { Segmented } from "../components/Segmented";
 import { client } from "../lib/api";
 import { disablePush, enablePush } from "../lib/push";
-import { colors, fonts } from "../theme";
+import {
+  colors,
+  fonts,
+  themed,
+  THEME_PREFERENCES,
+  useTheme,
+  type ThemePreference,
+} from "../theme";
 import { shared } from "../styles";
+
+const THEME_LABELS: Record<ThemePreference, string> = {
+  system: "Automatic",
+  light: "Light",
+  dark: "Dark",
+};
 
 export function SettingsScreen({
   user,
@@ -37,6 +51,7 @@ export function SettingsScreen({
   onOpenBooking: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
+  const theme = useTheme();
   const [statusHeadline, setStatusHeadline] = useState("");
   useEffect(() => {
     let live = true;
@@ -123,6 +138,21 @@ export function SettingsScreen({
           title="Connections"
           detail="API keys, webhooks and calendar feed"
           onPress={onOpenConnections}
+        />
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>APPEARANCE</Text>
+      <View style={shared.card}>
+        <Text style={s.prefTitle}>Theme</Text>
+        <Text style={[shared.small, s.prefText]}>
+          Automatic follows your device’s light or dark setting.
+        </Text>
+        <Segmented
+          accessibilityLabel="Theme"
+          options={THEME_PREFERENCES}
+          labels={THEME_LABELS}
+          value={theme.preference}
+          onChange={theme.setPreference}
         />
       </View>
 
@@ -237,51 +267,57 @@ function LinkRow({
   );
 }
 
-const s = StyleSheet.create({
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rows: { padding: 0, overflow: "hidden" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-  },
-  rowDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  rowIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  account: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.display, fontSize: 20, color: colors.accent },
-  section: { marginTop: 8 },
-  preference: { flexDirection: "row", alignItems: "center", gap: 16 },
-  prefTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 3,
-  },
-  prefText: { marginBottom: 14 },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: 16,
-  },
-  signOut: { marginTop: 8 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rows: { padding: 0, overflow: "hidden" },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 18,
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    rowIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    account: { flexDirection: "row", alignItems: "center", gap: 14 },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontFamily: fonts.display,
+      fontSize: 20,
+      color: colors.accent,
+    },
+    section: { marginTop: 8 },
+    preference: { flexDirection: "row", alignItems: "center", gap: 16 },
+    prefTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 3,
+    },
+    prefText: { marginBottom: 14 },
+    divider: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+      marginVertical: 16,
+    },
+    signOut: { marginTop: 8 },
+  }),
+);

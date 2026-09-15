@@ -3,13 +3,13 @@ import { StyleSheet, Text, View } from "react-native";
 import type { Maintenance } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { FadeIn } from "../motion";
-import { fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 
-export const maintenanceTone = {
-  bg: "#fbf3e2",
-  fg: "#a3742b",
-  border: "#f0e2c2",
-} as const;
+export const maintenanceTone = themed(() => ({
+  bg: colors.warningSoft,
+  fg: colors.warning,
+  border: colors.warningBorder,
+}));
 
 /** "today at 3:30 PM", or "Sep 16, 3:30 PM" on another day. */
 export function formatUntil(iso: string) {
@@ -64,29 +64,31 @@ export function MaintenanceBanner({
   );
 }
 
-const s = StyleSheet.create({
-  banner: {
-    backgroundColor: maintenanceTone.bg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: maintenanceTone.border,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    paddingVertical: 8,
-  },
-  headline: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    lineHeight: 17,
-    color: maintenanceTone.fg,
-  },
-  details: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: maintenanceTone.fg,
-    marginTop: 1,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    banner: {
+      backgroundColor: maintenanceTone.bg,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: maintenanceTone.border,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 8,
+      paddingVertical: 8,
+    },
+    headline: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      lineHeight: 17,
+      color: maintenanceTone.fg,
+    },
+    details: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: maintenanceTone.fg,
+      marginTop: 1,
+    },
+  }),
+);

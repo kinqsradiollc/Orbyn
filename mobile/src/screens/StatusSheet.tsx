@@ -23,25 +23,23 @@ import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
 import { FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const REFRESH_MS = 30_000;
 const HISTORY_DAYS = 30;
 
-const amber = "#d49a3a";
-const amberSoft = "#fbf3e2";
-const amberText = "#a3742b";
-
-const STATE_TONE: Record<
-  ServiceState,
-  { bg: string; fg: string; pill: "accent" | "warning" | "danger" | "muted" }
-> = {
+const STATE_TONE = themed<
+  Record<
+    ServiceState,
+    { bg: string; fg: string; pill: "accent" | "warning" | "danger" | "muted" }
+  >
+>(() => ({
   operational: { bg: colors.accentSoft, fg: colors.accent, pill: "accent" },
-  degraded: { bg: amberSoft, fg: amberText, pill: "warning" },
+  degraded: { bg: colors.warningSoft, fg: colors.warning, pill: "warning" },
   outage: { bg: colors.dangerSoft, fg: colors.danger, pill: "danger" },
   unknown: { bg: colors.surfaceMuted, fg: colors.textSoft, pill: "muted" },
-};
+}));
 
 /** Bar colour for one day of the history strip. */
 const dayColor = (uptime: number | null) =>
@@ -52,7 +50,7 @@ const dayColor = (uptime: number | null) =>
       : uptime >= 0.99
         ? colors.dot
         : uptime >= 0.95
-          ? amber
+          ? colors.amber
           : colors.danger;
 
 const updatedAgo = (iso: string, now: number) => {
@@ -339,83 +337,85 @@ function Incidents({
   );
 }
 
-const s = StyleSheet.create({
-  section: { marginTop: 8 },
-  maintenance: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: maintenanceTone.border,
-    backgroundColor: maintenanceTone.bg,
-    padding: 18,
-    marginBottom: 12,
-  },
-  until: { marginTop: 4 },
-  banner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    borderRadius: radii.card,
-    padding: 18,
-    marginBottom: 16,
-  },
-  bannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bannerTitle: {
-    fontFamily: fonts.display,
-    fontSize: 17,
-    letterSpacing: -0.3,
-    marginBottom: 2,
-  },
-  cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-  name: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  stateCol: { alignItems: "flex-end", gap: 4 },
-  latency: { textAlign: "right" },
-  uptimeRow: {
-    flexDirection: "row",
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  uptimeCell: { flex: 1 },
-  uptimeValue: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    fontVariant: ["tabular-nums"],
-  },
-  strip: { flexDirection: "row", gap: 2, height: 26, marginTop: 14 },
-  bar: { flex: 1, borderRadius: 2 },
-  stripLegend: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  incident: { paddingVertical: 13, paddingHorizontal: 16, gap: 4 },
-  incidentTop: { flexDirection: "row", alignItems: "center", gap: 10 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    section: { marginTop: 8 },
+    maintenance: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 14,
+      borderRadius: radii.card,
+      borderWidth: 1,
+      borderColor: maintenanceTone.border,
+      backgroundColor: maintenanceTone.bg,
+      padding: 18,
+      marginBottom: 12,
+    },
+    until: { marginTop: 4 },
+    banner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      borderRadius: radii.card,
+      padding: 18,
+      marginBottom: 16,
+    },
+    bannerIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    bannerTitle: {
+      fontFamily: fonts.display,
+      fontSize: 17,
+      letterSpacing: -0.3,
+      marginBottom: 2,
+    },
+    cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    name: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    stateCol: { alignItems: "flex-end", gap: 4 },
+    latency: { textAlign: "right" },
+    uptimeRow: {
+      flexDirection: "row",
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    uptimeCell: { flex: 1 },
+    uptimeValue: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+    },
+    strip: { flexDirection: "row", gap: 2, height: 26, marginTop: 14 },
+    bar: { flex: 1, borderRadius: 2 },
+    stripLegend: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 6,
+    },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    incident: { paddingVertical: 13, paddingHorizontal: 16, gap: 4 },
+    incidentTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+  }),
+);

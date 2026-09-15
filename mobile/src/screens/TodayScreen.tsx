@@ -4,7 +4,6 @@ import {
   inProgressEmpty,
   emptyPlans,
   overviewItems,
-  statusTones,
   type Item,
   type Plan,
 } from "@orbyn/core";
@@ -18,7 +17,7 @@ import {
   type ListHandlers,
 } from "../components/PlannerList";
 import { Bump, FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const COMING_UP = 5;
@@ -197,51 +196,53 @@ function Section({
   );
 }
 
-const s = StyleSheet.create({
-  stats: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -5,
-    marginBottom: 18,
-  },
-  statCell: { width: "50%", padding: 5 },
-  stat: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  statTop: { flexDirection: "row", alignItems: "center", gap: 7 },
-  statDot: { width: 7, height: 7, borderRadius: 4 },
-  statLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
-  statValue: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.text,
-    marginTop: 4,
-  },
-  emptyRow: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 22,
-  },
-  badge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-  text: { marginBottom: 18 },
-  plan: { flexDirection: "row", alignItems: "center", gap: 14 },
-  planText: { flex: 1, gap: 3 },
-  planButton: { marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    stats: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginHorizontal: -5,
+      marginBottom: 18,
+    },
+    statCell: { width: "50%", padding: 5 },
+    stat: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+    },
+    statTop: { flexDirection: "row", alignItems: "center", gap: 7 },
+    statDot: { width: 7, height: 7, borderRadius: 4 },
+    statLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    statValue: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: colors.text,
+      marginTop: 4,
+    },
+    emptyRow: {
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      marginBottom: 22,
+    },
+    badge: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 14,
+    },
+    text: { marginBottom: 18 },
+    plan: { flexDirection: "row", alignItems: "center", gap: 14 },
+    planText: { flex: 1, gap: 3 },
+    planButton: { marginBottom: 0 },
+  }),
+);

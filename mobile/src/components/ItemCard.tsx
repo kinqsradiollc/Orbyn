@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
-import { dateLabel, statusTones, type Item } from "@orbyn/core";
+import { dateLabel, type Item } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { PlanningMeta } from "./PlanningMeta";
 import { StatusPill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
 import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed, statusTones } from "../theme";
 
 /**
  * One planner row: quick-complete checkbox, title, status pill, a slim progress
@@ -129,89 +129,95 @@ export function ItemCard({
   );
 }
 
-const s = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 1.5,
-    borderColor: "#cfd7ce",
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 1,
-  },
-  checked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  checkLocked: { opacity: 0.5 },
-  main: { flex: 1 },
-  top: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  title: {
-    flex: 1,
-    fontFamily: fonts.medium,
-    fontSize: 15,
-    lineHeight: 20,
-    color: colors.text,
-  },
-  done: { color: colors.faint, textDecorationLine: "line-through" },
-  meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
-  metaText: {
-    flexShrink: 1,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    color: colors.muted,
-  },
-  high: {
-    fontFamily: fonts.semibold,
-    fontSize: 11,
-    color: colors.highText,
-    backgroundColor: colors.highBg,
-    borderRadius: radii.pill,
-    overflow: "hidden",
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    marginLeft: 3,
-  },
-  team: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    flexShrink: 1,
-    maxWidth: 140,
-    backgroundColor: colors.accentSoft,
-    borderRadius: radii.pill,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginLeft: 3,
-  },
-  teamText: { fontFamily: fonts.semibold, fontSize: 10, color: colors.accent },
-  progress: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 10,
-  },
-  percent: {
-    minWidth: 34,
-    textAlign: "right",
-    fontFamily: fonts.semibold,
-    fontSize: 11,
-    color: colors.textSoft,
-  },
-  footer: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    color: colors.muted,
-    marginTop: 6,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    row: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 14,
+      paddingVertical: 15,
+      paddingHorizontal: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 1,
+    },
+    checked: { backgroundColor: colors.accent, borderColor: colors.accent },
+    checkLocked: { opacity: 0.5 },
+    main: { flex: 1 },
+    top: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+    title: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      lineHeight: 20,
+      color: colors.text,
+    },
+    done: { color: colors.faint, textDecorationLine: "line-through" },
+    meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
+    metaText: {
+      flexShrink: 1,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      color: colors.muted,
+    },
+    high: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.highText,
+      backgroundColor: colors.highBg,
+      borderRadius: radii.pill,
+      overflow: "hidden",
+      paddingHorizontal: 7,
+      paddingVertical: 1,
+      marginLeft: 3,
+    },
+    team: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      flexShrink: 1,
+      maxWidth: 140,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.pill,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      marginLeft: 3,
+    },
+    teamText: {
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      color: colors.accent,
+    },
+    progress: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginTop: 10,
+    },
+    percent: {
+      minWidth: 34,
+      textAlign: "right",
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.textSoft,
+    },
+    footer: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      color: colors.muted,
+      marginTop: 6,
+    },
+  }),
+);

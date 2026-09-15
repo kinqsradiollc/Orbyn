@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { Icon } from "../../components/Icon";
 import { animateLayout } from "../../motion";
-import { colors, fonts, radii } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
 /** A card with a tappable header that shows or hides its fields. */
@@ -101,74 +101,78 @@ export function RemoveButton({
   );
 }
 
-export const bookingStyles = StyleSheet.create({
-  rowTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  eyebrow: { marginTop: 8 },
-  top: { marginTop: 6 },
-  gap: { marginBottom: 12 },
-  last: { marginBottom: 0 },
-  pair: { flexDirection: "row", alignItems: "center", gap: 8 },
-  half: { flex: 1 },
-  multiline: { minHeight: 80 },
-});
+export const bookingStyles = themed(() =>
+  StyleSheet.create({
+    rowTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    eyebrow: { marginTop: 8 },
+    top: { marginTop: 6 },
+    gap: { marginBottom: 12 },
+    last: { marginBottom: 0 },
+    pair: { flexDirection: "row", alignItems: "center", gap: 8 },
+    half: { flex: 1 },
+    multiline: { minHeight: 80 },
+  }),
+);
 
-const s = StyleSheet.create({
-  section: { padding: 0, overflow: "hidden" },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 16,
-    letterSpacing: -0.3,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  open: { transform: [{ rotate: "90deg" }] },
-  body: { paddingHorizontal: 18, paddingBottom: 18, paddingTop: 2 },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 18,
-  },
-  rowTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  remove: {
-    width: 44,
-    height: 50,
-    borderRadius: radii.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    section: { padding: 0, overflow: "hidden" },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 18,
+      paddingVertical: 16,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    title: {
+      fontFamily: fonts.display,
+      fontSize: 16,
+      letterSpacing: -0.3,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    open: { transform: [{ rotate: "90deg" }] },
+    body: { paddingHorizontal: 18, paddingBottom: 18, paddingTop: 2 },
+    switchRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 16,
+      marginBottom: 18,
+    },
+    rowTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    remove: {
+      width: 44,
+      height: 50,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

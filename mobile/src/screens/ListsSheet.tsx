@@ -20,7 +20,7 @@ import { LIST_COLORS } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const COLOR_NAMES = [
@@ -328,59 +328,61 @@ function Swatches({
   );
 }
 
-const s = StyleSheet.create({
-  intro: { marginTop: 0, marginBottom: 18 },
-  center: { textAlign: "center" },
-  eyebrow: { marginTop: 4 },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 52,
-    paddingHorizontal: 16,
-  },
-  pressed: { backgroundColor: colors.surfaceMuted },
-  rowName: {
-    flex: 1,
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-  },
-  swatchDot: { width: 12, height: 12, borderRadius: 6 },
-  edit: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
-  renameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rename: { flex: 1, minHeight: 44, paddingVertical: 10 },
-  delete: { marginBottom: 0 },
-  gap: { marginBottom: 12 },
-  add: { marginTop: 14, marginBottom: 0 },
-  swatches: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  swatch: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  swatchOn: { borderColor: colors.text },
-  swatchFill: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    intro: { marginTop: 0, marginBottom: 18 },
+    center: { textAlign: "center" },
+    eyebrow: { marginTop: 4 },
+    card: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 52,
+      paddingHorizontal: 16,
+    },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    rowName: {
+      flex: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    swatchDot: { width: 12, height: 12, borderRadius: 6 },
+    edit: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
+    renameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rename: { flex: 1, minHeight: 44, paddingVertical: 10 },
+    delete: { marginBottom: 0 },
+    gap: { marginBottom: 12 },
+    add: { marginTop: 14, marginBottom: 0 },
+    swatches: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    swatch: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: "transparent",
+    },
+    swatchOn: { borderColor: colors.text },
+    swatchFill: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+  }),
+);

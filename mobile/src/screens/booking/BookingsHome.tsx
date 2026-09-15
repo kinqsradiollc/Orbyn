@@ -27,7 +27,7 @@ import { client } from "../../lib/api";
 import { minutesLabel, shareText, slotLabel } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { FadeIn, animateLayout } from "../../motion";
-import { colors, fonts, radii } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { EMPTY_VIEW, STATUS, VIEWS, VIEW_LABELS, bookingLink } from "./helpers";
 import { bookingStyles as bs } from "./ui";
@@ -302,7 +302,7 @@ function Stats({ stats }: { stats: BookingStats | null }) {
           accessible
           accessibilityLabel={`${t.label}: ${t.value ?? "loading"}`}
         >
-          <Text style={[s.statValue, t.warn && { color: "#a3742b" }]}>
+          <Text style={[s.statValue, t.warn && { color: colors.warning }]}>
             {t.value ?? "–"}
           </Text>
           <Text style={shared.small} numberOfLines={1}>
@@ -436,55 +436,60 @@ function PageList({
   );
 }
 
-const s = StyleSheet.create({
-  gap: { height: 14 },
-  intro: { marginTop: 0, marginBottom: 18 },
-  center: { textAlign: "center" },
-  stats: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  stat: {
-    flexGrow: 1,
-    flexBasis: "30%",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-  },
-  statWarn: { backgroundColor: "#fbf3e2", borderColor: "#f1e2bf" },
-  statValue: {
-    fontFamily: fonts.display,
-    fontSize: 20,
-    letterSpacing: -0.4,
-    color: colors.text,
-  },
-  search: { marginBottom: 12, justifyContent: "center" },
-  searchIcon: { position: "absolute", left: 15, zIndex: 1 },
-  searchInput: { paddingLeft: 42 },
-  pageScroll: { marginHorizontal: -20, marginTop: 12 },
-  pageChips: { paddingHorizontal: 20 },
-  noWrap: { flexWrap: "nowrap" },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  pill: { flexDirection: "row" },
-  pageRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingTop: 14,
-    paddingBottom: 6,
-    paddingHorizontal: 16,
-  },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  rowActions: {
-    flexDirection: "row",
-    paddingLeft: 36,
-    paddingRight: 16,
-    paddingBottom: 12,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    gap: { height: 14 },
+    intro: { marginTop: 0, marginBottom: 18 },
+    center: { textAlign: "center" },
+    stats: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+    stat: {
+      flexGrow: 1,
+      flexBasis: "30%",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    statWarn: {
+      backgroundColor: colors.warningSoft,
+      borderColor: colors.warningBorder,
+    },
+    statValue: {
+      fontFamily: fonts.display,
+      fontSize: 20,
+      letterSpacing: -0.4,
+      color: colors.text,
+    },
+    search: { marginBottom: 12, justifyContent: "center" },
+    searchIcon: { position: "absolute", left: 15, zIndex: 1 },
+    searchInput: { paddingLeft: 42 },
+    pageScroll: { marginHorizontal: -20, marginTop: 12 },
+    pageChips: { paddingHorizontal: 20 },
+    noWrap: { flexWrap: "nowrap" },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+    },
+    pill: { flexDirection: "row" },
+    pageRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingTop: 14,
+      paddingBottom: 6,
+      paddingHorizontal: 16,
+    },
+    dot: { width: 10, height: 10, borderRadius: 5 },
+    rowActions: {
+      flexDirection: "row",
+      paddingLeft: 36,
+      paddingRight: 16,
+      paddingBottom: 12,
+    },
+  }),
+);

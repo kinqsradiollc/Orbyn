@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Alert,
   Animated,
   Linking,
@@ -7,6 +8,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type AlertButton,
 } from "react-native";
 import {
   addMonths,
@@ -18,13 +20,17 @@ import {
   emptyDay,
   motion,
   sameDay,
-  statusTones,
   type CalendarEntry,
+  type CalendarSet,
   type CalendarView,
   type Item,
+  type Plan,
+  type PlannerPrefs,
   type TimeBlock,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { celebrate } from "../components/Celebration";
+import { Chip, ChipRow } from "../components/Chip";
 import {
   PlannerList,
   SectionHeading,
@@ -33,6 +39,7 @@ import {
 import { Icon } from "../components/Icon";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
+import { readLocal, saveLocal } from "../lib/localPrefs";
 import { canJoin, rangeLabel, shortDay, slotLabel } from "../lib/planning";
 import {
   FadeIn,
@@ -41,14 +48,18 @@ import {
   easeOut,
   isReducedMotion,
 } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, statusTones, themed } from "../theme";
 import { shared } from "../styles";
 import { addDays, startOfWeek } from "./calendar/dates";
 import { DayTimeline, type TimelineSlot } from "./calendar/DayTimeline";
+import { MoveBlockSheet } from "./calendar/MoveBlockSheet";
 import { WeekStrip } from "./calendar/WeekStrip";
 
 type Mode = "week" | "month";
 type Act = (fn: () => Promise<void>) => Promise<void>;
+
+/** The calendar set last shown on this device ("" for everything). */
+const SET_KEY = "orbyn-calendar-set";
 
 /** An item as a calendar entry, for when the calendar view isn't loaded. */
 const entryFromItem = (i: Item): CalendarEntry => ({
@@ -71,22 +82,45 @@ const entryFromItem = (i: Item): CalendarEntry => ({
 
 const onDay = (iso: string, day: Date) => sameDay(new Date(iso), day);
 
+/** Whether a calendar set shows something; no set shows everything (as on the web). */
+function inSet(
+  set: CalendarSet | null,
+  x: { team_id: string | null; list_id: string | null },
+) {
+  if (!set) return true;
+  const place = x.team_id ? set.team_ids.includes(x.team_id) : set.personal;
+  const list =
+    !set.list_ids.length || (!!x.list_id && set.list_ids.includes(x.list_id));
+  return place && list;
+}
+
 /**
  * A swipeable week strip (or the Sunday-first month grid), then the selected
  * day as an hour-by-hour timeline and a list of its plans with progress. The
  * week comes from the calendar view: repeating items as occurrences, time
- * blocks, and buffers and travel around events.
+ * blocks, and buffers and travel around events. A calendar set narrows what
+ * shows; extra time zones from the planning settings label the hours. A plan
+ * preview shows as faint blocks until it's applied or discarded.
  */
 export function CalendarScreen({
   items,
   act,
   onChanged,
+  preview,
+  onPreviewDone,
+  onDragging,
   ...handlers
 }: ListHandlers & {
   items: Item[];
   act: Act;
   /** Refresh the planner after a change that moves an item (skipping). */
   onChanged: () => void;
+  /** A plan to preview on the timeline (not saved yet). */
+  preview: Plan | null;
+  /** The preview was applied or discarded. */
+  onPreviewDone: () => void;
+  /** True while a block is being dragged, so the page holds still. */
+  onDragging: (active: boolean) => void;
 }) {
   const [mode, setMode] = useState<Mode>("week");
   const [selected, setSelected] = useState(() => new Date());
@@ -95,10 +129,13 @@ export function CalendarScreen({
     start: number;
     data: CalendarView;
   } | null>(null);
+  const [prefs, setPrefs] = useState<PlannerPrefs | null>(null);
+  const [setId, setSetId] = useState(() => readLocal(SET_KEY) ?? "");
+  /** The block in the "Move to…" sheet. */
+  const [moving, setMoving] = useState<TimeBlock | null>(null);
   /** Bumped after a block or occurrence changes, to reload the week. */
   const [version, setVersion] = useState(0);
   const now = useNow(30_000);
-  const dayItems = itemsOnDay(items, selected).sort(byDueDate);
 
   // One request per week shown, and again only when the planner's items
   // actually change (unchanged polls keep the same array) or after an edit.
@@ -118,8 +155,52 @@ export function CalendarScreen({
   }, [weekStart, items, version]);
   const week = view && view.start === weekStart ? view.data : null;
 
+  // Calendar sets and extra time zones live in the planning settings.
+  useEffect(() => {
+    let alive = true;
+    client
+      .getPlannerPrefs()
+      .then((p) => alive && setPrefs(p))
+      .catch(() => {
+        // Without settings the calendar shows everything in local time.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [version]);
+
+  // A new preview jumps to its first planned day.
+  const previewId = preview?.id;
+  useEffect(() => {
+    if (!preview?.blocks.length) return;
+    const first = new Date(
+      Math.min(...preview.blocks.map((b) => Date.parse(b.start_at))),
+    );
+    setSelected(first);
+    setMonth(first);
+    // Only when a different plan arrives, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewId]);
+
+  const sets = prefs?.calendar_sets ?? [];
+  const activeSet = sets.find((set) => set.id === setId) ?? null;
+  const chooseSet = (id: string) => {
+    animateLayout();
+    setSetId(id);
+    saveLocal(SET_KEY, id);
+  };
+  const zones = (prefs?.extra_timezones ?? []).slice(0, 3);
+
+  const shownItems = items.filter((i) =>
+    inSet(activeSet, { team_id: i.team_id, list_id: i.list_id ?? null }),
+  );
+  const dayItems = itemsOnDay(shownItems, selected).sort(byDueDate);
+  const entries = (week?.entries ?? []).filter((e) => inSet(activeSet, e));
+  const blocks = (week?.blocks ?? []).filter((b) => inSet(activeSet, b));
+  const shownIds = new Set(entries.map((e) => e.item_id));
+
   const dayEntries = week
-    ? week.entries.filter((e) => onDay(e.start_at, selected))
+    ? entries.filter((e) => onDay(e.start_at, selected))
     : dayItems.map(entryFromItem);
   const slots: TimelineSlot[] = [
     ...dayEntries.map((entry): TimelineSlot => ({
@@ -130,7 +211,7 @@ export function CalendarScreen({
       kind: entry.kind,
       entry,
     })),
-    ...(week?.blocks ?? [])
+    ...blocks
       .filter((b) => onDay(b.start_at, selected))
       .map((block): TimelineSlot => ({
         type: "block",
@@ -142,16 +223,25 @@ export function CalendarScreen({
       })),
   ];
   const derived = (week?.derived ?? []).filter(
-    (d) => onDay(d.start_at, selected) || onDay(d.end_at, selected),
+    (d) =>
+      shownIds.has(d.item_id) &&
+      (onDay(d.start_at, selected) || onDay(d.end_at, selected)),
   );
-  const joinable = (week?.entries ?? []).filter((e) => canJoin(e, now));
+  const ghosts =
+    preview && !preview.applied
+      ? preview.blocks.filter((b) => onDay(b.start_at, selected))
+      : [];
+  const joinable = entries.filter((e) => canJoin(e, now));
 
   const plansOn = (day: Date) =>
     week
-      ? week.entries
+      ? entries
           .filter((e) => onDay(e.start_at, day))
           .map((e) => ({ key: `${e.item_id}-${e.start_at}`, status: e.status }))
-      : itemsOnDay(items, day).map((i) => ({ key: i.id, status: i.status }));
+      : itemsOnDay(shownItems, day).map((i) => ({
+          key: i.id,
+          status: i.status,
+        }));
 
   const openItem = (itemId: string) => {
     const item = items.find((i) => i.id === itemId);
@@ -159,8 +249,59 @@ export function CalendarScreen({
     else void act(async () => handlers.onOpen(await client.getItem(itemId)));
   };
   const reload = () => setVersion((v) => v + 1);
-  const blockMenu = (block: TimeBlock) =>
-    Alert.alert(block.title, slotLabel(block.start_at, block.end_at), [
+
+  /** Save a block's new times; it shows there at once and the reload confirms. */
+  const saveBlock = (block: TimeBlock, start: Date, end: Date) => {
+    const start_at = start.toISOString();
+    const end_at = end.toISOString();
+    setView(
+      (v) =>
+        v && {
+          ...v,
+          data: {
+            ...v.data,
+            blocks: v.data.blocks.map((b) =>
+              b.id === block.id ? { ...b, start_at, end_at } : b,
+            ),
+          },
+        },
+    );
+    void act(async () => {
+      try {
+        await client.updateBlock(block.id, { start_at, end_at });
+        AccessibilityInfo.announceForAccessibility(
+          `${block.title} moved to ${slotLabel(start_at, end_at)}`,
+        );
+      } finally {
+        // On an error this puts the block back where it was.
+        reload();
+      }
+    });
+  };
+
+  const blockMenu = (block: TimeBlock) => {
+    const item = items.find((i) => i.id === block.item_id);
+    const canFinish =
+      block.status !== "done" &&
+      (!item || !handlers.canToggle || handlers.canToggle(item));
+    const buttons: AlertButton[] = [
+      ...(canFinish
+        ? [
+            {
+              text: "Mark task done",
+              onPress: () =>
+                void act(async () => {
+                  await client.postItemUpdate(block.item_id, {
+                    status: "done",
+                  });
+                  celebrate(block.title);
+                  reload();
+                  onChanged();
+                }),
+            },
+          ]
+        : []),
+      { text: "Move to…", onPress: () => setMoving(block) },
       {
         text: "Move to next free time",
         onPress: () =>
@@ -179,7 +320,9 @@ export function CalendarScreen({
           }),
       },
       { text: "Cancel", style: "cancel" },
-    ]);
+    ];
+    Alert.alert(block.title, slotLabel(block.start_at, block.end_at), buttons);
+  };
   const entryMenu = (entry: CalendarEntry) =>
     Alert.alert(
       entry.title,
@@ -200,6 +343,19 @@ export function CalendarScreen({
       ],
     );
 
+  const applyPreview = () =>
+    act(async () => {
+      if (!preview) return;
+      const result = await client.applyPlan(preview.id);
+      onPreviewDone();
+      reload();
+      onChanged();
+      const n = result.blocks.length;
+      AccessibilityInfo.announceForAccessibility(
+        `Plan saved. ${n} block${n === 1 ? "" : "s"} added${result.skipped ? `; ${result.skipped} skipped because the time is taken` : ""}.`,
+      );
+    });
+
   const select = (day: Date) => {
     setSelected(day);
     if (day.getMonth() !== month.getMonth()) setMonth(day);
@@ -217,8 +373,44 @@ export function CalendarScreen({
     year: "numeric",
   });
   const unit = mode === "week" ? "week" : "month";
+  const planned = preview?.blocks.length ?? 0;
   return (
     <>
+      {preview && !preview.applied && (
+        <FadeIn style={shared.card}>
+          <View style={s.previewHead}>
+            <Icon name="sparkles" size={16} color={colors.accent} />
+            <Text style={shared.sectionTitle} accessibilityRole="header">
+              Plan preview
+            </Text>
+          </View>
+          <Text style={[shared.small, s.previewText]}>
+            {planned} block{planned === 1 ? "" : "s"} proposed
+            {preview.days > 1 ? ` over ${preview.days} days` : ""}. The faint
+            blocks on the timeline show where they’d go. Nothing is saved until
+            you apply the plan.
+          </Text>
+          <View style={s.previewActions}>
+            <Button
+              title={handlers.busy ? "Saving…" : "Apply plan"}
+              icon="check"
+              disabled={handlers.busy || planned === 0}
+              style={s.previewButton}
+              onPress={() => void applyPreview()}
+            />
+            <Button
+              secondary
+              title="Discard"
+              disabled={handlers.busy}
+              style={s.previewButton}
+              onPress={() => {
+                animateLayout();
+                onPreviewDone();
+              }}
+            />
+          </View>
+        </FadeIn>
+      )}
       {joinable.length > 0 && (
         <FadeIn style={[shared.card, s.join]}>
           <Text style={shared.label}>Happening now</Text>
@@ -301,6 +493,23 @@ export function CalendarScreen({
             </Text>
           </PressableScale>
         </View>
+        {sets.length > 0 && (
+          <ChipRow label="Calendar set" style={s.sets}>
+            <Chip
+              label="Everything"
+              selected={!activeSet}
+              onPress={() => chooseSet("")}
+            />
+            {sets.map((set) => (
+              <Chip
+                key={set.id}
+                label={set.name}
+                selected={activeSet?.id === set.id}
+                onPress={() => chooseSet(set.id)}
+              />
+            ))}
+          </ChipRow>
+        )}
         {mode === "week" ? (
           <WeekStrip
             selected={selected}
@@ -312,7 +521,7 @@ export function CalendarScreen({
           <MonthGrid
             month={month}
             selected={selected}
-            items={items}
+            items={shownItems}
             onSelect={select}
           />
         )}
@@ -325,17 +534,21 @@ export function CalendarScreen({
           count={dayEntries.length}
           hint={
             sameDay(selected, new Date())
-              ? "Today, hour by hour. Long-press a block or repeat for options."
-              : "Hour by hour. Long-press a block or repeat for options."
+              ? "Today, hour by hour. Hold a block to drag it or see options."
+              : "Hour by hour. Hold a block to drag it or see options."
           }
         />
         <DayTimeline
           day={selected}
           slots={slots}
+          ghosts={ghosts}
           derived={derived}
+          zones={zones}
           onOpen={openItem}
           onBlockMenu={blockMenu}
           onEntryMenu={entryMenu}
+          onMoveBlock={saveBlock}
+          onDragging={onDragging}
         />
         <PlannerList
           visible={dayItems}
@@ -344,6 +557,20 @@ export function CalendarScreen({
           {...handlers}
         />
       </FadeIn>
+      <MoveBlockSheet
+        block={moving}
+        onClose={() => setMoving(null)}
+        onSave={async (start, end) => {
+          if (!moving) return;
+          await client.updateBlock(moving.id, {
+            start_at: start.toISOString(),
+            end_at: end.toISOString(),
+          });
+          setMoving(null);
+          select(start);
+          reload();
+        }}
+      />
     </>
   );
 }
@@ -447,68 +674,80 @@ function SelectedPill() {
   );
 }
 
-const s = StyleSheet.create({
-  calendar: { padding: 12, marginBottom: 22 },
-  join: { paddingVertical: 14 },
-  joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-  joinButton: { marginBottom: 0, minHeight: 44 },
-  heading: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    paddingLeft: 6,
-  },
-  headingText: { flex: 1 },
-  control: { padding: 8, minHeight: 44, justifyContent: "center" },
-  todayLabel: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.accent,
-  },
-  toggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    minHeight: 32,
-    marginLeft: 4,
-    paddingHorizontal: 10,
-    borderRadius: radii.pill,
-    backgroundColor: colors.accentSoft,
-  },
-  toggleText: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.accent,
-  },
-  week: { flexDirection: "row" },
-  weekday: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: fonts.medium,
-    fontSize: 10,
-    color: colors.muted,
-    marginBottom: 9,
-  },
-  day: {
-    flex: 1,
-    minHeight: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-    margin: 1,
-  },
-  selected: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 10,
-    backgroundColor: colors.accent,
-  },
-  today: { backgroundColor: colors.accentSoft },
-  dayText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
-  dots: { height: 7, flexDirection: "row", gap: 3, marginTop: 4 },
-  dot: { width: 5, height: 5, borderRadius: radii.pill },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    calendar: { padding: 12, marginBottom: 22 },
+    previewHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 6,
+    },
+    previewText: { marginBottom: 14 },
+    previewActions: { flexDirection: "row", gap: 10 },
+    previewButton: { flex: 1, marginBottom: 0 },
+    join: { paddingVertical: 14 },
+    joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    joinButton: { marginBottom: 0, minHeight: 44 },
+    heading: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 8,
+      paddingLeft: 6,
+    },
+    headingText: { flex: 1 },
+    sets: { paddingHorizontal: 4, marginBottom: 10 },
+    control: { padding: 8, minHeight: 44, justifyContent: "center" },
+    todayLabel: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.accent,
+    },
+    toggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      minHeight: 32,
+      marginLeft: 4,
+      paddingHorizontal: 10,
+      borderRadius: radii.pill,
+      backgroundColor: colors.accentSoft,
+    },
+    toggleText: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.accent,
+    },
+    week: { flexDirection: "row" },
+    weekday: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      color: colors.muted,
+      marginBottom: 9,
+    },
+    day: {
+      flex: 1,
+      minHeight: 48,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 10,
+      margin: 1,
+    },
+    selected: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 10,
+      backgroundColor: colors.accent,
+    },
+    today: { backgroundColor: colors.accentSoft },
+    dayText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+    dots: { height: 7, flexDirection: "row", gap: 3, marginTop: 4 },
+    dot: { width: 5, height: 5, borderRadius: radii.pill },
+  }),
+);

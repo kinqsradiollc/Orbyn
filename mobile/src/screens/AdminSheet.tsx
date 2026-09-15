@@ -27,7 +27,7 @@ import { SmallAction } from "../components/SmallAction";
 import { TeamList } from "../components/TeamList";
 import { client } from "../lib/api";
 import { FadeIn } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AdminAi } from "./AdminAi";
 import { AdminSystem } from "./AdminSystem";
@@ -395,50 +395,56 @@ function auditTarget(a: AuditEntry) {
   return label ? `${a.target_type} · ${label}` : a.target_type;
 }
 
-const s = StyleSheet.create({
-  spacer: { height: 18 },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  tile: {
-    flexGrow: 1,
-    flexBasis: "45%",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    padding: 16,
-  },
-  tileValue: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  search: { marginBottom: 10, justifyContent: "center" },
-  searchIcon: { position: "absolute", left: 15, zIndex: 1 },
-  searchInput: { paddingLeft: 42 },
-  caption: { marginBottom: 10 },
-  list: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  userRow: { paddingVertical: 14, paddingHorizontal: 16, gap: 10 },
-  userTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  userName: {
-    fontFamily: fonts.semibold,
-    fontSize: 15,
-    color: colors.text,
-    marginBottom: 1,
-  },
-  pills: { gap: 5, alignItems: "flex-end" },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  auditRow: { paddingVertical: 13, paddingHorizontal: 16, gap: 2 },
-  auditAction: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    spacer: { height: 18 },
+    grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    tile: {
+      flexGrow: 1,
+      flexBasis: "45%",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      padding: 16,
+    },
+    tileValue: {
+      fontFamily: fonts.display,
+      fontSize: 26,
+      color: colors.text,
+      marginBottom: 2,
+    },
+    search: { marginBottom: 10, justifyContent: "center" },
+    searchIcon: { position: "absolute", left: 15, zIndex: 1 },
+    searchInput: { paddingLeft: 42 },
+    caption: { marginBottom: 10 },
+    list: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      overflow: "hidden",
+      marginBottom: 16,
+    },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    userRow: { paddingVertical: 14, paddingHorizontal: 16, gap: 10 },
+    userTop: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+    userName: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 1,
+    },
+    pills: { gap: 5, alignItems: "flex-end" },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    auditRow: { paddingVertical: 13, paddingHorizontal: 16, gap: 2 },
+    auditAction: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+  }),
+);

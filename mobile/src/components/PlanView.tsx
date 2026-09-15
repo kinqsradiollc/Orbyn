@@ -6,7 +6,7 @@ import { Pill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
 import { dateLabel } from "@orbyn/core";
 import { minutesLabel, rangeLabel, shortDay } from "../lib/planning";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Blocks grouped by the day they start, in time order. */
@@ -133,7 +133,7 @@ function TaskNotes({
         <Icon
           name={icon}
           size={14}
-          color={tone === "warning" ? "#a3742b" : colors.muted}
+          color={tone === "warning" ? colors.warning : colors.muted}
         />
         <Text style={s.notesTitle} accessibilityRole="header">
           {title}
@@ -153,50 +153,56 @@ function TaskNotes({
   );
 }
 
-const s = StyleSheet.create({
-  capacity: { gap: 8, marginTop: 12, marginBottom: 6 },
-  capacityText: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.textSoft,
-  },
-  gap: { marginTop: 10 },
-  day: {
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: 10,
-  },
-  dayTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 12,
-    color: colors.muted,
-    marginBottom: 2,
-  },
-  block: { flexDirection: "row", gap: 10, paddingVertical: 8 },
-  divider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  time: {
-    width: 118,
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    color: colors.accent,
-    paddingTop: 1,
-  },
-  blockMain: { flex: 1 },
-  blockTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
-  notes: { marginTop: 14 },
-  notesHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-  notesTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.text,
-  },
-  note: { paddingVertical: 6 },
-  noteTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    capacity: { gap: 8, marginTop: 12, marginBottom: 6 },
+    capacityText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    gap: { marginTop: 10 },
+    day: {
+      backgroundColor: colors.background,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      marginTop: 10,
+    },
+    dayTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      color: colors.muted,
+      marginBottom: 2,
+    },
+    block: { flexDirection: "row", gap: 10, paddingVertical: 8 },
+    divider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    time: {
+      width: 118,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.accent,
+      paddingTop: 1,
+    },
+    blockMain: { flex: 1 },
+    blockTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.text,
+    },
+    notes: { marginTop: 14 },
+    notesHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+    notesTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    note: { paddingVertical: 6 },
+    noteTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+  }),
+);

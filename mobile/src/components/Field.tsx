@@ -13,7 +13,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { clockDisplay, clockText } from "../lib/planning";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** A labelled form row with an optional hint underneath. */
@@ -265,43 +265,45 @@ export function TimeField({
   );
 }
 
-const s = StyleSheet.create({
-  field: { marginBottom: 18 },
-  hint: { marginTop: 8 },
-  numberRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  number: { width: 110 },
-  suffix: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
-  pickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pick: {
-    flex: 1,
-    minHeight: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.input,
-    paddingHorizontal: 15,
-  },
-  pickActive: { borderColor: colors.accent },
-  pickText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
-  clear: {
-    width: 44,
-    height: 50,
-    borderRadius: radii.input,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  pickerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 12,
-    marginTop: 10,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    field: { marginBottom: 18 },
+    hint: { marginTop: 8 },
+    numberRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    number: { width: 110 },
+    suffix: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
+    pickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    pick: {
+      flex: 1,
+      minHeight: 50,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      paddingHorizontal: 15,
+    },
+    pickActive: { borderColor: colors.accent },
+    pickText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    clear: {
+      width: 44,
+      height: 50,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    pickerCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radii.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+      marginTop: 10,
+    },
+  }),
+);

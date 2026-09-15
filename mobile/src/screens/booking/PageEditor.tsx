@@ -32,7 +32,7 @@ import {
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { animateLayout } from "../../motion";
-import { colors, fonts } from "../../theme";
+import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { AvailabilityEditor, type OverrideDraft } from "./AvailabilityEditor";
 import {
@@ -743,32 +743,34 @@ export function PageEditor({
   );
 }
 
-const s = StyleSheet.create({
-  linkCard: { padding: 16 },
-  link: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: colors.accent,
-    marginBottom: 12,
-  },
-  seeBookings: { marginTop: 10, marginBottom: 0 },
-  swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  swatch: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  swatchOn: { borderWidth: 3, borderColor: colors.surface },
-  hexRow: { marginTop: 14 },
-  preview: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  hosts: { marginTop: 14 },
-  problem: { textAlign: "center", marginBottom: 10 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    linkCard: { padding: 16 },
+    link: {
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      color: colors.accent,
+      marginBottom: 12,
+    },
+    seeBookings: { marginTop: 10, marginBottom: 0 },
+    swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    swatch: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    swatchOn: { borderWidth: 3, borderColor: colors.surface },
+    hexRow: { marginTop: 14 },
+    preview: {
+      width: 50,
+      height: 50,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    hosts: { marginTop: 14 },
+    problem: { textAlign: "center", marginBottom: 10 },
+  }),
+);

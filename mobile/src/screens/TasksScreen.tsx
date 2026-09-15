@@ -7,7 +7,6 @@ import {
   sameDay,
   statusLabels,
   statusOrder,
-  statusTones,
   type Item,
   type Priority,
   type Status,
@@ -30,9 +29,11 @@ import {
   sizeOf,
   type Size,
 } from "../lib/planning";
+import { readLocal, saveLocal } from "../lib/localPrefs";
 import { usePlanning } from "../lib/planningContext";
+import { isOverdue } from "../lib/progress";
 import { animateLayout, PressableScale } from "../motion";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 /** Case-insensitive match against the item's title and notes together. */
@@ -44,7 +45,7 @@ const STATUS_FILTERS: StatusFilter[] = ["all", ...statusOrder];
 const statusFilterLabel = (f: StatusFilter) =>
   f === "all" ? "All" : statusLabels[f];
 
-type Due = "any" | "overdue" | "today" | "week" | "none";
+type Due = "any" | "overdue" | "today" | "tomorrow" | "soon" | "week" | "none";
 type Group = "none" | "list" | "tag" | "size";
 type Filters = {
   due: Due;
@@ -91,6 +92,8 @@ const DUE_LABELS: Record<Due, string> = {
   any: "Any time",
   overdue: "Overdue",
   today: "Today",
+  tomorrow: "Tomorrow",
+  soon: "Due soon",
   week: "Next 7 days",
   none: "No date",
 };
@@ -105,6 +108,23 @@ const GROUP_LABELS: Record<Group, string> = {
   list: "By list",
   tag: "By tag",
   size: "By size",
+};
+
+/** Sections pinned above the list. Overdue tasks always get one. */
+type Pin = "today" | "tomorrow" | "soon";
+const PINS: Pin[] = ["today", "tomorrow", "soon"];
+const PIN_LABELS: Record<Pin, string> = {
+  today: "Today",
+  tomorrow: "Tomorrow",
+  soon: "Due soon",
+};
+const PIN_KEY = "orbyn-task-pins";
+/** The pins chosen on this device; all of them until someone changes it. */
+const savedPins = (): Pin[] => {
+  const raw = readLocal(PIN_KEY);
+  if (raw === null) return PINS;
+  const chosen = raw.split(",");
+  return PINS.filter((p) => chosen.includes(p));
 };
 
 /**
@@ -130,7 +150,8 @@ export function TasksScreen({
   const { lists, tags, listById, tagById } = usePlanning();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filters, setFilters] = useState<Filters>(DEFAULTS);
-  const [open, setOpen] = useState<Key | null>(null);
+  const [open, setOpen] = useState<Key | "pins" | null>(null);
+  const [pins, setPins] = useState<Pin[]>(savedPins);
   const now = new Date();
   const weekEnd = dayStart(8, now);
 
@@ -149,6 +170,12 @@ export function TasksScreen({
         due < now &&
         i.status !== "done") ||
       (filters.due === "today" && !!due && sameDay(due, now)) ||
+      (filters.due === "tomorrow" && !!due && sameDay(due, dayStart(1, now))) ||
+      // Due soon: the rest of the next seven days, after today and tomorrow.
+      (filters.due === "soon" &&
+        !!due &&
+        due >= dayStart(2, now) &&
+        due < weekEnd) ||
       (filters.due === "week" &&
         !!due &&
         due >= dayStart(0, now) &&
@@ -233,7 +260,41 @@ export function TasksScreen({
     setFilters((f) => ({ ...f, [key]: value }));
   };
 
-  const groups = groupItems(visible, filters.group, {
+  // Pinned sections: open tasks by when they're due, each in one section only.
+  // A due filter is already a smart list, so it shows without them.
+  const pinnedAs = (i: Item): "overdue" | Pin | null => {
+    if (i.status === "done" || !i.due_at) return null;
+    if (isOverdue(i, now)) return "overdue";
+    const due = new Date(i.due_at);
+    if (sameDay(due, now)) return "today";
+    if (sameDay(due, dayStart(1, now))) return "tomorrow";
+    return due >= dayStart(2, now) && due < weekEnd ? "soon" : null;
+  };
+  const sections =
+    filters.due === "any"
+      ? (["overdue", ...PINS] as const)
+          .filter((key) => key === "overdue" || pins.includes(key))
+          .map((key) => ({
+            key,
+            items: visible.filter((i) => pinnedAs(i) === key),
+          }))
+          .filter((section) => section.items.length > 0)
+      : [];
+  const pinned = new Set(
+    sections.flatMap((section) => section.items.map((i) => i.id)),
+  );
+  const rest = visible.filter((i) => !pinned.has(i.id));
+  const togglePin = (p: Pin) => {
+    animateLayout();
+    const next = pins.includes(p)
+      ? pins.filter((x) => x !== p)
+      : PINS.filter((x) => x === p || pins.includes(x));
+    setPins(next);
+    // SecureStore can't keep an empty value.
+    saveLocal(PIN_KEY, next.join(",") || "none");
+  };
+
+  const groups = groupItems(rest, filters.group, {
     listName: (id) => listById.get(id)?.name,
     tagName: (id) => tagById.get(id)?.name,
   });
@@ -371,6 +432,30 @@ export function TasksScreen({
             </PressableScale>
           );
         })}
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Pinned sections: ${pins.length ? pins.map((p) => PIN_LABELS[p]).join(", ") : "overdue only"}`}
+          accessibilityHint="Shows the choices below"
+          accessibilityState={{ expanded: open === "pins" }}
+          onPress={() => {
+            animateLayout();
+            setOpen(open === "pins" ? null : "pins");
+          }}
+          style={[
+            s.filter,
+            pins.length > 0 && s.filterOn,
+            open === "pins" && s.filterOpen,
+          ]}
+        >
+          <Icon
+            name="pin"
+            size={12}
+            color={pins.length ? colors.accent : colors.muted}
+          />
+          <Text style={[s.filterText, pins.length > 0 && s.filterTextOn]}>
+            Pinned
+          </Text>
+        </PressableScale>
         {active.length > 0 && (
           <PressableScale
             accessibilityRole="button"
@@ -387,7 +472,7 @@ export function TasksScreen({
           </PressableScale>
         )}
       </ScrollView>
-      {open && (
+      {open && open !== "pins" && (
         <View style={s.panel}>
           <ChipRow label={KEY_LABELS[open]}>
             {options[open].map((o) => (
@@ -409,11 +494,49 @@ export function TasksScreen({
           )}
         </View>
       )}
+      {open === "pins" && (
+        <View style={s.panel}>
+          <ChipRow label="Pinned sections" multi>
+            {PINS.map((p) => (
+              <Chip
+                key={p}
+                multi
+                label={PIN_LABELS[p]}
+                selected={pins.includes(p)}
+                onPress={() => togglePin(p)}
+              />
+            ))}
+          </ChipRow>
+          <Text style={[shared.small, s.panelHint]}>
+            Pinned sections sit at the top of the list. Overdue tasks always do.
+          </Text>
+        </View>
+      )}
       <View style={s.toolbar}>
         <Text style={shared.small}>Most pressing first</Text>
         <SmallAction label="Lists" disabled={false} onPress={onManageLists} />
       </View>
 
+      {sections.map((section) => (
+        <View key={section.key}>
+          <SectionHeading
+            title={
+              section.key === "overdue" ? "Overdue" : PIN_LABELS[section.key]
+            }
+            count={section.items.length}
+            hint={
+              section.key === "overdue" ? "Past due and still open" : undefined
+            }
+          />
+          <ItemRows
+            items={section.items}
+            busy={handlers.busy}
+            onToggle={handlers.onToggle}
+            onOpen={handlers.onOpen}
+            canToggle={handlers.canToggle}
+          />
+        </View>
+      ))}
       {visible.length === 0 ? (
         <>
           <SectionHeading title={title} count={0} />
@@ -424,10 +547,17 @@ export function TasksScreen({
           />
         </>
       ) : (
+        rest.length > 0 &&
         groups.map((g) => (
           <View key={g.key}>
             <SectionHeading
-              title={filters.group === "none" ? title : g.title}
+              title={
+                filters.group !== "none"
+                  ? g.title
+                  : sections.length
+                    ? "Everything else"
+                    : title
+              }
               count={g.items.length}
             />
             <ItemRows
@@ -488,64 +618,66 @@ function groupItems(
   );
 }
 
-const s = StyleSheet.create({
-  search: { marginBottom: 12, justifyContent: "center" },
-  icon: { position: "absolute", left: 15, zIndex: 1 },
-  input: { paddingLeft: 42 },
-  chipScroll: { marginHorizontal: -20, marginBottom: 10 },
-  filterScroll: { marginHorizontal: -20, marginBottom: 12 },
-  chips: { gap: 8, paddingHorizontal: 20 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    minHeight: 36,
-    paddingHorizontal: 13,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  chipText: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    color: colors.textSoft,
-  },
-  chipCount: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
-  filter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    minHeight: 36,
-    paddingHorizontal: 12,
-    borderRadius: radii.input,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  filterOn: {
-    borderStyle: "solid",
-    borderColor: colors.softBorder,
-    backgroundColor: colors.accentSoft,
-  },
-  filterOpen: { borderColor: colors.accent },
-  filterText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
-  filterTextOn: { fontFamily: fonts.semibold, color: colors.accent },
-  panel: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.card,
-    padding: 12,
-    marginBottom: 12,
-  },
-  panelHint: { marginTop: 8 },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    search: { marginBottom: 12, justifyContent: "center" },
+    icon: { position: "absolute", left: 15, zIndex: 1 },
+    input: { paddingLeft: 42 },
+    chipScroll: { marginHorizontal: -20, marginBottom: 10 },
+    filterScroll: { marginHorizontal: -20, marginBottom: 12 },
+    chips: { gap: 8, paddingHorizontal: 20 },
+    chip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: 36,
+      paddingHorizontal: 13,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    dot: { width: 7, height: 7, borderRadius: 4 },
+    chipText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    chipCount: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    filter: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      minHeight: 36,
+      paddingHorizontal: 12,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    filterOn: {
+      borderStyle: "solid",
+      borderColor: colors.softBorder,
+      backgroundColor: colors.accentSoft,
+    },
+    filterOpen: { borderColor: colors.accent },
+    filterText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    filterTextOn: { fontFamily: fonts.semibold, color: colors.accent },
+    panel: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      padding: 12,
+      marginBottom: 12,
+    },
+    panelHint: { marginTop: 8 },
+    toolbar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 14,
+    },
+  }),
+);

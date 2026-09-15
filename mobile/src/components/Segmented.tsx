@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, fonts, radii } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 
 /**
  * iOS-style segmented control. With `wrap`, segments become chips that flow
@@ -71,53 +71,63 @@ export function Segmented<T extends string>({
   );
 }
 
-const s = StyleSheet.create({
-  segmented: {
-    flexDirection: "row",
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.input,
-    padding: 3,
-  },
-  wrap: { flexWrap: "wrap", gap: 3 },
-  disabled: { opacity: 0.6 },
-  segment: {
-    flex: 1,
-    minHeight: 40,
-    flexDirection: "row",
-    gap: 6,
-    borderRadius: radii.input - 3,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  chip: {
-    // Reset the segment's `flex: 1`: in Yoga it forces a zero flex basis, so
-    // chips would share one row at equal widths instead of wrapping.
-    flex: 0,
-    flexGrow: 1,
-    flexShrink: 0,
-    flexBasis: "auto",
-    paddingHorizontal: 14,
-  },
-  segmentActive: {
-    backgroundColor: colors.surface,
-    shadowColor: "#1d2b23",
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentText: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
-  capitalize: { textTransform: "capitalize" },
-  segmentTextActive: { fontFamily: fonts.semibold, color: colors.accent },
-  badge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    backgroundColor: colors.highText,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { fontFamily: fonts.semibold, fontSize: 11, color: colors.white },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    segmented: {
+      flexDirection: "row",
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.input,
+      padding: 3,
+    },
+    wrap: { flexWrap: "wrap", gap: 3 },
+    disabled: { opacity: 0.6 },
+    segment: {
+      flex: 1,
+      minHeight: 40,
+      flexDirection: "row",
+      gap: 6,
+      borderRadius: radii.input - 3,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 8,
+    },
+    chip: {
+      // Reset the segment's `flex: 1`: in Yoga it forces a zero flex basis, so
+      // chips would share one row at equal widths instead of wrapping.
+      flex: 0,
+      flexGrow: 1,
+      flexShrink: 0,
+      flexBasis: "auto",
+      paddingHorizontal: 14,
+    },
+    segmentActive: {
+      backgroundColor: colors.surface,
+      shadowColor: colors.shadow,
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    segmentText: {
+      fontFamily: fonts.medium,
+      fontSize: 14,
+      color: colors.muted,
+    },
+    capitalize: { textTransform: "capitalize" },
+    segmentTextActive: { fontFamily: fonts.semibold, color: colors.accent },
+    badge: {
+      minWidth: 20,
+      height: 20,
+      borderRadius: 10,
+      paddingHorizontal: 6,
+      backgroundColor: colors.highText,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    badgeText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.white,
+    },
+  }),
+);

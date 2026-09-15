@@ -8,7 +8,7 @@ import { client } from "../lib/api";
 import { minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 /**
@@ -141,16 +141,18 @@ export function ReviewCard({
   );
 }
 
-const s = StyleSheet.create({
-  hint: { marginTop: 2, marginBottom: 12 },
-  group: { marginTop: 6, marginBottom: 6 },
-  row: { paddingVertical: 6 },
-  actionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 6,
-  },
-  title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
-  button: { marginTop: 8, marginBottom: 0 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    hint: { marginTop: 2, marginBottom: 12 },
+    group: { marginTop: 6, marginBottom: 6 },
+    row: { paddingVertical: 6 },
+    actionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+    },
+    title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    button: { marginTop: 8, marginBottom: 0 },
+  }),
+);
