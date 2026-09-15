@@ -152,10 +152,52 @@ export function withShortIds(data: unknown) {
 }
 
 type Refusal = { forModel: string; forUser: string };
+type Planned = {
+  n: number;
+  operation: string;
+  id: string;
+  title: string;
+  fields: Record<string, unknown>;
+};
+type ItemResult = { ok: boolean; error?: string };
+type ToolReply = { error?: string; results?: ItemResult[] };
+
+/** A plan action as tool input: known fields only, short ids mapped back. */
+function planned(
+  action: Record<string, unknown>,
+  n: number,
+  ids: Map<string, string>,
+): Planned {
+  const raw =
+    action.data && typeof action.data === "object"
+      ? (action.data as Record<string, unknown>)
+      : {};
+  const fields: Record<string, unknown> = Object.fromEntries(
+    DRAFT_KEYS.filter((k) => k in raw).map((k) => [k, raw[k]]),
+  );
+  const given =
+    typeof action.item_id === "string"
+      ? action.item_id.trim().replace(/^#/, "")
+      : "";
+  const operation = String(action.operation ?? "");
+  // An update that sends empty notes would wipe the saved notes: the schema
+  // makes every field required, so "" usually means "unchanged".
+  if (operation === "update" && fields.notes === "") delete fields.notes;
+  return {
+    n,
+    operation,
+    id: ids.get(given) ?? given,
+    title: typeof fields.title === "string" ? fields.title : "",
+    fields,
+  };
+}
 
 /**
- * Propose a plan's actions through the agent's tools, one call per action so
- * each is checked on its own. Returns what was refused and why.
+ * Propose a plan's actions through the agent's tools. Each create is its own
+ * call; all updates go in one call and all deletes in another, so the rules
+ * that look across items (one named item, several matches) see the whole
+ * plan, while every item still gets its own result. Returns what was refused
+ * and why.
  */
 async function propose(
   ctx: AgentContext,
@@ -164,60 +206,80 @@ async function propose(
 ): Promise<Refusal[]> {
   ctx.actions = [];
   const refused: Refusal[] = [];
-  for (const [n, action] of actions.entries()) {
-    const raw =
-      action.data && typeof action.data === "object"
-        ? (action.data as Record<string, unknown>)
-        : {};
-    const fields: Record<string, unknown> = Object.fromEntries(
-      DRAFT_KEYS.filter((k) => k in raw).map((k) => [k, raw[k]]),
-    );
-    const given =
-      typeof action.item_id === "string"
-        ? action.item_id.trim().replace(/^#/, "")
-        : "";
-    const id = ids.get(given) ?? given;
-    const operation = String(action.operation ?? "");
-    // An update that sends empty notes would wipe the saved notes: the
-    // schema makes every field required, so "" usually means "unchanged".
-    if (operation === "update" && fields.notes === "") delete fields.notes;
-    const call =
-      operation === "create"
-        ? { name: "propose_create", args: { items: [fields] } }
-        : operation === "update"
-          ? { name: "propose_update", args: { changes: [{ id, fields }] } }
-          : operation === "delete"
-            ? { name: "propose_delete", args: { ids: [id] } }
-            : null;
-    const title = typeof fields.title === "string" ? fields.title : "";
-    const reason = (text: string) =>
-      refused.push({
-        forModel: `${operation || "change"} ${title || id || `#${n + 1}`}: ${text}`,
-        forUser: `${title || "One change"}: ${text}`,
-      });
-    if (n >= MAX_ACTIONS) {
-      reason(`at most ${MAX_ACTIONS} changes fit in one reply`);
-      continue;
+  const refuse = (p: Planned, text: string) =>
+    refused.push({
+      forModel: `${p.operation || "change"} ${p.title || p.id || `#${p.n + 1}`}: ${text}`,
+      forUser: `${p.title || "One change"}: ${text}`,
+    });
+  const run = async (name: string, args: unknown) =>
+    JSON.parse(
+      (
+        await runTool(
+          { id: `plan_${name}`, name, arguments: JSON.stringify(args) },
+          ctx,
+        )
+      ).content,
+    ) as ToolReply;
+  /** One call for the whole list; when its arguments are invalid, one call per item. */
+  const perItem = async (
+    name: string,
+    list: Planned[],
+    args: (list: Planned[]) => unknown,
+  ): Promise<ItemResult[]> => {
+    const batch = await run(name, args(list));
+    if (batch.results) return batch.results;
+    const results: ItemResult[] = [];
+    for (const p of list) {
+      const one = await run(name, args([p]));
+      results.push(one.results?.[0] ?? { ok: false, error: one.error });
     }
-    if (!call) {
-      reason("not a create, update or delete");
-      continue;
+    return results;
+  };
+
+  const all = actions.map((action, n) => planned(action, n, ids));
+  for (const p of all.slice(MAX_ACTIONS))
+    refuse(p, `at most ${MAX_ACTIONS} changes fit in one reply`);
+  const kept = all.slice(0, MAX_ACTIONS);
+  const of = (operation: string) =>
+    kept.filter((p) => p.operation === operation);
+  for (const p of kept)
+    if (!["create", "update", "delete"].includes(p.operation))
+      refuse(p, "not a create, update or delete");
+
+  for (const p of of("create")) {
+    const reply = await run("propose_create", { items: [p.fields] });
+    const result = reply.results?.[0];
+    if (!result?.ok) refuse(p, reply.error ?? result?.error ?? "refused");
+  }
+
+  const updates = of("update");
+  if (updates.length) {
+    const results = await perItem("propose_update", updates, (list) => ({
+      changes: list.map((p) => ({ id: p.id, fields: p.fields })),
+    }));
+    for (const [i, p] of updates.entries()) {
+      const error = results[i]?.ok ? null : (results[i]?.error ?? "refused");
+      if (!error) continue;
+      // An end before the start is usually a stale end the model copied:
+      // the other changes still go through without it.
+      if (/End must be after start/.test(error) && "end_at" in p.fields) {
+        const { end_at: _end, ...rest } = p.fields;
+        const retry = await run("propose_update", {
+          changes: [{ id: p.id, fields: rest }],
+        });
+        if (retry.results?.[0]?.ok) continue;
+      }
+      refuse(p, error);
     }
-    const out = await runTool(
-      {
-        id: `plan_${n}`,
-        name: call.name,
-        arguments: JSON.stringify(call.args),
-      },
-      ctx,
-    );
-    const result = JSON.parse(out.content) as {
-      error?: string;
-      results?: { ok: boolean; error?: string }[];
-    };
-    const first = result.results?.[0];
-    if (out.isError || !first?.ok)
-      reason(result.error ?? first?.error ?? "refused");
+  }
+
+  const deletes = of("delete");
+  if (deletes.length) {
+    const results = await perItem("propose_delete", deletes, (list) => ({
+      ids: list.map((p) => p.id),
+    }));
+    for (const [i, p] of deletes.entries())
+      if (!results[i]?.ok) refuse(p, results[i]?.error ?? "refused");
   }
   return refused;
 }
@@ -350,7 +412,7 @@ export async function runGraph(
               .map((r) => `- ${r.forModel}`)
               .join(
                 "\n",
-              )}\nReply again with the whole corrected JSON object: every change the user asked for (fixed, or left out if it can't be done) and a summary that matches.`,
+              )}\nReply again with the whole corrected JSON object: every change the user asked for (fixed, or left out if it can't be done) and a summary that matches. If the user named one item and several match, ask which one in "summary" and return no actions.`,
           },
         ],
         true,

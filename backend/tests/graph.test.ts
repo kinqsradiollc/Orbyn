@@ -177,7 +177,14 @@ test("a change is one plan, checked item by item and repaired once", async () =>
   const reply = r.json();
   assert.equal(reply.summary, "Proposed both.");
   assert.equal(reply.actions.length, 2);
-  const [moved, created] = reply.actions;
+  type Proposed = {
+    operation: string;
+    item_id: string;
+    version: number;
+    data: Record<string, unknown>;
+  };
+  const moved = reply.actions.find((a: Proposed) => a.operation === "update");
+  const created = reply.actions.find((a: Proposed) => a.operation === "create");
   assert.equal(moved.item_id, groceries.id);
   assert.equal(moved.version, groceries.version);
   // Empty notes in an update keep the saved notes.
@@ -230,6 +237,63 @@ test("the model sees short item ids, mapped back on the server", async () => {
     r.json().actions.map((a: { item_id: string }) => a.item_id),
     [groceries.id],
   );
+});
+
+test("one named item with several matches is never half-proposed", async () => {
+  const me = await newUser();
+  const wednesday = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: "2026-09-16T07:00:00+10:00",
+  });
+  const friday = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: "2026-09-18T07:00:00+10:00",
+  });
+  reset(
+    plan("Cancelled both.", [
+      { operation: "delete", item_id: wednesday.id },
+      { operation: "delete", item_id: friday.id },
+    ]),
+    plan("Which gym session: Wed 16 or Fri 18 Sept?", []),
+  );
+  const r = await chat(me.token, "Cancel the gym session");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(r.json().actions, []);
+  assert.equal(r.json().summary, "Which gym session: Wed 16 or Fri 18 Sept?");
+  assert.match(
+    requests[1].body.messages.at(-1)!.content,
+    /Several items with this title/,
+  );
+});
+
+test("an update refused only for a stale end time goes through without it", async () => {
+  const me = await newUser();
+  const report = await addItem(me.token, {
+    title: "Quarterly report",
+    due_at: "2026-09-18T12:00:00+10:00",
+  });
+  reset(
+    plan("Marked the report in progress.", [
+      {
+        operation: "update",
+        item_id: report.id,
+        data: {
+          title: "Quarterly report",
+          status: "in_progress",
+          end_at: "2026-09-01T00:00",
+        },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Mark the quarterly report as in progress");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.equal(requests.length, 1);
+  const [action] = r.json().actions;
+  assert.equal(action.data.status, "in_progress");
+  assert.equal(action.data.end_at, null);
+  assert.doesNotMatch(r.json().summary, /Not proposed/);
 });
 
 test("invalid plans twice are a provider error", async () => {
