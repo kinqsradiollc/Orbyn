@@ -199,9 +199,15 @@ export function usePlanner() {
 
   /** Register or log in, persist the session and enter the app. Call inside `act`. */
   const signIn = async ({ email, password, name, register }: SignInInput) => {
+    // Clean values: no stray spaces, and a blank name means the default.
+    const address = email.trim();
     const result = register
-      ? await client.register({ email, password, name })
-      : await client.login({ email, password });
+      ? await client.register({
+          email: address,
+          password,
+          name: name.trim() || undefined,
+        })
+      : await client.login({ email: address, password });
     await saveSession(result.token);
     setToken(result.token);
     setUser(result.user);

@@ -900,9 +900,10 @@ export type BookingStatus =
 
 export type Booking = {
   id: string;
-  page_id: string;
-  page_title: string;
-  page_slug: string;
+  /** Null for bookings made from an open invite, which has no page. */
+  page_id: string | null;
+  page_title: string | null;
+  page_slug: string | null;
   start_at: string;
   end_at: string;
   name: string;

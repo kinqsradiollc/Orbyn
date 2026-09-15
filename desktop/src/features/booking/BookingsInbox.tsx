@@ -302,10 +302,12 @@ export function BookingsInbox({
                         <i
                           className="list-dot"
                           style={{
-                            background: colors.get(b.page_id) ?? DEFAULT_COLOR,
+                            background:
+                              (b.page_id && colors.get(b.page_id)) ||
+                              DEFAULT_COLOR,
                           }}
                         />
-                        <span>{b.page_title}</span>
+                        <span>{b.page_title ?? "Open invite"}</span>
                       </span>
                       <span className="booking-row-status">
                         <BookingStatusPill status={b.status} />

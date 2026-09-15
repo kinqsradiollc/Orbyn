@@ -385,21 +385,7 @@ export function RootScreen() {
       if ("id" in editing) {
         // Progress is owned by the checklist and the task sheet; omitting it
         // keeps the saved value (sending it while steps exist is a 409).
-        const { progress: _progress, ...fields } = itemBody(editing);
-        // Invitees and links are sent only once edited: each list replaces
-        // the saved one. Links go as { url, title } (ids are the server's).
-        const body = {
-          ...fields,
-          ...(editing.attendees ? { attendees: editing.attendees } : {}),
-          ...(editing.links
-            ? {
-                links: editing.links.map(({ url, title }) => ({
-                  url,
-                  title: title ?? "",
-                })),
-              }
-            : {}),
-        };
+        const { progress: _progress, ...body } = itemBody(editing);
         const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
         if (repeat) {
           const scope = await askScope(editing.kind, "save");

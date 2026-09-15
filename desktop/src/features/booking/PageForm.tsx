@@ -371,6 +371,7 @@ export function PageForm({
   const [slugTouched, setSlugTouched] = useState(!!page);
   const [people, setPeople] = useState<TeamMember[]>([]);
   const [embedCopied, setEmbedCopied] = useState(false);
+  const [peopleLoaded, setPeopleLoaded] = useState(false);
   const action = useAction(report);
 
   // Co-hosts come from the people in your teams.
@@ -387,6 +388,7 @@ export function PageForm({
         setPeople(
           [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
         );
+        setPeopleLoaded(true);
       },
       () => undefined,
     );
@@ -401,6 +403,20 @@ export function PageForm({
     (a, b) => a - b,
   );
   const zones = timeZones();
+  // Co-hosts are sent only when the list changed: a co-host who has since
+  // left your teams would otherwise make every save fail.
+  const byUser = (a: { user_id: string }, b: { user_id: string }) =>
+    a.user_id.localeCompare(b.user_id);
+  const savedCoHosts = page ? draftFrom(page).co_hosts : [];
+  const coHostsChanged =
+    !page ||
+    JSON.stringify([...draft.co_hosts].sort(byUser)) !==
+      JSON.stringify([...savedCoHosts].sort(byUser));
+  const goneCoHosts = peopleLoaded
+    ? draft.co_hosts.filter((h) => !people.some((m) => m.user_id === h.user_id))
+    : [];
+  const hostName = (id: string) =>
+    page?.hosts.find((h) => h.user_id === id)?.name ?? "A co-host";
   // A page can belong to a team whose owners and admins manage it.
   const ownerTeams = teams.filter(
     (t) => t.role === "owner" || t.role === "admin" || t.id === draft.team_id,
@@ -459,6 +475,14 @@ export function PageForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (coHostsChanged && goneCoHosts.length) {
+      action.setOutcome({
+        ok: false,
+        text: "Remove the co-hosts who are no longer in your teams to save changes to co-hosts.",
+      });
+      jump("details");
+      return;
+    }
     const issue = problem(draft);
     if (issue) {
       action.setOutcome({ ok: false, text: issue[1] });
@@ -495,7 +519,7 @@ export function PageForm({
       location: draft.location.trim(),
       meeting_url: draft.meeting_url.trim(),
       active: draft.active,
-      co_hosts: draft.co_hosts,
+      ...(coHostsChanged ? { co_hosts: draft.co_hosts } : {}),
       color: draft.color.toLowerCase(),
       availability:
         draft.hours_mode === "custom"
@@ -670,6 +694,35 @@ export function PageForm({
             </label>
             <fieldset className="settings-field wide check-group">
               <legend>Co-hosts</legend>
+              {goneCoHosts.length > 0 && (
+                <ul className="cohost-list">
+                  {goneCoHosts.map((h) => (
+                    <li key={h.user_id}>
+                      <span className="check-line">
+                        {hostName(h.user_id)}
+                        <small>
+                          No longer in your teams — remove to save changes to
+                          co-hosts.
+                        </small>
+                      </span>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() =>
+                          set(
+                            "co_hosts",
+                            draft.co_hosts.filter(
+                              (x) => x.user_id !== h.user_id,
+                            ),
+                          )
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {!people.length ? (
                 <small className="field-hint">
                   People in your teams can host with you. Join or make a team to

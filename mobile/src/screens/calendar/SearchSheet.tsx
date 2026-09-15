@@ -89,6 +89,8 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
             style={[shared.input, s.input]}
             value={q}
             onChangeText={setQ}
+            // The server searches up to 100 characters.
+            maxLength={100}
             autoFocus
             autoCorrect={false}
             returnKeyType="search"

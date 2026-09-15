@@ -90,6 +90,10 @@ type Ask = {
   error: string;
 };
 
+/** The longest text event search and quick add take (the assistant takes 4000). */
+const SEARCH_MAX = 100;
+const QUICK_MAX = 500;
+
 /** A quick-add chip as a short readable label. */
 function chipLabel(c: QuickAddChip) {
   switch (c.kind) {
@@ -191,7 +195,7 @@ export function CommandBar({
 
   // Events, past and future, once there's something to look for.
   useEffect(() => {
-    if (q.length < 2) {
+    if (q.length < 2 || q.length > SEARCH_MAX) {
       setEvents([]);
       return;
     }
@@ -210,7 +214,7 @@ export function CommandBar({
 
   // What the text would make as an item, parsed here without AI.
   const quick = useMemo(() => {
-    if (!q) return null;
+    if (!q || q.length > QUICK_MAX) return null;
     try {
       return parseQuickAdd(q, {
         timeZone: deviceTimeZone(),
@@ -229,6 +233,7 @@ export function CommandBar({
   }, [q, lists, tags, members, userId]);
 
   const createQuick = async () => {
+    if (q.length > QUICK_MAX) return;
     setBusy(true);
     setNotice("");
     try {

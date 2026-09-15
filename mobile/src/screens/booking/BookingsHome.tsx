@@ -328,7 +328,7 @@ export function BookingsHome({
                         booking={b}
                         index={n}
                         showPage={!filtered}
-                        color={pageColor.get(b.page_id)}
+                        color={b.page_id ? pageColor.get(b.page_id) : undefined}
                         onPress={() => onOpenBooking(b)}
                       />
                     ))}
@@ -449,7 +449,7 @@ function BookingRow({
         accessibilityLabel={[
           b.name,
           when,
-          showPage && b.page_title,
+          showPage && (b.page_title ?? "Open invite"),
           status?.label,
           b.no_show && "No-show",
           moved && "Moved",
@@ -475,7 +475,9 @@ function BookingRow({
               />
             )}
             <Text style={[shared.small, { flex: 1 }]} numberOfLines={1}>
-              {showPage ? `${b.page_title} · ${b.email}` : b.email}
+              {showPage
+                ? `${b.page_title ?? "Open invite"} · ${b.email}`
+                : b.email}
             </Text>
           </View>
           {(status || b.no_show || moved) && (

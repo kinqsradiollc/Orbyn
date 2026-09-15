@@ -16,6 +16,9 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   MAX_ITEM_LINKS as MAX_LINKS,
+  allDayRange,
+  dayTime,
+  localDateKey,
   dateLabel,
   hasTeamPermission,
   statusLabels,
@@ -24,6 +27,7 @@ import {
   type AttendeeStatus,
   type Item,
   type ItemInput,
+  type DefaultAlerts,
   type Team,
   type TeamMember,
 } from "@orbyn/core";
@@ -136,6 +140,25 @@ function Form({
   // Lists and tags must belong where the item lives: yours for a personal
   // item, the team's for a team item (the server checks this too).
   const { lists, tags, reload } = usePlanning();
+  const [defaultAlerts, setDefaultAlerts] = useState<DefaultAlerts | null>(
+    null,
+  );
+  const [defaultsError, setDefaultsError] = useState(false);
+  useEffect(() => {
+    if (exists) return;
+    let alive = true;
+    client.getPlannerPrefs().then(
+      (p) =>
+        alive &&
+        setDefaultAlerts(
+          p.default_alerts ?? { task: [30], event: [30], all_day: [30] },
+        ),
+      () => alive && setDefaultsError(true),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [exists]);
   const scopeLists = lists.filter((l) => (l.team_id ?? null) === teamId);
   const scopeTags = tags.filter((t) => (t.team_id ?? null) === teamId);
   const tagIds = editing.tag_ids ?? [];
@@ -215,7 +238,13 @@ function Form({
   const links: LinkDraft[] = editing.links ?? savedLinks;
   const alerts =
     editing.alerts ??
-    (editing.reminder_minutes != null ? [editing.reminder_minutes] : []);
+    (editing.reminder_minutes != null
+      ? [editing.reminder_minutes]
+      : exists
+        ? []
+        : (defaultAlerts?.[editing.all_day ? "all_day" : editing.kind] ?? [
+            30,
+          ]));
   const colorChoices = [
     ...new Set([
       ...LIST_COLORS,
@@ -226,12 +255,12 @@ function Form({
 
   // All-day items keep dates only: local midnight to the midnight after the last day.
   const allDay = !!editing.all_day;
+  const zone = editing.timezone ?? deviceTimeZone();
   const dayOf = (iso: string | null | undefined) => {
     const d = iso ? new Date(iso) : new Date();
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const [year, month, day] = localDateKey(d, zone).split("-").map(Number);
+    return new Date(year, month - 1, day);
   };
-  const nextDay = (d: Date) =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
   const keyOf = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const fromKey = (key: string) => {
@@ -248,13 +277,11 @@ function Form({
       const last = lastDay < firstDay ? firstDay : lastDay;
       onChange({
         all_day: true,
-        timezone: deviceTimeZone(),
-        due_at: firstDay.toISOString(),
-        end_at: editing.kind === "event" ? nextDay(last).toISOString() : null,
+        timezone: zone,
+        ...allDayRange(keyOf(firstDay), keyOf(last), zone),
       });
     } else {
-      const start = new Date(firstDay);
-      start.setHours(9);
+      const start = dayTime(keyOf(firstDay), 540, zone);
       onChange({
         all_day: false,
         due_at: start.toISOString(),
@@ -432,19 +459,19 @@ function Form({
                       const days = Math.round(
                         (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
                       );
-                      onChange({
-                        due_at: start.toISOString(),
-                        end_at:
-                          editing.kind === "event"
-                            ? nextDay(
-                                new Date(
-                                  start.getFullYear(),
-                                  start.getMonth(),
-                                  start.getDate() + Math.max(0, days),
-                                ),
-                              ).toISOString()
-                            : null,
-                      });
+                      onChange(
+                        allDayRange(
+                          key,
+                          keyOf(
+                            new Date(
+                              start.getFullYear(),
+                              start.getMonth(),
+                              start.getDate() + Math.max(0, days),
+                            ),
+                          ),
+                          zone,
+                        ),
+                      );
                     }}
                   />
                 </Section>
@@ -457,7 +484,8 @@ function Form({
                       onChange={(key) =>
                         key &&
                         onChange({
-                          end_at: nextDay(fromKey(key)).toISOString(),
+                          end_at: allDayRange(keyOf(firstDay), key, zone)
+                            .end_at,
                         })
                       }
                     />
@@ -587,11 +615,7 @@ function Form({
                 disabled={readOnly}
                 onProblem={setRepeatProblem}
                 onChange={(rrule) =>
-                  onChange(
-                    rrule
-                      ? { rrule, timezone: deviceTimeZone() }
-                      : { rrule: null },
-                  )
+                  onChange(rrule ? { rrule, timezone: zone } : { rrule: null })
                 }
               />
               {exists && !!editing.rrule && (
@@ -870,13 +894,24 @@ function Form({
               />
             </Section>
             <Section label="Alerts">
-              <AlertsField
-                alerts={alerts}
-                disabled={readOnly}
-                onChange={(next) =>
-                  onChange({ alerts: next, reminder_minutes: undefined })
-                }
-              />
+              {!exists &&
+              !defaultAlerts &&
+              editing.alerts === undefined &&
+              editing.reminder_minutes == null ? (
+                <Text style={shared.small}>
+                  {defaultsError
+                    ? "Your saved alert defaults will apply. Reopen the editor to load and change them."
+                    : "Loading your default alerts…"}
+                </Text>
+              ) : (
+                <AlertsField
+                  alerts={alerts}
+                  disabled={readOnly}
+                  onChange={(next) =>
+                    onChange({ alerts: next, reminder_minutes: undefined })
+                  }
+                />
+              )}
             </Section>
             {!!formError && (
               <Text accessibilityRole="alert" style={s.error}>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Eye, Trash2, X } from "lucide-react";
 import {
   freshItem,
+  allDayRange,
   fromDateTimeLocal,
   hasTeamPermission,
   localDateKey,
@@ -61,11 +62,6 @@ type Props = {
   onDelete: (options?: EditOptions) => void;
 };
 
-/** Local midnight of a "YYYY-MM-DD" day, `add` days on. */
-const midnight = (key: string, add = 0) => {
-  const [y, m, d] = key.split("-").map(Number);
-  return new Date(y, m - 1, d + add);
-};
 const today = () => localDateKey(new Date(), deviceTimeZone());
 
 /**
@@ -327,8 +323,11 @@ export function ItemEditor({
               }
               // Whole days: midnight to the midnight after the last day.
               const last = endDay && endDay >= startDay ? endDay : startDay;
-              dueAt = midnight(startDay).toISOString();
-              endAt = midnight(last, 1).toISOString();
+              ({ due_at: dueAt, end_at: endAt } = allDayRange(
+                startDay,
+                last,
+                zone,
+              ));
             } else {
               dueAt = fromDateTimeLocal(dueValue || null);
               endAt = fromDateTimeLocal(endValue || null);
@@ -372,7 +371,7 @@ export function ItemEditor({
               meeting_url: meetingUrl.trim(),
               rrule,
               all_day: allDay,
-              ...(rrule || allDay ? { timezone: deviceTimeZone() } : {}),
+              ...(rrule || allDay ? { timezone: zone } : {}),
               ...(kind === "event" ? { busy: busyTime } : {}),
               color,
               // Untouched on a new item: the server uses your defaults.

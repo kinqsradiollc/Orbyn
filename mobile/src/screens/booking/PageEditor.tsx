@@ -96,6 +96,16 @@ type SectionId =
 /** "Whose page" when it's yours rather than a team's. */
 const ME = "me";
 
+type CoHost = { user_id: string; required: boolean };
+/** A page's co-hosts: every host but its owner. */
+const coHostsOf = (page: BookingPage | null): CoHost[] =>
+  (page?.hosts ?? [])
+    .filter((h) => h.user_id !== page?.owner_id)
+    .map((h) => ({ user_id: h.user_id, required: h.required }));
+/** Co-hosts compared regardless of order. */
+const hostsKey = (list: CoHost[]) =>
+  JSON.stringify([...list].sort((a, b) => a.user_id.localeCompare(b.user_id)));
+
 const overrideDrafts = (page: BookingPage | null): OverrideDraft[] =>
   (page?.date_overrides ?? []).map((o) => ({ key: newKey(), ...o }));
 
@@ -203,12 +213,14 @@ export function PageEditor({
   // The page's owner is always a host; everyone else is a co-host.
   const ownerId = saved?.owner_id ?? user?.id;
   const isOwner = !!ownerId && ownerId === user?.id;
-  const [hosts, setHosts] = useState<{ user_id: string; required: boolean }[]>(
-    (page?.hosts ?? [])
-      .filter((h) => h.user_id !== page?.owner_id)
-      .map((h) => ({ user_id: h.user_id, required: h.required })),
+  const [hosts, setHosts] = useState<CoHost[]>(() => coHostsOf(page));
+  /** The co-hosts as saved: sent again only once they change. */
+  const [savedHostsKey, setSavedHostsKey] = useState(() =>
+    hostsKey(coHostsOf(page)),
   );
   const [people, setPeople] = useState<TeamMember[]>([]);
+  /** Your teammates have loaded, so co-hosts outside them can be flagged. */
+  const [peopleLoaded, setPeopleLoaded] = useState(false);
   const [openIds, setOpenIds] = useState<SectionId[]>(["basics"]);
   const [tried, setTried] = useState(false);
   const scroller = useRef<ScrollView>(null);
@@ -237,6 +249,7 @@ export function PageEditor({
           [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
         );
         setTeamsOf(of);
+        setPeopleLoaded(true);
       })
       .catch(() => {});
     return () => {
@@ -267,6 +280,15 @@ export function PageEditor({
     ...managed.map((t) => t.id),
     ...(teamId && !managed.some((t) => t.id === teamId) ? [teamId] : []),
   ];
+  const hostsChanged = hostsKey(hosts) !== savedHostsKey;
+  /** Co-hosts who left all your teams: the server refuses a co-host list with them. */
+  const staleHosts = new Set(
+    peopleLoaded
+      ? hosts
+          .filter((h) => !people.some((p) => p.user_id === h.user_id))
+          .map((h) => h.user_id)
+      : [],
+  );
   const custom = availability.mode === "custom" ? availability : null;
   const dates = overrides.map((o) => o.date);
   const days = parseMinutes(windowDays);
@@ -318,6 +340,12 @@ export function PageEditor({
     if (!HEX.test(color)) return ["colour", "Colours look like #376c51."];
     if (hosts.length > MAX_HOSTS)
       return ["cohosts", `Pick up to ${MAX_HOSTS} co-hosts.`];
+    // Unchanged co-hosts aren't sent, so a stale one only matters on a change.
+    if (hostsChanged && staleHosts.size)
+      return [
+        "cohosts",
+        "Remove co-hosts who are no longer in your teams to save changes to co-hosts.",
+      ];
     if (teamId && !inTeam(hosts.map((h) => h.user_id)))
       return ["cohosts", "Co-hosts of a team page must be in the team."];
     return null;
@@ -370,7 +398,9 @@ export function PageEditor({
         location: location.trim(),
         meeting_url: meetingUrl.trim(),
         active,
-        co_hosts: hosts,
+        // Only when changed: a co-host who left your teams would otherwise
+        // block every save.
+        ...(hostsChanged ? { co_hosts: hosts } : {}),
         color: color.toLowerCase(),
         availability: custom
           ? { ...custom, timezone: custom.timezone.trim() }
@@ -400,6 +430,7 @@ export function PageEditor({
         : await client.createBookingPage(body);
       animateLayout();
       setSaved(next);
+      setSavedHostsKey(hostsKey(coHostsOf(next)));
       setSlug(next.slug);
       setQuestions(withIds);
       setTried(false);
@@ -963,6 +994,12 @@ export function PageEditor({
                         {!!p.email && (
                           <Text style={shared.small} numberOfLines={1}>
                             {p.email}
+                          </Text>
+                        )}
+                        {staleHosts.has(p.user_id) && (
+                          <Text style={[shared.small, bs.warn]}>
+                            No longer in your teams — remove to save changes to
+                            co-hosts
                           </Text>
                         )}
                       </View>

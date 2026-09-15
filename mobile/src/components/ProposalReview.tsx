@@ -144,6 +144,30 @@ const teamName = (items: Item[], teamId: string | null) =>
       "A team"
     : "Personal";
 
+/** "30 min", "2 hours", "1 day", or "1 h 30 min" for minutes before. */
+function beforeText(m: number) {
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (m < 60) return `${m} min`;
+  if (m % 1440 === 0) return unit(m / 1440, "day");
+  if (m % 60 === 0) return unit(m / 60, "hour");
+  return `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+/** The soonest alert: "Remind 30 min before", or "No reminder" without any. */
+function reminderText(alerts: number[] | null | undefined) {
+  if (!alerts?.length) return "No reminder";
+  const soonest = Math.min(...alerts);
+  return soonest === 0
+    ? "Remind when it starts"
+    : `Remind ${beforeText(soonest)} before`;
+}
+
+const sameAlerts = (a: number[], b: number[]) => {
+  const x = [...a].sort((p, q) => p - q);
+  const y = [...b].sort((p, q) => p - q);
+  return x.length === y.length && x.every((v, n) => v === y[n]);
+};
+
 function changes(data: ItemInput, current: Item, items: Item[]) {
   const lines: string[] = [];
   const compare = (label: string, before: string, after: string) => {
@@ -156,11 +180,11 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   compare("Priority", current.priority, data.priority);
   compare("Status", current.status, data.status);
   compare("Type", current.kind, data.kind);
-  compare(
-    "Reminder",
-    `${current.reminder_minutes} min`,
-    `${data.reminder_minutes} min`,
-  );
+  // Only when the proposal actually changes the alerts.
+  if (data.alerts && !sameAlerts(data.alerts, current.alerts ?? []))
+    lines.push(
+      `Reminder: ${reminderText(current.alerts)} → ${reminderText(data.alerts)}`,
+    );
   compare(
     "Shared with",
     teamName(items, current.team_id),
@@ -221,9 +245,7 @@ function Details({
       <Chip
         high={data.priority === "high"}
       >{`${capitalize(data.priority)} priority`}</Chip>
-      {data.due_at && (
-        <Chip>{`Remind ${data.reminder_minutes} min before`}</Chip>
-      )}
+      {data.due_at && data.alerts && <Chip>{reminderText(data.alerts)}</Chip>}
       {data.team_id && <Chip>{teamName(items, data.team_id)}</Chip>}
       {!!data.notes && (
         <Text style={[shared.small, s.notes]}>{data.notes}</Text>

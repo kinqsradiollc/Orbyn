@@ -190,7 +190,8 @@ function FeedLink({
   );
 }
 
-const isCalendarLink = (url: string) => /^(https|webcal):\/\/\S+$/i.test(url);
+/** http, https or webcal, like the server. */
+const isCalendarLink = (url: string) => /^(https?|webcal):\/\/\S+$/i.test(url);
 
 /**
  * Calendars you subscribe to by link (timetables, public holidays, a work
@@ -250,8 +251,9 @@ export function SubscriptionsCard() {
       <View style={shared.card}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.small, s.gap]}>
-          Add any calendar link (https:// or webcal://) that anyone can reach.
-          Its events show on your calendar, read-only, and refresh every hour.
+          Add any calendar link (https://, http:// or webcal://) that anyone can
+          reach. Its events show on your calendar, read-only, and refresh every
+          hour.
         </Text>
         {subs === null && (
           <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
@@ -327,7 +329,7 @@ export function SubscriptionsCard() {
                 keyboardType="url"
                 autoCapitalize="none"
                 autoCorrect={false}
-                maxLength={2000}
+                maxLength={1000}
                 accessibilityLabel="Calendar link"
               />
             </Field>
@@ -338,7 +340,7 @@ export function SubscriptionsCard() {
                 onChangeText={setName}
                 placeholder="Public holidays"
                 placeholderTextColor={colors.faint}
-                maxLength={60}
+                maxLength={80}
                 accessibilityLabel="Calendar name"
               />
             </Field>
@@ -387,7 +389,7 @@ export function SubscriptionsCard() {
             </View>
             {!!url.trim() && !isCalendarLink(url.trim()) && (
               <Text style={[shared.small, s.problem, s.gap]}>
-                Calendar links start with https:// or webcal://.
+                Calendar links start with https://, http:// or webcal://.
               </Text>
             )}
             <View style={s.actions}>

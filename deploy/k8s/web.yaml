@@ -74,6 +74,8 @@ data:
       # ours. Services (TRUST_PROXY=true) use the first address.
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+      # Every proxied path here is under /api; links the API builds need it.
+      proxy_set_header X-Forwarded-Prefix /api;
       proxy_connect_timeout 5s;
       proxy_read_timeout 125s;
 

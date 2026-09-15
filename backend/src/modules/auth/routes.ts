@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
-import { credentials, fail } from "@orbyn/core";
+import { credentials, loginCredentials, fail } from "@orbyn/core";
 import { adminEmails } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
@@ -52,7 +52,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/auth/login", strictRateLimit, async (r) => {
-    const d = credentials.parse(r.body);
+    const d = loginCredentials.parse(r.body);
     let u = (
       await pool.query<UserRow>("SELECT * FROM users WHERE email=$1", [d.email])
     ).rows[0];

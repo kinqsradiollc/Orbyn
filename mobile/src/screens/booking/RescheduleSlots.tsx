@@ -1,17 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Alert, StyleSheet, Text, View } from "react-native";
-import { HttpError, type BookingDetail, type BusyInterval } from "@orbyn/core";
-import { Button } from "../../components/Button";
+import type { BookingDetail, BusyInterval } from "@orbyn/core";
 import { Chip, ChipRow } from "../../components/Chip";
-import { DateField, Field, TimeField } from "../../components/Field";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
-import {
-  clockLabel,
-  deviceTimeZone,
-  minutesLabel,
-  slotLabel,
-} from "../../lib/planning";
+import { clockLabel, deviceTimeZone, slotLabel } from "../../lib/planning";
 import { animateLayout } from "../../motion";
 import { colors, themed } from "../../theme";
 import { shared } from "../../styles";
@@ -23,13 +16,6 @@ const DAYS = 7;
 const addDays = (key: string, n: number) => {
   const [y, m, d] = key.split("-").map(Number);
   return dayKeyOf(new Date(y, m - 1, d + n));
-};
-
-/** The next quarter hour from now, for the pick-a-time fallback. */
-const nextQuarter = () => {
-  const d = new Date();
-  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
-  return d;
 };
 
 /** Ask before moving the booking to `start`. */
@@ -51,9 +37,9 @@ function confirmMove(
 
 /**
  * The page's free times of the booking's length, a week at a time, in this
- * device's time zone. Picking one asks before moving the booking. When the
- * page can't offer times (it's gone, or the length no longer fits), any date
- * and time can be picked instead.
+ * device's time zone. Picking one asks before moving the booking. Only free
+ * times can be booked (the server refuses others), so when the times can't
+ * be loaded the server's reason shows and the week can still be changed.
  */
 export function RescheduleSlots({
   booking,
@@ -69,7 +55,6 @@ export function RescheduleSlots({
   const [slots, setSlots] = useState<BusyInterval[] | null>(null);
   const [day, setDay] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
-  const [manual, setManual] = useState(false);
   const length = lengthOf(booking);
 
   // The host route ignores notice and pages that are switched off.
@@ -93,15 +78,9 @@ export function RescheduleSlots({
       .catch((e: Error) => {
         if (!alive) return;
         animateLayout();
-        if (
-          e instanceof HttpError &&
-          (e.statusCode === 404 || e.statusCode === 422)
-        ) {
-          setProblem(
-            `This booking’s page can’t offer ${minutesLabel(length)} times any more. Pick a date and time yourself.`,
-          );
-          setManual(true);
-        } else setProblem(e.message);
+        // The server's own reason; there's no free-entry fallback, since a
+        // time that isn't free would be refused anyway.
+        setProblem(e.message);
       });
     return () => {
       alive = false;
@@ -115,14 +94,6 @@ export function RescheduleSlots({
   }
   const times = (day && byDay.get(day)) || [];
   const last = addDays(from, DAYS - 1);
-
-  if (manual)
-    return (
-      <View>
-        {!!problem && <Text style={[shared.small, s.warn]}>{problem}</Text>}
-        <AnyTime booking={booking} busy={busy} onPick={onPick} />
-      </View>
-    );
 
   return (
     <View>
@@ -179,56 +150,6 @@ export function RescheduleSlots({
   );
 }
 
-/** A date and a start time, for when the page has no times to offer. */
-function AnyTime({
-  booking,
-  busy,
-  onPick,
-}: {
-  booking: BookingDetail;
-  busy: boolean;
-  onPick: (startAt: string) => void;
-}) {
-  const [start, setStart] = useState(nextQuarter);
-  const past = start.getTime() <= Date.now();
-  return (
-    <View style={s.manual}>
-      <Field label="Date">
-        <DateField
-          label="New date"
-          value={dayKeyOf(start)}
-          minimumDate={new Date()}
-          onChange={(key) => {
-            if (!key) return;
-            const [y, m, d] = key.split("-").map(Number);
-            const next = new Date(start);
-            next.setFullYear(y, m - 1, d);
-            setStart(next);
-          }}
-        />
-      </Field>
-      <Field
-        label="Start"
-        hint={`${minutesLabel(lengthOf(booking))}, in this device’s time zone.`}
-      >
-        <TimeField label="New start time" value={start} onChange={setStart} />
-      </Field>
-      {past && (
-        <Text style={[shared.small, s.warn, bs.gap]}>
-          Pick a time that hasn’t passed.
-        </Text>
-      )}
-      <Button
-        title="Move to this time"
-        icon="clock"
-        disabled={busy || past}
-        style={bs.last}
-        onPress={() => confirmMove(booking, start.toISOString(), onPick)}
-      />
-    </View>
-  );
-}
-
 const s = themed(() =>
   StyleSheet.create({
     nav: {
@@ -239,6 +160,5 @@ const s = themed(() =>
     },
     range: { flex: 1, textAlign: "center" },
     warn: { color: colors.danger },
-    manual: { marginTop: 12 },
   }),
 );

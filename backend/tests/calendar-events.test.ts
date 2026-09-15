@@ -1244,3 +1244,75 @@ test("teammates' busy times can be laid over your calendar, and nobody else's", 
     401,
   );
 });
+
+test("client editor payloads preserve default alerts and strip response-only event fields", async () => {
+  const { freshItem, itemBody, allDayRange, itemData } =
+    await import("@orbyn/core");
+  const me = await newUser();
+  const prefs = await call(me.token, "PUT", "/planner/prefs", {
+    default_alerts: { task: [], event: [40320], all_day: [1440] },
+  });
+  assert.equal(prefs.status, 200, prefs.raw.body);
+  const task = await create(me.token, {
+    ...freshItem(),
+    title: "No default task alerts",
+  });
+  assert.deepEqual(task.alerts, []);
+  const event = await create(me.token, {
+    ...freshItem(),
+    title: "Four week reminder",
+    kind: "event",
+    due_at: local(2, 9),
+    attendees: [{ email: "editor-guest@example.com", name: "Guest" }],
+    links: [{ url: "https://example.com/agenda", title: "Agenda" }],
+  });
+  assert.deepEqual(event.alerts, [40320]);
+  assert.equal(event.reminder_minutes, 40320);
+  const detail = await call(me.token, "GET", `/items/${event.id}`);
+  assert.equal(detail.status, 200, detail.raw.body);
+  const payload = itemBody(detail.body);
+  assert.equal("reminder_minutes" in payload, false);
+  assert.deepEqual(payload.attendees, [
+    { email: "editor-guest@example.com", name: "Guest" },
+  ]);
+  assert.deepEqual(payload.links, [
+    { url: "https://example.com/agenda", title: "Agenda" },
+  ]);
+  const { version, ...fields } = payload;
+  assert.equal(itemData.safeParse(fields).success, true);
+  const edited = await call(me.token, "PUT", `/items/${event.id}`, {
+    ...payload,
+    title: "Edited title",
+  });
+  assert.equal(edited.status, 200, edited.raw.body);
+  assert.deepEqual(edited.body.alerts, [40320]);
+  const savedDetail = await call(me.token, "GET", `/items/${event.id}`);
+  assert.equal(savedDetail.body.attendees.length, 1);
+  assert.equal(savedDetail.body.links.length, 1);
+  // An all-day edit retains the item's zone even on a device in another zone.
+  const dates = allDayRange("2026-10-04", "2026-10-04", TZ);
+  assert.equal(
+    Date.parse(dates.end_at) - Date.parse(dates.due_at),
+    23 * 3_600_000,
+  );
+  const holiday = await create(me.token, {
+    ...freshItem(),
+    title: "DST day",
+    kind: "event",
+    all_day: true,
+    timezone: TZ,
+    ...dates,
+  });
+  assert.deepEqual(holiday.alerts, [1440]);
+  const result = await call(me.token, "PUT", `/items/${holiday.id}`, {
+    ...itemBody(holiday as any),
+    title: "Same day, new title",
+    ...dates,
+  });
+  assert.equal(result.status, 200, result.raw.body);
+  assert.equal(result.body.timezone, TZ);
+  assert.equal(iso(result.body.due_at), dates.due_at);
+  // Older callers without an alerts array still round-trip their single reminder.
+  const legacy = { ...task, alerts: undefined, reminder_minutes: 60 };
+  assert.equal(itemBody(legacy as any).reminder_minutes, 60);
+});
