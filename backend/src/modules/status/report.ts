@@ -4,6 +4,7 @@ import type {
   StatusReport,
 } from "@orbyn/core";
 import { readPool } from "../../db/pool.js";
+import { settings } from "../../lib/settings.js";
 import { components } from "./components.js";
 import { lastDays, overallState, ratio, stateFromRecent } from "./uptime.js";
 
@@ -22,6 +23,7 @@ export const clearStatusCache = () => {
  */
 export async function statusReport(): Promise<StatusReport> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.report;
+  const { maintenance } = await settings();
   const list = components();
   const ids = list.map((c) => c.id);
   const [windows, recent, daily, incidents] = await Promise.all([
@@ -122,6 +124,7 @@ export async function statusReport(): Promise<StatusReport> {
     updated_at: new Date().toISOString(),
     components: componentsOut,
     incidents: incidentsOut,
+    maintenance: maintenance.enabled ? maintenance : null,
   };
   cache = { at: Date.now(), report };
   return report;

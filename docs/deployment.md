@@ -59,6 +59,80 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
     `VITE_API_URL=https://api.example.com` before `npm run build -w desktop` so the Electron app
     talks to production instead of localhost.
 
+## Deploying without downtime
+
+Use `scripts/deploy.sh` for every update, including `.env` changes:
+
+```bash
+./scripts/deploy.sh            # git pull, build, migrate, roll out
+./scripts/deploy.sh --no-pull  # deploy what is checked out
+```
+
+Plain `docker compose up -d` replaces every changed container at once, so a service is down
+while its replacement starts. The script instead:
+
+1. builds images stamped with the commit (shown in Admin → System and at `GET /version`);
+2. applies database migrations before any new code serves traffic;
+3. for each backend service, starts new copies beside the old ones, waits until they pass their
+   health checks and the gateway has picked them up (it re-resolves every 10 seconds), then stops
+   the old copies gracefully so in-flight requests finish;
+4. replaces the gateway only when its configuration or image changed (nginx starts in about a
+   second), and says why.
+
+The gateway is the only container with host ports: it serves the API port (`API_PORT`) and the web
+port (`WEB_PORT`). The web app runs behind it like every other service, so it rolls over without
+downtime too.
+
+If a new copy fails its health check, the old copies keep serving and the script stops with the
+new copies' logs. The API, assistant and web app run two copies by default (`API_REPLICAS`,
+`AI_REPLICAS`, `WEB_REPLICAS`;
+`STATUS_REPLICAS` and `NOTIFIER_REPLICAS` default to one), so a crash or restart of one copy is
+also absorbed.
+
+### Deploying from GitHub
+
+`.github/workflows/deploy.yml` runs the script on the server over SSH. Run it from the Actions tab
+("Deploy" → "Run workflow"), or set the repository variable `AUTO_DEPLOY` to `true` to deploy
+automatically after CI passes on `main`. It needs these repository secrets:
+
+| Secret               | Value                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `DEPLOY_HOST`        | Server address                                                                          |
+| `DEPLOY_USER`        | SSH user that can run `docker`                                                          |
+| `DEPLOY_SSH_KEY`     | Private key for that user; its public key goes in the server's `~/.ssh/authorized_keys` |
+| `DEPLOY_PATH`        | The Orbyn checkout on the server, for example `/opt/orbyn`                              |
+| `DEPLOY_PORT`        | Optional, defaults to 22                                                                |
+| `DEPLOY_KNOWN_HOSTS` | Optional output of `ssh-keyscan <host>`, to pin the server key                          |
+
+## Settings in the app
+
+Admins change these in **Admin → System**; every instance picks them up within about 10 seconds,
+with no restart or deploy. Anything not set there falls back to `.env`, and each setting can be
+reset to its `.env` value:
+
+- allowed web origins (`CORS_ORIGINS`);
+- the per-client rate limit (`RATE_LIMIT_PER_MINUTE`);
+- reminder delivery lanes (`NOTIFIER_CONCURRENCY`) and the status check interval
+  (`STATUS_INTERVAL_MS`);
+- email: SMTP host, port, user, password (stored encrypted) and sender, with a test email button.
+
+Secrets and infrastructure stay in `.env`: the database password, `SECRETS_KEY`, ports, and where
+services run.
+
+## Maintenance mode
+
+Switch it on in **Admin → System** with an optional message and end time. Members can still sign
+in and read everything, but changes are refused with a clear message (HTTP 503); admins keep full
+access. The web and mobile apps show a banner and the public status page shows the notice.
+
+## Updates
+
+Admin → System shows the running version. With `UPDATE_REPO=owner/repo` (and `GITHUB_TOKEN`, a
+read-only token, for a private repository) it also shows the newest commit on `UPDATE_BRANCH`
+(default `main`), whether an update is available, and a link to the deploy workflow. After a
+deploy, the web app notices the new version and offers a reload; its page is served with
+`Cache-Control: no-cache`, so browsers never keep running old code.
+
 ## Backups
 
 Everything lives in PostgreSQL. A nightly `pg_dump` of the `orbyn` database is a complete backup.

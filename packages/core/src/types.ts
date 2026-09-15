@@ -140,6 +140,78 @@ export type StatusReport = {
   updated_at: string;
   components: StatusComponent[];
   incidents: StatusIncident[];
+  /** Set while an admin has switched maintenance mode on. */
+  maintenance: Maintenance | null;
+};
+
+/** Maintenance mode: members can read but not change anything; admins can. */
+export type Maintenance = {
+  enabled: boolean;
+  /** Shown in the apps and on the status page. */
+  message: string;
+  /** When maintenance is expected to end, if known. */
+  until: string | null;
+  updated_at: string | null;
+};
+
+/**
+ * Settings admins change in the app. They apply within seconds on every
+ * instance, with no restart; anything not set falls back to `.env`.
+ */
+export type SystemSettings = {
+  /** Browser origins allowed to call the API. */
+  cors_origins: string[];
+  /** Requests per minute per client, per instance; 0 leaves it to the gateway. */
+  rate_limit_per_minute: number;
+  /** Parallel reminder deliveries per notifier instance. */
+  notifier_concurrency: number;
+  /** How often the status page probes every service. */
+  status_interval_ms: number;
+  smtp: {
+    /** Empty turns email reminders off. */
+    host: string;
+    port: number;
+    user: string;
+    secure: boolean;
+    from: string;
+    /** The password is never sent back, only whether one is saved. */
+    has_password: boolean;
+  };
+};
+
+export type SystemSettingKey = keyof SystemSettings;
+
+/** Settings plus where each value currently comes from. */
+export type SystemSettingsView = {
+  settings: SystemSettings;
+  sources: Record<SystemSettingKey, "database" | "environment">;
+  updated_at: string | null;
+};
+
+/** The build a service is running. */
+export type VersionInfo = {
+  /** Short commit, or "dev" for local builds. */
+  version: string;
+  built_at: string | null;
+  service: string;
+  uptime_s: number;
+};
+
+/** The running version against the newest commit on GitHub. */
+export type UpdateInfo = {
+  current: VersionInfo;
+  /** False when no repository is configured for update checks. */
+  checks_enabled: boolean;
+  latest: {
+    version: string;
+    message: string;
+    date: string;
+    url: string;
+  } | null;
+  available: boolean;
+  /** Where an admin starts a deploy (the GitHub Actions workflow), if known. */
+  deploy_url: string | null;
+  error: string | null;
 };
 
 /** A configured AI provider as admins see it. The key itself is never sent. */

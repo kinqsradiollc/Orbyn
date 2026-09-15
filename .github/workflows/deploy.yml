@@ -1,0 +1,56 @@
+# Deploys main to the production server over SSH with zero downtime
+# (scripts/deploy.sh). Run it from the Actions tab ("Run workflow"), or set
+# the repository variable AUTO_DEPLOY to "true" to deploy after CI passes on main.
+#
+# Repository secrets:
+#   DEPLOY_HOST         server address
+#   DEPLOY_USER         SSH user that can run docker
+#   DEPLOY_SSH_KEY      private key for that user (add the public key to the
+#                       server's ~/.ssh/authorized_keys)
+#   DEPLOY_PATH         the Orbyn checkout on the server, e.g. /opt/orbyn
+#   DEPLOY_PORT         optional, defaults to 22
+#   DEPLOY_KNOWN_HOSTS  optional: output of `ssh-keyscan <host>`, to pin the key
+name: Deploy
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && vars.AUTO_DEPLOY == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          for name in HOST USER KEY DEPLOY_PATH; do
+            if [ -z "${!name}" ]; then echo "Missing secret for $name (see the top of deploy.yml)"; exit 1; fi
+          done
+          PORT="${PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$PORT" "$HOST" > ~/.ssh/known_hosts
+          fi
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
+            "cd '$DEPLOY_PATH' && ./scripts/deploy.sh"

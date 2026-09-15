@@ -99,6 +99,42 @@
   color: #5f6b63;
 }
 
+/* Maintenance notice, above the headline while maintenance mode is on. */
+.status-maintenance {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 22px;
+  border: 1px solid #d8e2ef;
+  border-radius: 13px;
+  background: #eef3f9;
+  color: #34506f;
+  margin-bottom: 16px;
+}
+.status-maintenance > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.status-maintenance > div {
+  min-width: 0;
+}
+.status-maintenance h2 {
+  font-size: 17px;
+  letter-spacing: -0.3px;
+  margin: 0 0 4px;
+}
+.status-maintenance p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.status-maintenance .status-maintenance-message {
+  font-size: 13px;
+  font-weight: 500;
+}
+
 /* State pills on each component. */
 .state-pill {
   flex: none;

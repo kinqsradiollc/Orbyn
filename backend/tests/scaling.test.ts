@@ -115,3 +115,42 @@ test("the client asks for the primary right after writing and reuses unchanged b
   await client.request("/items");
   assert.equal(seen.at(-1)!.headers["X-Orbyn-Consistency"], "primary");
 });
+
+test("reads are retried once while a server copy restarts; writes never are", async () => {
+  const { OrbynClient } = await import("@orbyn/api-client");
+  let calls = 0;
+  const flaky = (async (_url: unknown, init?: RequestInit) => {
+    calls++;
+    if (calls === 1) return new Response("{}", { status: 503 });
+    return Response.json(
+      init?.method === "POST" ? { id: "x" } : [{ ok: true }],
+    );
+  }) as typeof fetch;
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => "t",
+    fetch: flaky,
+  });
+  assert.deepEqual(await client.request("/items"), [{ ok: true }]);
+  assert.equal(calls, 2, "the read was retried once");
+
+  calls = 0;
+  await assert.rejects(() =>
+    client.request("/items", { method: "POST", body: {} }),
+  );
+  assert.equal(calls, 1, "the write was not retried");
+
+  calls = 0;
+  const dropped = (async () => {
+    calls++;
+    if (calls === 1) throw new TypeError("fetch failed");
+    return Response.json([]);
+  }) as typeof fetch;
+  const again = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => "t",
+    fetch: dropped,
+  });
+  assert.deepEqual(await again.request("/items"), []);
+  assert.equal(calls, 2, "a dropped connection on a read is retried once");
+});

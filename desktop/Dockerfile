@@ -12,6 +12,9 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/desktop --include-workspace-root=false
 COPY packages packages
 COPY desktop desktop
+# The web app knows its version, so it can offer a reload after a deploy.
+ARG GIT_SHA=dev
+ENV VITE_APP_VERSION=$GIT_SHA
 RUN npm run build -w @orbyn/core && npm run build -w @orbyn/api-client && npm run build -w @orbyn/desktop
 
 FROM nginxinc/nginx-unprivileged:1.28-alpine

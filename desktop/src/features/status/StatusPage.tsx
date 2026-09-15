@@ -13,6 +13,7 @@ import {
   Orbit,
   RefreshCw,
   TriangleAlert,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -24,6 +25,7 @@ import {
   type StatusReport,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { formatDateTime } from "../../lib/format";
 import { stagger } from "../../lib/motion";
 import "./status.css";
 
@@ -186,6 +188,38 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
 
       <main className="status-main" aria-busy={loading && !report}>
         <span className="eyebrow">SERVICE STATUS</span>
+
+        {report?.maintenance && report.maintenance.enabled !== false && (
+          <section
+            className="status-maintenance fade-up"
+            role="status"
+            aria-labelledby="status-maintenance-title"
+          >
+            <Wrench size={22} aria-hidden="true" />
+            <div>
+              <h2 id="status-maintenance-title">Under maintenance</h2>
+              {report.maintenance.message && (
+                <p className="status-maintenance-message">
+                  {report.maintenance.message}
+                </p>
+              )}
+              <p>
+                You can still sign in and view everything. Changes are paused
+                until it&apos;s over.
+              </p>
+              {report.maintenance.until && (
+                <p>
+                  <strong>
+                    Expected back{" "}
+                    <time dateTime={report.maintenance.until}>
+                      {formatDateTime(report.maintenance.until)}
+                    </time>
+                  </strong>
+                </p>
+              )}
+            </div>
+          </section>
+        )}
 
         {report && (
           <section

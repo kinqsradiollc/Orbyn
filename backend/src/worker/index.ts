@@ -1,4 +1,4 @@
-import { env } from "../config/env.js";
+import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
@@ -37,11 +37,14 @@ export async function runWorker() {
         lastSchedule = Date.now();
       }
       const lanes = await Promise.all(
-        Array.from({ length: env.NOTIFIER_CONCURRENCY }, async () => {
-          for (let n = 0; n < LANE_BATCH && !stopping; n++)
-            if (!(await deliverOne())) return false;
-          return true;
-        }),
+        Array.from(
+          { length: (await settings()).notifier_concurrency },
+          async () => {
+            for (let n = 0; n < LANE_BATCH && !stopping; n++)
+              if (!(await deliverOne())) return false;
+            return true;
+          },
+        ),
       );
       backlog = lanes.some(Boolean);
     } catch (error) {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
-import type { Item, Notice, Team, User } from "@orbyn/core";
+import type { Item, Maintenance, Notice, Team, User } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
@@ -32,6 +32,24 @@ export function usePlanner() {
   const tokenRef = useRef(token);
   tokenRef.current = token;
   const refreshSeq = useRef(0);
+  const [maintenance, setMaintenanceState] = useState<Maintenance | null>(null);
+  const maintenanceSnapshot = useRef("null");
+
+  /** Store the maintenance state; unchanged polls don't re-render. */
+  const setMaintenance = useCallback((m: Maintenance | null) => {
+    const snapshot = JSON.stringify(m);
+    if (snapshot === maintenanceSnapshot.current) return;
+    maintenanceSnapshot.current = snapshot;
+    setMaintenanceState(m);
+  }, []);
+  /** Silent: no spinner, no busy state, and failures are ignored. */
+  const checkMaintenance = useCallback(async () => {
+    try {
+      setMaintenance(await client.getMaintenance());
+    } catch {
+      // Older servers have no /maintenance; a later poll tries again.
+    }
+  }, [setMaintenance]);
 
   const resetSession = () => {
     setToken("");
@@ -48,8 +66,12 @@ export function usePlanner() {
     try {
       await fn();
     } catch (e) {
+      const status = (e as { status?: number }).status;
+      // A 503 during maintenance carries the admin's message; show it as is
+      // and bring the banner up without waiting for the next poll.
       setError((e as Error).message);
-      if ((e as { status?: number }).status === 401) {
+      if (status === 503) void checkMaintenance();
+      if (status === 401) {
         await clearSession();
         resetSession();
       }
@@ -110,6 +132,7 @@ export function usePlanner() {
     // Background refresh: no spinner, no busy state, and errors stay on
     // screen until a later refresh succeeds (then only its own error clears).
     const background = async () => {
+      void checkMaintenance();
       try {
         await refresh({ silent: true });
         if (backgroundError.current) {
@@ -144,7 +167,7 @@ export function usePlanner() {
       sub.remove();
       notification.remove();
     };
-  }, [token, refresh]);
+  }, [token, refresh, checkMaintenance]);
 
   /** Register or log in, persist the session and enter the app. Call inside `act`. */
   const signIn = async ({ email, password, name, register }: SignInInput) => {
@@ -176,6 +199,8 @@ export function usePlanner() {
     setError,
     busy,
     refreshing,
+    maintenance,
+    setMaintenance,
     act,
     refresh,
     signIn,

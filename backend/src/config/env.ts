@@ -44,6 +44,16 @@ const schema = z.object({
    * limiting to the gateway; sign-in and AI routes always keep their own limits.
    */
   RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(0).default(180),
+  /** The build running (set by scripts/deploy.sh at image build time). */
+  APP_VERSION: z.string().default("dev"),
+  BUILD_TIME: z.string().default(""),
+  /** "owner/repo" on GitHub for update checks in Admin -> System; empty turns them off. */
+  UPDATE_REPO: z.string().default(""),
+  UPDATE_BRANCH: z.string().default("main"),
+  /** Needed for update checks on a private repository (read-only is enough). */
+  GITHUB_TOKEN: z.string().default(""),
+  /** Where admins start a deploy; defaults to the repo's deploy workflow. */
+  DEPLOY_URL: z.string().default(""),
   /** Parallel delivery lanes in the reminder service. */
   NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
 });

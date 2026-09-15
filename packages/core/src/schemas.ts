@@ -216,3 +216,65 @@ export const progressUpdateInput = z
     (d) => d.body !== "" || d.status !== undefined || d.progress !== undefined,
     "Write an update, or change the status or progress",
   );
+
+const origin = z
+  .string()
+  .trim()
+  .max(200)
+  .regex(
+    /^https?:\/\/[^/\s]+$/,
+    "Origins look like https://app.example.com (no path)",
+  );
+
+/**
+ * Changing system settings. Every field is optional; `reset` returns fields
+ * to their `.env` value. For the SMTP password: omit to keep, "" to remove.
+ */
+export const systemSettingsUpdate = z
+  .object({
+    cors_origins: z.array(origin).min(1).max(20).optional(),
+    rate_limit_per_minute: z.number().int().min(0).max(100000).optional(),
+    notifier_concurrency: z.number().int().min(1).max(64).optional(),
+    status_interval_ms: z.number().int().min(5000).max(3600000).optional(),
+    smtp: z
+      .object({
+        host: z.string().trim().max(200).optional(),
+        port: z.number().int().min(1).max(65535).optional(),
+        user: z.string().trim().max(200).optional(),
+        password: z.string().max(500).optional(),
+        secure: z.boolean().optional(),
+        from: z.string().trim().max(200).optional(),
+      })
+      .strict()
+      .optional(),
+    reset: z
+      .array(
+        z.enum([
+          "cors_origins",
+          "rate_limit_per_minute",
+          "notifier_concurrency",
+          "status_interval_ms",
+          "smtp",
+        ]),
+      )
+      .max(5)
+      .optional(),
+  })
+  .strict();
+
+/** Switching maintenance mode on or off. */
+export const maintenanceInput = z
+  .object({
+    enabled: z.boolean(),
+    message: z.string().trim().max(500).default(""),
+    until: z.iso.datetime({ offset: true }).nullable().default(null),
+  })
+  .strict();
+
+/** Sending a test email with the current SMTP settings. */
+export const testEmailInput = z
+  .object({ to: z.email().max(254).optional() })
+  .strict();
+
+export type SystemSettingsUpdate = z.input<typeof systemSettingsUpdate>;
+export type MaintenanceInput = z.input<typeof maintenanceInput>;

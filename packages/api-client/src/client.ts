@@ -20,6 +20,12 @@ import {
   type Page,
   type Proposal,
   type StatusReport,
+  type Maintenance,
+  type MaintenanceInput,
+  type SystemSettingsUpdate,
+  type SystemSettingsView,
+  type UpdateInfo,
+  type VersionInfo,
   type SystemRole,
   type Team,
   type TeamDetail,
@@ -30,6 +36,8 @@ import {
 
 /** After a write, reads ask for the primary database for this long. */
 const READ_YOUR_WRITES_MS = 5000;
+/** Pause before retrying a read that failed while a server copy restarted. */
+const RETRY_DELAY_MS = 300;
 /** How many unchanged-response bodies to remember for conditional GETs. */
 const MAX_CACHED = 100;
 
@@ -84,22 +92,39 @@ export class OrbynClient {
     const fresh =
       method === "GET" && Date.now() - this.lastWriteAt < READ_YOUR_WRITES_MS;
     if (method !== "GET") this.lastWriteAt = Date.now();
-    const response = await this.fetchImpl(this.baseUrl + path, {
-      method,
-      // Only declare a JSON body when there is one: the API rejects an empty
-      // body labelled application/json (this broke logout and other bodyless calls).
-      headers: {
-        ...(options.body === undefined
-          ? {}
-          : { "Content-Type": "application/json" }),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(cached ? { "If-None-Match": cached.etag } : {}),
-        ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
-      },
-      body:
-        options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+    const send = () =>
+      this.fetchImpl(this.baseUrl + path, {
+        method,
+        // Only declare a JSON body when there is one: the API rejects an empty
+        // body labelled application/json (this broke logout and other bodyless calls).
+        headers: {
+          ...(options.body === undefined
+            ? {}
+            : { "Content-Type": "application/json" }),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(cached ? { "If-None-Match": cached.etag } : {}),
+          ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
+        },
+        body:
+          options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    // A read that meets a copy being replaced during a deploy (502/503/504
+    // or a dropped connection) is tried once more; reads never change data.
+    // Writes are never retried, so nothing is saved twice.
+    let response: Response;
+    try {
+      response = await send();
+      if (method === "GET" && [502, 503, 504].includes(response.status)) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        response = await send();
+      }
+    } catch (error) {
+      if (method !== "GET" || (error as Error).name === "TimeoutError")
+        throw error;
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      response = await send();
+    }
     // Nothing changed since last time: reuse the body we already have. It is
     // parsed afresh so callers can never mutate the remembered copy.
     if (response.status === 304 && cached) return JSON.parse(cached.text) as T;
@@ -129,6 +154,43 @@ export class OrbynClient {
   }
 
   /** The public uptime report; no sign-in needed. */
+  // ---- system: settings, maintenance, version ----
+  /** Live settings and where each comes from (database or .env). */
+  getSystemSettings() {
+    return this.request<SystemSettingsView>("/admin/settings");
+  }
+  updateSystemSettings(body: SystemSettingsUpdate) {
+    return this.request<SystemSettingsView>("/admin/settings", {
+      method: "PUT",
+      body,
+    });
+  }
+  /** Sends a test email with the saved SMTP settings (to the admin by default). */
+  sendTestEmail(to?: string) {
+    return this.request<{ sent: true; to: string }>(
+      "/admin/settings/test-email",
+      { method: "POST", body: to ? { to } : {} },
+    );
+  }
+  /** Public: whether maintenance mode is on, for banners (no sign-in needed). */
+  getMaintenance() {
+    return this.request<Maintenance>("/maintenance", { anonymous: true });
+  }
+  setMaintenance(body: MaintenanceInput) {
+    return this.request<Maintenance>("/admin/maintenance", {
+      method: "PUT",
+      body,
+    });
+  }
+  /** Public: the build the server is running. */
+  getVersion() {
+    return this.request<VersionInfo>("/version", { anonymous: true });
+  }
+  /** The running version against the newest commit on GitHub. */
+  getUpdates() {
+    return this.request<UpdateInfo>("/admin/updates");
+  }
+
   getStatus() {
     return this.request<StatusReport>("/status", { anonymous: true });
   }

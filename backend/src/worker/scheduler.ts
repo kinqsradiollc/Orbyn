@@ -36,7 +36,7 @@ export async function enqueue() {
     AND i.due_at <= now() + interval '7 days'
     AND i.due_at-make_interval(mins=>i.reminder_minutes)<=now()
    ON CONFLICT(item_id,item_version,channel,destination) DO NOTHING`,
-      [emailEnabled],
+      [await emailEnabled()],
     );
     await db.query("DELETE FROM sessions WHERE expires_at<now()");
     await db.query(
