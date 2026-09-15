@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type HttpError,
   type Item,
+  type Maintenance,
   type Notice,
   type Status,
   type Team,
@@ -28,6 +29,8 @@ export function usePlanner() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  /** Maintenance mode, for the banner. Null until the first check. */
+  const [maintenance, setMaintenance] = useState<Maintenance | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
   const refreshSeq = useRef(0);
@@ -39,15 +42,39 @@ export function usePlanner() {
     setItems([]);
     setNotices([]);
     setTeams([]);
+    setMaintenance(null);
   }, []);
 
-  /** Surface an error in the banner; a 401 signs the user out. */
+  const lastMaintenance = useRef("");
+  /** Apply a maintenance state, re-rendering only when it changed. */
+  const applyMaintenance = useCallback((m: Maintenance) => {
+    const snapshot = JSON.stringify(m);
+    if (snapshot === lastMaintenance.current) return;
+    lastMaintenance.current = snapshot;
+    setMaintenance(m);
+  }, []);
+
+  /** Silent maintenance check: failures are ignored until the next one. */
+  const refreshMaintenance = useCallback(async () => {
+    try {
+      applyMaintenance(await client.getMaintenance());
+    } catch {
+      // Keep the last known state.
+    }
+  }, [applyMaintenance]);
+
+  /**
+   * Surface an error in the banner; a 401 signs the user out. A 503 during
+   * maintenance carries the server's message, and the banner is re-checked.
+   */
   const report = useCallback(
     (e: unknown) => {
       setError((e as Error).message);
-      if ((e as HttpError).status === 401) clearSession();
+      const status = (e as HttpError).status;
+      if (status === 401) clearSession();
+      if (status === 503) void refreshMaintenance();
     },
-    [clearSession],
+    [clearSession, refreshMaintenance],
   );
 
   const lastData = useRef("");
@@ -88,8 +115,10 @@ export function usePlanner() {
     let timer: ReturnType<typeof setTimeout>;
     const loop = async () => {
       try {
-        if (document.visibilityState === "visible")
+        if (document.visibilityState === "visible") {
+          if (tokenRef.current) void refreshMaintenance();
           await refresh({ silent: true });
+        }
       } catch (e) {
         if (alive) report(e);
       }
@@ -100,7 +129,7 @@ export function usePlanner() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [refresh, report]);
+  }, [refresh, report, refreshMaintenance]);
 
   const act = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -178,6 +207,8 @@ export function usePlanner() {
     setError,
     busy,
     loading,
+    maintenance,
+    applyMaintenance,
     refresh,
     act,
     report,

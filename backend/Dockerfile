@@ -30,7 +30,13 @@ FROM manifests AS prod-deps
 RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
 
 FROM node:22-bookworm-slim
-ENV NODE_ENV=production
+# Set by scripts/deploy.sh; shown in Admin -> System and at /version.
+ARG GIT_SHA=dev
+ARG BUILD_TIME=
+ENV NODE_ENV=production \
+    APP_VERSION=$GIT_SHA \
+    BUILD_TIME=$BUILD_TIME
+LABEL org.opencontainers.image.revision=$GIT_SHA
 WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/packages/core/package.json ./packages/core/package.json

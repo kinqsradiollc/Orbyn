@@ -20,6 +20,12 @@ import {
   type Page,
   type Proposal,
   type StatusReport,
+  type Maintenance,
+  type MaintenanceInput,
+  type SystemSettingsUpdate,
+  type SystemSettingsView,
+  type UpdateInfo,
+  type VersionInfo,
   type SystemRole,
   type Team,
   type TeamDetail,
@@ -129,6 +135,43 @@ export class OrbynClient {
   }
 
   /** The public uptime report; no sign-in needed. */
+  // ---- system: settings, maintenance, version ----
+  /** Live settings and where each comes from (database or .env). */
+  getSystemSettings() {
+    return this.request<SystemSettingsView>("/admin/settings");
+  }
+  updateSystemSettings(body: SystemSettingsUpdate) {
+    return this.request<SystemSettingsView>("/admin/settings", {
+      method: "PUT",
+      body,
+    });
+  }
+  /** Sends a test email with the saved SMTP settings (to the admin by default). */
+  sendTestEmail(to?: string) {
+    return this.request<{ sent: true; to: string }>(
+      "/admin/settings/test-email",
+      { method: "POST", body: to ? { to } : {} },
+    );
+  }
+  /** Public: whether maintenance mode is on, for banners (no sign-in needed). */
+  getMaintenance() {
+    return this.request<Maintenance>("/maintenance", { anonymous: true });
+  }
+  setMaintenance(body: MaintenanceInput) {
+    return this.request<Maintenance>("/admin/maintenance", {
+      method: "PUT",
+      body,
+    });
+  }
+  /** Public: the build the server is running. */
+  getVersion() {
+    return this.request<VersionInfo>("/version", { anonymous: true });
+  }
+  /** The running version against the newest commit on GitHub. */
+  getUpdates() {
+    return this.request<UpdateInfo>("/admin/updates");
+  }
+
   getStatus() {
     return this.request<StatusReport>("/status", { anonymous: true });
   }

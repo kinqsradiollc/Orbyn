@@ -8,11 +8,16 @@ import { ZodError } from "zod";
 import { env } from "../config/env.js";
 import { createHash } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
+import { authenticate } from "../lib/auth.js";
+import { cachedSettings, settings } from "../lib/settings.js";
+import { versionInfo } from "../lib/version.js";
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
 export type ServiceName = "api" | "ai" | "status" | "all";
 
 const startedAt = Date.now();
+const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const OPEN_DURING_MAINTENANCE = ["/auth/", "/admin/", "/devices", "/ai/chat"];
 
 /**
  * Fastify with the plugins, error handling, and `/health` endpoint every
@@ -36,18 +41,44 @@ export async function createService(
     // Only enable where services are not reachable directly.
     trustProxy: env.TRUST_PROXY === "true",
   });
+  // Allowed origins and the rate limit come from live settings (Admin ->
+  // System, falling back to .env), so changing them needs no restart.
+  await settings();
   await app.register(cors, {
-    origin: env.CORS_ORIGINS.split(","),
+    origin: (origin, cb) =>
+      cb(null, !origin || cachedSettings().cors_origins.includes(origin)),
     methods: ["GET", "POST", "PUT", "DELETE"],
     exposedHeaders: ["ETag"],
   });
   // Sign-in and AI routes set their own stricter limits, which always apply.
   // The general per-client limit can be left to the gateway (0).
   await app.register(rateLimit, {
-    global: env.RATE_LIMIT_PER_MINUTE > 0,
-    max: env.RATE_LIMIT_PER_MINUTE || 180,
+    global: true,
+    max: () => {
+      const limit = cachedSettings().rate_limit_per_minute;
+      return limit > 0 ? limit : 1_000_000;
+    },
     timeWindow: "1 minute",
   });
+
+  // Maintenance mode: members can read but not change anything. Admins,
+  // sign-in, device registration and the assistant's chat stay open.
+  if (name !== "status")
+    app.addHook("onRequest", async (request, reply) => {
+      if (!WRITES.has(request.method)) return;
+      const { maintenance } = await settings();
+      if (!maintenance.enabled) return;
+      const path = request.url.split("?")[0];
+      if (OPEN_DURING_MAINTENANCE.some((p) => path.startsWith(p))) return;
+      const user = await authenticate(request).catch(() => null);
+      if (user?.role === "admin") return;
+      return reply.code(503).send({
+        message: maintenance.message
+          ? `Orbyn is under maintenance: ${maintenance.message}`
+          : "Orbyn is under maintenance. Changes are paused for a moment.",
+        maintenance: true,
+      });
+    });
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof ZodError)
@@ -83,6 +114,9 @@ export async function createService(
     }
     return payload;
   });
+
+  /** The build this instance runs. */
+  app.get("/version", async () => versionInfo(name));
 
   /** Liveness: the process is up. No database, so a database blip never restarts every instance. */
   app.get("/live", async () => ({ status: "ok", service: name }));

@@ -2139,3 +2139,49 @@ footer svg {
     --topbar-h: 60px;
   }
 }
+
+/* Signed-in app banners: maintenance mode and a new version. */
+.app-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 9px 43px;
+  border-bottom: 1px solid;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.app-banner > svg {
+  flex: none;
+}
+.app-banner p {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.app-banner .secondary {
+  padding: 5px 11px;
+  font-size: 11px;
+  gap: 6px;
+}
+.app-banner .icon-button {
+  color: inherit;
+}
+.app-banner.is-maintenance {
+  background: #fcf3e0;
+  border-color: #f1dfb5;
+  color: #7f5812;
+}
+.app-banner.is-update {
+  background: #eaf1e9;
+  border-color: #d7e4d6;
+  color: #3c6349;
+}
+@media (max-width: 800px) {
+  .app-banner {
+    padding: 9px 20px;
+  }
+}

@@ -1,3 +1,4 @@
+import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
 import { createService } from "./services/http.js";
 import { authRoutes } from "./modules/auth/routes.js";
@@ -21,6 +22,7 @@ export const serviceModules: Record<
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
   api: [
+    systemRoutes,
     authRoutes,
     userRoutes,
     itemRoutes,

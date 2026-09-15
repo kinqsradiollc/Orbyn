@@ -1,4 +1,4 @@
-import { env } from "../../config/env.js";
+import { cachedSettings } from "../../lib/settings.js";
 import { pool, transaction } from "../../db/pool.js";
 import { components } from "./components.js";
 
@@ -68,7 +68,7 @@ export function startProber() {
         }),
       );
     }
-    if (!stopped) timer = setTimeout(tick, env.STATUS_INTERVAL_MS);
+    if (!stopped) timer = setTimeout(tick, cachedSettings().status_interval_ms);
   };
   void tick();
   return () => {

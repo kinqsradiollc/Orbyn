@@ -7,7 +7,14 @@
 #   Scale any service: docker compose up -d --scale api=3 --scale ai=2
 
 x-backend: &backend
-  build: { context: ., dockerfile: backend/Dockerfile }
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    args:
+      GIT_SHA: ${GIT_SHA:-dev}
+      BUILD_TIME: ${BUILD_TIME:-}
+  # In-flight requests get this long to finish when a copy is replaced.
+  stop_grace_period: 30s
   env_file:
     - path: .env
       required: false
@@ -129,6 +136,8 @@ services:
     environment: *backend-env
     command: ["node", "backend/dist/services/api.js"]
     healthcheck: *http-health
+    # Two copies, so scripts/deploy.sh can replace them without downtime.
+    deploy: { replicas: "${API_REPLICAS:-2}" }
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
@@ -139,6 +148,7 @@ services:
     environment: *backend-env
     command: ["node", "backend/dist/services/ai.js"]
     healthcheck: *http-health
+    deploy: { replicas: "${AI_REPLICAS:-2}" }
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
@@ -194,7 +204,11 @@ services:
     restart: unless-stopped
 
   desktop:
-    build: { context: ., dockerfile: desktop/Dockerfile }
+    build:
+      context: .
+      dockerfile: desktop/Dockerfile
+      args:
+        GIT_SHA: ${GIT_SHA:-dev}
     ports: ["${WEB_PORT:-8080}:8080"]
     depends_on: [gateway]
     restart: unless-stopped

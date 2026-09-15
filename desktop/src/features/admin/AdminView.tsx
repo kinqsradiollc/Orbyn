@@ -7,6 +7,7 @@ import {
   ListTodo,
   Network,
   ScrollText,
+  ServerCog,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
@@ -14,7 +15,11 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { hasSystemPermission, type AdminOverview } from "@orbyn/core";
+import {
+  hasSystemPermission,
+  type AdminOverview,
+  type Maintenance,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
 import { RoleBadge } from "../../components/RoleBadge";
@@ -22,9 +27,10 @@ import { TeamDetail, type TeamActions } from "../teams/TeamDetail";
 import { AdminUsers } from "./AdminUsers";
 import { AdminAudit } from "./AdminAudit";
 import { AdminAi } from "./AdminAi";
+import { AdminSystem } from "./AdminSystem";
 import { stagger } from "../../lib/motion";
 
-type Tab = "Overview" | "Users" | "Teams" | "Audit log" | "AI";
+type Tab = "Overview" | "Users" | "Teams" | "Audit log" | "AI" | "System";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Overview", icon: LayoutDashboard },
@@ -32,6 +38,7 @@ const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Teams", icon: Network },
   { label: "Audit log", icon: ScrollText },
   { label: "AI", icon: Sparkles },
+  { label: "System", icon: ServerCog },
 ];
 
 const STATS: { key: keyof AdminOverview; label: string; icon: LucideIcon }[] = [
@@ -54,11 +61,22 @@ const STATS: { key: keyof AdminOverview; label: string; icon: LucideIcon }[] = [
 ];
 
 /** System admin console. Only rendered for `admin:access`; the server enforces it too. */
-export function AdminView(props: TeamActions) {
+export function AdminView({
+  onMaintenanceChange,
+  ...props
+}: TeamActions & { onMaintenanceChange?: (m: Maintenance) => void }) {
   const [tab, setTab] = useState<Tab>("Overview");
   const [teamId, setTeamId] = useState<string | null>(null);
   const canManageAi = hasSystemPermission(props.user?.role, "ai:manage");
-  const tabs = TABS.filter((t) => t.label !== "AI" || canManageAi);
+  const canManageSystem = hasSystemPermission(
+    props.user?.role,
+    "system:manage",
+  );
+  const tabs = TABS.filter(
+    (t) =>
+      (t.label !== "AI" || canManageAi) &&
+      (t.label !== "System" || canManageSystem),
+  );
 
   return (
     <>
@@ -104,6 +122,13 @@ export function AdminView(props: TeamActions) {
         ))}
       {tab === "Audit log" && <AdminAudit report={props.report} />}
       {tab === "AI" && canManageAi && <AdminAi {...props} />}
+      {tab === "System" && canManageSystem && (
+        <AdminSystem
+          user={props.user}
+          report={props.report}
+          onMaintenanceChange={onMaintenanceChange}
+        />
+      )}
     </>
   );
 }

@@ -11,7 +11,9 @@ import {
 import { client } from "../lib/api";
 import { usePlanner } from "../hooks/usePlanner";
 import { useAssistant } from "../hooks/useAssistant";
+import { useNewVersion } from "../hooks/useNewVersion";
 import { Sidebar } from "../components/Sidebar";
+import { MaintenanceBanner, UpdateBanner } from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
 import { HomePage } from "../features/home/HomePage";
@@ -48,6 +50,7 @@ export function App() {
   }, []);
   const planner = usePlanner();
   const assistant = useAssistant(planner);
+  const newVersion = useNewVersion();
   const {
     token,
     user,
@@ -236,6 +239,13 @@ export function App() {
         onSignOut={() => void planner.logout()}
       />
       <div className="shell">
+        <MaintenanceBanner
+          maintenance={planner.maintenance}
+          isAdmin={hasSystemPermission(user?.role, "system:manage")}
+        />
+        {newVersion.available && (
+          <UpdateBanner onDismiss={newVersion.dismiss} />
+        )}
         <Topbar
           view={view}
           onToggleMenu={() => setMobileNav(!mobileNav)}
@@ -289,7 +299,12 @@ export function App() {
               <AssistantView items={items} busy={busy} assistant={assistant} />
             )}
             {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
-            {view === "Admin" && isAdmin && <AdminView {...teamActions} />}
+            {view === "Admin" && isAdmin && (
+              <AdminView
+                {...teamActions}
+                onMaintenanceChange={planner.applyMaintenance}
+              />
+            )}
             {view === "Notifications" && (
               <NotificationsView notices={notices} onRead={planner.markRead} />
             )}
