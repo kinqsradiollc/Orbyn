@@ -588,6 +588,91 @@ const coHosts = z
   )
   .max(10);
 
+const hoursRange = z
+  .object({ start: clock, end: clock })
+  .strict()
+  .refine((r) => r.end > r.start, "Each range ends after it starts");
+
+/** When a booking page offers times. */
+export const bookingAvailability = z.discriminatedUnion("mode", [
+  /** Each host's own working days and hours (Settings → Planning). */
+  z.object({ mode: z.literal("working_hours") }).strict(),
+  /** The page's own weekly hours in one time zone; hosts' busy time still counts. */
+  z
+    .object({
+      mode: z.literal("custom"),
+      timezone: timeZoneField,
+      weekly: z
+        .array(
+          z
+            .object({
+              /** 0 = Sunday … 6 = Saturday. */
+              day: z.number().int().min(0).max(6),
+              start: clock,
+              end: clock,
+            })
+            .strict()
+            .refine((r) => r.end > r.start, "Each range ends after it starts"),
+        )
+        .max(42),
+    })
+    .strict(),
+]);
+
+/** A date with different hours, or none at all (closed). */
+export const dateOverride = z
+  .object({ date: dayKey, hours: z.array(hoursRange).max(6) })
+  .strict();
+
+export const QUESTION_TYPES = ["text", "long_text", "choice", "phone"] as const;
+
+/** A question on the booking form. */
+export const bookingQuestion = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .regex(
+        /^[a-z0-9_-]{1,40}$/,
+        "Question ids use lowercase letters, numbers, - and _",
+      ),
+    label: z.string().trim().min(1).max(200),
+    type: z.enum(QUESTION_TYPES),
+    required: z.boolean().default(false),
+    options: z.array(z.string().trim().min(1).max(100)).max(12).default([]),
+  })
+  .strict()
+  .refine(
+    (q) => q.type !== "choice" || q.options.length >= 2,
+    "A choice question needs at least two options",
+  );
+
+const questions = z
+  .array(bookingQuestion)
+  .max(10)
+  .refine(
+    (qs) => new Set(qs.map((q) => q.id)).size === qs.length,
+    "Each question needs its own id",
+  );
+const overrides = z
+  .array(dateOverride)
+  .max(100)
+  .refine(
+    (os) => new Set(os.map((o) => o.date)).size === os.length,
+    "Each date can have one override",
+  );
+export const SLOT_INTERVALS = [5, 10, 15, 20, 30, 60] as const;
+const slotInterval = z
+  .number()
+  .int()
+  .refine(
+    (v) => (SLOT_INTERVALS as readonly number[]).includes(v),
+    "Start times can be every 5, 10, 15, 20, 30 or 60 minutes",
+  );
+const bufferMinutes = z.number().int().min(0).max(120);
+/** The title of the event hosts get: {page}, {name} and {email} are filled in. */
+const eventTitle = z.string().trim().min(1).max(200);
+
 export const bookingPageInput = z
   .object({
     slug,
@@ -596,12 +681,28 @@ export const bookingPageInput = z
     durations,
     window_days: z.number().int().min(1).max(90).default(14),
     min_notice_minutes: z.number().int().min(0).max(20160).default(240),
-    buffer_minutes: z.number().int().min(0).max(120).default(0),
+    /** Older apps: one buffer for both sides. */
+    buffer_minutes: bufferMinutes.optional(),
+    buffer_before_minutes: bufferMinutes.optional(),
+    buffer_after_minutes: bufferMinutes.optional(),
+    slot_interval_minutes: slotInterval.default(15),
     max_per_day: z.number().int().min(1).max(50).nullable().default(null),
+    max_per_week: z.number().int().min(1).max(200).nullable().default(null),
     location: z.string().trim().max(300).default(""),
     meeting_url: meetingUrl.default(""),
     active: z.boolean().default(true),
     co_hosts: coHosts.default([]),
+    color: color.default("#376c51"),
+    availability: bookingAvailability.default({ mode: "working_hours" }),
+    date_overrides: overrides.default([]),
+    questions: questions.default([]),
+    /** Hosts approve each request before it's booked. */
+    requires_approval: z.boolean().default(false),
+    /** Bookers can move their booking from their manage link. */
+    allow_reschedule: z.boolean().default(true),
+    event_title: eventTitle.default("{page} with {name}"),
+    /** Shown after booking and in the confirmation email. */
+    confirmation_message: z.string().trim().max(1000).default(""),
   })
   .strict();
 export const bookingPageUpdate = z
@@ -612,12 +713,24 @@ export const bookingPageUpdate = z
     durations: durations.optional(),
     window_days: z.number().int().min(1).max(90).optional(),
     min_notice_minutes: z.number().int().min(0).max(20160).optional(),
-    buffer_minutes: z.number().int().min(0).max(120).optional(),
+    buffer_minutes: bufferMinutes.optional(),
+    buffer_before_minutes: bufferMinutes.optional(),
+    buffer_after_minutes: bufferMinutes.optional(),
+    slot_interval_minutes: slotInterval.optional(),
     max_per_day: z.number().int().min(1).max(50).nullable().optional(),
+    max_per_week: z.number().int().min(1).max(200).nullable().optional(),
     location: z.string().trim().max(300).optional(),
     meeting_url: meetingUrl.optional(),
     active: z.boolean().optional(),
     co_hosts: coHosts.optional(),
+    color: color.optional(),
+    availability: bookingAvailability.optional(),
+    date_overrides: overrides.optional(),
+    questions: questions.optional(),
+    requires_approval: z.boolean().optional(),
+    allow_reschedule: z.boolean().optional(),
+    event_title: eventTitle.optional(),
+    confirmation_message: z.string().trim().max(1000).optional(),
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
@@ -641,8 +754,54 @@ export const bookingRequest = z
     email: emailField,
     note: z.string().trim().max(2000).default(""),
     timezone: timeZoneField.default("UTC"),
+    /** Answers to the page's questions, by question id. */
+    answers: z.record(z.string().max(40), z.string().max(2000)).default({}),
   })
   .strict();
+
+// ---- Tracking bookings ------------------------------------------------------------
+
+export const BOOKING_VIEWS = [
+  "upcoming",
+  "needs_approval",
+  "past",
+  "cancelled",
+  "all",
+] as const;
+
+/** Bookings across the pages you own or host. */
+export const bookingsQuery = z.object({
+  view: z.enum(BOOKING_VIEWS).default("upcoming"),
+  page_id: z.uuid().optional(),
+  /** Words in the booker's name or email. */
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+export const bookingStatsQuery = z.object({ page_id: z.uuid().optional() });
+
+/** Declining or cancelling, with an optional reason the booker sees. */
+export const bookingReason = z
+  .object({ reason: z.string().trim().max(500).default("") })
+  .strict();
+
+/** Moving a booking to another free time of the same length. */
+export const bookingReschedule = z.object({ start_at: instant }).strict();
+
+/** A private note only hosts see. */
+export const bookingNoteInput = z
+  .object({ host_note: z.string().trim().max(4000) })
+  .strict();
+
+export const noShowInput = z.object({ no_show: z.boolean() }).strict();
+
+/** Free times for moving a booking, from its manage link. */
+export const rescheduleSlotsQuery = z.object({
+  date: dayKey.optional(),
+  days: z.coerce.number().int().min(1).max(14).default(7),
+  timezone: timeZoneField.default("UTC"),
+});
 
 // ---- API keys and webhooks -----------------------------------------------------
 
@@ -656,7 +815,10 @@ export const WEBHOOK_EVENTS = [
   "item.completed",
   "item.deleted",
   "block.scheduled",
+  "booking.requested",
   "booking.confirmed",
+  "booking.rescheduled",
+  "booking.cancelled",
 ] as const;
 const webhookUrl = z
   .string()

@@ -7,6 +7,10 @@ import type {
   bookingPageInput,
   bookingPageUpdate,
   bookingRequest,
+  bookingAvailability,
+  bookingQuestion,
+  BOOKING_VIEWS,
+  dateOverride,
   BREAK_LEVELS,
   calendarSetInput,
   chatTurn,
@@ -137,7 +141,8 @@ export type Notice = {
   created_at: string;
   /** "conflict" notices offer a Reschedule action for the block in `ref`. */
   kind?: "reminder" | "conflict" | "booking";
-  item_id?: string;
+  /** Null for booking notices, which point at the booking in `ref`. */
+  item_id?: string | null;
   ref?: string;
 };
 
@@ -537,6 +542,11 @@ export type MeetingSlot = {
 
 export type BookingHost = { user_id: string; name: string; required: boolean };
 
+export type BookingQuestion = z.output<typeof bookingQuestion>;
+export type BookingAvailability = z.output<typeof bookingAvailability>;
+export type DateOverride = z.output<typeof dateOverride>;
+export type BookingView = (typeof BOOKING_VIEWS)[number];
+
 export type BookingPage = {
   id: string;
   owner_id: string;
@@ -546,26 +556,119 @@ export type BookingPage = {
   durations: number[];
   window_days: number;
   min_notice_minutes: number;
-  buffer_minutes: number;
+  buffer_before_minutes: number;
+  buffer_after_minutes: number;
+  /** How often start times are offered, in minutes. */
+  slot_interval_minutes: number;
   max_per_day: number | null;
+  max_per_week: number | null;
   location: string;
   meeting_url: string;
   active: boolean;
+  /** Accent colour of the public page. */
+  color: string;
+  availability: BookingAvailability;
+  date_overrides: DateOverride[];
+  questions: BookingQuestion[];
+  requires_approval: boolean;
+  allow_reschedule: boolean;
+  /** The hosts' event title; {page}, {name} and {email} are filled in. */
+  event_title: string;
+  confirmation_message: string;
   hosts: BookingHost[];
+  /** Upcoming confirmed bookings, and requests waiting for a host. */
+  counts: { upcoming: number; needs_approval: number };
   created_at: string;
   updated_at: string;
 };
 
+/**
+ * pending: waiting for the booker's email link. awaiting_approval: waiting
+ * for a host. expired: neither happened in time.
+ */
+export type BookingStatus =
+  | "pending"
+  | "awaiting_approval"
+  | "confirmed"
+  | "declined"
+  | "cancelled"
+  | "expired";
+
 export type Booking = {
   id: string;
   page_id: string;
+  page_title: string;
+  page_slug: string;
   start_at: string;
   end_at: string;
   name: string;
   email: string;
   note: string;
-  status: "pending" | "confirmed" | "cancelled";
+  /** Answers by question id. */
+  answers: Record<string, string>;
+  status: BookingStatus;
+  no_show: boolean;
+  /** Private: only hosts see it. */
+  host_note: string;
+  cancel_reason: string;
+  cancelled_by: "booker" | "host" | null;
+  reschedule_count: number;
+  /** The booker's time zone. */
+  timezone: string;
   created_at: string;
+  updated_at: string;
+};
+
+/** One step in a booking's history. */
+export type BookingEvent = {
+  id: string;
+  kind:
+    | "requested"
+    | "email_confirmed"
+    | "approved"
+    | "declined"
+    | "confirmed"
+    | "rescheduled"
+    | "cancelled"
+    | "no_show"
+    | "note";
+  actor: "host" | "booker" | "system";
+  actor_name: string | null;
+  detail: string;
+  created_at: string;
+};
+
+export type BookingDetail = Booking & {
+  questions: BookingQuestion[];
+  hosts: BookingHost[];
+  location: string;
+  meeting_url: string;
+  events: BookingEvent[];
+};
+
+/** A summary of bookings across your pages, or one page. */
+export type BookingStats = {
+  upcoming: number;
+  needs_approval: number;
+  /** Waiting for the booker's email link. */
+  awaiting_email: number;
+  confirmed: number;
+  cancelled: number;
+  declined: number;
+  no_show: number;
+  /** Bookings made in the last 30 days. */
+  last_30_days: number;
+  /** cancelled / (confirmed + cancelled), 0 to 1. */
+  cancellation_rate: number;
+  next: Booking | null;
+  pages: {
+    page_id: string;
+    title: string;
+    slug: string;
+    upcoming: number;
+    needs_approval: number;
+    total: number;
+  }[];
 };
 
 /** What a public booking page shows. Host calendars are never exposed. */
@@ -580,15 +683,45 @@ export type PublicBookingPage = {
   timezone: string;
   duration: number;
   slots: BusyInterval[];
+  color: string;
+  questions: BookingQuestion[];
+  requires_approval: boolean;
+  allow_reschedule: boolean;
 };
 
 export type BookingReceipt = {
   id: string;
-  status: Booking["status"];
+  status: BookingStatus;
   start_at: string;
   end_at: string;
   /** True when the booking waits for the link sent by email. */
   needs_confirmation: boolean;
+  /** True when a host has to approve it. */
+  needs_approval: boolean;
+  confirmation_message: string;
+};
+
+/** What a booker sees from their private manage link. */
+export type ManagedBooking = {
+  booking: {
+    id: string;
+    status: BookingStatus;
+    start_at: string;
+    end_at: string;
+    name: string;
+    duration: number;
+    timezone: string;
+  };
+  page: {
+    slug: string;
+    title: string;
+    color: string;
+    location: string;
+    has_meeting_link: boolean;
+    hosts: string[];
+  };
+  can_reschedule: boolean;
+  can_cancel: boolean;
 };
 
 // ---- API keys, webhooks, calendar feed ------------------------------------------

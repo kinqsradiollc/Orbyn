@@ -41,6 +41,10 @@ import {
   type BookingPageUpdate,
   type BookingReceipt,
   type BookingRequest,
+  type BookingDetail,
+  type BookingStats,
+  type BookingView,
+  type ManagedBooking,
   type CalendarFeed,
   type CalendarView,
   type Frame,
@@ -99,6 +103,8 @@ export type RequestOptions = {
   body?: unknown;
   /** Send without the Authorization header even if a token exists. */
   anonymous?: boolean;
+  /** Resolve with the body text instead of parsing JSON (CSV exports). */
+  raw?: boolean;
 };
 
 /**
@@ -166,7 +172,8 @@ export class OrbynClient {
     }
     // Nothing changed since last time: reuse the body we already have. It is
     // parsed afresh so callers can never mutate the remembered copy.
-    if (response.status === 304 && cached) return JSON.parse(cached.text) as T;
+    if (response.status === 304 && cached)
+      return (options.raw ? cached.text : JSON.parse(cached.text)) as T;
     if (!response.ok) {
       const error = (await response
         .json()
@@ -184,7 +191,7 @@ export class OrbynClient {
       if (this.cache.size > MAX_CACHED)
         this.cache.delete(this.cache.keys().next().value as string);
     }
-    return JSON.parse(text) as T;
+    return (options.raw ? text : JSON.parse(text)) as T;
   }
 
   // ---- health ----
@@ -483,6 +490,7 @@ export class OrbynClient {
   deleteBookingPage(id: string) {
     return this.request<void>(`/booking-pages/${id}`, { method: "DELETE" });
   }
+  /** One page's upcoming and recent bookings (older apps; prefer `bookings`). */
   listBookings(pageId: string) {
     return this.request<Booking[]>(`/booking-pages/${pageId}/bookings`);
   }
@@ -490,6 +498,125 @@ export class OrbynClient {
     return this.request<{ cancelled: boolean }>(
       `/booking-pages/${pageId}/bookings/${bookingId}/cancel`,
       { method: "POST" },
+    );
+  }
+
+  // ---- tracking bookings ----
+  private bookingsQuery(params: {
+    view?: BookingView;
+    page_id?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (params.view) q.set("view", params.view);
+    if (params.page_id) q.set("page_id", params.page_id);
+    if (params.q) q.set("q", params.q);
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.offset !== undefined) q.set("offset", String(params.offset));
+    return q.size ? `?${q}` : "";
+  }
+  /** Bookings across the pages you own or host. */
+  bookings(
+    params: {
+      view?: BookingView;
+      page_id?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
+    return this.request<Page<Booking>>(
+      `/bookings${this.bookingsQuery(params)}`,
+    );
+  }
+  bookingStats(pageId?: string) {
+    return this.request<BookingStats>(
+      `/bookings/stats${pageId ? `?page_id=${pageId}` : ""}`,
+    );
+  }
+  /** The same bookings as CSV text, for spreadsheets. */
+  exportBookingsCsv(
+    params: { view?: BookingView; page_id?: string; q?: string } = {},
+  ) {
+    return this.request<string>(
+      `/bookings/export.csv${this.bookingsQuery(params)}`,
+      { raw: true },
+    );
+  }
+  getBooking(id: string) {
+    return this.request<BookingDetail>(`/bookings/${id}`);
+  }
+  approveBooking(id: string) {
+    return this.request<BookingDetail>(`/bookings/${id}/approve`, {
+      method: "POST",
+    });
+  }
+  declineBooking(id: string, reason = "") {
+    return this.request<BookingDetail>(`/bookings/${id}/decline`, {
+      method: "POST",
+      body: { reason },
+    });
+  }
+  /** Cancel as a host; the booker is emailed with your reason. */
+  cancelBookingAsHost(id: string, reason = "") {
+    return this.request<BookingDetail>(`/bookings/${id}/cancel`, {
+      method: "POST",
+      body: { reason },
+    });
+  }
+  rescheduleBooking(id: string, startAt: string) {
+    return this.request<BookingDetail>(`/bookings/${id}/reschedule`, {
+      method: "POST",
+      body: { start_at: startAt },
+    });
+  }
+  setBookingNoShow(id: string, noShow: boolean) {
+    return this.request<BookingDetail>(`/bookings/${id}/no-show`, {
+      method: "PUT",
+      body: { no_show: noShow },
+    });
+  }
+  setBookingNote(id: string, hostNote: string) {
+    return this.request<BookingDetail>(`/bookings/${id}/note`, {
+      method: "PUT",
+      body: { host_note: hostNote },
+    });
+  }
+  /** Public: a booking from the booker's manage link. */
+  getManagedBooking(token: string) {
+    return this.request<ManagedBooking>(
+      `/book/manage/${encodeURIComponent(token)}`,
+      { anonymous: true },
+    );
+  }
+  /** Public: free times to move a booking to. */
+  getRescheduleSlots(
+    token: string,
+    params: { date?: string; days?: number; timezone: string },
+  ) {
+    const q = new URLSearchParams({ timezone: params.timezone });
+    if (params.date) q.set("date", params.date);
+    if (params.days) q.set("days", String(params.days));
+    return this.request<
+      Pick<PublicBookingPage, "timezone" | "duration" | "slots">
+    >(`/book/manage/${encodeURIComponent(token)}/slots?${q}`, {
+      anonymous: true,
+    });
+  }
+  /** Public: move a booking from its manage link. */
+  rescheduleByToken(token: string, startAt: string) {
+    return this.request<ManagedBooking>(
+      `/book/manage/${encodeURIComponent(token)}/reschedule`,
+      { method: "POST", body: { start_at: startAt }, anonymous: true },
+    );
+  }
+  /** Public: cancel from the manage link. */
+  cancelByManageToken(token: string, reason = "") {
+    return this.request<ManagedBooking>(
+      `/book/manage/${encodeURIComponent(token)}/cancel`,
+      { method: "POST", body: { reason }, anonymous: true },
     );
   }
   /** Public: a booking page and its free times (no sign-in). Without a
