@@ -12,6 +12,7 @@ import {
   dateLabel,
   type OpenInvite,
   type OpenInviteStatus,
+  type Team,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
@@ -38,6 +39,8 @@ import { RemoveButton, ReminderChips, bookingStyles as bs } from "./ui";
 
 /** The server's limit on windows per invite. */
 const MAX_WINDOWS = 20;
+/** The server's limit on co-hosts. */
+const MAX_CO_HOSTS = 10;
 
 export const INVITE_STATUS: Record<
   OpenInviteStatus,
@@ -141,6 +144,8 @@ export function InviteList({ onNew }: { onNew: () => void }) {
                   </View>
                   <Text style={shared.small}>
                     {minutesLabel(invite.duration)} · {windowsSummary(invite)}
+                    {invite.co_hosts.length > 0 &&
+                      ` · with ${invite.co_hosts.map((h) => h.name).join(", ")}`}
                   </Text>
                   {invite.booking ? (
                     <Text style={[shared.small, s.line]}>
@@ -186,8 +191,41 @@ export function InviteList({ onNew }: { onNew: () => void }) {
  * Offer times: windows by day with a start and end, the meeting's title and
  * length, where it happens, reminders for the booker and when the link stops.
  */
-export function InviteEditor({ onDone }: { onDone: () => void }) {
+export function InviteEditor({
+  teams,
+  userId,
+  onDone,
+}: {
+  /** Your teams: people you share one with can co-host. */
+  teams: Team[];
+  userId: string | undefined;
+  onDone: () => void;
+}) {
   const { busy, error, setError, run } = useRun();
+  const [coHosts, setCoHosts] = useState<string[]>([]);
+  const [people, setPeople] = useState<{ user_id: string; name: string }[]>([]);
+  // Everyone you share a team with, once each, by name.
+  const teamIds = teams.map((t) => t.id).join(",");
+  useEffect(() => {
+    let alive = true;
+    const ids = teamIds ? teamIds.split(",") : [];
+    Promise.all(ids.map((id) => client.getTeam(id).catch(() => null)))
+      .then((details) => {
+        if (!alive) return;
+        const seen = new Map<string, { user_id: string; name: string }>();
+        for (const d of details)
+          for (const m of d?.members ?? [])
+            if (m.user_id !== userId)
+              seen.set(m.user_id, { user_id: m.user_id, name: m.name });
+        setPeople(
+          [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [teamIds, userId]);
   const tomorrow = addDays(dayKeyOf(new Date()), 1);
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState(30);
@@ -253,6 +291,7 @@ export function InviteEditor({ onDone }: { onDone: () => void }) {
         location: location.trim(),
         meeting_url: meetingUrl.trim(),
         remind_before_minutes: reminders,
+        co_host_ids: coHosts,
         ...(expiry ? { expires_at: at(expiry, "23:59").toISOString() } : {}),
       });
       animateLayout();
@@ -405,6 +444,34 @@ export function InviteEditor({ onDone }: { onDone: () => void }) {
             accessibilityLabel="Meeting link"
           />
         </Field>
+        {people.length > 0 && (
+          <Field
+            label="Co-hosts (optional)"
+            hint={`Only times when every co-host is free too are offered, and the booking goes on their calendars. Up to ${MAX_CO_HOSTS}.`}
+          >
+            <ChipRow label="Co-hosts" multi>
+              {people.map((p) => {
+                const on = coHosts.includes(p.user_id);
+                return (
+                  <Chip
+                    key={p.user_id}
+                    multi
+                    label={p.name}
+                    selected={on}
+                    disabled={!on && coHosts.length >= MAX_CO_HOSTS}
+                    onPress={() =>
+                      setCoHosts(
+                        on
+                          ? coHosts.filter((id) => id !== p.user_id)
+                          : [...coHosts, p.user_id],
+                      )
+                    }
+                  />
+                );
+              })}
+            </ChipRow>
+          </Field>
+        )}
         <Field label="Reminder emails">
           <ReminderChips value={reminders} onChange={setReminders} />
         </Field>

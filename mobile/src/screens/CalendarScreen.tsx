@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   addMonths,
@@ -45,6 +46,7 @@ import {
 import { Icon } from "../components/Icon";
 import { ReviewCard } from "../components/ReviewCard";
 import { Segmented } from "../components/Segmented";
+import { SlotFill, type SlotHandle } from "../components/Slot";
 import { SmallAction } from "../components/SmallAction";
 import { useNow } from "../hooks/useNow";
 import { usePlanStale } from "../hooks/usePlanStale";
@@ -74,6 +76,8 @@ import { ActionMenu, type Menu, type MenuAction } from "./calendar/ActionMenu";
 import { AgendaList } from "./calendar/AgendaList";
 import { CalendarSetsSheet } from "./calendar/CalendarSetsSheet";
 import {
+  DAY_END,
+  DAY_START,
   addDays,
   covers,
   rangeTitle,
@@ -81,7 +85,12 @@ import {
   startOfWeek,
   weekDays,
 } from "./calendar/dates";
-import { DayTimeline, type TimelineSlot } from "./calendar/DayTimeline";
+import {
+  DayTimeline,
+  gutterWidth,
+  hoursFor,
+  type TimelineSlot,
+} from "./calendar/DayTimeline";
 import { FrameSheet } from "./calendar/FrameSheet";
 import type { MonthThing } from "./calendar/month";
 import { MonthView } from "./calendar/MonthView";
@@ -111,6 +120,9 @@ const MODE_KEY = "orbyn-calendar-mode";
 const UNDO_MS = 10_000;
 /** Days the agenda lists. */
 const AGENDA_DAYS = 14;
+/** Days side by side on a wide screen, and the width that allows them. */
+const GRID_DAYS = 3;
+const GRID_WIDTH = 700;
 
 const dayKeyOf = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -176,8 +188,11 @@ export function CalendarScreen({
   onOpenOccurrence,
   onFocus,
   onScrollTo,
+  controlsSlot,
   ...handlers
 }: ListHandlers & {
+  /** The page's sticky header: the date navigation and view switch go there. */
+  controlsSlot?: SlotHandle;
   items: Item[];
   /** For the frame editor's team filter, sets and teammates. */
   teams: Team[];
@@ -246,6 +261,11 @@ export function CalendarScreen({
   /** Plans this screen made by tuning the preview (they don't jump days). */
   const tuned = useRef(new Set<string>());
   const now = useNow(30_000);
+  // Tablets and landscape: three days side by side in the day and week views.
+  const { width } = useWindowDimensions();
+  const multi = width >= GRID_WIDTH && (mode === "day" || mode === "week");
+  /** "Show all 24 hours" for the days side by side (they share one window). */
+  const [gridAllHours, setGridAllHours] = useState(false);
 
   // The range shown: the week (for the strip), the month grid, or the agenda.
   const range = (() => {
@@ -261,7 +281,10 @@ export function CalendarScreen({
       return { from, to: addDays(from, AGENDA_DAYS) };
     }
     const from = startOfWeek(selected);
-    return { from, to: addDays(from, 7) };
+    const to = addDays(from, 7);
+    // Three days side by side can run past the end of the week.
+    const gridEnd = addDays(startOfDay(selected), GRID_DAYS);
+    return { from, to: multi && gridEnd > to ? gridEnd : to };
   })();
   const fromIso = range.from.toISOString();
   const toIso = range.to.toISOString();
@@ -359,46 +382,76 @@ export function CalendarScreen({
   const allGhosts = live ? preview.blocks : [];
   const keepFree = live ? (preview.options?.keep_free ?? []) : [];
 
-  // Everything on the selected day, including what runs into it.
-  const dayEntries = cal
-    ? entries.filter((e) => covers(e, selected))
-    : dayItems.map(entryFromItem);
-  const dayExternal = external.filter((x) => covers(x, selected));
-  const slots: TimelineSlot[] = [
-    ...dayEntries.map((entry): TimelineSlot => ({
-      type: "entry",
-      key: `entry-${entry.item_id}-${entry.occurrence ?? entry.start_at}`,
-      start: new Date(entry.start_at),
-      end: entry.end_at ? new Date(entry.end_at) : null,
-      kind: entry.kind,
-      allDay: !!entry.all_day,
-      entry,
-    })),
-    ...dayExternal.map((x, n): TimelineSlot => ({
-      type: "external",
-      key: `external-${x.subscription_id}-${x.start_at}-${n}`,
-      start: new Date(x.start_at),
-      end: new Date(x.end_at),
-      kind: "event",
-      allDay: x.all_day,
-      external: x,
-    })),
-    ...blocks
-      .filter((b) => covers(b, selected))
-      .map((block): TimelineSlot => ({
-        type: "block",
-        key: `block-${block.id}`,
-        start: new Date(block.start_at),
-        end: new Date(block.end_at),
-        kind: "task",
-        block,
+  /** What one day's timeline shows, including what runs into it. */
+  const timelineFor = (day: Date) => {
+    const dayEntries = cal
+      ? entries.filter((e) => covers(e, day))
+      : itemsOnDay(shownItems, day).sort(byDueDate).map(entryFromItem);
+    const dayExternal = external.filter((x) => covers(x, day));
+    const slots: TimelineSlot[] = [
+      ...dayEntries.map((entry): TimelineSlot => ({
+        type: "entry",
+        key: `entry-${entry.item_id}-${entry.occurrence ?? entry.start_at}`,
+        start: new Date(entry.start_at),
+        end: entry.end_at ? new Date(entry.end_at) : null,
+        kind: entry.kind,
+        allDay: !!entry.all_day,
+        entry,
       })),
-  ];
-  const derived = (cal?.derived ?? []).filter(
-    (d) => shownIds.has(d.item_id) && covers(d, selected),
-  );
-  const dayFrames = (cal?.frames ?? []).filter((f) => covers(f, selected));
-  const ghosts = allGhosts.filter((b) => covers(b, selected));
+      ...dayExternal.map((x, n): TimelineSlot => ({
+        type: "external",
+        key: `external-${x.subscription_id}-${x.start_at}-${n}`,
+        start: new Date(x.start_at),
+        end: new Date(x.end_at),
+        kind: "event",
+        allDay: x.all_day,
+        external: x,
+      })),
+      ...blocks
+        .filter((b) => covers(b, day))
+        .map((block): TimelineSlot => ({
+          type: "block",
+          key: `block-${block.id}`,
+          start: new Date(block.start_at),
+          end: new Date(block.end_at),
+          kind: "task",
+          block,
+        })),
+    ];
+    return {
+      day,
+      dayEntries,
+      dayExternal,
+      slots,
+      derived: (cal?.derived ?? []).filter(
+        (d) => shownIds.has(d.item_id) && covers(d, day),
+      ),
+      frames: (cal?.frames ?? []).filter((f) => covers(f, day)),
+      ghosts: allGhosts.filter((b) => covers(b, day)),
+    };
+  };
+  const { dayEntries, dayExternal } = timelineFor(selected);
+  // One column, or three days side by side sharing one window of hours.
+  const columns = (
+    multi
+      ? Array.from({ length: GRID_DAYS }, (_, n) =>
+          addDays(startOfDay(selected), n),
+        )
+      : [selected]
+  ).map(timelineFor);
+  const gridFits = multi
+    ? columns
+        .map((c) => hoursFor({ ...c, keepFree, now }))
+        .reduce((a, b) => ({
+          start: Math.min(a.start, b.start),
+          end: Math.max(a.end, b.end),
+        }))
+    : null;
+  const gridHours = gridFits
+    ? gridAllHours
+      ? { start: DAY_START, end: DAY_END }
+      : gridFits
+    : undefined;
   const joinable = entries.filter((e) => canJoin(e, now));
 
   const plansOn = (day: Date) =>
@@ -970,7 +1023,8 @@ export function CalendarScreen({
     saveLocal(MODE_KEY, next);
   };
   const step = (direction: 1 | -1) => {
-    if (mode === "day") select(addDays(selected, direction));
+    if (multi) select(addDays(selected, GRID_DAYS * direction));
+    else if (mode === "day") select(addDays(selected, direction));
     else if (mode === "week") select(addDays(selected, 7 * direction));
     else if (mode === "agenda")
       select(addDays(selected, AGENDA_DAYS * direction));
@@ -986,17 +1040,124 @@ export function CalendarScreen({
   const heading =
     mode === "month"
       ? month.toLocaleDateString([], { month: "long", year: "numeric" })
+      : multi
+        ? rangeTitle(columns.map((c) => c.day))
+        : mode === "day"
+          ? rangeTitle([selected])
+          : mode === "week"
+            ? rangeTitle(weekDays(startOfWeek(selected)))
+            : rangeTitle(agendaDays);
+  const unit = multi
+    ? `${GRID_DAYS} days`
+    : mode === "agenda"
+      ? "two weeks"
       : mode === "day"
-        ? rangeTitle([selected])
-        : mode === "week"
-          ? rangeTitle(weekDays(startOfWeek(selected)))
-          : rangeTitle(agendaDays);
-  const unit = mode === "agenda" ? "two weeks" : mode === "day" ? "day" : mode;
+        ? "day"
+        : mode;
   const planned = preview?.blocks.length ?? 0;
   const mates = teammates.shown;
 
+  /** One day's timeline: the first column scrolls the page to the hour. */
+  const timeline = (c: ReturnType<typeof timelineFor>, first: boolean) => (
+    <DayTimeline
+      day={c.day}
+      slots={c.slots}
+      ghosts={c.ghosts}
+      derived={c.derived}
+      frames={c.frames}
+      zones={zones}
+      keepFree={keepFree}
+      onKeepFreeMenu={live ? keepFreeMenu : undefined}
+      onKeepFree={
+        live && !handlers.busy && keepFree.length < 20 ? keepRange : undefined
+      }
+      scrollKey={
+        first
+          ? `${mode}-${multi ? "grid" : "day"}-${selected.toDateString()}`
+          : undefined
+      }
+      onScrollTo={first ? onScrollTo : undefined}
+      hours={gridHours}
+      bare={multi && !first}
+      grid={multi}
+      mates={mates}
+      onOpen={openItem}
+      onBlockMenu={blockMenu}
+      onEntryMenu={entryMenu}
+      onMoveBlock={saveBlock}
+      onMoveEntry={(entry, start, end) => void moveEntry(entry, start, end)}
+      onExternal={showExternal}
+      onGhostMenu={ghostMenu}
+      onMoveGhost={pinGhost}
+      onFrameMenu={frameMenu}
+      onDragging={onDragging}
+    />
+  );
+
+  /** Date navigation and the view switch: in the page's sticky header when it has one. */
+  const controls = (
+    <>
+      <View style={s.heading}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Previous ${unit}`}
+          onPress={() => step(-1)}
+          style={s.control}
+        >
+          <Icon name="chevronLeft" size={20} />
+        </PressableScale>
+        <Text
+          style={[shared.sectionTitle, s.headingText]}
+          accessibilityRole="header"
+          numberOfLines={2}
+        >
+          {heading}
+        </Text>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Next ${unit}`}
+          onPress={() => step(1)}
+          style={s.control}
+        >
+          <Icon name="chevronRight" size={20} />
+        </PressableScale>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Go to today"
+          onPress={() => {
+            setMonth(new Date());
+            setSelected(new Date());
+          }}
+          style={s.control}
+        >
+          <Text style={s.todayLabel}>Today</Text>
+        </PressableScale>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Find an event"
+          onPress={() => setSearching(true)}
+          style={s.control}
+        >
+          <Icon name="search" size={18} />
+        </PressableScale>
+      </View>
+      <Segmented
+        accessibilityLabel="Calendar view"
+        options={MODES}
+        labels={MODE_LABELS}
+        value={mode}
+        onChange={changeMode}
+      />
+    </>
+  );
+
   return (
     <>
+      {controlsSlot && (
+        <SlotFill slot={controlsSlot}>
+          <View style={s.stickyBar}>{controls}</View>
+        </SlotFill>
+      )}
       {live && (
         <FadeIn style={shared.card}>
           <View style={s.previewHead}>
@@ -1144,57 +1305,7 @@ export function CalendarScreen({
         }}
       />
       <View style={[shared.card, s.calendar]}>
-        <View style={s.heading}>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={`Previous ${unit}`}
-            onPress={() => step(-1)}
-            style={s.control}
-          >
-            <Icon name="chevronLeft" size={20} />
-          </PressableScale>
-          <Text
-            style={[shared.sectionTitle, s.headingText]}
-            accessibilityRole="header"
-            numberOfLines={2}
-          >
-            {heading}
-          </Text>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={`Next ${unit}`}
-            onPress={() => step(1)}
-            style={s.control}
-          >
-            <Icon name="chevronRight" size={20} />
-          </PressableScale>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Go to today"
-            onPress={() => {
-              setMonth(new Date());
-              setSelected(new Date());
-            }}
-            style={s.control}
-          >
-            <Text style={s.todayLabel}>Today</Text>
-          </PressableScale>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Find an event"
-            onPress={() => setSearching(true)}
-            style={s.control}
-          >
-            <Icon name="search" size={18} />
-          </PressableScale>
-        </View>
-        <Segmented
-          accessibilityLabel="Calendar view"
-          options={MODES}
-          labels={MODE_LABELS}
-          value={mode}
-          onChange={changeMode}
-        />
+        {!controlsSlot && controls}
         <View style={s.tools}>
           <SmallAction
             label="Plan"
@@ -1323,40 +1434,58 @@ export function CalendarScreen({
         // Keyed by day so the timeline and agenda fade in on a new selection.
         <FadeIn key={selected.toDateString()}>
           <SectionHeading
-            title={dayHeading(selected)}
-            count={dayEntries.length}
+            title={multi ? heading : dayHeading(selected)}
+            count={columns.reduce((n, c) => n + c.dayEntries.length, 0)}
             hint={`${sameDay(selected, new Date()) ? "Today, hour by hour" : "Hour by hour"}. Hold an event, block or frame for options; hold a block, then drag it up, down or sideways to move it.`}
           />
-          <DayTimeline
-            day={selected}
-            slots={slots}
-            ghosts={ghosts}
-            derived={derived}
-            frames={dayFrames}
-            zones={zones}
-            keepFree={keepFree}
-            onKeepFreeMenu={live ? keepFreeMenu : undefined}
-            onKeepFree={
-              live && !handlers.busy && keepFree.length < 20
-                ? keepRange
-                : undefined
-            }
-            scrollKey={`${mode}-${selected.toDateString()}`}
-            onScrollTo={onScrollTo}
-            mates={mates}
-            onOpen={openItem}
-            onBlockMenu={blockMenu}
-            onEntryMenu={entryMenu}
-            onMoveBlock={saveBlock}
-            onMoveEntry={(entry, start, end) =>
-              void moveEntry(entry, start, end)
-            }
-            onExternal={showExternal}
-            onGhostMenu={ghostMenu}
-            onMoveGhost={pinGhost}
-            onFrameMenu={frameMenu}
-            onDragging={onDragging}
-          />
+          {multi ? (
+            <>
+              <View style={s.grid}>
+                {columns.map((c, n) => (
+                  <View
+                    key={c.day.toDateString()}
+                    // The first column carries the hour labels; the rest
+                    // share what's left equally.
+                    style={[
+                      s.gridColumn,
+                      n === 0 && { flexBasis: gutterWidth(zones.length) },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.gridDay,
+                        sameDay(c.day, now) && { color: colors.accent },
+                      ]}
+                      numberOfLines={1}
+                      accessibilityRole="header"
+                    >
+                      {sameDay(c.day, now) ? "Today" : shortDay(c.day)}
+                    </Text>
+                    {timeline(c, n === 0)}
+                  </View>
+                ))}
+              </View>
+              {gridFits &&
+                !(gridFits.start === DAY_START && gridFits.end === DAY_END) && (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setGridAllHours(!gridAllHours)}
+                    style={({ pressed }) => [
+                      s.gridToggle,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <Text style={s.todayLabel}>
+                      {gridAllHours
+                        ? "Show just the busy hours"
+                        : "Show all 24 hours"}
+                    </Text>
+                  </Pressable>
+                )}
+            </>
+          ) : (
+            timeline(columns[0], true)
+          )}
           <PlannerList
             visible={dayItems}
             title="Plans for this day"
@@ -1511,6 +1640,29 @@ export function CalendarScreen({
 const s = themed(() =>
   StyleSheet.create({
     calendar: { padding: 12, marginBottom: 22 },
+    /** The sticky header's controls. */
+    stickyBar: {
+      paddingTop: 6,
+      paddingBottom: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      marginBottom: 12,
+    },
+    grid: { flexDirection: "row", gap: 6 },
+    gridColumn: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
+    gridDay: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+      textAlign: "center",
+      marginBottom: 6,
+    },
+    gridToggle: {
+      alignItems: "center",
+      paddingVertical: 10,
+      marginTop: -12,
+      marginBottom: 16,
+    },
     previewHead: {
       flexDirection: "row",
       alignItems: "center",

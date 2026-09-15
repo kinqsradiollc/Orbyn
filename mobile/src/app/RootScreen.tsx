@@ -25,6 +25,7 @@ import {
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
 import { CelebrationHost, celebrate } from "../components/Celebration";
+import { SlotHost, useSlot } from "../components/Slot";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { ItemEditor, type Editing } from "../components/ItemEditor";
@@ -136,6 +137,9 @@ export function RootScreen() {
   /** The page's content column, and how far down the scroll content it starts. */
   const content = useRef<React.ComponentRef<typeof View>>(null);
   const contentY = useRef(0);
+  /** The calendar's controls, shown in the page's sticky header. */
+  const calendarControls = useSlot();
+  const stickyHeight = useRef(0);
   /** The space above the tab bar; on the AI tab it makes room for the keyboard. */
   const keyboardArea = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(keyboardArea, tab === "AI");
@@ -460,7 +464,11 @@ export function RootScreen() {
       column,
       (_x, top) =>
         scroller.current?.scrollTo({
-          y: Math.max(0, contentY.current + top + y - 24),
+          // Below the sticky header (the calendar's controls), not under it.
+          y: Math.max(
+            0,
+            contentY.current + top + y - 24 - stickyHeight.current,
+          ),
           animated: !isReducedMotion(),
         }),
       () => {},
@@ -507,6 +515,7 @@ export function RootScreen() {
             ref={scroller}
             style={s.scroll}
             scrollEnabled={!dragging}
+            stickyHeaderIndices={tab === "Calendar" ? [1] : undefined}
             contentContainerStyle={[s.content, sidePadding]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
@@ -519,15 +528,7 @@ export function RootScreen() {
               />
             }
           >
-            <View
-              ref={content}
-              collapsable={false}
-              // Only records where the column starts; it never scrolls.
-              onLayout={(e) => {
-                contentY.current = e.nativeEvent.layout.y;
-              }}
-              style={s.column}
-            >
+            <View style={s.column}>
               <Text style={shared.eyebrow}>
                 {today
                   .toLocaleDateString([], {
@@ -545,6 +546,26 @@ export function RootScreen() {
                 </Text>
               </FadeIn>
               <ErrorBanner error={error} onDismiss={() => setError("")} />
+            </View>
+            {/* Sticky on the Calendar tab: its date navigation and view switch. */}
+            <View
+              collapsable={false}
+              onLayout={(e) => {
+                stickyHeight.current = e.nativeEvent.layout.height;
+              }}
+              style={[s.column, s.sticky]}
+            >
+              <SlotHost slot={calendarControls} />
+            </View>
+            <View
+              ref={content}
+              collapsable={false}
+              // Only records where the column starts; it never scrolls.
+              onLayout={(e) => {
+                contentY.current = e.nativeEvent.layout.y;
+              }}
+              style={s.column}
+            >
               <FadeIn key={`body-${tab}`} duration={motion.slow}>
                 {tab === "Today" && (
                   <TodayScreen
@@ -600,6 +621,7 @@ export function RootScreen() {
                     onOpenOccurrence={openTask}
                     onFocus={openFocus}
                     onScrollTo={scrollToView}
+                    controlsSlot={calendarControls}
                     {...listHandlers}
                   />
                 )}
@@ -843,5 +865,7 @@ const s = themed(() =>
       alignSelf: "center",
     },
     subtitle: { marginBottom: 20 },
+    /** The sticky header: opaque, so the page scrolls under it. */
+    sticky: { backgroundColor: colors.background },
   }),
 );

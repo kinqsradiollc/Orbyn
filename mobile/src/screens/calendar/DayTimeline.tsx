@@ -106,6 +106,54 @@ function visibleHours(
   return { start, end };
 }
 
+/** Width of the hour gutter with `zones` extra time-zone columns. */
+export const gutterWidth = (zones: number) => GUTTER + zones * ZONE_WIDTH;
+
+/**
+ * The hours a day's timeline shows on its own (see visibleHours), so days
+ * side by side can share one window.
+ */
+export function hoursFor({
+  day,
+  slots,
+  ghosts = [],
+  frames = [],
+  keepFree = [],
+  now,
+}: {
+  day: Date;
+  slots: TimelineSlot[];
+  ghosts?: PlannedBlock[];
+  frames?: FrameOccurrence[];
+  keepFree?: BusyInterval[];
+  now: Date;
+}) {
+  const all: TimelineSlot[] = [
+    ...slots,
+    ...ghosts.map((ghost): TimelineSlot => ({
+      type: "ghost",
+      key: `ghost-${ghost.item_id}-${ghost.start_at}`,
+      start: new Date(ghost.start_at),
+      end: new Date(ghost.end_at),
+      kind: "task",
+      ghost,
+    })),
+  ];
+  const { placed } = layoutDay(all, day);
+  const spans = [...frames, ...keepFree.filter((r) => covers(r, day))].map(
+    (r) => {
+      const top = offsetFor(day, new Date(r.start_at));
+      return { top, height: offsetFor(day, new Date(r.end_at)) - top };
+    },
+  );
+  const nowTop = offsetFor(day, now);
+  const showNow =
+    sameDay(day, now) &&
+    nowTop >= 0 &&
+    nowTop <= (DAY_END - DAY_START) * HOUR_HEIGHT;
+  return visibleHours([...placed, ...spans], showNow ? nowTop : null);
+}
+
 /** "Los Angeles" for "America/Los_Angeles". */
 const zoneCity = (zone: string) =>
   (zone.split("/").pop() ?? zone).replace(/_/g, " ");
@@ -188,7 +236,16 @@ export function DayTimeline({
   mates = [],
   scrollKey,
   onScrollTo,
+  hours: sharedHours,
+  bare = false,
+  grid = false,
 }: {
+  /** The hours to show, shared by days side by side (hides "Show all 24 hours"). */
+  hours?: { start: number; end: number };
+  /** A column beside another: no hour labels or time-zone columns. */
+  bare?: boolean;
+  /** One of several days side by side: the all-day row keeps a fixed height. */
+  grid?: boolean;
   day: Date;
   /** Only the entries and blocks on `day`. */
   slots: TimelineSlot[];
@@ -303,14 +360,18 @@ export function DayTimeline({
       return { r, top, height: offsetFor(day, new Date(r.end_at)) - top };
     });
 
-  const fitted = visibleHours(
-    [...placed, ...frameSpans, ...freeSpans],
-    showNow ? nowTop : null,
-  );
-  const fitsAll = fitted.start === DAY_START && fitted.end === DAY_END;
+  const fitted =
+    sharedHours ??
+    visibleHours(
+      [...placed, ...frameSpans, ...freeSpans],
+      showNow ? nowTop : null,
+    );
+  // With shared hours the columns' owner shows the one toggle.
+  const fitsAll =
+    !!sharedHours || (fitted.start === DAY_START && fitted.end === DAY_END);
   const { start, end } =
     ((drag || draw) && frozen.current) ||
-    (allHours ? { start: DAY_START, end: DAY_END } : fitted);
+    (allHours && !sharedHours ? { start: DAY_START, end: DAY_END } : fitted);
 
   // Scroll the page to an hour before now today, or 8 AM on another day:
   // once per new day or view (the key), never on a re-render or a layout.
@@ -336,7 +397,7 @@ export function DayTimeline({
   const shift = (start - DAY_START) * HOUR_HEIGHT;
   const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
   const windowHeight = (end - start) * HOUR_HEIGHT;
-  const gutter = GUTTER + zones.length * ZONE_WIDTH;
+  const gutter = bare ? 0 : gutterWidth(zones.length);
   // Teammates' strips sit between the hours and the events.
   const stripsWidth = mates.length ? mates.length * STRIP + 2 : 0;
   const clip = <T,>(item: T, top: number, bottom: number) => ({
@@ -547,7 +608,8 @@ export function DayTimeline({
     <View style={s.card}>
       {zones.length > 0 && (
         <View
-          style={s.zoneHead}
+          // Kept, invisible, beside another column so the hours line up.
+          style={[s.zoneHead, bare && s.hidden]}
           importantForAccessibility="no-hide-descendants"
           accessibilityElementsHidden
         >
@@ -568,10 +630,12 @@ export function DayTimeline({
           </View>
         </View>
       )}
-      <View style={s.allDay}>
-        <Text style={[s.allDayLabel, { width: gutter - 4 }]}>
-          All day{"\n"}no time
-        </Text>
+      <View style={[s.allDay, grid && s.allDayGrid, bare && s.allDayBare]}>
+        {!bare && (
+          <Text style={[s.allDayLabel, { width: gutter - 4 }]}>
+            All day{"\n"}no time
+          </Text>
+        )}
         <View style={s.allDayItems}>
           {allDay.some((slot) => slot.type !== "ghost") ? (
             allDay.map((slot) => {
@@ -652,12 +716,13 @@ export function DayTimeline({
               style={[s.hour, { top: PAD_TOP + (hour - start) * HOUR_HEIGHT }]}
               importantForAccessibility="no-hide-descendants"
             >
-              {zones.map((zone) => (
-                <Text key={zone} style={s.zoneHour} numberOfLines={1}>
-                  {clockIn(zone, at)}
-                </Text>
-              ))}
-              <Text style={s.hourLabel}>{hourLabel(hour % 24)}</Text>
+              {!bare &&
+                zones.map((zone) => (
+                  <Text key={zone} style={s.zoneHour} numberOfLines={1}>
+                    {clockIn(zone, at)}
+                  </Text>
+                ))}
+              {!bare && <Text style={s.hourLabel}>{hourLabel(hour % 24)}</Text>}
               <View style={s.hourLine} />
             </View>
           );
@@ -1065,7 +1130,10 @@ export function DayTimeline({
             accessibilityLabel={`Current time, ${timeLabel(now)}`}
             style={[
               s.now,
-              { top: PAD_TOP + nowTop - shift - 1, left: gutter - 5 },
+              {
+                top: PAD_TOP + nowTop - shift - 1,
+                left: Math.max(0, gutter - 5),
+              },
             ]}
           >
             <View style={s.nowDot} />
@@ -1378,6 +1446,10 @@ const s = themed(() =>
       borderBottomColor: colors.border,
       backgroundColor: colors.surfaceMuted,
     },
+    /** Days side by side: the same height in every column, so the hours line up. */
+    allDayGrid: { height: 58, overflow: "hidden" },
+    allDayBare: { paddingLeft: 8 },
+    hidden: { opacity: 0 },
     allDayLabel: {
       textAlign: "right",
       fontFamily: fonts.medium,

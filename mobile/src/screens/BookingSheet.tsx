@@ -95,6 +95,8 @@ export function BookingSheet({
         />
       ) : top.kind === "invite" ? (
         <InviteEditor
+          teams={teams}
+          userId={user?.id}
           onDone={() => {
             patchFilters({ tab: "invites" });
             pop();
