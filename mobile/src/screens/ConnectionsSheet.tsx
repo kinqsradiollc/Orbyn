@@ -26,6 +26,7 @@ import { client } from "../lib/api";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
+import { CalendarFeedCard, SubscriptionsCard } from "./CalendarLinks";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -40,10 +41,14 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled or declined",
+  "event.starting": "Event starting soon",
+  "block.started": "Time block started",
+  "task.at_risk": "Task at risk",
 };
 
 /**
- * Settings → Connections: API keys, webhooks and the private calendar feed.
+ * Settings → Connections: API keys, webhooks, your calendar feed links and
+ * the calendars you subscribe to.
  * Secrets are shown once, when they're made.
  */
 export function ConnectionsSheet({
@@ -85,7 +90,6 @@ function Body() {
     null,
   );
   const [tests, setTests] = useState<Record<string, string>>({});
-  const [feed, setFeed] = useState<string | null>(null);
 
   useEffect(() => {
     void run(async () => {
@@ -388,67 +392,8 @@ function Body() {
           />
         </View>
 
-        {/* Calendar feed */}
-        <Text style={[shared.eyebrow, s.eyebrow]}>CALENDAR FEED</Text>
-        <View style={shared.card}>
-          <Text style={[shared.small, s.gap]}>
-            Subscribe from Apple Calendar, Google Calendar or Outlook with a
-            private link. Anyone with the link can see your plans, so keep it to
-            yourself. Making a new link turns off the old one.
-          </Text>
-          {feed && (
-            <FadeIn style={s.secret}>
-              <Text selectable style={s.code}>
-                {feed}
-              </Text>
-              <Button
-                title="Share link"
-                icon="share"
-                style={s.last}
-                onPress={() => void shareText(feed)}
-              />
-            </FadeIn>
-          )}
-          <Button
-            secondary={!!feed}
-            title={feed ? "Replace link" : "Create link"}
-            icon="link"
-            disabled={busy}
-            onPress={() =>
-              void run(async () => {
-                const made = await client.createCalendarFeed();
-                animateLayout();
-                setFeed(made.url);
-              })
-            }
-          />
-          <Button
-            destructive
-            title="Turn off calendar feed"
-            disabled={busy}
-            style={s.last}
-            onPress={() =>
-              Alert.alert(
-                "Turn off the calendar feed?",
-                "Calendars subscribed to the link stop updating.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Turn off",
-                    style: "destructive",
-                    onPress: () =>
-                      void run(async () => {
-                        await client.deleteCalendarFeed();
-                        animateLayout();
-                        setFeed(null);
-                        Alert.alert("Calendar feed turned off");
-                      }),
-                  },
-                ],
-              )
-            }
-          />
-        </View>
+        <CalendarFeedCard />
+        <SubscriptionsCard />
       </View>
     </ScrollView>
   );

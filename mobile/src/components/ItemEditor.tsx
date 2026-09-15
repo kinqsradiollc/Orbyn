@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -18,6 +19,8 @@ import {
   hasTeamPermission,
   statusLabels,
   statusOrder,
+  type Attendee,
+  type AttendeeStatus,
   type Item,
   type ItemInput,
   type Team,
@@ -25,12 +28,18 @@ import {
 } from "@orbyn/core";
 import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
-import { NumberInput } from "./Field";
+import { AlertsField, ColorField, InviteesField } from "./EventFields";
+import { DateField, NumberInput } from "./Field";
 import { Icon } from "./Icon";
 import { RepeatPicker } from "./RepeatPicker";
 import { Segmented } from "./Segmented";
 import { client } from "../lib/api";
-import { deviceTimeZone, ESTIMATES, minutesLabel } from "../lib/planning";
+import {
+  deviceTimeZone,
+  ESTIMATES,
+  LIST_COLORS,
+  minutesLabel,
+} from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
 import { colors, fonts, radii, spacing, themed } from "../theme";
@@ -144,6 +153,89 @@ function Form({
   const [newTag, setNewTag] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
   const [tagError, setTagError] = useState("");
+
+  // Invitees and their answers come from the saved event (lists don't carry them).
+  const itemId = "id" in editing ? editing.id : null;
+  const [savedPeople, setSavedPeople] = useState<
+    { email: string; name?: string }[]
+  >([]);
+  const [statuses, setStatuses] = useState<Map<string, AttendeeStatus>>(
+    () => new Map(),
+  );
+  useEffect(() => {
+    if (!itemId) return;
+    let alive = true;
+    client
+      .getItem(itemId)
+      .then((d) => {
+        if (!alive) return;
+        // The detail carries full invitees (with answers), not the input shape.
+        const people = (d.attendees ?? []) as Attendee[];
+        setSavedPeople(
+          people.map((a) => ({ email: a.email, name: a.name || undefined })),
+        );
+        setStatuses(new Map(people.map((a) => [a.email, a.status])));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [itemId]);
+  // Sent only once changed: the list replaces the saved invitees.
+  const people = editing.attendees ?? savedPeople;
+  const alerts =
+    editing.alerts ??
+    (editing.reminder_minutes != null ? [editing.reminder_minutes] : []);
+  const colorChoices = [
+    ...new Set([
+      ...LIST_COLORS,
+      ...lists.map((l) => l.color),
+      ...tags.map((t) => t.color),
+    ]),
+  ];
+
+  // All-day items keep dates only: local midnight to the midnight after the last day.
+  const allDay = !!editing.all_day;
+  const dayOf = (iso: string | null | undefined) => {
+    const d = iso ? new Date(iso) : new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  };
+  const nextDay = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  const keyOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const fromKey = (key: string) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const firstDay = dayOf(editing.due_at);
+  const lastDay = editing.end_at
+    ? dayOf(new Date(Date.parse(editing.end_at) - 1).toISOString())
+    : firstDay;
+  const setAllDay = (on: boolean) => {
+    if (picker) setPicker(null);
+    if (on) {
+      const last = lastDay < firstDay ? firstDay : lastDay;
+      onChange({
+        all_day: true,
+        timezone: deviceTimeZone(),
+        due_at: firstDay.toISOString(),
+        end_at: editing.kind === "event" ? nextDay(last).toISOString() : null,
+      });
+    } else {
+      const start = new Date(firstDay);
+      start.setHours(9);
+      onChange({
+        all_day: false,
+        due_at: start.toISOString(),
+        end_at:
+          editing.kind === "event"
+            ? new Date(start.getTime() + 3_600_000).toISOString()
+            : null,
+      });
+    }
+  };
+
   const addTag = async () => {
     const name = newTag.trim();
     if (!name) return;
@@ -275,114 +367,179 @@ function Form({
                 onChange={(status) => onChange({ status })}
               />
             </Section>
-            {(["due_at", "end_at"] as const).map((field) => (
-              <Section
-                key={field}
-                label={field === "due_at" ? "Due / start" : "End (optional)"}
-              >
-                <View style={s.dateRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      (field === "due_at" ? "Due date: " : "End date: ") +
-                      dateLabel(editing[field])
-                    }
-                    disabled={readOnly}
-                    onPress={() => setPicker({ field, mode: "date" })}
-                    style={({ pressed }) => [
-                      s.dateButton,
-                      picker?.field === field && s.dateActive,
-                      pressed && { backgroundColor: colors.surfaceMuted },
-                    ]}
-                  >
-                    <Icon
-                      name={field === "due_at" ? "clock" : "calendar"}
-                      size={16}
-                      color={colors.accent}
-                    />
-                    <Text
-                      style={[
-                        s.dateText,
-                        !editing[field] && { color: colors.faint },
-                      ]}
-                    >
-                      {dateLabel(editing[field])}
-                    </Text>
-                  </Pressable>
-                  {editing[field] && !readOnly && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear time"
-                      hitSlop={8}
-                      onPress={() => {
-                        if (picker?.field === field) setPicker(null);
-                        setDate(field, null);
-                      }}
-                      style={s.clear}
-                    >
-                      <Icon name="x" size={16} color={colors.muted} />
-                    </Pressable>
-                  )}
-                </View>
-              </Section>
-            ))}
-            {picker && (
-              <View style={s.pickerCard}>
-                <DateTimePicker
-                  value={new Date(editing[picker.field] || Date.now())}
-                  mode={picker.mode}
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  accentColor={colors.accent}
-                  textColor={colors.text}
-                  onChange={(event, date) => {
-                    if (event.type === "dismissed") {
-                      setPicker(null);
-                      return;
-                    }
-                    if (date) {
-                      const current = new Date(
-                        editing[picker.field] || Date.now(),
-                      );
-                      if (picker.mode === "date")
-                        current.setFullYear(
-                          date.getFullYear(),
-                          date.getMonth(),
-                          date.getDate(),
-                        );
-                      else
-                        current.setHours(
-                          date.getHours(),
-                          date.getMinutes(),
-                          0,
-                          0,
-                        );
-                      setDate(picker.field, current.toISOString());
-                      if (Platform.OS === "android")
-                        setPicker(
-                          picker.mode === "date"
-                            ? { ...picker, mode: "time" }
-                            : null,
-                        );
-                    }
-                  }}
+            <Section label="All day">
+              <View style={s.switchRow}>
+                <Text style={[shared.small, { flex: 1 }]}>
+                  Just dates, no times. All-day items never count as busy.
+                </Text>
+                <Switch
+                  value={allDay}
+                  disabled={readOnly}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel="All day"
+                  onValueChange={setAllDay}
                 />
-                {Platform.OS === "ios" && (
-                  <Button
-                    title={picker.mode === "date" ? "Choose time" : "Done"}
-                    icon={picker.mode === "date" ? "arrowRight" : "check"}
-                    style={{ marginBottom: 0 }}
-                    onPress={() => {
-                      if (!editing[picker.field])
-                        setDate(picker.field, new Date().toISOString());
-                      setPicker(
-                        picker.mode === "date"
-                          ? { ...picker, mode: "time" }
-                          : null,
+              </View>
+            </Section>
+            {allDay && (
+              <>
+                <Section label={editing.kind === "event" ? "First day" : "Day"}>
+                  <DateField
+                    label={editing.kind === "event" ? "First day" : "Day"}
+                    value={keyOf(firstDay)}
+                    onChange={(key) => {
+                      if (!key) return;
+                      const start = fromKey(key);
+                      const days = Math.round(
+                        (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
                       );
+                      onChange({
+                        due_at: start.toISOString(),
+                        end_at:
+                          editing.kind === "event"
+                            ? nextDay(
+                                new Date(
+                                  start.getFullYear(),
+                                  start.getMonth(),
+                                  start.getDate() + Math.max(0, days),
+                                ),
+                              ).toISOString()
+                            : null,
+                      });
                     }}
                   />
+                </Section>
+                {editing.kind === "event" && (
+                  <Section label="Last day">
+                    <DateField
+                      label="Last day"
+                      value={keyOf(lastDay < firstDay ? firstDay : lastDay)}
+                      minimumDate={firstDay}
+                      onChange={(key) =>
+                        key &&
+                        onChange({
+                          end_at: nextDay(fromKey(key)).toISOString(),
+                        })
+                      }
+                    />
+                  </Section>
                 )}
-              </View>
+              </>
+            )}
+            {!allDay && (
+              <>
+                {(["due_at", "end_at"] as const).map((field) => (
+                  <Section
+                    key={field}
+                    label={
+                      field === "due_at" ? "Due / start" : "End (optional)"
+                    }
+                  >
+                    <View style={s.dateRow}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          (field === "due_at" ? "Due date: " : "End date: ") +
+                          dateLabel(editing[field])
+                        }
+                        disabled={readOnly}
+                        onPress={() => setPicker({ field, mode: "date" })}
+                        style={({ pressed }) => [
+                          s.dateButton,
+                          picker?.field === field && s.dateActive,
+                          pressed && { backgroundColor: colors.surfaceMuted },
+                        ]}
+                      >
+                        <Icon
+                          name={field === "due_at" ? "clock" : "calendar"}
+                          size={16}
+                          color={colors.accent}
+                        />
+                        <Text
+                          style={[
+                            s.dateText,
+                            !editing[field] && { color: colors.faint },
+                          ]}
+                        >
+                          {dateLabel(editing[field])}
+                        </Text>
+                      </Pressable>
+                      {editing[field] && !readOnly && (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear time"
+                          hitSlop={8}
+                          onPress={() => {
+                            if (picker?.field === field) setPicker(null);
+                            setDate(field, null);
+                          }}
+                          style={s.clear}
+                        >
+                          <Icon name="x" size={16} color={colors.muted} />
+                        </Pressable>
+                      )}
+                    </View>
+                  </Section>
+                ))}
+                {picker && (
+                  <View style={s.pickerCard}>
+                    <DateTimePicker
+                      value={new Date(editing[picker.field] || Date.now())}
+                      mode={picker.mode}
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      accentColor={colors.accent}
+                      textColor={colors.text}
+                      onChange={(event, date) => {
+                        if (event.type === "dismissed") {
+                          setPicker(null);
+                          return;
+                        }
+                        if (date) {
+                          const current = new Date(
+                            editing[picker.field] || Date.now(),
+                          );
+                          if (picker.mode === "date")
+                            current.setFullYear(
+                              date.getFullYear(),
+                              date.getMonth(),
+                              date.getDate(),
+                            );
+                          else
+                            current.setHours(
+                              date.getHours(),
+                              date.getMinutes(),
+                              0,
+                              0,
+                            );
+                          setDate(picker.field, current.toISOString());
+                          if (Platform.OS === "android")
+                            setPicker(
+                              picker.mode === "date"
+                                ? { ...picker, mode: "time" }
+                                : null,
+                            );
+                        }
+                      }}
+                    />
+                    {Platform.OS === "ios" && (
+                      <Button
+                        title={picker.mode === "date" ? "Choose time" : "Done"}
+                        icon={picker.mode === "date" ? "arrowRight" : "check"}
+                        style={{ marginBottom: 0 }}
+                        onPress={() => {
+                          if (!editing[picker.field])
+                            setDate(picker.field, new Date().toISOString());
+                          setPicker(
+                            picker.mode === "date"
+                              ? { ...picker, mode: "time" }
+                              : null,
+                          );
+                        }}
+                      />
+                    )}
+                  </View>
+                )}
+              </>
             )}
             <Section label="Repeat">
               <RepeatPicker
@@ -397,6 +554,12 @@ function Form({
                   )
                 }
               />
+              {exists && !!editing.rrule && (
+                <Text style={[shared.small, s.hint]}>
+                  When you save or delete, you choose this one, this and
+                  following, or all of them.
+                </Text>
+              )}
             </Section>
             {editing.kind === "task" && (
               <Section label="How long will it take?">
@@ -544,6 +707,17 @@ function Form({
                 </Text>
               )}
             </Section>
+            <Section label="Colour on the calendar">
+              <ColorField
+                value={editing.color ?? null}
+                choices={colorChoices}
+                disabled={readOnly}
+                onChange={(color) => onChange({ color })}
+              />
+              <Text style={[shared.small, s.hint]}>
+                With no colour of its own it takes its list’s.
+              </Text>
+            </Section>
             {!!teamId && members.length > 0 && (
               <Section label="Assigned to">
                 <ChipRow label="Assigned to">
@@ -592,6 +766,30 @@ function Form({
                     onChangeText={(meeting_url) => onChange({ meeting_url })}
                   />
                 </Section>
+                {!allDay && (
+                  <Section label="Show as">
+                    <Segmented
+                      disabled={readOnly}
+                      accessibilityLabel="Show as"
+                      options={["busy", "free"] as const}
+                      labels={{ busy: "Busy", free: "Free" }}
+                      value={editing.busy === false ? "free" : "busy"}
+                      onChange={(value) => onChange({ busy: value === "busy" })}
+                    />
+                    <Text style={[shared.small, s.hint]}>
+                      Free events don’t block your planner, booking pages or
+                      teammates.
+                    </Text>
+                  </Section>
+                )}
+                <Section label="Invite people">
+                  <InviteesField
+                    people={people}
+                    statuses={statuses}
+                    disabled={readOnly}
+                    onChange={(attendees) => onChange({ attendees })}
+                  />
+                </Section>
               </>
             )}
             <Section label="Notes">
@@ -607,14 +805,12 @@ function Form({
                 onChangeText={(notes) => onChange({ notes })}
               />
             </Section>
-            <Section label="Remind me before (minutes)">
-              <TextInput
-                style={shared.input}
-                keyboardType="number-pad"
-                editable={!readOnly}
-                value={String(editing.reminder_minutes)}
-                onChangeText={(value) =>
-                  onChange({ reminder_minutes: Number(value) || 0 })
+            <Section label="Alerts">
+              <AlertsField
+                alerts={alerts}
+                disabled={readOnly}
+                onChange={(next) =>
+                  onChange({ alerts: next, reminder_minutes: undefined })
                 }
               />
             </Section>
@@ -637,18 +833,21 @@ function Form({
                 title="Delete item"
                 disabled={busy}
                 onPress={() =>
-                  Alert.alert(
-                    "Delete this item?",
-                    "This removes it from your planner.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: onDelete,
-                      },
-                    ],
-                  )
+                  // A repeating item asks which ones to delete instead.
+                  editing.rrule
+                    ? onDelete()
+                    : Alert.alert(
+                        "Delete this item?",
+                        "This removes it from your planner.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: onDelete,
+                          },
+                        ],
+                      )
                 }
               />
             )}
@@ -764,6 +963,7 @@ const s = themed(() =>
       marginBottom: 14,
     },
     below: { marginTop: 10 },
+    switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     tagRow: { flexDirection: "row", gap: 8 },
     tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
     tagAdd: {

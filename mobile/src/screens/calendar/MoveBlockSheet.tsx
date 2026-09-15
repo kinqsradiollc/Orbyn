@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { TimeBlock } from "@orbyn/core";
+
+/** Anything with times that can move: a time block, or an event occurrence. */
+export type MoveTarget = Pick<
+  TimeBlock,
+  "id" | "title" | "start_at" | "end_at"
+>;
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { DateField, Field, TimeField } from "../../components/Field";
@@ -17,17 +23,20 @@ const dayKey = (d: Date) =>
  */
 export function MoveBlockSheet({
   block,
+  title = "Move block",
   onClose,
   onSave,
 }: {
+  /** The sheet's title ("Move event" for an event). */
+  title?: string;
   /** The block to move; the sheet shows while this is set. */
-  block: TimeBlock | null;
+  block: MoveTarget | null;
   onClose: () => void;
   /** Save the new times; a thrown error shows in the sheet. */
   onSave: (start: Date, end: Date) => Promise<void>;
 }) {
   return (
-    <Sheet visible={!!block} title="Move block" onClose={onClose}>
+    <Sheet visible={!!block} title={title} onClose={onClose}>
       {block && <Body key={block.id} block={block} onSave={onSave} />}
     </Sheet>
   );
@@ -37,7 +46,7 @@ function Body({
   block,
   onSave,
 }: {
-  block: TimeBlock;
+  block: MoveTarget;
   onSave: (start: Date, end: Date) => Promise<void>;
 }) {
   const length = Date.parse(block.end_at) - Date.parse(block.start_at);
@@ -88,7 +97,7 @@ function Body({
           </Field>
         </View>
         <Button
-          title={busy ? "Moving…" : "Move block"}
+          title={busy ? "Moving…" : "Move it here"}
           icon="check"
           disabled={busy || start.getTime() === Date.parse(block.start_at)}
           onPress={() => void save()}

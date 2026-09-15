@@ -43,6 +43,8 @@ export type Slot = {
   /** Null for a task with only a due time, or an event without an end. */
   end: Date | null;
   kind: "task" | "event";
+  /** A whole-day item (the `all_day` flag): shown in the all-day row. */
+  allDay?: boolean;
 };
 
 export type Placed<T extends Slot> = {
@@ -58,8 +60,8 @@ export type Placed<T extends Slot> = {
 
 /**
  * Split a day's slots into timeline blocks and the "All day / no time" row.
- * Slots starting exactly at midnight without an end, or entirely outside the
- * visible 6am-midnight window, go in the row. Overlapping blocks share the
+ * All-day slots (by their flag, never guessed from a midnight start), or ones
+ * entirely outside the visible 6am-midnight window, go in the row. Overlapping blocks share the
  * width side by side, like a desktop calendar.
  */
 export function layoutDay<T extends Slot>(slots: T[], day: Date) {
@@ -75,7 +77,7 @@ export function layoutDay<T extends Slot>(slots: T[], day: Date) {
           (slot.kind === "event" ? EVENT_MINUTES : TASK_MINUTES) * 60_000,
       );
     const endMin = Math.min(minutesInto(day, end), DAY_END * 60);
-    const untimed = !slot.end && startMin === 0;
+    const untimed = !!slot.allDay;
     if (untimed || endMin <= DAY_START * 60) {
       allDay.push(slot);
       continue;

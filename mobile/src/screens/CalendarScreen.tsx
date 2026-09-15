@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import {
   addMonths,
+  itemBody,
   monthGrid,
   itemsOnDay,
   byDueDate,
@@ -23,6 +24,7 @@ import {
   type CalendarEntry,
   type CalendarSet,
   type CalendarView,
+  type ExternalEntry,
   type Frame,
   type FrameOccurrence,
   type Item,
@@ -46,8 +48,15 @@ import { useNow } from "../hooks/useNow";
 import { usePlanStale } from "../hooks/usePlanStale";
 import { client } from "../lib/api";
 import { readLocal, saveLocal } from "../lib/localPrefs";
-import { canJoin, rangeLabel, shortDay, slotLabel } from "../lib/planning";
+import {
+  canJoin,
+  clockLabel,
+  rangeLabel,
+  shortDay,
+  slotLabel,
+} from "../lib/planning";
 import { pinBlock, remakePlan, removeBlock } from "../lib/plans";
+import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import {
   FadeIn,
   PressableScale,
@@ -61,6 +70,7 @@ import { addDays, startOfWeek } from "./calendar/dates";
 import { DayTimeline, type TimelineSlot } from "./calendar/DayTimeline";
 import { FrameSheet } from "./calendar/FrameSheet";
 import { MoveBlockSheet } from "./calendar/MoveBlockSheet";
+import { SearchSheet } from "./calendar/SearchSheet";
 import { WeekStrip } from "./calendar/WeekStrip";
 
 type Mode = "week" | "month";
@@ -88,9 +98,28 @@ const entryFromItem = (i: Item): CalendarEntry => ({
   occurrence: null,
   rrule: i.rrule ?? null,
   version: i.version,
+  all_day: i.all_day,
+  busy: i.busy,
+  color: i.color ?? null,
 });
 
 const onDay = (iso: string, day: Date) => sameDay(new Date(iso), day);
+
+/** Whether something is on `day`; all-day ones cover each day up to their (exclusive) end. */
+function covers(
+  x: { start_at: string; end_at: string | null; all_day?: boolean },
+  day: Date,
+) {
+  if (!x.all_day) return onDay(x.start_at, day);
+  const dayStart = new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+  ).getTime();
+  const from = Date.parse(x.start_at);
+  const to = x.end_at ? Date.parse(x.end_at) : from + 86_400_000;
+  return from < dayStart + 86_400_000 && to > dayStart;
+}
 
 /** Whether a calendar set shows something; no set shows everything (as on the web). */
 function inSet(
@@ -122,6 +151,7 @@ export function CalendarScreen({
   onPreviewChange,
   onPreviewDone,
   onDragging,
+  onOpenOccurrence,
   ...handlers
 }: ListHandlers & {
   items: Item[];
@@ -138,6 +168,8 @@ export function CalendarScreen({
   onPreviewDone: () => void;
   /** True while a block is being dragged, so the page holds still. */
   onDragging: (active: boolean) => void;
+  /** Open an item, on the occurrence it was tapped on when it repeats. */
+  onOpenOccurrence: (item: Item, occurrence: OccurrenceRef | null) => void;
 }) {
   const [mode, setMode] = useState<Mode>("week");
   const [selected, setSelected] = useState(() => new Date());
@@ -150,6 +182,10 @@ export function CalendarScreen({
   const [setId, setSetId] = useState(() => readLocal(SET_KEY) ?? "");
   /** The block in the "Move to…" sheet. */
   const [moving, setMoving] = useState<TimeBlock | null>(null);
+  /** The event in the "Move to…" sheet. */
+  const [movingEntry, setMovingEntry] = useState<CalendarEntry | null>(null);
+  /** The "Find an event" sheet is open. */
+  const [searching, setSearching] = useState(false);
   /** The frame in the frame editor. */
   const [editingFrame, setEditingFrame] = useState<Frame | null>(null);
   /** The frame day just skipped, for Undo. */
@@ -230,8 +266,10 @@ export function CalendarScreen({
   const shownIds = new Set(entries.map((e) => e.item_id));
 
   const dayEntries = week
-    ? entries.filter((e) => onDay(e.start_at, selected))
+    ? entries.filter((e) => covers(e, selected))
     : dayItems.map(entryFromItem);
+  // Events from subscribed calendars: shown read-only.
+  const dayExternal = (week?.external ?? []).filter((x) => covers(x, selected));
   const slots: TimelineSlot[] = [
     ...dayEntries.map((entry): TimelineSlot => ({
       type: "entry",
@@ -239,7 +277,17 @@ export function CalendarScreen({
       start: new Date(entry.start_at),
       end: entry.end_at ? new Date(entry.end_at) : null,
       kind: entry.kind,
+      allDay: !!entry.all_day,
       entry,
+    })),
+    ...dayExternal.map((external, n): TimelineSlot => ({
+      type: "external",
+      key: `external-${external.subscription_id}-${external.start_at}-${n}`,
+      start: new Date(external.start_at),
+      end: new Date(external.end_at),
+      kind: "event",
+      allDay: external.all_day,
+      external,
     })),
     ...blocks
       .filter((b) => onDay(b.start_at, selected))
@@ -268,18 +316,48 @@ export function CalendarScreen({
 
   const plansOn = (day: Date) =>
     week
-      ? entries
-          .filter((e) => onDay(e.start_at, day))
-          .map((e) => ({ key: `${e.item_id}-${e.start_at}`, status: e.status }))
+      ? [
+          ...entries
+            .filter((e) => covers(e, day))
+            .map((e) => ({
+              key: `${e.item_id}-${e.start_at}`,
+              status: e.status,
+            })),
+          // Subscribed events show as plain dots.
+          ...(week.external ?? [])
+            .filter((x) => covers(x, day))
+            .map((x, n) => ({
+              key: `external-${x.subscription_id}-${x.start_at}-${n}`,
+              status: "todo" as const,
+            })),
+        ]
       : itemsOnDay(shownItems, day).map((i) => ({
           key: i.id,
           status: i.status,
         }));
 
-  const openItem = (itemId: string) => {
+  const openItem = (itemId: string, entry?: CalendarEntry) => {
+    const occurrence: OccurrenceRef | null = entry?.occurrence
+      ? {
+          itemId,
+          occurrence: entry.occurrence,
+          start: entry.start_at,
+          end: entry.end_at,
+        }
+      : null;
     const item = items.find((i) => i.id === itemId);
-    if (item) handlers.onOpen(item);
-    else void act(async () => handlers.onOpen(await client.getItem(itemId)));
+    if (item) onOpenOccurrence(item, occurrence);
+    else
+      void act(async () =>
+        onOpenOccurrence(await client.getItem(itemId), occurrence),
+      );
+  };
+  /** The saved item behind an entry. */
+  const itemFor = async (itemId: string) =>
+    items.find((i) => i.id === itemId) ?? (await client.getItem(itemId));
+  const assertEditable = (item: Item) => {
+    if (handlers.canToggle && !handlers.canToggle(item))
+      throw new Error("You can view this team’s items but not change them.");
   };
   const reload = () => setVersion((v) => v + 1);
 
@@ -371,24 +449,144 @@ export function CalendarScreen({
     ];
     Alert.alert(block.title, slotLabel(block.start_at, block.end_at), buttons);
   };
-  const entryMenu = (entry: CalendarEntry) =>
+  /**
+   * Move an event to new times (drag, resize or Move to…). It shows there at
+   * once; a repeating one asks which occurrences first, and the reload
+   * confirms it or puts it back.
+   */
+  const moveEntry = (entry: CalendarEntry, start: Date, end: Date | null) => {
+    const start_at = start.toISOString();
+    const end_at = end ? end.toISOString() : null;
+    const same = (e: CalendarEntry) =>
+      e.item_id === entry.item_id && e.start_at === entry.start_at;
+    setView(
+      (v) =>
+        v && {
+          ...v,
+          data: {
+            ...v.data,
+            entries: v.data.entries.map((e) =>
+              same(e) ? { ...e, start_at, end_at } : e,
+            ),
+          },
+        },
+    );
+    return act(async () => {
+      try {
+        const item = await itemFor(entry.item_id);
+        assertEditable(item);
+        const { progress: _progress, ...body } = itemBody(item);
+        if (entry.occurrence && item.rrule) {
+          const scope = await askScope(item.kind, "move");
+          if (!scope) return;
+          const times =
+            scope === "all"
+              ? seriesTimes(
+                  item,
+                  { start: entry.start_at, end: entry.end_at },
+                  { start: start_at, end: end_at },
+                )
+              : { due_at: start_at, end_at };
+          await client.updateItem(
+            item.id,
+            { ...body, ...times },
+            { scope, occurrence: entry.occurrence },
+          );
+        } else
+          await client.updateItem(item.id, {
+            ...body,
+            due_at: start_at,
+            end_at,
+          });
+        AccessibilityInfo.announceForAccessibility(
+          `${entry.title} moved to ${end_at ? slotLabel(start_at, end_at) : shortDay(start_at)}`,
+        );
+        onChanged();
+      } finally {
+        // Confirms the move, or puts it back after a cancel or an error.
+        reload();
+      }
+    });
+  };
+  /** Delete an entry's item; a repeating one asks which occurrences go. */
+  const deleteEntry = (entry: CalendarEntry) =>
+    act(async () => {
+      const item = await itemFor(entry.item_id);
+      assertEditable(item);
+      if (entry.occurrence && item.rrule) {
+        const scope = await askScope(item.kind, "delete");
+        if (!scope) return;
+        await client.deleteItem(item.id, item.version, {
+          scope,
+          occurrence: entry.occurrence,
+        });
+      } else {
+        const sure = await new Promise<boolean>((resolve) =>
+          Alert.alert(
+            `Delete ${entry.title}?`,
+            "This removes it from your planner.",
+            [
+              {
+                text: "Cancel",
+                style: "cancel",
+                onPress: () => resolve(false),
+              },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: () => resolve(true),
+              },
+            ],
+            { cancelable: true, onDismiss: () => resolve(false) },
+          ),
+        );
+        if (!sure) return;
+        await client.deleteItem(item.id, item.version);
+      }
+      reload();
+      onChanged();
+    });
+  const entryMenu = (entry: CalendarEntry) => {
+    const when = entry.all_day
+      ? "all day"
+      : entry.end_at
+        ? rangeLabel(entry.start_at, entry.end_at)
+        : clockLabel(entry.start_at);
+    const repeats = entry.occurrence
+      ? ` · ${describeRrule(entry.rrule) || "Repeats"}`
+      : "";
+    const movable = entry.kind === "event" && !!entry.end_at && !entry.all_day;
+    const buttons: AlertButton[] = [
+      { text: "Open", onPress: () => openItem(entry.item_id, entry) },
+      ...(movable
+        ? [{ text: "Move to…", onPress: () => setMovingEntry(entry) }]
+        : []),
+      {
+        text: entry.occurrence ? "Delete…" : "Delete",
+        style: "destructive",
+        onPress: () => void deleteEntry(entry),
+      },
+      { text: "Cancel", style: "cancel" },
+    ];
     Alert.alert(
       entry.title,
-      `${shortDay(entry.start_at)} · ${describeRrule(entry.rrule) || "Repeats"}`,
+      `${shortDay(entry.start_at)}, ${when}${repeats}`,
+      buttons,
+    );
+  };
+  /** An event from a subscribed calendar: details only, it can't change here. */
+  const showExternal = (x: ExternalEntry) =>
+    Alert.alert(
+      x.title,
       [
-        {
-          text: "Skip this occurrence",
-          style: "destructive",
-          onPress: () =>
-            void act(async () => {
-              if (!entry.occurrence) return;
-              await client.skipOccurrence(entry.item_id, entry.occurrence);
-              reload();
-              onChanged();
-            }),
-        },
-        { text: "Cancel", style: "cancel" },
-      ],
+        x.all_day
+          ? `${shortDay(x.start_at)}, all day`
+          : slotLabel(x.start_at, x.end_at),
+        x.location,
+        `From ${x.name}. Change it in the calendar it comes from.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
     );
   const frameMenu = (f: FrameOccurrence) =>
     Alert.alert(
@@ -615,6 +813,14 @@ export function CalendarScreen({
           </PressableScale>
           <PressableScale
             accessibilityRole="button"
+            accessibilityLabel="Find an event"
+            onPress={() => setSearching(true)}
+            style={s.control}
+          >
+            <Icon name="search" size={18} />
+          </PressableScale>
+          <PressableScale
+            accessibilityRole="button"
             accessibilityLabel={
               mode === "week" ? "Show the month grid" : "Show the week strip"
             }
@@ -672,8 +878,8 @@ export function CalendarScreen({
           count={dayEntries.length}
           hint={
             sameDay(selected, new Date())
-              ? "Today, hour by hour. Hold a block or frame to move it or see options."
-              : "Hour by hour. Hold a block or frame to move it or see options."
+              ? "Today, hour by hour. Hold an event, block or frame to move it or see options."
+              : "Hour by hour. Hold an event, block or frame to move it or see options."
           }
         />
         {skipped && (
@@ -699,6 +905,8 @@ export function CalendarScreen({
           onBlockMenu={blockMenu}
           onEntryMenu={entryMenu}
           onMoveBlock={saveBlock}
+          onMoveEntry={(entry, start, end) => void moveEntry(entry, start, end)}
+          onExternal={showExternal}
           onGhostMenu={ghostMenu}
           onMoveGhost={pinGhost}
           onFrameMenu={frameMenu}
@@ -723,6 +931,34 @@ export function CalendarScreen({
           setMoving(null);
           select(start);
           reload();
+        }}
+      />
+      <MoveBlockSheet
+        title="Move event"
+        block={
+          movingEntry && {
+            id: movingEntry.item_id,
+            title: movingEntry.title,
+            start_at: movingEntry.start_at,
+            end_at: movingEntry.end_at ?? movingEntry.start_at,
+          }
+        }
+        onClose={() => setMovingEntry(null)}
+        onSave={async (start, end) => {
+          const entry = movingEntry;
+          setMovingEntry(null);
+          if (!entry) return;
+          select(start);
+          await moveEntry(entry, start, end);
+        }}
+      />
+      <SearchSheet
+        visible={searching}
+        onClose={() => setSearching(false)}
+        onPick={(day) => {
+          setSearching(false);
+          setMonth(day);
+          select(day);
         }}
       />
       <FrameSheet

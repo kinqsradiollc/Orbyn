@@ -16,6 +16,7 @@ import {
   zonedParts,
   type CalendarEntry,
   type DerivedBlock,
+  type ExternalEntry,
   type FrameOccurrence,
   type PlannedBlock,
   type TimeBlock,
@@ -58,7 +59,8 @@ const SLOP = 8;
 export type TimelineSlot =
   | (Slot & { type: "entry"; entry: CalendarEntry })
   | (Slot & { type: "block"; block: TimeBlock })
-  | (Slot & { type: "ghost"; ghost: PlannedBlock });
+  | (Slot & { type: "ghost"; ghost: PlannedBlock })
+  | (Slot & { type: "external"; external: ExternalEntry });
 
 type DragMode = "move" | "resize";
 type Drag = { id: string; start: Date; end: Date };
@@ -157,6 +159,8 @@ export function DayTimeline({
   onOpen,
   onBlockMenu,
   onEntryMenu,
+  onMoveEntry,
+  onExternal,
   onMoveBlock,
   onGhostMenu,
   onMoveGhost,
@@ -174,11 +178,15 @@ export function DayTimeline({
   frames?: FrameOccurrence[];
   /** Extra IANA time zones shown beside the hours (at most three). */
   zones?: string[];
-  /** Open the task or event behind an entry or block. */
-  onOpen: (itemId: string) => void;
+  /** Open the task or event behind an entry or block (with the entry, for its occurrence). */
+  onOpen: (itemId: string, entry?: CalendarEntry) => void;
   onBlockMenu: (block: TimeBlock) => void;
-  /** Only called for repeating occurrences. */
+  /** Options for an entry (long-press). */
   onEntryMenu: (entry: CalendarEntry) => void;
+  /** Save an event's new times after a drag or resize; events can't move without it. */
+  onMoveEntry?: (entry: CalendarEntry, start: Date, end: Date) => void;
+  /** Details of an event from a subscribed calendar (read-only). */
+  onExternal?: (event: ExternalEntry) => void;
   /** Save a block's new times after a drag, resize or screen-reader action. */
   onMoveBlock?: (block: TimeBlock, start: Date, end: Date) => void;
   /** Options for a planned block; without it planned blocks can't be touched. */
@@ -206,7 +214,9 @@ export function DayTimeline({
 
   const shownSlots: TimelineSlot[] = [
     ...slots.map((slot): TimelineSlot =>
-      slot.type === "block" && drag?.id === slot.block.id
+      drag &&
+      ((slot.type === "block" && drag.id === slot.block.id) ||
+        (slot.type === "entry" && drag.id === slot.key))
         ? { ...slot, start: drag.start, end: drag.end }
         : slot,
     ),
@@ -365,7 +375,7 @@ export function DayTimeline({
   const slotMenu = (slot: TimelineSlot) =>
     slot.type === "block"
       ? () => onBlockMenu(slot.block)
-      : slot.type === "entry" && slot.entry.occurrence
+      : slot.type === "entry"
         ? () => onEntryMenu(slot.entry)
         : null;
 
@@ -402,16 +412,38 @@ export function DayTimeline({
           {allDay.some((slot) => slot.type !== "ghost") ? (
             allDay.map((slot) => {
               if (slot.type === "ghost") return null;
+              if (slot.type === "external") {
+                const x = slot.external;
+                return (
+                  <PressableScale
+                    key={slot.key}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${x.title}, all day, from ${x.name}. Read only`}
+                    onPress={() => onExternal?.(x)}
+                    style={[
+                      s.allDayChip,
+                      { backgroundColor: tint(x.color, 0.16) },
+                      !x.busy && s.free,
+                    ]}
+                  >
+                    <Icon name="lock" size={10} color={x.color} />
+                    <Text numberOfLines={1} style={s.allDayText}>
+                      {x.title}
+                    </Text>
+                  </PressableScale>
+                );
+              }
               const { title, status, item_id, list_id } =
                 slot.type === "entry" ? slot.entry : slot.block;
+              const entry = slot.type === "entry" ? slot.entry : undefined;
               const t = statusTones[status];
-              const color = listColor(list_id);
+              const color = entry?.color || listColor(list_id);
               return (
                 <PressableScale
                   key={slot.key}
                   accessibilityRole="button"
-                  accessibilityLabel={`${title}, no set time, ${statusLabels[status]}. Opens task details`}
-                  onPress={() => onOpen(item_id)}
+                  accessibilityLabel={`${title}, ${entry?.all_day ? "all day" : "no set time"}, ${statusLabels[status]}. Opens details`}
+                  onPress={() => onOpen(item_id, entry)}
                   {...menuProps(slotMenu(slot))}
                   style={[
                     s.allDayChip,
@@ -657,55 +689,130 @@ export function DayTimeline({
                 </DraggableBlock>
               );
             }
+            if (slot.type === "external") {
+              const x = slot.external;
+              return (
+                <View key={slot.key} style={box}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${x.title}, ${range}, from ${x.name}. Read only`}
+                    onPress={() => onExternal?.(x)}
+                    style={({ pressed }) => [
+                      s.event,
+                      {
+                        backgroundColor: tint(x.color, 0.14),
+                        borderLeftColor: x.color,
+                      },
+                      !x.busy && s.free,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <View style={s.blockTop}>
+                      <Icon name="lock" size={10} color={x.color} />
+                      <Text
+                        numberOfLines={compact ? 1 : 2}
+                        style={s.eventTitle}
+                      >
+                        {x.title}
+                      </Text>
+                    </View>
+                    {!compact && (
+                      <Text numberOfLines={1} style={[s.eventTime, s.softTime]}>
+                        {range}
+                        {x.location ? ` · ${x.location}` : ""}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
+              );
+            }
             const e = slot.entry;
             const t = statusTones[e.status];
-            const color = listColor(e.list_id);
+            // Its own colour first, then its list's, then its status.
+            const color = e.color || listColor(e.list_id);
+            const tone = color
+              ? { backgroundColor: tint(color, 0.16), borderLeftColor: color }
+              : { backgroundColor: t.bg, borderLeftColor: t.fg };
+            const free = e.kind === "event" && e.busy === false;
+            const label = `${e.title}, ${range}, ${e.kind === "event" ? (free ? "free" : "event") : statusLabels[e.status]}${e.occurrence ? ", repeats" : ""}. Opens details`;
+            const content = (
+              <>
+                <View style={s.blockTop}>
+                  {!!e.occurrence && (
+                    <Icon name="repeat" size={10} color={color ?? t.fg} />
+                  )}
+                  <Text
+                    numberOfLines={compact ? 1 : 2}
+                    style={[s.eventTitle, e.status === "done" && s.doneText]}
+                  >
+                    {e.title}
+                  </Text>
+                </View>
+                {!compact && (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      s.eventTime,
+                      { color: color ? colors.textSoft : t.fg },
+                    ]}
+                  >
+                    {range}
+                    {free ? " · Free" : ""}
+                    {e.location ? ` · ${e.location}` : ""}
+                  </Text>
+                )}
+              </>
+            );
+            if (onMoveEntry && e.kind === "event" && e.end_at) {
+              const m: Movable = {
+                id: slot.key,
+                start_at: e.start_at,
+                end_at: e.end_at,
+              };
+              const save = (from: Date, to: Date) => onMoveEntry(e, from, to);
+              const lifted = drag?.id === slot.key;
+              return (
+                <DraggableBlock
+                  key={slot.key}
+                  style={[box, lifted && s.above]}
+                  blockStyle={[s.event, tone, free && s.free]}
+                  canDrag={canDrag(m, true)}
+                  lifted={lifted}
+                  gripColor={color ?? t.fg}
+                  accessibilityLabel={label}
+                  onTap={() => onOpen(e.item_id, e)}
+                  onMenu={() => onEntryMenu(e)}
+                  onBegin={() => begin(m)}
+                  onDrag={(mode, dy) => dragTo(m, mode, dy)}
+                  onEnd={(commit) => finish(m, commit, save)}
+                  onAction={(name) =>
+                    name === "activate"
+                      ? onOpen(e.item_id, e)
+                      : name === MORE.name
+                        ? onEntryMenu(e)
+                        : nudge(m, name, save)
+                  }
+                >
+                  {content}
+                </DraggableBlock>
+              );
+            }
             return (
               <View key={slot.key} style={box}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${e.title}, ${range}, ${statusLabels[e.status]}${e.occurrence ? ", repeats" : ""}. Opens task details`}
-                  accessibilityHint={
-                    e.occurrence
-                      ? "Long-press to skip this occurrence"
-                      : undefined
-                  }
-                  onPress={() => onOpen(e.item_id)}
+                  accessibilityLabel={label}
+                  accessibilityHint="Long-press for options"
+                  onPress={() => onOpen(e.item_id, e)}
                   {...menuProps(slotMenu(slot))}
                   style={({ pressed }) => [
                     s.event,
-                    color
-                      ? {
-                          backgroundColor: tint(color, 0.16),
-                          borderLeftColor: color,
-                        }
-                      : { backgroundColor: t.bg, borderLeftColor: t.fg },
+                    tone,
+                    free && s.free,
                     pressed && s.pressed,
                   ]}
                 >
-                  <View style={s.blockTop}>
-                    {!!e.occurrence && (
-                      <Icon name="repeat" size={10} color={color ?? t.fg} />
-                    )}
-                    <Text
-                      numberOfLines={compact ? 1 : 2}
-                      style={[s.eventTitle, e.status === "done" && s.doneText]}
-                    >
-                      {e.title}
-                    </Text>
-                  </View>
-                  {!compact && (
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        s.eventTime,
-                        { color: color ? colors.textSoft : t.fg },
-                      ]}
-                    >
-                      {range}
-                      {e.location ? ` · ${e.location}` : ""}
-                    </Text>
-                  )}
+                  {content}
                 </Pressable>
               </View>
             );
@@ -1038,6 +1145,8 @@ const s = themed(() =>
       overflow: "hidden",
     },
     pressed: { opacity: 0.7 },
+    /** Free events and calendars that don't count as busy: lighter. */
+    free: { opacity: 0.6 },
     block: {
       borderWidth: 1.5,
       borderLeftWidth: 1.5,

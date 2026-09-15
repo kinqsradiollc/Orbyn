@@ -9,6 +9,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { QuickAdd } from "../components/QuickAdd";
 import { ReviewCard } from "../components/ReviewCard";
 import {
   EmptyState,
@@ -31,9 +32,17 @@ export function TodayScreen({
   items,
   onPlanDay,
   onOpenPlanner,
+  userId,
+  onQuickAdded,
+  onAsk,
   ...handlers
 }: ListHandlers & {
   items: Item[];
+  userId?: string;
+  /** After quick add created something, so the planner reloads. */
+  onQuickAdded: (item: Item) => void;
+  /** Hand quick-add text to the assistant instead. */
+  onAsk: (text: string) => void;
   /** Jumps to the assistant and asks it to plan the day. */
   onPlanDay: () => void;
   /** Opens the Plan my day sheet, optionally on a plan to review. */
@@ -73,6 +82,7 @@ export function TodayScreen({
 
   return (
     <>
+      <QuickAdd userId={userId} onCreated={onQuickAdded} onAsk={onAsk} />
       <View style={s.stats}>
         {stats.map((stat, n) => (
           <FadeIn key={stat.label} index={n} style={s.statCell}>

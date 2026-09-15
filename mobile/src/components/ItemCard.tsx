@@ -5,6 +5,7 @@ import { Icon } from "./Icon";
 import { PlanningMeta } from "./PlanningMeta";
 import { StatusPill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
+import { shortDay } from "../lib/planning";
 import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
@@ -91,7 +92,9 @@ export function ItemCard({
             color={colors.muted}
           />
           <Text numberOfLines={1} style={s.metaText}>
-            {dateLabel(item.due_at)}
+            {item.all_day && item.due_at
+              ? `${shortDay(item.due_at)} · All day`
+              : dateLabel(item.due_at)}
             {item.kind === "event" ? " · Event" : ""}
           </Text>
           {item.priority === "high" && (

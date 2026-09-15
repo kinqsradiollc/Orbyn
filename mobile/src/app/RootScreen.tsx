@@ -33,6 +33,7 @@ import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
 import { PlanningProvider } from "../lib/planningContext";
 import { planIncluding } from "../lib/plans";
+import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale, isReducedMotion } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
@@ -141,6 +142,17 @@ export function RootScreen() {
     );
     return () => cancelAnimationFrame(frame);
   }, [messages, tab]);
+  /** The occurrence of a repeating item the task sheet was opened on. */
+  const [taskOccurrence, setTaskOccurrence] = useState<OccurrenceRef | null>(
+    null,
+  );
+  /** A repeating item in the editor: its occurrence, and the series' own times. */
+  const [editRepeat, setEditRepeat] = useState<
+    | (OccurrenceRef & {
+        series: { due_at: string | null; end_at: string | null };
+      })
+    | null
+  >(null);
   /** The Plan my day sheet's title for the plan it opens on. */
   const [planTitle, setPlanTitle] = useState<string | null>(null);
   /** Routes a tapped push notification; set on each signed-in render. */
@@ -215,17 +227,46 @@ export function RootScreen() {
     setEditing(null);
     if (Platform.OS !== "ios") goBack();
   };
-  const openTask = (item: Item) => {
+  const openTask = (item: Item, occurrence?: OccurrenceRef | null) => {
     setTask(item);
+    setTaskOccurrence(occurrence ?? null);
     present({ sheet: "task" });
   };
+  /**
+   * Edit a saved item. A repeating one opened on an occurrence shows that
+   * occurrence's times; saving asks which occurrences the change is for.
+   */
+  const editItem = (item: Item) => {
+    const occ =
+      item.rrule && taskOccurrence?.itemId === item.id ? taskOccurrence : null;
+    setEditRepeat(
+      item.rrule && item.due_at
+        ? {
+            itemId: item.id,
+            occurrence: occ?.occurrence ?? item.due_at,
+            start: occ?.start ?? item.due_at,
+            end: occ ? occ.end : item.end_at,
+            series: { due_at: item.due_at, end_at: item.end_at },
+          }
+        : null,
+    );
+    present({
+      edit: occ ? { ...item, due_at: occ.start, end_at: occ.end } : { ...item },
+    });
+  };
   /** Team / Admin sheets: saved plans open the task detail, new ones the editor. */
-  const openFromSheet = (item: Editing) =>
-    "id" in item ? openTask(item) : present({ edit: item });
+  const openFromSheet = (item: Editing) => {
+    if ("id" in item) return openTask(item);
+    setEditRepeat(null);
+    present({ edit: item });
+  };
   const clearError = () => setError("");
 
   const today = new Date();
-  const openNew = () => setEditing(freshItem());
+  const openNew = () => {
+    setEditRepeat(null);
+    setEditing(freshItem());
+  };
   const listHandlers = {
     busy,
     onAdd: openNew,
@@ -319,8 +360,29 @@ export function RootScreen() {
       if ("id" in editing) {
         // Progress is owned by the checklist and the task sheet; omitting it
         // keeps the saved value (sending it while steps exist is a 409).
-        const { progress: _progress, ...body } = itemBody(editing);
-        await client.updateItem(editing.id, body);
+        const { progress: _progress, ...fields } = itemBody(editing);
+        // Invitees are sent only once edited: the list replaces the saved one.
+        const body = editing.attendees
+          ? { ...fields, attendees: editing.attendees }
+          : fields;
+        const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
+        if (repeat) {
+          const scope = await askScope(editing.kind, "save");
+          if (!scope) return;
+          await client.updateItem(
+            editing.id,
+            scope === "all"
+              ? {
+                  ...body,
+                  ...seriesTimes(repeat.series, repeat, {
+                    start: body.due_at ?? repeat.start,
+                    end: body.end_at,
+                  }),
+                }
+              : body,
+            { scope, occurrence: repeat.occurrence },
+          );
+        } else await client.updateItem(editing.id, body);
         const saved = editing;
         setTask((t) => (t && t.id === saved.id ? { ...t, ...saved } : t));
       } else await client.createItem(editing);
@@ -330,9 +392,20 @@ export function RootScreen() {
   const deleteEditing = () =>
     act(async () => {
       if (!editing || !("id" in editing)) return;
-      await client.deleteItem(editing.id, editing.version);
-      // Don't return to the detail sheet of the item that was just deleted.
-      if (back.current.at(-1) === "task" && task?.id === editing.id)
+      const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
+      const scope = repeat ? await askScope(editing.kind, "delete") : "all";
+      if (!scope) return;
+      await client.deleteItem(
+        editing.id,
+        editing.version,
+        repeat ? { scope, occurrence: repeat.occurrence } : {},
+      );
+      // Don't return to the detail sheet of an item that's gone.
+      if (
+        scope !== "this" &&
+        back.current.at(-1) === "task" &&
+        task?.id === editing.id
+      )
         back.current.pop();
       closeEditor();
       await refresh();
@@ -421,6 +494,14 @@ export function RootScreen() {
                       void assistant.ask(planDayPrompt);
                     }}
                     onOpenPlanner={openPlanner}
+                    userId={user?.id}
+                    onQuickAdded={() =>
+                      void refresh({ animate: true }).catch(() => {})
+                    }
+                    onAsk={(text) => {
+                      setTab("AI");
+                      void assistant.ask(text);
+                    }}
                     {...listHandlers}
                   />
                 )}
@@ -444,6 +525,7 @@ export function RootScreen() {
                     onPreviewChange={setPreview}
                     onPreviewDone={() => setPreview(null)}
                     onDragging={setDragging}
+                    onOpenOccurrence={openTask}
                     {...listHandlers}
                   />
                 )}
@@ -466,6 +548,14 @@ export function RootScreen() {
                     }
                     onPlanIt={(n) =>
                       void noticeAction(n, () => startPlanIt(n.item_id))
+                    }
+                    onOpenItem={(n) =>
+                      void noticeAction(n, () =>
+                        act(async () => {
+                          if (n.item_id)
+                            openTask(await client.getItem(n.item_id));
+                        }),
+                      )
                     }
                   />
                 )}
@@ -527,7 +617,7 @@ export function RootScreen() {
           teams={teams}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
-          onEdit={(item) => present({ edit: { ...item } })}
+          onEdit={editItem}
           onFocus={openFocus}
           onChanged={planChanged}
         />

@@ -13,6 +13,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   rollforward: "arrowRight",
   at_risk: "alert",
   deadline: "clock",
+  rsvp: "users",
 };
 
 /**
@@ -29,6 +30,7 @@ export function InboxScreen({
   onOpenBooking,
   onRollForward,
   onPlanIt,
+  onOpenItem,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -41,6 +43,8 @@ export function InboxScreen({
   onRollForward: (notice: Notice) => void;
   /** Preview a plan that includes the notice's task ("at_risk", "deadline"). */
   onPlanIt: (notice: Notice) => void;
+  /** Open the event an "rsvp" notice is about (`item_id`). */
+  onOpenItem: (notice: Notice) => void;
 }) {
   if (!notices.length)
     return (
@@ -65,7 +69,9 @@ export function InboxScreen({
               ? { label: "Roll forward", run: onRollForward }
               : n.kind === "at_risk" || n.kind === "deadline"
                 ? { label: "Plan it", run: onPlanIt }
-                : null;
+                : n.kind === "rsvp" && n.item_id
+                  ? { label: "Open event", run: onOpenItem }
+                  : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
