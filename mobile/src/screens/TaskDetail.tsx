@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -33,6 +32,7 @@ import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
 import { SchedulePanel } from "../components/SchedulePanel";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
 import { canJoin } from "../lib/planning";
@@ -44,7 +44,7 @@ import {
   PressableScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, radii, themed, statusTones } from "../theme";
+import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
@@ -131,6 +131,10 @@ function Body({
   const [newStep, setNewStep] = useState("");
   const [note, setNote] = useState("");
   const [noteStatus, setNoteStatus] = useState<Status | null>(null);
+  /** The update box has focus: its status choices show above it. */
+  const [composing, setComposing] = useState(false);
+  const area = useRef<React.ComponentRef<typeof View>>(null);
+  const keyboard = useKeyboardInset(area);
 
   useEffect(() => {
     let alive = true;
@@ -229,11 +233,14 @@ function Body({
     !busy && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <View
+      ref={area}
+      collapsable={false}
+      onLayout={keyboard.onLayout}
+      style={[s.fill, { paddingBottom: keyboard.inset }]}
     >
       <ScrollView
+        style={s.fill}
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
@@ -483,40 +490,6 @@ function Body({
                 <Text style={s.counter}>{updates.length}</Text>
               )}
             </View>
-            {!readOnly && (
-              <View style={s.composer}>
-                <TextInput
-                  style={[shared.input, s.noteInput]}
-                  value={note}
-                  onChangeText={setNote}
-                  multiline
-                  maxLength={2000}
-                  textAlignVertical="top"
-                  placeholder="Share progress, a blocker or a win…"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Update text"
-                />
-                <Text style={[shared.label, s.composerLabel]}>
-                  Change status (optional)
-                </Text>
-                <StatusChoice
-                  compact
-                  value={noteStatus}
-                  disabled={busy}
-                  onChange={(st) =>
-                    setNoteStatus((prev) => (prev === st ? null : st))
-                  }
-                  accessibilityLabel="Status to set with this update"
-                />
-                <Button
-                  title={busy ? "Posting…" : "Post update"}
-                  icon={busy ? undefined : "arrowRight"}
-                  disabled={!canPost}
-                  onPress={() => void postNote()}
-                  style={s.post}
-                />
-              </View>
-            )}
             {detail && !updates.length && (
               <Text style={shared.small}>
                 No updates yet.
@@ -536,7 +509,64 @@ function Body({
           />
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      {/* Fixed under the scrolling detail, and above the keyboard. */}
+      {!readOnly && (
+        <View style={s.footer}>
+          <View style={sheetStyles.column}>
+            {(composing || !!note.trim() || !!noteStatus) && (
+              <>
+                <Text style={[shared.label, s.composerLabel]}>
+                  Change status (optional)
+                </Text>
+                <StatusChoice
+                  compact
+                  value={noteStatus}
+                  disabled={busy}
+                  onChange={(st) =>
+                    setNoteStatus((prev) => (prev === st ? null : st))
+                  }
+                  accessibilityLabel="Status to set with this update"
+                />
+              </>
+            )}
+            <View style={s.footerRow}>
+              <TextInput
+                style={[shared.input, s.noteInput]}
+                value={note}
+                onChangeText={setNote}
+                onFocus={() => setComposing(true)}
+                onBlur={() => setComposing(false)}
+                multiline
+                maxLength={2000}
+                textAlignVertical="top"
+                placeholder="Share progress, a blocker or a win…"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Update text"
+              />
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={busy ? "Posting update" : "Post update"}
+                accessibilityState={{ disabled: !canPost }}
+                disabled={!canPost}
+                onPress={() => void postNote()}
+                style={({ pressed }) => [
+                  s.send,
+                  pressed && { backgroundColor: colors.accentPressed },
+                  !canPost && { opacity: 0.4 },
+                ]}
+              >
+                <Icon
+                  name="arrowRight"
+                  size={18}
+                  color={colors.white}
+                  strokeWidth={2.2}
+                />
+              </PressableScale>
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -863,10 +893,32 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    composer: { marginBottom: 14 },
-    noteInput: { minHeight: 76 },
-    composerLabel: { marginTop: 12 },
-    post: { marginBottom: 0 },
+    fill: { flex: 1 },
+    footer: {
+      backgroundColor: colors.background,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingHorizontal: spacing.page,
+      paddingTop: 10,
+      paddingBottom: 10,
+    },
+    footerRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+    /** Grows to five lines of 21 pt, then scrolls inside. */
+    noteInput: {
+      flex: 1,
+      minHeight: 50,
+      maxHeight: 21 * 5 + 26,
+      lineHeight: 21,
+    },
+    composerLabel: { marginTop: 0 },
+    send: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     update: { flexDirection: "row", gap: 12, paddingVertical: 12 },
     avatar: {
       width: 32,

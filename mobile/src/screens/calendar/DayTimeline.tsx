@@ -793,6 +793,9 @@ function DraggableBlock({
   const body = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      // PanResponder blocks native scrolling by default (Android): a swipe
+      // that starts on a block must still scroll the page until it lifts.
+      onShouldBlockNativeResponder: () => false,
       onPanResponderGrant: () => {
         hold.lifted = false;
         setPressed(true);

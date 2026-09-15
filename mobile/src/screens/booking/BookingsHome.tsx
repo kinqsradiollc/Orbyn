@@ -77,6 +77,8 @@ export function BookingsHome({
     return () => clearTimeout(t);
   }, [filters.q]);
 
+  /** Guards Load more against a second tap while a page is still loading. */
+  const loadingMore = useRef(false);
   const loadRows = useCallback(
     async (offset: number) => {
       const ticket = ++latest.current;
@@ -254,7 +256,13 @@ export function BookingsHome({
                 secondary
                 title={busy ? "Loading…" : `Load more (${total - rows.length})`}
                 disabled={busy}
-                onPress={() => void run(() => loadRows(rows.length))}
+                onPress={() => {
+                  if (loadingMore.current) return;
+                  loadingMore.current = true;
+                  void run(() => loadRows(rows.length)).finally(() => {
+                    loadingMore.current = false;
+                  });
+                }}
               />
             )}
             <Button

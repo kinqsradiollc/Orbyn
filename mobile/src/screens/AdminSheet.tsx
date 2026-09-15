@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -337,13 +337,20 @@ function Audit({ act, busy }: { act: Act; busy: boolean }) {
   const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
-  const loadMore = (offset: number) =>
-    act(async () => {
+  /** Guards Load more against a second tap while a page is still loading. */
+  const loading = useRef(false);
+  const loadMore = (offset: number) => {
+    if (loading.current) return Promise.resolve();
+    loading.current = true;
+    return act(async () => {
       const page = await client.adminListAudit({ limit: AUDIT_PAGE, offset });
       setRows((prev) => (offset === 0 ? page.rows : [...prev, ...page.rows]));
       setTotal(page.total);
       setLoaded(true);
+    }).finally(() => {
+      loading.current = false;
     });
+  };
 
   useEffect(() => {
     void loadMore(0);

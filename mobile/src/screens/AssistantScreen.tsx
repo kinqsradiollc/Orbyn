@@ -20,6 +20,11 @@ import { shared } from "../styles";
 /** Same starter prompts as the desktop assistant. */
 const SUGGESTIONS = assistantSuggestions.map((s) => s.title);
 
+/**
+ * The conversation: starter prompts, then each message and reply. The message
+ * box is `AssistantComposer`, which RootScreen keeps fixed above the keyboard
+ * and tab bar while this scrolls with the page.
+ */
 export function AssistantScreen({
   assistant,
   items,
@@ -29,10 +34,8 @@ export function AssistantScreen({
   items: Item[];
   busy: boolean;
 }) {
-  const { message, setMessage, turns, thinking, ask, apply, discard, reset } =
-    assistant;
+  const { turns, thinking, ask, apply, discard, reset } = assistant;
   const locked = busy || thinking;
-  const canSend = !locked && !!message.trim();
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
@@ -139,41 +142,60 @@ export function AssistantScreen({
         )}
       </View>
 
-      <View style={s.composer}>
-        <TextInput
-          style={s.input}
-          multiline
-          placeholder="Make a little space. Ask Orbyn…"
-          placeholderTextColor={colors.faint}
-          value={message}
-          onChangeText={setMessage}
-          maxLength={4000}
-          accessibilityLabel="Message your assistant"
-        />
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={thinking ? "Thinking" : "Send"}
-          disabled={!canSend}
-          onPress={() => ask()}
-          style={({ pressed }) => [
-            s.send,
-            pressed && { backgroundColor: colors.accentPressed },
-            !canSend && { opacity: 0.4 },
-          ]}
-        >
-          <Icon
-            name="arrowRight"
-            size={18}
-            color={colors.white}
-            strokeWidth={2.2}
-          />
-        </PressableScale>
-      </View>
       <Text style={[shared.small, s.note]}>
         Your request and up to 100 recent items are shared with your configured
         AI provider.
       </Text>
     </>
+  );
+}
+
+/**
+ * The message box and Send. It grows with what's typed up to about five
+ * lines, then scrolls inside itself.
+ */
+export function AssistantComposer({
+  assistant,
+  busy,
+}: {
+  assistant: Assistant;
+  busy: boolean;
+}) {
+  const { message, setMessage, thinking, ask } = assistant;
+  const canSend = !busy && !thinking && !!message.trim();
+  return (
+    <View style={s.composer}>
+      <TextInput
+        style={s.input}
+        multiline
+        placeholder="Make a little space. Ask Orbyn…"
+        placeholderTextColor={colors.faint}
+        value={message}
+        onChangeText={setMessage}
+        maxLength={4000}
+        textAlignVertical="top"
+        accessibilityLabel="Message your assistant"
+      />
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={thinking ? "Thinking" : "Send"}
+        accessibilityState={{ disabled: !canSend }}
+        disabled={!canSend}
+        onPress={() => ask()}
+        style={({ pressed }) => [
+          s.send,
+          pressed && { backgroundColor: colors.accentPressed },
+          !canSend && { opacity: 0.4 },
+        ]}
+      >
+        <Icon
+          name="arrowRight"
+          size={18}
+          color={colors.white}
+          strokeWidth={2.2}
+        />
+      </PressableScale>
+    </View>
   );
 }
 
@@ -267,6 +289,9 @@ function TypingIndicator() {
     </View>
   );
 }
+
+/** Line height of the message box; it grows to five lines before scrolling. */
+const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
@@ -369,28 +394,29 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,
-      padding: 8,
+      padding: 6,
       paddingLeft: 14,
     },
     input: {
       flex: 1,
-      minHeight: 40,
-      maxHeight: 140,
+      minHeight: 44,
+      maxHeight: LINE * 5 + 22,
       fontFamily: fonts.regular,
       fontSize: 15,
+      lineHeight: LINE,
       color: colors.text,
-      paddingTop: 10,
-      paddingBottom: 10,
+      paddingTop: 11,
+      paddingBottom: 11,
     },
     send: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
     },
-    note: { marginTop: 12, textAlign: "center" },
+    note: { textAlign: "center" },
     plan: {
       marginTop: 12,
       paddingTop: 12,

@@ -34,9 +34,10 @@ import { client } from "../lib/api";
 import { PlanningProvider } from "../lib/planningContext";
 import { planIncluding } from "../lib/plans";
 import { toggledStatus } from "../lib/progress";
-import { FadeIn, PressableScale } from "../motion";
+import { FadeIn, PressableScale, isReducedMotion } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
-import { AssistantScreen } from "../screens/AssistantScreen";
+import { AssistantComposer, AssistantScreen } from "../screens/AssistantScreen";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { BookingSheet } from "../screens/BookingSheet";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -126,6 +127,20 @@ export function RootScreen() {
   const [preview, setPreview] = useState<Plan | null>(null);
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
+  const scroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  /** The space above the tab bar; on the AI tab it makes room for the keyboard. */
+  const keyboardArea = useRef<React.ComponentRef<typeof View>>(null);
+  const keyboard = useKeyboardInset(keyboardArea, tab === "AI");
+  // Show the newest message: once per new message or reply, after it's laid
+  // out. Tied to the count, not to content size, so it can't feed back.
+  const messages = assistant.turns.length + (assistant.thinking ? 1 : 0);
+  useEffect(() => {
+    if (tab !== "AI" || !messages) return;
+    const frame = requestAnimationFrame(() =>
+      scroller.current?.scrollToEnd({ animated: !isReducedMotion() }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [messages, tab]);
   /** The Plan my day sheet's title for the plan it opens on. */
   const [planTitle, setPlanTitle] = useState<string | null>(null);
   /** Routes a tapped push notification; set on each signed-in render. */
@@ -357,117 +372,133 @@ export function RootScreen() {
             />
           </View>
         </View>
-        <ScrollView
-          style={s.scroll}
-          scrollEnabled={!dragging}
-          contentContainerStyle={[s.content, sidePadding]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          automaticallyAdjustKeyboardInsets
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => act(() => refresh())}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-            />
-          }
+        <View
+          ref={keyboardArea}
+          collapsable={false}
+          onLayout={keyboard.onLayout}
+          style={[s.body, { paddingBottom: keyboard.inset }]}
         >
-          <View style={s.column}>
-            <Text style={shared.eyebrow}>
-              {today
-                .toLocaleDateString([], {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })
-                .toUpperCase()}
-            </Text>
-            {/* Keyed by tab: replays on navigation only, never on refresh. */}
-            <FadeIn key={`head-${tab}`} duration={motion.slow}>
-              <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-              <Text style={[shared.subtitle, s.subtitle]}>
-                {tabSubtitle(tab)}
+          <ScrollView
+            ref={scroller}
+            style={s.scroll}
+            scrollEnabled={!dragging}
+            contentContainerStyle={[s.content, sidePadding]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => act(() => refresh())}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
+          >
+            <View style={s.column}>
+              <Text style={shared.eyebrow}>
+                {today
+                  .toLocaleDateString([], {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })
+                  .toUpperCase()}
               </Text>
-            </FadeIn>
-            <ErrorBanner error={error} onDismiss={() => setError("")} />
-            <FadeIn key={`body-${tab}`} duration={motion.slow}>
-              {tab === "Today" && (
-                <TodayScreen
-                  items={items}
-                  onPlanDay={() => {
-                    setTab("AI");
-                    void assistant.ask(planDayPrompt);
-                  }}
-                  onOpenPlanner={openPlanner}
-                  {...listHandlers}
-                />
-              )}
-              {tab === "Tasks" && (
-                <TasksScreen
-                  items={items}
-                  search={search}
-                  onSearch={setSearch}
-                  user={user}
-                  onManageLists={() => setSheet("lists")}
-                  {...listHandlers}
-                />
-              )}
-              {tab === "Calendar" && (
-                <CalendarScreen
-                  items={items}
-                  act={act}
-                  onChanged={planChanged}
-                  teams={teams}
-                  preview={preview}
-                  onPreviewChange={setPreview}
-                  onPreviewDone={() => setPreview(null)}
-                  onDragging={setDragging}
-                  {...listHandlers}
-                />
-              )}
-              {tab === "AI" && (
-                <AssistantScreen
-                  assistant={assistant}
-                  items={items}
-                  busy={busy}
-                />
-              )}
-              {tab === "Inbox" && (
-                <InboxScreen
-                  notices={notices}
-                  busy={busy}
-                  onRead={markRead}
-                  onReschedule={reschedule}
-                  onOpenBooking={openBookingNotice}
-                  onRollForward={(n) => void noticeAction(n, startRollForward)}
-                  onPlanIt={(n) =>
-                    void noticeAction(n, () => startPlanIt(n.item_id))
-                  }
-                />
-              )}
-              {tab === "Settings" && (
-                <SettingsScreen
-                  user={user}
-                  busy={busy}
-                  act={act}
-                  onUser={setUser}
-                  onSignOut={() => {
-                    setPreview(null);
-                    signOut();
-                  }}
-                  teamCount={teams.length}
-                  onOpenTeams={() => setSheet("teams")}
-                  onOpenAdmin={() => setSheet("admin")}
-                  onOpenStatus={() => setSheet("status")}
-                  onOpenPlanning={() => setSheet("planning")}
-                  onOpenConnections={() => setSheet("connections")}
-                  onOpenBooking={openBookings}
-                />
-              )}
-            </FadeIn>
-          </View>
-        </ScrollView>
+              {/* Keyed by tab: replays on navigation only, never on refresh. */}
+              <FadeIn key={`head-${tab}`} duration={motion.slow}>
+                <Text style={shared.title}>{tabTitle(tab, user)}</Text>
+                <Text style={[shared.subtitle, s.subtitle]}>
+                  {tabSubtitle(tab)}
+                </Text>
+              </FadeIn>
+              <ErrorBanner error={error} onDismiss={() => setError("")} />
+              <FadeIn key={`body-${tab}`} duration={motion.slow}>
+                {tab === "Today" && (
+                  <TodayScreen
+                    items={items}
+                    onPlanDay={() => {
+                      setTab("AI");
+                      void assistant.ask(planDayPrompt);
+                    }}
+                    onOpenPlanner={openPlanner}
+                    {...listHandlers}
+                  />
+                )}
+                {tab === "Tasks" && (
+                  <TasksScreen
+                    items={items}
+                    search={search}
+                    onSearch={setSearch}
+                    user={user}
+                    onManageLists={() => setSheet("lists")}
+                    {...listHandlers}
+                  />
+                )}
+                {tab === "Calendar" && (
+                  <CalendarScreen
+                    items={items}
+                    act={act}
+                    onChanged={planChanged}
+                    teams={teams}
+                    preview={preview}
+                    onPreviewChange={setPreview}
+                    onPreviewDone={() => setPreview(null)}
+                    onDragging={setDragging}
+                    {...listHandlers}
+                  />
+                )}
+                {tab === "AI" && (
+                  <AssistantScreen
+                    assistant={assistant}
+                    items={items}
+                    busy={busy}
+                  />
+                )}
+                {tab === "Inbox" && (
+                  <InboxScreen
+                    notices={notices}
+                    busy={busy}
+                    onRead={markRead}
+                    onReschedule={reschedule}
+                    onOpenBooking={openBookingNotice}
+                    onRollForward={(n) =>
+                      void noticeAction(n, startRollForward)
+                    }
+                    onPlanIt={(n) =>
+                      void noticeAction(n, () => startPlanIt(n.item_id))
+                    }
+                  />
+                )}
+                {tab === "Settings" && (
+                  <SettingsScreen
+                    user={user}
+                    busy={busy}
+                    act={act}
+                    onUser={setUser}
+                    onSignOut={() => {
+                      setPreview(null);
+                      signOut();
+                    }}
+                    teamCount={teams.length}
+                    onOpenTeams={() => setSheet("teams")}
+                    onOpenAdmin={() => setSheet("admin")}
+                    onOpenStatus={() => setSheet("status")}
+                    onOpenPlanning={() => setSheet("planning")}
+                    onOpenConnections={() => setSheet("connections")}
+                    onOpenBooking={openBookings}
+                  />
+                )}
+              </FadeIn>
+            </View>
+          </ScrollView>
+          {tab === "AI" && (
+            <View style={[s.footer, sidePadding]}>
+              <View style={s.column}>
+                <AssistantComposer assistant={assistant} busy={busy} />
+              </View>
+            </View>
+          )}
+        </View>
         <TabBar
           tab={tab}
           unread={notices.some((n) => !n.read)}
@@ -616,6 +647,14 @@ const s = themed(() =>
     },
     addPressed: { backgroundColor: colors.accentPressed },
     scroll: { flex: 1 },
+    body: { flex: 1 },
+    footer: {
+      backgroundColor: colors.background,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingTop: 8,
+      paddingBottom: 8,
+    },
     content: { paddingTop: 22, paddingBottom: 32 },
     column: {
       width: "100%",
