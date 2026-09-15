@@ -58,6 +58,14 @@ export function mayChange(message: string) {
 /** Words that ask for something to be deleted. */
 const DELETE_INTENT =
   /\b(delete|remove|cancel|clear|drop|erase|trash|get rid of|scrap|bin)\b/i;
+const PLAN_INTENT =
+  /\b(?:plan|organi[sz]e|time-?block|block out|schedule)\s+(?:out\s+)?(?:my (?:day|week|tasks|time|schedule|morning|afternoon|evening|calendar|work|to-?dos?)|the rest of my (?:day|week)|(?:today|tomorrow)(?!['’]s)|this (?:week|morning|afternoon|evening)|next week)\b|\bwhat should i (?:do|work on)\b|\bwhen should i (?:do|work on)\b|\bmake (?:me )?a plan\b/i;
+/**
+ * Whether a message asks the planner to lay out the user's time ("plan my
+ * day", "what should I work on?") rather than to create or change items.
+ */
+export const wantsPlan = (message: string) => PLAN_INTENT.test(message);
+
 /** Whether a message asks for something to be deleted. */
 export const wantsDeletion = (message: string) => DELETE_INTENT.test(message);
 

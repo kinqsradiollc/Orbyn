@@ -5,8 +5,11 @@ import {
   STATUSES,
   itemData,
   type Action,
+  type Plan,
   type SystemRole,
 } from "@orbyn/core";
+import { makePlan } from "../../planner/plans.js";
+import { planMarkdown } from "./planText.js";
 import { pool } from "../../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../../lib/teams.js";
 import { mayChange, wantsDeletion } from "../guards.js";
@@ -27,6 +30,8 @@ export type AgentContext = {
   intentText: string;
   actions: Action[];
   clarification: { question: string; options: string[] } | null;
+  /** A schedule planned this turn, for the user to review and apply. */
+  plan?: Plan | null;
 };
 
 export const MAX_ACTIONS = 20;
@@ -159,6 +164,22 @@ const draftProperties: Record<string, JsonSchema> = {
       'A team id from list_teams to share the item, or "personal". Omit to keep it personal (or unchanged).',
   },
   progress: { type: "integer", minimum: 0, maximum: 100 },
+  estimate_minutes: {
+    type: "integer",
+    minimum: 1,
+    maximum: 10080,
+    description: "How long the task takes, in minutes (the planner uses it).",
+  },
+  location: { type: "string", description: "Where an event happens." },
+  meeting_url: {
+    type: "string",
+    description: "A video-call link (https://…).",
+  },
+  rrule: {
+    type: "string",
+    description:
+      'How it repeats, e.g. "FREQ=DAILY", "FREQ=WEEKLY;BYDAY=MO,WE", "FREQ=MONTHLY;COUNT=6". Needs due_at.',
+  },
 };
 
 const draft = z
@@ -173,6 +194,10 @@ const draft = z
     reminder_minutes: z.number().int().min(0).max(10080).optional(),
     team_id: z.string().max(60).nullable().optional(),
     progress: z.number().int().min(0).max(100).optional(),
+    estimate_minutes: z.number().int().min(1).max(10080).nullable().optional(),
+    location: z.string().max(300).optional(),
+    meeting_url: z.string().max(500).optional(),
+    rrule: z.string().max(200).nullable().optional(),
   })
   .strict();
 const partialDraft = draft.partial().strict();
@@ -432,6 +457,8 @@ function normalize(d: Draft, timezone: string): Draft {
   if (typeof out.end_at === "string")
     out.end_at = toInstant(out.end_at, timezone);
   if (out.team_id === "personal" || out.team_id === "") out.team_id = null;
+  // A repeating item keeps its wall-clock time in the user's time zone.
+  if (out.rrule) (out as Draft & { timezone?: string }).timezone = timezone;
   return out;
 }
 
@@ -707,6 +734,62 @@ async function askClarification(
 
 // ---- the tool table ---------------------------------------------------------------
 
+/**
+ * Plan the user's time with the planner engine. The assistant only chooses
+ * the inputs; the engine places every block. Nothing is saved until the user
+ * applies the plan in the app.
+ */
+async function planSchedule(
+  ctx: AgentContext,
+  a: {
+    start_date?: string;
+    days?: number;
+    keep_free?: { start_at: string; end_at: string }[];
+    item_ids?: string[];
+  },
+) {
+  const keepFree = (a.keep_free ?? []).map((k) => ({
+    start_at: toInstant(k.start_at, ctx.timezone),
+    end_at: toInstant(k.end_at, ctx.timezone, true),
+  }));
+  if (
+    keepFree.some(
+      (k) =>
+        Number.isNaN(Date.parse(k.start_at)) ||
+        Number.isNaN(Date.parse(k.end_at)),
+    )
+  )
+    throw new Error("keep_free times must be dates or date-times.");
+  const plan = await makePlan(pool, ctx.user.id, {
+    start_date: a.start_date,
+    days: a.days,
+    use_frames: true,
+    keep_free: keepFree,
+    item_ids: a.item_ids ? a.item_ids.filter(isUuid) : undefined,
+    exclude_item_ids: [],
+    timezone: ctx.timezone,
+  });
+  ctx.plan = plan;
+  return {
+    summary: plan.summary,
+    blocks: plan.blocks.slice(0, 40).map((b) => ({
+      title: clean(b.title, 200),
+      when: whenLabel(new Date(b.start_at), new Date(b.end_at), ctx.timezone),
+      ...(b.parts > 1 ? { session: `${b.part} of ${b.parts}` } : {}),
+    })),
+    unplaced: plan.unplaced.map((u) => ({
+      title: clean(u.title, 200),
+      reason: u.reason,
+    })),
+    at_risk: plan.at_risk.map((u) => ({
+      title: clean(u.title, 200),
+      reason: u.reason,
+    })),
+    note: "Proposed only: the user reviews this plan and applies it to add the blocks to their calendar.",
+    as_markdown: planMarkdown(plan, ctx.timezone),
+  };
+}
+
 const NO_ARGS: JsonSchema = {
   type: "object",
   properties: {},
@@ -910,6 +993,67 @@ export const TOOLS: Tool[] = [
       })
       .strict(),
     askClarification,
+  ),
+  tool(
+    {
+      name: "plan_schedule",
+      description:
+        "Plan the user's time: place their open tasks into free working time for 1-7 days, around events, frames, estimates and due dates. Returns a proposed plan the user reviews and applies; nothing is saved until then. Use for 'plan my day', 'plan my week', 'when should I work on X'.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          start_date: {
+            type: "string",
+            description:
+              "First day, YYYY-MM-DD in the user's time zone; today when omitted.",
+          },
+          days: { type: "integer", minimum: 1, maximum: 7 },
+          keep_free: {
+            type: "array",
+            maxItems: 20,
+            description: 'Times to leave empty ("keep Friday afternoon free").',
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["start_at", "end_at"],
+              properties: {
+                start_at: { type: "string" },
+                end_at: { type: "string" },
+              },
+            },
+          },
+          item_ids: {
+            type: "array",
+            maxItems: 200,
+            items: { type: "string" },
+            description: "Only plan these tasks (ids from search_items).",
+          },
+        },
+      },
+    },
+    z
+      .object({
+        start_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.")
+          .optional(),
+        days: z.number().int().min(1).max(7).optional(),
+        keep_free: z
+          .array(
+            z
+              .object({
+                start_at: z.string().max(40),
+                end_at: z.string().max(40),
+              })
+              .strict(),
+          )
+          .max(20)
+          .optional(),
+        item_ids: z.array(z.string().max(60)).max(200).optional(),
+      })
+      .strict(),
+    planSchedule,
   ),
 ];
 

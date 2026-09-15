@@ -91,13 +91,43 @@ An item:
 `team_id` is null for a personal item or the id of a team the item is shared with. List responses
 also include `team_name` and `user_id` (the creator).
 
+Planning fields, all optional:
+
+| Field              | Meaning                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------- |
+| `estimate_minutes` | How long the task takes (1 to 10080); the planner uses it.                                            |
+| `spent_minutes`    | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                              |
+| `list_id`          | A list from `GET /lists`: your own for personal items, the team's for team ones.                      |
+| `tag_ids`          | Up to 20 tags, with the same rule as lists.                                                           |
+| `assignee_id`      | Who on the team is doing a team task. Responses also carry `assignee_name`.                           |
+| `location`         | Where an event happens; drives travel time.                                                           |
+| `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                            |
+| `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly), `COUNT` or `UNTIL`. |
+| `timezone`         | The IANA zone a repeating item keeps its wall-clock time in.                                          |
+
 Rules: `kind` is `task` or `event`; events require `due_at`; `end_at` requires `due_at` and must be
-later; timestamps are ISO 8601 with an offset; `reminder_minutes` is 0 to 10080 (one week).
+later; timestamps are ISO 8601 with an offset; `reminder_minutes` is 0 to 10080 (one week); a
+repeating item needs `due_at`; only team items can have an assignee, who must be in the team.
+
+A repeating item's `due_at` is its current occurrence and `series_start` its first. Completing a
+repeating task moves it to the next occurrence (its checklist resets and the timeline notes the
+completed one) instead of closing it. Completing any task removes its future time blocks.
 
 ### `GET /items?limit=200&offset=0&team_id=` (auth)
 
 Newest first. `limit` max 500. Returns your personal items plus items of every team you belong to.
-Pass `team_id` to list only one team's items (requires membership).
+Pass `team_id` to list only one team's items (requires membership). Other filters: `q` (words in
+the title or notes), `list_id`, `tag_id` and `assignee_id`.
+
+### `POST /items/:id/time` (auth)
+
+`{ "minutes": 25 }` adds focus time to `spent_minutes`. It doesn't change the item's `version`. →
+the item detail.
+
+### `POST /items/:id/skip` (auth)
+
+`{ "occurrence": "2026-09-22T07:00:00+10:00" }` removes one occurrence from a repeating item. →
+the item detail; `409` for an item that doesn't repeat.
 
 ### `POST /items` (auth)
 
@@ -106,7 +136,7 @@ Body: item fields without `id`, `version`, timestamps. Only `title` is required.
 ### `PUT /items/:id` (auth)
 
 Body: **all** item fields plus the current `version`. → `200` item with `version + 1`, or `409` if
-the version is stale.
+the version is stale. Planning fields you leave out keep their saved values.
 
 ### `DELETE /items/:id?version=N` (auth)
 
@@ -244,11 +274,158 @@ An optional `history` (up to 12 earlier `{ "role": "user" | "assistant", "conten
 the conversation context. Returns `502` when the provider fails twice or returns an invalid plan,
 and `503` when no provider is set up.
 
+When the message asks to plan time ("plan my day"), the reply also carries `plan`: the same object
+as `POST /planner/preview`, ready for `POST /planner/plans/:id/apply`. The planner places every
+block; the assistant only chooses the days and times to keep free.
+
 ### `POST /ai/proposals/:id/apply` (auth)
 
 Applies every action in one transaction. → `{ "applied": true }`. Idempotent. Returns `409` if the
 proposal expired (15 minutes) or an item version is stale, and `404` if any action targets an item
 the user does not own, in which case nothing is applied.
+
+## Lists and tags
+
+Personal lists and tags belong to you; team ones follow team roles (viewers read, members and
+above change them). Deleting a list or tag keeps its items.
+
+| Method and path                     | Body / result                                                        |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| `GET /lists`                        | Your lists and your teams' lists, with `team_name`, `item_count`     |
+| `POST /lists`                       | `{ "name", "color"?, "team_id"? }` → `201` list                      |
+| `PUT /lists/:id`                    | `{ "name"?, "color"?, "position"? }`                                 |
+| `DELETE /lists/:id`                 | `204`                                                                |
+| `GET /tags`                         | Your tags and your teams' tags                                       |
+| `POST /tags`                        | `{ "name", "color"?, "team_id"? }` → `201`; `409` if the name exists |
+| `PUT /tags/:id`, `DELETE /tags/:id` | Rename or recolor; delete                                            |
+
+## Calendar and time blocks
+
+### `GET /calendar?from=&to=` (auth)
+
+At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
+
+- `entries`: one per occurrence of every dated item you can see. Repeating items appear once per
+  occurrence with `occurrence` set.
+- `blocks`: your time blocks, with their task's title and status.
+- `derived`: buffers and travel time around events, worked out from your planner settings and
+  places (never stored, so they always follow the events).
+
+### Time blocks
+
+Time you set aside to work on a task. Each person has their own.
+
+| Method and path               | Body / result                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your blocks in the range                                                            |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)        |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                          |
+| `DELETE /blocks/:id`          | `204`                                                                               |
+| `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days |
+
+## Planner
+
+| Method and path                                              | Body / result                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people |
+| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters                                                                         |
+| `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`)                                                                 |
+| `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                              |
+| `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                               |
+| `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
+| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`                                                                                           |
+| `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
+
+`POST /planner/preview` body, all optional: `start_date` (`YYYY-MM-DD`, today when omitted),
+`days` (1 to 7), `pad_percent`, `split`, `break_level`, `use_frames` (default true), `keep_free`
+(`[{ "start_at", "end_at" }]`), `item_ids` (only these tasks), `exclude_item_ids`, and `timezone`
+(the device's, used until you save one). A plan:
+
+```json
+{
+  "id": "uuid",
+  "starts_on": "2026-09-16",
+  "days": 1,
+  "blocks": [
+    {
+      "item_id": "uuid",
+      "title": "Quarterly report",
+      "start_at": "2026-09-16T00:00:00.000Z",
+      "end_at": "2026-09-16T01:00:00.000Z",
+      "frame_id": null,
+      "frame_name": null,
+      "part": 1,
+      "parts": 2,
+      "score": 13.4
+    }
+  ],
+  "unplaced": [],
+  "at_risk": [],
+  "capacity_minutes": 420,
+  "planned_minutes": 150,
+  "applied": false,
+  "expires_at": "…",
+  "summary": "2 tasks in 3 blocks over 1 day, using 2 h 30 min of 7 h free."
+}
+```
+
+The planner considers your open personal tasks and team tasks assigned to you (or exactly the
+`item_ids` you name). Tasks without an estimate count as 30 minutes.
+
+## Team time
+
+Teammates see each other's busy intervals only, never what the time is for.
+
+| Method and path                                        | Result                                                                                                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `GET /teams/:id/availability?from=&to=`                | Each member's working hours and busy intervals                                                         |
+| `GET /teams/:id/workload?from=&to=`                    | Capacity, assigned estimates, load, `overloaded`, `at_risk` per member                                 |
+| `GET /teams/:id/suggest?from=&to=&duration=&user_ids=` | Up to 20 times everyone chosen is free; `disruption` counts people whose focus time a slot would split |
+
+## Booking pages
+
+| Method and path                                      | Who            | Body / result                                                                                                                                               |
+| ---------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /booking-pages`                                 | signed in      | Pages you own or host                                                                                                                                       |
+| `POST /booking-pages`                                | signed in      | `slug`, `title`, `durations`, window, notice, buffer, daily limit, location, meeting link, `co_hosts` (from your teams) → `201`; `409` if the slug is taken |
+| `PUT/DELETE /booking-pages/:id`                      | owner          | Change or delete                                                                                                                                            |
+| `GET /booking-pages/:id/bookings`                    | owner, hosts   | Upcoming and recent bookings                                                                                                                                |
+| `POST /booking-pages/:id/bookings/:bookingId/cancel` | owner, hosts   | Cancels, removes the events, emails the booker                                                                                                              |
+| `GET /book/:slug?duration=&date=&days=&timezone=`    | anyone         | Title, hosts and free `slots`                                                                                                                               |
+| `POST /book/:slug`                                   | anyone, 10/min | `{ start_at, duration, name, email, note?, timezone? }` → `201` receipt; `409` if the time was taken                                                        |
+| `POST /book/confirm/:token`                          | anyone         | The link from the confirmation email                                                                                                                        |
+| `POST /book/cancel/:token`                           | anyone         | The cancel link from the booking email                                                                                                                      |
+
+Free slots are working time every required host has free (events, buffers, travel and time blocks
+count as busy), minus bookings still held, with the page's buffer, notice and daily limit. With
+SMTP set up a booking waits for its email link (the time is held for 30 minutes); without it,
+bookings are confirmed at once. A confirmed booking adds an event to every host's calendar and
+an in-app notice.
+
+## API keys, webhooks and the calendar feed
+
+Other tools reach Orbyn through these; nothing is synced out of this server.
+
+| Method and path                 | Body / result                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| `GET /me/api-keys`              | Your keys (name, prefix, last used)                                                   |
+| `POST /me/api-keys`             | `{ "name" }` → `201` with `key` (shown once; send it as `Authorization: Bearer ok_…`) |
+| `DELETE /me/api-keys/:id`       | `204`                                                                                 |
+| `GET /me/webhooks`              | Your webhooks with their last delivery status                                         |
+| `POST /me/webhooks`             | `{ "url", "events" }` → `201` with `secret` (shown once)                              |
+| `PUT /me/webhooks/:id`          | `{ "url"?, "events"?, "active"? }`                                                    |
+| `DELETE /me/webhooks/:id`       | `204`                                                                                 |
+| `POST /me/webhooks/:id/test`    | Sends a `ping` now → `{ ok, status, error }`                                          |
+| `POST /me/calendar-feed`        | Creates or replaces your private feed link → `{ url }`                                |
+| `DELETE /me/calendar-feed`      | Turns the feed off                                                                    |
+| `GET /calendar/feed/:token.ics` | The feed, as iCalendar, for other calendar apps to subscribe to                       |
+
+API keys act as you, except in the admin console. Webhook events: `item.created`,
+`item.updated`, `item.completed`, `item.deleted`, `block.scheduled` and `booking.confirmed`.
+Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
+`X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
+HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried
+with backoff for up to 8 attempts. Webhooks must reach a public address.
 
 ## Example session
 

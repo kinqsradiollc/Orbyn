@@ -1,0 +1,547 @@
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { randomBytes } from "node:crypto";
+import {
+  blockInput,
+  blockUpdate,
+  fail,
+  frameInput,
+  frameUpdate,
+  localDateKey,
+  placeInput,
+  placeUpdate,
+  plannerPrefsInput,
+  planPreviewInput,
+  rangeQuery,
+  rollForwardInput,
+  type CalendarView,
+  type Frame,
+  type Place,
+  type Plan,
+  type PlannerPrefs,
+  type PlannerReview,
+  type TimeBlock,
+} from "@orbyn/core";
+import { z } from "zod";
+import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import { authenticate, digest } from "../../lib/auth.js";
+import { idParam, strictRateLimit } from "../../lib/params.js";
+import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { queueWebhooks } from "../../lib/webhooks.js";
+import {
+  busyIntervals,
+  calendarEntries,
+  derivedBlocks,
+  loadPlaces,
+  loadPrefs,
+  timeBlocks,
+} from "./calendar.js";
+import {
+  FRAME_COLUMNS,
+  loadFrames,
+  makePlan,
+  planById,
+  reviewFor,
+  workingFree,
+} from "./plans.js";
+import { icsFeed } from "./ics.js";
+
+async function ownBlock(db: Db, id: string, userId: string) {
+  const row = (
+    await db.query<{
+      id: string;
+      start_at: Date;
+      end_at: Date;
+      item_id: string;
+    }>(
+      "SELECT id, start_at, end_at, item_id FROM time_blocks WHERE id = $1 AND user_id = $2 FOR UPDATE",
+      [id, userId],
+    )
+  ).rows[0];
+  if (!row) fail(404, "Block not found");
+  return row;
+}
+
+async function blockById(
+  db: Db,
+  id: string,
+  userId: string,
+): Promise<TimeBlock> {
+  const b = (
+    await db.query<TimeBlock>(
+      `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
+       FROM time_blocks b JOIN items i ON i.id = b.item_id WHERE b.id = $1 AND b.user_id = $2`,
+      [id, userId],
+    )
+  ).rows[0];
+  return {
+    ...b,
+    start_at: new Date(b.start_at).toISOString(),
+    end_at: new Date(b.end_at).toISOString(),
+  };
+}
+
+/** Where the API can be reached from outside, for links in responses. */
+function publicOrigin(r: FastifyRequest) {
+  const host =
+    (r.headers["x-forwarded-host"] as string | undefined) ?? r.headers.host;
+  const proto =
+    (r.headers["x-forwarded-proto"] as string | undefined) ?? r.protocol;
+  const prefix = (r.headers["x-forwarded-prefix"] as string | undefined) ?? "";
+  return `${proto}://${host}${prefix.replace(/\/$/, "")}`;
+}
+
+export async function plannerRoutes(app: FastifyInstance) {
+  // ---- preferences, frames, places -------------------------------------------
+
+  app.get("/planner/prefs", async (r) => {
+    const u = await authenticate(r);
+    return loadPrefs(reader(r.headers), u.id);
+  });
+
+  app.put("/planner/prefs", async (r) => {
+    const u = await authenticate(r);
+    const d = plannerPrefsInput.parse(r.body);
+    return transaction(async (db) => {
+      const next: PlannerPrefs = { ...(await loadPrefs(db, u.id)), ...d };
+      if (next.work_end <= next.work_start)
+        fail(422, "Working hours must end after they start.");
+      // Pinned people must share a team with you.
+      if (d.pinned_user_ids?.length) {
+        next.pinned_user_ids = (
+          await db.query<{ user_id: string }>(
+            `SELECT DISTINCT m.user_id FROM team_members m
+             WHERE m.user_id = ANY ($2::uuid[]) AND m.user_id <> $1
+               AND m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`,
+            [u.id, d.pinned_user_ids],
+          )
+        ).rows
+          .map((x) => x.user_id)
+          .filter((id) => d.pinned_user_ids!.includes(id));
+      }
+      await db.query(
+        `INSERT INTO planner_prefs (user_id, timezone, work_days, work_start, work_end,
+           pad_percent, split_after_minutes, min_block_minutes, break_level, horizon_days,
+           buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
+           default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+         ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
+           work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
+           break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
+           buffer_after_minutes=$12, adaptive_buffers=$13, default_travel_minutes=$14,
+           extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17, updated_at=now()`,
+        [
+          u.id,
+          next.timezone,
+          next.work_days,
+          next.work_start,
+          next.work_end,
+          next.pad_percent,
+          next.split_after_minutes,
+          next.min_block_minutes,
+          next.break_level,
+          next.horizon_days,
+          next.buffer_before_minutes,
+          next.buffer_after_minutes,
+          next.adaptive_buffers,
+          next.default_travel_minutes,
+          next.extra_timezones,
+          JSON.stringify(next.calendar_sets),
+          next.pinned_user_ids,
+        ],
+      );
+      return loadPrefs(db, u.id);
+    });
+  });
+
+  app.get("/planner/frames", async (r) => {
+    const u = await authenticate(r);
+    return loadFrames(reader(r.headers), u.id);
+  });
+
+  app.post("/planner/frames", async (r, reply) => {
+    const u = await authenticate(r);
+    const d = frameInput.parse(r.body);
+    const frame = (
+      await pool.query<Frame>(
+        `INSERT INTO frames (user_id, name, days, start_time, end_time, filters, color, position)
+         VALUES ($1, $2, $3, $4, $5, $6, coalesce($7, '#9ab68c'),
+           (SELECT coalesce(max(position), -1) + 1 FROM frames WHERE user_id = $1))
+         RETURNING ${FRAME_COLUMNS}`,
+        [
+          u.id,
+          d.name,
+          d.days,
+          d.start_time,
+          d.end_time,
+          JSON.stringify(d.filters),
+          d.color ?? null,
+        ],
+      )
+    ).rows[0];
+    reply.code(201);
+    return frame;
+  });
+
+  app.put("/planner/frames/:id", async (r) => {
+    const u = await authenticate(r);
+    const d = frameUpdate.parse(r.body);
+    return transaction(async (db) => {
+      const current = (
+        await db.query<Frame>(
+          `SELECT ${FRAME_COLUMNS} FROM frames WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+          [idParam(r), u.id],
+        )
+      ).rows[0];
+      if (!current) fail(404, "Frame not found");
+      const next = { ...current, ...d };
+      if (next.end_time <= next.start_time)
+        fail(422, "A frame ends after it starts.");
+      return (
+        await db.query<Frame>(
+          `UPDATE frames SET name=$2, days=$3, start_time=$4, end_time=$5, filters=$6,
+             color=$7, position=$8 WHERE id=$1 RETURNING ${FRAME_COLUMNS}`,
+          [
+            current.id,
+            next.name,
+            next.days,
+            next.start_time,
+            next.end_time,
+            JSON.stringify(next.filters),
+            next.color,
+            next.position,
+          ],
+        )
+      ).rows[0];
+    });
+  });
+
+  app.delete("/planner/frames/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM frames WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Frame not found");
+    return reply.code(204).send();
+  });
+
+  app.get("/planner/places", async (r) => {
+    const u = await authenticate(r);
+    return loadPlaces(reader(r.headers), u.id);
+  });
+
+  app.post("/planner/places", async (r, reply) => {
+    const u = await authenticate(r);
+    const d = placeInput.parse(r.body);
+    const place = (
+      await pool.query<Place>(
+        `INSERT INTO places (user_id, label, match, travel_minutes) VALUES ($1, $2, $3, $4)
+         RETURNING id, label, match, travel_minutes`,
+        [u.id, d.label, d.match, d.travel_minutes],
+      )
+    ).rows[0];
+    reply.code(201);
+    return place;
+  });
+
+  app.put("/planner/places/:id", async (r) => {
+    const u = await authenticate(r);
+    const d = placeUpdate.parse(r.body);
+    const place = (
+      await pool.query<Place>(
+        `UPDATE places SET label = coalesce($3, label), match = coalesce($4, match),
+           travel_minutes = coalesce($5, travel_minutes)
+         WHERE id = $1 AND user_id = $2 RETURNING id, label, match, travel_minutes`,
+        [
+          idParam(r),
+          u.id,
+          d.label ?? null,
+          d.match ?? null,
+          d.travel_minutes ?? null,
+        ],
+      )
+    ).rows[0];
+    if (!place) fail(404, "Place not found");
+    return place;
+  });
+
+  app.delete("/planner/places/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM places WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Place not found");
+    return reply.code(204).send();
+  });
+
+  // ---- the calendar ---------------------------------------------------------
+
+  app.get("/calendar", async (r): Promise<CalendarView> => {
+    const u = await authenticate(r);
+    const q = rangeQuery.parse(r.query);
+    const db = reader(r.headers);
+    const from = new Date(q.from);
+    const to = new Date(q.to);
+    const prefs = await loadPrefs(db, u.id);
+    const [entries, blocks, places] = await Promise.all([
+      calendarEntries(db, u.id, from, to),
+      timeBlocks(db, u.id, from, to),
+      loadPlaces(db, u.id),
+    ]);
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: prefs.timezone });
+    const derived = derivedBlocks(entries, prefs, places, (at) =>
+      day.format(new Date(at)),
+    ).filter((d) => d.end_at > q.from && d.start_at < q.to);
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      timezone: prefs.timezone,
+      entries,
+      blocks,
+      derived,
+    };
+  });
+
+  // ---- time blocks ------------------------------------------------------------
+
+  app.get("/blocks", async (r) => {
+    const u = await authenticate(r);
+    const q = rangeQuery.parse(r.query);
+    return timeBlocks(
+      reader(r.headers),
+      u.id,
+      new Date(q.from),
+      new Date(q.to),
+    );
+  });
+
+  app.post("/blocks", async (r, reply) => {
+    const u = await authenticate(r);
+    const d = blockInput.parse(r.body);
+    const block = await transaction(async (db) => {
+      const item = (
+        await db.query<{ id: string; kind: string }>(
+          `SELECT i.id, i.kind FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+          [u.id, d.item_id],
+        )
+      ).rows[0];
+      if (!item) fail(404, "Item not found");
+      if (item.kind !== "task")
+        fail(422, "Only tasks can be given time blocks.");
+      const { id } = (
+        await db.query<{ id: string }>(
+          `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+          [d.item_id, u.id, d.start_at, d.end_at],
+        )
+      ).rows[0];
+      const created = await blockById(db, id, u.id);
+      await queueWebhooks(
+        db,
+        "block.scheduled",
+        { user_id: u.id, team_id: null },
+        created,
+      );
+      return created;
+    });
+    reply.code(201);
+    return block;
+  });
+
+  app.put("/blocks/:id", async (r) => {
+    const u = await authenticate(r);
+    const d = blockUpdate.parse(r.body);
+    return transaction(async (db) => {
+      const b = await ownBlock(db, idParam(r), u.id);
+      await db.query(
+        "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
+        [b.id, d.start_at, d.end_at],
+      );
+      // A moved block no longer has the conflict it was flagged for.
+      await db.query(
+        "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
+        [b.id],
+      );
+      return blockById(db, b.id, u.id);
+    });
+  });
+
+  app.delete("/blocks/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM time_blocks WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Block not found");
+    return reply.code(204).send();
+  });
+
+  // Move a block to the next free working time of the same length.
+  app.post("/blocks/:id/reschedule", async (r) => {
+    const u = await authenticate(r);
+    return transaction(async (db) => {
+      const b = await ownBlock(db, idParam(r), u.id);
+      const minutes = (b.end_at.getTime() - b.start_at.getTime()) / 60000;
+      const slot = await workingFree(db, u.id, minutes, [b.id]);
+      if (!slot) fail(409, "There's no free working time in the next 7 days.");
+      await db.query(
+        "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
+        [b.id, slot.start_at, slot.end_at],
+      );
+      await db.query(
+        "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
+        [b.id],
+      );
+      return blockById(db, b.id, u.id);
+    });
+  });
+
+  // ---- plans ---------------------------------------------------------------------
+
+  app.post("/planner/preview", async (r): Promise<Plan> => {
+    const u = await authenticate(r);
+    const d = planPreviewInput.parse(r.body ?? {});
+    return makePlan(pool, u.id, d);
+  });
+
+  app.get("/planner/plans/:id", async (r) => {
+    const u = await authenticate(r);
+    return planById(reader(r.headers), idParam(r), u.id);
+  });
+
+  // Save a plan's blocks. Blocks that now clash with something are left out.
+  app.post("/planner/plans/:id/apply", async (r) => {
+    const u = await authenticate(r);
+    return transaction(async (db) => {
+      const plan = (
+        await db.query<{
+          id: string;
+          blocks: Plan["blocks"];
+          applied: boolean;
+          expires_at: Date;
+        }>(
+          "SELECT id, blocks, applied, expires_at FROM plans WHERE id = $1 AND user_id = $2 FOR UPDATE",
+          [idParam(r), u.id],
+        )
+      ).rows[0];
+      if (!plan) fail(404, "Plan not found");
+      if (plan.applied) fail(409, "This plan was already applied.");
+      if (plan.expires_at <= new Date())
+        fail(409, "This plan expired. Make a new one.");
+      if (!plan.blocks.length) fail(409, "This plan has no blocks to add.");
+      const starts = plan.blocks.map((b) => Date.parse(b.start_at));
+      const ends = plan.blocks.map((b) => Date.parse(b.end_at));
+      const busy = await busyIntervals(
+        db,
+        u.id,
+        new Date(Math.min(...starts)),
+        new Date(Math.max(...ends)),
+      );
+      const created: TimeBlock[] = [];
+      let skipped = 0;
+      for (const b of plan.blocks) {
+        const clash = busy.some(
+          (x) => x.start_at < b.end_at && b.start_at < x.end_at,
+        );
+        const open = await db.query(
+          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status <> 'done' AND ${VISIBLE_ITEMS}`,
+          [u.id, b.item_id],
+        );
+        if (clash || !open.rowCount) {
+          skipped++;
+          continue;
+        }
+        const { id } = (
+          await db.query<{ id: string }>(
+            `INSERT INTO time_blocks (item_id, user_id, start_at, end_at, source, plan_id)
+             VALUES ($1, $2, $3, $4, 'planner', $5) RETURNING id`,
+            [b.item_id, u.id, b.start_at, b.end_at, plan.id],
+          )
+        ).rows[0];
+        created.push(await blockById(db, id, u.id));
+      }
+      await db.query("UPDATE plans SET applied = true WHERE id = $1", [
+        plan.id,
+      ]);
+      if (created.length)
+        await queueWebhooks(
+          db,
+          "block.scheduled",
+          { user_id: u.id, team_id: null },
+          {
+            plan_id: plan.id,
+            blocks: created,
+          },
+        );
+      return { blocks: created, skipped };
+    });
+  });
+
+  app.get("/planner/review", async (r): Promise<PlannerReview> => {
+    const u = await authenticate(r);
+    return reviewFor(reader(r.headers), u.id);
+  });
+
+  // A new plan for unfinished work, to review and apply like any other.
+  app.post("/planner/roll-forward", async (r): Promise<Plan> => {
+    const u = await authenticate(r);
+    const d = rollForwardInput.parse(r.body ?? {});
+    const review = await reviewFor(pool, u.id);
+    const blocks = d.block_ids
+      ? review.unfinished.filter((b) => d.block_ids!.includes(b.id))
+      : review.unfinished;
+    const itemIds = [...new Set(blocks.map((b) => b.item_id))];
+    if (!itemIds.length)
+      fail(409, "There's no unfinished work to move forward.");
+    const prefs = await loadPrefs(pool, u.id);
+    const today = localDateKey(new Date(), prefs.timezone);
+    return makePlan(pool, u.id, {
+      start_date: today,
+      days: Math.max(prefs.horizon_days, 1),
+      use_frames: true,
+      keep_free: [],
+      item_ids: itemIds,
+      exclude_item_ids: [],
+    });
+  });
+
+  // ---- calendar feed: a private link other calendar apps can subscribe to ------
+
+  app.post("/me/calendar-feed", async (r) => {
+    const u = await authenticate(r);
+    const token = randomBytes(24).toString("base64url");
+    await pool.query("UPDATE users SET calendar_feed_hash = $2 WHERE id = $1", [
+      u.id,
+      digest(token),
+    ]);
+    return { url: `${publicOrigin(r)}/calendar/feed/${token}.ics` };
+  });
+
+  app.delete("/me/calendar-feed", async (r, reply) => {
+    const u = await authenticate(r);
+    await pool.query(
+      "UPDATE users SET calendar_feed_hash = NULL WHERE id = $1",
+      [u.id],
+    );
+    return reply.code(204).send();
+  });
+
+  app.get("/calendar/feed/:file", strictRateLimit, async (r, reply) => {
+    const { file } = z
+      .object({ file: z.string().regex(/^[A-Za-z0-9_-]{20,64}\.ics$/) })
+      .parse(r.params);
+    const user = (
+      await pool.query<{ id: string; name: string; disabled: boolean }>(
+        "SELECT id, name, disabled FROM users WHERE calendar_feed_hash = $1",
+        [digest(file.slice(0, -4))],
+      )
+    ).rows[0];
+    if (!user || user.disabled) fail(404, "Calendar not found");
+    const body = await icsFeed(pool, user.id, user.name);
+    return reply
+      .header("Content-Type", "text/calendar; charset=utf-8")
+      .header("Cache-Control", "private, max-age=300")
+      .send(body);
+  });
+}

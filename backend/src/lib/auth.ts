@@ -30,10 +30,34 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
 export const DISABLED_MESSAGE =
   "This account has been disabled. Contact your Orbyn administrator.";
 
-/** Resolve the bearer token on a request to its user, or fail with 401/403. */
+/** Requests signed in with a personal API key rather than a session. */
+const viaApiKey = new WeakSet<FastifyRequest>();
+
+/**
+ * Resolve the bearer token on a request to its user, or fail with 401/403.
+ * The token is a session token, or a personal API key (starting "ok_").
+ */
 export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
+  if (token.startsWith("ok_")) {
+    const u = (
+      await pool.query<UserRow>(
+        "SELECT u.* FROM users u JOIN api_keys k ON k.user_id=u.id WHERE k.key_hash=$1",
+        [digest(token)],
+      )
+    ).rows[0];
+    if (!u)
+      fail(401, "That API key isn't valid. Create a new one in Settings.");
+    if (u.disabled) fail(403, DISABLED_MESSAGE);
+    // Recorded at most once a minute, so busy scripts don't write on every call.
+    await pool.query(
+      "UPDATE api_keys SET last_used_at=now() WHERE key_hash=$1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')",
+      [digest(token)],
+    );
+    viaApiKey.add(r);
+    return u;
+  }
   const u = (
     await pool.query<UserRow>(
       "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>now()",
@@ -51,6 +75,11 @@ export async function authorize(
   permission: SystemPermission,
 ): Promise<UserRow> {
   const u = await authenticate(r);
+  if (viaApiKey.has(r))
+    fail(
+      403,
+      "API keys can't use the admin console. Sign in to the app instead.",
+    );
   if (!hasSystemPermission(u.role, permission))
     fail(403, "You don't have permission to do that.");
   return u;
