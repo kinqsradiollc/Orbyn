@@ -208,6 +208,9 @@ under a schema, so the server does the looking up and the model decides once:
      changed, because Matilda once copied the id from the neighbouring item.
    - Empty notes in an update keep the saved notes.
    - An update refused only for an end before its start is retried without the end.
+   - A delete must be of an item the request names, meaning its title shares words with the
+     request, unless the user asked for all, both or every one. Matilda once proposed deleting the
+     groceries along with "the gym session".
 5. **Repair:** if anything was refused, one repair call gets the reasons. Whatever is still refused
    is listed to the user under "Not proposed".
 
