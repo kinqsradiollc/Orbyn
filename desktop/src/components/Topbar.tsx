@@ -1,18 +1,29 @@
-import { Bell, Menu, Plus } from "lucide-react";
-import { screens, screenTitle, type User } from "@orbyn/core";
-import { VIEWS_WITHOUT_NEW_ITEM, type View } from "../app/views";
+import { Bell, Menu, Plus, Search } from "lucide-react";
+import type { User } from "@orbyn/core";
+import {
+  SCREENS,
+  VIEWS_WITHOUT_NEW_ITEM,
+  viewTitle,
+  type View,
+} from "../app/views";
 
 type TopbarProps = {
   view: View;
   onToggleMenu: () => void;
   onOpenNotifications: () => void;
+  /** Opens the command bar (also ⌘K / Ctrl+K). */
+  onOpenCommand: () => void;
 };
 
-/** Sticky header: mobile menu toggle, breadcrumb, today's date, and the bell. */
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const COMMAND_SHORTCUT = isMac ? "⌘K" : "Ctrl+K";
+
+/** Sticky header: mobile menu toggle, breadcrumb, search, today's date, and the bell. */
 export function Topbar({
   view,
   onToggleMenu,
   onOpenNotifications,
+  onOpenCommand,
 }: TopbarProps) {
   const today = new Date();
   return (
@@ -28,6 +39,15 @@ export function Topbar({
         My workspace <span className="slash">/</span> <strong>{view}</strong>
       </span>
       <div>
+        <button
+          className="command-trigger"
+          aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+          onClick={onOpenCommand}
+        >
+          <Search size={14} aria-hidden="true" />
+          <span>Search or ask</span>
+          <kbd>{COMMAND_SHORTCUT}</kbd>
+        </button>
         <span className="today-label">
           {today.toLocaleDateString([], {
             weekday: "short",
@@ -58,9 +78,9 @@ export function PageHeading({ view, user, onNewItem }: PageHeadingProps) {
   return (
     <div className="page-heading">
       <div>
-        <span className="eyebrow">{screens[view].eyebrow}</span>
-        <h1>{screenTitle(view, user?.name)}</h1>
-        <p>{screens[view].subtitle}</p>
+        <span className="eyebrow">{SCREENS[view].eyebrow}</span>
+        <h1>{viewTitle(view, user?.name)}</h1>
+        <p>{SCREENS[view].subtitle}</p>
       </div>
       {!VIEWS_WITHOUT_NEW_ITEM.includes(view) && (
         <button className="primary" onClick={onNewItem}>

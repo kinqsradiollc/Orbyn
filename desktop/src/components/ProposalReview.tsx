@@ -5,12 +5,14 @@ import {
   type Action,
   type Item,
   type ItemInput,
+  type Plan,
   type Proposal,
   parseRichText,
   type RichInline,
 } from "@orbyn/core";
 import type { TurnState } from "../hooks/useAssistant";
 import { stagger } from "../lib/motion";
+import { PlanCard } from "./PlanCard";
 
 type Props = {
   proposal: Proposal;
@@ -24,6 +26,10 @@ type Props = {
   onDismiss: () => void;
   /** Sends a suggested quick reply; only the latest reply gets one. */
   onFollowUp?: (text: string) => void;
+  /** Saves the reply's plan (when it has one); resolves with a message. */
+  onApplyPlan?: (plan: Plan) => Promise<string>;
+  /** Shows the reply's plan in the calendar's planner. */
+  onOpenPlan?: (plan: Plan) => void;
 };
 
 const OPERATION = {
@@ -226,13 +232,23 @@ export function ProposalReview({
   onApply,
   onDismiss,
   onFollowUp,
+  onApplyPlan,
+  onOpenPlan,
 }: Props) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
   const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
+  const plan = proposal.plan;
   return (
     <div className="ai-proposal">
       <SummaryText text={proposal.summary} />
+      {plan && (
+        <PlanCard
+          plan={plan}
+          onApply={onApplyPlan && (() => onApplyPlan(plan))}
+          onOpenInPlanner={onOpenPlan && (() => onOpenPlan(plan))}
+        />
+      )}
       {count > 0 && (
         <div
           className={

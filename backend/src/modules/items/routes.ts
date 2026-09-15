@@ -5,8 +5,10 @@ import {
   itemData,
   itemsQuery,
   progressUpdateInput,
+  skipOccurrenceInput,
   stepInput,
   stepUpdate,
+  timeLogInput,
   type ItemDetail,
 } from "@orbyn/core";
 import type { QueryResult } from "pg";
@@ -15,15 +17,14 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import {
+  ITEM_COLUMNS,
+  ITEM_FROM,
   lockItem,
   mutate,
   recomputeProgress,
   requireItemAccess,
   type ItemRow,
 } from "./service.js";
-
-/** Item columns for list views; checklist and timeline counts are stored on the item. */
-const ITEM_COLUMNS = `i.*, t.name AS team_name`;
 
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
@@ -38,10 +39,7 @@ export async function itemDetail(
   run: Run = (text, values) => pool.query(text, values),
 ): Promise<ItemDetail> {
   const item = (
-    await run(
-      `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id = i.team_id WHERE i.id = $1`,
-      [id],
-    )
+    await run(`SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = $1`, [id])
   ).rows[0];
   if (!item) fail(404, "Item not found");
   const steps = (
@@ -67,14 +65,69 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const q = itemsQuery.parse(r.query);
     if (q.team_id) await requireTeam(q.team_id, u, "items:read");
+    const words = (q.q ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 6)
+      .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
     return (
       await reader(r.headers).query(
-        `SELECT ${ITEM_COLUMNS} FROM items i LEFT JOIN teams t ON t.id=i.team_id
+        `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM}
          WHERE ${VISIBLE_ITEMS} AND ($4::uuid IS NULL OR i.team_id=$4)
+           AND ($5::uuid IS NULL OR i.list_id=$5)
+           AND ($6::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$6))
+           AND ($7::uuid IS NULL OR i.assignee_id=$7)
+           AND NOT EXISTS (SELECT 1 FROM unnest($8::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)
          ORDER BY i.created_at DESC, i.id LIMIT $2 OFFSET $3`,
-        [u.id, q.limit, q.offset, q.team_id ?? null],
+        [
+          u.id,
+          q.limit,
+          q.offset,
+          q.team_id ?? null,
+          q.list_id ?? null,
+          q.tag_id ?? null,
+          q.assignee_id ?? null,
+          words,
+        ],
       )
     ).rows;
+  });
+
+  // Minutes worked with the focus timer. Like checklist steps, this doesn't
+  // change the edit version, so an open editor never conflicts with it.
+  app.post("/items/:id/time", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = timeLogInput.parse(r.body);
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      await db.query(
+        "UPDATE items SET spent_minutes = spent_minutes + $1, updated_at = now() WHERE id = $2",
+        [d.minutes, id],
+      );
+      return itemDetail(id, via(db));
+    });
+  });
+
+  // Remove one occurrence from a repeating item ("delete this one").
+  app.post("/items/:id/skip", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const d = skipOccurrenceInput.parse(r.body);
+    return transaction(async (db) => {
+      const item = await lockItem(db, id);
+      await requireItemAccess(u, item, "items:write", db);
+      if (!item.rrule)
+        fail(409, "Only repeating items have occurrences to skip.");
+      await db.query(
+        `UPDATE items SET exdates = array_append(exdates, $1::timestamptz),
+           version = version + 1, updated_at = now()
+         WHERE id = $2 AND NOT ($1::timestamptz = ANY (exdates))`,
+        [d.occurrence, id],
+      );
+      return itemDetail(id, via(db));
+    });
   });
 
   app.get("/items/:id", async (r) => {

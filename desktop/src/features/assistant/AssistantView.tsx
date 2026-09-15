@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import { ArrowUp, ArrowUpRight, RotateCcw, Sparkles } from "lucide-react";
-import { assistantSuggestions as SUGGESTIONS, type Item } from "@orbyn/core";
+import {
+  assistantSuggestions as SUGGESTIONS,
+  type Item,
+  type Plan,
+} from "@orbyn/core";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
@@ -10,9 +14,19 @@ type Props = {
   items: Item[];
   busy: boolean;
   assistant: Assistant;
+  /** Saves a plan the assistant made; resolves with a message. */
+  onApplyPlan: (plan: Plan) => Promise<string>;
+  /** Shows a plan in the calendar's planner. */
+  onOpenPlan: (plan: Plan) => void;
 };
 
-export function AssistantView({ items, busy, assistant }: Props) {
+export function AssistantView({
+  items,
+  busy,
+  assistant,
+  onApplyPlan,
+  onOpenPlan,
+}: Props) {
   const { message, setMessage, turns, thinking, ask, apply, dismiss, reset } =
     assistant;
   const threadRef = useRef<HTMLDivElement>(null);
@@ -121,6 +135,8 @@ export function AssistantView({ items, busy, assistant }: Props) {
                   state={turn.state}
                   onApply={() => void apply(turn.id)}
                   onDismiss={() => dismiss(turn.id)}
+                  onApplyPlan={onApplyPlan}
+                  onOpenPlan={onOpenPlan}
                   onFollowUp={
                     turn.id === latestReplyId
                       ? (text) => void ask(text)

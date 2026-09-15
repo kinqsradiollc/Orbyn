@@ -7,8 +7,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { assistantSuggestions, type Item } from "@orbyn/core";
+import { assistantSuggestions, type Item, type Plan } from "@orbyn/core";
+import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { PlanView } from "../components/PlanView";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion } from "../motion";
@@ -115,6 +117,14 @@ export function AssistantScreen({
                       : undefined
                   }
                 />
+                {turn.proposal.plan && (
+                  <PlanCard
+                    plan={turn.proposal.plan}
+                    applied={turn.planApplied}
+                    busy={locked}
+                    onApply={() => void assistant.applyPlan(turn.id)}
+                  />
+                )}
               </View>
             </FadeIn>
           ),
@@ -164,6 +174,50 @@ export function AssistantScreen({
         AI provider.
       </Text>
     </>
+  );
+}
+
+/** A schedule the assistant planned, to review and apply as time blocks. */
+function PlanCard({
+  plan,
+  applied,
+  busy,
+  onApply,
+}: {
+  plan: Plan;
+  applied: boolean;
+  busy: boolean;
+  onApply: () => void;
+}) {
+  return (
+    <FadeIn style={s.plan}>
+      <View style={s.planHead}>
+        <Icon name="calendar" size={14} color={colors.accent} />
+        <Text style={s.planTitle} accessibilityRole="header">
+          Proposed schedule
+        </Text>
+      </View>
+      <PlanView plan={plan} limit={6} />
+      {applied ? (
+        <View style={s.planDone}>
+          <Icon
+            name="check"
+            size={14}
+            color={colors.accent}
+            strokeWidth={2.4}
+          />
+          <Text style={s.planDoneText}>Added to your calendar</Text>
+        </View>
+      ) : (
+        <Button
+          title="Apply plan"
+          icon="check"
+          disabled={busy || plan.blocks.length === 0}
+          style={s.planButton}
+          onPress={onApply}
+        />
+      )}
+    </FadeIn>
   );
 }
 
@@ -336,4 +390,29 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   note: { marginTop: 12, textAlign: "center" },
+  plan: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  planHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  planTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+  planButton: { marginTop: 12, marginBottom: 0 },
+  planDone: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 12,
+  },
+  planDoneText: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.accent,
+  },
 });

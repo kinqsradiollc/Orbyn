@@ -1,29 +1,37 @@
 import { useCallback, useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
-  planDayPrompt,
   hasSystemPermission,
   hasTeamPermission,
+  planDayPrompt,
   type Item,
   type ItemInput,
+  type Notice,
+  type Plan,
   type Status,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { usePlanner } from "../hooks/usePlanner";
 import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
+import { usePlanningData } from "../hooks/usePlanningData";
+import { PlanningContext } from "./planning";
 import { Sidebar } from "../components/Sidebar";
 import { MaintenanceBanner, UpdateBanner } from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
+import { CommandBar } from "../components/CommandBar";
+import { appliedText } from "../components/PlanCard";
 import { HomePage } from "../features/home/HomePage";
 import { StatusPage } from "../features/status/StatusPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
+import { ListsView } from "../features/lists/ListsView";
 import {
   CalendarView,
   type CalendarMode,
+  type PlanRequest,
 } from "../features/calendar/CalendarView";
 import { AssistantView } from "../features/assistant/AssistantView";
 import { NotificationsView } from "../features/notifications/NotificationsView";
@@ -32,7 +40,11 @@ import { TeamsView } from "../features/teams/TeamsView";
 import type { TeamActions } from "../features/teams/TeamDetail";
 import { AdminView } from "../features/admin/AdminView";
 import { TaskDetail } from "../features/task/TaskDetail";
+import { FocusMode } from "../features/focus/FocusMode";
+import { BookingView } from "../features/booking/BookingView";
+import { PublicBooking } from "../features/booking/PublicBooking";
 import type { View } from "./views";
+import "../styles/planning.css";
 
 export function App() {
   const nativeDesktop = location.protocol === "file:";
@@ -65,16 +77,24 @@ export function App() {
     refresh,
     report,
   } = planner;
+  const planning = usePlanningData(token, revision, report);
   const [view, setView] = useState<View>("Overview");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   /** Team prefilled in the editor when a new item starts from a team page. */
   const [draftTeamId, setDraftTeamId] = useState<string | null>(null);
+  /** Other prefilled fields for a new item (a meeting time, a list). */
+  const [draft, setDraft] = useState<Partial<ItemInput> | null>(null);
   /** The task open in the detail panel (as last seen, in case it isn't in `items`). */
   const [openTask, setOpenTask] = useState<Item | null>(null);
+  /** The task in focus mode. */
+  const [focusTask, setFocusTask] = useState<Item | null>(null);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
+  const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const isPublicBooking = !nativeDesktop && path.startsWith("/book/");
 
   useEffect(() => {
     if (token && (path === "/login" || path === "/signup"))
@@ -82,6 +102,8 @@ export function App() {
     if (!token && path === "/app") navigatePath("/login", true);
   }, [token, path]);
   useEffect(() => {
+    // Public booking pages set their own titles.
+    if (isPublicBooking) return;
     document.title =
       path === "/status"
         ? "Service status · Orbyn"
@@ -92,7 +114,7 @@ export function App() {
             : path === "/login"
               ? "Sign in · Orbyn"
               : "Create your space · Orbyn";
-  }, [path, token, view]);
+  }, [path, token, view, isPublicBooking]);
 
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
 
@@ -101,13 +123,33 @@ export function App() {
     if (view === "Admin" && user && !isAdmin) setView("Overview");
   }, [view, user, isAdmin]);
 
-  // Signing out closes the task panel.
+  // Signing out closes the task panel, focus mode and the command bar.
   useEffect(() => {
-    if (!token) setOpenTask(null);
+    if (token) return;
+    setOpenTask(null);
+    setFocusTask(null);
+    setCommandOpen(false);
   }, [token]);
 
-  const newItem = (teamId: string | null = null) => {
-    setDraftTeamId(teamId);
+  // ⌘K / Ctrl+K opens the command bar anywhere in the app.
+  useEffect(() => {
+    if (!token || isPublicBooking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [token, isPublicBooking]);
+
+  const newItem = (
+    teamId: string | null = null,
+    prefill: Partial<ItemInput> | null = null,
+  ) => {
+    setDraftTeamId(teamId ?? prefill?.team_id ?? null);
+    setDraft(prefill);
     setEditing("new");
   };
 
@@ -138,9 +180,17 @@ export function App() {
 
   const openItem = (i: Item) => setOpenTask(i);
   const closeTask = useCallback(() => setOpenTask(null), []);
+  const closeFocus = useCallback(() => setFocusTask(null), []);
+  const startFocus = (i: Item) => {
+    setOpenTask(null);
+    setFocusTask(i);
+  };
   // Prefer the freshest copy from the planner list.
   const shownTask = openTask
     ? (items.find((i) => i.id === openTask.id) ?? openTask)
+    : null;
+  const shownFocus = focusTask
+    ? (items.find((i) => i.id === focusTask.id) ?? focusTask)
     : null;
 
   const teamActions: TeamActions = {
@@ -160,6 +210,34 @@ export function App() {
     setView(v);
     setMobileNav(false);
     setQuery("");
+    setPlanRequest(null);
+  };
+
+  /** Shows a plan in the calendar's planner (from the assistant). */
+  const openPlan = (plan: Plan) => {
+    navigate("Calendar");
+    setPlanRequest({ key: Date.now(), plan });
+  };
+  /** "Plan my day": today in the calendar with a plan preview. */
+  const planMyDay = () => {
+    navigate("Calendar");
+    setCalendarDate(new Date());
+    setCalendarMode("day");
+    setPlanRequest({ key: Date.now(), days: 1 });
+  };
+  const applyPlan = async (plan: Plan) => {
+    const result = await client.applyPlan(plan.id);
+    await refresh();
+    return appliedText(result);
+  };
+  const reschedule = async (n: Notice) => {
+    if (!n.ref) return;
+    try {
+      await client.rescheduleBlock(n.ref);
+      await refresh();
+    } catch (e) {
+      report(e);
+    }
   };
 
   const saveItem = (data: ItemInput) => {
@@ -203,6 +281,10 @@ export function App() {
       />
     );
 
+  // Public booking pages: no sign-in, no app shell.
+  if (isPublicBooking)
+    return <PublicBooking path={path} onHome={() => navigatePath("/")} />;
+
   if (!nativeDesktop && path === "/")
     return <HomePage signedIn={!!token} onNavigate={navigatePath} />;
 
@@ -229,128 +311,199 @@ export function App() {
   };
 
   return (
-    <div className="app">
-      <Sidebar
-        open={mobileNav}
-        view={view}
-        user={user}
-        hasUnread={notices.some((n) => !n.read)}
-        onNavigate={navigate}
-        onSignOut={() => void planner.logout()}
-      />
-      <div className="shell">
-        <MaintenanceBanner
-          maintenance={planner.maintenance}
-          isAdmin={hasSystemPermission(user?.role, "system:manage")}
-        />
-        {newVersion.available && (
-          <UpdateBanner onDismiss={newVersion.dismiss} />
-        )}
-        <Topbar
+    <PlanningContext.Provider value={planning}>
+      <div className="app">
+        <Sidebar
+          open={mobileNav}
           view={view}
-          onToggleMenu={() => setMobileNav(!mobileNav)}
-          onOpenNotifications={() => navigate("Notifications")}
+          user={user}
+          hasUnread={notices.some((n) => !n.read)}
+          onNavigate={navigate}
+          onSignOut={() => void planner.logout()}
         />
-        <main className="content">
-          {error && (
-            <div role="alert" className="error">
-              {error}
-              <button
-                className="icon-button"
-                aria-label="Dismiss error"
-                onClick={() => planner.setError("")}
-              >
-                <X size={16} />
-              </button>
-            </div>
+        <div className="shell">
+          <MaintenanceBanner
+            maintenance={planner.maintenance}
+            isAdmin={hasSystemPermission(user?.role, "system:manage")}
+          />
+          {newVersion.available && (
+            <UpdateBanner onDismiss={newVersion.dismiss} />
           )}
-          <div key={view} className="view-enter">
-            <PageHeading view={view} user={user} onNewItem={() => newItem()} />
-            {view === "Overview" && (
-              <OverviewView
-                {...listProps}
-                onNewItem={() => newItem()}
-                onNavigate={navigate}
-                onPlanDay={() => {
-                  navigate("AI assistant");
-                  void assistant.ask(planDayPrompt);
-                }}
-              />
+          <Topbar
+            view={view}
+            onToggleMenu={() => setMobileNav(!mobileNav)}
+            onOpenNotifications={() => navigate("Notifications")}
+            onOpenCommand={() => setCommandOpen(true)}
+          />
+          <main className="content">
+            {error && (
+              <div role="alert" className="error">
+                {error}
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss error"
+                  onClick={() => planner.setError("")}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             )}
-            {view === "My tasks" && (
-              <TasksView
-                {...listProps}
-                query={query}
-                onQueryChange={setQuery}
-                onSetStatus={setStatus}
-              />
-            )}
-            {view === "Calendar" && (
-              <CalendarView
-                {...listProps}
-                date={calendarDate}
-                onDateChange={setCalendarDate}
-                mode={calendarMode}
-                onModeChange={setCalendarMode}
-                shortcuts={!editing && !shownTask}
-              />
-            )}
-            {view === "AI assistant" && (
-              <AssistantView items={items} busy={busy} assistant={assistant} />
-            )}
-            {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
-            {view === "Admin" && isAdmin && (
-              <AdminView
-                {...teamActions}
-                onMaintenanceChange={planner.applyMaintenance}
-              />
-            )}
-            {view === "Notifications" && (
-              <NotificationsView notices={notices} onRead={planner.markRead} />
-            )}
-            {view === "Settings" && (
-              <SettingsView
+            <div key={view} className="view-enter">
+              <PageHeading
+                view={view}
                 user={user}
-                busy={busy}
-                onEmailReminders={planner.setEmailReminders}
-                onOpenStatus={() => navigatePath("/status")}
+                onNewItem={() => newItem()}
               />
+              {view === "Overview" && (
+                <OverviewView
+                  {...listProps}
+                  onNewItem={() => newItem()}
+                  onNavigate={navigate}
+                  onPlanDay={() => {
+                    navigate("AI assistant");
+                    void assistant.ask(planDayPrompt);
+                  }}
+                />
+              )}
+              {view === "My tasks" && (
+                <TasksView
+                  {...listProps}
+                  query={query}
+                  onQueryChange={setQuery}
+                  onSetStatus={setStatus}
+                  userId={user?.id}
+                />
+              )}
+              {view === "Lists" && (
+                <ListsView
+                  {...listProps}
+                  teams={teams}
+                  report={report}
+                  onNewItem={(prefill) => newItem(null, prefill)}
+                />
+              )}
+              {view === "Calendar" && (
+                <CalendarView
+                  items={items}
+                  teams={teams}
+                  canWrite={canWrite}
+                  onOpen={openItem}
+                  onEditItem={setEditing}
+                  onFocus={startFocus}
+                  date={calendarDate}
+                  onDateChange={setCalendarDate}
+                  mode={calendarMode}
+                  onModeChange={setCalendarMode}
+                  shortcuts={
+                    !editing && !shownTask && !shownFocus && !commandOpen
+                  }
+                  revision={revision}
+                  report={report}
+                  onChanged={refresh}
+                  planRequest={planRequest}
+                />
+              )}
+              {view === "AI assistant" && (
+                <AssistantView
+                  items={items}
+                  busy={busy}
+                  assistant={assistant}
+                  onApplyPlan={applyPlan}
+                  onOpenPlan={openPlan}
+                />
+              )}
+              {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
+              {view === "Booking" && (
+                <BookingView user={user} teams={teams} report={report} />
+              )}
+              {view === "Admin" && isAdmin && (
+                <AdminView
+                  {...teamActions}
+                  onMaintenanceChange={planner.applyMaintenance}
+                />
+              )}
+              {view === "Notifications" && (
+                <NotificationsView
+                  notices={notices}
+                  onRead={planner.markRead}
+                  onReschedule={reschedule}
+                  onOpenCalendar={() => navigate("Calendar")}
+                />
+              )}
+              {view === "Settings" && (
+                <SettingsView
+                  user={user}
+                  teams={teams}
+                  busy={busy}
+                  report={report}
+                  onEmailReminders={planner.setEmailReminders}
+                  onOpenStatus={() => navigatePath("/status")}
+                />
+              )}
+            </div>
+            {loading && (
+              <small className="sync-status">Syncing your space…</small>
             )}
-          </div>
-          {loading && (
-            <small className="sync-status">Syncing your space…</small>
-          )}
-          <footer>
-            A little more clarity. A little more you. <Orbit size={14} />
-          </footer>
-        </main>
+            <footer>
+              A little more clarity. A little more you. <Orbit size={14} />
+            </footer>
+          </main>
+        </div>
+        {shownTask && (
+          <TaskDetail
+            key={shownTask.id}
+            item={shownTask}
+            teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
+            canWrite={canWrite(shownTask)}
+            suspended={!!editing}
+            onClose={closeTask}
+            onEdit={setEditing}
+            onFocus={startFocus}
+            onChanged={refresh}
+            onError={report}
+          />
+        )}
+        {shownFocus && (
+          <FocusMode
+            key={shownFocus.id}
+            item={shownFocus}
+            items={items}
+            canWrite={canWrite(shownFocus)}
+            onClose={closeFocus}
+            onSwitch={setFocusTask}
+            onChanged={refresh}
+            onError={report}
+          />
+        )}
+        {editing && (
+          <ItemEditor
+            key={editing === "new" ? "new" : editing.id + ":" + editing.version}
+            editing={editing}
+            teams={teams}
+            defaultTeamId={draftTeamId}
+            draft={editing === "new" ? draft : null}
+            busy={busy}
+            error={error}
+            onClose={() => setEditing(null)}
+            onSave={saveItem}
+            onDelete={deleteItem}
+          />
+        )}
+        {commandOpen && (
+          <CommandBar
+            items={items}
+            onClose={() => setCommandOpen(false)}
+            onOpenItem={openItem}
+            onNewItem={() => newItem()}
+            onPlanDay={planMyDay}
+            onNavigate={navigate}
+            onApplyPlan={applyPlan}
+            onOpenPlan={openPlan}
+            onApplied={refresh}
+            report={report}
+          />
+        )}
       </div>
-      {shownTask && (
-        <TaskDetail
-          key={shownTask.id}
-          item={shownTask}
-          teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
-          canWrite={canWrite(shownTask)}
-          suspended={!!editing}
-          onClose={closeTask}
-          onEdit={setEditing}
-          onChanged={refresh}
-          onError={report}
-        />
-      )}
-      {editing && (
-        <ItemEditor
-          key={editing === "new" ? "new" : editing.id + ":" + editing.version}
-          editing={editing}
-          teams={teams}
-          defaultTeamId={draftTeamId}
-          busy={busy}
-          error={error}
-          onClose={() => setEditing(null)}
-          onSave={saveItem}
-          onDelete={deleteItem}
-        />
-      )}
-    </div>
+    </PlanningContext.Provider>
   );
 }

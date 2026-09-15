@@ -7,6 +7,7 @@ import {
   type Status,
 } from "@orbyn/core";
 import { ProgressBar } from "../../components/ProgressBar";
+import { ItemFacts } from "../../components/ItemFacts";
 import { stagger } from "../../lib/motion";
 import { isOverdue, progressOf, stepsLabel } from "../../lib/tasks";
 
@@ -82,6 +83,7 @@ export function TaskBoard({
                         </span>
                       )}
                     </span>
+                    <ItemFacts item={i} />
                     <ProgressBar
                       value={progressOf(i)}
                       status={i.status}

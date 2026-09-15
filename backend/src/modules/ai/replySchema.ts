@@ -33,6 +33,11 @@ const item = {
   reminder_minutes: { type: ["integer", "null"] },
   team_id: { type: ["string", "null"] },
   progress: { type: ["integer", "null"] },
+  estimate_minutes: {
+    type: ["integer", "null"],
+    description: "How long the task takes in minutes, if the user said.",
+  },
+  location: { type: ["string", "null"] },
 };
 
 export const REPLY_FORMAT = {
@@ -100,6 +105,7 @@ const DATA_DEFAULTED = [
   "priority",
   "reminder_minutes",
   "progress",
+  "location",
 ];
 
 const withoutNulls = (value: Record<string, unknown>, keys: string[]) => {

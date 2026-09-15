@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, statusTones, type Item } from "@orbyn/core";
 import { Icon } from "./Icon";
+import { PlanningMeta } from "./PlanningMeta";
 import { StatusPill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
 import { percentOf, stepsLabel, updatesLabel } from "../lib/progress";
@@ -107,6 +108,7 @@ export function ItemCard({
             </View>
           )}
         </View>
+        <PlanningMeta item={item} />
         {showProgress && (
           <View style={s.progress}>
             <ProgressBar

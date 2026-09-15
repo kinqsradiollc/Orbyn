@@ -15,20 +15,41 @@ export const freshItem = (): ItemInput => ({
   progress: 0,
 });
 
-/** The exact body `PUT /items/:id` expects: every field plus the current version. */
-export const itemBody = (i: Item): ItemInput & { version: number } => ({
-  title: i.title,
-  notes: i.notes,
-  kind: i.kind,
-  status: i.status,
-  priority: i.priority,
-  due_at: i.due_at,
-  end_at: i.end_at,
-  reminder_minutes: i.reminder_minutes,
-  team_id: i.team_id ?? null,
-  progress: i.progress,
-  version: i.version,
-});
+/** Planning fields that `PUT /items/:id` keeps when they are omitted. */
+const PLANNING_FIELDS = [
+  "estimate_minutes",
+  "list_id",
+  "tag_ids",
+  "assignee_id",
+  "location",
+  "meeting_url",
+  "rrule",
+  "timezone",
+] as const;
+
+/**
+ * The exact body `PUT /items/:id` expects: every field plus the current
+ * version. Planning fields are sent only when the item carries them, so an
+ * item loaded before they existed never clears them.
+ */
+export const itemBody = (i: Item): ItemInput & { version: number } => {
+  const body: ItemInput & { version: number } = {
+    title: i.title,
+    notes: i.notes,
+    kind: i.kind,
+    status: i.status,
+    priority: i.priority,
+    due_at: i.due_at,
+    end_at: i.end_at,
+    reminder_minutes: i.reminder_minutes,
+    team_id: i.team_id ?? null,
+    progress: i.progress,
+    version: i.version,
+  };
+  for (const key of PLANNING_FIELDS)
+    if (i[key] !== undefined) (body as Record<string, unknown>)[key] = i[key];
+  return body;
+};
 
 export type PlannerGroups = {
   pending: Item[];

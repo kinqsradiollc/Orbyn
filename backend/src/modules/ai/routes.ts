@@ -116,6 +116,7 @@ export async function aiRoutes(app: FastifyInstance) {
       summary: result.summary,
       actions,
       follow_ups: result.follow_ups,
+      plan: ctx.plan ?? null,
     };
   });
 

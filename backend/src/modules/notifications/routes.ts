@@ -11,7 +11,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     return (
       await reader(r.headers).query(
-        `SELECT n.id,n.title,n.body,n.read,n.created_at
+        `SELECT n.id,n.title,n.body,n.read,n.created_at,n.kind,n.item_id,n.ref
          FROM notifications n JOIN items i ON i.id=n.item_id
          WHERE n.user_id=$1 AND n.channel='inapp' AND ${VISIBLE_ITEMS}
          ORDER BY n.created_at DESC LIMIT 100`,

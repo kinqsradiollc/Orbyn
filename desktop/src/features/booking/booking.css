@@ -1,0 +1,346 @@
+/* Booking pages: managing them in the app, and the public pages. */
+.booking-form-card .booking-form {
+  padding: 0 23px 22px;
+}
+.slug-row {
+  flex-wrap: nowrap;
+  gap: 0;
+}
+.slug-prefix {
+  flex: none;
+  max-width: 55%;
+  margin-top: 7px;
+  padding: 10px 10px;
+  border: 1px solid #dfe5dc;
+  border-right: 0;
+  border-radius: 6px 0 0 6px;
+  background: #f6f8f4;
+  color: #6f7b72;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.slug-row input {
+  border-radius: 0 6px 6px 0 !important;
+  flex: 1 1 120px;
+}
+.cohost-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.cohost-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.booking-page-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 23px;
+  border-top: 1px solid var(--color-divider);
+}
+.booking-page-main {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.booking-page-main strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.booking-page-main .status-pill {
+  margin: 0;
+}
+.booking-page-main small {
+  color: #6f7b72;
+}
+.booking-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.booking-link code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: #f1f4ee;
+  color: #3f5038;
+  padding: 2px 6px;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+.booking-link a {
+  text-decoration: none;
+}
+.booking-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.booking-page-actions .secondary {
+  padding: 7px 11px;
+}
+.booking-list {
+  flex-basis: 100%;
+  padding: 10px 14px;
+  border-radius: 9px;
+  background: #fafbf8;
+}
+.booking-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.booking-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.booking-list li:first-child {
+  border-top: 0;
+}
+.booking-list strong {
+  display: block;
+  font-size: 12px;
+}
+.booking-list small {
+  display: block;
+  color: #6f7b72;
+  margin-top: 2px;
+}
+.booking-note {
+  font-style: italic;
+}
+.booking-list .muted {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+/* Public pages (/book/…). */
+.public-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #fbfcf8;
+  color: var(--color-text);
+}
+.public-nav {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.public-nav .brand {
+  font-size: 26px;
+  padding: 0;
+  text-decoration: none;
+  color: inherit;
+}
+.public-nav .brand svg {
+  width: 24px;
+}
+.public-main {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px 40px;
+}
+.public-card {
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+.public-message {
+  max-width: 520px;
+  margin: 6vh auto 0;
+  text-align: center;
+}
+.public-message > svg {
+  color: var(--green);
+  margin-bottom: 12px;
+}
+.public-message h1 {
+  font-size: 26px;
+}
+.public-message .primary {
+  margin-top: 8px;
+}
+.public-message .error {
+  text-align: left;
+}
+.booking-public {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 32px;
+}
+.booking-intro h1 {
+  font-size: 28px;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.booking-hosts {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.booking-desc {
+  white-space: pre-wrap;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.booking-facts {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.booking-facts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.booking-facts li > svg {
+  color: var(--green);
+  flex: none;
+}
+.booking-facts select {
+  max-width: 240px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.date-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.date-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.date-strip button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+.date-strip button small {
+  font-size: 10px;
+  color: #6f7b72;
+}
+.date-strip button strong {
+  font:
+    650 16px "Manrope",
+    sans-serif;
+}
+.date-strip button.active {
+  border-color: var(--green);
+  background: var(--color-accentSoft);
+  color: var(--green);
+}
+.date-strip button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.time-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.time-grid .secondary {
+  width: 100%;
+  padding: 10px 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.time-grid .secondary:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+.booking-form-public label {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.booking-form-public input,
+.booking-form-public textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px 12px;
+  border: 1px solid #dfe5dc;
+  border-radius: 7px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+.booking-chosen {
+  margin: 8px 0 16px;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+@media (max-width: 760px) {
+  .booking-public {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .public-card {
+    padding: 20px;
+  }
+  .public-main {
+    padding: 0 16px 32px;
+  }
+  .public-nav {
+    padding: 18px 16px;
+  }
+}
+@media (max-width: 420px) {
+  .date-strip {
+    gap: 3px;
+  }
+  .date-strip button strong {
+    font-size: 14px;
+  }
+}

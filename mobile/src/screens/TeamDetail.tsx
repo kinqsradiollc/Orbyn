@@ -34,6 +34,7 @@ import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
+import { TeamTime } from "./TeamTime";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
 
@@ -349,6 +350,20 @@ export function TeamDetailPage({
               }
             />
           </View>
+        )}
+
+        {canRead && detail.role && (
+          <TeamTime
+            teamId={teamId}
+            members={detail.members}
+            userId={user?.id}
+            canWrite={canWrite}
+            onCreated={() =>
+              void load(true)
+                .then(onChanged)
+                .catch(() => {})
+            }
+          />
         )}
 
         {canRead && (

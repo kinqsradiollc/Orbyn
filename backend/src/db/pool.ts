@@ -53,6 +53,8 @@ export async function closeDatabase() {
 }
 
 export type Db = pg.PoolClient;
+/** Anything that runs queries: the pool, the read replica, or a transaction. */
+export type Queryable = Pick<pg.Pool, "query">;
 
 /** Run `fn` inside a transaction on the primary, rolling back on any error. */
 export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {

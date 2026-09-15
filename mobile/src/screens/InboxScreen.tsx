@@ -2,16 +2,22 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { Icon } from "../components/Icon";
+import { SmallAction } from "../components/SmallAction";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
 
 export function InboxScreen({
   notices,
+  busy,
   onRead,
+  onReschedule,
 }: {
   notices: Notice[];
+  busy: boolean;
   onRead: (notice: Notice) => void;
+  /** Move the clashing time block in a "conflict" notice to the next free time. */
+  onReschedule: (notice: Notice) => void;
 }) {
   if (!notices.length)
     return (
@@ -27,39 +33,54 @@ export function InboxScreen({
     );
   return (
     <View style={s.list}>
-      {notices.map((n, i) => (
-        <FadeIn key={n.id} index={i}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={n.title + (n.read ? "" : ", unread")}
-            accessibilityHint={
-              n.read ? undefined : "Marks this reminder as read"
-            }
-            onPress={() => onRead(n)}
-            style={({ pressed }) => [
-              s.row,
-              i > 0 && s.divider,
-              !n.read && s.unread,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <View style={s.icon}>
-              <Icon name="bell" size={16} color={colors.accent} />
-              {!n.read && <View style={s.dot} />}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.title, n.read && { color: colors.textSoft }]}>
-                {n.title}
-              </Text>
-              <Text style={s.body}>{n.body}</Text>
-              <Text style={shared.small}>
-                {dateLabel(n.created_at)}
-                {n.read ? " · Read" : " · Tap to mark read"}
-              </Text>
-            </View>
-          </Pressable>
-        </FadeIn>
-      ))}
+      {notices.map((n, i) => {
+        const conflict = n.kind === "conflict" && !!n.ref;
+        return (
+          <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={n.title + (n.read ? "" : ", unread")}
+              accessibilityHint={
+                n.read ? undefined : "Marks this reminder as read"
+              }
+              onPress={() => onRead(n)}
+              style={({ pressed }) => [
+                s.row,
+                !n.read && s.unread,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <View style={s.icon}>
+                <Icon
+                  name={conflict ? "alert" : "bell"}
+                  size={16}
+                  color={colors.accent}
+                />
+                {!n.read && <View style={s.dot} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.title, n.read && { color: colors.textSoft }]}>
+                  {n.title}
+                </Text>
+                <Text style={s.body}>{n.body}</Text>
+                <Text style={shared.small}>
+                  {dateLabel(n.created_at)}
+                  {n.read ? " · Read" : " · Tap to mark read"}
+                </Text>
+              </View>
+            </Pressable>
+            {conflict && (
+              <View style={[s.actions, !n.read && s.unread]}>
+                <SmallAction
+                  label="Reschedule"
+                  disabled={busy}
+                  onPress={() => onReschedule(n)}
+                />
+              </View>
+            )}
+          </FadeIn>
+        );
+      })}
     </View>
   );
 }
@@ -73,6 +94,13 @@ const s = StyleSheet.create({
     overflow: "hidden",
   },
   row: { flexDirection: "row", gap: 12, padding: 16 },
+  actions: {
+    flexDirection: "row",
+    paddingLeft: 62,
+    paddingRight: 16,
+    paddingBottom: 14,
+    marginTop: -6,
+  },
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,

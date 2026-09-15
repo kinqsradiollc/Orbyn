@@ -11,6 +11,11 @@ import { aiAdminRoutes } from "./modules/ai/admin.js";
 import { teamRoutes } from "./modules/teams/routes.js";
 import { adminRoutes } from "./modules/admin/routes.js";
 import { statusRoutes } from "./modules/status/routes.js";
+import { organizeRoutes } from "./modules/organize/routes.js";
+import { plannerRoutes } from "./modules/planner/routes.js";
+import { teamPlanningRoutes } from "./modules/teams/planning.js";
+import { accessRoutes } from "./modules/access/routes.js";
+import { bookingRoutes } from "./modules/booking/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -30,6 +35,11 @@ export const serviceModules: Record<
     notificationRoutes,
     teamRoutes,
     adminRoutes,
+    organizeRoutes,
+    plannerRoutes,
+    teamPlanningRoutes,
+    accessRoutes,
+    bookingRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
   ai: [aiRoutes, aiAdminRoutes],

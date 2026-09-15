@@ -1,64 +1,116 @@
-import { Activity } from "lucide-react";
-import type { User } from "@orbyn/core";
+import { useState } from "react";
+import { Activity, CalendarCog, Plug, Tags, UserRound } from "lucide-react";
+import type { Team, User } from "@orbyn/core";
+import { PlanningSettings } from "./PlanningSettings";
+import { TagSettings } from "./TagSettings";
+import { ConnectionsSettings } from "./ConnectionsSettings";
+import "./settings.css";
+
+export type SettingsTab = "account" | "planning" | "tags" | "connections";
+
+const TABS = [
+  { id: "account", label: "Account", icon: UserRound },
+  { id: "planning", label: "Planning", icon: CalendarCog },
+  { id: "tags", label: "Tags", icon: Tags },
+  { id: "connections", label: "Connections", icon: Plug },
+] as const;
 
 type Props = {
   user: User | null;
+  teams: Team[];
   busy: boolean;
   onEmailReminders: (checked: boolean) => void;
   /** Opens the public status page. */
   onOpenStatus?: () => void;
+  report: (e: unknown) => void;
+  initialTab?: SettingsTab;
 };
 
 export function SettingsView({
   user,
+  teams,
   busy,
   onEmailReminders,
   onOpenStatus,
+  report,
+  initialTab = "account",
 }: Props) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   return (
-    <section className="card settings-card">
-      <h2>Your account</h2>
-      <p>
-        {user?.name} · {user?.email}
-      </p>
-      <hr />
-      <h2>Stay in the loop</h2>
-      <label className="preference">
-        <span>
-          <strong>Email reminders</strong>
-          <small>
-            Receive a reminder before your tasks and events are due.
-          </small>
-        </span>
-        <input
-          type="checkbox"
-          checked={user?.email_reminders || false}
-          disabled={busy}
-          onChange={(e) => onEmailReminders(e.target.checked)}
-        />
-      </label>
-      <p className="muted">
-        Mobile push notifications can be enabled in the Orbyn mobile app. Each
-        item has its own reminder timing.
-      </p>
-      <hr />
-      <h2>AI provider</h2>
-      <p className="muted">
-        An admin connects the AI provider in Admin → AI. Keys stay on the
-        server.
-      </p>
-      {onOpenStatus && (
-        <>
-          <hr />
-          <h2>Service status</h2>
-          <p className="muted">
-            See whether Orbyn is running smoothly and review recent incidents.
-          </p>
-          <button className="secondary" onClick={onOpenStatus}>
-            <Activity size={14} /> Service status
+    <>
+      <div className="tabs" role="tablist" aria-label="Settings">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            id={"settings-tab-" + id}
+            aria-selected={tab === id}
+            aria-controls={"settings-panel-" + id}
+            className={tab === id ? "active" : ""}
+            onClick={() => setTab(id)}
+          >
+            <Icon size={15} aria-hidden="true" /> {label}
           </button>
-        </>
-      )}
-    </section>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={"settings-panel-" + tab}
+        aria-labelledby={"settings-tab-" + tab}
+      >
+        {tab === "account" && (
+          <section className="card settings-card">
+            <h2>Your account</h2>
+            <p>
+              {user?.name} · {user?.email}
+            </p>
+            <hr />
+            <h2>Stay in the loop</h2>
+            <label className="preference">
+              <span>
+                <strong>Email reminders</strong>
+                <small>
+                  Receive a reminder before your tasks and events are due.
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                checked={user?.email_reminders || false}
+                disabled={busy}
+                onChange={(e) => onEmailReminders(e.target.checked)}
+              />
+            </label>
+            <p className="muted">
+              Mobile push notifications can be enabled in the Orbyn mobile app.
+              Each item has its own reminder timing.
+            </p>
+            <hr />
+            <h2>AI provider</h2>
+            <p className="muted">
+              An admin connects the AI provider in Admin → AI. Keys stay on the
+              server.
+            </p>
+            {onOpenStatus && (
+              <>
+                <hr />
+                <h2>Service status</h2>
+                <p className="muted">
+                  See whether Orbyn is running smoothly and review recent
+                  incidents.
+                </p>
+                <button className="secondary" onClick={onOpenStatus}>
+                  <Activity size={14} /> Service status
+                </button>
+              </>
+            )}
+          </section>
+        )}
+        {tab === "planning" && (
+          <PlanningSettings teams={teams} report={report} />
+        )}
+        {tab === "tags" && <TagSettings teams={teams} report={report} />}
+        {tab === "connections" && <ConnectionsSettings report={report} />}
+      </div>
+    </>
   );
 }

@@ -3,6 +3,11 @@ import { closeDatabase, pool } from "../db/pool.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
+import { advanceRepeating, scanConflicts } from "./planning.js";
+import { deliverWebhookOne } from "./webhooks.js";
+
+/** Planner upkeep runs at most this often. */
+const PLANNING_MS = 60_000;
 
 const CYCLE_MS = 10000;
 /** Deliveries per lane before the loop checks for new work again. */
@@ -28,20 +33,31 @@ export async function runWorker() {
       stopping = true;
     });
   let lastSchedule = 0;
+  let lastPlanning = 0;
   while (!stopping) {
     let backlog = false;
     try {
       if (Date.now() - lastSchedule >= CYCLE_MS) {
         await heartbeat();
+        // Repeating events move on first, so their next reminder queues now.
+        if (Date.now() - lastPlanning >= PLANNING_MS) {
+          await advanceRepeating();
+          await scanConflicts();
+          lastPlanning = Date.now();
+        }
         await enqueue();
         lastSchedule = Date.now();
       }
+      // Each lane delivers reminders and webhooks until both queues are empty.
       const lanes = await Promise.all(
         Array.from(
           { length: (await settings()).notifier_concurrency },
           async () => {
-            for (let n = 0; n < LANE_BATCH && !stopping; n++)
-              if (!(await deliverOne())) return false;
+            for (let n = 0; n < LANE_BATCH && !stopping; n++) {
+              const reminder = await deliverOne();
+              const webhook = await deliverWebhookOne();
+              if (!reminder && !webhook) return false;
+            }
             return true;
           },
         ),

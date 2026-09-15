@@ -32,6 +32,45 @@ import {
   type TeamMember,
   type TeamRole,
   type User,
+  type ApiKey,
+  type BlockInput,
+  type BlockUpdate,
+  type Booking,
+  type BookingPage,
+  type BookingPageInput,
+  type BookingPageUpdate,
+  type BookingReceipt,
+  type BookingRequest,
+  type CalendarFeed,
+  type CalendarView,
+  type Frame,
+  type FrameInput,
+  type FrameUpdate,
+  type ListInput,
+  type ListUpdate,
+  type MeetingSlot,
+  type MemberAvailability,
+  type MemberWorkload,
+  type NewApiKey,
+  type NewWebhook,
+  type Place,
+  type PlaceInput,
+  type PlaceUpdate,
+  type Plan,
+  type PlannerPrefs,
+  type PlannerPrefsInput,
+  type PlannerReview,
+  type PlanPreviewInput,
+  type PublicBookingPage,
+  type Tag,
+  type TagInput,
+  type TagUpdate,
+  type TaskList,
+  type TimeBlock,
+  type Webhook,
+  type WebhookInput,
+  type WebhookTestResult,
+  type WebhookUpdate,
 } from "@orbyn/core";
 
 /** After a write, reads ask for the primary database for this long. */
@@ -224,14 +263,318 @@ export class OrbynClient {
 
   // ---- items ----
   listItems(
-    params: { limit?: number; offset?: number; team_id?: string } = {},
+    params: {
+      limit?: number;
+      offset?: number;
+      team_id?: string;
+      /** Words in the title or notes. */
+      q?: string;
+      list_id?: string;
+      tag_id?: string;
+      assignee_id?: string;
+    } = {},
   ) {
     const q = new URLSearchParams();
     if (params.limit !== undefined) q.set("limit", String(params.limit));
     if (params.offset !== undefined) q.set("offset", String(params.offset));
-    if (params.team_id) q.set("team_id", params.team_id);
+    for (const key of [
+      "team_id",
+      "q",
+      "list_id",
+      "tag_id",
+      "assignee_id",
+    ] as const)
+      if (params[key]) q.set(key, params[key]!);
     const suffix = q.size ? `?${q}` : "";
     return this.request<Item[]>(`/items${suffix}`);
+  }
+  /** Add minutes worked (focus timer). */
+  logTime(itemId: string, minutes: number) {
+    return this.request<ItemDetail>(`/items/${itemId}/time`, {
+      method: "POST",
+      body: { minutes },
+    });
+  }
+  /** Remove one occurrence of a repeating item. */
+  skipOccurrence(itemId: string, occurrence: string) {
+    return this.request<ItemDetail>(`/items/${itemId}/skip`, {
+      method: "POST",
+      body: { occurrence },
+    });
+  }
+
+  // ---- lists and tags ----
+  listLists() {
+    return this.request<TaskList[]>("/lists");
+  }
+  createList(input: ListInput) {
+    return this.request<TaskList>("/lists", { method: "POST", body: input });
+  }
+  updateList(id: string, input: ListUpdate) {
+    return this.request<TaskList>(`/lists/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteList(id: string) {
+    return this.request<void>(`/lists/${id}`, { method: "DELETE" });
+  }
+  listTags() {
+    return this.request<Tag[]>("/tags");
+  }
+  createTag(input: TagInput) {
+    return this.request<Tag>("/tags", { method: "POST", body: input });
+  }
+  updateTag(id: string, input: TagUpdate) {
+    return this.request<Tag>(`/tags/${id}`, { method: "PUT", body: input });
+  }
+  deleteTag(id: string) {
+    return this.request<void>(`/tags/${id}`, { method: "DELETE" });
+  }
+
+  // ---- calendar, time blocks, planner ----
+  /** Everything on the calendar in [from, to): occurrences, blocks, buffers and travel. */
+  calendar(from: string, to: string) {
+    const q = new URLSearchParams({ from, to });
+    return this.request<CalendarView>(`/calendar?${q}`);
+  }
+  listBlocks(from: string, to: string) {
+    const q = new URLSearchParams({ from, to });
+    return this.request<TimeBlock[]>(`/blocks?${q}`);
+  }
+  createBlock(input: BlockInput) {
+    return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
+  }
+  updateBlock(id: string, input: BlockUpdate) {
+    return this.request<TimeBlock>(`/blocks/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteBlock(id: string) {
+    return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
+  }
+  /** Move a block to the next free working time of the same length. */
+  rescheduleBlock(id: string) {
+    return this.request<TimeBlock>(`/blocks/${id}/reschedule`, {
+      method: "POST",
+    });
+  }
+  getPlannerPrefs() {
+    return this.request<PlannerPrefs>("/planner/prefs");
+  }
+  updatePlannerPrefs(input: PlannerPrefsInput) {
+    return this.request<PlannerPrefs>("/planner/prefs", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  listFrames() {
+    return this.request<Frame[]>("/planner/frames");
+  }
+  createFrame(input: FrameInput) {
+    return this.request<Frame>("/planner/frames", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateFrame(id: string, input: FrameUpdate) {
+    return this.request<Frame>(`/planner/frames/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteFrame(id: string) {
+    return this.request<void>(`/planner/frames/${id}`, { method: "DELETE" });
+  }
+  listPlaces() {
+    return this.request<Place[]>("/planner/places");
+  }
+  createPlace(input: PlaceInput) {
+    return this.request<Place>("/planner/places", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updatePlace(id: string, input: PlaceUpdate) {
+    return this.request<Place>(`/planner/places/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deletePlace(id: string) {
+    return this.request<void>(`/planner/places/${id}`, { method: "DELETE" });
+  }
+  /** A proposed plan; nothing is saved until `applyPlan`. */
+  previewPlan(input: PlanPreviewInput = {}) {
+    return this.request<Plan>("/planner/preview", {
+      method: "POST",
+      body: input,
+    });
+  }
+  getPlan(id: string) {
+    return this.request<Plan>(`/planner/plans/${id}`);
+  }
+  applyPlan(id: string) {
+    return this.request<{ blocks: TimeBlock[]; skipped: number }>(
+      `/planner/plans/${id}/apply`,
+      { method: "POST" },
+    );
+  }
+  /** Unfinished blocks, tasks at risk, and blocks that clash with events. */
+  plannerReview() {
+    return this.request<PlannerReview>("/planner/review");
+  }
+  /** A plan for unfinished work (all of it, or the given blocks). */
+  rollForward(blockIds?: string[]) {
+    return this.request<Plan>("/planner/roll-forward", {
+      method: "POST",
+      body: blockIds ? { block_ids: blockIds } : {},
+    });
+  }
+  /** Create (or replace) your private calendar subscription link. */
+  createCalendarFeed() {
+    return this.request<CalendarFeed>("/me/calendar-feed", { method: "POST" });
+  }
+  deleteCalendarFeed() {
+    return this.request<void>("/me/calendar-feed", { method: "DELETE" });
+  }
+
+  // ---- team time ----
+  teamAvailability(teamId: string, from: string, to: string) {
+    const q = new URLSearchParams({ from, to });
+    return this.request<MemberAvailability[]>(
+      `/teams/${teamId}/availability?${q}`,
+    );
+  }
+  teamWorkload(teamId: string, from: string, to: string) {
+    const q = new URLSearchParams({ from, to });
+    return this.request<MemberWorkload[]>(`/teams/${teamId}/workload?${q}`);
+  }
+  suggestMeetingTimes(
+    teamId: string,
+    params: { from: string; to: string; duration: number; user_ids?: string[] },
+  ) {
+    const q = new URLSearchParams({
+      from: params.from,
+      to: params.to,
+      duration: String(params.duration),
+    });
+    if (params.user_ids?.length) q.set("user_ids", params.user_ids.join(","));
+    return this.request<MeetingSlot[]>(`/teams/${teamId}/suggest?${q}`);
+  }
+
+  // ---- booking pages ----
+  listBookingPages() {
+    return this.request<BookingPage[]>("/booking-pages");
+  }
+  createBookingPage(input: BookingPageInput) {
+    return this.request<BookingPage>("/booking-pages", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateBookingPage(id: string, input: BookingPageUpdate) {
+    return this.request<BookingPage>(`/booking-pages/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteBookingPage(id: string) {
+    return this.request<void>(`/booking-pages/${id}`, { method: "DELETE" });
+  }
+  listBookings(pageId: string) {
+    return this.request<Booking[]>(`/booking-pages/${pageId}/bookings`);
+  }
+  cancelBooking(pageId: string, bookingId: string) {
+    return this.request<{ cancelled: boolean }>(
+      `/booking-pages/${pageId}/bookings/${bookingId}/cancel`,
+      { method: "POST" },
+    );
+  }
+  /** Public: a booking page and its free times (no sign-in). Without a
+   * `duration`, the page's first length is shown. */
+  getPublicBookingPage(
+    slug: string,
+    params: {
+      duration?: number;
+      date?: string;
+      days?: number;
+      timezone: string;
+    },
+  ) {
+    const q = new URLSearchParams({ timezone: params.timezone });
+    if (params.duration) q.set("duration", String(params.duration));
+    if (params.date) q.set("date", params.date);
+    if (params.days) q.set("days", String(params.days));
+    return this.request<PublicBookingPage>(
+      `/book/${encodeURIComponent(slug)}?${q}`,
+      { anonymous: true },
+    );
+  }
+  /** Public: ask for a time on a booking page. */
+  book(slug: string, input: BookingRequest) {
+    return this.request<BookingReceipt>(`/book/${encodeURIComponent(slug)}`, {
+      method: "POST",
+      body: input,
+      anonymous: true,
+    });
+  }
+  /** Public: the link from the confirmation email. */
+  confirmBooking(token: string) {
+    return this.request<BookingReceipt>(
+      `/book/confirm/${encodeURIComponent(token)}`,
+      {
+        method: "POST",
+        anonymous: true,
+      },
+    );
+  }
+  /** Public: the cancel link from a booking email. */
+  cancelBookingByToken(token: string) {
+    return this.request<{ cancelled: boolean }>(
+      `/book/cancel/${encodeURIComponent(token)}`,
+      { method: "POST", anonymous: true },
+    );
+  }
+
+  // ---- API keys and webhooks ----
+  listApiKeys() {
+    return this.request<ApiKey[]>("/me/api-keys");
+  }
+  /** The returned `key` is shown once. */
+  createApiKey(name: string) {
+    return this.request<NewApiKey>("/me/api-keys", {
+      method: "POST",
+      body: { name },
+    });
+  }
+  deleteApiKey(id: string) {
+    return this.request<void>(`/me/api-keys/${id}`, { method: "DELETE" });
+  }
+  listWebhooks() {
+    return this.request<Webhook[]>("/me/webhooks");
+  }
+  /** The returned `secret` signs deliveries and is shown once. */
+  createWebhook(input: WebhookInput) {
+    return this.request<NewWebhook>("/me/webhooks", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateWebhook(id: string, input: WebhookUpdate) {
+    return this.request<Webhook>(`/me/webhooks/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteWebhook(id: string) {
+    return this.request<void>(`/me/webhooks/${id}`, { method: "DELETE" });
+  }
+  testWebhook(id: string) {
+    return this.request<WebhookTestResult>(`/me/webhooks/${id}/test`, {
+      method: "POST",
+    });
   }
   /** Follows pagination until the planner is fully loaded. */
   async listAllItems(pageSize = 500) {

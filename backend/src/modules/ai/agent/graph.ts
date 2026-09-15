@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { ChatTurn } from "@orbyn/core";
+import { addDays, localDateKey, type ChatTurn } from "@orbyn/core";
 import {
   complete,
   ProviderError,
@@ -7,7 +7,10 @@ import {
   type ResolvedAi,
 } from "../providers/adapters.js";
 import { dropNulls, REPLY_FORMAT } from "../replySchema.js";
-import { mayChange } from "../guards.js";
+import { mayChange, wantsPlan } from "../guards.js";
+import { pool } from "../../../db/pool.js";
+import { makePlan } from "../../planner/plans.js";
+import { planMarkdown } from "./planText.js";
 import { localDay, localTimeContext } from "../prompt.js";
 import { comingDays, dateReminder, namedDays } from "./prompt.js";
 import { dropNullFields } from "./protocol.js";
@@ -46,6 +49,8 @@ const DRAFT_KEYS = [
   "reminder_minutes",
   "team_id",
   "progress",
+  "estimate_minutes",
+  "location",
 ] as const;
 
 const ANSWER_RULES = `Answer the latest request in friendly Markdown: short paragraphs, "- " bullets, **bold**, and a table when comparing several items. Give the real details (titles, days, times). You can't change the planner in this reply: if the user seems to want a change, say what they could ask for, for example "Add a task to call Mum on Friday". Do not reply with JSON.`;
@@ -368,6 +373,30 @@ export async function runGraph(
   data: unknown,
   log?: FastifyBaseLogger,
 ): Promise<AgentResult> {
+  // "Plan my day": the planner lays out the time and the reply is written
+  // from its result, so every time shown is exactly what applying adds.
+  if (wantsPlan(ctx.intentText)) {
+    const tomorrow = /\btomorrow\b/i.test(ctx.intentText);
+    const plan = await makePlan(pool, ctx.user.id, {
+      start_date: tomorrow
+        ? addDays(localDateKey(new Date(), ctx.timezone), 1)
+        : undefined,
+      days: /\bweek\b/i.test(ctx.intentText) ? 5 : undefined,
+      use_frames: true,
+      keep_free: [],
+      exclude_item_ids: [],
+      timezone: ctx.timezone,
+    });
+    ctx.plan = plan;
+    return {
+      summary: planMarkdown(plan, ctx.timezone),
+      actions: [],
+      follow_ups: [],
+      legacy: false,
+      steps: 0,
+      partial: false,
+    };
+  }
   const deadline = AbortSignal.timeout(DEADLINE_MS);
   const change = mayChange(ctx.intentText);
   const turns: ChatMessage[] = history.slice(-12).map((t) => ({

@@ -1,0 +1,172 @@
+import type { FastifyInstance } from "fastify";
+import { randomBytes } from "node:crypto";
+import {
+  apiKeyInput,
+  fail,
+  webhookInput,
+  webhookUpdate,
+  type ApiKey,
+  type NewApiKey,
+  type NewWebhook,
+  type Webhook,
+} from "@orbyn/core";
+import { pool, reader } from "../../db/pool.js";
+import { authenticate, digest } from "../../lib/auth.js";
+import { idParam, strictRateLimit } from "../../lib/params.js";
+import { assertPublicUrl } from "../../lib/netguard.js";
+import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
+import { sendWebhook } from "../../worker/webhooks.js";
+
+/**
+ * Personal API keys and outgoing webhooks: how other tools (Zapier, Make,
+ * scripts) work with Orbyn while the data stays on this server.
+ */
+const MAX_KEYS = 20;
+const MAX_WEBHOOKS = 10;
+const WEBHOOK_COLUMNS =
+  "id, url, events, active, last_status, last_error, last_delivered_at, created_at";
+
+export async function accessRoutes(app: FastifyInstance) {
+  app.get("/me/api-keys", async (r) => {
+    const u = await authenticate(r);
+    return (
+      await reader(r.headers).query<ApiKey>(
+        "SELECT id, name, prefix, created_at, last_used_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
+        [u.id],
+      )
+    ).rows;
+  });
+
+  // The key is shown once; only its hash is kept.
+  app.post(
+    "/me/api-keys",
+    strictRateLimit,
+    async (r, reply): Promise<NewApiKey> => {
+      const u = await authenticate(r);
+      const d = apiKeyInput.parse(r.body);
+      const count = (
+        await pool.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM api_keys WHERE user_id = $1",
+          [u.id],
+        )
+      ).rows[0].n;
+      if (count >= MAX_KEYS)
+        fail(409, `You can have up to ${MAX_KEYS} API keys.`);
+      const key = `ok_${randomBytes(32).toString("base64url")}`;
+      const row = (
+        await pool.query<ApiKey>(
+          `INSERT INTO api_keys (user_id, name, prefix, key_hash) VALUES ($1, $2, $3, $4)
+         RETURNING id, name, prefix, created_at, last_used_at`,
+          [u.id, d.name, key.slice(0, 10), digest(key)],
+        )
+      ).rows[0];
+      reply.code(201);
+      return { ...row, key };
+    },
+  );
+
+  app.delete("/me/api-keys/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM api_keys WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "API key not found");
+    return reply.code(204).send();
+  });
+
+  app.get("/me/webhooks", async (r) => {
+    const u = await authenticate(r);
+    return (
+      await reader(r.headers).query<Webhook>(
+        `SELECT ${WEBHOOK_COLUMNS} FROM webhooks WHERE user_id = $1 ORDER BY created_at DESC`,
+        [u.id],
+      )
+    ).rows;
+  });
+
+  // The signing secret is shown once.
+  app.post(
+    "/me/webhooks",
+    strictRateLimit,
+    async (r, reply): Promise<NewWebhook> => {
+      const u = await authenticate(r);
+      const d = webhookInput.parse(r.body);
+      await assertPublicUrl(d.url);
+      const count = (
+        await pool.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM webhooks WHERE user_id = $1",
+          [u.id],
+        )
+      ).rows[0].n;
+      if (count >= MAX_WEBHOOKS)
+        fail(409, `You can have up to ${MAX_WEBHOOKS} webhooks.`);
+      const secret = `whsec_${randomBytes(24).toString("base64url")}`;
+      const row = (
+        await pool.query<Webhook>(
+          `INSERT INTO webhooks (user_id, url, events, secret_encrypted) VALUES ($1, $2, $3, $4)
+         RETURNING ${WEBHOOK_COLUMNS}`,
+          [u.id, d.url, [...new Set(d.events)], await encryptSecret(secret)],
+        )
+      ).rows[0];
+      reply.code(201);
+      return { ...row, secret };
+    },
+  );
+
+  app.put("/me/webhooks/:id", async (r) => {
+    const u = await authenticate(r);
+    const d = webhookUpdate.parse(r.body);
+    if (d.url) await assertPublicUrl(d.url);
+    const row = (
+      await pool.query<Webhook>(
+        `UPDATE webhooks SET url = coalesce($3, url), events = coalesce($4, events),
+           active = coalesce($5, active)
+         WHERE id = $1 AND user_id = $2 RETURNING ${WEBHOOK_COLUMNS}`,
+        [
+          idParam(r),
+          u.id,
+          d.url ?? null,
+          d.events ? [...new Set(d.events)] : null,
+          d.active ?? null,
+        ],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Webhook not found");
+    return row;
+  });
+
+  app.delete("/me/webhooks/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM webhooks WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Webhook not found");
+    return reply.code(204).send();
+  });
+
+  // Send a "ping" right away and report what the other end answered.
+  app.post("/me/webhooks/:id/test", strictRateLimit, async (r) => {
+    const u = await authenticate(r);
+    const hook = (
+      await pool.query<{ id: string; url: string; secret_encrypted: string }>(
+        "SELECT id, url, secret_encrypted FROM webhooks WHERE id = $1 AND user_id = $2",
+        [idParam(r), u.id],
+      )
+    ).rows[0];
+    if (!hook) fail(404, "Webhook not found");
+    const result = await sendWebhook(
+      hook.url,
+      await decryptSecret(hook.secret_encrypted),
+      `test_${randomBytes(6).toString("hex")}`,
+      "ping",
+      { event: "ping", occurred_at: new Date().toISOString(), data: {} },
+    );
+    await pool.query(
+      "UPDATE webhooks SET last_status = $2, last_error = $3, last_delivered_at = CASE WHEN $4 THEN now() ELSE last_delivered_at END WHERE id = $1",
+      [hook.id, result.status, result.error, result.ok],
+    );
+    return result;
+  });
+}

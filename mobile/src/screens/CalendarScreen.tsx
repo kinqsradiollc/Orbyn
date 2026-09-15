@@ -1,23 +1,39 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Alert,
+  Animated,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import {
   addMonths,
   monthGrid,
   itemsOnDay,
   byDueDate,
   dayHeading,
+  describeRrule,
   emptyDay,
   motion,
   sameDay,
   statusTones,
+  type CalendarEntry,
+  type CalendarView,
   type Item,
+  type TimeBlock,
 } from "@orbyn/core";
+import { Button } from "../components/Button";
 import {
   PlannerList,
   SectionHeading,
   type ListHandlers,
 } from "../components/PlannerList";
 import { Icon } from "../components/Icon";
+import { useNow } from "../hooks/useNow";
+import { client } from "../lib/api";
+import { canJoin, rangeLabel, shortDay, slotLabel } from "../lib/planning";
 import {
   FadeIn,
   PressableScale,
@@ -27,24 +43,162 @@ import {
 } from "../motion";
 import { colors, fonts, radii } from "../theme";
 import { shared } from "../styles";
-import { addDays } from "./calendar/dates";
-import { DayTimeline } from "./calendar/DayTimeline";
+import { addDays, startOfWeek } from "./calendar/dates";
+import { DayTimeline, type TimelineSlot } from "./calendar/DayTimeline";
 import { WeekStrip } from "./calendar/WeekStrip";
 
 type Mode = "week" | "month";
+type Act = (fn: () => Promise<void>) => Promise<void>;
+
+/** An item as a calendar entry, for when the calendar view isn't loaded. */
+const entryFromItem = (i: Item): CalendarEntry => ({
+  item_id: i.id,
+  title: i.title,
+  kind: i.kind,
+  status: i.status,
+  priority: i.priority,
+  start_at: i.due_at ?? new Date().toISOString(),
+  end_at: i.end_at,
+  team_id: i.team_id,
+  team_name: i.team_name ?? null,
+  list_id: i.list_id ?? null,
+  location: i.location ?? "",
+  meeting_url: i.meeting_url ?? "",
+  occurrence: null,
+  rrule: i.rrule ?? null,
+  version: i.version,
+});
+
+const onDay = (iso: string, day: Date) => sameDay(new Date(iso), day);
 
 /**
  * A swipeable week strip (or the Sunday-first month grid), then the selected
- * day as an hour-by-hour timeline and a list of its plans with progress.
+ * day as an hour-by-hour timeline and a list of its plans with progress. The
+ * week comes from the calendar view: repeating items as occurrences, time
+ * blocks, and buffers and travel around events.
  */
 export function CalendarScreen({
   items,
+  act,
+  onChanged,
   ...handlers
-}: ListHandlers & { items: Item[] }) {
+}: ListHandlers & {
+  items: Item[];
+  act: Act;
+  /** Refresh the planner after a change that moves an item (skipping). */
+  onChanged: () => void;
+}) {
   const [mode, setMode] = useState<Mode>("week");
   const [selected, setSelected] = useState(() => new Date());
   const [month, setMonth] = useState(() => new Date());
+  const [view, setView] = useState<{
+    start: number;
+    data: CalendarView;
+  } | null>(null);
+  /** Bumped after a block or occurrence changes, to reload the week. */
+  const [version, setVersion] = useState(0);
+  const now = useNow(30_000);
   const dayItems = itemsOnDay(items, selected).sort(byDueDate);
+
+  // One request per week shown, and again only when the planner's items
+  // actually change (unchanged polls keep the same array) or after an edit.
+  const weekStart = startOfWeek(selected).getTime();
+  useEffect(() => {
+    let alive = true;
+    const from = new Date(weekStart);
+    client
+      .calendar(from.toISOString(), addDays(from, 7).toISOString())
+      .then((data) => alive && setView({ start: weekStart, data }))
+      .catch(() => {
+        // Older servers have no calendar view; the items below still show.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [weekStart, items, version]);
+  const week = view && view.start === weekStart ? view.data : null;
+
+  const dayEntries = week
+    ? week.entries.filter((e) => onDay(e.start_at, selected))
+    : dayItems.map(entryFromItem);
+  const slots: TimelineSlot[] = [
+    ...dayEntries.map((entry): TimelineSlot => ({
+      type: "entry",
+      key: `entry-${entry.item_id}-${entry.occurrence ?? entry.start_at}`,
+      start: new Date(entry.start_at),
+      end: entry.end_at ? new Date(entry.end_at) : null,
+      kind: entry.kind,
+      entry,
+    })),
+    ...(week?.blocks ?? [])
+      .filter((b) => onDay(b.start_at, selected))
+      .map((block): TimelineSlot => ({
+        type: "block",
+        key: `block-${block.id}`,
+        start: new Date(block.start_at),
+        end: new Date(block.end_at),
+        kind: "task",
+        block,
+      })),
+  ];
+  const derived = (week?.derived ?? []).filter(
+    (d) => onDay(d.start_at, selected) || onDay(d.end_at, selected),
+  );
+  const joinable = (week?.entries ?? []).filter((e) => canJoin(e, now));
+
+  const plansOn = (day: Date) =>
+    week
+      ? week.entries
+          .filter((e) => onDay(e.start_at, day))
+          .map((e) => ({ key: `${e.item_id}-${e.start_at}`, status: e.status }))
+      : itemsOnDay(items, day).map((i) => ({ key: i.id, status: i.status }));
+
+  const openItem = (itemId: string) => {
+    const item = items.find((i) => i.id === itemId);
+    if (item) handlers.onOpen(item);
+    else void act(async () => handlers.onOpen(await client.getItem(itemId)));
+  };
+  const reload = () => setVersion((v) => v + 1);
+  const blockMenu = (block: TimeBlock) =>
+    Alert.alert(block.title, slotLabel(block.start_at, block.end_at), [
+      {
+        text: "Move to next free time",
+        onPress: () =>
+          void act(async () => {
+            await client.rescheduleBlock(block.id);
+            reload();
+          }),
+      },
+      {
+        text: "Delete block",
+        style: "destructive",
+        onPress: () =>
+          void act(async () => {
+            await client.deleteBlock(block.id);
+            reload();
+          }),
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  const entryMenu = (entry: CalendarEntry) =>
+    Alert.alert(
+      entry.title,
+      `${shortDay(entry.start_at)} · ${describeRrule(entry.rrule) || "Repeats"}`,
+      [
+        {
+          text: "Skip this occurrence",
+          style: "destructive",
+          onPress: () =>
+            void act(async () => {
+              if (!entry.occurrence) return;
+              await client.skipOccurrence(entry.item_id, entry.occurrence);
+              reload();
+              onChanged();
+            }),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
 
   const select = (day: Date) => {
     setSelected(day);
@@ -65,6 +219,35 @@ export function CalendarScreen({
   const unit = mode === "week" ? "week" : "month";
   return (
     <>
+      {joinable.length > 0 && (
+        <FadeIn style={[shared.card, s.join]}>
+          <Text style={shared.label}>Happening now</Text>
+          {joinable.map((e) => (
+            <View key={`${e.item_id}-${e.start_at}`} style={s.joinRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.joinTitle} numberOfLines={1}>
+                  {e.title}
+                </Text>
+                <Text style={shared.small}>
+                  {e.end_at
+                    ? rangeLabel(e.start_at, e.end_at)
+                    : shortDay(e.start_at)}
+                </Text>
+              </View>
+              <Button
+                title="Join"
+                icon="video"
+                style={s.joinButton}
+                onPress={() =>
+                  void Linking.openURL(e.meeting_url).catch(() =>
+                    Alert.alert("That meeting link couldn’t be opened."),
+                  )
+                }
+              />
+            </View>
+          ))}
+        </FadeIn>
+      )}
       <View style={[shared.card, s.calendar]}>
         <View style={s.heading}>
           <Text
@@ -121,7 +304,7 @@ export function CalendarScreen({
         {mode === "week" ? (
           <WeekStrip
             selected={selected}
-            items={items}
+            plansOn={plansOn}
             onSelect={select}
             onShiftWeek={(d) => select(addDays(selected, 7 * d))}
           />
@@ -139,14 +322,21 @@ export function CalendarScreen({
       <FadeIn key={selected.toDateString()}>
         <SectionHeading
           title={dayHeading(selected)}
-          count={dayItems.length}
+          count={dayEntries.length}
           hint={
             sameDay(selected, new Date())
-              ? "Today, hour by hour"
-              : "Hour by hour"
+              ? "Today, hour by hour. Long-press a block or repeat for options."
+              : "Hour by hour. Long-press a block or repeat for options."
           }
         />
-        <DayTimeline day={selected} items={dayItems} onOpen={handlers.onOpen} />
+        <DayTimeline
+          day={selected}
+          slots={slots}
+          derived={derived}
+          onOpen={openItem}
+          onBlockMenu={blockMenu}
+          onEntryMenu={entryMenu}
+        />
         <PlannerList
           visible={dayItems}
           title="Plans for this day"
@@ -259,6 +449,10 @@ function SelectedPill() {
 
 const s = StyleSheet.create({
   calendar: { padding: 12, marginBottom: 22 },
+  join: { paddingVertical: 14 },
+  joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+  joinButton: { marginBottom: 0, minHeight: 44 },
   heading: {
     flexDirection: "row",
     alignItems: "center",

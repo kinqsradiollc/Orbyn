@@ -56,6 +56,13 @@ const schema = z.object({
   DEPLOY_URL: z.string().default(""),
   /** Parallel delivery lanes in the reminder service. */
   NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /** Where people open the web app; used in booking links sent by email. */
+  APP_URL: z.string().default("http://localhost:8081"),
+  /**
+   * "true" lets webhooks call private network addresses (local development
+   * and tests only). Otherwise they must reach a public address.
+   */
+  ALLOW_PRIVATE_WEBHOOKS: z.enum(["true", "false"]).default("false"),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -19,6 +19,8 @@ export type Turn =
       state: TurnState;
       /** The items this reply changes, as they were when it arrived. */
       before: Item[];
+      /** Whether the schedule in `proposal.plan` has been applied. */
+      planApplied: boolean;
     };
 
 type Options = {
@@ -106,6 +108,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             proposal,
             state: proposal.actions.length ? "pending" : "info",
             before: itemsRef.current.filter((i) => touched.has(i.id)),
+            planApplied: !!proposal.plan?.applied,
           },
         ]);
       } catch (error) {
@@ -150,6 +153,25 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     if (id) setState(id, "discarded");
   };
 
+  /** Save the schedule a reply planned (its time blocks) to the calendar. */
+  const applyPlan = (turnId: string) => {
+    const turn = turnsRef.current.find((t) => t.id === turnId);
+    if (!turn || turn.role !== "assistant" || !turn.proposal.plan)
+      return Promise.resolve();
+    const plan = turn.proposal.plan;
+    return act(async () => {
+      await client.applyPlan(plan.id);
+      setTurns((t) =>
+        t.map((x) =>
+          x.id === turnId && x.role === "assistant"
+            ? { ...x, planApplied: true }
+            : x,
+        ),
+      );
+      await refresh();
+    });
+  };
+
   const reset = () => {
     setTurns([]);
     setMessage("");
@@ -165,6 +187,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,
     apply,
+    applyPlan,
     discard,
     reset,
   };
