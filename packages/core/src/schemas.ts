@@ -624,7 +624,8 @@ export const bookingPageUpdate = z
 
 /** The free times a public booking page offers. */
 export const publicSlotsQuery = z.object({
-  duration: z.coerce.number().int().min(5).max(480),
+  /** One of the page's lengths; the first one when omitted. */
+  duration: z.coerce.number().int().min(5).max(480).optional(),
   /** First day shown, in `timezone`; today when omitted. */
   date: dayKey.optional(),
   days: z.coerce.number().int().min(1).max(14).default(7),

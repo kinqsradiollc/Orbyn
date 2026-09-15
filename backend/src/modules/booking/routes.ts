@@ -521,7 +521,8 @@ export async function bookingRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const page = await pageBySlug(db, slug.toLowerCase());
     if (!page) fail(404, "This booking page doesn't exist or is switched off.");
-    if (!page.durations.includes(q.duration))
+    const duration = q.duration ?? page.durations[0];
+    if (!page.durations.includes(duration))
       fail(422, "Pick one of the offered lengths.");
     const firstDay = q.date ?? localDateKey(new Date(), q.timezone);
     const from = dayTime(firstDay, 0, q.timezone);
@@ -535,8 +536,8 @@ export async function bookingRoutes(app: FastifyInstance) {
       has_meeting_link: !!page.meeting_url,
       hosts: page.hosts.map((h) => h.name),
       timezone: q.timezone,
-      duration: q.duration,
-      slots: await availableSlots(db, page, q.duration, from, to),
+      duration,
+      slots: await availableSlots(db, page, duration, from, to),
     };
   });
 

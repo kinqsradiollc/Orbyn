@@ -492,20 +492,19 @@ export class OrbynClient {
       { method: "POST" },
     );
   }
-  /** Public: a booking page and its free times (no sign-in). */
+  /** Public: a booking page and its free times (no sign-in). Without a
+   * `duration`, the page's first length is shown. */
   getPublicBookingPage(
     slug: string,
     params: {
-      duration: number;
+      duration?: number;
       date?: string;
       days?: number;
       timezone: string;
     },
   ) {
-    const q = new URLSearchParams({
-      duration: String(params.duration),
-      timezone: params.timezone,
-    });
+    const q = new URLSearchParams({ timezone: params.timezone });
+    if (params.duration) q.set("duration", String(params.duration));
     if (params.date) q.set("date", params.date);
     if (params.days) q.set("days", String(params.days));
     return this.request<PublicBookingPage>(

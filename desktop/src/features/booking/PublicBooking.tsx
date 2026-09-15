@@ -116,9 +116,6 @@ const whenLabel = (start: string, end: string, timeZone: string) => {
   return `${day}, ${t(s)} – ${t(new Date(end))}`;
 };
 
-/** Lengths to try when the link doesn't say which one to show first. */
-const COMMON = [30, 60, 15, 45, 20, 90, 120, 10, 25, 50, 75, 180, 240];
-
 function BookPage({ slug }: { slug: string }) {
   const [tz, setTz] = useState(deviceTimeZone);
   const today = localDateKey(new Date(), tz);
@@ -143,7 +140,7 @@ function BookPage({ slug }: { slug: string }) {
     let alive = true;
     const key = `${duration}|${date}|${tz}|${reloads}`;
     if (loadedFor.current === key) return;
-    const fetchPage = (d: number) =>
+    const fetchPage = (d?: number) =>
       client.getPublicBookingPage(slug, {
         duration: d,
         date,
@@ -154,36 +151,22 @@ function BookPage({ slug }: { slug: string }) {
       setLoading(true);
       setLoadError("");
       try {
-        if (duration) {
-          const next = await fetchPage(duration);
-          if (!alive) return;
-          loadedFor.current = key;
-          setPage(next);
-          return;
-        }
-        // The page's lengths come with the page, which needs a length to ask
-        // for: try the one in the link, then common ones.
+        // First load: the length in the link, or the page's first length.
         const fromLink = Number(
           new URLSearchParams(location.search).get("duration"),
         );
-        const tries = [...new Set([fromLink, ...COMMON])].filter(
-          (n) => n >= 5 && n <= 480,
-        );
-        for (const t of tries) {
-          try {
-            const next = await fetchPage(t);
-            if (!alive) return;
-            loadedFor.current = `${t}|${date}|${tz}|${reloads}`;
-            setPage(next);
-            setDuration(t);
-            return;
-          } catch (e) {
-            if ((e as HttpError).status !== 422) throw e;
-          }
+        let next;
+        try {
+          next = await fetchPage(duration ?? (fromLink || undefined));
+        } catch (e) {
+          // A link with a length the page no longer offers: show its default.
+          if (duration || (e as HttpError).status !== 422) throw e;
+          next = await fetchPage();
         }
-        throw new Error(
-          "This booking page couldn't be loaded. Ask the host for a new link.",
-        );
+        if (!alive) return;
+        loadedFor.current = `${next.duration}|${date}|${tz}|${reloads}`;
+        setPage(next);
+        if (!duration) setDuration(next.duration);
       } catch (e) {
         if (alive) setLoadError(errorText(e));
       } finally {
