@@ -1,16 +1,18 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Columns3, List, ListTodo, Pin, Search, X } from "lucide-react";
 import {
   searchItems,
   emptyPlans,
   emptySearch,
+  STATUSES,
+  isClosed,
   statusLabels,
-  statusOrder,
   type Item,
   type ItemSort,
   type Priority,
   type Status,
 } from "@orbyn/core";
+import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { Popover } from "../../components/Popover";
@@ -18,6 +20,7 @@ import { usePlanning } from "../../app/planning";
 import { statusCounts } from "../../lib/tasks";
 import {
   byScore,
+  errorText,
   matchesDue,
   SIZE_LABELS,
   sizeOf,
@@ -37,6 +40,8 @@ type Props = {
   onSetStatus: (item: Item, status: Status) => void;
   /** You, for "Assigned to me". */
   userId?: string;
+  /** Refresh the planner after reordering. */
+  onChanged?: () => Promise<void>;
 };
 
 type Filter = Status | "all";
@@ -82,6 +87,7 @@ const SORTS: { id: ItemSort; label: string }[] = [
   { id: "estimate", label: "Estimate" },
   { id: "title", label: "Title" },
   { id: "created", label: "Created" },
+  { id: "position", label: "Manual order" },
 ];
 const RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
 /** Smallest first, missing values last. */
@@ -120,6 +126,9 @@ function sortBy(sort: ItemSort, now: Date): (a: Item, b: Item) => number {
     case "estimate":
       return (a, b) =>
         ascending(a.estimate_minutes, b.estimate_minutes) || pressing(a, b);
+    case "position":
+      return (a, b) =>
+        ascending(a.position, b.position) || a.title.localeCompare(b.title);
     case "title":
       return (a, b) => a.title.localeCompare(b.title);
     default:
@@ -163,6 +172,7 @@ export function TasksView({
   onOpen,
   onSetStatus,
   userId,
+  onChanged,
 }: Props) {
   const { lists, tags, listById, tagById } = usePlanning();
   const [filter, setFilter] = useState<Filter>("all");
@@ -262,7 +272,7 @@ export function TasksView({
         : emptyPlans;
 
   // Pinned smart lists: open items only, and each item shows once.
-  const open = visible.filter((i) => i.status !== "done");
+  const open = visible.filter((i) => !isClosed(i.status));
   const pinned =
     layout === "list"
       ? [
@@ -336,19 +346,141 @@ export function TasksView({
               },
             ];
 
-  const rows = (list: Item[]) =>
-    list.map((i, n) => (
-      <ItemRow
-        key={i.id}
-        item={i}
-        index={n}
-        busy={busy}
-        readOnly={!canWrite(i)}
-        score={sort === "score" ? i.score : undefined}
-        onToggle={onToggle}
-        onOpen={onOpen}
-      />
-    ));
+  // Subtasks sit under their parent when both are listed; folding hides them.
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const toggleFold = (id: string) =>
+    setFolded((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Manual order: drag a row onto another, or use its arrows.
+  const manual = sort === "position";
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; before: boolean } | null>(
+    null,
+  );
+  const [moveError, setMoveError] = useState("");
+  const move = async (
+    id: string,
+    to: { before_id?: string; after_id?: string },
+  ) => {
+    setMoveError("");
+    try {
+      await client.moveItem(id, to);
+      await onChanged?.();
+    } catch (e) {
+      setMoveError(errorText(e));
+    }
+  };
+
+  /** Rows for a list; with `tree`, subtasks go under a parent listed with them. */
+  const rows = (list: Item[], tree = false) => {
+    const ids = new Set(list.map((i) => i.id));
+    const kids = new Map<string, Item[]>();
+    if (tree)
+      for (const i of list)
+        if (i.parent_id && ids.has(i.parent_id))
+          kids.set(i.parent_id, [...(kids.get(i.parent_id) ?? []), i]);
+    const top = tree
+      ? list.filter((i) => !i.parent_id || !ids.has(i.parent_id))
+      : list;
+    const render = (level: Item[], depth: number): ReactNode[] =>
+      level.map((i, n) => {
+        const children = kids.get(i.id) ?? [];
+        const isFolded = folded.has(i.id);
+        const row = (
+          <ItemRow
+            key={i.id}
+            item={i}
+            index={n}
+            busy={busy}
+            readOnly={!canWrite(i)}
+            score={sort === "score" ? i.score : undefined}
+            collapsed={children.length ? isFolded : undefined}
+            onToggleChildren={
+              children.length ? () => toggleFold(i.id) : undefined
+            }
+            onMoveUp={
+              manual && n > 0
+                ? () => void move(i.id, { before_id: level[n - 1].id })
+                : undefined
+            }
+            onMoveDown={
+              manual && n < level.length - 1
+                ? () => void move(i.id, { after_id: level[n + 1].id })
+                : undefined
+            }
+            onToggle={onToggle}
+            onOpen={onOpen}
+          />
+        );
+        const shown = manual ? (
+          <div
+            key={i.id}
+            className={
+              "reorder-row" +
+              (dragId === i.id ? " is-dragging" : "") +
+              (dropAt?.id === i.id
+                ? dropAt.before
+                  ? " is-drop-before"
+                  : " is-drop-after"
+                : "")
+            }
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", i.id);
+              setDragId(i.id);
+            }}
+            onDragEnd={() => {
+              setDragId(null);
+              setDropAt(null);
+            }}
+            onDragOver={(e) => {
+              if (!dragId || dragId === i.id) return;
+              e.preventDefault();
+              const r = e.currentTarget.getBoundingClientRect();
+              const before = e.clientY < r.top + r.height / 2;
+              if (dropAt?.id !== i.id || dropAt.before !== before)
+                setDropAt({ id: i.id, before });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = dragId;
+              const before = dropAt?.id === i.id ? dropAt.before : true;
+              setDragId(null);
+              setDropAt(null);
+              if (from && from !== i.id)
+                void move(
+                  from,
+                  before ? { before_id: i.id } : { after_id: i.id },
+                );
+            }}
+          >
+            {row}
+          </div>
+        ) : (
+          row
+        );
+        if (!children.length || isFolded) return shown;
+        return (
+          <Fragment key={i.id}>
+            {shown}
+            <div
+              className="task-children"
+              role="group"
+              aria-label={`Subtasks of ${i.title}`}
+            >
+              {render(children, depth + 1)}
+            </div>
+          </Fragment>
+        );
+      });
+    return render(top, 0);
+  };
 
   return (
     <section className="card tasks-card">
@@ -550,7 +682,7 @@ export function TasksView({
         )}
       </div>
       <div className="filter-chips" role="group" aria-label="Filter by status">
-        {(["all", ...statusOrder] as Filter[]).map((f) => (
+        {(["all", ...STATUSES] as Filter[]).map((f) => (
           <button
             key={f}
             aria-pressed={filter === f}
@@ -565,12 +697,23 @@ export function TasksView({
           </button>
         ))}
       </div>
+      {moveError && (
+        <div className="error" role="alert">
+          {moveError}
+        </div>
+      )}
+      {manual && layout === "list" && (
+        <p className="tasks-hint">
+          Drag rows, or use their arrows, to set the order. Items move within
+          their own list, team or parent task.
+        </p>
+      )}
       {!visible.length ? (
         <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
       ) : layout === "board" ? (
         <TaskBoard
           items={visible}
-          statuses={filter === "all" ? statusOrder : [filter]}
+          statuses={filter === "all" ? [...STATUSES] : [filter]}
           busy={busy}
           canWrite={canWrite}
           onOpen={onOpen}
@@ -593,7 +736,7 @@ export function TasksView({
             </section>
           ))}
           {group === "none" && !pinned.length
-            ? rows(rest)
+            ? rows(rest, true)
             : groups
                 .filter((g) => g.items.length)
                 .map((g) => (
@@ -613,7 +756,7 @@ export function TasksView({
                       {g.title}
                       <span>{g.items.length}</span>
                     </h3>
-                    {rows(g.items)}
+                    {rows(g.items, g.key === "all")}
                   </section>
                 ))}
         </>

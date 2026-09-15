@@ -1,5 +1,6 @@
 import {
   formatRrule,
+  isClosed,
   parseRrule,
   priorityScore,
   zonedParts,
@@ -79,7 +80,7 @@ export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
 /** Open tasks first, most pressing first; finished ones last. */
 export function byScore(now = new Date()) {
   return (a: Item, b: Item) =>
-    Number(a.status === "done") - Number(b.status === "done") ||
+    Number(isClosed(a.status)) - Number(isClosed(b.status)) ||
     priorityScore(b, now) - priorityScore(a, now) ||
     a.title.localeCompare(b.title);
 }
@@ -87,7 +88,7 @@ export function byScore(now = new Date()) {
 /** Open tasks sorted by how pressing they are. */
 export const nextUp = (items: Item[], exclude?: string, limit = 5) =>
   items
-    .filter((i) => i.kind === "task" && i.status !== "done" && i.id !== exclude)
+    .filter((i) => i.kind === "task" && !isClosed(i.status) && i.id !== exclude)
     .sort(byScore())
     .slice(0, limit);
 

@@ -1,4 +1,4 @@
-import { statusOrder, type Item, type Status } from "@orbyn/core";
+import { STATUSES, isClosed, type Item, type Status } from "@orbyn/core";
 
 /** 0-100 progress for display. Done items always read as complete. */
 export const progressOf = (i: Pick<Item, "status" | "progress">) =>
@@ -35,7 +35,7 @@ export function timeAgo(iso: string, now = Date.now()) {
 
 /** Open items whose due date has passed (before today). */
 export const isOverdue = (i: Item, now = new Date()) =>
-  i.status !== "done" &&
+  !isClosed(i.status) &&
   !!i.due_at &&
   new Date(i.due_at) <
     new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -43,7 +43,7 @@ export const isOverdue = (i: Item, now = new Date()) =>
 /** Count of items per status, plus "all". */
 export function statusCounts(items: Item[]) {
   const counts = { all: items.length } as Record<Status | "all", number>;
-  for (const s of statusOrder) counts[s] = 0;
+  for (const s of STATUSES) counts[s] = 0;
   for (const i of items) counts[i.status] += 1;
   return counts;
 }

@@ -5,8 +5,8 @@ import {
   fromDateTimeLocal,
   hasTeamPermission,
   localDateKey,
+  STATUSES,
   statusLabels,
-  statusOrder,
   toDateTimeLocal,
   type Attendee,
   type EditScope,
@@ -30,6 +30,7 @@ import {
 } from "../lib/planning";
 import { RepeatPicker } from "./RepeatPicker";
 import { TagPicker } from "./TagPicker";
+import { LinksField, type LinkDraft } from "./LinksField";
 import {
   AlertsPicker,
   ColorPicker,
@@ -151,6 +152,12 @@ export function ItemEditor({
     "loading" | "ready" | "failed"
   >(existing?.kind === "event" ? "loading" : "ready");
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [links, setLinks] = useState<LinkDraft[]>(() =>
+    (draft?.links ?? []).map((l) => ({ url: l.url, title: l.title ?? "" })),
+  );
+  const [linksState, setLinksState] = useState<"loading" | "ready" | "failed">(
+    existing ? "loading" : "ready",
+  );
   const [formError, setFormError] = useState("");
   /** A save or delete waiting for "this one / following / all". */
   const [pendingSave, setPendingSave] = useState<ItemInput | null>(null);
@@ -198,14 +205,19 @@ export function ItemEditor({
     };
   }, [teamId]);
 
-  // A saved event's invitees and their answers come with its details.
-  const existingId = existing?.kind === "event" ? existing.id : null;
+  // A saved item's links, and an event's invitees and answers, come with
+  // its details.
+  const existingId = existing ? existing.id : null;
   useEffect(() => {
     if (!existingId) return;
     let alive = true;
     client.getItem(existingId).then(
       (d) => {
         if (!alive) return;
+        setLinks(
+          (d.links ?? []).map((l) => ({ url: l.url, title: l.title ?? "" })),
+        );
+        setLinksState("ready");
         setInvitees(
           ((d.attendees ?? []) as Attendee[]).map((a) => ({
             email: a.email,
@@ -215,7 +227,11 @@ export function ItemEditor({
         );
         setInviteesState("ready");
       },
-      () => alive && setInviteesState("failed"),
+      () => {
+        if (!alive) return;
+        setInviteesState("failed");
+        setLinksState("failed");
+      },
     );
     return () => {
       alive = false;
@@ -361,6 +377,15 @@ export function ItemEditor({
               color,
               // Untouched on a new item: the server uses your defaults.
               ...(alerts !== null ? { alerts } : {}),
+              // Sent only once the saved list is known, so it's never wiped.
+              ...(linksState === "ready"
+                ? {
+                    links: links.map((l) => ({
+                      url: l.url.trim(),
+                      title: l.title.trim(),
+                    })),
+                  }
+                : {}),
               ...(kind === "event" && inviteesState === "ready"
                 ? {
                     attendees: invitees.map(({ email, name }) =>
@@ -460,7 +485,7 @@ export function ItemEditor({
               <label>
                 Status
                 <select name="status" defaultValue={base.status}>
-                  {statusOrder.map((s) => (
+                  {STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {statusLabels[s]}
                     </option>
@@ -647,6 +672,7 @@ export function ItemEditor({
               onCreate={readOnly ? undefined : createTag}
             />
             <ColorPicker value={color} onChange={setColor} />
+            <LinksField value={links} onChange={setLinks} state={linksState} />
             <RepeatPicker
               value={repeat}
               onChange={setRepeat}

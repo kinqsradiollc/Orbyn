@@ -1,8 +1,8 @@
 import { CalendarClock, ListChecks, MessageSquare, Users } from "lucide-react";
 import {
   dateLabel,
+  STATUSES,
   statusLabels,
-  statusOrder,
   type Item,
   type Status,
 } from "@orbyn/core";
@@ -120,7 +120,7 @@ export function TaskBoard({
                           onSetStatus(i, e.target.value as Status)
                         }
                       >
-                        {statusOrder.map((s) => (
+                        {STATUSES.map((s) => (
                           <option key={s} value={s}>
                             {s === i.status
                               ? statusLabels[s]

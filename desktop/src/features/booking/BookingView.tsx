@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   CalendarCheck,
   CalendarDays,
+  CalendarRange,
   Copy,
   ExternalLink,
   History,
@@ -28,6 +29,8 @@ import { copyText, minutesLabel, plural } from "../../lib/planning";
 import { bookingLink, type BookingFocus } from "./bookingUi";
 import { BookingsInbox } from "./BookingsInbox";
 import { PageForm } from "./PageForm";
+import { OpenInvites } from "./OpenInvites";
+import { ProfileCard } from "./ProfileCard";
 import "./booking.css";
 
 export { bookingLink, type BookingFocus };
@@ -40,11 +43,12 @@ type Props = {
   focus?: BookingFocus | null;
 };
 
-type Tab = "bookings" | "pages";
+type Tab = "bookings" | "pages" | "invites";
 
 /**
  * Booking pages: a public page where people pick a time that fits you (and
- * any co-hosts), and one inbox to track every booking they take.
+ * any co-hosts), one inbox to track every booking they take, offered times
+ * for one person, and your profile page.
  */
 export function BookingView({ user, teams, report, focus = null }: Props) {
   const [tab, setTab] = useState<Tab>("bookings");
@@ -162,6 +166,16 @@ export function BookingView({ user, teams, report, focus = null }: Props) {
         >
           <CalendarCheck size={15} aria-hidden="true" /> Pages
         </button>
+        <button
+          role="tab"
+          id="booking-tab-invites"
+          aria-selected={tab === "invites"}
+          aria-controls="booking-panel"
+          className={tab === "invites" ? "active" : ""}
+          onClick={() => setTab("invites")}
+        >
+          <CalendarRange size={15} aria-hidden="true" /> Offer times
+        </button>
       </div>
       <div
         role="tabpanel"
@@ -181,117 +195,132 @@ export function BookingView({ user, teams, report, focus = null }: Props) {
             onNewPage={newPage}
             report={report}
           />
+        ) : tab === "invites" ? (
+          <OpenInvites report={report} />
         ) : (
-          <section className="card">
-            <div className="section-heading">
-              <h2>
-                Your booking pages <span>{pages?.length ?? 0}</span>
-              </h2>
-              {!editing && (
-                <button className="primary" onClick={() => setEditing("new")}>
-                  <Plus size={15} /> New booking page
-                </button>
-              )}
-            </div>
-            <OutcomeNote outcome={action.outcome} />
-            {pages === null ? (
-              <p className="muted pad">Loading booking pages…</p>
-            ) : !pages.length ? (
-              <EmptyState
-                icon={CalendarCheck}
-                title="No booking pages yet."
-                body="Share a link and let people pick a time that fits your calendar."
-              />
-            ) : (
-              pages.map((p) => {
-                const mine = p.owner_id === user?.id;
-                return (
-                  <article key={p.id} className="booking-page-row">
-                    <div className="booking-page-main">
-                      <strong>
-                        <i
-                          className="list-dot"
-                          style={{ background: p.color }}
-                          aria-hidden="true"
-                        />
-                        {p.title}
-                        <span
-                          className={
-                            "status-pill " + (p.active ? "active" : "disabled")
-                          }
-                        >
-                          {p.active ? "Taking bookings" : "Off"}
-                        </span>
-                        {p.counts.needs_approval > 0 && (
-                          <button
-                            className="chip is-warn chip-button"
-                            onClick={() => showBookings(p.id, "needs_approval")}
+          <>
+            <ProfileCard report={report} />
+            <section className="card">
+              <div className="section-heading">
+                <h2>
+                  Your booking pages <span>{pages?.length ?? 0}</span>
+                </h2>
+                {!editing && (
+                  <button className="primary" onClick={() => setEditing("new")}>
+                    <Plus size={15} /> New booking page
+                  </button>
+                )}
+              </div>
+              <OutcomeNote outcome={action.outcome} />
+              {pages === null ? (
+                <p className="muted pad">Loading booking pages…</p>
+              ) : !pages.length ? (
+                <EmptyState
+                  icon={CalendarCheck}
+                  title="No booking pages yet."
+                  body="Share a link and let people pick a time that fits your calendar."
+                />
+              ) : (
+                pages.map((p) => {
+                  // Your own pages, and your teams' pages you manage.
+                  const mine = p.can_edit ?? p.owner_id === user?.id;
+                  return (
+                    <article key={p.id} className="booking-page-row">
+                      <div className="booking-page-main">
+                        <strong>
+                          <i
+                            className="list-dot"
+                            style={{ background: p.color }}
+                            aria-hidden="true"
+                          />
+                          {p.title}
+                          {p.team_name && (
+                            <span className="chip">{p.team_name}</span>
+                          )}
+                          <span
+                            className={
+                              "status-pill " +
+                              (p.active ? "active" : "disabled")
+                            }
                           >
-                            {p.counts.needs_approval} to approve
-                          </button>
-                        )}
-                      </strong>
-                      <small>
-                        {plural(p.counts.upcoming, "upcoming booking")} ·{" "}
-                        {p.durations.map(minutesLabel).join(" / ")} · up to{" "}
-                        {plural(p.window_days, "day")} ahead
-                        {p.requires_approval && " · needs approval"}
-                        {p.hosts.length > 1 &&
-                          ` · with ${p.hosts
-                            .filter((h) => h.user_id !== user?.id)
-                            .map((h) => h.name)
-                            .join(", ")}`}
-                      </small>
-                      <span className="booking-link">
-                        <code>{bookingLink(p.slug)}</code>
-                        <button className="link-button" onClick={() => copy(p)}>
-                          <Copy size={12} />{" "}
-                          {copied === p.id ? "Copied" : "Copy link"}
-                        </button>
-                        {location.protocol !== "file:" && (
-                          <a
+                            {p.active ? "Taking bookings" : "Off"}
+                          </span>
+                          {p.counts.needs_approval > 0 && (
+                            <button
+                              className="chip is-warn chip-button"
+                              onClick={() =>
+                                showBookings(p.id, "needs_approval")
+                              }
+                            >
+                              {p.counts.needs_approval} to approve
+                            </button>
+                          )}
+                        </strong>
+                        <small>
+                          {plural(p.counts.upcoming, "upcoming booking")} ·{" "}
+                          {p.durations.map(minutesLabel).join(" / ")} · up to{" "}
+                          {plural(p.window_days, "day")} ahead
+                          {p.requires_approval && " · needs approval"}
+                          {p.hosts.length > 1 &&
+                            ` · with ${p.hosts
+                              .filter((h) => h.user_id !== user?.id)
+                              .map((h) => h.name)
+                              .join(", ")}`}
+                        </small>
+                        <span className="booking-link">
+                          <code>{bookingLink(p.slug)}</code>
+                          <button
                             className="link-button"
-                            href={bookingLink(p.slug)}
-                            target="_blank"
-                            rel="noreferrer"
+                            onClick={() => copy(p)}
                           >
-                            <ExternalLink size={12} /> Preview
-                          </a>
+                            <Copy size={12} />{" "}
+                            {copied === p.id ? "Copied" : "Copy link"}
+                          </button>
+                          {location.protocol !== "file:" && (
+                            <a
+                              className="link-button"
+                              href={bookingLink(p.slug)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink size={12} /> Preview
+                            </a>
+                          )}
+                        </span>
+                      </div>
+                      <div className="booking-page-actions">
+                        <button
+                          className="secondary"
+                          onClick={() => showBookings(p.id, "upcoming")}
+                        >
+                          <Inbox size={14} /> Bookings
+                        </button>
+                        {mine && (
+                          <>
+                            <button
+                              className="icon-button"
+                              aria-label={`Edit ${p.title}`}
+                              onClick={() => setEditing(p)}
+                            >
+                              <Pencil size={15} />
+                            </button>
+                            <button
+                              className="icon-button"
+                              aria-label={`Delete ${p.title}`}
+                              disabled={action.pending}
+                              onClick={() => remove(p)}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
                         )}
-                      </span>
-                    </div>
-                    <div className="booking-page-actions">
-                      <button
-                        className="secondary"
-                        onClick={() => showBookings(p.id, "upcoming")}
-                      >
-                        <Inbox size={14} /> Bookings
-                      </button>
-                      {mine && (
-                        <>
-                          <button
-                            className="icon-button"
-                            aria-label={`Edit ${p.title}`}
-                            onClick={() => setEditing(p)}
-                          >
-                            <Pencil size={15} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            aria-label={`Delete ${p.title}`}
-                            disabled={action.pending}
-                            onClick={() => remove(p)}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </article>
-                );
-              })
-            )}
-          </section>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </section>
+          </>
         )}
       </div>
     </>

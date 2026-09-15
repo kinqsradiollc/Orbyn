@@ -2,13 +2,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import {
   BREAK_LEVELS,
+  TRAVEL_MODES,
   describeRrule,
   type BreakLevel,
+  type BufferScope,
   type Frame,
   type FrameFilters,
   type Place,
   type PlannerPrefs,
   type Team,
+  type TravelMode,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
@@ -86,7 +89,7 @@ function NumberInput({
  * splits tasks, buffers and travel, extra time zones, frames and places.
  */
 export function PlanningSettings({ teams, report }: Props) {
-  const { prefs, savePrefs } = usePlanning();
+  const { prefs, savePrefs, lists } = usePlanning();
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
   const [zoneToAdd, setZoneToAdd] = useState("");
   const save = useAction(report);
@@ -108,6 +111,30 @@ export function PlanningSettings({ teams, report }: Props) {
     save.setOutcome(null);
   };
   const device = deviceTimeZone();
+
+  // Which events get buffers (all your timed busy events by default).
+  const scope: BufferScope = draft.buffer_scope ?? {
+    personal: true,
+    team_ids: null,
+    list_ids: [],
+    min_minutes: 0,
+    only_with_others: false,
+  };
+  const setScope = (patch: Partial<BufferScope>) =>
+    set("buffer_scope", { ...scope, ...patch });
+  const toggleScopeTeam = (id: string) => {
+    const current = scope.team_ids ?? teams.map((t) => t.id);
+    const next = current.includes(id)
+      ? current.filter((x) => x !== id)
+      : [...current, id];
+    setScope({ team_ids: next.length === teams.length ? null : next });
+  };
+  const toggleScopeList = (id: string) =>
+    setScope({
+      list_ids: scope.list_ids.includes(id)
+        ? scope.list_ids.filter((x) => x !== id)
+        : [...scope.list_ids, id],
+    });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -256,6 +283,23 @@ export function PlanningSettings({ teams, report }: Props) {
             </div>
           </div>
 
+          <label className="switch-line settings-field">
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              checked={draft.count_blocks_as_spent ?? false}
+              onChange={(e) => set("count_blocks_as_spent", e.target.checked)}
+            />
+            <span>
+              Count blocked time as worked when I complete a task
+              <small>
+                The past part of its time blocks is added to the time spent on
+                it.
+              </small>
+            </span>
+          </label>
+
           <h3 className="settings-subtitle">Planner notices</h3>
           <p className="muted">
             Heads-ups about unfinished blocks, tasks at risk, tasks due soon and
@@ -347,6 +391,87 @@ export function PlanningSettings({ teams, report }: Props) {
               <span>
                 Adaptive buffers
                 <small>Longer buffers around longer events.</small>
+              </span>
+            </label>
+            <NumberInput
+              id="pref-travel-pad"
+              label="Extra travel padding (min)"
+              hint="Added to every trip, there and back."
+              value={draft.travel_padding_minutes ?? 0}
+              min={0}
+              max={30}
+              onChange={(n) => set("travel_padding_minutes", n)}
+            />
+          </div>
+          <fieldset className="check-group">
+            <legend>Which events get buffers</legend>
+            <div className="check-grid">
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  checked={scope.personal}
+                  onChange={(e) => setScope({ personal: e.target.checked })}
+                />
+                Personal events
+              </label>
+              {teams.map((t) => (
+                <label key={t.id} className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={
+                      scope.team_ids === null || scope.team_ids.includes(t.id)
+                    }
+                    onChange={() => toggleScopeTeam(t.id)}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {lists.length > 0 && (
+            <fieldset className="check-group">
+              <legend>
+                Only events in these lists (none ticked: any list)
+              </legend>
+              <div className="check-grid">
+                {lists.map((l) => (
+                  <label key={l.id} className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={scope.list_ids.includes(l.id)}
+                      onChange={() => toggleScopeList(l.id)}
+                    />
+                    {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
+          <div className="settings-grid">
+            <NumberInput
+              id="pref-buffer-min"
+              label="Only events at least (min)"
+              hint="Shorter events get no buffers. 0 for every event."
+              value={scope.min_minutes}
+              min={0}
+              max={1440}
+              onChange={(n) => setScope({ min_minutes: n })}
+            />
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={scope.only_with_others}
+                onChange={(e) =>
+                  setScope({ only_with_others: e.target.checked })
+                }
+              />
+              <span>
+                Only meetings with others
+                <small>
+                  Events with people invited, a meeting link, or a team.
+                </small>
               </span>
             </label>
           </div>
@@ -553,12 +678,27 @@ function FramesEditor({ teams, report }: Props) {
 
 // ---- Places ------------------------------------------------------------------
 
-type PlaceDraft = { label: string; match: string; travel_minutes: number };
+type PlaceDraft = {
+  label: string;
+  match: string;
+  travel_minutes: number;
+  mode: TravelMode | null;
+  /** Minutes at rush hour; null: the same as usual. */
+  peak_minutes: number | null;
+};
 const blankPlace = (): PlaceDraft => ({
   label: "",
   match: "",
   travel_minutes: 20,
+  mode: null,
+  peak_minutes: null,
 });
+const MODE_LABELS: Record<TravelMode, string> = {
+  walk: "Walking",
+  cycle: "Cycling",
+  transit: "Public transport",
+  drive: "Driving",
+};
 
 /** Places and how long it takes to get there, for travel time around events. */
 function PlacesEditor({ report }: { report: (e: unknown) => void }) {
@@ -583,6 +723,8 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
       label: draft.label.trim(),
       match: draft.match.trim(),
       travel_minutes: draft.travel_minutes,
+      mode: draft.mode,
+      peak_minutes: draft.peak_minutes,
     };
     void action
       .run(async () => {
@@ -639,6 +781,9 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                 <small>
                   Matches “{p.match}” · {minutesLabel(p.travel_minutes)} to get
                   there
+                  {p.mode && ` · ${MODE_LABELS[p.mode]}`}
+                  {p.peak_minutes != null &&
+                    ` · ${minutesLabel(p.peak_minutes)} at rush hour`}
                 </small>
               </span>
               <button
@@ -649,6 +794,8 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                     label: p.label,
                     match: p.match,
                     travel_minutes: p.travel_minutes,
+                    mode: p.mode ?? null,
+                    peak_minutes: p.peak_minutes ?? null,
                   });
                   setEditing(p.id);
                 }}
@@ -706,6 +853,48 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                   setDraft({ ...draft, travel_minutes: Number(e.target.value) })
                 }
               />
+            </div>
+            <div className="settings-field">
+              <label htmlFor="place-mode">How you get there</label>
+              <select
+                id="place-mode"
+                value={draft.mode ?? ""}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    mode: (e.target.value || null) as TravelMode | null,
+                  })
+                }
+              >
+                <option value="">Not set</option>
+                {TRAVEL_MODES.map((m) => (
+                  <option key={m} value={m}>
+                    {MODE_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="settings-field">
+              <label htmlFor="place-peak">At rush hour (min)</label>
+              <input
+                id="place-peak"
+                type="number"
+                min={0}
+                max={240}
+                placeholder="Same"
+                value={draft.peak_minutes ?? ""}
+                aria-describedby="place-peak-hint"
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    peak_minutes:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              />
+              <small id="place-peak-hint" className="field-hint">
+                Weekdays 7–9 AM and 4–6 PM. Empty: the same as usual.
+              </small>
             </div>
           </div>
           <div className="button-row">

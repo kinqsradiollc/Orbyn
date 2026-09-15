@@ -14,11 +14,12 @@ import {
   type Webhook,
   type WebhookEvent,
 } from "@orbyn/core";
-import { client } from "../../lib/api";
+import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
 import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
+import "./settings-w3.css";
 
 type Props = { report: (e: unknown) => void };
 
@@ -77,6 +78,17 @@ export function ConnectionsSettings({ report }: Props) {
           stays on this server: keys and links only let those tools reach it
           here, and webhooks send only the events you pick to the address you
           give.
+        </p>
+        <p className="muted">
+          Building an integration? See the{" "}
+          <a
+            href={`${apiBase}/openapi.yaml`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            API reference
+          </a>{" "}
+          (OpenAPI).
         </p>
       </section>
       <ApiKeys report={report} />
@@ -181,6 +193,8 @@ function Webhooks({ report }: Props) {
   const [hooks, setHooks] = useState<Webhook[] | null>(null);
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<WebhookEvent[]>(["item.created"]);
+  /** Minutes before an event that "event starting soon" is sent. */
+  const [lead, setLead] = useState(15);
   const [secret, setSecret] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, string>>({});
   const action = useAction(report);
@@ -201,7 +215,11 @@ function Webhooks({ report }: Props) {
       return;
     }
     void action.run(async () => {
-      const hook = await client.createWebhook({ url: url.trim(), events });
+      const hook = await client.createWebhook({
+        url: url.trim(),
+        events,
+        ...(events.includes("event.starting") ? { lead_minutes: lead } : {}),
+      });
       setSecret(hook.secret);
       setUrl("");
       await load();
@@ -211,6 +229,12 @@ function Webhooks({ report }: Props) {
     void action.run(async () => {
       await client.updateWebhook(h.id, { active });
       await load();
+    });
+  const setLeadFor = (h: Webhook, minutes: number) =>
+    void action.run(async () => {
+      await client.updateWebhook(h.id, { lead_minutes: minutes });
+      await load();
+      return "Saved.";
     });
   const test = (h: Webhook) =>
     void action.run(async () => {
@@ -252,6 +276,8 @@ function Webhooks({ report }: Props) {
                 <strong className="hook-url">{h.url}</strong>
                 <small>
                   {h.events.map((e) => EVENT_LABELS[e] ?? e).join(", ")}
+                  {h.events.includes("event.starting") &&
+                    ` · starts ${h.lead_minutes ?? 15} min before`}
                 </small>
                 <small>
                   {h.last_status !== null
@@ -269,6 +295,28 @@ function Webhooks({ report }: Props) {
                   </small>
                 )}
               </span>
+              {h.events.includes("event.starting") && (
+                <label className="hook-lead">
+                  <span className="sr-only">
+                    Minutes before an event, for {h.url}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={120}
+                    defaultValue={h.lead_minutes ?? 15}
+                    disabled={action.pending}
+                    onBlur={(e) => {
+                      const v = Math.min(
+                        120,
+                        Math.max(0, Math.round(Number(e.target.value) || 0)),
+                      );
+                      if (v !== (h.lead_minutes ?? 15)) setLeadFor(h, v);
+                    }}
+                  />{" "}
+                  min before
+                </label>
+              )}
               <label className="hook-active">
                 <span className="sr-only">Send to {h.url}</span>
                 <input
@@ -335,6 +383,23 @@ function Webhooks({ report }: Props) {
             ))}
           </div>
         </fieldset>
+        {events.includes("event.starting") && (
+          <div className="settings-field">
+            <label htmlFor="hook-lead">
+              “Event starting soon”: minutes before
+            </label>
+            <input
+              id="hook-lead"
+              type="number"
+              min={0}
+              max={120}
+              value={lead}
+              onChange={(e) =>
+                setLead(Math.min(120, Math.max(0, Number(e.target.value) || 0)))
+              }
+            />
+          </div>
+        )}
         <button className="primary" disabled={action.pending || !url.trim()}>
           <Plus size={14} /> Add webhook
         </button>

@@ -51,6 +51,8 @@ import {
 } from "../features/booking/BookingView";
 import { PublicBooking } from "../features/booking/PublicBooking";
 import { RsvpPage } from "../features/rsvp/RsvpPage";
+import { PublicInvitePage } from "../features/booking/PublicInvite";
+import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import type { View } from "./views";
 import "../styles/planning.css";
@@ -115,7 +117,8 @@ export function App() {
   const [bookingFocus, setBookingFocus] = useState<BookingFocus | null>(null);
   // Public pages from emailed links: booking pages and invitations.
   const isPublicBooking =
-    !nativeDesktop && (path.startsWith("/book/") || path.startsWith("/rsvp/"));
+    !nativeDesktop &&
+    ["/book/", "/rsvp/", "/invite/", "/u/"].some((p) => path.startsWith(p));
 
   useEffect(() => {
     if (token && (path === "/login" || path === "/signup"))
@@ -366,6 +369,10 @@ export function App() {
   if (isPublicBooking)
     return path.startsWith("/rsvp/") ? (
       <RsvpPage path={path} onHome={() => navigatePath("/")} />
+    ) : path.startsWith("/invite/") ? (
+      <PublicInvitePage path={path} onHome={() => navigatePath("/")} />
+    ) : path.startsWith("/u/") ? (
+      <PublicProfilePage path={path} onHome={() => navigatePath("/")} />
     ) : (
       <PublicBooking path={path} onHome={() => navigatePath("/")} />
     );
@@ -457,6 +464,7 @@ export function App() {
                   onQueryChange={setQuery}
                   onSetStatus={setStatus}
                   userId={user?.id}
+                  onChanged={refresh}
                 />
               )}
               {view === "Lists" && (
@@ -562,6 +570,8 @@ export function App() {
             onClose={closeTask}
             onEdit={setEditing}
             onFocus={startFocus}
+            items={items}
+            onOpenItem={setOpenTask}
             onChanged={refresh}
             onError={report}
           />

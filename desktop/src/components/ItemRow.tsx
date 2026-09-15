@@ -1,11 +1,23 @@
 import { useEffect, useRef } from "react";
-import { Check, ChevronRight, ListChecks, Users } from "lucide-react";
-import { dateLabel, type Item } from "@orbyn/core";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Hourglass,
+  ListChecks,
+  ListTree,
+  Users,
+} from "lucide-react";
+import { dateLabel, isClosed, type Item } from "@orbyn/core";
 import { stagger } from "../lib/motion";
+import { minutesLabel } from "../lib/planning";
 import { progressOf, stepsLabel, updatesLabel } from "../lib/tasks";
 import { StatusPill } from "./StatusPill";
 import { ProgressBar } from "./ProgressBar";
 import { ItemFacts } from "./ItemFacts";
+import "./tasks-w3.css";
 
 type Props = {
   item: Item;
@@ -20,11 +32,18 @@ type Props = {
   onOpen: (item: Item) => void;
   /** The priority score, shown when the list is sorted by it. */
   score?: number | null;
+  /** For a task with its subtasks listed under it: whether they're folded. */
+  collapsed?: boolean;
+  onToggleChildren?: () => void;
+  /** Manual order: move it before or after its neighbour. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 };
 
 /**
  * One task or event: quick-complete, title and timing, status, progress with
- * checklist and update counts. Clicking the row opens the task panel.
+ * checklist, subtask and update counts, and the time left. Clicking the row
+ * opens the task panel.
  */
 export function ItemRow({
   item: i,
@@ -34,6 +53,10 @@ export function ItemRow({
   onToggle,
   onOpen,
   score,
+  collapsed,
+  onToggleChildren,
+  onMoveUp,
+  onMoveDown,
 }: Props) {
   const done = i.status === "done";
   // Items already done when the row mounts don't pop; completing one does.
@@ -44,6 +67,13 @@ export function ItemRow({
   const steps = stepsLabel(i);
   const updates = updatesLabel(i);
   const showProgress = i.kind === "task" || !!i.steps_total;
+  const subtasks = i.child_count
+    ? `${i.children_done ?? 0} of ${i.child_count} subtasks`
+    : null;
+  const left =
+    i.kind === "task" && !isClosed(i.status) && i.remaining_minutes != null
+      ? `${minutesLabel(i.remaining_minutes)} left`
+      : null;
   return (
     <div
       className={
@@ -51,6 +81,16 @@ export function ItemRow({
       }
       style={stagger(index)}
     >
+      {onToggleChildren && (
+        <button
+          className="icon-button row-fold"
+          aria-expanded={!collapsed}
+          aria-label={`${collapsed ? "Show" : "Hide"} the subtasks of ${i.title}`}
+          onClick={onToggleChildren}
+        >
+          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+        </button>
+      )}
       <button
         disabled={busy || readOnly}
         className={
@@ -76,7 +116,7 @@ export function ItemRow({
             : i.notes || (i.team_id ? "Team plan" : "Personal")}
           {i.due_at && " · " + dateLabel(i.due_at)}
         </span>
-        {(showProgress || steps || updates) && (
+        {(showProgress || steps || updates || subtasks || left) && (
           <span className="item-progress-line">
             {showProgress && (
               <ProgressBar
@@ -89,6 +129,18 @@ export function ItemRow({
               <span className="item-fact">
                 <ListChecks size={12} aria-hidden="true" />
                 {steps}
+              </span>
+            )}
+            {subtasks && (
+              <span className="item-fact">
+                <ListTree size={12} aria-hidden="true" />
+                {subtasks}
+              </span>
+            )}
+            {left && (
+              <span className="item-fact">
+                <Hourglass size={12} aria-hidden="true" />
+                {left}
               </span>
             )}
             {updates && <span className="item-fact">{updates}</span>}
@@ -111,6 +163,28 @@ export function ItemRow({
         <StatusPill status={i.status} />
         <span className={"priority " + i.priority}>{i.priority}</span>
       </span>
+      {(onMoveUp || onMoveDown) && (
+        <span className="row-move">
+          <button
+            className="icon-button"
+            aria-label={`Move ${i.title} up`}
+            title="Move up"
+            disabled={!onMoveUp || busy}
+            onClick={onMoveUp}
+          >
+            <ArrowUp size={13} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label={`Move ${i.title} down`}
+            title="Move down"
+            disabled={!onMoveDown || busy}
+            onClick={onMoveDown}
+          >
+            <ArrowDown size={13} />
+          </button>
+        </span>
+      )}
       <ChevronRight size={16} className="item-chevron" aria-hidden="true" />
     </div>
   );
