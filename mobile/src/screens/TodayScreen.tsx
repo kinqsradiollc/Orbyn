@@ -6,9 +6,11 @@ import {
   overviewItems,
   statusTones,
   type Item,
+  type Plan,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
+import { ReviewCard } from "../components/ReviewCard";
 import {
   EmptyState,
   ItemRows,
@@ -29,11 +31,14 @@ const COMING_UP = 5;
 export function TodayScreen({
   items,
   onPlanDay,
+  onOpenPlanner,
   ...handlers
 }: ListHandlers & {
   items: Item[];
   /** Jumps to the assistant and asks it to plan the day. */
   onPlanDay: () => void;
+  /** Opens the Plan my day sheet, optionally on a plan to review. */
+  onOpenPlanner: (seed: Plan | null) => void;
 }) {
   const now = new Date();
   const {
@@ -89,6 +94,24 @@ export function TodayScreen({
         ))}
       </View>
 
+      {open.some((i) => i.kind === "task") && (
+        <FadeIn style={[shared.card, s.plan]}>
+          <View style={s.planText}>
+            <Text style={shared.sectionTitle}>Plan my day</Text>
+            <Text style={shared.small}>
+              Fit your open tasks into the free time around your events.
+            </Text>
+          </View>
+          <Button
+            title="Plan"
+            icon="calendar"
+            style={s.planButton}
+            onPress={() => onOpenPlanner(null)}
+          />
+        </FadeIn>
+      )}
+      <ReviewCard items={items} onPlan={onOpenPlanner} />
+
       {!items.length ? (
         <EmptyState
           {...emptyPlans}
@@ -138,7 +161,7 @@ export function TodayScreen({
         </Text>
         <Button
           icon="arrowRight"
-          title="Help me plan my day"
+          title="Talk it through with the assistant"
           onPress={onPlanDay}
         />
       </View>
@@ -218,4 +241,7 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
   text: { marginBottom: 18 },
+  plan: { flexDirection: "row", alignItems: "center", gap: 14 },
+  planText: { flex: 1, gap: 3 },
+  planButton: { marginBottom: 0 },
 });

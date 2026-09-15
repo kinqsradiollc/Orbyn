@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -21,10 +21,18 @@ import {
   type Item,
   type ItemInput,
   type Team,
+  type TeamMember,
 } from "@orbyn/core";
 import { Button } from "./Button";
+import { Chip, ChipRow } from "./Chip";
+import { NumberInput } from "./Field";
 import { Icon } from "./Icon";
+import { RepeatPicker } from "./RepeatPicker";
 import { Segmented } from "./Segmented";
+import { client } from "../lib/api";
+import { deviceTimeZone, ESTIMATES, minutesLabel } from "../lib/planning";
+import { usePlanning } from "../lib/planningContext";
+import { PressableScale } from "../motion";
 import { colors, fonts, radii, spacing } from "../theme";
 import { shared } from "../styles";
 
@@ -107,6 +115,60 @@ function Form({
   ];
   const shareLabels: Record<string, string> = { [PERSONAL]: "Personal" };
   for (const t of shareTargets) shareLabels[t.id] = t.name;
+
+  // Lists and tags must belong where the item lives: yours for a personal
+  // item, the team's for a team item (the server checks this too).
+  const { lists, tags, reload } = usePlanning();
+  const scopeLists = lists.filter((l) => (l.team_id ?? null) === teamId);
+  const scopeTags = tags.filter((t) => (t.team_id ?? null) === teamId);
+  const tagIds = editing.tag_ids ?? [];
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  useEffect(() => {
+    if (!teamId) {
+      setMembers([]);
+      return;
+    }
+    let alive = true;
+    client
+      .getTeam(teamId)
+      .then((d) => alive && setMembers(d.members))
+      .catch(() => alive && setMembers([]));
+    return () => {
+      alive = false;
+    };
+  }, [teamId]);
+  const estimate = editing.estimate_minutes ?? null;
+  const [customEstimate, setCustomEstimate] = useState(
+    () => !!estimate && !(ESTIMATES as readonly number[]).includes(estimate),
+  );
+  const [newTag, setNewTag] = useState("");
+  const [tagBusy, setTagBusy] = useState(false);
+  const [tagError, setTagError] = useState("");
+  const addTag = async () => {
+    const name = newTag.trim();
+    if (!name) return;
+    const existing = scopeTags.find(
+      (t) => t.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (existing) {
+      if (!tagIds.includes(existing.id))
+        onChange({ tag_ids: [...tagIds, existing.id] });
+      setNewTag("");
+      return;
+    }
+    setTagBusy(true);
+    setTagError("");
+    try {
+      const tag = await client.createTag({ name, team_id: teamId });
+      await reload();
+      onChange({ tag_ids: [...tagIds, tag.id] });
+      setNewTag("");
+    } catch (e) {
+      setTagError((e as Error).message);
+    } finally {
+      setTagBusy(false);
+    }
+  };
   return (
     <>
       <View style={s.header}>
@@ -165,9 +227,17 @@ function Form({
                   options={shareOptions}
                   labels={shareLabels}
                   value={teamId ?? PERSONAL}
-                  onChange={(value) =>
-                    onChange({ team_id: value === PERSONAL ? null : value })
-                  }
+                  onChange={(value) => {
+                    const next = value === PERSONAL ? null : value;
+                    if (next === teamId) return;
+                    // A list, tags or assignee from elsewhere don't carry over.
+                    onChange({
+                      team_id: next,
+                      list_id: null,
+                      tag_ids: [],
+                      assignee_id: null,
+                    });
+                  }}
                 />
                 {lockedToTeam && (
                   <Text style={[shared.small, s.hint]}>
@@ -313,6 +383,216 @@ function Form({
                   />
                 )}
               </View>
+            )}
+            <Section label="Repeat">
+              <RepeatPicker
+                rrule={editing.rrule}
+                dueAt={editing.due_at}
+                disabled={readOnly}
+                onChange={(rrule) =>
+                  onChange(
+                    rrule
+                      ? { rrule, timezone: deviceTimeZone() }
+                      : { rrule: null },
+                  )
+                }
+              />
+            </Section>
+            {editing.kind === "task" && (
+              <Section label="How long will it take?">
+                <ChipRow label="Estimate">
+                  <Chip
+                    label="Not sure"
+                    selected={!estimate && !customEstimate}
+                    disabled={readOnly}
+                    onPress={() => {
+                      setCustomEstimate(false);
+                      onChange({ estimate_minutes: null });
+                    }}
+                  />
+                  {ESTIMATES.map((m) => (
+                    <Chip
+                      key={m}
+                      label={minutesLabel(m)}
+                      accessibilityLabel={`${minutesLabel(m)} estimate`}
+                      selected={!customEstimate && estimate === m}
+                      disabled={readOnly}
+                      onPress={() => {
+                        setCustomEstimate(false);
+                        onChange({ estimate_minutes: m });
+                      }}
+                    />
+                  ))}
+                  <Chip
+                    label="Custom"
+                    selected={customEstimate}
+                    disabled={readOnly}
+                    onPress={() => setCustomEstimate(true)}
+                  />
+                </ChipRow>
+                {customEstimate && (
+                  <View style={s.below}>
+                    <NumberInput
+                      value={estimate ? String(estimate) : ""}
+                      editable={!readOnly}
+                      placeholder="50"
+                      suffix="minutes"
+                      accessibilityLabel="Estimate in minutes"
+                      onChangeText={(text) =>
+                        onChange({
+                          estimate_minutes:
+                            Math.min(10080, Number(text) || 0) || null,
+                        })
+                      }
+                    />
+                  </View>
+                )}
+              </Section>
+            )}
+            <Section label="List">
+              {scopeLists.length ? (
+                <ChipRow label="List">
+                  <Chip
+                    label="No list"
+                    selected={!editing.list_id}
+                    disabled={readOnly}
+                    onPress={() => onChange({ list_id: null })}
+                  />
+                  {scopeLists.map((l) => (
+                    <Chip
+                      key={l.id}
+                      label={l.name}
+                      color={l.color}
+                      selected={editing.list_id === l.id}
+                      disabled={readOnly}
+                      onPress={() => onChange({ list_id: l.id })}
+                    />
+                  ))}
+                </ChipRow>
+              ) : (
+                <Text style={shared.small}>
+                  {teamId
+                    ? "This team has no lists yet. Add them from My tasks → Lists."
+                    : "No lists yet. Add them from My tasks → Lists."}
+                </Text>
+              )}
+            </Section>
+            <Section label="Tags">
+              {scopeTags.length > 0 && (
+                <ChipRow label="Tags" multi>
+                  {scopeTags.map((t) => {
+                    const on = tagIds.includes(t.id);
+                    return (
+                      <Chip
+                        key={t.id}
+                        multi
+                        label={t.name}
+                        color={t.color}
+                        selected={on}
+                        disabled={readOnly}
+                        onPress={() =>
+                          onChange({
+                            tag_ids: on
+                              ? tagIds.filter((id) => id !== t.id)
+                              : [...tagIds, t.id],
+                          })
+                        }
+                      />
+                    );
+                  })}
+                </ChipRow>
+              )}
+              {!readOnly && (
+                <View style={[s.tagRow, scopeTags.length > 0 && s.below]}>
+                  <TextInput
+                    style={[shared.input, s.tagInput]}
+                    value={newTag}
+                    onChangeText={setNewTag}
+                    maxLength={40}
+                    placeholder={teamId ? "New team tag" : "New tag"}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="done"
+                    submitBehavior="submit"
+                    onSubmitEditing={() => void addTag()}
+                    accessibilityLabel="New tag name"
+                  />
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Create tag"
+                    accessibilityState={{
+                      disabled: tagBusy || !newTag.trim(),
+                    }}
+                    disabled={tagBusy || !newTag.trim()}
+                    onPress={() => void addTag()}
+                    style={[
+                      s.tagAdd,
+                      (tagBusy || !newTag.trim()) && { opacity: 0.45 },
+                    ]}
+                  >
+                    <Icon
+                      name="plus"
+                      size={18}
+                      color={colors.white}
+                      strokeWidth={2.2}
+                    />
+                  </PressableScale>
+                </View>
+              )}
+              {!!tagError && (
+                <Text accessibilityRole="alert" style={[s.error, s.below]}>
+                  {tagError}
+                </Text>
+              )}
+            </Section>
+            {!!teamId && members.length > 0 && (
+              <Section label="Assigned to">
+                <ChipRow label="Assigned to">
+                  <Chip
+                    label="Nobody"
+                    selected={!editing.assignee_id}
+                    disabled={readOnly}
+                    onPress={() => onChange({ assignee_id: null })}
+                  />
+                  {members.map((m) => (
+                    <Chip
+                      key={m.user_id}
+                      label={m.name}
+                      selected={editing.assignee_id === m.user_id}
+                      disabled={readOnly}
+                      onPress={() => onChange({ assignee_id: m.user_id })}
+                    />
+                  ))}
+                </ChipRow>
+              </Section>
+            )}
+            {editing.kind === "event" && (
+              <>
+                <Section label="Location">
+                  <TextInput
+                    style={shared.input}
+                    editable={!readOnly}
+                    value={editing.location ?? ""}
+                    maxLength={300}
+                    placeholder="Where it happens"
+                    placeholderTextColor={colors.faint}
+                    onChangeText={(location) => onChange({ location })}
+                  />
+                </Section>
+                <Section label="Meeting link">
+                  <TextInput
+                    style={shared.input}
+                    editable={!readOnly}
+                    value={editing.meeting_url ?? ""}
+                    maxLength={500}
+                    placeholder="https://"
+                    placeholderTextColor={colors.faint}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={(meeting_url) => onChange({ meeting_url })}
+                  />
+                </Section>
+              </>
             )}
             <Section label="Notes">
               <TextInput
@@ -481,5 +761,16 @@ const s = StyleSheet.create({
     borderRadius: radii.input,
     padding: 12,
     marginBottom: 14,
+  },
+  below: { marginTop: 10 },
+  tagRow: { flexDirection: "row", gap: 8 },
+  tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+  tagAdd: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.input,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

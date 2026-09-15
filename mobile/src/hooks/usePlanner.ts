@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import * as Notifications from "expo-notifications";
-import type { Item, Maintenance, Notice, Team, User } from "@orbyn/core";
+import type {
+  Item,
+  Maintenance,
+  Notice,
+  Tag,
+  TaskList,
+  Team,
+  User,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
@@ -26,6 +34,8 @@ export function usePlanner() {
   const [items, setItems] = useState<Item[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [lists, setLists] = useState<TaskList[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,6 +66,8 @@ export function usePlanner() {
     setItems([]);
     setNotices([]);
     setTeams([]);
+    setLists([]);
+    setTags([]);
     setUser(null);
   };
 
@@ -95,13 +107,16 @@ export function usePlanner() {
       if (!options?.silent) setRefreshing(true);
       try {
         const list = await client.listAllItems(500);
-        const [u, n, t] = await Promise.all([
+        const [u, n, t, l, g] = await Promise.all([
           client.me(),
           client.listNotifications(),
           client.listTeams(),
+          // Older servers have no lists or tags; the planner works without them.
+          client.listLists().catch((): TaskList[] => []),
+          client.listTags().catch((): Tag[] => []),
         ]);
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-        const snapshot = JSON.stringify([list, u, n, t]);
+        const snapshot = JSON.stringify([list, u, n, t, l, g]);
         // Nothing changed: skip the re-render entirely.
         if (options?.silent && snapshot === lastData.current) return;
         lastData.current = snapshot;
@@ -110,6 +125,8 @@ export function usePlanner() {
         setUser(u);
         setNotices(n);
         setTeams(t);
+        setLists(l);
+        setTags(g);
       } finally {
         if (tokenRef.current === token && !options?.silent)
           setRefreshing(false);
@@ -117,6 +134,17 @@ export function usePlanner() {
     },
     [token],
   );
+
+  /** Reload only lists and tags, after one is created, edited or deleted. */
+  const reloadPlanning = useCallback(async () => {
+    if (!token) return;
+    const [l, g] = await Promise.all([client.listLists(), client.listTags()]);
+    if (tokenRef.current !== token) return;
+    // The next background refresh compares against fresh data, not stale lists.
+    lastData.current = "";
+    setLists(l);
+    setTags(g);
+  }, [token]);
 
   useEffect(() => {
     loadSession()
@@ -195,6 +223,9 @@ export function usePlanner() {
     items,
     notices,
     teams,
+    lists,
+    tags,
+    reloadPlanning,
     error,
     setError,
     busy,

@@ -1,5 +1,3 @@
-import type { Item } from "@orbyn/core";
-
 /** First hour on the day timeline (6am) and the hour it ends (midnight). */
 export const DAY_START = 6;
 export const DAY_END = 24;
@@ -38,8 +36,17 @@ const minutesInto = (day: Date, at: Date) =>
 export const offsetFor = (day: Date, at: Date) =>
   ((minutesInto(day, at) - DAY_START * 60) / 60) * HOUR_HEIGHT;
 
-export type Placed = {
-  item: Item;
+/** Anything drawn on the day timeline: a calendar entry or a time block. */
+export type Slot = {
+  key: string;
+  start: Date;
+  /** Null for a task with only a due time, or an event without an end. */
+  end: Date | null;
+  kind: "task" | "event";
+};
+
+export type Placed<T extends Slot> = {
+  slot: T;
   start: Date;
   end: Date;
   top: number;
@@ -50,34 +57,33 @@ export type Placed = {
 };
 
 /**
- * Split a day's items into timeline blocks and the "All day / no time" row.
- * Items due exactly at midnight without an end, or entirely outside the
+ * Split a day's slots into timeline blocks and the "All day / no time" row.
+ * Slots starting exactly at midnight without an end, or entirely outside the
  * visible 6am-midnight window, go in the row. Overlapping blocks share the
  * width side by side, like a desktop calendar.
  */
-export function layoutDay(items: Item[], day: Date) {
-  const allDay: Item[] = [];
-  const blocks: Omit<Placed, "column" | "columns">[] = [];
-  for (const item of items) {
-    if (!item.due_at) continue;
-    const start = new Date(item.due_at);
+export function layoutDay<T extends Slot>(slots: T[], day: Date) {
+  const allDay: T[] = [];
+  const blocks: Omit<Placed<T>, "column" | "columns">[] = [];
+  for (const slot of slots) {
+    const start = slot.start;
     const startMin = minutesInto(day, start);
-    const end = item.end_at
-      ? new Date(item.end_at)
-      : new Date(
-          start.getTime() +
-            (item.kind === "event" ? EVENT_MINUTES : TASK_MINUTES) * 60_000,
-        );
+    const end =
+      slot.end ??
+      new Date(
+        start.getTime() +
+          (slot.kind === "event" ? EVENT_MINUTES : TASK_MINUTES) * 60_000,
+      );
     const endMin = Math.min(minutesInto(day, end), DAY_END * 60);
-    const untimed = !item.end_at && startMin === 0;
+    const untimed = !slot.end && startMin === 0;
     if (untimed || endMin <= DAY_START * 60) {
-      allDay.push(item);
+      allDay.push(slot);
       continue;
     }
     const from = Math.max(startMin, DAY_START * 60);
     const to = Math.max(endMin, from + MIN_BLOCK);
     blocks.push({
-      item,
+      slot,
       start,
       end,
       top: ((from - DAY_START * 60) / 60) * HOUR_HEIGHT,
@@ -86,8 +92,8 @@ export function layoutDay(items: Item[], day: Date) {
   }
   blocks.sort((a, b) => a.top - b.top || b.height - a.height);
 
-  const placed: Placed[] = [];
-  let cluster: Placed[] = [];
+  const placed: Placed<T>[] = [];
+  let cluster: Placed<T>[] = [];
   let columnEnds: number[] = [];
   let clusterEnd = -Infinity;
   const close = () => {
@@ -104,7 +110,7 @@ export function layoutDay(items: Item[], day: Date) {
       b.top >= clusterEnd ? -Infinity : clusterEnd,
       b.top + b.height,
     );
-    const p: Placed = { ...b, column, columns: 1 };
+    const p: Placed<T> = { ...b, column, columns: 1 };
     cluster.push(p);
     placed.push(p);
   }

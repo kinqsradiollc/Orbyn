@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -28,9 +29,13 @@ import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { StatusPill } from "../components/Pill";
+import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
+import { SchedulePanel } from "../components/SchedulePanel";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
+import { canJoin } from "../lib/planning";
 import { percentOf, stepsLabel, timeAgo } from "../lib/progress";
 import {
   animateLayout,
@@ -66,6 +71,7 @@ export function TaskDetail({
   onClose,
   onDismiss,
   onEdit,
+  onFocus,
   onChanged,
 }: {
   visible: boolean;
@@ -77,6 +83,8 @@ export function TaskDetail({
   onDismiss?: () => void;
   /** Opens the full editor for this item. */
   onEdit: (item: Item) => void;
+  /** Opens focus mode for this task. */
+  onFocus: (item: Item) => void;
   /** Called after every change so lists and counts refresh. */
   onChanged: () => void;
 }) {
@@ -93,6 +101,7 @@ export function TaskDetail({
           seed={item}
           teams={teams}
           onEdit={onEdit}
+          onFocus={onFocus}
           onChanged={onChanged}
         />
       )}
@@ -104,11 +113,13 @@ function Body({
   seed,
   teams,
   onEdit,
+  onFocus,
   onChanged,
 }: {
   seed: Item;
   teams: Team[];
   onEdit: (item: Item) => void;
+  onFocus: (item: Item) => void;
   onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<ItemDetail | null>(null);
@@ -150,6 +161,13 @@ function Body({
   const percent = percentOf(item);
   const tone = statusTones[item.status];
   const priority = PRIORITY[item.priority];
+  const meetingUrl = item.meeting_url ?? "";
+  const now = useNow(30_000, !!meetingUrl);
+  const joinable = canJoin(
+    { meeting_url: meetingUrl, start_at: item.due_at, end_at: item.end_at },
+    now,
+  );
+  const canWork = item.kind === "task" && item.status !== "done" && !readOnly;
 
   /** Run a change; the server answers with the fresh detail. */
   const run = async (fn: () => Promise<ItemDetail>) => {
@@ -253,8 +271,46 @@ function Body({
                 </View>
               )}
             </View>
+            <PlanningMeta item={item} large />
+            {!!item.location && (
+              <View style={[s.metaItem, s.metaLine]}>
+                <Icon name="mapPin" size={14} color={colors.muted} />
+                <Text style={s.metaText}>{item.location}</Text>
+              </View>
+            )}
             {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
+            {!!meetingUrl && (
+              <View style={s.meeting}>
+                <Button
+                  title="Join"
+                  icon="video"
+                  disabled={!joinable}
+                  style={s.join}
+                  onPress={() =>
+                    void Linking.openURL(meetingUrl).catch(() =>
+                      setError("That meeting link couldn’t be opened."),
+                    )
+                  }
+                />
+                {!joinable && (
+                  <Text style={shared.small}>
+                    Join opens 5 minutes before the start.
+                  </Text>
+                )}
+              </View>
+            )}
           </FadeIn>
+
+          {canWork && (
+            <View>
+              <Button
+                title="Focus on this"
+                icon="target"
+                onPress={() => onFocus(item)}
+              />
+              <SchedulePanel item={item} onBooked={onChanged} />
+            </View>
+          )}
 
           {readOnly && (
             <View style={s.viewOnly}>
@@ -645,6 +701,9 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
   metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+  metaLine: { marginTop: 10 },
+  meeting: { marginTop: 14, gap: 6 },
+  join: { marginBottom: 0 },
   metaText: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
   chip: {
     flexDirection: "row",

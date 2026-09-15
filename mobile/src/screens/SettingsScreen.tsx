@@ -19,6 +19,9 @@ export function SettingsScreen({
   onOpenTeams,
   onOpenAdmin,
   onOpenStatus,
+  onOpenPlanning,
+  onOpenConnections,
+  onOpenBooking,
 }: {
   user: User | null;
   busy: boolean;
@@ -29,6 +32,9 @@ export function SettingsScreen({
   onOpenTeams: () => void;
   onOpenAdmin: () => void;
   onOpenStatus: () => void;
+  onOpenPlanning: () => void;
+  onOpenConnections: () => void;
+  onOpenBooking: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const [statusHeadline, setStatusHeadline] = useState("");
@@ -94,6 +100,30 @@ export function SettingsScreen({
             onPress={onOpenAdmin}
           />
         )}
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>PLANNING</Text>
+      <View style={[shared.card, s.rows]}>
+        <LinkRow
+          icon="clock"
+          title="Planning"
+          detail="Working hours, frames and places"
+          onPress={onOpenPlanning}
+        />
+        <LinkRow
+          divider
+          icon="calendar"
+          title="Booking pages"
+          detail="Let people book time with you"
+          onPress={onOpenBooking}
+        />
+        <LinkRow
+          divider
+          icon="link"
+          title="Connections"
+          detail="API keys, webhooks and calendar feed"
+          onPress={onOpenConnections}
+        />
       </View>
 
       <Text style={[shared.eyebrow, s.section]}>STAY IN THE LOOP</Text>

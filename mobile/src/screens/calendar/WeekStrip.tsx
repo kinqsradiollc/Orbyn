@@ -7,13 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import {
-  itemsOnDay,
-  motion,
-  sameDay,
-  statusTones,
-  type Item,
-} from "@orbyn/core";
+import { motion, sameDay, statusTones, type Status } from "@orbyn/core";
 import { easeOut, isReducedMotion } from "../../motion";
 import { colors, fonts } from "../../theme";
 import { startOfWeek, weekDays } from "./dates";
@@ -26,12 +20,13 @@ const SWIPE_DISTANCE = 50;
  */
 export function WeekStrip({
   selected,
-  items,
+  plansOn,
   onSelect,
   onShiftWeek,
 }: {
   selected: Date;
-  items: Item[];
+  /** What's planned on a day, for the dots. */
+  plansOn: (day: Date) => { key: string; status: Status }[];
   onSelect: (day: Date) => void;
   /** +1 for next week, -1 for the previous one. */
   onShiftWeek: (direction: 1 | -1) => void;
@@ -130,7 +125,7 @@ export function WeekStrip({
         {days.map((day) => {
           const active = sameDay(day, selected);
           const isToday = sameDay(day, today);
-          const plans = itemsOnDay(items, day);
+          const plans = plansOn(day);
           return (
             <Pressable
               key={day.toDateString()}
@@ -163,7 +158,7 @@ export function WeekStrip({
               <View style={s.dots}>
                 {plans.slice(0, 3).map((i) => (
                   <View
-                    key={i.id}
+                    key={i.key}
                     style={[
                       s.dot,
                       {
