@@ -207,7 +207,7 @@ export function BookingDrawer({
               </a>
               <span className="drawer-fact">
                 <i className="list-dot" style={{ background: color }} />
-                {d.page_title}
+                {d.page_title ?? "Open invite"}
               </span>
             </div>
           )}
@@ -554,7 +554,7 @@ function HostReschedule({
           const status = (e as HttpError).status;
           setError(
             status === 404
-              ? "The page is switched off, so it can't suggest times. Choose a time below."
+              ? "No free times to suggest right now. You can type a time below."
               : status === 422
                 ? "The page no longer offers this length. Choose a time below."
                 : errorText(e),
@@ -581,7 +581,9 @@ function HostReschedule({
   return (
     <div className="booking-step">
       <p className="drawer-hint booking-step-intro">
-        Pick a free time on “{booking.page_title}”, or choose any time below.
+        Pick one of the free times
+        {booking.page_title ? ` on “${booking.page_title}”` : ""}. A booking can
+        only move to a time that's free.
       </p>
       <SlotPicker
         tz={tz}
@@ -601,7 +603,7 @@ function HostReschedule({
         exclude={booking.start_at}
       />
       <label className="booking-custom-time">
-        Or choose a time
+        Or type a time
         <input
           type="datetime-local"
           value={custom}
@@ -612,7 +614,9 @@ function HostReschedule({
         />
       </label>
       <small className="field-hint">
-        It still has to fit the page's hours and every required host's calendar.
+        It has to be free: inside the page's hours (or the invite's windows) and
+        free on every required host's calendar. If it isn't, nothing moves and
+        you'll see why below.
       </small>
       <div className="booking-step-actions">
         <button

@@ -17,6 +17,7 @@ import {
 import {
   BREAK_LEVELS,
   dateLabel,
+  localDateKey,
   type BreakLevel,
   type BusyInterval,
   type HttpError,
@@ -31,7 +32,6 @@ import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
 import { appliedText, PlanCard } from "../../components/PlanCard";
 import {
-  dayKey,
   deviceTimeZone,
   errorText,
   minutesLabel,
@@ -106,7 +106,10 @@ export function PlannerPanel({
   onClose,
 }: Props) {
   const { lists } = usePlanning();
-  const [startDate, setStartDate] = useState(() => dayKey(new Date()));
+  /** Today in the planner's time zone, which is how the server reads start_date. */
+  const today = () =>
+    localDateKey(new Date(), prefs?.timezone ?? deviceTimeZone());
+  const [startDate, setStartDate] = useState(today);
   const [days, setDays] = useState(prefs?.horizon_days ?? 1);
   const [useFrames, setUseFrames] = useState(true);
   const [split, setSplit] = useState(true);
@@ -130,6 +133,7 @@ export function PlannerPanel({
     if (!prefs || seeded.current) return;
     seeded.current = true;
     setDays(prefs.horizon_days);
+    setStartDate(localDateKey(new Date(), prefs.timezone));
     setPad(prefs.pad_percent);
     setBreakLevel(prefs.break_level);
   }, [prefs]);
@@ -215,7 +219,7 @@ export function PlannerPanel({
     if (!request) return;
     const count = request.days ?? days;
     setDays(count);
-    setStartDate(dayKey(new Date()));
+    setStartDate(today());
     // Let the state settle so the preview uses today's date.
     const id = setTimeout(
       () => void latestPreview.current(count, request.include),

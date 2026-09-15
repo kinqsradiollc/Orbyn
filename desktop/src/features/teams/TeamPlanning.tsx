@@ -308,6 +308,9 @@ export function TeamPlanning({
   );
 }
 
+/** Find a time looks at this many hand-picked people at most. */
+const MAX_PEOPLE = 50;
+
 function FindATime({
   team,
   canWrite,
@@ -320,6 +323,8 @@ function FindATime({
   const [duration, setDuration] = useState(30);
   const [slots, setSlots] = useState<MeetingSlot[] | null>(null);
   const action = useAction(report);
+  const everyone = team.members.every((m) => picked.includes(m.user_id));
+  const tooMany = !everyone && picked.length > MAX_PEOPLE;
 
   const find = () =>
     void action.run(async () => {
@@ -329,7 +334,9 @@ function FindATime({
         from: now.toISOString(),
         to: new Date(now.getTime() + 7 * DAY_MS).toISOString(),
         duration,
-        user_ids: picked,
+        // Everyone: the server takes the whole team (a long list of ids
+        // wouldn't fit in the address).
+        ...(everyone ? {} : { user_ids: picked }),
       });
       setSlots(found);
       if (!found.length) return "No shared free time in the next 7 days.";
@@ -346,6 +353,11 @@ function FindATime({
               <input
                 type="checkbox"
                 checked={picked.includes(m.user_id)}
+                disabled={
+                  !picked.includes(m.user_id) &&
+                  picked.length >= MAX_PEOPLE &&
+                  picked.length + 1 < team.members.length
+                }
                 onChange={() =>
                   setPicked((p) =>
                     p.includes(m.user_id)
@@ -358,6 +370,22 @@ function FindATime({
             </label>
           ))}
         </div>
+        {team.members.length > MAX_PEOPLE && (
+          <small className="field-hint" role={tooMany ? "alert" : undefined}>
+            {tooMany
+              ? `Pick up to ${MAX_PEOPLE} people, or everyone.`
+              : `Everyone, or up to ${MAX_PEOPLE} people you pick.`}{" "}
+            {!everyone && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setPicked(team.members.map((m) => m.user_id))}
+              >
+                Pick everyone
+              </button>
+            )}
+          </small>
+        )}
       </fieldset>
       <div className="inline-form">
         <label className="sr-only" htmlFor="find-length">
@@ -376,7 +404,7 @@ function FindATime({
         </select>
         <button
           className="primary"
-          disabled={action.pending || !picked.length}
+          disabled={action.pending || !picked.length || tooMany}
           onClick={find}
         >
           <Search size={14} /> {action.pending ? "Looking…" : "Find times"}
