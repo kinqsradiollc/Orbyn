@@ -28,6 +28,7 @@ import { hourLabel, minutesOf, timeLabel } from "./dates";
 import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
 import { entryClass, listLook } from "./MonthView";
+import type { MateBusy } from "./Teammates";
 import {
   entryEnd,
   entryKey,
@@ -78,6 +79,19 @@ type Props = {
   onChangeBlock: (block: TimeBlock, start: Date, end: Date) => void;
   /** A block Alt/Option-dragged: copy it to `start`. */
   onDuplicateBlock: (block: TimeBlock, start: Date) => void;
+  /** Events and timed tasks you can drag (not repeating ones, for now). */
+  canDragEntry: (entry: CalendarEntry) => boolean;
+  /** An entry dragged to a new time, or resized from its bottom edge. */
+  onChangeEntry: (
+    entry: CalendarEntry,
+    start: Date,
+    end: Date,
+    resized: boolean,
+  ) => void;
+  /** Dragging across empty time (when not keeping time free): a new event. */
+  onCreateRange: (start: Date, end: Date) => void;
+  /** Teammates' busy times, as thin strips at the side of each day. */
+  teammates: MateBusy[];
   /** The picked time, marked in the grid ("C" makes an event there). */
   slot: Date | null;
   /** A click on an empty spot picks that time. */
@@ -85,7 +99,9 @@ type Props = {
 };
 
 type Target =
-  { kind: "block"; block: TimeBlock } | { kind: "ghost"; ghost: PlannedBlock };
+  | { kind: "block"; block: TimeBlock }
+  | { kind: "ghost"; ghost: PlannedBlock }
+  | { kind: "entry"; entry: CalendarEntry };
 
 type Gesture = {
   mode: "move" | "resize";
@@ -133,9 +149,11 @@ function onDay(start: string, end: string, dayStart: number, dayEnd: number) {
  * Week and Day time grid on the calendar API: events and dated tasks, time
  * blocks (drag to move, drag the bottom edge to resize, Alt-drag to copy),
  * frames as tinted bands, buffers and travel as hatched bands, plan-preview
- * ghosts (drag to pin, × to remove while tuning), keep-free ranges (drag
- * across empty time while tuning), extra time-zone columns, and a drop
- * target for tasks dragged from the side list.
+ * ghosts (drag to pin, × to remove while tuning), events and timed tasks
+ * (drag to move, events also resize; not repeating ones yet), dragging across
+ * empty time (a new event, or keep-free while tuning), teammates' busy times
+ * as thin strips, extra time-zone columns, and a drop target for tasks
+ * dragged from the side list.
  */
 export function CalendarGrid({
   days,
@@ -158,6 +176,10 @@ export function CalendarGrid({
   onDropTask,
   onChangeBlock,
   onDuplicateBlock,
+  canDragEntry,
+  onChangeEntry,
+  onCreateRange,
+  teammates,
   slot,
   onSelectSlot,
 }: Props) {
@@ -222,7 +244,15 @@ export function CalendarGrid({
       return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    const span = target.kind === "block" ? target.block : target.ghost;
+    const span =
+      target.kind === "block"
+        ? target.block
+        : target.kind === "ghost"
+          ? target.ghost
+          : {
+              start_at: target.entry.start_at,
+              end_at: entryEnd(target.entry).toISOString(),
+            };
     gesture.current = {
       mode,
       target,
@@ -274,11 +304,13 @@ export function CalendarGrid({
     if (g?.moved) {
       suppressClick.current = true;
       if (d && (d.start.getTime() !== g.start || d.end.getTime() !== g.end)) {
-        if (g.target.kind === "ghost")
-          onPinGhost(g.target.ghost, d.start, d.end);
+        const t = g.target;
+        if (t.kind === "entry")
+          onChangeEntry(t.entry, d.start, d.end, g.mode === "resize");
+        else if (t.kind === "ghost") onPinGhost(t.ghost, d.start, d.end);
         else if (g.mode === "move" && e.altKey)
-          onDuplicateBlock(g.target.block, d.start);
-        else onChangeBlock(g.target.block, d.start, d.end);
+          onDuplicateBlock(t.block, d.start);
+        else onChangeBlock(t.block, d.start, d.end);
       }
     }
     setDrag(null);
@@ -288,10 +320,9 @@ export function CalendarGrid({
     setDrag(null);
   };
 
-  // ---- dragging out keep-free ranges (while tuning a plan) ----
+  // ---- dragging across empty time: keep it free (tuning), else a new event ----
   const startSelect = (e: PointerEvent<HTMLDivElement>, day: number) => {
     if (
-      !onKeepFree ||
       e.target !== e.currentTarget ||
       e.button !== 0 ||
       e.pointerType === "touch"
@@ -314,7 +345,7 @@ export function CalendarGrid({
     setSelecting(null);
     if (!s || s.to - s.from < SNAP) return;
     skipClick.current = true;
-    onKeepFree?.(at(days[day], s.from), at(days[day], s.to));
+    (onKeepFree ?? onCreateRange)(at(days[day], s.from), at(days[day], s.to));
   };
 
   // ---- dropping tasks from the side list ----
@@ -355,12 +386,16 @@ export function CalendarGrid({
   const spans: Span<Cell>[] = [
     ...entries
       .filter((e) => !isAllDayEntry(e))
-      .map((entry) => ({
-        key: "e:" + entryKey(entry),
-        start: new Date(entry.start_at),
-        end: entryEnd(entry),
-        data: { type: "entry" as const, entry },
-      })),
+      .map((entry) => {
+        const key = "e:" + entryKey(entry);
+        const m = moving?.id === key ? moving : null;
+        return {
+          key,
+          start: m ? m.start : new Date(entry.start_at),
+          end: m ? m.end : entryEnd(entry),
+          data: { type: "entry" as const, entry },
+        };
+      }),
     ...shownBlocks.map((block) => ({
       key: "b:" + block.id,
       start: new Date(block.start_at),
@@ -576,20 +611,53 @@ export function CalendarGrid({
                   const cell = p.data;
                   if (cell.type === "entry") {
                     const e = cell.entry;
-                    const time = e.end_at
-                      ? spanLabel(e.start_at, e.end_at)
-                      : timeLabel(new Date(e.start_at));
+                    const dragged = moving?.id === p.key ? moving : null;
+                    const draggable = canDragEntry(e);
+                    const repeating = !!(e.occurrence || e.rrule);
+                    const time = dragged
+                      ? spanLabel(
+                          dragged.start.toISOString(),
+                          dragged.end.toISOString(),
+                        )
+                      : e.end_at
+                        ? spanLabel(e.start_at, e.end_at)
+                        : timeLabel(new Date(e.start_at));
                     const look = listLook(e.list_id, listById);
                     return (
-                      <div key={p.key} className="tg-slot" style={place}>
+                      <div
+                        key={p.key}
+                        className={"tg-slot" + (dragged ? " is-dragging" : "")}
+                        style={place}
+                      >
                         <button
                           className={
                             entryClass(e) +
                             " tg-event" +
                             (short ? " is-short" : "") +
+                            (draggable ? " is-draggable" : "") +
                             look.className
                           }
                           style={look.style}
+                          title={
+                            repeating
+                              ? `Open it to change a repeating ${e.kind === "event" ? "event" : "task"}`
+                              : undefined
+                          }
+                          onPointerDown={
+                            draggable
+                              ? (ev) =>
+                                  begin(
+                                    ev,
+                                    { kind: "entry", entry: e },
+                                    p.key,
+                                    "move",
+                                    n,
+                                  )
+                              : undefined
+                          }
+                          onPointerMove={draggable ? move : undefined}
+                          onPointerUp={draggable ? finish : undefined}
+                          onPointerCancel={draggable ? cancel : undefined}
                           aria-label={`${e.title} (${
                             e.kind === "event"
                               ? "Event"
@@ -598,9 +666,16 @@ export function CalendarGrid({
                             e.occurrence ? ", repeats" : ""
                           })`}
                           aria-haspopup="dialog"
-                          onClick={(ev) =>
-                            onEntry(e, ev.currentTarget.getBoundingClientRect())
-                          }
+                          onClick={(ev) => {
+                            if (suppressClick.current) {
+                              suppressClick.current = false;
+                              return;
+                            }
+                            onEntry(
+                              e,
+                              ev.currentTarget.getBoundingClientRect(),
+                            );
+                          }}
                         >
                           <span className="cal-title">
                             {e.kind === "task" && (
@@ -619,6 +694,24 @@ export function CalendarGrid({
                             )}
                           </small>
                         </button>
+                        {draggable && e.kind === "event" && (
+                          <span
+                            className="tg-resize"
+                            aria-hidden="true"
+                            onPointerDown={(ev) =>
+                              begin(
+                                ev,
+                                { kind: "entry", entry: e },
+                                p.key,
+                                "resize",
+                                n,
+                              )
+                            }
+                            onPointerMove={move}
+                            onPointerUp={finish}
+                            onPointerCancel={cancel}
+                          />
+                        )}
                         {joinable(e, now.getTime()) && (
                           <a
                             className="tg-join"
@@ -820,7 +913,9 @@ export function CalendarGrid({
                 })}
                 {draft && draft.to > draft.from && (
                   <div
-                    className="tg-keepfree is-draft"
+                    className={
+                      onKeepFree ? "tg-keepfree is-draft" : "tg-newevent"
+                    }
                     style={{
                       top: draft.from * PX_PER_MIN,
                       height: (draft.to - draft.from) * PX_PER_MIN,
@@ -828,10 +923,36 @@ export function CalendarGrid({
                     aria-hidden="true"
                   >
                     <span>
-                      Keep {timeLabel(at(d, draft.from))} –{" "}
-                      {timeLabel(at(d, draft.to))} free
+                      {onKeepFree ? "Keep " : "New event, "}
+                      {timeLabel(at(d, draft.from))} –{" "}
+                      {timeLabel(at(d, draft.to))}
+                      {onKeepFree && " free"}
                     </span>
                   </div>
+                )}
+                {teammates.map((m, i) =>
+                  m.busy.map((b) => {
+                    const r = onDay(b.start_at, b.end_at, dayStart, dayEnd);
+                    if (!r) return null;
+                    return (
+                      <div
+                        key={"m:" + m.user_id + b.start_at + b.end_at}
+                        className="tg-mate"
+                        aria-hidden="true"
+                        style={
+                          {
+                            top: r.top * PX_PER_MIN,
+                            height: Math.max(
+                              3,
+                              (r.bottom - r.top) * PX_PER_MIN,
+                            ),
+                            right: 2 + i * 5,
+                            "--mate": m.color,
+                          } as CSSProperties
+                        }
+                      />
+                    );
+                  }),
                 )}
                 {slot && sameDay(slot, d) && (
                   <div

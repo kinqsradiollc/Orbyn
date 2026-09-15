@@ -4,6 +4,7 @@ import { App } from "./app/App";
 import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
 import "./styles/global.css";
 import "./styles/theme.css";
+import "./styles/legacy-dark.css";
 import "./styles/motion.css";
 
 // The shared palette as the light theme, in a stylesheet (not inline on

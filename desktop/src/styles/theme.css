@@ -56,71 +56,6 @@
   color: var(--color-text);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --color-background: #121614;
-    --color-surface: #1a1f1c;
-    --color-surfaceMuted: #212722;
-    --color-border: #2c342f;
-    --color-divider: #242b26;
-    --color-text: #e2e8e3;
-    --color-textSoft: #b4bfb7;
-    --color-muted: #8e9a92;
-    --color-faint: #5f6a63;
-    --color-accent: #7cc49a;
-    --color-accentPressed: #9ad3b0;
-    --color-accentSoft: #1e3327;
-    --color-dot: #7fa472;
-    --color-soft: #1f2a22;
-    --color-softBorder: #2f3f33;
-    --color-danger: #ec8f71;
-    --color-dangerSoft: #3a231d;
-    --color-highBg: #3a261f;
-    --color-highText: #e5a888;
-    --color-mediumBg: #1f2c23;
-    --color-mediumText: #9dc29f;
-    --color-lowBg: #252b27;
-    --color-lowText: #a4ae9b;
-    --color-white: #1a1f1c;
-    --status-todo-bg: var(--color-lowBg);
-    --status-todo-fg: var(--color-lowText);
-    --status-in_progress-bg: var(--color-accentSoft);
-    --status-in_progress-fg: var(--color-accent);
-    --status-blocked-bg: var(--color-dangerSoft);
-    --status-blocked-fg: var(--color-danger);
-    --status-done-bg: var(--color-soft);
-    --status-done-fg: var(--color-mediumText);
-    --color-onAccent: #0e1712;
-    --color-canvas: #121614;
-    --color-sunken: #161b18;
-    --color-hover: #232a25;
-    --color-chip: #252c27;
-    --color-chipText: #c7d1c9;
-    --color-selected: #1f3528;
-    --color-selectedText: #a5d6b6;
-    --color-accentText: #a3c7a6;
-    --color-textMuted: #9ba69f;
-    --color-borderStrong: #37413b;
-    --color-borderHover: #4a574f;
-    --color-track: #2c3530;
-    --color-focus: #5c9270;
-    --color-focusSoft: #4b7a5c;
-    --color-warn: #e5bd6c;
-    --color-warnSoft: #352c1b;
-    --color-warnBorder: #594a28;
-    --color-info: #9cbde4;
-    --color-infoSoft: #1c2736;
-    --color-infoBorder: #33445a;
-    --color-dangerPressed: #f4a68c;
-    --color-dangerBorder: #5a3328;
-    --color-now: #ff6b6b;
-    --color-backdrop: #000000a6;
-    --color-travel: #2e291f;
-    --color-travelEdge: #6d5c40;
-    --tint-text: 35%;
-  }
-}
 :root[data-theme="dark"] {
   color-scheme: dark;
   --color-background: #121614;
@@ -191,11 +126,6 @@
    surface); the theme picks one. */
 .booking-accent {
   --green: var(--accent-light, var(--color-accent));
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .booking-accent {
-    --green: var(--accent-dark, var(--color-accent));
-  }
 }
 :root[data-theme="dark"] .booking-accent {
   --green: var(--accent-dark, var(--color-accent));

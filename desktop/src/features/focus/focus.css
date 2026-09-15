@@ -5,7 +5,7 @@
   z-index: 8;
   display: flex;
   flex-direction: column;
-  background: var(--color-canvas);
+  background: #fbfcf8;
   overflow-y: auto;
   animation: motion-fade-in var(--motion-slow) var(--ease-out) backwards;
 }
@@ -54,8 +54,8 @@
   margin-bottom: 24px;
 }
 .focus-timer.is-running {
-  border-color: var(--color-borderHover);
-  box-shadow: 0 0 0 4px var(--color-selected);
+  border-color: #c9dccd;
+  box-shadow: 0 0 0 4px #e7f0ea;
 }
 .focus-clock {
   font:
@@ -119,7 +119,7 @@
   text-align: left;
 }
 .focus-next button:hover {
-  background: var(--color-hover);
+  background: #f6f8f4;
 }
 .focus-next button > span {
   flex: 1;

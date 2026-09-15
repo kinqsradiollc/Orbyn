@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Layers,
   SlidersHorizontal,
+  Users,
   Wand2,
   X,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   type CalendarEntry,
   type CalendarSet,
   type FrameOccurrence,
+  type HttpError,
   type Item,
   type ItemInput,
   type Plan,
@@ -27,7 +29,7 @@ import { celebrate } from "../../lib/celebrate";
 import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
-import { fromDayKey } from "../../lib/planning";
+import { errorText, fromDayKey } from "../../lib/planning";
 import {
   addDays,
   itemsForDay,
@@ -47,8 +49,10 @@ import { SchedulePanel } from "./SchedulePanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { useCalendarData } from "./useCalendarData";
 import { usePlanTuning } from "./usePlanTuning";
-import { entryAsItem, inSet, itemIdOf } from "./model";
+import { TeammatesLegend, TeammatesMenu, useTeammates } from "./Teammates";
+import { entryAsItem, entryKey, inSet, itemIdOf } from "./model";
 import "./calendar.css";
+import "./calendar-drag.css";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda";
 
@@ -96,6 +100,8 @@ type Props = {
   planRequest: PlanRequest | null;
   /** Opens the item editor for a new event (the "C" shortcut). */
   onNewEvent: (draft: Partial<ItemInput>) => void;
+  /** You, left out of "Show teammates". */
+  userId?: string;
 };
 
 const savedSet = () => {
@@ -118,7 +124,7 @@ type Dialog =
   | { kind: "frame"; frameId: string }
   | null;
 /** A short message under the toolbar, sometimes with Undo. */
-type Note = { text: string; undo?: () => void };
+type Note = { text: string; undo?: () => void; tone?: "warn" };
 
 const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString([], {
@@ -130,7 +136,8 @@ const shortDay = (iso: string) =>
 /**
  * Month / Week / Day / Agenda calendar on the calendar API, with calendar
  * sets, frames, time blocks, the planner (and tuning its preview on the
- * grid) and a list of tasks to place. Entries take their list's colour.
+ * grid), teammates' busy times and a list of tasks to place. Entries take
+ * their list's colour; drag them to move, or drag empty time for an event.
  * Shortcuts: ← → move, T today, M/W/D/A switch views, C new event (at a
  * time picked by clicking the grid, else the selected day), P planner,
  * 1–9 sets, 0 all, Esc drops the picked time.
@@ -152,6 +159,7 @@ export function CalendarView({
   onChanged,
   planRequest,
   onNewEvent,
+  userId,
 }: Props) {
   const planning = usePlanning();
   const prefs = planning.prefs;
@@ -202,6 +210,19 @@ export function CalendarView({
   const blocks = (data?.blocks ?? []).filter((b) => inSet(activeSet, b));
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
   const frames = data?.frames ?? [];
+  const gridMode = mode === "week" || mode === "day";
+
+  // ---- teammates' busy times ----
+  const mates = useTeammates(
+    teams,
+    userId,
+    prefs?.pinned_user_ids ?? [],
+    range.from,
+    range.to,
+    gridMode,
+    report,
+  );
+  const [matesMenu, setMatesMenu] = useState<DOMRect | null>(null);
   const itemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   // ---- notes under the toolbar ----
@@ -325,6 +346,69 @@ export function CalendarView({
     await reload();
   };
 
+  // ---- dragging events and timed tasks ----
+  /** Not repeating ones (that needs a this/following/all choice), nor view-only ones. */
+  const canDragEntry = (e: CalendarEntry) => {
+    if (e.occurrence || e.rrule) return false;
+    const item = itemMap.get(e.item_id);
+    return !item || canWrite(item);
+  };
+  /** Save a dragged entry's new time; it shows there at once and goes back on failure. */
+  const moveEntry = async (
+    entry: CalendarEntry,
+    start: Date,
+    end: Date,
+    resized: boolean,
+  ) => {
+    const startIso = start.toISOString();
+    // A task without an end keeps none; moving only changes its due time.
+    const endIso = entry.end_at || resized ? end.toISOString() : null;
+    const key = entryKey(entry);
+    setData(
+      (d) =>
+        d && {
+          ...d,
+          entries: d.entries.map((x) =>
+            entryKey(x) === key
+              ? { ...x, start_at: startIso, end_at: endIso }
+              : x,
+          ),
+        },
+    );
+    try {
+      const known = itemMap.get(entry.item_id);
+      const item =
+        known && known.version >= entry.version
+          ? known
+          : await client.getItem(entry.item_id);
+      // The full body, as the editor sends it; planning and event fields
+      // left out keep their saved values.
+      await client.updateItem(item.id, {
+        title: item.title,
+        notes: item.notes ?? "",
+        kind: item.kind,
+        status: item.status,
+        priority: item.priority,
+        due_at: startIso,
+        end_at: endIso,
+        team_id: item.team_id ?? null,
+        version: item.version,
+      });
+      await onChanged();
+    } catch (e) {
+      if ((e as HttpError).status === 401) report(e);
+      else
+        setNote({
+          tone: "warn",
+          text:
+            (e as HttpError).status === 409
+              ? `“${entry.title}” was changed somewhere else, so it stayed put. It now shows the latest; try again.`
+              : `Couldn't move “${entry.title}”. ${errorText(e)}`,
+        });
+    }
+    await reload();
+  };
+
   // ---- frames ----
   const unskipFrame = async (f: FrameOccurrence) => {
     try {
@@ -441,7 +525,7 @@ export function CalendarView({
     newEvent,
     slot,
   };
-  const blocked = !shortcuts || !!menu || !!dialog;
+  const blocked = !shortcuts || !!menu || !!dialog || !!matesMenu;
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
@@ -566,6 +650,26 @@ export function CalendarView({
             >
               <SlidersHorizontal size={16} />
             </button>
+            {teams.length > 0 && gridMode && (
+              <button
+                className={
+                  "secondary planner-toggle" +
+                  (mates.selected.length ? " active" : "")
+                }
+                aria-haspopup="dialog"
+                aria-expanded={!!matesMenu}
+                title="Show teammates' busy times"
+                onClick={(e) => {
+                  mates.load();
+                  setMatesMenu(
+                    matesMenu ? null : e.currentTarget.getBoundingClientRect(),
+                  );
+                }}
+              >
+                <Users size={14} /> Teammates
+                {mates.selected.length > 0 && ` (${mates.selected.length})`}
+              </button>
+            )}
             <button
               className={
                 "secondary planner-toggle" + (plannerOpen ? " active" : "")
@@ -595,7 +699,12 @@ export function CalendarView({
         </div>
 
         {note && (
-          <div className="calendar-note" role="status">
+          <div
+            className={
+              "calendar-note" + (note.tone === "warn" ? " is-warn" : "")
+            }
+            role={note.tone === "warn" ? "alert" : "status"}
+          >
             <span>{note.text}</span>
             {note.undo && (
               <button
@@ -617,6 +726,10 @@ export function CalendarView({
               <X size={14} />
             </button>
           </div>
+        )}
+
+        {gridMode && (
+          <TeammatesLegend shown={mates.shown} onClear={mates.clear} />
         )}
 
         {mode === "month" && (
@@ -674,6 +787,19 @@ export function CalendarView({
             }}
             onChangeBlock={changeBlock}
             onDuplicateBlock={(block, start) => void duplicate(block, start)}
+            canDragEntry={canDragEntry}
+            onChangeEntry={(entry, start, end, resized) =>
+              void moveEntry(entry, start, end, resized)
+            }
+            onCreateRange={(start, end) =>
+              onNewEvent({
+                kind: "event",
+                title: "",
+                due_at: start.toISOString(),
+                end_at: end.toISOString(),
+              })
+            }
+            teammates={mates.shown}
             slot={slot}
             onSelectSlot={setSlot}
           />
@@ -763,6 +889,13 @@ export function CalendarView({
             )
               void mutate(() => client.deleteBlock(menu.block.id));
           }}
+        />
+      )}
+      {matesMenu && (
+        <TeammatesMenu
+          anchor={matesMenu}
+          teammates={mates}
+          onClose={() => setMatesMenu(null)}
         />
       )}
       {menu?.kind === "frame" && (

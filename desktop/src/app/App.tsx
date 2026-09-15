@@ -460,6 +460,7 @@ export function App() {
                     !shortcutsOpen
                   }
                   onNewEvent={(prefill) => newItem(null, prefill)}
+                  userId={user?.id}
                   revision={revision}
                   report={report}
                   onChanged={refresh}

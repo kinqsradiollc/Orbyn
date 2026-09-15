@@ -1,0 +1,89 @@
+/* Calendar: dragging events, dragging out new ones, and teammates' busy
+   times. Uses the existing theme tokens only. */
+
+/* Events and timed tasks drag like blocks (repeating ones don't, yet). */
+.tg-event.is-draggable {
+  cursor: grab;
+}
+.tg-event.is-draggable:active {
+  cursor: grabbing;
+}
+/* A new event being dragged out on empty time. */
+.tg-newevent {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 2;
+  padding: 2px 6px;
+  border: 1.5px solid var(--green);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accentSoft) 70%, transparent);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 650;
+  overflow: hidden;
+  pointer-events: none;
+}
+.calendar-note.is-warn {
+  border: 1px solid var(--color-warnBorder);
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+
+/* Teammates' busy times: a thin hatched strip per person at the right edge
+   of each day, above entries but narrow enough to keep them readable. */
+.tg-mate,
+.mates-legend i,
+.mate-swatch {
+  background: repeating-linear-gradient(
+    180deg,
+    var(--mate) 0 3px,
+    color-mix(in srgb, var(--mate) 40%, transparent) 3px 6px
+  );
+}
+.tg-mate {
+  position: absolute;
+  z-index: 3;
+  width: 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+.mates-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0 20px 10px;
+  font-size: 11px;
+  color: var(--color-textSoft);
+}
+.mates-legend-label {
+  font-weight: 650;
+}
+.mates-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mates-legend i,
+.mate-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.mates-legend .text-button {
+  padding: 0;
+  font-size: 11px;
+}
+.mates-list .popover-check {
+  align-items: center;
+}
+.mates-list .popover-check svg {
+  margin-left: 5px;
+  vertical-align: -1px;
+  color: var(--color-textMuted);
+}
+.mate-swatch {
+  margin-left: auto;
+}

@@ -6,16 +6,16 @@
     <meta name="theme-color" content="#f7f8fa" />
     <title>Orbyn — Make space for what matters</title>
     <script>
-      // Apply the saved theme before first paint to avoid a flash (see src/lib/theme.ts).
+      // Apply the saved theme before first paint (see src/lib/theme.ts): light
+      // unless Dark, or System on a dark device, was chosen in Settings.
       try {
         var theme = localStorage.getItem("orbyn-theme");
-        if (theme === "light" || theme === "dark")
-          document.documentElement.dataset.theme = theme;
-        if (
+        var dark =
           theme === "dark" ||
-          (theme !== "light" &&
-            matchMedia("(prefers-color-scheme: dark)").matches)
-        )
+          (theme === "system" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        if (dark)
           document
             .querySelector('meta[name="theme-color"]')
             .setAttribute("content", "#121614");
@@ -28,12 +28,6 @@
       html[data-theme="dark"] {
         background: #121614;
         color-scheme: dark;
-      }
-      @media (prefers-color-scheme: dark) {
-        html:not([data-theme="light"]) {
-          background: #121614;
-          color-scheme: dark;
-        }
       }
     </style>
   </head>
