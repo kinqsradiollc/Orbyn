@@ -31,6 +31,22 @@ export function reader(
     : pool;
 }
 
+/**
+ * An idle connection can drop when PgBouncer or Postgres restarts. pg emits
+ * that as an "error" event on the pool, which would crash the process if no
+ * one listened; log it instead; the pool replaces the connection on next use.
+ */
+const onIdleError = (which: string) => (error: Error) =>
+  console.error(
+    JSON.stringify({
+      event: "db_idle_connection_error",
+      pool: which,
+      message: error.message,
+    }),
+  );
+pool.on("error", onIdleError("primary"));
+if (readPool !== pool) readPool.on("error", onIdleError("replica"));
+
 export async function closeDatabase() {
   await pool.end();
   if (readPool !== pool) await readPool.end();

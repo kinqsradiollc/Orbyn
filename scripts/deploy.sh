@@ -44,8 +44,11 @@ export GIT_SHA BUILD_TIME
 log "Building images for $GIT_SHA"
 compose build
 
-log "Starting the database and connection pooler"
-compose up -d --wait postgres pgbouncer
+# Only started if missing: recreating them would drop every connection the
+# running services hold. Apply database or pooler changes deliberately with
+# `docker compose up -d postgres pgbouncer` in a quiet moment.
+log "Making sure the database and connection pooler are running"
+compose up -d --wait --no-recreate postgres pgbouncer
 
 log "Applying database migrations"
 compose run --rm migrate

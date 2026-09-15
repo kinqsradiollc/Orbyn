@@ -144,3 +144,16 @@ test("state and date helpers", () => {
     "2026-03-01",
   ]);
 });
+
+test("a dropped idle database connection is logged, not fatal", async () => {
+  const { pool } = await import("../src/db/pool.js");
+  assert.ok(pool.listenerCount("error") >= 1, "the pool has an error listener");
+  // Emitting the event pg raises for a dropped idle client must not throw.
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    pool.emit("error", new Error("server closed the connection"));
+  } finally {
+    console.error = quiet;
+  }
+});
