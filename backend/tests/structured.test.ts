@@ -1,11 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-const { REPLY_FORMAT, dropNulls } =
+const { REPLY_FORMAT, dropNulls, parseReply } =
   await import("../src/modules/ai/replySchema.js");
-const { parseReply, buildMessages } =
-  await import("../src/modules/ai/provider.js");
 const { complete } = await import("../src/modules/ai/providers/adapters.js");
+const { graphPrompt } = await import("../src/modules/ai/agent/graph.js");
 const { AI_PROVIDERS } = await import("@orbyn/core");
 
 test("Matilda is flagged for structured output; others are not", () => {
@@ -115,93 +114,13 @@ test("only providers with structured output receive the reply schema", async () 
   server.close();
   assert.deepEqual(bodies[0].response_format, REPLY_FORMAT);
   assert.equal("response_format" in bodies[1], false);
-  // The schema counts toward Matilda's request limit.
-  const trimmed = buildMessages(
-    { model: "matilda", ...AI_PROVIDERS.matilda },
-    "hi",
-    "UTC",
-    Array.from({ length: 200 }, (_, n) => ({ id: n, title: "x".repeat(400) })),
-  );
-  const size = Buffer.byteLength(
-    JSON.stringify({
-      model: "matilda",
-      messages: trimmed,
-      response_format: REPLY_FORMAT,
-    }),
-  );
-  assert.ok(size <= AI_PROVIDERS.matilda.limits!.maxBodyBytes);
 });
 
-test("Matilda answers questions in prose and uses the schema only for changes", async (t) => {
-  const { askProvider } = await import("../src/modules/ai/provider.js");
-  const bodies: Record<string, unknown>[] = [];
-  let answer = "";
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async (_url: unknown, init: RequestInit) => {
-      bodies.push(JSON.parse(String(init.body)));
-      return Response.json({ choices: [{ message: { content: answer } }] });
-    },
-  );
-  const matilda = {
-    kind: "matilda",
-    format: "openai" as const,
-    baseUrl: "https://matilda.maincode.com/api/v1",
-    apiKey: "mc_live_test_key_123456",
-    model: "matilda",
-    options: {},
-    source: "database" as const,
-    structuredOutput: "json_schema" as const,
-  };
-  answer = "Here's your week:\n\n- **Call Mum** on Friday at 6 pm";
-  const summary = await askProvider(matilda, "Summarize my week", "UTC", []);
-  assert.equal(summary.summary, answer);
-  assert.deepEqual(summary.actions, []);
-  assert.equal("response_format" in bodies[0], false);
-  answer = JSON.stringify({
-    summary: ["Added it."],
-    actions: [
-      {
-        operation: "create",
-        item_id: null,
-        version: null,
-        data: {
-          title: "Call Mum",
-          notes: null,
-          kind: "task",
-          status: null,
-          priority: null,
-          due_at: null,
-          end_at: null,
-          reminder_minutes: null,
-          team_id: null,
-          progress: null,
-        },
-      },
-    ],
-  });
-  const change = await askProvider(
-    matilda,
-    "Add a task to call Mum",
-    "UTC",
-    [],
-  );
-  assert.equal(change.actions.length, 1);
-  assert.deepEqual(bodies[1].response_format, REPLY_FORMAT);
-});
-
-test("proposals without words get a summary, and today is the user's local day", async () => {
-  const { withSummary } = await import("../src/modules/ai/provider.js");
-  const { answerPrompt } = await import("../src/modules/ai/prompt.js");
-  const reply = withSummary({
-    summary: " ",
-    actions: [{ operation: "create", data: { title: "Plumber" } }],
-  } as never);
-  assert.equal(reply.summary, "Here's the change for you to review.");
+test("today is the user's local day in the Matilda prompt", () => {
   // 16:06 UTC on Monday is already Tuesday in Melbourne.
-  const prompt = answerPrompt(
+  const prompt = graphPrompt(
     "Australia/Melbourne",
+    "answer",
     new Date("2026-09-14T16:06:00Z"),
   );
   assert.match(prompt, /it is Tuesday 15 September 2026/);

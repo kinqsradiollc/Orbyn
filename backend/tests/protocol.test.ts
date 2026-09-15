@@ -287,3 +287,163 @@ test("strict schemas require every field and let optional ones be null", () => {
     enum: ["task", "event", null],
   });
 });
+
+// ---- runAgent: the loop, and the fixed graph for Matilda ---------------------
+// These turns run no tools, so nothing touches the database.
+
+const { runAgent } = await import("../src/modules/ai/agent/loop.js");
+const { AI_PROVIDERS, SYSTEM_ROLES } = await import("@orbyn/core");
+
+/** An OpenAI-style reply with plain text content. */
+const answer = (content: string) => ({ choices: [{ message: { content } }] });
+const ctx = (intentText = "What's on this week?") => ({
+  user: { id: "00000000-0000-4000-8000-000000000000", role: SYSTEM_ROLES[0] },
+  timezone: "UTC",
+  intentText,
+  actions: [],
+  clarification: null,
+});
+const matilda = {
+  ...base,
+  kind: "matilda",
+  model: "matilda",
+  structuredOutput: "json_schema" as const,
+};
+
+for (const [name, ai] of [
+  ["agent loop", base],
+  ["Matilda graph", matilda],
+] as const)
+  test(`${name} retries share one deadline instead of outlasting the client`, async (t) => {
+    const controller = new AbortController();
+    const timeouts: number[] = [];
+    t.mock.method(AbortSignal, "timeout", (ms: number) => {
+      timeouts.push(ms);
+      return controller.signal;
+    });
+    let calls = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      calls++;
+      return calls === 1
+        ? new Response("unavailable", { status: 503 })
+        : Response.json(answer("Your week is clear."));
+    });
+    const result = await runAgent(ai, ctx(), "What's on this week?", [], {});
+    assert.equal(result.summary, "Your week is clear.");
+    assert.equal(calls, 2);
+    // One overall deadline, created once, then a shorter limit per attempt so a
+    // stalled reply is abandoned and retried (BrainRouter: 120 s chat, 45 s
+    // quiet timeout). The deadline stays below the API client's 120 s.
+    assert.deepEqual(timeouts, [110_000, 45_000, 45_000]);
+    assert.ok(timeouts[0] < 120_000);
+  });
+
+test("the agent loop does not retry errors a retry won't fix", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    return new Response("bad key", { status: 401 });
+  });
+  await assert.rejects(
+    runAgent(base, ctx(), "What's on this week?", [], {}),
+    /rejected the API key/,
+  );
+  assert.equal(calls, 1);
+});
+
+for (const [name, ai] of [
+  ["agent loop", base],
+  ["Matilda graph", matilda],
+] as const)
+  test(`${name} does not retry after the overall deadline expires`, async (t) => {
+    const controller = new AbortController();
+    let attempts = 0;
+    t.mock.method(AbortSignal, "timeout", () => controller.signal);
+    t.mock.method(globalThis, "fetch", async () => {
+      attempts++;
+      const error = new DOMException("Deadline expired", "TimeoutError");
+      controller.abort(error);
+      throw error;
+    });
+    await assert.rejects(
+      runAgent(ai, ctx(), "What's on this week?", [], {}),
+      /took too long/,
+    );
+    assert.equal(attempts, 1);
+  });
+
+const longHistory = Array.from({ length: 12 }, (_, n) => ({
+  role: (n % 2 ? "assistant" : "user") as "user" | "assistant",
+  content: `turn ${n} ` + "z".repeat(20_000),
+}));
+const bigData = {
+  next_week: Array.from({ length: 100 }, (_, n) => ({
+    id: `item-${n}`,
+    title: `Task ${n} ` + "x".repeat(300),
+  })),
+};
+
+test("Matilda requests fit its 64 KiB and 16,000-character limits", async (t) => {
+  const limits = AI_PROVIDERS.matilda.limits!;
+  assert.deepEqual(limits, { maxBodyBytes: 65_536, maxMessageChars: 16_000 });
+  const bodies: string[] = [];
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: string, init: RequestInit) => {
+      bodies.push(String(init.body));
+      return Response.json(
+        answer(JSON.stringify({ summary: ["Which day?"], actions: [] })),
+      );
+    },
+  );
+  const request = "Add a task to call Mum";
+  const result = await runAgent(
+    { ...matilda, limits },
+    ctx(request),
+    request,
+    longHistory,
+    bigData,
+  );
+  assert.equal(result.summary, "Which day?");
+  assert.equal(bodies.length, 1);
+  // The whole body counts, including the reply schema sent with a plan.
+  const size = Buffer.byteLength(bodies[0]);
+  assert.ok(size <= limits.maxBodyBytes, `${size} bytes`);
+  const { messages, response_format } = JSON.parse(bodies[0]);
+  assert.equal(response_format.json_schema.name, "orbyn_reply");
+  for (const m of messages)
+    assert.ok(m.content.length <= limits.maxMessageChars, `${m.role} too long`);
+  assert.equal(messages[0].role, "system");
+  assert.match(messages.at(-1).content, /^My planner data/);
+  // Oldest history is dropped first; what remains is the most recent.
+  const kept = messages.slice(1, -1);
+  assert.ok(kept.length < longHistory.length);
+  if (kept.length) assert.match(kept.at(-1).content, /^turn 11 /);
+});
+
+test("providers without limits get every recent turn", async (t) => {
+  const sent = reply(t, answer("Hi."));
+  await runAgent(base, ctx(), "Hi", longHistory, bigData);
+  const { messages } = sent[0].body;
+  assert.equal(messages.length, 14);
+  assert.match(messages[1].content, /^turn 0 /);
+  // Each earlier turn is still capped at 4,000 characters.
+  assert.equal(messages[1].content.length, 4001);
+});
+
+test("an old-style plan without words still gets a summary", async (t) => {
+  reply(
+    t,
+    answer(
+      JSON.stringify({
+        summary: " ",
+        actions: [{ operation: "create", data: { title: "Plumber" } }],
+      }),
+    ),
+  );
+  const result = await runAgent(base, ctx(), "Add a plumber visit", [], {});
+  assert.equal(result.legacy, true);
+  assert.equal(result.actions.length, 1);
+  assert.equal(result.summary, "Here's the change for you to review.");
+});

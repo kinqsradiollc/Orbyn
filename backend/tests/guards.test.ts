@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 const { pruneActions } = await import("../src/modules/ai/guards.js");
-const { parseReply } = await import("../src/modules/ai/provider.js");
+const { parseReply } = await import("../src/modules/ai/replySchema.js");
 
 const dentist = {
   id: "7c1f7a56-4c3e-4d8a-9b1e-2f3a4b5c6d7e",

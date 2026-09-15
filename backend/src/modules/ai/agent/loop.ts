@@ -1,7 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Action, ChatTurn } from "@orbyn/core";
 import { ProviderError, type ResolvedAi } from "../providers/adapters.js";
-import { parseReply } from "../provider.js";
+import { parseReply } from "../replySchema.js";
 import {
   EMPTY_ANSWER_NOTE,
   FINAL_STEP_NOTE,
@@ -165,7 +165,7 @@ export async function runAgent(
     ) {
       try {
         const reply = parseReply(summary, ctx.timezone);
-        summary = reply.summary;
+        summary = reply.summary.trim();
         actions = reply.actions;
         legacy = true;
       } catch {
