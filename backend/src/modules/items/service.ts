@@ -529,7 +529,7 @@ export async function mutate(
            all_day, busy, color, alerts, parent_id, position)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
-           $19,$20,$21,$22::smallint[],$23,
+           $19,$20,$21,$22::integer[],$23,
            (SELECT coalesce(max(x.position), -1) + 1 FROM items x
             WHERE ${siblingsOf("$23", "$13", "$9", "$10")}))
          RETURNING id`,
@@ -710,13 +710,13 @@ export async function mutate(
        progress=$12, estimate_minutes=$13, list_id=$14, assignee_id=$15,
        location=$16, meeting_url=$17, rrule=$18, timezone=$19, series_start=$20,
        exdates=$21::timestamptz[], all_day=$22, busy=$23, color=$24,
-       alerts=$25::smallint[], parent_id=$26, version=version+1,
+       alerts=$25::integer[], parent_id=$26, version=version+1,
        position = CASE WHEN $27::boolean
          THEN (SELECT coalesce(max(x.position), -1) + 1 FROM items x
                WHERE ${siblingsOf("$26", "$14", "$9", "$10")} AND x.id <> $11)
          ELSE position END,
        reminder_version = CASE WHEN due_at IS DISTINCT FROM $6::timestamptz
-         OR alerts IS DISTINCT FROM $25::smallint[]
+         OR alerts IS DISTINCT FROM $25::integer[]
          OR (status IN ('done', 'cancelled') AND $4 NOT IN ('done', 'cancelled'))
          OR team_id IS DISTINCT FROM $9::uuid
          THEN reminder_version + 1 ELSE reminder_version END,

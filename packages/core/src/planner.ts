@@ -1,3 +1,4 @@
+import { addDays, dayTime } from "./time.js";
 import { sameDay } from "./dates.js";
 import { isClosed } from "./schemas.js";
 import type { Item, ItemInput } from "./types.js";
@@ -11,7 +12,6 @@ export const freshItem = (): ItemInput => ({
   priority: "medium",
   due_at: null,
   end_at: null,
-  reminder_minutes: 30,
   team_id: null,
   progress: 0,
 });
@@ -47,11 +47,25 @@ export const itemBody = (i: Item): ItemInput & { version: number } => {
     priority: i.priority,
     due_at: i.due_at,
     end_at: i.end_at,
-    reminder_minutes: i.reminder_minutes,
     team_id: i.team_id ?? null,
     progress: i.progress,
     version: i.version,
   };
+  // Modern alerts can exceed the legacy one-week limit. Never echo the
+  // response's derived reminder_minutes alongside the authoritative alerts.
+  if (i.alerts === undefined && i.reminder_minutes != null)
+    body.reminder_minutes = i.reminder_minutes;
+  // Detail responses add ids and RSVP metadata that strict write schemas reject.
+  if (i.attendees !== undefined)
+    body.attendees =
+      i.kind === "event"
+        ? i.attendees.map(({ email, name }) => ({
+            email,
+            ...(name ? { name } : {}),
+          }))
+        : [];
+  if (i.links !== undefined)
+    body.links = i.links.map(({ url, title }) => ({ url, title: title ?? "" }));
   for (const key of PLANNING_FIELDS)
     if (i[key] !== undefined) (body as Record<string, unknown>)[key] = i[key];
   return body;
@@ -149,5 +163,17 @@ export function overviewItems(items: Item[], now = new Date()) {
     inProgressCount: groups.pending.filter((i) => i.status === "in_progress")
       .length,
     blockedCount: groups.pending.filter((i) => i.status === "blocked").length,
+  };
+}
+
+/** All-day form dates are inclusive; the API end is the next local midnight. */
+export function allDayRange(first: string, last: string, timezone: string) {
+  return {
+    due_at: dayTime(first, 0, timezone).toISOString(),
+    end_at: dayTime(
+      addDays(last < first ? first : last, 1),
+      0,
+      timezone,
+    ).toISOString(),
   };
 }
