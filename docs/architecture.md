@@ -193,13 +193,21 @@ under a schema, so the server does the looking up and the model decides once:
 
 1. **Retrieve:** the server gathers the overview plus the items matching the request. They go into
    the user message with the request, where Matilda reads them; it gives system-prompt data little
-   weight.
+   weight. The server also works out the days the request names ("tomorrow = Wed 16 Sept
+   (2026-09-16)"; "next Tuesday" is the Tuesday of the following week), because Matilda misplaced
+   them even with a calendar.
 2. **Answer:** a question gets one plain Markdown answer.
 3. **Plan:** a change request gets one `{summary, actions}` plan under a strict JSON Schema.
-4. **Validate:** each action goes through the same proposal tools as the agent, so scoping,
-   per-item checks, delete intent and the same-title rule all apply. Items are shown to the model
-   with short ids (`i1`, `i2`, …) that the server maps back, because Matilda mistyped full UUIDs.
-   Empty notes in an update keep the saved notes.
+4. **Validate:** the actions go through the same proposal tools as the agent: each create on its
+   own, all updates in one call and all deletes in another. So scoping, per-item checks, delete
+   intent and the same-title rule all apply to the whole plan. Validation also corrects for common
+   model mistakes:
+   - Items are shown to the model with short ids (`i1`, `i2`, …) that the server maps back,
+     because Matilda mistyped full UUIDs.
+   - When an update's title names a different shown item, and exactly one, that item is the one
+     changed, because Matilda once copied the id from the neighbouring item.
+   - Empty notes in an update keep the saved notes.
+   - An update refused only for an end before its start is retried without the end.
 5. **Repair:** if anything was refused, one repair call gets the reasons. Whatever is still refused
    is listed to the user under "Not proposed".
 
