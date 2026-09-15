@@ -196,7 +196,7 @@ export function BookingView({ user, teams, report, focus = null }: Props) {
             report={report}
           />
         ) : tab === "invites" ? (
-          <OpenInvites report={report} />
+          <OpenInvites user={user} teams={teams} report={report} />
         ) : (
           <>
             <ProfileCard report={report} />

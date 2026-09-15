@@ -11,6 +11,7 @@ import {
 import {
   addMonths,
   dateLabel,
+  isClosed,
   monthGrid,
   sameDay,
   startOfDay,
@@ -560,9 +561,18 @@ export function CalendarView({
     }
     await changed();
   };
+  /** A cancelled task back to "to do". */
+  const reopen = async (itemId: string) => {
+    try {
+      await client.postItemUpdate(itemId, { status: "todo" });
+    } catch (e) {
+      report(e);
+    }
+    await changed();
+  };
   /** Open tasks you can change; for a repeating one, only its current occurrence. */
   const canComplete = (e: CalendarEntry) => {
-    if (e.kind !== "task" || e.status === "done") return false;
+    if (e.kind !== "task" || isClosed(e.status)) return false;
     const item = itemMap.get(e.item_id);
     if (item && !canWrite(item)) return false;
     if (!e.occurrence) return true;
@@ -937,6 +947,7 @@ export function CalendarView({
           anchor={menu.anchor}
           canWrite={menuItem ? canWrite(menuItem) : true}
           canComplete={canComplete(menu.entry)}
+          onReopen={() => void reopen(menu.entry.item_id)}
           onClose={() => setMenu(null)}
           onOpen={() => withItem(menu.entry.item_id, onOpen)}
           onEditSeries={() => {

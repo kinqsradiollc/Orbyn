@@ -376,8 +376,12 @@ export function TasksView({
     }
   };
 
-  /** Rows for a list; with `tree`, subtasks go under a parent listed with them. */
-  const rows = (list: Item[], tree = false) => {
+  /**
+   * Rows for a list: subtasks go under a parent listed with them, and one
+   * whose parent is elsewhere names it ("↳ Parent").
+   */
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const rows = (list: Item[], tree = true) => {
     const ids = new Set(list.map((i) => i.id));
     const kids = new Map<string, Item[]>();
     if (tree)
@@ -399,6 +403,11 @@ export function TasksView({
             busy={busy}
             readOnly={!canWrite(i)}
             score={sort === "score" ? i.score : undefined}
+            parentTitle={
+              i.parent_id && !ids.has(i.parent_id)
+                ? itemById.get(i.parent_id)?.title
+                : undefined
+            }
             collapsed={children.length ? isFolded : undefined}
             onToggleChildren={
               children.length ? () => toggleFold(i.id) : undefined
@@ -713,6 +722,9 @@ export function TasksView({
       ) : layout === "board" ? (
         <TaskBoard
           items={visible}
+          parentOf={(i) =>
+            i.parent_id ? itemById.get(i.parent_id)?.title : undefined
+          }
           statuses={filter === "all" ? [...STATUSES] : [filter]}
           busy={busy}
           canWrite={canWrite}
@@ -736,7 +748,7 @@ export function TasksView({
             </section>
           ))}
           {group === "none" && !pinned.length
-            ? rows(rest, true)
+            ? rows(rest)
             : groups
                 .filter((g) => g.items.length)
                 .map((g) => (
@@ -756,7 +768,7 @@ export function TasksView({
                       {g.title}
                       <span>{g.items.length}</span>
                     </h3>
-                    {rows(g.items, g.key === "all")}
+                    {rows(g.items)}
                   </section>
                 ))}
         </>

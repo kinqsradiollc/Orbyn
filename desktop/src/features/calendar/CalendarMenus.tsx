@@ -8,6 +8,7 @@ import {
   Lock,
   MapPin,
   Pencil,
+  RotateCcw,
   SkipForward,
   Trash2,
   Video,
@@ -15,6 +16,7 @@ import {
 import {
   dateLabel,
   describeRrule,
+  isClosed,
   type CalendarEntry,
   type ExternalEntry,
   type FrameOccurrence,
@@ -47,6 +49,8 @@ type EntryProps = {
   onFocus: () => void;
   /** Marks the task done. */
   onComplete: () => void;
+  /** Brings a cancelled task back. */
+  onReopen: () => void;
 };
 
 /** What you can do with an event or dated task on the calendar. */
@@ -61,6 +65,7 @@ export function EntryMenu({
   onSkip,
   onFocus,
   onComplete,
+  onReopen,
 }: EntryProps) {
   const when = e.end_at
     ? `${shortDay(e.start_at)}, ${spanLabel(e.start_at, e.end_at)}`
@@ -68,7 +73,8 @@ export function EntryMenu({
   const canJoin = joinable(e);
   const later =
     !!e.meeting_url && !canJoin && Date.parse(e.start_at) > Date.now();
-  const open = e.kind === "task" && e.status !== "done";
+  const open = e.kind === "task" && !isClosed(e.status);
+  const cancelled = e.kind === "task" && e.status === "cancelled";
   const act = (fn: () => void) => () => {
     onClose();
     fn();
@@ -87,6 +93,7 @@ export function EntryMenu({
         )}
         {e.rrule && <small>{describeRrule(e.rrule)}</small>}
         {e.team_name && <small>Shared with {e.team_name}</small>}
+        {cancelled && <small className="eyebrow">CANCELLED</small>}
       </div>
       <div className="popover-actions">
         {canJoin && (
@@ -108,6 +115,11 @@ export function EntryMenu({
         <button onClick={act(onOpen)}>
           <ExternalLink size={14} /> Open details
         </button>
+        {cancelled && canWrite && (
+          <button onClick={act(onReopen)}>
+            <RotateCcw size={14} /> Reopen
+          </button>
+        )}
         {canComplete && (
           <button onClick={act(onComplete)}>
             <CircleCheck size={14} />{" "}
@@ -170,7 +182,7 @@ export function BlockMenu({
     onClose();
     fn();
   };
-  const open = b.status !== "done";
+  const open = !isClosed(b.status);
   return (
     <Popover anchor={anchor} label={`Time for ${b.title}`} onClose={onClose}>
       <div className="popover-head">

@@ -38,6 +38,8 @@ type Props = {
   /** Manual order: move it before or after its neighbour. */
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  /** The parent's title, for a subtask listed apart from its parent. */
+  parentTitle?: string;
 };
 
 /**
@@ -57,6 +59,7 @@ export function ItemRow({
   onToggleChildren,
   onMoveUp,
   onMoveDown,
+  parentTitle,
 }: Props) {
   const done = i.status === "done";
   // Items already done when the row mounts don't pop; completing one does.
@@ -107,8 +110,13 @@ export function ItemRow({
       <button
         className="item-main"
         onClick={() => onOpen(i)}
-        aria-label={`Open ${i.title}`}
+        aria-label={`Open ${i.title}${parentTitle ? `, a subtask of ${parentTitle}` : ""}`}
       >
+        {parentTitle && (
+          <span className="row-parent" aria-hidden="true">
+            ↳ {parentTitle}
+          </span>
+        )}
         <strong>{i.title}</strong>
         <span className="item-meta">
           {i.kind === "event"

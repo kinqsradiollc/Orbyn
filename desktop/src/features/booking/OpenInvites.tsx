@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent,
+} from "react";
 import {
   CalendarRange,
   ChevronLeft,
@@ -15,6 +21,9 @@ import {
   startOfDay,
   type OpenInvite,
   type OpenInviteStatus,
+  type Team,
+  type TeamMember,
+  type User,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
@@ -31,6 +40,8 @@ const STATUS_TEXT: Record<OpenInviteStatus, string> = {
   cancelled: "Withdrawn",
 };
 const LENGTHS = [15, 20, 30, 45, 60, 90, 120];
+/** Co-hosts an invite can have. */
+const MAX_CO_HOSTS = 10;
 
 type Win = { start: Date; end: Date };
 
@@ -57,11 +68,19 @@ function merge(list: Win[]): Win[] {
   return out;
 }
 
+type Props = {
+  user: User | null;
+  /** Co-hosts come from the people in your teams. */
+  teams: Team[];
+  report: (e: unknown) => void;
+};
+
 /**
  * Open invites: a private link offering a few hand-picked windows; the
- * person it goes to picks a free time inside them and it's booked at once.
+ * person it goes to picks a time inside them when you (and any co-hosts)
+ * are free, and it's booked at once.
  */
-export function OpenInvites({ report }: { report: (e: unknown) => void }) {
+export function OpenInvites({ user, teams, report }: Props) {
   const [invites, setInvites] = useState<OpenInvite[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -97,6 +116,8 @@ export function OpenInvites({ report }: { report: (e: unknown) => void }) {
     <>
       {creating && (
         <InviteForm
+          user={user}
+          teams={teams}
           report={report}
           onClose={() => setCreating(false)}
           onCreated={(inv) => {
@@ -147,6 +168,8 @@ export function OpenInvites({ report }: { report: (e: unknown) => void }) {
                   {plural(inv.windows.length, "window")}
                   {inv.windows[0] &&
                     ` from ${shortDay(new Date(inv.windows[0].start_at))}`}
+                  {inv.co_hosts.length > 0 &&
+                    ` · with ${inv.co_hosts.map((h) => h.name).join(", ")}`}
                   {inv.status === "open" &&
                     ` · link works until ${dateLabel(inv.expires_at)}`}
                 </small>
@@ -183,12 +206,19 @@ export function OpenInvites({ report }: { report: (e: unknown) => void }) {
   );
 }
 
-/** A new open invite: what, how long, where, the windows, reminders and expiry. */
+/**
+ * A new open invite: what, how long, where, the windows, who else must be
+ * free, reminders and expiry.
+ */
 function InviteForm({
+  user,
+  teams,
   report,
   onClose,
   onCreated,
 }: {
+  user: User | null;
+  teams: Team[];
   report: (e: unknown) => void;
   onClose: () => void;
   onCreated: (invite: OpenInvite) => void;
@@ -198,11 +228,48 @@ function InviteForm({
   const [windows, setWindows] = useState<Win[]>([]);
   const [location, setLocation] = useState("");
   const [meetingUrl, setMeetingUrl] = useState("");
+  const [coHosts, setCoHosts] = useState<string[]>([]);
+  const [people, setPeople] = useState<TeamMember[] | null>(null);
   const [reminders, setReminders] = useState<number[]>([
     ...DEFAULT_BOOKER_REMINDERS,
   ]);
   const [expires, setExpires] = useState("");
   const action = useAction(report);
+
+  // Co-hosts: anyone you share a team with.
+  useEffect(() => {
+    if (!teams.length) {
+      setPeople([]);
+      return;
+    }
+    let alive = true;
+    Promise.all(teams.map((t) => client.getTeam(t.id))).then(
+      (details) => {
+        if (!alive) return;
+        const seen = new Map<string, TeamMember>();
+        for (const d of details)
+          for (const m of d.members)
+            if (m.user_id !== user?.id && !seen.has(m.user_id))
+              seen.set(m.user_id, m);
+        setPeople(
+          [...seen.values()].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      },
+      () => alive && setPeople([]),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [teams, user?.id]);
+
+  const toggleCoHost = (id: string) =>
+    setCoHosts((ids) =>
+      ids.includes(id)
+        ? ids.filter((x) => x !== id)
+        : ids.length >= MAX_CO_HOSTS
+          ? ids
+          : [...ids, id],
+    );
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -231,6 +298,7 @@ function InviteForm({
           })),
           location: location.trim(),
           meeting_url: meetingUrl.trim(),
+          co_host_ids: coHosts,
           remind_before_minutes: reminders,
           ...(expiresAt ? { expires_at: expiresAt } : {}),
         }),
@@ -315,6 +383,31 @@ function InviteForm({
         </div>
         <h3 className="settings-subtitle">When you&apos;re free</h3>
         <WindowPicker value={windows} onChange={setWindows} />
+        {people && people.length > 0 && (
+          <fieldset className="check-group">
+            <legend>Co-hosts (optional)</legend>
+            <div className="check-grid">
+              {people.map((p) => (
+                <label key={p.user_id} className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={coHosts.includes(p.user_id)}
+                    disabled={
+                      !coHosts.includes(p.user_id) &&
+                      coHosts.length >= MAX_CO_HOSTS
+                    }
+                    onChange={() => toggleCoHost(p.user_id)}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+            <small className="field-hint">
+              Everyone you add must also be free at the time picked, and gets
+              the event on their calendar. Up to {MAX_CO_HOSTS}.
+            </small>
+          </fieldset>
+        )}
         <RemindersField value={reminders} onChange={setReminders} />
         <div className="settings-footer">
           <button className="primary" disabled={action.pending}>
@@ -337,8 +430,9 @@ const ROWS = ((WP_END - WP_START) * 60) / WP_STEP;
 const CELL_PX = 18;
 
 /**
- * Windows on a week grid: drag down a day to mark a window (7 AM to 9 PM,
- * half-hour steps), × to remove one. The form under it adds one by typing.
+ * Windows on a week grid: drag down a day (mouse, pen or finger) to mark a
+ * window, 7 AM to 9 PM in half-hour steps; × removes one. The form under it
+ * adds one by typing.
  */
 function WindowPicker({
   value,
@@ -373,7 +467,8 @@ function WindowPicker({
       index * WP_STEP,
     );
 
-  // Letting go anywhere adds the window being dragged out.
+  // Letting go anywhere adds the window being dragged out; a cancelled
+  // touch (the browser took over) drops it.
   useEffect(() => {
     if (!dragging) return;
     const up = () => {
@@ -386,9 +481,30 @@ function WindowPicker({
         merge([...v, { start: at(ds[d.day], lo), end: at(ds[d.day], hi) }]),
       );
     };
+    const cancel = () => setDrag(null);
     document.addEventListener("pointerup", up);
-    return () => document.removeEventListener("pointerup", up);
+    document.addEventListener("pointercancel", cancel);
+    return () => {
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", cancel);
+    };
   }, [dragging]);
+
+  /**
+   * Follow the pointer to the cell under it. Touch keeps its events on the
+   * first cell, so the cell is found by position rather than by hover.
+   */
+  const follow = (e: PointerEvent<HTMLDivElement>) => {
+    const d = latest.current.drag;
+    if (!d) return;
+    const cell = (
+      document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null
+    )?.closest<HTMLElement>("[data-cell]");
+    if (!cell || Number(cell.dataset.day) !== d.day) return;
+    if (cell.classList.contains("is-past")) return;
+    const index = Number(cell.dataset.cell);
+    if (index !== d.to) setDrag({ ...d, to: index });
+  };
 
   const addTyped = () => {
     const [y, m, d] = addDay.split("-").map(Number);
@@ -441,7 +557,7 @@ function WindowPicker({
             </span>
           ))}
         </div>
-        <div className="wp-body">
+        <div className="wp-body" onPointerMove={follow}>
           <div className="wp-hours">
             {Array.from({ length: ROWS / 2 }, (_, h) => (
               <span key={h}>{timeLabel(at(days[0], h * 2))}</span>
@@ -462,15 +578,13 @@ function WindowPicker({
                   return (
                     <div
                       key={i}
+                      data-day={n}
+                      data-cell={i}
                       className={"wp-cell" + (past ? " is-past" : "")}
                       onPointerDown={(e) => {
                         if (past || e.button !== 0) return;
                         e.preventDefault();
                         setDrag({ day: n, from: i, to: i });
-                      }}
-                      onPointerEnter={() => {
-                        const d = latest.current.drag;
-                        if (d && d.day === n && !past) setDrag({ ...d, to: i });
                       }}
                     />
                   );

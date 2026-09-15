@@ -102,3 +102,12 @@
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+/* A subtask shown apart from its parent names it. */
+.row-parent {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
