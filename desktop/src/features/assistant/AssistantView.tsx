@@ -10,6 +10,9 @@ import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
 import "./assistant.css";
 
+/** The composer grows with its text up to this share of the window. */
+const COMPOSER_MAX_SHARE = 0.4;
+
 type Props = {
   items: Item[];
   busy: boolean;
@@ -48,12 +51,15 @@ export function AssistantView({
     el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
   }, [turns.length, thinking]);
 
-  // Grow the composer with its content, up to a limit.
+  // Grow the composer with its content (three lines at rest) up to about
+  // 40% of the window; past that it scrolls inside.
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 180) + "px";
+    const max = Math.round(window.innerHeight * COMPOSER_MAX_SHARE);
+    el.style.height = Math.min(el.scrollHeight, max) + "px";
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
   }, [message]);
 
   const send = () => {
@@ -175,8 +181,9 @@ export function AssistantView({
       >
         <textarea
           ref={inputRef}
-          rows={1}
+          rows={3}
           aria-label="Message your assistant"
+          aria-describedby="ai-composer-hint"
           placeholder="Make a little space. Ask Orbyn…"
           value={message}
           maxLength={4000}
@@ -192,17 +199,22 @@ export function AssistantView({
             }
           }}
         />
-        <button
-          className="ai-send"
-          aria-label="Send"
-          disabled={locked || !message.trim()}
-        >
-          <ArrowUp size={18} />
-        </button>
+        <div className="ai-composer-bar">
+          <small id="ai-composer-hint" className="ai-muted ai-composer-hint">
+            Enter to send · Shift+Enter for a new line
+          </small>
+          <button
+            className="ai-send"
+            aria-label="Send"
+            disabled={locked || !message.trim()}
+          >
+            <ArrowUp size={18} />
+          </button>
+        </div>
       </form>
       <small className="ai-note">
-        Enter to send, Shift+Enter for a new line. Your request and up to 100
-        recent items are shared with your configured AI provider.
+        Your request and up to 100 recent items are shared with your configured
+        AI provider.
       </small>
     </section>
   );
