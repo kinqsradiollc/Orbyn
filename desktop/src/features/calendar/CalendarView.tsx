@@ -340,6 +340,20 @@ export function CalendarView({
     );
   };
 
+  /** A block moved to the next free working time of the same length. */
+  const reschedule = async (block: TimeBlock) => {
+    try {
+      const moved = await client.rescheduleBlock(block.id);
+      setNote({
+        text: `Moved to ${shortDay(moved.start_at)}, ${new Date(
+          moved.start_at,
+        ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
+      });
+    } catch (e) {
+      report(e);
+    }
+    await reload();
+  };
   /** Another block for the same task: at `start`, or the next free time. */
   const duplicate = async (block: TimeBlock, start?: Date) => {
     try {
@@ -965,6 +979,7 @@ export function CalendarView({
           onFocus={() => withItem(menu.block.item_id, onFocus)}
           onComplete={() => void complete(menu.block.item_id)}
           onDuplicate={() => void duplicate(menu.block)}
+          onReschedule={() => void reschedule(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
           onDelete={() => {
             if (
@@ -1058,6 +1073,11 @@ export function CalendarView({
       {dialog?.kind === "frame" && (
         <FrameDialog
           frameId={dialog.frameId}
+          onDeleted={() => {
+            setDialog(null);
+            setNote({ text: "Frame deleted." });
+            void reload();
+          }}
           teams={teams}
           report={report}
           onClose={() => setDialog(null)}

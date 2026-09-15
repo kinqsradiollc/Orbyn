@@ -4,6 +4,7 @@ import {
   Copy,
   Crosshair,
   ExternalLink,
+  FastForward,
   Lock,
   MapPin,
   Pencil,
@@ -145,6 +146,8 @@ type BlockProps = {
   onComplete: () => void;
   /** Another block for the same task at the next free time. */
   onDuplicate: () => void;
+  /** Move it to the next free working time of the same length. */
+  onReschedule: () => void;
   onChangeTime: () => void;
   onDelete: () => void;
 };
@@ -159,6 +162,7 @@ export function BlockMenu({
   onFocus,
   onComplete,
   onDuplicate,
+  onReschedule,
   onChangeTime,
   onDelete,
 }: BlockProps) {
@@ -195,6 +199,11 @@ export function BlockMenu({
         {open && (
           <button onClick={act(onDuplicate)}>
             <Copy size={14} /> Duplicate
+          </button>
+        )}
+        {open && (
+          <button onClick={act(onReschedule)}>
+            <FastForward size={14} /> Move to next free time
           </button>
         )}
         <button onClick={act(onChangeTime)}>

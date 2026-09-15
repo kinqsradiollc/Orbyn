@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CalendarClock,
+  CalendarPlus,
   Check,
   Crosshair,
   Eye,
@@ -24,6 +25,7 @@ import {
   type ItemDetail,
   type ItemStep,
   type Status,
+  type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { celebrate } from "../../lib/celebrate";
@@ -32,7 +34,26 @@ import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import { ItemFacts } from "../../components/ItemFacts";
+import { BlockDialog } from "../calendar/BlockDialog";
+import { spanLabel } from "../../lib/planning";
 import "./task.css";
+
+/** How far ahead "Booked time" looks. */
+const BOOKED_DAYS = 30;
+
+const shortDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
+/** The next quarter hour from now, for "Schedule…". */
+function nextQuarter() {
+  const d = new Date();
+  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
+  return d;
+}
 
 type Props = {
   /** The task as listed; the panel loads its checklist and timeline. */
@@ -125,6 +146,52 @@ export function TaskDetail({
     };
   }, [reloadKey, item.id]);
 
+  // Booked time: this task's time blocks over the next 30 days.
+  const [booked, setBooked] = useState<TimeBlock[] | null>(null);
+  const [bookedTick, setBookedTick] = useState(0);
+  const [scheduling, setScheduling] = useState(false);
+  const [blockPending, setBlockPending] = useState(false);
+  useEffect(() => {
+    if (item.kind !== "task") return;
+    let alive = true;
+    const now = Date.now();
+    client
+      .listBlocks(
+        new Date(now).toISOString(),
+        new Date(now + BOOKED_DAYS * 86_400_000).toISOString(),
+      )
+      .then(
+        (all) =>
+          alive &&
+          setBooked(
+            all
+              .filter(
+                (b) => b.item_id === item.id && Date.parse(b.end_at) > now,
+              )
+              .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at)),
+          ),
+        () => alive && setBooked([]),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [item.id, item.kind, reloadKey, bookedTick]);
+  /** Add or remove a block, then reload the list and the planner. */
+  const blockAction = async (fn: () => Promise<unknown>) => {
+    setBlockPending(true);
+    setError("");
+    try {
+      await fn();
+      setBookedTick((n) => n + 1);
+      await onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+      if ((e as HttpError).status === 401) onError(e);
+    } finally {
+      setBlockPending(false);
+    }
+  };
+
   // Focus the panel on open; give focus back to whatever opened it.
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -137,7 +204,8 @@ export function TaskDetail({
 
   // Escape closes; Tab stays inside the panel.
   useEffect(() => {
-    if (suspended) return;
+    // The schedule dialog handles its own keys while it's open.
+    if (suspended || scheduling) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (renaming) return;
@@ -161,7 +229,7 @@ export function TaskDetail({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [suspended, renaming, onClose]);
+  }, [suspended, scheduling, renaming, onClose]);
 
   const current: Item = detail ?? item;
   const steps = (detail?.steps ?? [])
@@ -545,6 +613,53 @@ export function TaskDetail({
             )}
           </section>
 
+          {current.kind === "task" && (
+            <section className="drawer-section" aria-labelledby="booked-title">
+              <div className="drawer-section-head">
+                <h3 id="booked-title">
+                  <CalendarClock size={16} aria-hidden="true" /> Booked time
+                </h3>
+                {current.status !== "done" && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={blockPending}
+                    onClick={() => setScheduling(true)}
+                  >
+                    <CalendarPlus size={14} /> Schedule…
+                  </button>
+                )}
+              </div>
+              {booked === null ? (
+                <p className="drawer-hint">Loading booked time…</p>
+              ) : booked.length ? (
+                <ul className="booked-list">
+                  {booked.map((b) => (
+                    <li key={b.id}>
+                      <span>
+                        {shortDay(b.start_at)},{" "}
+                        {spanLabel(b.start_at, b.end_at)}
+                      </span>
+                      <button
+                        type="button"
+                        className="link-button"
+                        disabled={blockPending}
+                        aria-label={`Remove the time on ${shortDay(b.start_at)}, ${spanLabel(b.start_at, b.end_at)}`}
+                        onClick={() =>
+                          void blockAction(() => client.deleteBlock(b.id))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="drawer-hint">No time set aside yet.</p>
+              )}
+            </section>
+          )}
+
           <section className="drawer-section" aria-labelledby="updates-title">
             <div className="drawer-section-head">
               <h3 id="updates-title">
@@ -670,6 +785,25 @@ export function TaskDetail({
             Close
           </button>
         </div>
+        {scheduling && (
+          <BlockDialog
+            heading="Set time aside"
+            subject={current.title}
+            start={nextQuarter()}
+            minutes={Math.min(current.estimate_minutes ?? 30, 1440)}
+            onClose={() => setScheduling(false)}
+            onSave={(start, end) => {
+              setScheduling(false);
+              void blockAction(() =>
+                client.createBlock({
+                  item_id: item.id,
+                  start_at: start.toISOString(),
+                  end_at: end.toISOString(),
+                }),
+              );
+            }}
+          />
+        )}
       </aside>
     </div>
   );

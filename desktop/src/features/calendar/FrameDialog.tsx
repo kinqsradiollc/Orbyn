@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import type { Frame, Team } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { FrameForm } from "../settings/FrameForm";
@@ -10,6 +10,8 @@ type Props = {
   report: (e: unknown) => void;
   onClose: () => void;
   onSaved: () => void;
+  /** The frame was deleted. */
+  onDeleted: () => void;
 };
 
 /** The frame editor over the calendar, opened from a frame's band. */
@@ -19,9 +21,11 @@ export function FrameDialog({
   report,
   onClose,
   onSaved,
+  onDeleted,
 }: Props) {
   /** Undefined while loading; null when the frame is gone. */
   const [frame, setFrame] = useState<Frame | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -48,6 +52,24 @@ export function FrameDialog({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const remove = async () => {
+    if (!frame) return;
+    if (
+      !window.confirm(
+        `Delete the frame “${frame.name}”? Every day of it goes, not just this one.`,
+      )
+    )
+      return;
+    setDeleting(true);
+    try {
+      await client.deleteFrame(frame.id);
+      onDeleted();
+    } catch (e) {
+      report(e);
+      setDeleting(false);
+    }
+  };
 
   return (
     <div
@@ -80,13 +102,25 @@ export function FrameDialog({
           ) : frame === null ? (
             <p className="muted">This frame no longer exists.</p>
           ) : (
-            <FrameForm
-              frame={frame}
-              teams={teams}
-              report={report}
-              onSaved={onSaved}
-              onCancel={onClose}
-            />
+            <>
+              <FrameForm
+                frame={frame}
+                teams={teams}
+                report={report}
+                onSaved={onSaved}
+                onCancel={onClose}
+              />
+              <div className="button-row start">
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={deleting}
+                  onClick={() => void remove()}
+                >
+                  <Trash2 size={16} /> {deleting ? "Deleting…" : "Delete frame"}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </section>
