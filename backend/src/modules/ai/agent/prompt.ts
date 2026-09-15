@@ -28,6 +28,61 @@ export function comingDays(timezone: string, now = new Date(), count = 7) {
 export const dateReminder = (timezone: string, now = new Date()) =>
   `Today is ${localDay(timezone, now)}. The coming days are ${comingDays(timezone, now)}.`;
 
+const WEEKDAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+/**
+ * The days a request names, worked out on the server: "tomorrow = Wed 16
+ * Sept (2026-09-16); next Tuesday = Tue 22 Sept (2026-09-22)". Matilda put
+ * "tomorrow" on today and Friday on the wrong week even with a calendar in
+ * the prompt. A bare weekday is its next occurrence after today; "next
+ * <weekday>" is that day in the following week (weeks start on Monday).
+ */
+export function namedDays(message: string, timezone: string, now = new Date()) {
+  const lower = message.toLowerCase();
+  const label = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  const iso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const today = WEEKDAYS.indexOf(
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "long" })
+      .format(now)
+      .toLowerCase(),
+  );
+  const day = (offset: number) => {
+    const at = new Date(now.getTime() + offset * 86_400_000);
+    return `${label.format(at)} (${iso.format(at)})`;
+  };
+  const found = new Map<string, string>();
+  if (/\b(today|tonight)\b/.test(lower)) found.set("today", day(0));
+  if (/\btomorrow\b/.test(lower)) found.set("tomorrow", day(1));
+  for (const [phrase, next, name] of lower.matchAll(
+    /\b(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/g,
+  )) {
+    const target = WEEKDAYS.indexOf(name);
+    const offset = next
+      ? ((8 - today) % 7 || 7) + ((target + 6) % 7)
+      : (target - today + 7) % 7 || 7;
+    found.set(phrase.replace(/\s+/g, " "), day(offset));
+  }
+  return [...found].map(([phrase, date]) => `${phrase} = ${date}`).join("; ");
+}
+
 export const agentPrompt = (
   timezone: string,
   overview: unknown,

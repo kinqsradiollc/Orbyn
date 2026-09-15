@@ -9,7 +9,7 @@ import {
 import { dropNulls, REPLY_FORMAT } from "../replySchema.js";
 import { mayChange } from "../guards.js";
 import { localDay, localTimeContext } from "../prompt.js";
-import { comingDays, dateReminder } from "./prompt.js";
+import { comingDays, dateReminder, namedDays } from "./prompt.js";
 import { dropNullFields } from "./protocol.js";
 import { MAX_ACTIONS, runTool, type AgentContext } from "./tools.js";
 import type { AgentResult } from "./loop.js";
@@ -90,7 +90,11 @@ ${JSON.stringify(data)}
 
 My request: ${message}
 
-(${dateReminder(timezone, now)})`;
+(${dateReminder(timezone, now)}${
+  namedDays(message, timezone, now)
+    ? ` Days in my request: ${namedDays(message, timezone, now)}.`
+    : ""
+})`;
 
 type Plan = { summary: string; actions: Record<string, unknown>[] };
 
@@ -131,6 +135,8 @@ export function readPlan(content: string): Plan {
 export function withShortIds(data: unknown) {
   const ids = new Map<string, string>();
   const shortOf = new Map<string, string>();
+  /** Each shown item's title by real id, to catch an id copied from the wrong line. */
+  const titles = new Map<string, string>();
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(walk);
     if (!value || typeof value !== "object") return value;
@@ -143,12 +149,31 @@ export function withShortIds(data: unknown) {
         short = `i${shortOf.size + 1}`;
         shortOf.set(copy.id, short);
         ids.set(short, copy.id);
+        titles.set(copy.id, copy.title);
       }
       copy.id = short;
     }
     return copy;
   };
-  return { data: walk(data), ids };
+  return { data: walk(data), ids, titles };
+}
+
+type Shown = ReturnType<typeof withShortIds>;
+
+/**
+ * The item an update means. Matilda once copied the id from the line above
+ * ("move buy groceries" arrived as an update of the gym session with the
+ * title "Buy groceries"). When the title sent names a different shown item,
+ * and exactly one, that item is meant; a real rename names no other item.
+ */
+function meantItem(id: string, title: string, shown: Shown) {
+  const saved = shown.titles.get(id);
+  const wanted = title.trim().toLowerCase();
+  if (!saved || !wanted || saved.trim().toLowerCase() === wanted) return id;
+  const named = [...shown.titles].filter(
+    ([, t]) => t.trim().toLowerCase() === wanted,
+  );
+  return named.length === 1 ? named[0][0] : id;
 }
 
 type Refusal = { forModel: string; forUser: string };
@@ -166,7 +191,7 @@ type ToolReply = { error?: string; results?: ItemResult[] };
 function planned(
   action: Record<string, unknown>,
   n: number,
-  ids: Map<string, string>,
+  shown: Shown,
 ): Planned {
   const raw =
     action.data && typeof action.data === "object"
@@ -183,11 +208,13 @@ function planned(
   // An update that sends empty notes would wipe the saved notes: the schema
   // makes every field required, so "" usually means "unchanged".
   if (operation === "update" && fields.notes === "") delete fields.notes;
+  const title = typeof fields.title === "string" ? fields.title : "";
+  const id = shown.ids.get(given) ?? given;
   return {
     n,
     operation,
-    id: ids.get(given) ?? given,
-    title: typeof fields.title === "string" ? fields.title : "",
+    id: operation === "update" ? meantItem(id, title, shown) : id,
+    title,
     fields,
   };
 }
@@ -202,7 +229,7 @@ function planned(
 async function propose(
   ctx: AgentContext,
   actions: Record<string, unknown>[],
-  ids: Map<string, string>,
+  shown: Shown,
 ): Promise<Refusal[]> {
   ctx.actions = [];
   const refused: Refusal[] = [];
@@ -236,7 +263,7 @@ async function propose(
     return results;
   };
 
-  const all = actions.map((action, n) => planned(action, n, ids));
+  const all = actions.map((action, n) => planned(action, n, shown));
   for (const p of all.slice(MAX_ACTIONS))
     refuse(p, `at most ${MAX_ACTIONS} changes fit in one reply`);
   const kept = all.slice(0, MAX_ACTIONS);
@@ -399,7 +426,7 @@ export async function runGraph(
 
   const first = await ask(messages, true);
   let plan = first.plan!;
-  let refused = await propose(ctx, plan.actions, shown.ids);
+  let refused = await propose(ctx, plan.actions, shown);
   if (refused.length && !deadline.aborted) {
     try {
       const again = await ask(
@@ -418,7 +445,7 @@ export async function runGraph(
         true,
       );
       plan = again.plan!;
-      refused = await propose(ctx, plan.actions, shown.ids);
+      refused = await propose(ctx, plan.actions, shown);
     } catch {
       // Keep what the first plan got through.
     }

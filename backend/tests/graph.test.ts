@@ -296,6 +296,51 @@ test("an update refused only for a stale end time goes through without it", asyn
   assert.doesNotMatch(r.json().summary, /Not proposed/);
 });
 
+test("an update whose title names another shown item goes to that item", async () => {
+  const me = await newUser();
+  const soon = new Date(Date.now() + 86_400_000).toISOString();
+  const gym = await addItem(me.token, {
+    title: "Gym session",
+    kind: "event",
+    due_at: soon,
+  });
+  const groceries = await addItem(me.token, { title: "Buy groceries" });
+  reset(
+    plan("Proposed moving **Buy groceries** to Thursday.", [
+      {
+        operation: "update",
+        item_id: gym.id,
+        data: { title: "Buy groceries", due_at: "2026-09-17T17:00" },
+      },
+    ]),
+  );
+  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  assert.equal(r.statusCode, 200, r.body);
+  assert.deepEqual(
+    r.json().actions.map((a: { item_id: string }) => a.item_id),
+    [groceries.id],
+  );
+});
+
+test("the days a request names are worked out on the server", async () => {
+  const { namedDays } = await import("../src/modules/ai/agent/prompt.js");
+  // Tuesday 15 September 2026, midday in Melbourne.
+  const now = new Date("2026-09-15T02:00:00Z");
+  const days = namedDays(
+    "Add milk tomorrow, call mum Friday 6pm and renew passport next Tuesday",
+    TZ,
+    now,
+  );
+  assert.match(days, /tomorrow = Wed 16 Sept? \(2026-09-16\)/);
+  assert.match(days, /friday = Fri 18 Sept? \(2026-09-18\)/);
+  assert.match(days, /next tuesday = Tue 22 Sept? \(2026-09-22\)/);
+  assert.match(
+    namedDays("Lunch next Friday", TZ, now),
+    /next friday = Fri 25 Sept? \(2026-09-25\)/,
+  );
+  assert.equal(namedDays("Summarize my plans", TZ, now), "");
+});
+
 test("invalid plans twice are a provider error", async () => {
   const me = await newUser();
   reset("not json", "still not json");
