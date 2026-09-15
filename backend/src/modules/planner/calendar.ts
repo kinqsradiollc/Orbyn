@@ -9,6 +9,7 @@ import {
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { frameSpans, loadFrames } from "./frames.js";
 
 /** An event without an end still takes this long on the calendar. */
 export const DEFAULT_EVENT_MINUTES = 30;
@@ -30,6 +31,8 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   extra_timezones: [],
   calendar_sets: [],
   pinned_user_ids: [],
+  deadline_notice_days: 1,
+  planner_notices: { push: true, email: false },
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -62,6 +65,11 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     extra_timezones: row.extra_timezones,
     calendar_sets: row.calendar_sets,
     pinned_user_ids: row.pinned_user_ids,
+    deadline_notice_days: row.deadline_notice_days,
+    planner_notices: {
+      ...DEFAULT_PREFS.planner_notices!,
+      ...row.planner_notices,
+    },
   };
 }
 
@@ -334,6 +342,11 @@ export type BusyOptions = {
   derived?: boolean;
   /** Leave these items out (a booking being moved ignores its own events). */
   excludeItemIds?: string[];
+  /**
+   * Count frames marked busy as busy. Booking pages and team time ask for
+   * this; the planner never does, since it plans inside frames.
+   */
+  frames?: boolean;
 };
 
 /**
@@ -388,6 +401,18 @@ export async function busyIntervals(
         .map((b) => ({ start_at: b.start_at, end_at: b.end_at })),
     );
   }
+  if (options.frames)
+    for (const f of await loadFrames(db, userId, true))
+      for (const s of frameSpans(
+        f,
+        from.getTime(),
+        to.getTime(),
+        prefs.timezone,
+      ))
+        busy.push({
+          start_at: new Date(s.start).toISOString(),
+          end_at: new Date(s.end).toISOString(),
+        });
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
   return mergeIntervals(busy)

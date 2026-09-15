@@ -33,6 +33,7 @@ import {
   type TeamRole,
   type User,
   type ApiKey,
+  type BlockDuplicateInput,
   type BlockInput,
   type BlockUpdate,
   type Booking,
@@ -50,6 +51,7 @@ import {
   type Frame,
   type FrameInput,
   type FrameUpdate,
+  type ItemSort,
   type ListInput,
   type ListUpdate,
   type MeetingSlot,
@@ -65,6 +67,8 @@ import {
   type PlannerPrefsInput,
   type PlannerReview,
   type PlanPreviewInput,
+  type PlanStaleness,
+  type PlanTuneInput,
   type PublicBookingPage,
   type Tag,
   type TagInput,
@@ -99,7 +103,7 @@ export type OrbynClientOptions = {
 };
 
 export type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   /** Send without the Authorization header even if a token exists. */
   anonymous?: boolean;
@@ -279,6 +283,8 @@ export class OrbynClient {
       list_id?: string;
       tag_id?: string;
       assignee_id?: string;
+      /** List order; newest first when omitted. Every item carries its `score`. */
+      sort?: ItemSort;
     } = {},
   ) {
     const q = new URLSearchParams();
@@ -290,6 +296,7 @@ export class OrbynClient {
       "list_id",
       "tag_id",
       "assignee_id",
+      "sort",
     ] as const)
       if (params[key]) q.set(key, params[key]!);
     const suffix = q.size ? `?${q}` : "";
@@ -367,6 +374,13 @@ export class OrbynClient {
       method: "POST",
     });
   }
+  /** Another block for the same task and length, at `start_at` or the next free time after it. */
+  duplicateBlock(id: string, input: BlockDuplicateInput = {}) {
+    return this.request<TimeBlock>(`/blocks/${id}/duplicate`, {
+      method: "POST",
+      body: input,
+    });
+  }
   getPlannerPrefs() {
     return this.request<PlannerPrefs>("/planner/prefs");
   }
@@ -393,6 +407,20 @@ export class OrbynClient {
   }
   deleteFrame(id: string) {
     return this.request<void>(`/planner/frames/${id}`, { method: "DELETE" });
+  }
+  /** Skip one date ("YYYY-MM-DD") of a frame. */
+  skipFrame(id: string, date: string) {
+    return this.request<Frame>(`/planner/frames/${id}/skip`, {
+      method: "POST",
+      body: { date },
+    });
+  }
+  /** Bring back a skipped date of a frame. */
+  unskipFrame(id: string, date: string) {
+    return this.request<Frame>(`/planner/frames/${id}/unskip`, {
+      method: "POST",
+      body: { date },
+    });
   }
   listPlaces() {
     return this.request<Place[]>("/planner/places");
@@ -421,6 +449,17 @@ export class OrbynClient {
   }
   getPlan(id: string) {
     return this.request<Plan>(`/planner/plans/${id}`);
+  }
+  /** Tune a plan (tasks in or out, estimates, pinned blocks, keep-free, scope); returns the new plan that replaces it. */
+  tunePlan(id: string, input: PlanTuneInput) {
+    return this.request<Plan>(`/planner/plans/${id}`, {
+      method: "PATCH",
+      body: input,
+    });
+  }
+  /** Whether the calendar or tasks changed since the plan was made. */
+  planStale(id: string) {
+    return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
   }
   applyPlan(id: string) {
     return this.request<{ blocks: TimeBlock[]; skipped: number }>(

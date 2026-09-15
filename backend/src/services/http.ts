@@ -51,7 +51,7 @@ export async function createService(
   await app.register(cors, {
     origin: (origin, cb) =>
       cb(null, !origin || cachedSettings().cors_origins.includes(origin)),
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     exposedHeaders: ["ETag"],
   });
   // Sign-in and AI routes set their own stricter limits, which always apply.

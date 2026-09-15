@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type {
   actionSchema,
   agentReply,
+  blockDuplicateInput,
   blockInput,
   blockUpdate,
   bookingPageInput,
@@ -17,8 +18,10 @@ import type {
   credentials,
   frameFilters,
   frameInput,
+  frameSkipInput,
   frameUpdate,
   itemData,
+  ITEM_SORTS,
   KINDS,
   listInput,
   listUpdate,
@@ -26,6 +29,8 @@ import type {
   placeUpdate,
   plannerPrefsInput,
   planPreviewInput,
+  planScope,
+  planTuneInput,
   PRIORITIES,
   STATUSES,
   tagInput,
@@ -70,7 +75,14 @@ export type Item = ItemInput & {
   series_start?: string | null;
   /** Occurrences removed from a repeating item. */
   exdates?: string[];
+  /**
+   * The priority score (see `priorityScore`), on list responses. Null for
+   * events and finished tasks.
+   */
+  score?: number | null;
 };
+
+export type ItemSort = (typeof ITEM_SORTS)[number];
 
 export type User = {
   id: string;
@@ -139,8 +151,18 @@ export type Notice = {
   body: string;
   read: boolean;
   created_at: string;
-  /** "conflict" notices offer a Reschedule action for the block in `ref`. */
-  kind?: "reminder" | "conflict" | "booking";
+  /**
+   * "conflict" notices offer a Reschedule action for the block in `ref`.
+   * "rollforward" (ref = the local date) offers Roll forward; "at_risk" and
+   * "deadline" (ref = the local date, `item_id` = the task) offer Plan it.
+   */
+  kind?:
+    | "reminder"
+    | "conflict"
+    | "booking"
+    | "rollforward"
+    | "at_risk"
+    | "deadline";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
@@ -395,6 +417,18 @@ export type DerivedBlock = {
   label: string;
 };
 
+/** One occurrence of a frame on the calendar. */
+export type FrameOccurrence = {
+  frame_id: string;
+  name: string;
+  color: string;
+  start_at: string;
+  end_at: string;
+  busy: boolean;
+  /** The frame's local date for this occurrence (what `skip` takes). */
+  date: string;
+};
+
 export type CalendarView = {
   from: string;
   to: string;
@@ -402,6 +436,8 @@ export type CalendarView = {
   entries: CalendarEntry[];
   blocks: TimeBlock[];
   derived: DerivedBlock[];
+  /** Your frames in the range. */
+  frames?: FrameOccurrence[];
 };
 
 export type BreakLevel = (typeof BREAK_LEVELS)[number];
@@ -426,7 +462,13 @@ export type PlannerPrefs = {
   extra_timezones: string[];
   calendar_sets: CalendarSet[];
   pinned_user_ids: string[];
+  /** Days before a due time to warn about a task with no time set aside (0 = off). */
+  deadline_notice_days?: number;
+  /** Planner notices also go to push and email when these are on. */
+  planner_notices?: PlannerNotices;
 };
+
+export type PlannerNotices = { push: boolean; email: boolean };
 
 export type FrameFilters = z.output<typeof frameFilters>;
 
@@ -434,12 +476,23 @@ export type FrameFilters = z.output<typeof frameFilters>;
 export type Frame = {
   id: string;
   name: string;
+  /** Weekdays it repeats on, when it has no `rrule`. */
   days: number[];
   start_time: string;
   end_time: string;
   filters: FrameFilters;
   color: string;
   position: number;
+  /** How it repeats; wins over `days` when set. */
+  rrule?: string | null;
+  /** The first day of the rule ("YYYY-MM-DD"). */
+  series_start?: string | null;
+  /** Busy frames block booking pages and teammates' meeting times. */
+  busy?: boolean;
+  /** Skipped dates ("YYYY-MM-DD", in the frame's zone). */
+  exdates?: string[];
+  /** Its time zone; the owner's planner zone when null. */
+  timezone?: string | null;
 };
 
 /** A place and the time it takes to get there. */
@@ -462,6 +515,8 @@ export type PlannedBlock = {
   part: number;
   parts: number;
   score: number;
+  /** A block the user pinned while tuning the plan; it stays where it is. */
+  pinned?: boolean;
 };
 
 export type UnplacedTask = {
@@ -469,6 +524,47 @@ export type UnplacedTask = {
   title: string;
   due_at: string | null;
   reason: string;
+};
+
+export type PlanScope = z.output<typeof planScope>;
+
+/** Every task a plan looked at, for a checklist of what's in and out. */
+export type PlanTask = {
+  item_id: string;
+  title: string;
+  due_at: string | null;
+  priority: Priority;
+  team_id: string | null;
+  list_id: string | null;
+  /** The minutes planned for: the tuned estimate, or the task's own. */
+  estimate_minutes: number | null;
+  /** True when the plan uses a tuned estimate rather than the task's. */
+  estimate_tuned: boolean;
+  /** False for tasks left out of this plan. */
+  included: boolean;
+  /** Minutes the plan gives it (pinned blocks included). */
+  planned_minutes: number;
+  /** Why it wasn't (fully) planned, or why it was left out; null when it fits. */
+  reason: string | null;
+  at_risk: boolean;
+};
+
+/** The options a plan was made with, resolved from the request and preferences. */
+export type PlanOptions = {
+  start_date: string;
+  days: number;
+  pad_percent: number;
+  split: boolean;
+  break_level: BreakLevel;
+  use_frames: boolean;
+  timezone: string;
+  scope: PlanScope | null;
+  keep_free: BusyInterval[];
+  item_ids: string[] | null;
+  include_item_ids: string[];
+  exclude_item_ids: string[];
+  estimates: Record<string, number>;
+  pinned_blocks: { item_id: string; start_at: string; end_at: string }[];
 };
 
 /** A generated plan; nothing is saved until it is applied. */
@@ -485,7 +581,17 @@ export type Plan = {
   applied: boolean;
   expires_at: string;
   summary: string;
+  /** Every task considered: included, left out, and why. */
+  tasks?: PlanTask[];
+  options?: PlanOptions;
+  /** Set once a tuned plan replaces this one. */
+  superseded_by?: string | null;
+  /** Tasks whose estimates were saved while tuning. */
+  estimates_saved?: string[];
 };
+
+/** Whether the calendar or tasks changed since a plan was made. */
+export type PlanStaleness = { stale: boolean };
 
 export type AtRiskTask = UnplacedTask & {
   remaining_minutes: number;
@@ -529,6 +635,18 @@ export type MemberWorkload = {
   load: number;
   overloaded: boolean;
   at_risk: number;
+  /** This member's tasks that can't get enough time before they're due. */
+  at_risk_items?: TeamAtRiskItem[];
+};
+
+/** A team task that can't get enough time before it's due. */
+export type TeamAtRiskItem = {
+  id: string;
+  title: string;
+  assignee_id: string;
+  assignee_name: string;
+  due_at: string;
+  remaining_minutes: number;
 };
 
 export type MeetingSlot = {
@@ -769,6 +887,9 @@ export type FrameUpdate = z.input<typeof frameUpdate>;
 export type PlaceInput = z.input<typeof placeInput>;
 export type PlaceUpdate = z.input<typeof placeUpdate>;
 export type PlanPreviewInput = z.input<typeof planPreviewInput>;
+export type PlanTuneInput = z.input<typeof planTuneInput>;
+export type FrameSkipInput = z.input<typeof frameSkipInput>;
+export type BlockDuplicateInput = z.input<typeof blockDuplicateInput>;
 export type BookingPageInput = z.input<typeof bookingPageInput>;
 export type BookingPageUpdate = z.input<typeof bookingPageUpdate>;
 export type BookingRequest = z.input<typeof bookingRequest>;

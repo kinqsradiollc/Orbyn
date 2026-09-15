@@ -8,6 +8,7 @@ const {
   occurrencesBetween,
   parseRrule,
   priorityScore,
+  sizeFit,
   zonedInstant,
   formatRrule,
 } = await import("@orbyn/core");
@@ -163,6 +164,103 @@ test("priority weighs importance, urgency and lateness", () => {
   assert.ok(blocked < high);
 });
 
+test("the score's size term rewards tasks that fit today's largest free slot", () => {
+  const now = new Date("2026-09-15T00:00:00Z");
+  const score = (estimate: number | null, spent = 0, slot?: number) =>
+    priorityScore(
+      {
+        priority: "medium",
+        status: "todo",
+        due_at: null,
+        estimate_minutes: estimate,
+        spent_minutes: spent,
+      },
+      now,
+      slot,
+    );
+  // 3 x 2 (medium) + 1 x size_fit: 1 fits, 0.5 doesn't, 0.75 without an estimate.
+  assert.equal(score(30, 0, 60), 7);
+  assert.equal(score(90, 0, 60), 6.5);
+  assert.equal(score(null, 0, 60), 6.75);
+  // What's left after time already spent is what has to fit.
+  assert.equal(score(90, 40, 60), 7);
+  // Without a free slot to compare with, the term is left out.
+  assert.equal(score(90), 6);
+  assert.equal(sizeFit({ estimate_minutes: 60 }, 60), 1);
+  assert.equal(sizeFit({ estimate_minutes: 61 }, 60), 0.5);
+});
+
+test("monthly rules take month days, weekdays and set positions", () => {
+  const start = zonedInstant(2026, 1, 1, 8, 0, "UTC");
+  const days = (rule: string, until = "2026-05-01T00:00:00Z") =>
+    occurrencesBetween(start, rule, "UTC", start, new Date(until)).map((d) =>
+      iso(d).slice(0, 10),
+    );
+  // The last day of each month.
+  assert.deepEqual(days("FREQ=MONTHLY;BYMONTHDAY=-1"), [
+    "2026-01-31",
+    "2026-02-28",
+    "2026-03-31",
+    "2026-04-30",
+  ]);
+  // The last weekday of each month.
+  assert.deepEqual(days("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"), [
+    "2026-01-30",
+    "2026-02-27",
+    "2026-03-31",
+    "2026-04-30",
+  ]);
+  // The first and fifteenth; the first Monday.
+  assert.deepEqual(
+    days("FREQ=MONTHLY;BYMONTHDAY=1,15", "2026-03-01T00:00:00Z"),
+    ["2026-01-01", "2026-01-15", "2026-02-01", "2026-02-15"],
+  );
+  assert.deepEqual(
+    days("FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", "2026-04-01T00:00:00Z"),
+    ["2026-01-05", "2026-02-02", "2026-03-02"],
+  );
+  // Every weekday but Wednesday.
+  assert.deepEqual(
+    days("FREQ=WEEKLY;BYDAY=MO,TU,TH,FR", "2026-01-10T00:00:00Z"),
+    [
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-05",
+      "2026-01-06",
+      "2026-01-08",
+      "2026-01-09",
+    ],
+  );
+  assert.equal(
+    iso(nextOccurrence(start, "FREQ=MONTHLY;BYMONTHDAY=-1", "UTC", start)!),
+    "2026-01-31T08:00:00.000Z",
+  );
+  assert.equal(parseRrule("FREQ=WEEKLY;BYMONTHDAY=1"), null);
+  assert.equal(parseRrule("FREQ=MONTHLY;BYMONTHDAY=0"), null);
+  assert.equal(parseRrule("FREQ=MONTHLY;BYMONTHDAY=32"), null);
+  assert.equal(parseRrule("FREQ=MONTHLY;BYSETPOS=-1"), null);
+  assert.equal(parseRrule("FREQ=DAILY;BYSETPOS=1;BYDAY=MO"), null);
+  assert.equal(parseRrule("FREQ=MONTHLY;BYDAY=MO;BYMONTHDAY=1"), null);
+  assert.equal(
+    describeRrule("FREQ=MONTHLY;BYMONTHDAY=-1"),
+    "Every month on the last day",
+  );
+  assert.equal(
+    describeRrule("FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1"),
+    "Every month on the last weekday",
+  );
+  assert.equal(
+    formatRrule({
+      freq: "MONTHLY",
+      interval: 1,
+      byDay: [1, 2, 3, 4, 5],
+      bySetPos: [-1],
+      count: null,
+    }),
+    "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+  );
+});
+
 const frame = (overrides: Record<string, unknown> = {}) => ({
   id: "f1",
   name: "Deep work",
@@ -297,6 +395,63 @@ test("frames take only the tasks their filters allow", () => {
   assert.equal(result.blocks[0].frame_name, "Deep work");
   assert.equal(result.unplaced[0].item_id, "low");
   assert.match(result.unplaced[0].reason, /No frame takes this task/);
+});
+
+test("pinned blocks stay put and count towards their task", () => {
+  const result = schedule({
+    ...base,
+    tasks: [
+      task({ id: "a", title: "A", priority: "high", estimate_minutes: 120 }),
+      task({ id: "b", title: "B", priority: "low", estimate_minutes: 60 }),
+    ],
+    pinned: [
+      {
+        item_id: "a",
+        start_at: "2026-09-16T13:00:00.000Z",
+        end_at: "2026-09-16T14:00:00.000Z",
+      },
+      // A pin for a task that isn't in the plan is dropped.
+      {
+        item_id: "gone",
+        start_at: "2026-09-16T09:00:00.000Z",
+        end_at: "2026-09-16T10:00:00.000Z",
+      },
+    ],
+  });
+  assert.deepEqual(
+    result.blocks.map((b) => [
+      b.item_id,
+      b.start_at.slice(11, 16),
+      b.end_at.slice(11, 16),
+      b.part,
+      b.parts,
+      !!b.pinned,
+    ]),
+    [
+      // A needs 60 more minutes beyond its pin; B fills the next hour.
+      ["a", "09:00", "10:00", 1, 2, false],
+      ["b", "10:00", "11:00", 1, 1, false],
+      ["a", "13:00", "14:00", 2, 2, true],
+    ],
+  );
+  assert.equal(result.planned_minutes, 180);
+});
+
+test("frames repeat by rule and skip dates", () => {
+  const monthEnd = frame({
+    rrule: "FREQ=MONTHLY;BYMONTHDAY=-1",
+    series_start: "2026-09-01",
+  });
+  const on = (days: string[], f: ReturnType<typeof frame>) =>
+    schedule({ ...base, days, frames: [f], tasks: [task()] });
+  assert.equal(on(["2026-09-16"], monthEnd).blocks.length, 0);
+  assert.equal(
+    on(["2026-09-30"], monthEnd).blocks[0].start_at,
+    "2026-09-30T09:00:00.000Z",
+  );
+  const skipped = on(["2026-09-16"], frame({ exdates: ["2026-09-16"] }));
+  assert.equal(skipped.blocks.length, 0);
+  assert.match(skipped.unplaced[0].reason, /No frame takes this task/);
 });
 
 test("tasks that can't fit before they're due are flagged", () => {

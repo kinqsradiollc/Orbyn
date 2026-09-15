@@ -93,17 +93,17 @@ also include `team_name` and `user_id` (the creator).
 
 Planning fields, all optional:
 
-| Field              | Meaning                                                                                               |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| `estimate_minutes` | How long the task takes (1 to 10080); the planner uses it.                                            |
-| `spent_minutes`    | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                              |
-| `list_id`          | A list from `GET /lists`: your own for personal items, the team's for team ones.                      |
-| `tag_ids`          | Up to 20 tags, with the same rule as lists.                                                           |
-| `assignee_id`      | Who on the team is doing a team task. Responses also carry `assignee_name`.                           |
-| `location`         | Where an event happens; drives travel time.                                                           |
-| `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                            |
-| `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly), `COUNT` or `UNTIL`. |
-| `timezone`         | The IANA zone a repeating item keeps its wall-clock time in.                                          |
+| Field              | Meaning                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `estimate_minutes` | How long the task takes (1 to 10080); the planner uses it.                                                                                                                                 |
+| `spent_minutes`    | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                                                                                                                   |
+| `list_id`          | A list from `GET /lists`: your own for personal items, the team's for team ones.                                                                                                           |
+| `tag_ids`          | Up to 20 tags, with the same rule as lists.                                                                                                                                                |
+| `assignee_id`      | Who on the team is doing a team task. Responses also carry `assignee_name`.                                                                                                                |
+| `location`         | Where an event happens; drives travel time.                                                                                                                                                |
+| `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
+| `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
+| `timezone`         | The IANA zone a repeating item keeps its wall-clock time in.                                                                                                                               |
 
 Rules: `kind` is `task` or `event`; events require `due_at`; `end_at` requires `due_at` and must be
 later; timestamps are ISO 8601 with an offset; `reminder_minutes` is 0 to 10080 (one week); a
@@ -113,11 +113,26 @@ A repeating item's `due_at` is its current occurrence and `series_start` its fir
 repeating task moves it to the next occurrence (its checklist resets and the timeline notes the
 completed one) instead of closing it. Completing any task removes its future time blocks.
 
-### `GET /items?limit=200&offset=0&team_id=` (auth)
+### `GET /items?limit=200&offset=0&team_id=&sort=` (auth)
 
 Newest first. `limit` max 500. Returns your personal items plus items of every team you belong to.
 Pass `team_id` to list only one team's items (requires membership). Other filters: `q` (words in
 the title or notes), `list_id`, `tag_id` and `assignee_id`.
+
+`sort` is `newest` (the default), `score` (priority score, highest first; events and finished
+tasks last), `due` (soonest first, undated last), `priority` (high to low), `estimate` (shortest
+first, unestimated last), `title` (A to Z) or `created` (oldest first). Every item carries its
+`score`, worked out on read (null for events and finished tasks):
+
+```
+score = 3 × priority (low 1, medium 2, high 3) + 4 × urgency + 2 if overdue + 1 × size_fit
+        + 0.5 if in progress − 3 if blocked
+```
+
+Urgency rises from 0 a week before the due time to 1 at it. `size_fit` is 1 when the remaining
+estimate (estimate − time spent) fits the largest free working slot left today (or on the next
+working day once today's hours are over), 0.5 when it doesn't, and 0.75 for a task without an
+estimate. The planner ranks tasks with the same score, comparing with the first planned day.
 
 ### `POST /items/:id/time` (auth)
 
@@ -215,7 +230,21 @@ Same body. → `204`
 
 ### `GET /notifications` (auth)
 
-Up to 100 most recent in-app reminders: `{ "id", "title", "body", "read", "created_at" }[]`.
+Up to 100 most recent in-app notices:
+`{ "id", "title", "body", "read", "created_at", "kind", "item_id", "ref" }[]`.
+
+| `kind`        | About                                                                  | `ref`          | Suggested action |
+| ------------- | ---------------------------------------------------------------------- | -------------- | ---------------- |
+| `reminder`    | An item's reminder; the due time is in your planner time zone          | empty          | Open the item    |
+| `conflict`    | An event now overlaps a future time block                              | the block      | Reschedule       |
+| `booking`     | A booking was made, requested, moved or cancelled                      | the booking    | Open the booking |
+| `rollforward` | Blocks from earlier days are unfinished (from your working start)      | the local date | Roll forward     |
+| `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date | Plan it          |
+| `deadline`    | A task is due within `deadline_notice_days` with no time set aside     | the local date | Plan it          |
+
+Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) come at most once a day per
+task (once per block for conflicts, once per day for roll-forward). They also go to push and email
+as your `planner_notices` preference says (push on and email off by default; email needs SMTP).
 
 ### `POST /notifications/:id/read` (auth)
 
@@ -310,36 +339,57 @@ At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
 - `blocks`: your time blocks, with their task's title and status.
 - `derived`: buffers and travel time around events, worked out from your planner settings and
   places (never stored, so they always follow the events).
+- `frames`: each occurrence of your frames in the range:
+  `{ frame_id, name, color, start_at, end_at, busy, date }` (`date` is the frame's local date, the
+  one `skip` takes).
 
 ### Time blocks
 
 Time you set aside to work on a task. Each person has their own.
 
-| Method and path               | Body / result                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------------- |
-| `GET /blocks?from=&to=`       | Your blocks in the range                                                            |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)        |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                          |
-| `DELETE /blocks/:id`          | `204`                                                                               |
-| `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days |
+| Method and path               | Body / result                                                                                                                                                                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /blocks?from=&to=`       | Your blocks in the range                                                                                                                                                                   |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                               |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                                                                                                                                 |
+| `DELETE /blocks/:id`          | `204`                                                                                                                                                                                      |
+| `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days                                                                                                        |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days |
 
 ## Planner
 
 | Method and path                                              | Body / result                                                                                                                  |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people |
-| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters                                                                         |
+| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters (below)                                                                 |
+| `POST /planner/frames/:id/skip` · `/unskip`                  | `{ "date": "YYYY-MM-DD" }` skips one date of a frame, or brings it back → the frame                                            |
 | `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`)                                                                 |
 | `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                              |
 | `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                               |
+| `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                |
+| `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced         |
 | `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
 | `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`                                                                                           |
 | `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
 
+Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
+notices off) and `planner_notices` (`{ "push": true, "email": false }`; send either key to change
+it).
+
+A frame has `name`, `start_time`, `end_time`, `filters`, `color`, and either `days` (weekdays,
+0 = Sunday) or an `rrule` (which wins; for example `FREQ=MONTHLY;BYMONTHDAY=-1` for the last day
+of each month, or `FREQ=WEEKLY;BYDAY=MO,TU,TH,FR` for every weekday but Wednesday). Optional:
+`busy` (default false: a busy frame blocks booking pages and teammates' meeting times, but the
+planner still plans inside it), `exdates` (skipped dates) and `timezone` (null: your planner
+zone). Responses also carry `series_start`, the day a rule counts from.
+
 `POST /planner/preview` body, all optional: `start_date` (`YYYY-MM-DD`, today when omitted),
 `days` (1 to 7), `pad_percent`, `split`, `break_level`, `use_frames` (default true), `keep_free`
-(`[{ "start_at", "end_at" }]`), `item_ids` (only these tasks), `exclude_item_ids`, and `timezone`
-(the device's, used until you save one). A plan:
+(`[{ "start_at", "end_at" }]`), `item_ids` (only these tasks), `exclude_item_ids`, `timezone`
+(the device's, used until you save one), and `scope`: `{ "personal"?: true, "team_ids"?: [],
+"list_ids"?: [] }` limits the plan to your personal tasks, team tasks assigned to you in the
+teams named (all your teams when `team_ids` is omitted, none when it's empty) and, when
+`list_ids` isn't empty, tasks in those lists. A plan:
 
 ```json
 {
@@ -372,14 +422,39 @@ Time you set aside to work on a task. Each person has their own.
 The planner considers your open personal tasks and team tasks assigned to you (or exactly the
 `item_ids` you name). Tasks without an estimate count as 30 minutes.
 
+Plans also carry `options` (what the plan was made with: `start_date`, `days`, `pad_percent`,
+`split`, `break_level`, `use_frames`, `timezone`, `scope`, `keep_free`, `item_ids`,
+`include_item_ids`, `exclude_item_ids`, `estimates`, `pinned_blocks`), `superseded_by`,
+`estimates_saved`, and `tasks`, a checklist of every task considered: `{ item_id, title, due_at,
+priority, team_id, list_id, estimate_minutes, estimate_tuned, included, planned_minutes, reason,
+at_risk }`, where `reason` says why a task wasn't (fully) planned or was left out.
+
+`PATCH /planner/plans/:id` (the owner, before the plan is applied or expires) makes the plan again
+with some tuning. Each field given replaces the plan's current value; `estimates` merge by task:
+
+| Field              | Meaning                                                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `include_item_ids` | Tasks to add, even ones outside the scope or not assigned to you (any task you can see)                                                                                                       |
+| `exclude_item_ids` | Tasks to leave out                                                                                                                                                                            |
+| `estimates`        | `{ "<item id>": minutes }` to plan for instead of the task's estimate                                                                                                                         |
+| `save_estimates`   | Also save those estimates on the tasks you can edit (listed in `estimates_saved`)                                                                                                             |
+| `keep_free`        | Times to leave empty                                                                                                                                                                          |
+| `pinned_blocks`    | `[{ "item_id", "start_at", "end_at" }]` kept exactly where they are (`pinned: true`); they take their time out of what's free and count towards their task. `422` if outside the days planned |
+| `scope`            | As in the preview; `null` removes it                                                                                                                                                          |
+
+The answer is a new plan with a new id; the old one expires and points at it (`superseded_by`).
+
 ## Team time
 
-Teammates see each other's busy intervals only, never what the time is for.
+Teammates see each other's busy intervals only, never what the time is for. Busy frames count as
+busy in availability and meeting suggestions. `at_risk_items` lists each member's tasks that can't
+get enough time before they're due (tasks due soonest take the free time first):
+`{ id, title, assignee_id, assignee_name, due_at, remaining_minutes }`.
 
 | Method and path                                        | Result                                                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | `GET /teams/:id/availability?from=&to=`                | Each member's working hours and busy intervals                                                         |
-| `GET /teams/:id/workload?from=&to=`                    | Capacity, assigned estimates, load, `overloaded`, `at_risk` per member                                 |
+| `GET /teams/:id/workload?from=&to=`                    | Capacity, assigned estimates, load, `overloaded`, `at_risk` and `at_risk_items` per member             |
 | `GET /teams/:id/suggest?from=&to=&duration=&user_ids=` | Up to 20 times everyone chosen is free; `disruption` counts people whose focus time a slot would split |
 
 ## Booking pages
@@ -416,8 +491,8 @@ hours (`availability`: the hosts' working hours, or `{ mode: "custom", timezone,
 `allow_reschedule`, `color`, `event_title` (with `{page}`, `{name}`, `{email}`) and
 `confirmation_message`.
 
-Free slots are the page's hours that every required host has free (events, buffers, travel and
-time blocks count as busy), minus bookings still held, keeping the page's buffers either side, its
+Free slots are the page's hours that every required host has free (events, buffers, travel, time
+blocks and busy frames count as busy), minus bookings still held, keeping the page's buffers either side, its
 notice and its limits. Start times step by the interval from local midnight. With SMTP set up a
 booking waits for its email link (the time is held for 30 minutes); without it, it goes straight
 on. Pages that need approval then hold the time until a host approves or declines, or until it

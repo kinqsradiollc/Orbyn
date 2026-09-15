@@ -5,6 +5,7 @@ import {
   type MeetingSlot,
   type MemberAvailability,
   type MemberWorkload,
+  type TeamAtRiskItem,
 } from "@orbyn/core";
 import { reader, type Queryable as Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
@@ -23,10 +24,13 @@ const MAX_MEMBERS = 50;
 
 type Span = { start: number; end: number };
 
+/** Busy time teammates see: busy frames count, like events. */
+const TEAM_BUSY = { blocks: true, derived: true, frames: true };
+
 /** Free working time for one person in [from, to). */
 async function memberFree(db: Db, userId: string, from: Date, to: Date) {
   const prefs = await loadPrefs(db, userId);
-  const busy = await busyIntervals(db, userId, from, to);
+  const busy = await busyIntervals(db, userId, from, to, TEAM_BUSY);
   return freeSpans(workingSpans(prefs, from, to), busy);
 }
 
@@ -71,7 +75,7 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
             work_days: prefs.work_days,
             work_start: prefs.work_start,
             work_end: prefs.work_end,
-            busy: await busyIntervals(db, m.user_id, from, to),
+            busy: await busyIntervals(db, m.user_id, from, to, TEAM_BUSY),
           };
         }),
       );
@@ -101,11 +105,13 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
         );
         const tasks = (
           await db.query<{
+            id: string;
+            title: string;
             due_at: Date | null;
             estimate_minutes: number | null;
             spent_minutes: number;
           }>(
-            `SELECT due_at, estimate_minutes, spent_minutes FROM items
+            `SELECT id, title, due_at, estimate_minutes, spent_minutes FROM items
              WHERE team_id = $1 AND assignee_id = $2 AND kind = 'task' AND status <> 'done'
                AND (due_at IS NULL OR due_at < $3)`,
             [teamId, m.user_id, to],
@@ -125,6 +131,7 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
             (b.due_at?.getTime() ?? Infinity),
         );
         let used = 0;
+        const atRiskItems: TeamAtRiskItem[] = [];
         for (const t of sorted) {
           const remaining = remainingOf(t);
           assigned += remaining;
@@ -136,7 +143,17 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
             0,
           );
           used += remaining;
-          if (used > before) atRisk++;
+          if (used > before && remaining > 0) {
+            atRisk++;
+            atRiskItems.push({
+              id: t.id,
+              title: t.title,
+              assignee_id: m.user_id,
+              assignee_name: m.name,
+              due_at: t.due_at.toISOString(),
+              remaining_minutes: Math.round(remaining),
+            });
+          }
         }
         const load = capacity ? assigned / capacity : assigned ? 9.99 : 0;
         return {
@@ -150,6 +167,7 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
           load: Math.round(load * 100) / 100,
           overloaded: load > 1,
           at_risk: atRisk,
+          at_risk_items: atRiskItems,
         };
       }),
     );

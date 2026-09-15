@@ -3,11 +3,17 @@ import { closeDatabase, pool } from "../db/pool.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
-import { advanceRepeating, scanConflicts } from "./planning.js";
+import {
+  advanceRepeating,
+  scanConflicts,
+  scanPlanningNotices,
+} from "./planning.js";
 import { deliverWebhookOne } from "./webhooks.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
+/** Roll-forward, at-risk and due-soon notices: each at most once a day, checked this often. */
+const NOTICES_MS = 15 * 60_000;
 
 const CYCLE_MS = 10000;
 /** Deliveries per lane before the loop checks for new work again. */
@@ -34,6 +40,7 @@ export async function runWorker() {
     });
   let lastSchedule = 0;
   let lastPlanning = 0;
+  let lastNotices = 0;
   while (!stopping) {
     let backlog = false;
     try {
@@ -44,6 +51,10 @@ export async function runWorker() {
           await advanceRepeating();
           await scanConflicts();
           lastPlanning = Date.now();
+        }
+        if (Date.now() - lastNotices >= NOTICES_MS) {
+          await scanPlanningNotices();
+          lastNotices = Date.now();
         }
         await enqueue();
         lastSchedule = Date.now();

@@ -137,6 +137,21 @@ export const pagination = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(200),
 });
 
+/**
+ * Orders for `GET /items`. newest: created, newest first (the default).
+ * score: the priority score, highest first. due: soonest due first. priority:
+ * high to low. estimate: shortest first. title: A to Z. created: oldest first.
+ */
+export const ITEM_SORTS = [
+  "newest",
+  "score",
+  "due",
+  "priority",
+  "estimate",
+  "title",
+  "created",
+] as const;
+
 export const itemsQuery = pagination.extend({
   /** Only items shared with this team. */
   team_id: z.uuid().optional(),
@@ -145,6 +160,7 @@ export const itemsQuery = pagination.extend({
   list_id: z.uuid().optional(),
   tag_id: z.uuid().optional(),
   assignee_id: z.uuid().optional(),
+  sort: z.enum(ITEM_SORTS).default("newest"),
 });
 
 const emailField = z
@@ -447,6 +463,13 @@ export const plannerPrefsInput = z
     extra_timezones: z.array(timeZoneField).max(3).optional(),
     calendar_sets: z.array(calendarSetInput).max(12).optional(),
     pinned_user_ids: z.array(z.uuid()).max(20).optional(),
+    /** Warn this many days before a task is due with no time set aside; 0 turns it off. */
+    deadline_notice_days: z.number().int().min(0).max(14).optional(),
+    /** Where planner notices (roll forward, at risk, due soon, conflicts) go besides the app. */
+    planner_notices: z
+      .object({ push: z.boolean().optional(), email: z.boolean().optional() })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -463,6 +486,18 @@ export const frameFilters = z
   })
   .strict();
 
+/** How a frame repeats; when set it wins over `days`. */
+const frameRrule = z
+  .string()
+  .trim()
+  .max(200)
+  .refine(isValidRrule, "That repeat rule isn't supported");
+/** Dates a frame is skipped on, in its time zone. */
+const frameExdates = z
+  .array(dayKey)
+  .max(200)
+  .transform((d) => [...new Set(d)].sort());
+
 const frameFields = {
   name: z.string().trim().min(1).max(60),
   days: weekdays,
@@ -477,6 +512,8 @@ const frameOrder = (d: { start_time?: string; end_time?: string }) =>
 export const frameInput = z
   .object({
     ...frameFields,
+    /** Weekdays it repeats on; not needed when `rrule` is set. */
+    days: weekdays.optional(),
     filters: frameFilters.default({
       priorities: [],
       list_ids: [],
@@ -486,9 +523,17 @@ export const frameInput = z
       max_minutes: null,
     }),
     color: color.optional(),
+    /** For example "FREQ=MONTHLY;BYMONTHDAY=-1" (the last day of each month). */
+    rrule: frameRrule.nullable().optional(),
+    /** Busy frames block booking pages and teammates' meeting times. */
+    busy: z.boolean().default(false),
+    exdates: frameExdates.default([]),
+    /** The zone its times are in; the owner's planner zone when null. */
+    timezone: timeZoneField.nullable().optional(),
   })
   .strict()
-  .refine(frameOrder, "A frame ends after it starts");
+  .refine(frameOrder, "A frame ends after it starts")
+  .refine((d) => !!d.days || !!d.rrule, "Choose the days a frame repeats on");
 export const frameUpdate = z
   .object({
     name: frameFields.name.optional(),
@@ -498,9 +543,16 @@ export const frameUpdate = z
     filters: frameFilters.optional(),
     color: color.optional(),
     position: z.number().int().min(0).max(10000).optional(),
+    rrule: frameRrule.nullable().optional(),
+    busy: z.boolean().optional(),
+    exdates: frameExdates.optional(),
+    timezone: timeZoneField.nullable().optional(),
   })
   .strict()
   .refine(frameOrder, "A frame ends after it starts");
+
+/** Skip (or bring back) one date of a frame. */
+export const frameSkipInput = z.object({ date: dayKey }).strict();
 
 /** A place and how long it takes to get there, for travel time. */
 export const placeInput = z
@@ -520,6 +572,24 @@ export const placeUpdate = z
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
 
+/**
+ * Which tasks a plan considers ("plan only Work"). `personal` (default true)
+ * takes your personal tasks; `team_ids` takes team tasks assigned to you in
+ * those teams (all your teams when omitted, none when empty); a non-empty
+ * `list_ids` keeps only tasks in those lists.
+ */
+export const planScope = z
+  .object({
+    personal: z.boolean().default(true),
+    team_ids: z.array(z.uuid()).max(50).optional(),
+    list_ids: z.array(z.uuid()).max(100).default([]),
+  })
+  .strict();
+
+const keepFree = z
+  .array(z.object({ start_at: instant, end_at: instant }).strict())
+  .max(20);
+
 /** Asking the planner for a plan. Omitted options use the saved preferences. */
 export const planPreviewInput = z
   .object({
@@ -532,16 +602,53 @@ export const planPreviewInput = z
     /** Only place tasks inside frames (when there are any). */
     use_frames: z.boolean().default(true),
     /** Times to leave empty, such as "keep Friday afternoon free". */
-    keep_free: z
-      .array(z.object({ start_at: instant, end_at: instant }).strict())
-      .max(20)
-      .default([]),
+    keep_free: keepFree.default([]),
     /** Only plan these tasks. */
     item_ids: z.array(z.uuid()).max(200).optional(),
     exclude_item_ids: z.array(z.uuid()).max(200).default([]),
     /** The device's time zone, used until the user saves their own in settings. */
     timezone: timeZoneField.optional(),
+    /** Only tasks from these places (personal, some teams, some lists). */
+    scope: planScope.optional(),
   })
+  .strict();
+
+const planEstimates = z
+  .record(z.uuid(), z.number().int().min(1).max(10080))
+  .refine((e) => Object.keys(e).length <= 200, "200 estimates at most");
+
+/**
+ * Tuning a plan before it's applied. Each field given replaces the plan's
+ * current value (estimates merge by task); omitted fields keep it.
+ */
+export const planTuneInput = z
+  .object({
+    /** Tasks to add, even ones outside the scope or not assigned to you. */
+    include_item_ids: z.array(z.uuid()).max(200).optional(),
+    /** Tasks to leave out. */
+    exclude_item_ids: z.array(z.uuid()).max(200).optional(),
+    /** Minutes to plan each task for, instead of its estimate. */
+    estimates: planEstimates.optional(),
+    /** Also save those estimates on the tasks (only tasks you can edit). */
+    save_estimates: z.boolean().default(false),
+    keep_free: keepFree.optional(),
+    /** Blocks to keep exactly where they are; the rest is planned around them. */
+    pinned_blocks: z
+      .array(
+        z
+          .object({ item_id: z.uuid(), ...blockTimes })
+          .strict()
+          .refine(blockSpan, BLOCK_SPAN),
+      )
+      .max(100)
+      .optional(),
+    scope: planScope.nullable().optional(),
+  })
+  .strict();
+
+/** A copy of a block: at `start_at`, or the next free time after the original. */
+export const blockDuplicateInput = z
+  .object({ start_at: instant.optional() })
   .strict();
 
 /** Move unfinished blocks forward; all of yesterday's and earlier when omitted. */

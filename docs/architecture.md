@@ -37,7 +37,7 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `modules/<name>/` | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
 | `modules/items/`  | `mutate()`, the single write path with optimistic locking, plus progress        |
 | `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `worker/`         | Reminder scheduler and delivery lanes                                           |
+| `worker/`         | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
 | `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
 
 Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
@@ -60,12 +60,12 @@ rate limited separately from the rest of the API.
 | `sessions`                                                     | Hashed bearer tokens with expiry.                                                           |
 | `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe. |
 | `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                             |
-| `notifications`                                                | Reminder outbox. One row per item version, channel, and destination. Also the in-app tray.  |
+| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.      |
 | `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                |
 | `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                   |
 | `time_blocks`                                                  | Time each person set aside to work on a task.                                               |
-| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, work windows, places.       |
-| `plans`                                                        | Generated plans waiting to be applied. Expire after an hour.                                |
+| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.    |
+| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.             |
 | `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.  |
 | `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                    |
 | `migrations`                                                   | Applied migration file names.                                                               |
@@ -126,7 +126,18 @@ team it leaves.
 4. Failures back off exponentially (30s, 60s, ... capped at 1h) and give up after 8 attempts.
 
 `reminder_version` only increments when the due date, reminder window, or done-to-todo status
-changes. Editing a title or notes does not resend a reminder that was already delivered.
+changes. Editing a title or notes does not resend a reminder that was already delivered. Reminder
+text shows the due time in each recipient's planner time zone (`orbyn_local_time()`, which falls
+back to UTC for a zone Postgres doesn't know).
+
+Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) use the same outbox and lanes.
+They are always in-app, and go to push and email when the person's `planner_notices` preference
+allows (email also needs SMTP). Their `item_version` is 0 and their `ref` is the block (conflicts)
+or the person's local date, so `notifications_once` keeps them to one per task per day; roll-forward
+notices have no item and are kept to one per day by `notifications_planner_once`. Delivery
+re-checks them against that preference instead of `email_reminders`, and cancels a notice that was
+dealt with in the app (a rescheduled block marks its conflict read), whose task is done or out of
+reach, or whose block is gone.
 
 ### AI assistant
 
@@ -264,8 +275,9 @@ Everything planning needs lives on this server; nothing syncs with Google, Micro
 Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
 
 - **Time zones and repeats** (`packages/core/src/time.ts`): wall-clock conversion that survives
-  daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly,
-  yearly; interval; count or until). A repeating item keeps `series_start` and its own time zone;
+  daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly
+  on month days or weekdays with set positions such as "the last weekday", yearly; interval;
+  count or until). A repeating item keeps `series_start` and its own time zone;
   `due_at` is the current occurrence. The notifier moves ended event occurrences on (bumping the
   reminder version, so every occurrence gets its reminder). Completing a repeating task moves it
   to its next occurrence.
@@ -273,22 +285,46 @@ Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
   person's time blocks, and works out buffers and travel from their settings and places on the
   fly, so they never go stale. `busyIntervals()` merges events, buffers, travel and blocks into
   plain intervals; the planner, team time and booking pages all use it, and nothing but intervals
-  leaves it.
+  leaves it. Team time and booking pages also ask it to count busy frames; the planner never does.
+- **Frames** (`modules/planner/frames.ts`): recurring windows for a kind of work. They repeat on
+  weekdays or by a rule (which counts from `series_start`), skip dates (`exdates`), keep their own
+  time zone if they have one, and can be marked busy. `frameSpans()` expands them for the
+  planner's windows, busy time and the calendar view.
 - **The planner** (`modules/planner/scheduler.ts`): a pure, deterministic function. Free time is
   frames (or working hours) minus busy time and keep-free times. Tasks go in order of the priority
-  score (`3 × priority + 4 × urgency + 2 if overdue`, blocked tasks last), padded, split into
-  sessions with breaks, into the earliest slot that ends before the due time. Tasks that don't
-  fit are listed with a reason, and ones that can't make their due time are flagged at risk.
-  Previews are stored as `plans` for an hour and applied in one transaction that skips any block
-  that has started to clash. The assistant uses the same engine through its `plan_schedule`
-  tool (Matilda's graph plans directly), so it never places times itself.
+  score (`3 × priority + 4 × urgency + 2 if overdue + 1 × size_fit`, where `size_fit` is 1 when
+  the remaining estimate fits the first planned day's largest free slot, 0.5 when it doesn't and
+  0.75 without an estimate; blocked tasks last), padded, split into sessions with breaks, into the
+  earliest slot that ends before the due time. Tasks that don't fit are listed with a reason, and
+  ones that can't make their due time are flagged at risk. Task lists show and sort by the same
+  score (`GET /items?sort=score`), comparing with today's largest free slot. Previews are stored
+  as `plans` for an hour, with everything they were made from, and applied in one transaction
+  that skips any block that has started to clash. The assistant uses the same engine through its
+  `plan_schedule` tool (Matilda's graph plans directly), so it never places times itself.
+- **Tuning a plan** (`modules/planner/plans.ts`): `PATCH /planner/plans/:id` makes the plan again
+  from its stored inputs with tasks added or left out, estimates changed (optionally saved through
+  `mutate()`), keep-free times, a scope, and pinned blocks, which the engine keeps in place and
+  plans around. The result is a new plan; the old one expires and points at it. Each plan keeps a
+  fingerprint of its busy time, frames, hours and tasks, so `GET /planner/plans/:id/stale` can
+  tell the apps to make it again when something changed. Every plan lists each task considered,
+  whether it's in, and why it wasn't (fully) planned.
 - **Conflicts and review**: once a minute the notifier looks for events that now overlap a
-  future block and sends one in-app notice per block, with a one-tap reschedule to the next free
+  future block and sends one notice per block, with a one-tap reschedule to the next free
   working time. The review lists unfinished past blocks (to roll forward into a new plan), tasks
   whose remaining estimate exceeds the free time before they're due, and current conflicts.
+- **Planner notices** (`worker/planning.ts`, every 15 minutes): for people with planner activity
+  (saved settings or recent blocks, plus recent blocks or tasks due within two weeks),
+  `scanPlanningNotices()` sends a roll-forward notice from their working start on a working day
+  when earlier blocks are unfinished, an at-risk notice for each task whose remaining estimate is
+  more than the free time before it's due, and a due-soon notice for tasks due within
+  `deadline_notice_days` that have no time set aside for what's left. Each is idempotent through
+  the outbox's unique keys, and delivered like conflicts.
+- **Blocks**: besides moving and rescheduling, a block can be duplicated at a chosen time or into
+  the next free working time after it, for another session on the same task.
 - **Team time**: availability returns busy intervals only; workload compares each member's free
-  working time with the estimates of this team's open tasks assigned to them; meeting suggestions
-  intersect everyone's free time and rank slots that would split someone's focus time last.
+  working time with the estimates of this team's open tasks assigned to them, and lists the tasks
+  at risk (those due soonest take the free time first); meeting suggestions intersect everyone's
+  free time and rank slots that would split someone's focus time last.
 - **Booking pages**: free slots (`booking/availability.ts`) intersect the page's hours (custom
   weekly hours or each host's working hours, with date overrides) with every required host's free
   time, minus held bookings, keeping the page's buffers, notice, interval and daily and weekly

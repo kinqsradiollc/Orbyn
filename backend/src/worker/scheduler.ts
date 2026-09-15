@@ -4,7 +4,8 @@ import { emailEnabled } from "./channels/email.js";
 /**
  * Queue reminders for every open item whose reminder window has opened: one
  * row per recipient, channel and destination. Personal items notify their
- * owner; team items notify every active team member. The unique key on
+ * owner; team items notify every active team member, each with the due time
+ * in their own planner time zone. The unique key on
  * (item_id, item_version, channel, destination) makes this idempotent, so any
  * number of workers can run it. Also sweeps expired sessions and proposals.
  */
@@ -15,7 +16,7 @@ export async function enqueue() {
     await db.query(
       `INSERT INTO notifications(user_id,item_id,item_version,channel,destination,title,body,state)
    SELECT u.id,i.id,i.reminder_version,c.channel,c.destination,'Coming up: '||i.title,
-    i.title||' — '||to_char(i.due_at AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI')||' UTC'
+    i.title||' — '||orbyn_local_time(i.due_at,COALESCE(p.timezone,'UTC'))
       ||COALESCE(' · '||t.name,''),
     CASE WHEN c.channel='inapp' THEN 'sent' ELSE 'pending' END
    FROM items i
@@ -25,6 +26,7 @@ export async function enqueue() {
     UNION SELECT m.user_id FROM team_members m WHERE m.team_id=i.team_id
    ) r
    JOIN users u ON u.id=r.user_id AND NOT u.disabled
+   LEFT JOIN planner_prefs p ON p.user_id=u.id
    CROSS JOIN LATERAL (
     SELECT 'inapp' AS channel,u.id::text AS destination
     UNION ALL SELECT 'email',u.email WHERE u.email_reminders AND $1::boolean

@@ -4,18 +4,21 @@ import {
   fail,
   itemData,
   itemsQuery,
+  priorityScore,
   progressUpdateInput,
   skipOccurrenceInput,
   stepInput,
   stepUpdate,
   timeLogInput,
   type ItemDetail,
+  type ItemSort,
 } from "@orbyn/core";
 import type { QueryResult } from "pg";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { largestFreeMinutes } from "../planner/plans.js";
 import {
   ITEM_COLUMNS,
   ITEM_FROM,
@@ -60,37 +63,116 @@ export async function itemDetail(
   return { ...item, steps, updates };
 }
 
+/** ORDER BY for each list order but the score, which is worked out in code. */
+const ORDER: Record<Exclude<ItemSort, "score">, string> = {
+  newest: "i.created_at DESC, i.id",
+  created: "i.created_at, i.id",
+  due: "i.due_at NULLS LAST, i.created_at DESC, i.id",
+  priority:
+    "CASE i.priority WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC, i.due_at NULLS LAST, i.id",
+  estimate: "i.estimate_minutes NULLS LAST, i.due_at NULLS LAST, i.id",
+  title: "lower(i.title), i.id",
+};
+/** Most items a score-sorted list ranks before taking the page asked for. */
+const MAX_SCORED = 5000;
+
+type ScoreRow = {
+  id: string;
+  kind: string;
+  status: string;
+  priority: "low" | "medium" | "high";
+  due_at: Date | string | null;
+  estimate_minutes: number | null;
+  spent_minutes: number;
+  created_at: Date | string;
+};
+
+/** The priority score of an open task; null for events and finished tasks. */
+const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
+  i.kind === "task" && i.status !== "done"
+    ? priorityScore(
+        { ...i, due_at: i.due_at ? new Date(i.due_at).toISOString() : null },
+        now,
+        slot,
+      )
+    : null;
+
 export async function itemRoutes(app: FastifyInstance) {
   app.get("/items", async (r) => {
     const u = await authenticate(r);
     const q = itemsQuery.parse(r.query);
     if (q.team_id) await requireTeam(q.team_id, u, "items:read");
+    const db = reader(r.headers);
     const words = (q.q ?? "")
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 6)
       .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    return (
-      await reader(r.headers).query(
-        `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM}
-         WHERE ${VISIBLE_ITEMS} AND ($4::uuid IS NULL OR i.team_id=$4)
-           AND ($5::uuid IS NULL OR i.list_id=$5)
-           AND ($6::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$6))
-           AND ($7::uuid IS NULL OR i.assignee_id=$7)
-           AND NOT EXISTS (SELECT 1 FROM unnest($8::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)
-         ORDER BY i.created_at DESC, i.id LIMIT $2 OFFSET $3`,
-        [
-          u.id,
-          q.limit,
-          q.offset,
-          q.team_id ?? null,
-          q.list_id ?? null,
-          q.tag_id ?? null,
-          q.assignee_id ?? null,
-          words,
-        ],
-      )
-    ).rows;
+    const where = `${VISIBLE_ITEMS} AND ($2::uuid IS NULL OR i.team_id=$2)
+           AND ($3::uuid IS NULL OR i.list_id=$3)
+           AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$4))
+           AND ($5::uuid IS NULL OR i.assignee_id=$5)
+           AND NOT EXISTS (SELECT 1 FROM unnest($6::text[]) w WHERE (i.title || ' ' || i.notes) NOT ILIKE w)`;
+    const filters = [
+      u.id,
+      q.team_id ?? null,
+      q.list_id ?? null,
+      q.tag_id ?? null,
+      q.assignee_id ?? null,
+      words,
+    ];
+    const now = new Date();
+    let rows: (ScoreRow & Record<string, unknown>)[];
+    let slot: number | null = null;
+    if (q.sort === "score") {
+      // Rank every match by score, then load the page asked for.
+      const ranked = (
+        await db.query<ScoreRow>(
+          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.estimate_minutes,
+                  i.spent_minutes, i.created_at
+           FROM items i WHERE ${where} LIMIT ${MAX_SCORED}`,
+          filters,
+        )
+      ).rows;
+      slot = await largestFreeMinutes(db, u.id, now);
+      const score = new Map(ranked.map((i) => [i.id, scoreOf(i, now, slot!)]));
+      const due = (i: ScoreRow) =>
+        i.due_at ? new Date(i.due_at).getTime() : Infinity;
+      const ids = ranked
+        .sort(
+          (a, b) =>
+            (score.get(b.id) ?? -Infinity) - (score.get(a.id) ?? -Infinity) ||
+            due(a) - due(b) ||
+            new Date(b.created_at).getTime() -
+              new Date(a.created_at).getTime() ||
+            a.id.localeCompare(b.id),
+        )
+        .slice(q.offset, q.offset + q.limit)
+        .map((i) => i.id);
+      const found = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = ANY ($1::uuid[])`,
+          [ids],
+        )
+      ).rows;
+      const byId = new Map(found.map((i) => [i.id as string, i]));
+      rows = ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+    } else
+      rows = (
+        await db.query(
+          `SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE ${where}
+           ORDER BY ${ORDER[q.sort]} LIMIT $7 OFFSET $8`,
+          [...filters, q.limit, q.offset],
+        )
+      ).rows;
+    // The score's size term needs today's largest free slot; only look it up
+    // when there's an open task to score.
+    if (
+      slot === null &&
+      rows.some((i) => i.kind === "task" && i.status !== "done")
+    )
+      slot = await largestFreeMinutes(db, u.id, now);
+    return rows.map((i) => ({ ...i, score: scoreOf(i, now, slot ?? 0) }));
   });
 
   // Minutes worked with the focus timer. Like checklist steps, this doesn't

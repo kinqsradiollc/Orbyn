@@ -12,6 +12,7 @@ import {
   type Status,
   type UnplacedTask,
 } from "@orbyn/core";
+import { frameSpans } from "./frames.js";
 
 /**
  * The planner's placement engine. Deterministic and pure: the same tasks,
@@ -52,6 +53,11 @@ export type SchedulerInput = {
   minBlockMinutes: number;
   breakLevel: BreakLevel;
   now: Date;
+  /**
+   * Blocks the user pinned while tuning a plan. They stay exactly where they
+   * are, take their time out of what's free, and count towards their task.
+   */
+  pinned?: { item_id: string; start_at: string; end_at: string }[];
 };
 
 export type SchedulerResult = {
@@ -86,33 +92,52 @@ const roundUpMinutes = (minutes: number) =>
 function windows(input: SchedulerInput): Segment[] {
   const out: Segment[] = [];
   const earliest = ceilToGrid(input.now.getTime());
+  if (input.useFrames && input.frames.length) {
+    // Frames repeat by weekday or by rule, skip dates, and may keep their own zone.
+    const from = dayTime(input.days[0], 0, input.timezone).getTime();
+    const to = dayTime(
+      addDays(input.days.at(-1)!, 1),
+      0,
+      input.timezone,
+    ).getTime();
+    for (const f of input.frames)
+      for (const s of frameSpans(f, from, to, input.timezone)) {
+        const start = Math.max(s.start, earliest);
+        if (s.end > start) out.push({ start, end: s.end, frame: f });
+      }
+    return out.sort((a, b) => a.start - b.start);
+  }
   for (const day of input.days) {
-    const weekday = weekdayOf(day);
-    const spans: { start: number; end: number; frame: Frame | null }[] = [];
-    if (input.useFrames && input.frames.length) {
-      for (const f of input.frames)
-        if (f.days.includes(weekday))
-          spans.push({
-            start: clockMinutes(f.start_time),
-            end: clockMinutes(f.end_time),
-            frame: f,
-          });
-    } else if (input.workDays.includes(weekday))
-      spans.push({
-        start: clockMinutes(input.workStart),
-        end: clockMinutes(input.workEnd),
-        frame: null,
-      });
-    for (const s of spans) {
-      const start = Math.max(
-        dayTime(day, s.start, input.timezone).getTime(),
-        earliest,
-      );
-      const end = dayTime(day, s.end, input.timezone).getTime();
-      if (end > start) out.push({ start, end, frame: s.frame });
-    }
+    if (!input.workDays.includes(weekdayOf(day))) continue;
+    const start = Math.max(
+      dayTime(day, clockMinutes(input.workStart), input.timezone).getTime(),
+      earliest,
+    );
+    const end = dayTime(
+      day,
+      clockMinutes(input.workEnd),
+      input.timezone,
+    ).getTime();
+    if (end > start) out.push({ start, end, frame: null });
   }
   return out.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * The longest free stretch, in minutes, on the first planned day that has
+ * any free time: the size term of the priority score compares estimates
+ * with it.
+ */
+function largestFree(free: Segment[], input: SchedulerInput) {
+  for (const day of input.days) {
+    const start = dayTime(day, 0, input.timezone).getTime();
+    const end = dayTime(addDays(day, 1), 0, input.timezone).getTime();
+    const lengths = free
+      .filter((s) => s.start < end && s.end > start)
+      .map((s) => (Math.min(s.end, end) - Math.max(s.start, start)) / MINUTE);
+    if (lengths.length) return Math.max(...lengths);
+  }
+  return 0;
 }
 
 /** Segments minus busy intervals. */
@@ -189,16 +214,42 @@ export function sessions(
 export function schedule(input: SchedulerInput): SchedulerResult {
   let free = subtract(windows(input), input.busy);
   const capacity = free.reduce((sum, s) => sum + (s.end - s.start) / MINUTE, 0);
+  const slot = largestFree(free, input);
   const blocks: PlannedBlock[] = [];
   const unplaced: UnplacedTask[] = [];
   const atRisk: UnplacedTask[] = [];
   const pause = BREAK_MINUTES[input.breakLevel] * MINUTE;
   const lastDay = input.days.at(-1)!;
   const horizonEnd = dayTime(addDays(lastDay, 1), 0, input.timezone).getTime();
+  const scoreOf = (t: SchedulerTask) => priorityScore(t, input.now, slot);
+
+  // Pinned blocks stay put: they take their time out of what's free (not out
+  // of the capacity, which they use) and count towards their task.
+  const byId = new Map(input.tasks.map((t) => [t.id, t]));
+  const pinnedMinutes = new Map<string, number>();
+  const pinned = (input.pinned ?? []).filter((p) => byId.has(p.item_id));
+  for (const p of pinned) {
+    const task = byId.get(p.item_id)!;
+    const minutes = (Date.parse(p.end_at) - Date.parse(p.start_at)) / MINUTE;
+    pinnedMinutes.set(task.id, (pinnedMinutes.get(task.id) ?? 0) + minutes);
+    blocks.push({
+      item_id: task.id,
+      title: task.title,
+      start_at: new Date(p.start_at).toISOString(),
+      end_at: new Date(p.end_at).toISOString(),
+      frame_id: null,
+      frame_name: null,
+      part: 1,
+      parts: 1,
+      score: scoreOf(task),
+      pinned: true,
+    });
+  }
+  if (pinned.length) free = subtract(free, pinned);
 
   const ranked = input.tasks
     .filter((t) => t.status !== "done")
-    .map((t) => ({ task: t, score: priorityScore(t, input.now) }))
+    .map((t) => ({ task: t, score: scoreOf(t) }))
     .sort(
       (a, b) =>
         b.score - a.score ||
@@ -215,11 +266,16 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         reason,
       });
     if (task.status === "blocked") {
-      unplace("Blocked, so it wasn't planned.");
+      if (!pinnedMinutes.has(task.id))
+        unplace("Blocked, so it wasn't planned.");
       continue;
     }
     const estimate = task.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES;
-    const remaining = estimate - task.spent_minutes - task.scheduled_minutes;
+    const remaining =
+      estimate -
+      task.spent_minutes -
+      task.scheduled_minutes -
+      (pinnedMinutes.get(task.id) ?? 0);
     if (remaining <= 0) continue;
     const padded = roundUpMinutes(remaining * (1 + input.padPercent / 100));
     const parts = sessions(
@@ -299,6 +355,14 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   }
 
   blocks.sort((a, b) => a.start_at.localeCompare(b.start_at));
+  // Number the sessions of tasks with pinned blocks again, in time order.
+  for (const id of pinnedMinutes.keys()) {
+    const own = blocks.filter((b) => b.item_id === id);
+    own.forEach((b, i) => {
+      b.part = i + 1;
+      b.parts = own.length;
+    });
+  }
   const planned = blocks.reduce(
     (sum, b) => sum + (Date.parse(b.end_at) - Date.parse(b.start_at)) / MINUTE,
     0,

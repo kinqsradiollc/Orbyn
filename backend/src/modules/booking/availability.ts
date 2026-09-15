@@ -198,9 +198,15 @@ export async function availableSlots(
       host,
       new Date(earliest - pad),
       new Date(latest + pad),
-      { blocks: true, derived: true, excludeItemIds: options.ignoreItemIds },
+      {
+        blocks: true,
+        derived: true,
+        frames: true,
+        excludeItemIds: options.ignoreItemIds,
+      },
     );
-    // A booking needs `before` free ahead of it and `after` free behind it.
+    // Busy frames count, like events. A booking needs `before` free ahead of
+    // it and `after` free behind it.
     const grown = [...busy, ...holds].map((b) => ({
       start_at: new Date(Date.parse(b.start_at) - after).toISOString(),
       end_at: new Date(Date.parse(b.end_at) + before).toISOString(),
