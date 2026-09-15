@@ -11,6 +11,10 @@ export type Palette = { [K in keyof typeof base]: string } & {
   warning: string;
   warningSoft: string;
   warningBorder: string;
+  /** The border of a warning stat (booking pages). */
+  warningLine: string;
+  /** Warning text that needs more weight (a missing AI key). */
+  warningStrong: string;
   amber: string;
   /** Background of an unread notice. */
   unread: string;
@@ -23,6 +27,8 @@ export const light: Palette = {
   warning: "#a3742b",
   warningSoft: "#fbf3e2",
   warningBorder: "#f0e2c2",
+  warningLine: "#f1e2bf",
+  warningStrong: "#9a5b12",
   amber: "#d49a3a",
   unread: "#f6f9f4",
   shadow: "#1d2b23",
@@ -61,6 +67,8 @@ export const dark: Palette = {
   warning: "#e0b060",
   warningSoft: "#352a17",
   warningBorder: "#4d3c1d",
+  warningLine: "#4d3c1d",
+  warningStrong: "#e0b060",
   amber: "#d9a445",
   unread: "#18221c",
   shadow: "#000000",

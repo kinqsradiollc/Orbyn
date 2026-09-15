@@ -107,6 +107,84 @@ const sizeLabel = (min: number | null, max: number | null) =>
 const toggleId = (ids: string[], id: string) =>
   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 
+/** How a frame repeats: preset rules, chosen weekdays, or a rule of your own. */
+type Repeat =
+  | "days"
+  | "weekdays"
+  | "biweekly"
+  | "firstWeekday"
+  | "lastWeekday"
+  | "lastDay"
+  | "custom";
+const REPEATS: Repeat[] = [
+  "days",
+  "weekdays",
+  "biweekly",
+  "firstWeekday",
+  "lastWeekday",
+  "lastDay",
+  "custom",
+];
+const REPEAT_LABELS: Record<Repeat, string> = {
+  days: "On the days I choose",
+  weekdays: "Every weekday",
+  biweekly: "Every other week",
+  firstWeekday: "First weekday of the month",
+  lastWeekday: "Last weekday of the month",
+  lastDay: "Last day of the month",
+  custom: "Custom rule",
+};
+const BYDAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+const RULES: Partial<Record<Repeat, string>> = {
+  firstWeekday: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=1",
+  lastWeekday: "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+  lastDay: "FREQ=MONTHLY;BYMONTHDAY=-1",
+};
+
+/** The rule to save for a repeat choice; null repeats on `days`. */
+const ruleFor = (repeat: Repeat, days: number[], custom: string) =>
+  repeat === "days" || repeat === "weekdays"
+    ? null
+    : repeat === "biweekly"
+      ? `FREQ=WEEKLY;INTERVAL=2;BYDAY=${days.map((d) => BYDAY[d]).join(",")}`
+      : repeat === "custom"
+        ? custom.trim().toUpperCase() || null
+        : (RULES[repeat] ?? null);
+
+/** Which repeat choice a saved frame matches, and its weekdays. */
+function repeatOf(frame?: Pick<Frame, "days" | "rrule">): {
+  repeat: Repeat;
+  days: number[];
+} {
+  const days = frame?.days?.length ? frame.days : [1, 2, 3, 4, 5];
+  const rule = frame?.rrule?.trim().toUpperCase() ?? "";
+  if (!rule)
+    return {
+      repeat: days.join(",") === "1,2,3,4,5" ? "weekdays" : "days",
+      days,
+    };
+  const preset = REPEATS.find((r) => RULES[r] === rule);
+  if (preset) return { repeat: preset, days };
+  const biweekly = /^FREQ=WEEKLY;INTERVAL=2;BYDAY=([A-Z,]+)$/.exec(rule);
+  const picked = (biweekly?.[1] ?? "")
+    .split(",")
+    .map((code) => BYDAY.indexOf(code))
+    .filter((d) => d >= 0)
+    .sort((a, b) => a - b);
+  if (picked.length) return { repeat: "biweekly", days: picked };
+  return { repeat: "custom", days };
+}
+
+/** "Tue, Sep 16" for "2026-09-16". */
+const dayText = (key: string) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+};
+
 /**
  * Settings → Planning: when you work and how the planner fills that time,
  * plus frames (time kept for a kind of work) and places (travel time).
@@ -194,7 +272,7 @@ function Body({ teams }: { teams: Team[] }) {
     const names = (ids: string[], name: (id: string) => string | undefined) =>
       ids.map(name).filter(Boolean).join(", ");
     return [
-      `${daysLabel(f.days)} · ${clockDisplay(f.start_time)} – ${clockDisplay(f.end_time)}`,
+      `${f.rrule ? REPEAT_LABELS[repeatOf(f).repeat] : daysLabel(f.days)} · ${clockDisplay(f.start_time)} – ${clockDisplay(f.end_time)}`,
       priorities.length
         ? `${priorities.map((p) => PRIORITY_LABELS[p]).join(", ")} priority`
         : "",
@@ -202,6 +280,7 @@ function Body({ teams }: { teams: Team[] }) {
       names(tag_ids, (id) => tagById.get(id)?.name),
       names(team_ids, (id) => teams.find((t) => t.id === id)?.name),
       sizeLabel(f.filters.min_minutes, f.filters.max_minutes),
+      f.busy ? "Busy" : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -393,6 +472,12 @@ function Body({ teams }: { teams: Team[] }) {
                 key={f.id}
                 frame={f}
                 teams={teams}
+                onUnskip={(date) =>
+                  void run(async () => {
+                    await client.unskipFrame(f.id, date);
+                    await reloadFrames();
+                  })
+                }
                 busy={busy}
                 first={n === 0}
                 onCancel={() => setEditingFrame(null)}
@@ -593,10 +678,12 @@ function AddRow({
 }
 
 /**
- * Create or edit a frame: its name, days and hours, which tasks it takes
- * (priorities, lists, tags, teams, size; none chosen means any) and its colour.
+ * Create or edit a frame: its name, how it repeats and its hours, whether it
+ * counts as busy, its time zone, which tasks it takes (priorities, lists,
+ * tags, teams, size; none chosen means any), its colour and skipped days.
+ * Also used by the calendar's frame editor.
  */
-function FrameForm({
+export function FrameForm({
   frame,
   teams,
   busy,
@@ -604,6 +691,7 @@ function FrameForm({
   onSave,
   onDelete,
   onCancel,
+  onUnskip,
 }: {
   frame?: Frame;
   teams: Team[];
@@ -616,13 +704,31 @@ function FrameForm({
     end_time: string;
     filters: FrameFilters;
     color: string;
+    rrule: string | null;
+    busy: boolean;
+    timezone: string | null;
   }) => void;
   onDelete?: () => void;
   onCancel: () => void;
+  /** Bring back a skipped day. */
+  onUnskip?: (date: string) => void;
 }) {
   const { lists, tags } = usePlanning();
+  const initial = repeatOf(frame);
   const [name, setName] = useState(frame?.name ?? "");
-  const [days, setDays] = useState(frame?.days ?? [1, 2, 3, 4, 5]);
+  const [repeat, setRepeat] = useState<Repeat>(initial.repeat);
+  const [rule, setRule] = useState(
+    initial.repeat === "custom" ? (frame?.rrule ?? "") : "",
+  );
+  const [days, setDays] = useState(initial.days);
+  const [blocking, setBlocking] = useState(frame?.busy ?? false);
+  const [zone, setZone] = useState<string | null>(frame?.timezone ?? null);
+  const device = deviceTimeZone();
+  const zones: (string | null)[] = [
+    null,
+    device,
+    ...(frame?.timezone && frame.timezone !== device ? [frame.timezone] : []),
+  ];
   const [start, setStart] = useState(frame?.start_time ?? "09:00");
   const [end, setEnd] = useState(frame?.end_time ?? "12:00");
   const [priorities, setPriorities] = useState<Priority[]>(
@@ -656,27 +762,59 @@ function FrameForm({
           accessibilityLabel="Frame name"
         />
       </Field>
-      <Field label="Days">
-        <ChipRow label="Frame days" multi>
-          {WEEK_ORDER.map((d) => {
-            const on = days.includes(d);
-            return (
-              <Chip
-                key={d}
-                multi
-                label={WEEKDAYS[d]}
-                selected={on}
-                onPress={() => {
-                  const next = on
-                    ? days.filter((x) => x !== d)
-                    : [...days, d].sort((a, b) => a - b);
-                  if (next.length) setDays(next);
-                }}
-              />
-            );
-          })}
+      <Field label="Repeats">
+        <ChipRow label="Repeats">
+          {REPEATS.map((r) => (
+            <Chip
+              key={r}
+              label={REPEAT_LABELS[r]}
+              selected={repeat === r}
+              onPress={() => setRepeat(r)}
+            />
+          ))}
         </ChipRow>
       </Field>
+      {repeat === "custom" && (
+        <Field
+          label="Rule"
+          hint="An iCalendar RRULE, like FREQ=WEEKLY;BYDAY=MO,TU,TH,FR. It’s checked when you save."
+        >
+          <TextInput
+            style={shared.input}
+            value={rule}
+            onChangeText={setRule}
+            maxLength={200}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            placeholder="FREQ=WEEKLY;BYDAY=MO,TU,TH,FR"
+            placeholderTextColor={colors.faint}
+            accessibilityLabel="Repeat rule"
+          />
+        </Field>
+      )}
+      {(repeat === "days" || repeat === "biweekly") && (
+        <Field label="Days">
+          <ChipRow label="Frame days" multi>
+            {WEEK_ORDER.map((d) => {
+              const on = days.includes(d);
+              return (
+                <Chip
+                  key={d}
+                  multi
+                  label={WEEKDAYS[d]}
+                  selected={on}
+                  onPress={() => {
+                    const next = on
+                      ? days.filter((x) => x !== d)
+                      : [...days, d].sort((a, b) => a - b);
+                    if (next.length) setDays(next);
+                  }}
+                />
+              );
+            })}
+          </ChipRow>
+        </Field>
+      )}
       <View style={s.pair}>
         <Field label="From" style={s.half}>
           <ClockField label="Frame starts" value={start} onChange={setStart} />
@@ -685,6 +823,48 @@ function FrameForm({
           <ClockField label="Frame ends" value={end} onChange={setEnd} />
         </Field>
       </View>
+      <View style={s.switchRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.switchTitle}>Busy</Text>
+          <Text style={shared.small}>
+            Busy frames block booking pages and team suggestions.
+          </Text>
+        </View>
+        <Switch
+          value={blocking}
+          trackColor={{ true: colors.accent }}
+          accessibilityLabel="Busy"
+          onValueChange={setBlocking}
+        />
+      </View>
+      <Field label="Time zone" hint="The frame keeps its hours in this zone.">
+        <ChipRow label="Frame time zone">
+          {zones.map((z) => (
+            <Chip
+              key={z ?? "planner"}
+              label={z ?? "My planning time zone"}
+              selected={zone === z}
+              onPress={() => setZone(z)}
+            />
+          ))}
+        </ChipRow>
+      </Field>
+      {!!frame?.exdates?.length && onUnskip && (
+        <Field label="Skipped days" hint="Tap a day to bring it back.">
+          <ChipRow label="Skipped days">
+            {frame.exdates.map((d) => (
+              <Chip
+                key={d}
+                label={`${dayText(d)} ×`}
+                accessibilityLabel={`Bring back ${dayText(d)}`}
+                disabled={busy}
+                selected={false}
+                onPress={() => onUnskip(d)}
+              />
+            ))}
+          </ChipRow>
+        </Field>
+      )}
       <Field label="Only these priorities" hint="None chosen means any task.">
         <ChipRow label="Priorities" multi>
           {PRIORITIES.map((p) => {
@@ -820,11 +1000,20 @@ function FrameForm({
       <Button
         title="Save frame"
         icon="check"
-        disabled={busy || !name.trim() || end <= start || !!sizeError}
+        disabled={
+          busy ||
+          !name.trim() ||
+          end <= start ||
+          !!sizeError ||
+          (repeat === "custom" && !rule.trim())
+        }
         onPress={() =>
           onSave({
             name: name.trim(),
-            days,
+            days: repeat === "weekdays" ? [1, 2, 3, 4, 5] : days,
+            rrule: ruleFor(repeat, days, rule),
+            busy: blocking,
+            timezone: zone,
             start_time: start,
             end_time: end,
             filters: {

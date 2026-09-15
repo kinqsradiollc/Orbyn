@@ -4,6 +4,7 @@ import type { Plan, PlannedBlock, UnplacedTask } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { Pill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
+import { SmallAction } from "./SmallAction";
 import { dateLabel } from "@orbyn/core";
 import { minutesLabel, rangeLabel, shortDay } from "../lib/planning";
 import { colors, fonts, radii, themed } from "../theme";
@@ -28,10 +29,20 @@ function byDay(blocks: PlannedBlock[]) {
 export function PlanView({
   plan,
   limit,
+  actions,
+  below,
 }: {
   plan: Plan;
   /** Show at most this many blocks (the assistant's card). */
   limit?: number;
+  /** Move and Remove on each block, while the plan can still be tuned. */
+  actions?: {
+    busy: boolean;
+    onMove: (block: PlannedBlock) => void;
+    onRemove: (block: PlannedBlock) => void;
+  };
+  /** Shown under a block, such as the form that moves it. */
+  below?: (block: PlannedBlock) => React.ReactNode;
 }) {
   const shown = limit ? plan.blocks.slice(0, limit) : plan.blocks;
   const hidden = plan.blocks.length - shown.length;
@@ -68,26 +79,46 @@ export function PlanView({
             {blocks.map((b, n) => (
               <View
                 key={`${b.item_id}-${b.part}-${b.start_at}`}
-                style={[s.block, n > 0 && s.divider]}
-                accessible
-                accessibilityLabel={`${rangeLabel(b.start_at, b.end_at)}, ${b.title}${b.parts > 1 ? `, part ${b.part} of ${b.parts}` : ""}`}
+                style={[n > 0 && s.divider]}
               >
-                <Text style={s.time}>{rangeLabel(b.start_at, b.end_at)}</Text>
-                <View style={s.blockMain}>
-                  <Text style={s.blockTitle} numberOfLines={2}>
-                    {b.title}
-                  </Text>
-                  {(b.parts > 1 || !!b.frame_name) && (
-                    <Text style={shared.small}>
-                      {[
-                        b.parts > 1 ? `Part ${b.part} of ${b.parts}` : "",
-                        b.frame_name ?? "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+                <View
+                  style={s.block}
+                  accessible
+                  accessibilityLabel={`${rangeLabel(b.start_at, b.end_at)}, ${b.title}${b.parts > 1 ? `, part ${b.part} of ${b.parts}` : ""}${b.pinned ? ", pinned" : ""}`}
+                >
+                  <Text style={s.time}>{rangeLabel(b.start_at, b.end_at)}</Text>
+                  <View style={s.blockMain}>
+                    <Text style={s.blockTitle} numberOfLines={2}>
+                      {b.title}
                     </Text>
-                  )}
+                    {(b.parts > 1 || !!b.frame_name || !!b.pinned) && (
+                      <Text style={shared.small}>
+                        {[
+                          b.pinned ? "Pinned" : "",
+                          b.parts > 1 ? `Part ${b.part} of ${b.parts}` : "",
+                          b.frame_name ?? "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    )}
+                  </View>
                 </View>
+                {actions && (
+                  <View style={s.blockActions}>
+                    <SmallAction
+                      label="Move"
+                      disabled={actions.busy}
+                      onPress={() => actions.onMove(b)}
+                    />
+                    <SmallAction
+                      label="Remove"
+                      disabled={actions.busy}
+                      onPress={() => actions.onRemove(b)}
+                    />
+                  </View>
+                )}
+                {below?.(b)}
               </View>
             ))}
           </View>
@@ -190,6 +221,12 @@ const s = themed(() =>
       paddingTop: 1,
     },
     blockMain: { flex: 1 },
+    blockActions: {
+      flexDirection: "row",
+      gap: 8,
+      paddingLeft: 128,
+      paddingBottom: 8,
+    },
     blockTitle: {
       fontFamily: fonts.semibold,
       fontSize: 14,

@@ -16,6 +16,7 @@ import {
   zonedParts,
   type CalendarEntry,
   type DerivedBlock,
+  type FrameOccurrence,
   type PlannedBlock,
   type TimeBlock,
 } from "@orbyn/core";
@@ -61,10 +62,13 @@ export type TimelineSlot =
 
 type DragMode = "move" | "resize";
 type Drag = { id: string; start: Date; end: Date };
+/** Anything that can be dragged: a saved block, or a planned one. */
+type Movable = { id: string; start_at: string; end_at: string };
 
 /**
- * The whole hours a day needs: every timed plan, plus an hour either side of
- * now today, widened to at least MIN_HOURS inside the 6am-midnight window.
+ * The whole hours a day needs: every timed plan and frame, plus an hour either
+ * side of now today, widened to at least MIN_HOURS inside the 6am-midnight
+ * window.
  */
 function visibleHours(
   placed: { top: number; height: number }[],
@@ -116,7 +120,7 @@ function clockIn(zone: string, at: Date) {
 }
 
 const MORE = { name: "longpress", label: "More options" } as const;
-/** Screen-reader actions on a time block that can be moved. */
+/** Screen-reader actions on a block that can be moved. */
 const BLOCK_ACTIONS = [
   { name: "activate" },
   MORE,
@@ -128,11 +132,13 @@ const BLOCK_ACTIONS = [
 
 /**
  * Hour rows covering the day's plans (and now, today), with entries placed by
- * start time and sized by duration; overlapping ones sit side by side. Entries
- * take their list's colour. Time blocks have a dashed outline; hold one to
- * lift it and drag it to another time (15-minute steps), or drag its bottom
- * edge to change its length; let go without moving for its menu. A plan
- * preview shows as faint sparkle blocks. Buffers and travel are faint bands.
+ * start time and sized by duration; overlapping ones sit side by side. Frames
+ * are translucent labelled bands behind everything (long-press one to edit it
+ * or skip the day). Entries take their list's colour. Time blocks have a
+ * dashed outline; hold one to lift it and drag it to another time (15-minute
+ * steps), or drag its bottom edge to change its length; let go without moving
+ * for its menu. A plan preview shows as faint sparkle blocks that can be
+ * dragged the same way to pin them. Buffers and travel are faint bands.
  * Untimed plans go in the "All day / no time" row. Today shows a current-time
  * line. Extra time zones get their own columns in the hour gutter.
  *
@@ -146,11 +152,15 @@ export function DayTimeline({
   slots,
   ghosts = [],
   derived,
+  frames = [],
   zones = [],
   onOpen,
   onBlockMenu,
   onEntryMenu,
   onMoveBlock,
+  onGhostMenu,
+  onMoveGhost,
+  onFrameMenu,
   onDragging,
 }: {
   day: Date;
@@ -160,6 +170,8 @@ export function DayTimeline({
   ghosts?: PlannedBlock[];
   /** Buffers and travel around the day's events. */
   derived: DerivedBlock[];
+  /** Frame occurrences on `day`. */
+  frames?: FrameOccurrence[];
   /** Extra IANA time zones shown beside the hours (at most three). */
   zones?: string[];
   /** Open the task or event behind an entry or block. */
@@ -169,6 +181,12 @@ export function DayTimeline({
   onEntryMenu: (entry: CalendarEntry) => void;
   /** Save a block's new times after a drag, resize or screen-reader action. */
   onMoveBlock?: (block: TimeBlock, start: Date, end: Date) => void;
+  /** Options for a planned block; without it planned blocks can't be touched. */
+  onGhostMenu?: (ghost: PlannedBlock) => void;
+  /** Pin a planned block at new times. */
+  onMoveGhost?: (ghost: PlannedBlock, start: Date, end: Date) => void;
+  /** Options for a frame occurrence (long-press its band). */
+  onFrameMenu?: (frame: FrameOccurrence) => void;
   /** True while a block is lifted, so the page can stop scrolling. */
   onDragging?: (active: boolean) => void;
 }) {
@@ -184,6 +202,7 @@ export function DayTimeline({
   };
   const listColor = (id: string | null) =>
     id ? listById.get(id)?.color : undefined;
+  const ghostKey = (g: PlannedBlock) => `ghost-${g.item_id}-${g.start_at}`;
 
   const shownSlots: TimelineSlot[] = [
     ...slots.map((slot): TimelineSlot =>
@@ -191,39 +210,56 @@ export function DayTimeline({
         ? { ...slot, start: drag.start, end: drag.end }
         : slot,
     ),
-    ...ghosts.map((ghost): TimelineSlot => ({
-      type: "ghost",
-      key: `ghost-${ghost.item_id}-${ghost.start_at}`,
-      start: new Date(ghost.start_at),
-      end: new Date(ghost.end_at),
-      kind: "task",
-      ghost,
-    })),
+    ...ghosts.map((ghost): TimelineSlot => {
+      const key = ghostKey(ghost);
+      const dragged = drag?.id === key;
+      return {
+        type: "ghost",
+        key,
+        start: dragged ? drag.start : new Date(ghost.start_at),
+        end: dragged ? drag.end : new Date(ghost.end_at),
+        kind: "task",
+        ghost,
+      };
+    }),
   ];
   const { placed, allDay } = layoutDay(shownSlots, day);
   const isToday = sameDay(day, now);
   const nowTop = offsetFor(day, now);
   const showNow =
     isToday && nowTop >= 0 && nowTop <= (DAY_END - DAY_START) * HOUR_HEIGHT;
+  const frameSpans = frames.map((f) => {
+    const top = offsetFor(day, new Date(f.start_at));
+    return { f, top, height: offsetFor(day, new Date(f.end_at)) - top };
+  });
 
-  const fitted = visibleHours(placed, showNow ? nowTop : null);
+  const fitted = visibleHours(
+    [...placed, ...frameSpans],
+    showNow ? nowTop : null,
+  );
   const { start, end } = (drag && frozen.current) || fitted;
   // layoutDay measures from DAY_START; shift everything up to the first shown hour.
   const shift = (start - DAY_START) * HOUR_HEIGHT;
   const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
   const windowHeight = (end - start) * HOUR_HEIGHT;
   const gutter = GUTTER + zones.length * ZONE_WIDTH;
+  const clip = <T,>(item: T, top: number, bottom: number) => ({
+    item,
+    top: Math.max(0, top - shift),
+    height: Math.min(windowHeight, bottom - shift) - Math.max(0, top - shift),
+  });
   const bands = derived
-    .map((d) => {
-      const top = offsetFor(day, new Date(d.start_at)) - shift;
-      const bottom = offsetFor(day, new Date(d.end_at)) - shift;
-      return {
+    .map((d) =>
+      clip(
         d,
-        top: Math.max(0, top),
-        height: Math.min(windowHeight, bottom) - Math.max(0, top),
-      };
-    })
+        offsetFor(day, new Date(d.start_at)),
+        offsetFor(day, new Date(d.end_at)),
+      ),
+    )
     .filter((b) => b.height > 2);
+  const frameBands = frameSpans
+    .map(({ f, top, height }) => clip(f, top, top + height))
+    .filter((b) => b.height > 4);
 
   // ---- moving and resizing blocks ----
   const midnight = new Date(day.getFullYear(), day.getMonth(), day.getDate());
@@ -233,22 +269,22 @@ export function DayTimeline({
   const snap = (minute: number) => Math.round(minute / SNAP) * SNAP;
 
   /** Blocks wholly inside the hours shown can be dragged. */
-  const canDrag = (b: TimeBlock) =>
-    !!onMoveBlock &&
-    minuteOf(new Date(b.start_at)) >= start * 60 &&
-    minuteOf(new Date(b.end_at)) <= end * 60;
+  const canDrag = (m: Movable, allowed: boolean) =>
+    allowed &&
+    minuteOf(new Date(m.start_at)) >= start * 60 &&
+    minuteOf(new Date(m.end_at)) <= end * 60;
 
-  const begin = (b: TimeBlock) => {
+  const begin = (m: Movable) => {
     frozen.current = { start, end };
-    setDrag({ id: b.id, start: new Date(b.start_at), end: new Date(b.end_at) });
+    setDrag({ id: m.id, start: new Date(m.start_at), end: new Date(m.end_at) });
     onDragging?.(true);
     // A light tick where the platform has one without a haptics module.
     if (Platform.OS === "android" && !isReducedMotion()) Vibration.vibrate(10);
   };
-  const dragTo = (b: TimeBlock, mode: DragMode, dy: number) => {
+  const dragTo = (m: Movable, mode: DragMode, dy: number) => {
     const win = frozen.current ?? { start, end };
-    let from = new Date(b.start_at);
-    let to = new Date(b.end_at);
+    let from = new Date(m.start_at);
+    let to = new Date(m.end_at);
     if (Math.abs(dy) >= STEP / 2) {
       const moved = (dy / HOUR_HEIGHT) * 60;
       if (mode === "move") {
@@ -275,25 +311,33 @@ export function DayTimeline({
       current.start.getTime() !== from.getTime() ||
       current.end.getTime() !== to.getTime()
     )
-      setDrag({ id: b.id, start: from, end: to });
+      setDrag({ id: m.id, start: from, end: to });
   };
-  /** End a drag; true when the block moved (and is saved through onMoveBlock). */
-  const finish = (b: TimeBlock, commit: boolean) => {
+  /** End a drag; true when it moved (and `save` was called with the new times). */
+  const finish = (
+    m: Movable,
+    commit: boolean,
+    save: (start: Date, end: Date) => void,
+  ) => {
     const d = dragRef.current;
     frozen.current = null;
     setDrag(null);
     onDragging?.(false);
     if (!commit || !d) return false;
     const moved =
-      d.start.getTime() !== Date.parse(b.start_at) ||
-      d.end.getTime() !== Date.parse(b.end_at);
-    if (moved) onMoveBlock?.(b, d.start, d.end);
+      d.start.getTime() !== Date.parse(m.start_at) ||
+      d.end.getTime() !== Date.parse(m.end_at);
+    if (moved) save(d.start, d.end);
     return moved;
   };
   /** Screen-reader actions: a step earlier, later, longer or shorter. */
-  const nudge = (b: TimeBlock, action: string) => {
-    const from = Date.parse(b.start_at);
-    const to = Date.parse(b.end_at);
+  const nudge = (
+    m: Movable,
+    action: string,
+    save: (start: Date, end: Date) => void,
+  ) => {
+    const from = Date.parse(m.start_at);
+    const to = Date.parse(m.end_at);
     const step = SNAP * 60_000;
     const next =
       action === "earlier"
@@ -305,16 +349,10 @@ export function DayTimeline({
             : action === "shorter" && to - from > step
               ? [from, to - step]
               : null;
-    if (next) onMoveBlock?.(b, new Date(next[0]), new Date(next[1]));
+    if (next) save(new Date(next[0]), new Date(next[1]));
   };
 
-  const menuProps = (slot: TimelineSlot) => {
-    const menu =
-      slot.type === "block"
-        ? () => onBlockMenu(slot.block)
-        : slot.type === "entry" && slot.entry.occurrence
-          ? () => onEntryMenu(slot.entry)
-          : null;
+  const menuProps = (menu: (() => void) | null) => {
     if (!menu) return {};
     return {
       onLongPress: menu,
@@ -324,6 +362,12 @@ export function DayTimeline({
       },
     };
   };
+  const slotMenu = (slot: TimelineSlot) =>
+    slot.type === "block"
+      ? () => onBlockMenu(slot.block)
+      : slot.type === "entry" && slot.entry.occurrence
+        ? () => onEntryMenu(slot.entry)
+        : null;
 
   return (
     <View style={s.card}>
@@ -368,7 +412,7 @@ export function DayTimeline({
                   accessibilityRole="button"
                   accessibilityLabel={`${title}, no set time, ${statusLabels[status]}. Opens task details`}
                   onPress={() => onOpen(item_id)}
-                  {...menuProps(slot)}
+                  {...menuProps(slotMenu(slot))}
                   style={[
                     s.allDayChip,
                     { backgroundColor: color ? tint(color, 0.16) : t.bg },
@@ -421,7 +465,40 @@ export function DayTimeline({
           );
         })}
         <View style={[s.events, { top: PAD_TOP, left: gutter }]}>
-          {bands.map(({ d, top, height }) => (
+          {frameBands.map(({ item: f, top, height }) => (
+            <Pressable
+              key={`frame-${f.frame_id}-${f.date}`}
+              accessibilityRole="button"
+              accessibilityLabel={`${f.name} frame, ${timeLabel(new Date(f.start_at))} – ${timeLabel(new Date(f.end_at))}${f.busy ? ", busy" : ""}`}
+              accessibilityHint={
+                onFrameMenu
+                  ? "Long-press to edit it or skip this day"
+                  : undefined
+              }
+              disabled={!onFrameMenu}
+              {...menuProps(onFrameMenu ? () => onFrameMenu(f) : null)}
+              style={({ pressed }) => [
+                s.frame,
+                {
+                  top,
+                  height,
+                  backgroundColor: tint(f.color, pressed ? 0.2 : 0.1),
+                  borderLeftColor: f.color,
+                },
+              ]}
+            >
+              {height >= 16 && (
+                <View style={s.frameLabel}>
+                  <View style={[s.frameDot, { backgroundColor: f.color }]} />
+                  <Text numberOfLines={1} style={s.frameText}>
+                    {f.name}
+                  </Text>
+                  {f.busy && <Text style={s.frameBusy}>Busy</Text>}
+                </View>
+              )}
+            </Pressable>
+          ))}
+          {bands.map(({ item: d, top, height }) => (
             <View
               key={`${d.kind}-${d.item_id}-${d.start_at}`}
               pointerEvents="none"
@@ -452,36 +529,80 @@ export function DayTimeline({
             if (slot.type === "ghost") {
               const g = slot.ghost;
               const part = g.parts > 1 ? ` · ${g.part}/${g.parts}` : "";
-              return (
-                <View key={slot.key} style={box} pointerEvents="none">
-                  <View
-                    accessible
-                    accessibilityLabel={`Planned, not saved yet: ${g.title}, ${range}${g.parts > 1 ? `, part ${g.part} of ${g.parts}` : ""}`}
-                    style={[s.event, s.ghost]}
-                  >
-                    <View style={s.blockTop}>
-                      <Icon name="sparkles" size={11} color={colors.accent} />
-                      <Text
-                        numberOfLines={compact ? 1 : 2}
-                        style={[s.eventTitle, s.blockTitle]}
-                      >
-                        {g.title}
-                      </Text>
-                    </View>
-                    {!compact && (
-                      <Text numberOfLines={1} style={s.blockTime}>
-                        {range}
-                        {part}
-                      </Text>
-                    )}
+              const label = `Planned, not saved yet${g.pinned ? ", pinned" : ""}: ${g.title}, ${range}${g.parts > 1 ? `, part ${g.part} of ${g.parts}` : ""}`;
+              const content = (
+                <>
+                  <View style={s.blockTop}>
+                    <Icon
+                      name={g.pinned ? "pin" : "sparkles"}
+                      size={11}
+                      color={colors.accent}
+                    />
+                    <Text
+                      numberOfLines={compact ? 1 : 2}
+                      style={[s.eventTitle, s.blockTitle]}
+                    >
+                      {g.title}
+                    </Text>
                   </View>
-                </View>
+                  {!compact && (
+                    <Text numberOfLines={1} style={s.blockTime}>
+                      {range}
+                      {part}
+                    </Text>
+                  )}
+                </>
+              );
+              if (!onGhostMenu)
+                return (
+                  <View key={slot.key} style={box} pointerEvents="none">
+                    <View
+                      accessible
+                      accessibilityLabel={label}
+                      style={[s.event, s.ghost]}
+                    >
+                      {content}
+                    </View>
+                  </View>
+                );
+              const m: Movable = {
+                id: slot.key,
+                start_at: g.start_at,
+                end_at: g.end_at,
+              };
+              const pin = (from: Date, to: Date) => onMoveGhost?.(g, from, to);
+              const lifted = drag?.id === slot.key;
+              return (
+                <DraggableBlock
+                  key={slot.key}
+                  style={[box, lifted && s.above]}
+                  blockStyle={[s.event, s.ghost, g.pinned && s.pinned]}
+                  canDrag={canDrag(m, !!onMoveGhost)}
+                  lifted={lifted}
+                  gripColor={colors.accent}
+                  accessibilityLabel={`${label}. Opens task details`}
+                  onTap={() => onOpen(g.item_id)}
+                  onMenu={() => onGhostMenu(g)}
+                  onBegin={() => begin(m)}
+                  onDrag={(mode, dy) => dragTo(m, mode, dy)}
+                  onEnd={(commit) => finish(m, commit, pin)}
+                  onAction={(name) =>
+                    name === "activate"
+                      ? onOpen(g.item_id)
+                      : name === MORE.name
+                        ? onGhostMenu(g)
+                        : nudge(m, name, pin)
+                  }
+                >
+                  {content}
+                </DraggableBlock>
               );
             }
             if (slot.type === "block") {
               const b = slot.block;
               const color = listColor(b.list_id);
               const lifted = drag?.id === b.id;
+              const save = (from: Date, to: Date) => onMoveBlock?.(b, from, to);
               return (
                 <DraggableBlock
                   key={slot.key}
@@ -491,7 +612,7 @@ export function DayTimeline({
                     s.block,
                     !!color && { borderColor: color },
                   ]}
-                  canDrag={canDrag(b)}
+                  canDrag={canDrag(b, !!onMoveBlock)}
                   lifted={lifted}
                   gripColor={color ?? colors.accent}
                   accessibilityLabel={`Time block for ${b.title}, ${range}. Opens task details`}
@@ -499,13 +620,13 @@ export function DayTimeline({
                   onMenu={() => onBlockMenu(b)}
                   onBegin={() => begin(b)}
                   onDrag={(mode, dy) => dragTo(b, mode, dy)}
-                  onEnd={(commit) => finish(b, commit)}
+                  onEnd={(commit) => finish(b, commit, save)}
                   onAction={(name) =>
                     name === "activate"
                       ? onOpen(b.item_id)
                       : name === MORE.name
                         ? onBlockMenu(b)
-                        : nudge(b, name)
+                        : nudge(b, name, save)
                   }
                 >
                   <View style={s.blockTop}>
@@ -550,7 +671,7 @@ export function DayTimeline({
                       : undefined
                   }
                   onPress={() => onOpen(e.item_id)}
-                  {...menuProps(slot)}
+                  {...menuProps(slotMenu(slot))}
                   style={({ pressed }) => [
                     s.event,
                     color
@@ -610,9 +731,9 @@ export function DayTimeline({
 }
 
 /**
- * A time block: tap to open its task. Hold it to lift it, then drag to move
- * it (let go without moving for its menu); drag the grip on its bottom edge
- * to change its length. Before it lifts, a swipe scrolls the page as usual.
+ * A block: tap to open its task. Hold it to lift it, then drag to move it
+ * (let go without moving for its menu); drag the grip on its bottom edge to
+ * change its length. Before it lifts, a swipe scrolls the page as usual.
  */
 function DraggableBlock({
   style,
@@ -857,6 +978,39 @@ const s = themed(() =>
       backgroundColor: colors.border,
     },
     events: { position: "absolute", right: 6, bottom: 0 },
+    frame: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      borderLeftWidth: 3,
+      borderRadius: 8,
+      paddingHorizontal: 6,
+      paddingTop: 3,
+      alignItems: "flex-end",
+    },
+    frameLabel: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      maxWidth: "70%",
+    },
+    frameDot: { width: 6, height: 6, borderRadius: 3 },
+    frameText: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      color: colors.textSoft,
+    },
+    frameBusy: {
+      fontFamily: fonts.semibold,
+      fontSize: 9,
+      color: colors.muted,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.pill,
+      paddingHorizontal: 5,
+      overflow: "hidden",
+    },
     band: {
       position: "absolute",
       left: 0,
@@ -905,6 +1059,7 @@ const s = themed(() =>
       backgroundColor: tint(colors.accent, 0.1),
       opacity: 0.8,
     },
+    pinned: { borderStyle: "solid", opacity: 0.9 },
     grip: {
       position: "absolute",
       left: 0,

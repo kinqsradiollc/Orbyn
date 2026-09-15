@@ -21,10 +21,13 @@ export const THEME_PREFERENCES: readonly ThemePreference[] = [
 
 const KEY = "orbyn-theme";
 
-/** The saved choice, read synchronously so the first frame is already right. */
+/**
+ * The saved choice, read synchronously so the first frame is already right.
+ * Light until someone picks Automatic or Dark in Settings.
+ */
 function savedPreference(): ThemePreference {
   const value = readLocal(KEY);
-  return value === "light" || value === "dark" ? value : "system";
+  return value === "system" || value === "dark" ? value : "light";
 }
 
 export type Theme = {
@@ -35,7 +38,7 @@ export type Theme = {
 };
 
 export const ThemeContext = createContext<Theme>({
-  preference: "system",
+  preference: "light",
   scheme: "light",
   setPreference: () => {},
 });

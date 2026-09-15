@@ -454,7 +454,7 @@ const s = themed(() =>
     },
     statWarn: {
       backgroundColor: colors.warningSoft,
-      borderColor: colors.warningBorder,
+      borderColor: colors.warningLine,
     },
     statValue: {
       fontFamily: fonts.display,

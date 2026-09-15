@@ -29,6 +29,7 @@ import {
   sizeOf,
   type Size,
 } from "../lib/planning";
+import { ITEM_SORTS, type ItemSort } from "@orbyn/core";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { usePlanning } from "../lib/planningContext";
 import { isOverdue } from "../lib/progress";
@@ -127,8 +128,64 @@ const savedPins = (): Pin[] => {
   return PINS.filter((p) => chosen.includes(p));
 };
 
+const SORT_LABELS: Record<ItemSort, string> = {
+  newest: "Newest",
+  score: "Priority score",
+  due: "Due date",
+  priority: "Priority",
+  estimate: "Estimate",
+  title: "Title",
+  created: "Created",
+};
+const SORT_KEY = "orbyn-task-sort";
+/** The order chosen on this device; most pressing first until then. */
+const savedSort = (): ItemSort => {
+  const value = readLocal(SORT_KEY);
+  return ITEM_SORTS.find((s) => s === value) ?? "score";
+};
+const PRIORITY_RANK: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
+/** Earlier first; missing values (NaN) last. */
+const ascending = (a: number, b: number) =>
+  Number.isNaN(a) ? (Number.isNaN(b) ? 0 : 1) : Number.isNaN(b) ? -1 : a - b;
+const time = (iso?: string | null) => (iso ? Date.parse(iso) : NaN);
+
 /**
- * Every item, most pressing first (priorityScore), with search, status tabs
+ * The server's list orders (`GET /items?sort=`), applied to the loaded items.
+ * "score" uses the priority score the server sends with each item, or the
+ * local ranking when an older server sends none. Ties fall back to `rank`.
+ */
+function sorter(sort: ItemSort, rank: (a: Item, b: Item) => number) {
+  const by = (compare: (a: Item, b: Item) => number) => (a: Item, b: Item) =>
+    compare(a, b) || rank(a, b);
+  switch (sort) {
+    case "newest":
+      return by((a, b) => ascending(time(b.created_at), time(a.created_at)));
+    case "created":
+      return by((a, b) => ascending(time(a.created_at), time(b.created_at)));
+    case "due":
+      return by((a, b) => ascending(time(a.due_at), time(b.due_at)));
+    case "priority":
+      return by(
+        (a, b) => PRIORITY_RANK[b.priority] - PRIORITY_RANK[a.priority],
+      );
+    case "estimate":
+      return by((a, b) =>
+        ascending(a.estimate_minutes ?? NaN, b.estimate_minutes ?? NaN),
+      );
+    case "title":
+      return by((a, b) => a.title.localeCompare(b.title));
+    default:
+      return by((a, b) =>
+        a.score === undefined && b.score === undefined
+          ? 0
+          : ascending(-(a.score ?? NaN), -(b.score ?? NaN)),
+      );
+  }
+}
+
+/**
+ * Every item in the chosen order (most pressing first unless changed, and
+ * remembered on this device), with search, status tabs
  * and filters for due date, priority, list, tag, size and assignee. Items can
  * be grouped by list, tag or size.
  */
@@ -150,8 +207,9 @@ export function TasksScreen({
   const { lists, tags, listById, tagById } = usePlanning();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filters, setFilters] = useState<Filters>(DEFAULTS);
-  const [open, setOpen] = useState<Key | "pins" | null>(null);
+  const [open, setOpen] = useState<Key | "pins" | "sort" | null>(null);
   const [pins, setPins] = useState<Pin[]>(savedPins);
+  const [sort, setSort] = useState<ItemSort>(savedSort);
   const now = new Date();
   const weekEnd = dayStart(8, now);
 
@@ -205,13 +263,21 @@ export function TasksScreen({
   const found = searchItems(items, search).filter(matches);
   const count = (f: StatusFilter) =>
     f === "all" ? found.length : found.filter((i) => i.status === f).length;
-  const rank = byPriority(now);
+  const order = sorter(sort, byPriority(now));
+  // Finished items always go last, whatever the order.
   const visible = found
     .filter((i) => status === "all" || i.status === status)
     .sort(
       (a, b) =>
-        Number(a.status === "done") - Number(b.status === "done") || rank(a, b),
+        Number(a.status === "done") - Number(b.status === "done") ||
+        order(a, b),
     );
+  const chooseSort = (next: ItemSort) => {
+    animateLayout();
+    setSort(next);
+    setOpen(null);
+    saveLocal(SORT_KEY, next);
+  };
 
   const options: Record<
     Key,
@@ -472,7 +538,7 @@ export function TasksScreen({
           </PressableScale>
         )}
       </ScrollView>
-      {open && open !== "pins" && (
+      {open && open !== "pins" && open !== "sort" && (
         <View style={s.panel}>
           <ChipRow label={KEY_LABELS[open]}>
             {options[open].map((o) => (
@@ -513,9 +579,39 @@ export function TasksScreen({
         </View>
       )}
       <View style={s.toolbar}>
-        <Text style={shared.small}>Most pressing first</Text>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Sort by ${SORT_LABELS[sort]}`}
+          accessibilityHint="Shows the choices below"
+          accessibilityState={{ expanded: open === "sort" }}
+          onPress={() => {
+            animateLayout();
+            setOpen(open === "sort" ? null : "sort");
+          }}
+          style={[s.filter, open === "sort" && s.filterOpen]}
+        >
+          <Icon name="list" size={13} color={colors.muted} />
+          <Text style={s.filterText}>Sort: {SORT_LABELS[sort]}</Text>
+        </PressableScale>
         <SmallAction label="Lists" disabled={false} onPress={onManageLists} />
       </View>
+      {open === "sort" && (
+        <View style={s.panel}>
+          <ChipRow label="Sort by">
+            {ITEM_SORTS.map((value) => (
+              <Chip
+                key={value}
+                label={SORT_LABELS[value]}
+                selected={sort === value}
+                onPress={() => chooseSort(value)}
+              />
+            ))}
+          </ChipRow>
+          <Text style={[shared.small, s.panelHint]}>
+            Finished items always come last.
+          </Text>
+        </View>
+      )}
 
       {sections.map((section) => (
         <View key={section.key}>

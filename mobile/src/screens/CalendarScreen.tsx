@@ -23,9 +23,13 @@ import {
   type CalendarEntry,
   type CalendarSet,
   type CalendarView,
+  type Frame,
+  type FrameOccurrence,
   type Item,
   type Plan,
+  type PlannedBlock,
   type PlannerPrefs,
+  type Team,
   type TimeBlock,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
@@ -37,10 +41,13 @@ import {
   type ListHandlers,
 } from "../components/PlannerList";
 import { Icon } from "../components/Icon";
+import { SmallAction } from "../components/SmallAction";
 import { useNow } from "../hooks/useNow";
+import { usePlanStale } from "../hooks/usePlanStale";
 import { client } from "../lib/api";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { canJoin, rangeLabel, shortDay, slotLabel } from "../lib/planning";
+import { pinBlock, remakePlan, removeBlock } from "../lib/plans";
 import {
   FadeIn,
   PressableScale,
@@ -52,6 +59,7 @@ import { colors, fonts, radii, statusTones, themed } from "../theme";
 import { shared } from "../styles";
 import { addDays, startOfWeek } from "./calendar/dates";
 import { DayTimeline, type TimelineSlot } from "./calendar/DayTimeline";
+import { FrameSheet } from "./calendar/FrameSheet";
 import { MoveBlockSheet } from "./calendar/MoveBlockSheet";
 import { WeekStrip } from "./calendar/WeekStrip";
 
@@ -60,6 +68,8 @@ type Act = (fn: () => Promise<void>) => Promise<void>;
 
 /** The calendar set last shown on this device ("" for everything). */
 const SET_KEY = "orbyn-calendar-set";
+/** How long "Frame skipped · Undo" stays up. */
+const UNDO_MS = 10_000;
 
 /** An item as a calendar entry, for when the calendar view isn't loaded. */
 const entryFromItem = (i: Item): CalendarEntry => ({
@@ -98,25 +108,32 @@ function inSet(
  * A swipeable week strip (or the Sunday-first month grid), then the selected
  * day as an hour-by-hour timeline and a list of its plans with progress. The
  * week comes from the calendar view: repeating items as occurrences, time
- * blocks, and buffers and travel around events. A calendar set narrows what
- * shows; extra time zones from the planning settings label the hours. A plan
- * preview shows as faint blocks until it's applied or discarded.
+ * blocks, frames, and buffers and travel around events. A calendar set
+ * narrows what shows; extra time zones from the planning settings label the
+ * hours. A plan preview shows as faint blocks that can be moved (pinned) or
+ * removed until it's applied or discarded.
  */
 export function CalendarScreen({
   items,
+  teams,
   act,
   onChanged,
   preview,
+  onPreviewChange,
   onPreviewDone,
   onDragging,
   ...handlers
 }: ListHandlers & {
   items: Item[];
+  /** For the frame editor's team filter. */
+  teams: Team[];
   act: Act;
   /** Refresh the planner after a change that moves an item (skipping). */
   onChanged: () => void;
   /** A plan to preview on the timeline (not saved yet). */
   preview: Plan | null;
+  /** The preview was tuned or remade: this plan replaces it. */
+  onPreviewChange: (plan: Plan) => void;
   /** The preview was applied or discarded. */
   onPreviewDone: () => void;
   /** True while a block is being dragged, so the page holds still. */
@@ -133,8 +150,15 @@ export function CalendarScreen({
   const [setId, setSetId] = useState(() => readLocal(SET_KEY) ?? "");
   /** The block in the "Move to…" sheet. */
   const [moving, setMoving] = useState<TimeBlock | null>(null);
+  /** The frame in the frame editor. */
+  const [editingFrame, setEditingFrame] = useState<Frame | null>(null);
+  /** The frame day just skipped, for Undo. */
+  const [skipped, setSkipped] = useState<FrameOccurrence | null>(null);
   /** Bumped after a block or occurrence changes, to reload the week. */
   const [version, setVersion] = useState(0);
+  /** Plans this screen made by tuning the preview (they don't jump days). */
+  const tuned = useRef(new Set<string>());
+  const stale = usePlanStale(preview);
   const now = useNow(30_000);
 
   // One request per week shown, and again only when the planner's items
@@ -169,10 +193,10 @@ export function CalendarScreen({
     };
   }, [version]);
 
-  // A new preview jumps to its first planned day.
+  // A new preview (not one tuned here) jumps to its first planned day.
   const previewId = preview?.id;
   useEffect(() => {
-    if (!preview?.blocks.length) return;
+    if (!preview?.blocks.length || tuned.current.has(preview.id)) return;
     const first = new Date(
       Math.min(...preview.blocks.map((b) => Date.parse(b.start_at))),
     );
@@ -181,6 +205,12 @@ export function CalendarScreen({
     // Only when a different plan arrives, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewId]);
+
+  useEffect(() => {
+    if (!skipped) return;
+    const timer = setTimeout(() => setSkipped(null), UNDO_MS);
+    return () => clearTimeout(timer);
+  }, [skipped]);
 
   const sets = prefs?.calendar_sets ?? [];
   const activeSet = sets.find((set) => set.id === setId) ?? null;
@@ -226,6 +256,9 @@ export function CalendarScreen({
     (d) =>
       shownIds.has(d.item_id) &&
       (onDay(d.start_at, selected) || onDay(d.end_at, selected)),
+  );
+  const dayFrames = (week?.frames ?? []).filter((f) =>
+    onDay(f.start_at, selected),
   );
   const ghosts =
     preview && !preview.applied
@@ -310,6 +343,21 @@ export function CalendarScreen({
             reload();
           }),
       },
+      ...(block.status !== "done"
+        ? [
+            {
+              text: "Duplicate",
+              onPress: () =>
+                void act(async () => {
+                  const copy = await client.duplicateBlock(block.id);
+                  reload();
+                  AccessibilityInfo.announceForAccessibility(
+                    `Another block for ${block.title} added at ${slotLabel(copy.start_at, copy.end_at)}`,
+                  );
+                }),
+            },
+          ]
+        : []),
       {
         text: "Delete block",
         style: "destructive",
@@ -342,7 +390,85 @@ export function CalendarScreen({
         { text: "Cancel", style: "cancel" },
       ],
     );
+  const frameMenu = (f: FrameOccurrence) =>
+    Alert.alert(
+      f.name,
+      `${shortDay(f.start_at)}, ${rangeLabel(f.start_at, f.end_at)}${f.busy ? " · Busy" : ""}`,
+      [
+        {
+          text: "Edit frame",
+          onPress: () =>
+            void act(async () => {
+              const frame = (await client.listFrames()).find(
+                (x) => x.id === f.frame_id,
+              );
+              if (frame) setEditingFrame(frame);
+            }),
+        },
+        {
+          text: "Skip this day",
+          onPress: () =>
+            void act(async () => {
+              await client.skipFrame(f.frame_id, f.date);
+              animateLayout();
+              setSkipped(f);
+              reload();
+            }),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
+  const undoSkip = () =>
+    act(async () => {
+      if (!skipped) return;
+      await client.unskipFrame(skipped.frame_id, skipped.date);
+      animateLayout();
+      setSkipped(null);
+      reload();
+    });
 
+  // ---- the preview ----
+  /** Change the preview; the plan that comes back replaces it in place. */
+  const tunePreview = (change: (plan: Plan) => Promise<Plan>) =>
+    act(async () => {
+      if (!preview) return;
+      const next = await change(preview);
+      tuned.current.add(next.id);
+      animateLayout();
+      onPreviewChange(next);
+    });
+  const ghostMenu = (g: PlannedBlock) =>
+    Alert.alert(
+      g.title,
+      `${slotLabel(g.start_at, g.end_at)} · planned, not saved yet`,
+      [
+        {
+          text: "Remove from the plan",
+          style: "destructive",
+          onPress: () => void tunePreview((p) => removeBlock(p, g)),
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
+  const pinGhost = (g: PlannedBlock, start: Date, end: Date) => {
+    if (!preview) return;
+    // Show it where it was dropped while the plan is made again around it.
+    tuned.current.add(preview.id);
+    onPreviewChange({
+      ...preview,
+      blocks: preview.blocks.map((b) =>
+        b === g
+          ? {
+              ...b,
+              start_at: start.toISOString(),
+              end_at: end.toISOString(),
+              pinned: true,
+            }
+          : b,
+      ),
+    });
+    void tunePreview(() => pinBlock(preview, g, start, end));
+  };
   const applyPreview = () =>
     act(async () => {
       if (!preview) return;
@@ -386,10 +512,22 @@ export function CalendarScreen({
           </View>
           <Text style={[shared.small, s.previewText]}>
             {planned} block{planned === 1 ? "" : "s"} proposed
-            {preview.days > 1 ? ` over ${preview.days} days` : ""}. The faint
-            blocks on the timeline show where they’d go. Nothing is saved until
-            you apply the plan.
+            {preview.days > 1 ? ` over ${preview.days} days` : ""}. Hold a faint
+            block to move it (it stays where you put it), or for the option to
+            remove it. Nothing is saved until you apply the plan.
           </Text>
+          {stale && (
+            <View style={s.stale} accessibilityRole="alert">
+              <Text style={s.staleText}>
+                Your calendar changed since this plan was made.
+              </Text>
+              <SmallAction
+                label="Refresh"
+                disabled={handlers.busy}
+                onPress={() => void tunePreview(remakePlan)}
+              />
+            </View>
+          )}
           <View style={s.previewActions}>
             <Button
               title={handlers.busy ? "Saving…" : "Apply plan"}
@@ -534,20 +672,36 @@ export function CalendarScreen({
           count={dayEntries.length}
           hint={
             sameDay(selected, new Date())
-              ? "Today, hour by hour. Hold a block to drag it or see options."
-              : "Hour by hour. Hold a block to drag it or see options."
+              ? "Today, hour by hour. Hold a block or frame to move it or see options."
+              : "Hour by hour. Hold a block or frame to move it or see options."
           }
         />
+        {skipped && (
+          <FadeIn style={s.undo}>
+            <Text style={s.undoText} accessibilityRole="alert">
+              {skipped.name} skipped on {shortDay(skipped.start_at)}.
+            </Text>
+            <SmallAction
+              label="Undo"
+              disabled={handlers.busy}
+              onPress={() => void undoSkip()}
+            />
+          </FadeIn>
+        )}
         <DayTimeline
           day={selected}
           slots={slots}
           ghosts={ghosts}
           derived={derived}
+          frames={dayFrames}
           zones={zones}
           onOpen={openItem}
           onBlockMenu={blockMenu}
           onEntryMenu={entryMenu}
           onMoveBlock={saveBlock}
+          onGhostMenu={ghostMenu}
+          onMoveGhost={pinGhost}
+          onFrameMenu={frameMenu}
           onDragging={onDragging}
         />
         <PlannerList
@@ -570,6 +724,12 @@ export function CalendarScreen({
           select(start);
           reload();
         }}
+      />
+      <FrameSheet
+        frame={editingFrame}
+        teams={teams}
+        onClose={() => setEditingFrame(null)}
+        onSaved={reload}
       />
     </>
   );
@@ -684,8 +844,44 @@ const s = themed(() =>
       marginBottom: 6,
     },
     previewText: { marginBottom: 14 },
+    stale: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.warningSoft,
+      borderWidth: 1,
+      borderColor: colors.warningBorder,
+      borderRadius: radii.input,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 14,
+    },
+    staleText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.warning,
+    },
     previewActions: { flexDirection: "row", gap: 10 },
     previewButton: { flex: 1, marginBottom: 0 },
+    undo: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      marginBottom: 12,
+    },
+    undoText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.text,
+    },
     join: { paddingVertical: 14 },
     joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },

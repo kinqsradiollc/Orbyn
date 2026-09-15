@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Platform,
   RefreshControl,
@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
 import {
   freshItem,
   motion,
@@ -31,6 +32,7 @@ import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
 import { PlanningProvider } from "../lib/planningContext";
+import { planIncluding } from "../lib/plans";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
@@ -124,6 +126,28 @@ export function RootScreen() {
   const [preview, setPreview] = useState<Plan | null>(null);
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
+  /** The Plan my day sheet's title for the plan it opens on. */
+  const [planTitle, setPlanTitle] = useState<string | null>(null);
+  /** Routes a tapped push notification; set on each signed-in render. */
+  const routePush = useRef<((data: Record<string, unknown>) => void) | null>(
+    null,
+  );
+  const handledPush = useRef("");
+  useEffect(() => {
+    if (!token) return;
+    const handle = (response: Notifications.NotificationResponse) => {
+      const request = response.notification.request;
+      if (handledPush.current === request.identifier) return;
+      handledPush.current = request.identifier;
+      routePush.current?.(request.content.data ?? {});
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener(handle);
+    // The tap that opened the app, if it wasn't running.
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => response && handle(response))
+      .catch(() => {});
+    return () => sub.remove();
+  }, [token]);
 
   if (!ready)
     return (
@@ -236,9 +260,42 @@ export function RootScreen() {
     if (focus) setTask((t) => (t && t.id === focus.id ? t : focus));
     closeSheet();
   };
-  const openPlanner = (seed: Plan | null) => {
+  const openPlanner = (seed: Plan | null, title?: string) => {
     setPlanSeed(seed);
+    setPlanTitle(title ?? null);
     present({ sheet: "plan" });
+  };
+  /** Unfinished work from earlier days, as a plan to look over. */
+  const startRollForward = () =>
+    act(async () =>
+      openPlanner(await client.rollForward(), "Move work forward"),
+    );
+  /** A plan that includes this task (at-risk and due-soon notices). */
+  const startPlanIt = (itemId?: string | null) =>
+    act(async () => openPlanner(await planIncluding(itemId), "Plan my day"));
+  /** A planner notice's action; the notice is marked read alongside. */
+  const noticeAction = (n: Notice, start: () => Promise<void>) => {
+    if (!n.read)
+      void client
+        .markNotificationRead(n.id)
+        .then(() => refresh())
+        .catch(() => {});
+    return start();
+  };
+  routePush.current = (data) => {
+    const text = (key: string) =>
+      typeof data[key] === "string" ? (data[key] as string) : "";
+    const kind = text("kind");
+    const itemId = text("itemId");
+    if (kind === "rollforward") void startRollForward();
+    else if (kind === "at_risk" || kind === "deadline")
+      void startPlanIt(itemId);
+    else if (kind === "conflict") setTab("Inbox");
+    else if (kind === "booking" && text("ref")) {
+      setBookingId(text("ref"));
+      present({ sheet: "booking" });
+    } else if (itemId)
+      void act(async () => openTask(await client.getItem(itemId)));
   };
   const planChanged = () => void refresh({ animate: true }).catch(() => {});
   const saveEditing = () =>
@@ -361,7 +418,9 @@ export function RootScreen() {
                   items={items}
                   act={act}
                   onChanged={planChanged}
+                  teams={teams}
                   preview={preview}
+                  onPreviewChange={setPreview}
                   onPreviewDone={() => setPreview(null)}
                   onDragging={setDragging}
                   {...listHandlers}
@@ -381,6 +440,10 @@ export function RootScreen() {
                   onRead={markRead}
                   onReschedule={reschedule}
                   onOpenBooking={openBookingNotice}
+                  onRollForward={(n) => void noticeAction(n, startRollForward)}
+                  onPlanIt={(n) =>
+                    void noticeAction(n, () => startPlanIt(n.item_id))
+                  }
                 />
               )}
               {tab === "Settings" && (
@@ -448,6 +511,8 @@ export function RootScreen() {
         <PlanSheet
           visible={sheet === "plan"}
           seed={planSeed}
+          title={planTitle ?? undefined}
+          teams={teams}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onApplied={() => {

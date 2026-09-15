@@ -1,18 +1,34 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Notice } from "@orbyn/core";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
 import { SmallAction } from "../components/SmallAction";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
+const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
+  conflict: "alert",
+  booking: "calendar",
+  rollforward: "arrowRight",
+  at_risk: "alert",
+  deadline: "clock",
+};
+
+/**
+ * Reminders and planner notices. Tapping one marks it read (or opens its
+ * booking); planner notices also offer their action: Reschedule a clashing
+ * block, Roll forward unfinished work, or Plan a task that's at risk or due
+ * soon.
+ */
 export function InboxScreen({
   notices,
   busy,
   onRead,
   onReschedule,
   onOpenBooking,
+  onRollForward,
+  onPlanIt,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -21,6 +37,10 @@ export function InboxScreen({
   onReschedule: (notice: Notice) => void;
   /** Open the booking a "booking" notice is about (its `ref`). */
   onOpenBooking: (notice: Notice) => void;
+  /** Plan unfinished work forward ("rollforward" notices). */
+  onRollForward: (notice: Notice) => void;
+  /** Preview a plan that includes the notice's task ("at_risk", "deadline"). */
+  onPlanIt: (notice: Notice) => void;
 }) {
   if (!notices.length)
     return (
@@ -30,15 +50,22 @@ export function InboxScreen({
         </View>
         <Text style={shared.sectionTitle}>You’re all caught up.</Text>
         <Text style={[shared.subtitle, { textAlign: "center" }]}>
-          Deadline reminders and booking updates will appear here.
+          Reminders, planner notices and booking updates will appear here.
         </Text>
       </FadeIn>
     );
   return (
     <View style={s.list}>
       {notices.map((n, i) => {
-        const conflict = n.kind === "conflict" && !!n.ref;
         const booking = n.kind === "booking" && !!n.ref;
+        const action =
+          n.kind === "conflict" && n.ref
+            ? { label: "Reschedule", run: onReschedule }
+            : n.kind === "rollforward"
+              ? { label: "Roll forward", run: onRollForward }
+              : n.kind === "at_risk" || n.kind === "deadline"
+                ? { label: "Plan it", run: onPlanIt }
+                : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
@@ -49,7 +76,7 @@ export function InboxScreen({
                   ? "Opens this booking"
                   : n.read
                     ? undefined
-                    : "Marks this reminder as read"
+                    : "Marks this notice as read"
               }
               onPress={() => (booking ? onOpenBooking(n) : onRead(n))}
               style={({ pressed }) => [
@@ -60,7 +87,7 @@ export function InboxScreen({
             >
               <View style={s.icon}>
                 <Icon
-                  name={conflict ? "alert" : booking ? "calendar" : "bell"}
+                  name={(n.kind && ICONS[n.kind]) || "bell"}
                   size={16}
                   color={colors.accent}
                 />
@@ -81,12 +108,12 @@ export function InboxScreen({
                 </Text>
               </View>
             </Pressable>
-            {conflict && (
+            {action && (
               <View style={[s.actions, !n.read && s.unread]}>
                 <SmallAction
-                  label="Reschedule"
+                  label={action.label}
                   disabled={busy}
-                  onPress={() => onReschedule(n)}
+                  onPress={() => action.run(n)}
                 />
               </View>
             )}

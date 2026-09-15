@@ -665,7 +665,7 @@ function ProviderForm({
 
 const s = themed(() =>
   StyleSheet.create({
-    keyWarning: { color: colors.warning, marginTop: 6 },
+    keyWarning: { color: colors.warningStrong, marginTop: 6 },
     section: { marginTop: 8 },
     center: { textAlign: "center" },
     gapBelow: { marginBottom: 14 },

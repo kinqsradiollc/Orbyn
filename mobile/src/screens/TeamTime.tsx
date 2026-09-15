@@ -7,6 +7,7 @@ import type {
   MemberWorkload,
   TeamMember,
 } from "@orbyn/core";
+import { dateLabel } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -146,6 +147,10 @@ export function TeamTime({
       onCreated();
     });
 
+  const atRisk = workload
+    .flatMap((w) => w.at_risk_items ?? [])
+    .sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
+
   const days = [
     { label: "Today", day: dayStart(0) },
     { label: "Tomorrow", day: dayStart(1) },
@@ -259,6 +264,34 @@ export function TeamTime({
           </View>
         ))}
       </View>
+
+      {atRisk.length > 0 && (
+        <>
+          <Text style={[shared.eyebrow, s.eyebrow]}>AT-RISK TASKS</Text>
+          <View style={shared.card}>
+            <Text style={[shared.small, s.gap]}>
+              Tasks that can’t get enough time before they’re due. Those due
+              soonest take the free time first.
+            </Text>
+            {atRisk.map((t, n) => (
+              <View
+                key={t.id}
+                style={[s.member, n > 0 && s.divider]}
+                accessible
+                accessibilityLabel={`${t.title}, ${t.assignee_name}, due ${dateLabel(t.due_at)}, needs ${minutesLabel(t.remaining_minutes) || "more time"}`}
+              >
+                <Text style={s.name} numberOfLines={2}>
+                  {t.title}
+                </Text>
+                <Text style={shared.small}>
+                  {t.assignee_name} · due {dateLabel(t.due_at)} · needs{" "}
+                  {minutesLabel(t.remaining_minutes) || "more time"}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
 
       <Text style={[shared.eyebrow, s.eyebrow]}>FIND A TIME</Text>
       <View style={shared.card}>
