@@ -32,10 +32,10 @@
   align-items: center;
   gap: 5px;
   padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--tag) 30%, white);
+  border: 1px solid color-mix(in srgb, var(--tag) 30%, var(--color-surface));
   border-radius: 999px;
-  background: color-mix(in srgb, var(--tag) 10%, white);
-  color: color-mix(in srgb, var(--tag) 60%, #1c2a22);
+  background: color-mix(in srgb, var(--tag) 10%, var(--color-surface));
+  color: color-mix(in srgb, var(--tag) var(--tint-text), var(--color-text));
   font-size: 11px;
   font-weight: 550;
   line-height: 1.4;
@@ -51,7 +51,7 @@
   cursor: pointer;
 }
 .tag-chip.toggle.active {
-  background: color-mix(in srgb, var(--tag) 22%, white);
+  background: color-mix(in srgb, var(--tag) 22%, var(--color-surface));
   border-color: var(--tag);
 }
 .drawer-fact {
@@ -83,7 +83,7 @@ a.drawer-fact {
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .filter-select select {
   min-width: 128px;
@@ -108,7 +108,7 @@ a.drawer-fact {
   margin: 0;
   padding: 14px 23px 10px;
   border-top: 1px solid var(--color-divider);
-  background: #fafbf8;
+  background: var(--color-sunken);
   font-size: 12px;
   font-weight: 700;
 }
@@ -116,7 +116,7 @@ a.drawer-fact {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--color-surfaceMuted);
-  color: #5f6b62;
+  color: var(--color-textSoft);
   font:
     600 11px "DM Sans",
     sans-serif;
@@ -135,7 +135,7 @@ a.drawer-fact {
   font-size: 10px;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  color: #8a948c;
+  color: var(--color-muted);
 }
 .list-row {
   display: flex;
@@ -143,7 +143,7 @@ a.drawer-fact {
   border-top: 1px solid var(--color-divider);
 }
 .list-row.active {
-  background: #eaf1e9;
+  background: var(--color-selected);
 }
 .list-row-main {
   flex: 1;
@@ -165,7 +165,7 @@ a.drawer-fact {
 }
 .list-row-main small {
   margin-left: auto;
-  color: #7a857c;
+  color: var(--color-textMuted);
   white-space: nowrap;
 }
 .list-row-actions {
@@ -182,7 +182,7 @@ a.drawer-fact {
 }
 .list-edit input {
   padding: 9px 10px;
-  border: 1px solid #dfe5dc;
+  border: 1px solid var(--color-borderStrong);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -201,10 +201,10 @@ a.drawer-fact {
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 2px solid white;
+  border: 2px solid var(--color-surface);
   border-radius: 50%;
-  box-shadow: 0 0 0 1px #d5ddd5;
-  color: white;
+  box-shadow: 0 0 0 1px var(--color-borderStrong);
+  color: var(--color-onAccent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -225,7 +225,7 @@ a.drawer-fact {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--color-surface);
-  color: #5f6b62;
+  color: var(--color-textSoft);
   font-size: 12px;
   font-weight: 500;
 }
@@ -323,7 +323,7 @@ a.drawer-fact {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .popover-head .eyebrow {
   margin: 0;
@@ -359,7 +359,7 @@ a.drawer-fact {
 }
 .popover-note {
   padding: 0 9px 6px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 
 /* A proposed plan. */
@@ -368,7 +368,7 @@ a.drawer-fact {
   padding: 14px 16px;
   border: 1px solid var(--color-softBorder);
   border-radius: 11px;
-  background: #fbfcf8;
+  background: var(--color-canvas);
 }
 .plan-card-head {
   display: flex;
@@ -383,13 +383,13 @@ a.drawer-fact {
 }
 .plan-card-head small {
   margin-left: auto;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .plan-summary {
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.55;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .plan-days {
   list-style: none;
@@ -402,7 +402,7 @@ a.drawer-fact {
   margin: 0 0 4px;
   font-size: 11px;
   letter-spacing: 0.4px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .plan-days ul,
 .plan-flags ul {
@@ -421,7 +421,7 @@ a.drawer-fact {
   flex: 0 0 auto;
   min-width: 128px;
   font-variant-numeric: tabular-nums;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .plan-title {
   min-width: 0;
@@ -429,10 +429,10 @@ a.drawer-fact {
 }
 .plan-title small,
 .plan-flags small {
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .plan-more {
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .plan-flags {
   margin-top: 10px;
@@ -468,7 +468,7 @@ a.drawer-fact {
   margin-top: 2px;
 }
 .inline-outcome.ok {
-  color: #3c7a4f;
+  color: var(--color-accentText);
 }
 .inline-outcome.fail {
   color: var(--color-danger);
@@ -486,11 +486,11 @@ a.drawer-fact {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--color-surface);
-  color: #6f7b72;
+  color: var(--color-textMuted);
   font-size: 12px;
 }
 .command-trigger:hover {
-  border-color: #d3ddd3;
+  border-color: var(--color-borderHover);
   color: var(--color-text);
 }
 kbd {
@@ -501,7 +501,7 @@ kbd {
   font:
     600 10px "DM Sans",
     sans-serif;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .command-backdrop {
   position: fixed;
@@ -511,7 +511,7 @@ kbd {
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
-  background: #24352c55;
+  background: var(--color-backdrop);
   backdrop-filter: blur(3px);
   animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
 }
@@ -531,7 +531,7 @@ kbd {
   gap: 10px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .command-input input {
   flex: 1;
@@ -548,7 +548,7 @@ kbd {
 .command-bar:focus-within {
   box-shadow:
     0 24px 90px #1c312440,
-    0 0 0 3px #95b49c66;
+    0 0 0 3px color-mix(in srgb, var(--color-focus) 40%, transparent);
 }
 .command-list {
   list-style: none;
@@ -566,12 +566,12 @@ kbd {
   cursor: pointer;
 }
 .command-list li[role="option"].active {
-  background: #eaf1e9;
-  color: #2f5a41;
+  background: var(--color-selected);
+  color: var(--color-selectedText);
 }
 .command-list li svg {
   flex: none;
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .command-label {
   flex: 1;
@@ -581,14 +581,14 @@ kbd {
   white-space: nowrap;
 }
 .command-list small {
-  color: #7a857c;
+  color: var(--color-textMuted);
   white-space: nowrap;
 }
 .command-group,
 .command-empty {
   padding: 8px 12px 4px;
   font-size: 11px;
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .command-ask {
   padding: 14px 18px 18px;
@@ -599,7 +599,7 @@ kbd {
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--color-accentSoft);
-  color: #2f5a41;
+  color: var(--color-selectedText);
   font-size: 13px;
 }
 .command-ask .muted {
@@ -628,7 +628,7 @@ kbd {
   text-align: left;
 }
 .notice-main > svg {
-  color: #8aa077;
+  color: var(--color-dot);
   flex-shrink: 0;
 }
 .notice-main > span {
@@ -652,7 +652,7 @@ kbd {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .team-block {
   padding: 4px 23px 20px;
@@ -687,7 +687,7 @@ kbd {
 .avail-table thead th {
   border-top: 0;
   font-size: 10px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
   text-align: center;
 }
 .avail-table th:first-child,
@@ -711,7 +711,7 @@ kbd {
 .avail-person small {
   display: block;
   font-size: 10px;
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .avail-person .icon-button[aria-pressed="true"] {
   color: var(--green);
@@ -722,7 +722,7 @@ kbd {
   height: 22px;
   min-width: 60px;
   border-radius: 5px;
-  background: #f4f6f2;
+  background: var(--color-sunken);
   overflow: hidden;
 }
 .avail-track i {
@@ -737,7 +737,7 @@ kbd {
   top: 4px !important;
   bottom: 4px !important;
   border-radius: 3px;
-  background: #5f7f68;
+  background: var(--color-accent);
 }
 .chip-row {
   display: inline-flex;
@@ -752,7 +752,7 @@ kbd {
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--color-surfaceMuted);
-  color: #5f6b62;
+  color: var(--color-textSoft);
   font-size: 10px;
   font-weight: 600;
 }
@@ -761,15 +761,15 @@ kbd {
   color: var(--color-danger);
 }
 .chip.is-warn {
-  background: #fbf1dc;
-  color: #8a6116;
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
 }
 .load-bar {
   display: inline-block;
   width: 90px;
   height: 7px;
   border-radius: 999px;
-  background: #e9eee7;
+  background: var(--color-track);
   overflow: hidden;
   vertical-align: middle;
 }
@@ -785,7 +785,7 @@ kbd {
 .load-value {
   margin-left: 8px;
   font-variant-numeric: tabular-nums;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .team-block .inline-form {
   margin-top: 10px;
@@ -811,7 +811,7 @@ kbd {
   font-size: 12px;
 }
 .slot-list small {
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .slot-list .secondary {
   padding: 7px 11px;
@@ -848,7 +848,7 @@ kbd {
   accent-color: var(--green);
 }
 .check-line small {
-  color: #7a857c;
+  color: var(--color-textMuted);
 }
 .switch-line {
   display: flex !important;
@@ -867,7 +867,7 @@ kbd {
 .switch-line small {
   display: block;
   margin-top: 3px;
-  color: #7a857c;
+  color: var(--color-textMuted);
   font-weight: 400;
 }
 .switch-line.compact {
@@ -962,4 +962,140 @@ kbd {
     flex-direction: column;
     gap: 0;
   }
+}
+
+/* Tasks view menu: which smart lists are pinned at the top. */
+.tasks-view-button {
+  padding: 8px 12px;
+}
+.popover-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 9px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.popover-check:hover {
+  background: var(--color-surfaceMuted);
+}
+.popover-check input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  accent-color: var(--green);
+}
+.popover-check small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--color-textMuted);
+}
+.task-pinned .task-group-title svg {
+  flex: none;
+  color: var(--green);
+}
+.task-pinned.is-overdue .task-group-title,
+.task-pinned.is-overdue .task-group-title svg {
+  color: var(--color-danger);
+}
+
+/* Keyboard shortcut sheet ("?"). */
+.shortcut-sheet {
+  width: 560px;
+  max-width: 100%;
+}
+.shortcut-groups {
+  display: grid;
+  gap: 18px;
+  padding: 16px 23px 8px;
+}
+.shortcut-group h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--color-textSoft);
+}
+.shortcut-group dl {
+  margin: 0;
+}
+.shortcut-group dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.shortcut-group dt {
+  order: 2;
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+.shortcut-group dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+.shortcut-group kbd {
+  min-width: 22px;
+  text-align: center;
+}
+.shortcut-note {
+  margin: 0;
+  padding: 8px 23px 20px;
+  font-size: 12px;
+  color: var(--color-textMuted);
+}
+
+/* Team workload: tasks that can't get enough time before they're due. */
+.team-atrisk {
+  margin-top: 14px;
+}
+.team-atrisk h5 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--color-warn);
+}
+.team-atrisk ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.team-atrisk li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 12px;
+}
+.team-atrisk strong {
+  display: block;
+  font-weight: 600;
+}
+.team-atrisk small {
+  color: var(--color-textMuted);
+}
+.team-atrisk-left {
+  flex: none;
+  font-weight: 600;
+  color: var(--color-warn);
+}
+
+/* A task's priority score, when the list is sorted by it. */
+.item-score {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--color-chip);
+  color: var(--color-textMuted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }

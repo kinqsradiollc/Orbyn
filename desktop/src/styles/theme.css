@@ -1,0 +1,202 @@
+/* Light and dark themes, token by token.
+   The shared palette (--color-* and --status-*) comes from @orbyn/core and is
+   written for light by main.tsx. This file adds the web-only tokens and the
+   dark values. Settings → Appearance sets data-theme="light" or "dark" on
+   <html>; with no attribute the system setting decides. `.theme-light`
+   keeps a subtree light whatever the theme (the marketing home page). */
+:root,
+.theme-light {
+  color-scheme: light;
+  /* Text and icons on an accent background (primary buttons, checks). */
+  --color-onAccent: #ffffff;
+  /* Full-screen pages (focus mode, public and status pages). */
+  --color-canvas: #fbfcf8;
+  /* Recessed areas inside cards: headers, footers, quiet panels. */
+  --color-sunken: #fafbf8;
+  --color-hover: #f5f7f4;
+  /* Neutral chips, counters and quiet buttons. */
+  --color-chip: #f1f4ee;
+  --color-chipText: #3f5038;
+  /* Selected rows and tabs, and success notes. */
+  --color-selected: #eaf1e9;
+  --color-selectedText: #3c6349;
+  /* Green secondary text: text buttons, links, positive notes. */
+  --color-accentText: #56704e;
+  --color-textMuted: #6f7b72;
+  /* Field borders, and borders on hover. */
+  --color-borderStrong: #dfe5dc;
+  --color-borderHover: #d3ddd3;
+  /* Progress tracks and switch tracks. */
+  --color-track: #e9eee7;
+  --color-focus: #95b49c;
+  --color-focusSoft: #aac6b2;
+  --color-warn: #8a6116;
+  --color-warnSoft: #fbf1dc;
+  --color-warnBorder: #f1dfb5;
+  --color-info: #3d6390;
+  --color-infoSoft: #e8eff7;
+  --color-infoBorder: #d8e2ef;
+  --color-dangerPressed: #99492f;
+  --color-dangerBorder: #f1d9d0;
+  /* The calendar's now-line. */
+  --color-now: #d23c3c;
+  --color-backdrop: #24352c66;
+  /* Travel bands in the time grid. */
+  --color-travel: #f3eee5;
+  --color-travelEdge: #dcc9a9;
+  /* How much of a user-picked colour (list, tag) goes into text mixed with
+     --color-text. Lower in dark so the text stays light enough to read. */
+  --tint-text: 65%;
+}
+/* Aliases from global.css, restated so a light subtree picks up light values. */
+.theme-light {
+  --green: var(--color-accent);
+  --muted: var(--color-muted);
+  --border: var(--color-border);
+  color: var(--color-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-background: #121614;
+    --color-surface: #1a1f1c;
+    --color-surfaceMuted: #212722;
+    --color-border: #2c342f;
+    --color-divider: #242b26;
+    --color-text: #e2e8e3;
+    --color-textSoft: #b4bfb7;
+    --color-muted: #8e9a92;
+    --color-faint: #5f6a63;
+    --color-accent: #7cc49a;
+    --color-accentPressed: #9ad3b0;
+    --color-accentSoft: #1e3327;
+    --color-dot: #7fa472;
+    --color-soft: #1f2a22;
+    --color-softBorder: #2f3f33;
+    --color-danger: #ec8f71;
+    --color-dangerSoft: #3a231d;
+    --color-highBg: #3a261f;
+    --color-highText: #e5a888;
+    --color-mediumBg: #1f2c23;
+    --color-mediumText: #9dc29f;
+    --color-lowBg: #252b27;
+    --color-lowText: #a4ae9b;
+    --color-white: #1a1f1c;
+    --status-todo-bg: var(--color-lowBg);
+    --status-todo-fg: var(--color-lowText);
+    --status-in_progress-bg: var(--color-accentSoft);
+    --status-in_progress-fg: var(--color-accent);
+    --status-blocked-bg: var(--color-dangerSoft);
+    --status-blocked-fg: var(--color-danger);
+    --status-done-bg: var(--color-soft);
+    --status-done-fg: var(--color-mediumText);
+    --color-onAccent: #0e1712;
+    --color-canvas: #121614;
+    --color-sunken: #161b18;
+    --color-hover: #232a25;
+    --color-chip: #252c27;
+    --color-chipText: #c7d1c9;
+    --color-selected: #1f3528;
+    --color-selectedText: #a5d6b6;
+    --color-accentText: #a3c7a6;
+    --color-textMuted: #9ba69f;
+    --color-borderStrong: #37413b;
+    --color-borderHover: #4a574f;
+    --color-track: #2c3530;
+    --color-focus: #5c9270;
+    --color-focusSoft: #4b7a5c;
+    --color-warn: #e5bd6c;
+    --color-warnSoft: #352c1b;
+    --color-warnBorder: #594a28;
+    --color-info: #9cbde4;
+    --color-infoSoft: #1c2736;
+    --color-infoBorder: #33445a;
+    --color-dangerPressed: #f4a68c;
+    --color-dangerBorder: #5a3328;
+    --color-now: #ff6b6b;
+    --color-backdrop: #000000a6;
+    --color-travel: #2e291f;
+    --color-travelEdge: #6d5c40;
+    --tint-text: 35%;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #121614;
+  --color-surface: #1a1f1c;
+  --color-surfaceMuted: #212722;
+  --color-border: #2c342f;
+  --color-divider: #242b26;
+  --color-text: #e2e8e3;
+  --color-textSoft: #b4bfb7;
+  --color-muted: #8e9a92;
+  --color-faint: #5f6a63;
+  --color-accent: #7cc49a;
+  --color-accentPressed: #9ad3b0;
+  --color-accentSoft: #1e3327;
+  --color-dot: #7fa472;
+  --color-soft: #1f2a22;
+  --color-softBorder: #2f3f33;
+  --color-danger: #ec8f71;
+  --color-dangerSoft: #3a231d;
+  --color-highBg: #3a261f;
+  --color-highText: #e5a888;
+  --color-mediumBg: #1f2c23;
+  --color-mediumText: #9dc29f;
+  --color-lowBg: #252b27;
+  --color-lowText: #a4ae9b;
+  --color-white: #1a1f1c;
+  --status-todo-bg: var(--color-lowBg);
+  --status-todo-fg: var(--color-lowText);
+  --status-in_progress-bg: var(--color-accentSoft);
+  --status-in_progress-fg: var(--color-accent);
+  --status-blocked-bg: var(--color-dangerSoft);
+  --status-blocked-fg: var(--color-danger);
+  --status-done-bg: var(--color-soft);
+  --status-done-fg: var(--color-mediumText);
+  --color-onAccent: #0e1712;
+  --color-canvas: #121614;
+  --color-sunken: #161b18;
+  --color-hover: #232a25;
+  --color-chip: #252c27;
+  --color-chipText: #c7d1c9;
+  --color-selected: #1f3528;
+  --color-selectedText: #a5d6b6;
+  --color-accentText: #a3c7a6;
+  --color-textMuted: #9ba69f;
+  --color-borderStrong: #37413b;
+  --color-borderHover: #4a574f;
+  --color-track: #2c3530;
+  --color-focus: #5c9270;
+  --color-focusSoft: #4b7a5c;
+  --color-warn: #e5bd6c;
+  --color-warnSoft: #352c1b;
+  --color-warnBorder: #594a28;
+  --color-info: #9cbde4;
+  --color-infoSoft: #1c2736;
+  --color-infoBorder: #33445a;
+  --color-dangerPressed: #f4a68c;
+  --color-dangerBorder: #5a3328;
+  --color-now: #ff6b6b;
+  --color-backdrop: #000000a6;
+  --color-travel: #2e291f;
+  --color-travelEdge: #6d5c40;
+  --tint-text: 35%;
+}
+
+/* Booking pages in their own colour. bookingUi.tsx's accentStyle() sets
+   --accent-light (dark enough for white text, and as text on white) and
+   --accent-dark (light enough for dark text, and as text on the dark
+   surface); the theme picks one. */
+.booking-accent {
+  --green: var(--accent-light, var(--color-accent));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .booking-accent {
+    --green: var(--accent-dark, var(--color-accent));
+  }
+}
+:root[data-theme="dark"] .booking-accent {
+  --green: var(--accent-dark, var(--color-accent));
+}

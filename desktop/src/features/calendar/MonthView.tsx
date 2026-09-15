@@ -1,5 +1,14 @@
+import type { CSSProperties } from "react";
 import { Users } from "lucide-react";
-import { monthGrid, sameDay, statusLabels, type Item } from "@orbyn/core";
+import {
+  monthGrid,
+  sameDay,
+  statusLabels,
+  type FrameOccurrence,
+  type Item,
+  type TaskList,
+} from "@orbyn/core";
+import { usePlanning } from "../../app/planning";
 import { isAllDay, itemsForDay, timeLabel } from "./dates";
 import { layoutWeek } from "./layout";
 
@@ -14,6 +23,8 @@ type Props = {
   /** "+N more": show that day on its own. */
   onOpenDay: (day: Date) => void;
   onOpen: (item: Item) => void;
+  /** Frames on these days, shown as small marks beside the date. */
+  frames?: FrameOccurrence[];
 };
 
 /** Colors and markers for an item in any calendar view. */
@@ -24,6 +35,20 @@ export function entryClass(i: Pick<Item, "kind" | "priority" | "status">) {
     `tone-${i.status}`,
     i.status === "done" ? "is-done" : "",
   ].join(" ");
+}
+
+/**
+ * Colour-coding by list: a `has-list` class and the list's colour as
+ * `--list` (calendar.css), or nothing for items outside a list.
+ */
+export function listLook(
+  listId: string | null | undefined,
+  lists: Map<string, TaskList>,
+): { className: string; style?: CSSProperties } {
+  const color = listId ? lists.get(listId)?.color : undefined;
+  return color
+    ? { className: " has-list", style: { "--list": color } as CSSProperties }
+    : { className: "" };
 }
 
 /** "Event · 9:00 AM · Blocked" style label for screen readers and tooltips. */
@@ -37,8 +62,9 @@ export function entryLabel(i: Item) {
 
 /**
  * Sunday-first month grid. Each week row lays items out in lanes: multi-day
- * items as continuous bars, events as priority-colored bars, tasks as chips
- * with a status dot. Phones show dots instead (the agenda lists the day).
+ * items as continuous bars, events as bars in their list's colour (else
+ * their priority's), tasks as chips with a status dot. Phones show dots
+ * instead (the agenda lists the day).
  */
 export function MonthView({
   items,
@@ -46,7 +72,9 @@ export function MonthView({
   onSelect,
   onOpenDay,
   onOpen,
+  frames = [],
 }: Props) {
+  const { listById } = usePlanning();
   const today = new Date();
   const month = selected.getMonth();
   return (
@@ -63,6 +91,9 @@ export function MonthView({
             {week.map((d, c) => {
               const dayItems = itemsForDay(items, d);
               const isSelected = sameDay(d, selected);
+              const dayFrames = frames.filter((f) =>
+                sameDay(new Date(f.start_at), d),
+              );
               return (
                 <button
                   key={d.toISOString()}
@@ -74,6 +105,10 @@ export function MonthView({
                     day: "numeric",
                   })}${sameDay(d, today) ? ", today" : ""}, ${dayItems.length} ${
                     dayItems.length === 1 ? "item" : "items"
+                  }${
+                    dayFrames.length
+                      ? ", frames: " + dayFrames.map((f) => f.name).join(", ")
+                      : ""
                   }`}
                   style={{ gridColumn: c + 1 }}
                   className={
@@ -85,11 +120,28 @@ export function MonthView({
                   onClick={() => onSelect(d)}
                 >
                   <span className="month-date">{d.getDate()}</span>
+                  {dayFrames.length > 0 && (
+                    <span className="month-frames" aria-hidden="true">
+                      {dayFrames.slice(0, 3).map((f) => (
+                        <i
+                          key={f.frame_id + f.start_at}
+                          style={{ background: f.color }}
+                        />
+                      ))}
+                    </span>
+                  )}
                   {dayItems.length > 0 && (
                     <span className="month-dots" aria-hidden="true">
-                      {dayItems.slice(0, 3).map((i) => (
-                        <i key={i.id} className={entryClass(i)} />
-                      ))}
+                      {dayItems.slice(0, 3).map((i) => {
+                        const look = listLook(i.list_id, listById);
+                        return (
+                          <i
+                            key={i.id}
+                            className={entryClass(i) + look.className}
+                            style={look.style}
+                          />
+                        );
+                      })}
                     </span>
                   )}
                 </button>
@@ -98,6 +150,7 @@ export function MonthView({
             {bars.map((b) => {
               const i = b.item;
               const timed = i.due_at && !isAllDay(i) && !b.continuesBefore;
+              const look = listLook(i.list_id, listById);
               return (
                 <button
                   key={i.id}
@@ -110,11 +163,13 @@ export function MonthView({
                       ? " is-multi"
                       : "") +
                     (b.continuesBefore ? " cont-before" : "") +
-                    (b.continuesAfter ? " cont-after" : "")
+                    (b.continuesAfter ? " cont-after" : "") +
+                    look.className
                   }
                   style={{
                     gridColumn: `${b.startCol + 1} / ${b.endCol + 2}`,
                     gridRow: b.lane + 2,
+                    ...look.style,
                   }}
                   title={entryLabel(i)}
                   aria-label={entryLabel(i)}

@@ -18,6 +18,8 @@ type Props = {
   onToggle: (item: Item) => void;
   /** Opens the task detail panel. */
   onOpen: (item: Item) => void;
+  /** The priority score, shown when the list is sorted by it. */
+  score?: number | null;
 };
 
 /**
@@ -31,6 +33,7 @@ export function ItemRow({
   index = 0,
   onToggle,
   onOpen,
+  score,
 }: Props) {
   const done = i.status === "done";
   // Items already done when the row mounts don't pop; completing one does.
@@ -98,6 +101,11 @@ export function ItemRow({
           <span className="team-badge" title={"Shared with " + i.team_name}>
             <Users size={11} />
             {i.team_name}
+          </span>
+        )}
+        {score != null && (
+          <span className="item-score" title="Priority score">
+            {score.toFixed(1)}
           </span>
         )}
         <StatusPill status={i.status} />

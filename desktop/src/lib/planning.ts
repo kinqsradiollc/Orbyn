@@ -56,20 +56,24 @@ export const sizeOf = (i: Pick<Item, "estimate_minutes">): Size => {
 };
 
 /** Due-date buckets for the task filter. */
-export type DueFilter = "any" | "overdue" | "today" | "week" | "none";
+export type DueFilter =
+  "any" | "overdue" | "today" | "tomorrow" | "soon" | "week" | "none";
 export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
   if (due === "any") return true;
   if (due === "none") return !i.due_at;
   if (!i.due_at) return false;
   if (due === "overdue") return isOverdue(i, now);
   const at = new Date(i.due_at);
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (due === "today")
-    return at >= start && at.getTime() < start.getTime() + 86_400_000;
+  /** Local midnight `n` days from today. */
+  const day = (n: number) =>
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+  const within = (from: number, to: number) => at >= day(from) && at < day(to);
+  if (due === "today") return within(0, 1);
+  if (due === "tomorrow") return within(1, 2);
+  // Due soon: the rest of the coming week, after today and tomorrow.
+  if (due === "soon") return within(2, 7);
   // This week: from today through Saturday (weeks start on Sunday).
-  const end = new Date(start);
-  end.setDate(start.getDate() + (7 - start.getDay()));
-  return at >= start && at < end;
+  return within(0, 7 - now.getDay());
 }
 
 /** Open tasks first, most pressing first; finished ones last. */

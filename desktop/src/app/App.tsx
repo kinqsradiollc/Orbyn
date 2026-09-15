@@ -21,6 +21,10 @@ import { MaintenanceBanner, UpdateBanner } from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
 import { CommandBar } from "../components/CommandBar";
+import { Celebration } from "../components/Celebration";
+import { ShortcutSheet } from "../components/ShortcutSheet";
+import { celebrate } from "../lib/celebrate";
+import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
 import { HomePage } from "../features/home/HomePage";
 import { StatusPage } from "../features/status/StatusPage";
@@ -93,6 +97,7 @@ export function App() {
   /** The task in focus mode. */
   const [focusTask, setFocusTask] = useState<Item | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
@@ -136,18 +141,35 @@ export function App() {
     setCommandOpen(false);
   }, [token]);
 
-  // ⌘K / Ctrl+K opens the command bar anywhere in the app.
+  // ⌘K / Ctrl+K opens the command bar anywhere in the app. "?" shows the
+  // shortcuts and N starts a new item, unless you're typing or a dialog,
+  // panel or menu is open.
+  const inShell = !(path === "/status" || (!nativeDesktop && path === "/"));
   useEffect(() => {
-    if (!token || isPublicBooking) return;
+    if (!token || isPublicBooking || !inShell) return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCommandOpen((open) => !open);
+        return;
+      }
+      if (
+        e.defaultPrevented ||
+        isTyping(e) ||
+        document.querySelector('[aria-modal="true"], .popover')
+      )
+        return;
+      if (e.key === "?") {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      } else if (e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        newItem();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [token, isPublicBooking]);
+  }, [token, isPublicBooking, inShell]);
 
   const newItem = (
     teamId: string | null = null,
@@ -242,6 +264,28 @@ export function App() {
     await refresh();
     return appliedText(result);
   };
+  /** "Roll forward" on a notice: a plan for unfinished blocks, in the calendar. */
+  const rollForward = async () => {
+    try {
+      openPlan(await client.rollForward());
+    } catch (e) {
+      report(e);
+    }
+  };
+  /** "Plan it" on a notice: a preview that includes the task, up to its due day. */
+  const planIt = (n: Notice) => {
+    if (!n.item_id) return;
+    const due = items.find((i) => i.id === n.item_id)?.due_at;
+    const daysLeft = due
+      ? Math.ceil((Date.parse(due) - Date.now()) / 86_400_000)
+      : 0;
+    navigate("Calendar");
+    setPlanRequest({
+      key: Date.now(),
+      days: daysLeft > 0 ? Math.min(7, daysLeft) : undefined,
+      include: [n.item_id],
+    });
+  };
   const reschedule = async (n: Notice) => {
     if (!n.ref) return;
     try {
@@ -264,8 +308,10 @@ export function App() {
           version: target.version,
         });
         // Status changes go through the timeline so they're recorded.
-        if (data.status !== target.status)
+        if (data.status !== target.status) {
           await client.postItemUpdate(target.id, { status: data.status });
+          if (data.status === "done") celebrate();
+        }
       }
       setEditing(null);
       await refresh();
@@ -407,8 +453,13 @@ export function App() {
                   mode={calendarMode}
                   onModeChange={setCalendarMode}
                   shortcuts={
-                    !editing && !shownTask && !shownFocus && !commandOpen
+                    !editing &&
+                    !shownTask &&
+                    !shownFocus &&
+                    !commandOpen &&
+                    !shortcutsOpen
                   }
+                  onNewEvent={(prefill) => newItem(null, prefill)}
                   revision={revision}
                   report={report}
                   onChanged={refresh}
@@ -444,6 +495,8 @@ export function App() {
                   notices={notices}
                   onRead={planner.markRead}
                   onReschedule={reschedule}
+                  onRollForward={rollForward}
+                  onPlanIt={planIt}
                   onOpenCalendar={() => navigate("Calendar")}
                   onOpenBooking={openBooking}
                 />
@@ -518,9 +571,14 @@ export function App() {
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
             onApplied={refresh}
+            onShowShortcuts={() => setShortcutsOpen(true)}
             report={report}
           />
         )}
+        {shortcutsOpen && (
+          <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+        )}
+        <Celebration />
       </div>
     </PlanningContext.Provider>
   );

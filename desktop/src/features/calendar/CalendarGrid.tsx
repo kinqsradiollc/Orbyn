@@ -6,12 +6,14 @@ import {
   type DragEvent,
   type PointerEvent,
 } from "react";
-import { Sparkles, Timer, Users, Video } from "lucide-react";
+import { Pin, Sparkles, Timer, Users, Video, X } from "lucide-react";
 import {
   sameDay,
   statusLabels,
+  type BusyInterval,
   type CalendarEntry,
   type DerivedBlock,
+  type FrameOccurrence,
   type PlannedBlock,
   type TimeBlock,
 } from "@orbyn/core";
@@ -23,8 +25,9 @@ import {
   zoneCity,
 } from "../../lib/planning";
 import { hourLabel, minutesOf, timeLabel } from "./dates";
+import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
-import { entryClass } from "./MonthView";
+import { entryClass, listLook } from "./MonthView";
 import {
   entryEnd,
   entryKey,
@@ -41,15 +44,29 @@ const SNAP = 15;
 type Cell =
   | { type: "entry"; entry: CalendarEntry }
   | { type: "block"; block: TimeBlock }
-  | { type: "ghost"; ghost: PlannedBlock };
+  /** Where an Alt-dragged block's copy will go. */
+  | { type: "copy"; block: TimeBlock }
+  | { type: "ghost"; ghost: PlannedBlock; id: string };
 
 type Props = {
   days: Date[];
   entries: CalendarEntry[];
   blocks: TimeBlock[];
   derived: DerivedBlock[];
+  /** Your frames, drawn as bands behind everything else. */
+  frames: FrameOccurrence[];
+  onFrame: (frame: FrameOccurrence, anchor: DOMRect) => void;
   /** Blocks a plan preview proposes (not saved yet). */
   ghosts: PlannedBlock[];
+  /** Planned blocks can be dragged (to pin them) and removed. */
+  tunable: boolean;
+  onPinGhost: (ghost: PlannedBlock, start: Date, end: Date) => void;
+  onRemoveGhost: (ghost: PlannedBlock) => void;
+  /** Times the plan keeps free. */
+  keepFree: BusyInterval[];
+  /** Set while tuning: dragging across empty time keeps it free. */
+  onKeepFree?: (start: Date, end: Date) => void;
+  onRemoveKeepFree: (range: BusyInterval) => void;
   /** Extra time-zone columns beside the hours. */
   zones: string[];
   onOpenDay: (day: Date) => void;
@@ -59,11 +76,22 @@ type Props = {
   onDropTask: (itemId: string, start: Date) => void;
   /** A block dragged to a new time or resized. */
   onChangeBlock: (block: TimeBlock, start: Date, end: Date) => void;
+  /** A block Alt/Option-dragged: copy it to `start`. */
+  onDuplicateBlock: (block: TimeBlock, start: Date) => void;
+  /** The picked time, marked in the grid ("C" makes an event there). */
+  slot: Date | null;
+  /** A click on an empty spot picks that time. */
+  onSelectSlot: (start: Date) => void;
 };
+
+type Target =
+  { kind: "block"; block: TimeBlock } | { kind: "ghost"; ghost: PlannedBlock };
 
 type Gesture = {
   mode: "move" | "resize";
-  block: TimeBlock;
+  target: Target;
+  /** The block id, or the ghost's cell id. */
+  id: string;
   day: number;
   x: number;
   y: number;
@@ -71,6 +99,9 @@ type Gesture = {
   end: number;
   moved: boolean;
 };
+
+/** A keep-free range being dragged out, in minutes from midnight. */
+type Selecting = { day: number; anchor: number; from: number; to: number };
 
 /** The current time, refreshed every 30 seconds (for the now-line and Join). */
 function useNow() {
@@ -85,10 +116,25 @@ function useNow() {
 const at = (day: Date, minutes: number) =>
   new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, minutes);
 
+const ghostId = (g: PlannedBlock) => "g:" + g.item_id + g.start_at;
+
+/** The part of [start, end) on a day, in minutes from its midnight. */
+function onDay(start: string, end: string, dayStart: number, dayEnd: number) {
+  const s = Date.parse(start);
+  const e = Date.parse(end);
+  if (s >= dayEnd || e <= dayStart) return null;
+  return {
+    top: (Math.max(s, dayStart) - dayStart) / 60000,
+    bottom: (Math.min(e, dayEnd) - dayStart) / 60000,
+  };
+}
+
 /**
  * Week and Day time grid on the calendar API: events and dated tasks, time
- * blocks (drag to move, drag the bottom edge to resize), buffers and travel
- * as hatched bands, plan-preview ghosts, extra time-zone columns, and a drop
+ * blocks (drag to move, drag the bottom edge to resize, Alt-drag to copy),
+ * frames as tinted bands, buffers and travel as hatched bands, plan-preview
+ * ghosts (drag to pin, × to remove while tuning), keep-free ranges (drag
+ * across empty time while tuning), extra time-zone columns, and a drop
  * target for tasks dragged from the side list.
  */
 export function CalendarGrid({
@@ -96,14 +142,26 @@ export function CalendarGrid({
   entries,
   blocks,
   derived,
+  frames,
+  onFrame,
   ghosts,
+  tunable,
+  onPinGhost,
+  onRemoveGhost,
+  keepFree,
+  onKeepFree,
+  onRemoveKeepFree,
   zones,
   onOpenDay,
   onEntry,
   onBlock,
   onDropTask,
   onChangeBlock,
+  onDuplicateBlock,
+  slot,
+  onSelectSlot,
 }: Props) {
+  const { listById } = usePlanning();
   const now = useNow();
   const scroller = useRef<HTMLDivElement>(null);
   const cols = useRef<(HTMLDivElement | null)[]>([]);
@@ -113,12 +171,21 @@ export function CalendarGrid({
     id: string;
     start: Date;
     end: Date;
+    copy: boolean;
   } | null>(null);
   const dragRef = useRef(drag);
   const setDrag = (next: typeof drag) => {
     dragRef.current = next;
     setDragState(next);
   };
+  const [selecting, setSelectingState] = useState<Selecting | null>(null);
+  const selectingRef = useRef(selecting);
+  const setSelecting = (next: Selecting | null) => {
+    selectingRef.current = next;
+    setSelectingState(next);
+  };
+  /** A keep-free drag just ended; the click that follows isn't a pick. */
+  const skipClick = useRef(false);
   const [dropHint, setDropHint] = useState<{
     day: number;
     minutes: number;
@@ -142,10 +209,11 @@ export function CalendarGrid({
     return Math.min(24 * 60 - SNAP, Math.max(0, Math.round(raw / SNAP) * SNAP));
   };
 
-  // ---- moving and resizing blocks ----
+  // ---- moving, resizing and copying blocks; moving planned blocks ----
   const begin = (
     e: PointerEvent<HTMLElement>,
-    block: TimeBlock,
+    target: Target,
+    id: string,
     mode: Gesture["mode"],
     day: number,
   ) => {
@@ -154,14 +222,16 @@ export function CalendarGrid({
       return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+    const span = target.kind === "block" ? target.block : target.ghost;
     gesture.current = {
       mode,
-      block,
+      target,
+      id,
       day,
       x: e.clientX,
       y: e.clientY,
-      start: Date.parse(block.start_at),
-      end: Date.parse(block.end_at),
+      start: Date.parse(span.start_at),
+      end: Date.parse(span.end_at),
       moved: false,
     };
   };
@@ -175,7 +245,12 @@ export function CalendarGrid({
     const delta = Math.round(dy / PX_PER_MIN / SNAP) * SNAP * 60_000;
     if (g.mode === "resize") {
       const end = Math.max(g.start + SNAP * 60_000, g.end + delta);
-      setDrag({ id: g.block.id, start: new Date(g.start), end: new Date(end) });
+      setDrag({
+        id: g.id,
+        start: new Date(g.start),
+        end: new Date(end),
+        copy: false,
+      });
       return;
     }
     const over = cols.current.findIndex((c) => {
@@ -186,25 +261,60 @@ export function CalendarGrid({
     const start = new Date(g.start + delta);
     start.setDate(start.getDate() + (over === -1 ? 0 : over - g.day));
     setDrag({
-      id: g.block.id,
+      id: g.id,
       start,
       end: new Date(start.getTime() + g.end - g.start),
+      copy: g.target.kind === "block" && e.altKey,
     });
   };
-  const finish = () => {
+  const finish = (e: PointerEvent<HTMLElement>) => {
     const g = gesture.current;
     gesture.current = null;
     const d = dragRef.current;
     if (g?.moved) {
       suppressClick.current = true;
-      if (d && (d.start.getTime() !== g.start || d.end.getTime() !== g.end))
-        onChangeBlock(g.block, d.start, d.end);
+      if (d && (d.start.getTime() !== g.start || d.end.getTime() !== g.end)) {
+        if (g.target.kind === "ghost")
+          onPinGhost(g.target.ghost, d.start, d.end);
+        else if (g.mode === "move" && e.altKey)
+          onDuplicateBlock(g.target.block, d.start);
+        else onChangeBlock(g.target.block, d.start, d.end);
+      }
     }
     setDrag(null);
   };
   const cancel = () => {
     gesture.current = null;
     setDrag(null);
+  };
+
+  // ---- dragging out keep-free ranges (while tuning a plan) ----
+  const startSelect = (e: PointerEvent<HTMLDivElement>, day: number) => {
+    if (
+      !onKeepFree ||
+      e.target !== e.currentTarget ||
+      e.button !== 0 ||
+      e.pointerType === "touch"
+    )
+      return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const m = minutesAt(e.clientY, day);
+    setSelecting({ day, anchor: m, from: m, to: m });
+  };
+  const moveSelect = (e: PointerEvent<HTMLDivElement>, day: number) => {
+    const s = selectingRef.current;
+    if (!s || s.day !== day) return;
+    const m = minutesAt(e.clientY, day);
+    const from = Math.min(s.anchor, m);
+    const to = Math.max(s.anchor, m);
+    if (from !== s.from || to !== s.to) setSelecting({ ...s, from, to });
+  };
+  const endSelect = (day: number) => {
+    const s = selectingRef.current;
+    setSelecting(null);
+    if (!s || s.to - s.from < SNAP) return;
+    skipClick.current = true;
+    onKeepFree?.(at(days[day], s.from), at(days[day], s.to));
   };
 
   // ---- dropping tasks from the side list ----
@@ -231,15 +341,17 @@ export function CalendarGrid({
     "--gutter": `${gutters * 56}px`,
   } as CSSProperties;
   const nowTop = minutesOf(now) * PX_PER_MIN;
+  const moving = drag && !drag.copy ? drag : null;
   const shownBlocks = blocks.map((b) =>
-    drag?.id === b.id
+    moving?.id === b.id
       ? {
           ...b,
-          start_at: drag.start.toISOString(),
-          end_at: drag.end.toISOString(),
+          start_at: moving.start.toISOString(),
+          end_at: moving.end.toISOString(),
         }
       : b,
   );
+  const copied = drag?.copy ? blocks.find((b) => b.id === drag.id) : undefined;
   const spans: Span<Cell>[] = [
     ...entries
       .filter((e) => !isAllDayEntry(e))
@@ -255,13 +367,35 @@ export function CalendarGrid({
       end: new Date(block.end_at),
       data: { type: "block" as const, block },
     })),
-    ...ghosts.map((ghost) => ({
-      key: "g:" + ghost.item_id + ghost.start_at,
-      start: new Date(ghost.start_at),
-      end: new Date(ghost.end_at),
-      data: { type: "ghost" as const, ghost },
-    })),
+    ...(copied && drag
+      ? [
+          {
+            key: "c:" + copied.id,
+            start: drag.start,
+            end: drag.end,
+            data: { type: "copy" as const, block: copied },
+          },
+        ]
+      : []),
+    ...ghosts.map((ghost) => {
+      const id = ghostId(ghost);
+      const shown =
+        moving?.id === id
+          ? {
+              ...ghost,
+              start_at: moving.start.toISOString(),
+              end_at: moving.end.toISOString(),
+            }
+          : ghost;
+      return {
+        key: id,
+        start: new Date(shown.start_at),
+        end: new Date(shown.end_at),
+        data: { type: "ghost" as const, ghost: shown, id },
+      };
+    }),
   ];
+  const ghostById = new Map(ghosts.map((g) => [ghostId(g), g]));
 
   return (
     <div className="timegrid" style={style}>
@@ -303,26 +437,34 @@ export function CalendarGrid({
           <div className="tg-allday-cell" key={d.toISOString()}>
             {entries
               .filter((e) => isAllDayEntry(e) && entryOnDay(e, d))
-              .map((e) => (
-                <button
-                  key={entryKey(e)}
-                  className={entryClass(e)}
-                  title={e.title}
-                  aria-label={`${e.title} (${e.kind === "event" ? "Event" : statusLabels[e.status]}, all day)`}
-                  aria-haspopup="dialog"
-                  onClick={(ev) =>
-                    onEntry(e, ev.currentTarget.getBoundingClientRect())
-                  }
-                >
-                  {e.kind === "task" && (
-                    <i className="dot" aria-hidden="true" />
-                  )}
-                  <span className="cal-title">{e.title}</span>
-                  {e.team_id && (
-                    <Users size={10} className="team-mark" aria-hidden="true" />
-                  )}
-                </button>
-              ))}
+              .map((e) => {
+                const look = listLook(e.list_id, listById);
+                return (
+                  <button
+                    key={entryKey(e)}
+                    className={entryClass(e) + look.className}
+                    style={look.style}
+                    title={e.title}
+                    aria-label={`${e.title} (${e.kind === "event" ? "Event" : statusLabels[e.status]}, all day)`}
+                    aria-haspopup="dialog"
+                    onClick={(ev) =>
+                      onEntry(e, ev.currentTarget.getBoundingClientRect())
+                    }
+                  >
+                    {e.kind === "task" && (
+                      <i className="dot" aria-hidden="true" />
+                    )}
+                    <span className="cal-title">{e.title}</span>
+                    {e.team_id && (
+                      <Users
+                        size={10}
+                        className="team-mark"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                );
+              })}
           </div>
         ))}
       </div>
@@ -343,13 +485,18 @@ export function CalendarGrid({
             const isToday = sameDay(d, now);
             const dayStart = at(d, 0).getTime();
             const dayEnd = at(d, 24 * 60).getTime();
+            const draft = selecting?.day === n ? selecting : null;
             return (
               <div
                 key={d.toISOString()}
                 ref={(el) => {
                   cols.current[n] = el;
                 }}
-                className={"tg-col " + (isToday ? "is-today" : "")}
+                className={
+                  "tg-col" +
+                  (isToday ? " is-today" : "") +
+                  (draft ? " is-selecting" : "")
+                }
                 style={{ "--hour": HOUR_PX + "px" } as CSSProperties}
                 onDragOver={(e) => onDragOver(e, n)}
                 onDragLeave={(e) => {
@@ -357,36 +504,67 @@ export function CalendarGrid({
                     setDropHint(null);
                 }}
                 onDrop={(e) => onDrop(e, n)}
+                onPointerDown={(e) => startSelect(e, n)}
+                onPointerMove={(e) => moveSelect(e, n)}
+                onPointerUp={() => endSelect(n)}
+                onPointerCancel={() => setSelecting(null)}
+                onClick={(e) => {
+                  if (skipClick.current) {
+                    skipClick.current = false;
+                    return;
+                  }
+                  // Only empty space: entries and blocks open their menus.
+                  if (e.target === e.currentTarget)
+                    onSelectSlot(at(d, minutesAt(e.clientY, n)));
+                }}
               >
-                {derived
-                  .filter(
-                    (x) =>
-                      Date.parse(x.start_at) < dayEnd &&
-                      Date.parse(x.end_at) > dayStart,
-                  )
-                  .map((x) => {
-                    const top =
-                      (Math.max(Date.parse(x.start_at), dayStart) - dayStart) /
-                      60000;
-                    const bottom =
-                      (Math.min(Date.parse(x.end_at), dayEnd) - dayStart) /
-                      60000;
-                    return (
-                      <div
-                        key={x.kind + x.item_id + x.start_at}
-                        className={"tg-band is-" + x.kind}
-                        style={{
-                          top: top * PX_PER_MIN,
-                          height: Math.max(4, (bottom - top) * PX_PER_MIN),
-                        }}
-                        title={x.label}
+                {frames.map((f) => {
+                  const r = onDay(f.start_at, f.end_at, dayStart, dayEnd);
+                  if (!r) return null;
+                  return (
+                    <div
+                      key={"f:" + f.frame_id + f.start_at}
+                      className={"tg-frame" + (f.busy ? " is-busy" : "")}
+                      style={
+                        {
+                          top: r.top * PX_PER_MIN,
+                          height: (r.bottom - r.top) * PX_PER_MIN,
+                          "--frame": f.color,
+                        } as CSSProperties
+                      }
+                    >
+                      <button
+                        className="tg-frame-label"
+                        aria-haspopup="dialog"
+                        aria-label={`${f.name} frame, ${spanLabel(f.start_at, f.end_at)}${f.busy ? ", busy" : ""}`}
+                        onClick={(ev) =>
+                          onFrame(f, ev.currentTarget.getBoundingClientRect())
+                        }
                       >
-                        {(bottom - top) * PX_PER_MIN >= 14 && (
-                          <span>{x.label}</span>
-                        )}
-                      </div>
-                    );
-                  })}
+                        {f.name}
+                        {f.busy && " · Busy"}
+                      </button>
+                    </div>
+                  );
+                })}
+                {derived.map((x) => {
+                  const r = onDay(x.start_at, x.end_at, dayStart, dayEnd);
+                  if (!r) return null;
+                  const height = (r.bottom - r.top) * PX_PER_MIN;
+                  return (
+                    <div
+                      key={x.kind + x.item_id + x.start_at}
+                      className={"tg-band is-" + x.kind}
+                      style={{
+                        top: r.top * PX_PER_MIN,
+                        height: Math.max(4, height),
+                      }}
+                      title={x.label}
+                    >
+                      {height >= 14 && <span>{x.label}</span>}
+                    </div>
+                  );
+                })}
                 {layoutSpans(spans, d, 0, 24).map((p) => {
                   const short = p.height * PX_PER_MIN < 38;
                   const place = {
@@ -401,14 +579,17 @@ export function CalendarGrid({
                     const time = e.end_at
                       ? spanLabel(e.start_at, e.end_at)
                       : timeLabel(new Date(e.start_at));
+                    const look = listLook(e.list_id, listById);
                     return (
                       <div key={p.key} className="tg-slot" style={place}>
                         <button
                           className={
                             entryClass(e) +
                             " tg-event" +
-                            (short ? " is-short" : "")
+                            (short ? " is-short" : "") +
+                            look.className
                           }
+                          style={look.style}
                           aria-label={`${e.title} (${
                             e.kind === "event"
                               ? "Event"
@@ -452,9 +633,39 @@ export function CalendarGrid({
                       </div>
                     );
                   }
+                  if (cell.type === "copy") {
+                    const b = cell.block;
+                    return (
+                      <div
+                        key={p.key}
+                        className="tg-slot is-copy"
+                        style={place}
+                        aria-hidden="true"
+                      >
+                        <span
+                          className={
+                            "cal-block tg-event" + (short ? " is-short" : "")
+                          }
+                        >
+                          <span className="cal-title">
+                            <Timer size={11} />
+                            Copy of {b.title}
+                          </span>
+                          {drag && (
+                            <small>
+                              {spanLabel(
+                                drag.start.toISOString(),
+                                drag.end.toISOString(),
+                              )}
+                            </small>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  }
                   if (cell.type === "block") {
                     const b = cell.block;
-                    const dragging = drag?.id === b.id;
+                    const dragging = moving?.id === b.id;
                     return (
                       <div
                         key={p.key}
@@ -469,7 +680,15 @@ export function CalendarGrid({
                           }
                           aria-label={`Time for ${b.title}, ${spanLabel(b.start_at, b.end_at)}`}
                           aria-haspopup="dialog"
-                          onPointerDown={(ev) => begin(ev, b, "move", n)}
+                          onPointerDown={(ev) =>
+                            begin(
+                              ev,
+                              { kind: "block", block: b },
+                              b.id,
+                              "move",
+                              n,
+                            )
+                          }
                           onPointerMove={move}
                           onPointerUp={finish}
                           onPointerCancel={cancel}
@@ -493,7 +712,15 @@ export function CalendarGrid({
                         <span
                           className="tg-resize"
                           aria-hidden="true"
-                          onPointerDown={(ev) => begin(ev, b, "resize", n)}
+                          onPointerDown={(ev) =>
+                            begin(
+                              ev,
+                              { kind: "block", block: b },
+                              b.id,
+                              "resize",
+                              n,
+                            )
+                          }
                           onPointerMove={move}
                           onPointerUp={finish}
                           onPointerCancel={cancel}
@@ -502,27 +729,122 @@ export function CalendarGrid({
                     );
                   }
                   const g = cell.ghost;
+                  // Drag and remove the plan's own copy, not the moved one.
+                  const original = ghostById.get(cell.id) ?? g;
+                  const label = `${g.pinned ? "Pinned" : "Planned"}: ${g.title}, ${spanLabel(g.start_at, g.end_at)}`;
                   return (
                     <div
                       key={p.key}
                       className={
-                        "tg-slot cal-ghost" + (short ? " is-short" : "")
+                        "tg-slot cal-ghost" +
+                        (short ? " is-short" : "") +
+                        (tunable ? " is-tunable" : "") +
+                        (g.pinned ? " is-pinned" : "") +
+                        (moving?.id === cell.id ? " is-dragging" : "")
                       }
                       style={place}
-                      role="img"
-                      aria-label={`Planned: ${g.title}, ${spanLabel(g.start_at, g.end_at)}`}
+                      role={tunable ? "group" : "img"}
+                      aria-label={label}
+                      title={
+                        tunable ? "Drag to pin it at another time" : undefined
+                      }
+                      onPointerDown={
+                        tunable
+                          ? (ev) =>
+                              begin(
+                                ev,
+                                { kind: "ghost", ghost: original },
+                                cell.id,
+                                "move",
+                                n,
+                              )
+                          : undefined
+                      }
+                      onPointerMove={tunable ? move : undefined}
+                      onPointerUp={tunable ? finish : undefined}
+                      onPointerCancel={tunable ? cancel : undefined}
                     >
                       <span className="cal-title">
-                        <Sparkles size={11} aria-hidden="true" />
+                        {g.pinned ? (
+                          <Pin size={11} aria-hidden="true" />
+                        ) : (
+                          <Sparkles size={11} aria-hidden="true" />
+                        )}
                         {g.title}
                       </span>
                       <small>
                         {spanLabel(g.start_at, g.end_at)}
                         {g.parts > 1 && ` · ${g.part}/${g.parts}`}
                       </small>
+                      {tunable && (
+                        <button
+                          className="cal-ghost-remove"
+                          aria-label={
+                            g.pinned
+                              ? `Unpin ${g.title}`
+                              : `Leave ${g.title} out of this plan`
+                          }
+                          title={g.pinned ? "Unpin" : "Leave out"}
+                          onPointerDown={(ev) => ev.stopPropagation()}
+                          onClick={() => onRemoveGhost(original)}
+                        >
+                          <X size={11} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
+                {keepFree.map((k) => {
+                  const r = onDay(k.start_at, k.end_at, dayStart, dayEnd);
+                  if (!r) return null;
+                  return (
+                    <div
+                      key={"k:" + k.start_at + k.end_at}
+                      className="tg-keepfree"
+                      style={{
+                        top: r.top * PX_PER_MIN,
+                        height: Math.max(16, (r.bottom - r.top) * PX_PER_MIN),
+                      }}
+                    >
+                      <span>Keep free</span>
+                      <button
+                        aria-label={`Stop keeping ${spanLabel(k.start_at, k.end_at)} free`}
+                        title="Stop keeping free"
+                        onPointerDown={(ev) => ev.stopPropagation()}
+                        onClick={() => onRemoveKeepFree(k)}
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  );
+                })}
+                {draft && draft.to > draft.from && (
+                  <div
+                    className="tg-keepfree is-draft"
+                    style={{
+                      top: draft.from * PX_PER_MIN,
+                      height: (draft.to - draft.from) * PX_PER_MIN,
+                    }}
+                    aria-hidden="true"
+                  >
+                    <span>
+                      Keep {timeLabel(at(d, draft.from))} –{" "}
+                      {timeLabel(at(d, draft.to))} free
+                    </span>
+                  </div>
+                )}
+                {slot && sameDay(slot, d) && (
+                  <div
+                    className="tg-selected"
+                    style={{
+                      top: minutesOf(slot) * PX_PER_MIN,
+                      height: 60 * PX_PER_MIN - 2,
+                    }}
+                    aria-hidden="true"
+                  >
+                    {timeLabel(slot)} · Press C for an event
+                  </div>
+                )}
                 {dropHint?.day === n && (
                   <div
                     className="tg-drop"

@@ -1,6 +1,16 @@
 import { useState } from "react";
-import { Activity, CalendarCog, Plug, Tags, UserRound } from "lucide-react";
+import {
+  Activity,
+  CalendarCog,
+  Monitor,
+  Moon,
+  Plug,
+  Sun,
+  Tags,
+  UserRound,
+} from "lucide-react";
 import type { Team, User } from "@orbyn/core";
+import { useTheme, type ThemeChoice } from "../../lib/theme";
 import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";
 import { ConnectionsSettings } from "./ConnectionsSettings";
@@ -14,6 +24,12 @@ const TABS = [
   { id: "tags", label: "Tags", icon: Tags },
   { id: "connections", label: "Connections", icon: Plug },
 ] as const;
+
+const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
+  { id: "system", label: "System", icon: Monitor },
+  { id: "light", label: "Light", icon: Sun },
+  { id: "dark", label: "Dark", icon: Moon },
+];
 
 type Props = {
   user: User | null;
@@ -36,6 +52,7 @@ export function SettingsView({
   initialTab = "account",
 }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
+  const [theme, setTheme] = useTheme();
   return (
     <>
       <div className="tabs" role="tablist" aria-label="Settings">
@@ -64,6 +81,28 @@ export function SettingsView({
             <p>
               {user?.name} · {user?.email}
             </p>
+            <hr />
+            <h2>Appearance</h2>
+            <div className="preference theme-preference">
+              <span>
+                <strong>Theme</strong>
+                <small>
+                  System follows your device. Saved on this device only.
+                </small>
+              </span>
+              <div className="segmented" role="group" aria-label="Theme">
+                {THEMES.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    aria-pressed={theme === id}
+                    className={theme === id ? "active" : ""}
+                    onClick={() => setTheme(id)}
+                  >
+                    <Icon size={14} aria-hidden="true" /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <hr />
             <h2>Stay in the loop</h2>
             <label className="preference">

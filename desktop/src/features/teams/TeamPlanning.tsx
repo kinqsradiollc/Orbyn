@@ -22,6 +22,7 @@ import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { dayKey, ESTIMATES, minutesLabel, spanLabel } from "../../lib/planning";
 import { addDays, rangeTitle, startOfWeek } from "../calendar/dates";
+import { AtRiskList } from "./AtRiskList";
 
 type Props = {
   team: TeamDetail;
@@ -294,6 +295,7 @@ export function TeamPlanning({
             </table>
           </div>
         )}
+        {workload && <AtRiskList workload={workload} />}
       </section>
 
       <FindATime

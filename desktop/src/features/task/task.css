@@ -18,7 +18,7 @@
   z-index: 4;
   display: flex;
   justify-content: flex-end;
-  background: #24352c47;
+  background: var(--color-backdrop);
   animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
 }
 .task-drawer {
@@ -198,7 +198,7 @@
   accent-color: var(--green);
 }
 .progress-control input[type="range"]:focus-visible {
-  outline: 3px solid #95b49c;
+  outline: 3px solid var(--color-focus);
   outline-offset: 4px;
 }
 .progress-snaps {
@@ -286,7 +286,7 @@ button.step-title {
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid #d3ddd3;
+  border: 1px solid var(--color-borderHover);
   border-radius: 7px;
   font-size: 14px;
   color: var(--color-text);
@@ -313,8 +313,8 @@ button.step-title {
     box-shadow var(--motion-fast) var(--ease-out);
 }
 .update-composer:focus-within {
-  border-color: #95b49c;
-  box-shadow: 0 0 0 3px #95b49c33;
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent);
 }
 .update-composer textarea {
   display: block;
@@ -342,7 +342,7 @@ button.step-title {
 .update-composer-row select {
   max-width: 230px;
   padding: 8px 10px;
-  border: 1px solid #d3ddd3;
+  border: 1px solid var(--color-borderHover);
   border-radius: 7px;
   background: var(--color-surface);
   color: var(--color-text);

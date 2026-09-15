@@ -6,10 +6,12 @@ import {
   type CalendarEntry,
   type TimeBlock,
 } from "@orbyn/core";
+import { usePlanning } from "../../app/planning";
 import { joinable, spanLabel } from "../../lib/planning";
 import { stagger } from "../../lib/motion";
 import { StatusPill } from "../../components/StatusPill";
 import { timeLabel } from "./dates";
+import { listLook } from "./MonthView";
 import { entryKey, entryOnDay, isAllDayEntry } from "./model";
 
 type Props = {
@@ -26,6 +28,7 @@ type Row =
 
 /** The next two weeks as a list, day by day: events, tasks and time blocks. */
 export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
+  const { listById } = usePlanning();
   const now = Date.now();
   const filled = days
     .map((day) => {
@@ -67,59 +70,65 @@ export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
             {dayHeading(day)}
             <span>{rows.length}</span>
           </h3>
-          {rows.map((r, n) =>
-            "entry" in r ? (
-              <div
-                key={r.key}
-                className="agenda-row fade-up stagger"
-                style={stagger(n)}
-              >
-                <button
-                  className={
-                    "calendar-agenda-item " +
-                    (r.entry.status === "done" ? "done" : "")
-                  }
-                  aria-haspopup="dialog"
-                  onClick={(e) =>
-                    onEntry(r.entry, e.currentTarget.getBoundingClientRect())
-                  }
+          {rows.map((r, n) => {
+            if ("entry" in r) {
+              const look = listLook(r.entry.list_id, listById);
+              return (
+                <div
+                  key={r.key}
+                  className="agenda-row fade-up stagger"
+                  style={stagger(n)}
                 >
-                  <span className="agenda-time">
-                    {isAllDayEntry(r.entry)
-                      ? "All day"
-                      : timeLabel(new Date(r.entry.start_at))}
-                  </span>
-                  <span className="agenda-main">
-                    <strong>{r.entry.title}</strong>
-                    <small>
-                      {r.entry.kind === "event" ? "Event" : "Task"}
-                      {r.entry.occurrence && " · Repeats"}
-                      {r.entry.location && ` · ${r.entry.location}`}
-                      {r.entry.team_name && (
-                        <>
-                          {" · "}
-                          <Users size={11} aria-hidden="true" />{" "}
-                          {r.entry.team_name}
-                        </>
-                      )}
-                    </small>
-                  </span>
-                  {r.entry.kind === "task" && (
-                    <StatusPill status={r.entry.status} />
-                  )}
-                </button>
-                {joinable(r.entry, now) && (
-                  <a
-                    className="secondary agenda-join"
-                    href={r.entry.meeting_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    className={
+                      "calendar-agenda-item " +
+                      (r.entry.status === "done" ? "done" : "") +
+                      look.className
+                    }
+                    style={look.style}
+                    aria-haspopup="dialog"
+                    onClick={(e) =>
+                      onEntry(r.entry, e.currentTarget.getBoundingClientRect())
+                    }
                   >
-                    <Video size={14} aria-hidden="true" /> Join
-                  </a>
-                )}
-              </div>
-            ) : (
+                    <span className="agenda-time">
+                      {isAllDayEntry(r.entry)
+                        ? "All day"
+                        : timeLabel(new Date(r.entry.start_at))}
+                    </span>
+                    <span className="agenda-main">
+                      <strong>{r.entry.title}</strong>
+                      <small>
+                        {r.entry.kind === "event" ? "Event" : "Task"}
+                        {r.entry.occurrence && " · Repeats"}
+                        {r.entry.location && ` · ${r.entry.location}`}
+                        {r.entry.team_name && (
+                          <>
+                            {" · "}
+                            <Users size={11} aria-hidden="true" />{" "}
+                            {r.entry.team_name}
+                          </>
+                        )}
+                      </small>
+                    </span>
+                    {r.entry.kind === "task" && (
+                      <StatusPill status={r.entry.status} />
+                    )}
+                  </button>
+                  {joinable(r.entry, now) && (
+                    <a
+                      className="secondary agenda-join"
+                      href={r.entry.meeting_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Video size={14} aria-hidden="true" /> Join
+                    </a>
+                  )}
+                </div>
+              );
+            }
+            return (
               <div
                 key={r.key}
                 className="agenda-row fade-up stagger"
@@ -144,8 +153,8 @@ export function AgendaList({ days, entries, blocks, onEntry, onBlock }: Props) {
                   </span>
                 </button>
               </div>
-            ),
-          )}
+            );
+          })}
         </section>
       ))}
     </div>

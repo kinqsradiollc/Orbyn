@@ -23,8 +23,8 @@
 .system-card code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
-  background: #f1f4ee;
-  color: #3f5038;
+  background: var(--color-chip);
+  color: var(--color-chipText);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -68,13 +68,13 @@
   letter-spacing: 0.2px;
   border-radius: 4px;
   padding: 2px 6px;
-  background: #f1f3ef;
-  color: #7a857e;
+  background: var(--color-chip);
+  color: var(--color-textMuted);
   white-space: nowrap;
 }
 .system-source.is-database {
-  background: #e7f0e5;
-  color: #3c6349;
+  background: var(--color-selected);
+  color: var(--color-selectedText);
 }
 .system-label,
 .system-smtp label {
@@ -94,10 +94,10 @@
   display: block;
   width: 100%;
   padding: 11px 12px;
-  border: 1px solid #dfe5dc;
+  border: 1px solid var(--color-borderStrong);
   border-radius: 6px;
-  background: #fff;
-  color: #3f5038;
+  background: var(--color-surface);
+  color: var(--color-chipText);
   margin-top: 7px;
   font-size: 12px;
 }
@@ -106,8 +106,8 @@
   line-height: 1.5;
 }
 .system-form input:disabled {
-  background: #f8f9f6;
-  color: #7a857e;
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
   cursor: not-allowed;
 }
 .system-smtp {
@@ -212,16 +212,16 @@
   white-space: nowrap;
 }
 .system-pill.is-warn {
-  background: #fbf1dc;
-  color: #8a6116;
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
 }
 .system-pill.is-ok {
-  background: #e7f0e5;
-  color: #3c6349;
+  background: var(--color-selected);
+  color: var(--color-selectedText);
 }
 .system-pill.is-off {
-  background: #f1f3ef;
-  color: #7a857e;
+  background: var(--color-chip);
+  color: var(--color-textMuted);
 }
 
 /* Version and updates */

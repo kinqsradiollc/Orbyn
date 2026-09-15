@@ -26,6 +26,7 @@ import {
   type Status,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { celebrate } from "../../lib/celebrate";
 import { stagger } from "../../lib/motion";
 import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
@@ -179,7 +180,11 @@ export function TaskDetail({
     setPending(true);
     setError("");
     try {
-      setDetail(await fn());
+      const before = (detail ?? item).status;
+      const next = await fn();
+      setDetail(next);
+      // A status change, an update or the last checklist step can finish it.
+      if (next.status === "done" && before !== "done") celebrate();
       await onChanged();
       return true;
     } catch (e) {

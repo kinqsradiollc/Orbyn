@@ -1,11 +1,13 @@
 import { Fragment } from "react";
 import { Users } from "lucide-react";
 import { dayHeading, emptyDay, type Item } from "@orbyn/core";
+import { usePlanning } from "../../app/planning";
 import { stagger } from "../../lib/motion";
 import { progressOf } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import { firstDay, isAllDay, isMultiDay, lastDay, timeLabel } from "./dates";
+import { listLook } from "./MonthView";
 
 type Props = { day: Date; items: Item[]; onOpen: (item: Item) => void };
 
@@ -14,6 +16,7 @@ type Props = { day: Date; items: Item[]; onOpen: (item: Item) => void };
  * on narrower ones (like the mobile calendar).
  */
 export function DayAgenda({ day, items, onOpen }: Props) {
+  const { listById } = usePlanning();
   return (
     <section className="calendar-agenda" aria-live="polite">
       <Fragment key={day.toDateString()}>
@@ -35,14 +38,16 @@ export function DayAgenda({ day, items, onOpen }: Props) {
                 day.getMonth(),
                 day.getDate(),
               ).getTime();
+            const look = listLook(i.list_id, listById);
             return (
               <button
                 key={i.id}
                 className={
                   "calendar-agenda-item fade-up stagger " +
-                  (i.status === "done" ? "done" : "")
+                  (i.status === "done" ? "done" : "") +
+                  look.className
                 }
-                style={stagger(n)}
+                style={{ ...stagger(n), ...look.style }}
                 onClick={() => onOpen(i)}
               >
                 <span className="agenda-time">

@@ -5,20 +5,26 @@ import {
   Layers,
   SlidersHorizontal,
   Wand2,
+  X,
 } from "lucide-react";
 import {
   addMonths,
+  dateLabel,
   monthGrid,
   sameDay,
   startOfDay,
   type CalendarEntry,
   type CalendarSet,
+  type FrameOccurrence,
   type Item,
+  type ItemInput,
   type Plan,
   type Team,
   type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { celebrate } from "../../lib/celebrate";
+import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { fromDayKey } from "../../lib/planning";
@@ -33,24 +39,28 @@ import { MonthView } from "./MonthView";
 import { DayAgenda } from "./DayAgenda";
 import { CalendarGrid } from "./CalendarGrid";
 import { AgendaList } from "./AgendaList";
-import { BlockMenu, EntryMenu } from "./CalendarMenus";
+import { BlockMenu, EntryMenu, FrameMenu } from "./CalendarMenus";
 import { BlockDialog } from "./BlockDialog";
 import { CalendarSetsDialog } from "./CalendarSets";
+import { FrameDialog } from "./FrameDialog";
 import { SchedulePanel } from "./SchedulePanel";
 import { PlannerPanel } from "./PlannerPanel";
 import { useCalendarData } from "./useCalendarData";
+import { usePlanTuning } from "./usePlanTuning";
 import { entryAsItem, inSet, itemIdOf } from "./model";
 import "./calendar.css";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda";
 
-/** A request from elsewhere (assistant, command bar) to show the planner. */
+/** A request from elsewhere (assistant, command bar, notices) to show the planner. */
 export type PlanRequest = {
   key: number;
   /** A plan to show and apply. */
   plan?: Plan;
   /** Preview a plan for this many days right away. */
   days?: number;
+  /** Tasks the preview must include ("Plan it"). */
+  include?: string[];
 };
 
 const MODES: { id: CalendarMode; label: string; key: string }[] = [
@@ -61,6 +71,8 @@ const MODES: { id: CalendarMode; label: string; key: string }[] = [
 ];
 const AGENDA_DAYS = 14;
 const SET_KEY = "orbyn-calendar-set";
+/** How long a note under the toolbar stays. */
+const NOTE_MS = 8000;
 
 type Props = {
   items: Item[];
@@ -82,17 +94,8 @@ type Props = {
   /** Refresh the planner (tasks) after a change. */
   onChanged: () => Promise<void>;
   planRequest: PlanRequest | null;
-};
-
-/** Ignore shortcuts while typing or when a modifier is held. */
-const isTyping = (e: KeyboardEvent) => {
-  const el = e.target as HTMLElement | null;
-  return (
-    e.metaKey ||
-    e.ctrlKey ||
-    e.altKey ||
-    !!el?.closest("input, textarea, select, [contenteditable='true']")
-  );
+  /** Opens the item editor for a new event (the "C" shortcut). */
+  onNewEvent: (draft: Partial<ItemInput>) => void;
 };
 
 const savedSet = () => {
@@ -106,17 +109,31 @@ const savedSet = () => {
 type Menu =
   | { kind: "entry"; entry: CalendarEntry; anchor: DOMRect }
   | { kind: "block"; block: TimeBlock; anchor: DOMRect }
+  | { kind: "frame"; frame: FrameOccurrence; anchor: DOMRect }
   | null;
 type Dialog =
   | { kind: "schedule"; item: Item }
   | { kind: "move"; block: TimeBlock }
   | { kind: "sets" }
+  | { kind: "frame"; frameId: string }
   | null;
+/** A short message under the toolbar, sometimes with Undo. */
+type Note = { text: string; undo?: () => void };
+
+const shortDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 
 /**
  * Month / Week / Day / Agenda calendar on the calendar API, with calendar
- * sets, time blocks, the planner and a list of tasks to place. Shortcuts:
- * ← → move, T today, M/W/D/A switch views, P planner, 1–9 sets, 0 all.
+ * sets, frames, time blocks, the planner (and tuning its preview on the
+ * grid) and a list of tasks to place. Entries take their list's colour.
+ * Shortcuts: ← → move, T today, M/W/D/A switch views, C new event (at a
+ * time picked by clicking the grid, else the selected day), P planner,
+ * 1–9 sets, 0 all, Esc drops the picked time.
  */
 export function CalendarView({
   items,
@@ -134,6 +151,7 @@ export function CalendarView({
   report,
   onChanged,
   planRequest,
+  onNewEvent,
 }: Props) {
   const planning = usePlanning();
   const prefs = planning.prefs;
@@ -183,15 +201,27 @@ export function CalendarView({
   const shownIds = new Set(entries.map((e) => e.item_id));
   const blocks = (data?.blocks ?? []).filter((b) => inSet(activeSet, b));
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
+  const frames = data?.frames ?? [];
   const itemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  // ---- notes under the toolbar ----
+  const [note, setNote] = useState<Note | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const id = setTimeout(() => setNote(null), NOTE_MS);
+    return () => clearTimeout(id);
+  }, [note]);
 
   // ---- the planner ----
   const [plan, setPlan] = useState<Plan | null>(null);
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [autoPreview, setAutoPreview] = useState<{
     days?: number;
+    include?: string[];
     key: number;
   } | null>(null);
+  const tuner = usePlanTuning(plan, setPlan, plannerOpen, data, report);
+  const tuning = plannerOpen && !!plan && !plan.applied;
   const ghosts = plan && !plan.applied ? plan.blocks : [];
   const latestNav = useRef({ onDateChange, onModeChange, mode });
   latestNav.current = { onDateChange, onModeChange, mode };
@@ -207,7 +237,11 @@ export function CalendarView({
     } else {
       if (mode === "month" || mode === "agenda")
         onModeChange(planRequest.days && planRequest.days > 1 ? "week" : "day");
-      setAutoPreview({ days: planRequest.days, key: planRequest.key });
+      setAutoPreview({
+        days: planRequest.days,
+        include: planRequest.include,
+        key: planRequest.key,
+      });
     }
   }, [planRequest]);
 
@@ -272,6 +306,48 @@ export function CalendarView({
     );
   };
 
+  /** Another block for the same task: at `start`, or the next free time. */
+  const duplicate = async (block: TimeBlock, start?: Date) => {
+    try {
+      const copy = await client.duplicateBlock(
+        block.id,
+        start ? { start_at: start.toISOString() } : {},
+      );
+      if (!start)
+        setNote({
+          text: `Copied to ${shortDay(copy.start_at)}, ${new Date(
+            copy.start_at,
+          ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
+        });
+    } catch (e) {
+      report(e);
+    }
+    await reload();
+  };
+
+  // ---- frames ----
+  const unskipFrame = async (f: FrameOccurrence) => {
+    try {
+      await client.unskipFrame(f.frame_id, f.date);
+      setNote(null);
+    } catch (e) {
+      report(e);
+    }
+    await reload();
+  };
+  const skipFrame = async (f: FrameOccurrence) => {
+    try {
+      await client.skipFrame(f.frame_id, f.date);
+      setNote({
+        text: `Skipped ${f.name} on ${shortDay(f.start_at)}.`,
+        undo: () => void unskipFrame(f),
+      });
+    } catch (e) {
+      report(e);
+    }
+    await reload();
+  };
+
   const step = (dir: -1 | 1) => {
     if (mode === "month") {
       const next = addMonths(date, dir);
@@ -306,26 +382,88 @@ export function CalendarView({
     setPlannerOpen(true);
   };
 
+  // ---- new events, and finishing tasks from the calendar ----
+  /** A time picked in the week or day grid, for "C". */
+  const [slot, setSlot] = useState<Date | null>(null);
+  /** A new event at the picked time if it's on screen, else on the selected day. */
+  const newEvent = () => {
+    const start =
+      slot &&
+      (mode === "week" || mode === "day") &&
+      gridDays.some((d) => sameDay(d, slot))
+        ? slot
+        : nextQuarter(date);
+    onNewEvent({
+      kind: "event",
+      title: "",
+      due_at: start.toISOString(),
+      end_at: new Date(start.getTime() + 60 * 60_000).toISOString(),
+    });
+  };
+  const complete = async (itemId: string, repeating = false) => {
+    try {
+      const next = await client.postItemUpdate(itemId, { status: "done" });
+      celebrate();
+      // A repeating task moves on to its next occurrence instead of closing.
+      if (repeating && next.status !== "done" && next.due_at)
+        setNote({ text: `Done — next on ${dateLabel(next.due_at)}.` });
+    } catch (e) {
+      report(e);
+    }
+    await changed();
+  };
+  /** Open tasks you can change; for a repeating one, only its current occurrence. */
+  const canComplete = (e: CalendarEntry) => {
+    if (e.kind !== "task" || e.status === "done") return false;
+    const item = itemMap.get(e.item_id);
+    if (item && !canWrite(item)) return false;
+    if (!e.occurrence) return true;
+    return !!item?.due_at && Date.parse(item.due_at) === Date.parse(e.start_at);
+  };
+  const menuBlockItem =
+    menu?.kind === "block" ? itemMap.get(menu.block.item_id) : undefined;
+
   const latest = useRef({
     step,
     onDateChange,
     onModeChange,
     togglePlanner,
     sets,
+    newEvent,
+    slot,
   });
-  latest.current = { step, onDateChange, onModeChange, togglePlanner, sets };
+  latest.current = {
+    step,
+    onDateChange,
+    onModeChange,
+    togglePlanner,
+    sets,
+    newEvent,
+    slot,
+  };
   const blocked = !shortcuts || !!menu || !!dialog;
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || isTyping(e)) return;
-      const { step, onDateChange, onModeChange, togglePlanner, sets } =
-        latest.current;
+      const {
+        step,
+        onDateChange,
+        onModeChange,
+        togglePlanner,
+        sets,
+        newEvent,
+        slot,
+      } = latest.current;
       const key = e.key.toLowerCase();
       if (e.key === "ArrowLeft") step(-1);
       else if (e.key === "ArrowRight") step(1);
-      else if (key === "t") onDateChange(new Date());
+      else if (e.key === "Escape") {
+        if (!slot) return;
+        setSlot(null);
+      } else if (key === "t") onDateChange(new Date());
       else if (key === "p") togglePlanner();
+      else if (key === "c") newEvent();
       else if (/^[0-9]$/.test(key)) {
         const n = Number(key);
         if (n === 0) chooseSet("");
@@ -456,10 +594,36 @@ export function CalendarView({
           </div>
         </div>
 
+        {note && (
+          <div className="calendar-note" role="status">
+            <span>{note.text}</span>
+            {note.undo && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  const undo = note.undo!;
+                  setNote(null);
+                  undo();
+                }}
+              >
+                Undo
+              </button>
+            )}
+            <button
+              className="icon-button"
+              aria-label="Dismiss"
+              onClick={() => setNote(null)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {mode === "month" && (
           <div className="month-layout">
             <MonthView
               items={monthItems}
+              frames={frames}
               selected={date}
               onSelect={onDateChange}
               onOpenDay={openDay}
@@ -479,7 +643,23 @@ export function CalendarView({
             entries={entries}
             blocks={blocks}
             derived={derived}
+            frames={frames}
+            onFrame={(frame, anchor) =>
+              setMenu({ kind: "frame", frame, anchor })
+            }
             ghosts={ghosts}
+            tunable={tuning && !tuner.pending}
+            onPinGhost={(ghost, start, end) =>
+              void tuner.pin(ghost, start, end)
+            }
+            onRemoveGhost={(ghost) => void tuner.remove(ghost)}
+            keepFree={tuning ? (tuner.state?.keepFree ?? []) : []}
+            onKeepFree={
+              tuning
+                ? (start, end) => void tuner.keepFree(start, end)
+                : undefined
+            }
+            onRemoveKeepFree={(range) => void tuner.dropKeepFree(range)}
             zones={zones}
             onOpenDay={openDay}
             onEntry={(entry, anchor) =>
@@ -493,6 +673,9 @@ export function CalendarView({
               if (item) createBlock(item, start);
             }}
             onChangeBlock={changeBlock}
+            onDuplicateBlock={(block, start) => void duplicate(block, start)}
+            slot={slot}
+            onSelectSlot={setSlot}
           />
         )}
 
@@ -516,7 +699,9 @@ export function CalendarView({
           {plannerOpen && (
             <PlannerPanel
               prefs={prefs}
+              teams={teams}
               plan={plan}
+              tuner={tuner}
               onPlan={(p) => {
                 setPlan(p);
                 if (p && mode === "day" && p.days > 1) onModeChange("week");
@@ -540,10 +725,14 @@ export function CalendarView({
           entry={menu.entry}
           anchor={menu.anchor}
           canWrite={menuItem ? canWrite(menuItem) : true}
+          canComplete={canComplete(menu.entry)}
           onClose={() => setMenu(null)}
           onOpen={() => withItem(menu.entry.item_id, onOpen)}
           onEditSeries={() => withItem(menu.entry.item_id, onEditItem)}
           onFocus={() => withItem(menu.entry.item_id, onFocus)}
+          onComplete={() =>
+            void complete(menu.entry.item_id, !!menu.entry.occurrence)
+          }
           onSkip={() =>
             void mutate(async () => {
               await client.skipOccurrence(
@@ -559,9 +748,12 @@ export function CalendarView({
         <BlockMenu
           block={menu.block}
           anchor={menu.anchor}
+          canWrite={menuBlockItem ? canWrite(menuBlockItem) : true}
           onClose={() => setMenu(null)}
           onOpen={() => withItem(menu.block.item_id, onOpen)}
           onFocus={() => withItem(menu.block.item_id, onFocus)}
+          onComplete={() => void complete(menu.block.item_id)}
+          onDuplicate={() => void duplicate(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
           onDelete={() => {
             if (
@@ -571,6 +763,17 @@ export function CalendarView({
             )
               void mutate(() => client.deleteBlock(menu.block.id));
           }}
+        />
+      )}
+      {menu?.kind === "frame" && (
+        <FrameMenu
+          frame={menu.frame}
+          anchor={menu.anchor}
+          onClose={() => setMenu(null)}
+          onEdit={() =>
+            setDialog({ kind: "frame", frameId: menu.frame.frame_id })
+          }
+          onSkip={() => void skipFrame(menu.frame)}
         />
       )}
       {dialog?.kind === "schedule" && (
@@ -612,6 +815,19 @@ export function CalendarView({
           onSave={async (next) => {
             await planning.savePrefs({ calendar_sets: next });
             if (setId && !next.some((s) => s.id === setId)) chooseSet("");
+          }}
+        />
+      )}
+      {dialog?.kind === "frame" && (
+        <FrameDialog
+          frameId={dialog.frameId}
+          teams={teams}
+          report={report}
+          onClose={() => setDialog(null)}
+          onSaved={() => {
+            setDialog(null);
+            setNote({ text: "Frame saved." });
+            void reload();
           }}
         />
       )}

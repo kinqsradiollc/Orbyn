@@ -90,16 +90,16 @@
 .cal-time {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .cal-entry.is-done .cal-title {
-  color: #7f897f;
+  color: var(--color-textMuted);
   text-decoration: line-through;
 }
 .team-mark {
   flex-shrink: 0;
   margin-left: auto;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .cal-entry:focus-visible {
   outline: 2px solid var(--green);
@@ -115,14 +115,14 @@
 .month-head {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  background: #f9faf7;
+  background: var(--color-sunken);
 }
 .month-head span {
   padding: 10px 8px;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
-  color: #637066;
+  color: var(--color-textSoft);
 }
 .month-week {
   display: grid;
@@ -150,24 +150,24 @@
   border-right: 0;
 }
 .month-cell.outside {
-  background: #fafbf8;
+  background: var(--color-sunken);
 }
 .month-cell.outside .month-date {
-  color: #8f9990;
+  color: var(--color-muted);
 }
 @media (hover: hover) {
   .month-cell:not(.is-selected):hover {
-    background: #f6f8f4;
+    background: var(--color-hover);
   }
 }
 .month-cell:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 3px #95b49c;
+  box-shadow: inset 0 0 0 3px var(--color-focus);
 }
 /* Selected day: a soft tint and a ring on the date, so bars crossing the
    day are never cut by an outline. */
 .month-cell.is-selected {
-  background: #f2f7f3;
+  background: var(--color-selected);
 }
 .month-cell.is-selected:not(.is-today) .month-date {
   color: var(--green);
@@ -190,7 +190,7 @@
 }
 .month-cell.is-today .month-date {
   background: var(--green);
-  color: #fff;
+  color: var(--color-onAccent);
 }
 .month-bar {
   z-index: 1;
@@ -200,11 +200,15 @@
   font-weight: 600;
 }
 .month-bar.is-event {
-  color: color-mix(in srgb, var(--bar-edge) 70%, #1d2a22);
+  color: color-mix(
+    in srgb,
+    var(--bar-edge) var(--tint-text),
+    var(--color-text)
+  );
   background: color-mix(in srgb, var(--bar-bg) 70%, var(--bar-edge) 14%);
 }
 .month-bar.is-multi.is-task {
-  color: color-mix(in srgb, var(--tone-fg) 65%, #1d2a22);
+  color: color-mix(in srgb, var(--tone-fg) var(--tint-text), var(--color-text));
 }
 /* Continues from the previous week or into the next: square that end and
    show a small arrow so the bar reads as one span across rows. */
@@ -262,7 +266,7 @@
   gap: 8px;
   padding: 16px;
   border-left: 1px solid var(--border);
-  background: #fcfdfb;
+  background: var(--color-sunken);
   min-width: 0;
 }
 .calendar-agenda h3 {
@@ -275,8 +279,8 @@
 .calendar-agenda h3 span {
   padding: 2px 7px;
   border-radius: 6px;
-  background: #eef2ec;
-  color: #5f6b62;
+  background: var(--color-chip);
+  color: var(--color-textSoft);
   font:
     600 11px "DM Sans",
     sans-serif;
@@ -290,7 +294,7 @@
   margin: 0;
   font-size: 13px;
   line-height: 1.55;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .calendar-agenda-item {
   display: flex;
@@ -304,8 +308,8 @@
 }
 @media (hover: hover) {
   .calendar-agenda-item:hover {
-    border-color: #d3ddd3;
-    background: #fbfcfa;
+    border-color: var(--color-borderHover);
+    background: var(--color-hover);
   }
 }
 .agenda-time small {
@@ -313,7 +317,7 @@
   margin-top: 2px;
   font-size: 10px;
   font-weight: 500;
-  color: #7a857c;
+  color: var(--color-textMuted);
   white-space: nowrap;
 }
 .agenda-time {
@@ -322,7 +326,7 @@
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #5f6b62;
+  color: var(--color-textSoft);
 }
 .agenda-main {
   display: flex;
@@ -342,7 +346,7 @@
   align-items: center;
   gap: 3px;
   font-size: 11px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .agenda-main .progress-bar {
   margin-top: 4px;
@@ -351,7 +355,7 @@
   font-size: 10px;
 }
 .calendar-agenda-item.done strong {
-  color: #7f897f;
+  color: var(--color-textMuted);
   text-decoration: line-through;
 }
 
@@ -369,7 +373,7 @@
   grid-template-columns: var(--gutter) repeat(var(--days), minmax(0, 1fr));
 }
 .tg-head {
-  background: #f9faf7;
+  background: var(--color-sunken);
 }
 .tg-day {
   display: flex;
@@ -385,7 +389,7 @@
 .tg-day small {
   font-size: 11px;
   font-weight: 600;
-  color: #637066;
+  color: var(--color-textSoft);
 }
 .tg-day strong {
   display: inline-flex;
@@ -400,11 +404,11 @@
 }
 .tg-day.is-today strong {
   background: var(--green);
-  color: #fff;
+  color: var(--color-onAccent);
 }
 @media (hover: hover) {
   .tg-day:hover {
-    background: #f1f5ef;
+    background: var(--color-hover);
   }
 }
 .tg-allday {
@@ -415,7 +419,7 @@
   font-size: 10px;
   line-height: 1.3;
   text-align: right;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .tg-allday-cell {
   display: flex;
@@ -448,7 +452,7 @@
   right: 8px;
   translate: 0 -50%;
   font-size: 11px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
   white-space: nowrap;
 }
 .tg-col {
@@ -464,7 +468,7 @@
   );
 }
 .tg-col.is-today {
-  background-color: #fbfdf9;
+  background-color: var(--color-sunken);
 }
 .tg-event {
   position: absolute;
@@ -493,7 +497,7 @@
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  color: #5f6b62;
+  color: var(--color-textSoft);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -513,7 +517,7 @@
   right: 0;
   z-index: 2;
   height: 2px;
-  background: #d23c3c;
+  background: var(--color-now);
   pointer-events: none;
 }
 .tg-now::before {
@@ -524,7 +528,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #d23c3c;
+  background: var(--color-now);
 }
 
 /* ---- Day ---- */
@@ -596,7 +600,7 @@
     background: var(--bar-edge);
   }
   .month-dots i.is-done {
-    background: #aab3ad;
+    background: var(--color-faint);
   }
   .tg-label {
     font-size: 9px;
@@ -634,7 +638,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .set-picker select {
   max-width: 170px;
@@ -679,20 +683,20 @@
   padding: 2px 6px;
   border-radius: 5px;
   background: var(--green);
-  color: #fff;
+  color: var(--color-onAccent);
   font-size: 10px;
   font-weight: 650;
   text-decoration: none;
 }
 .cal-block {
-  border: 1px solid color-mix(in srgb, var(--green) 45%, white);
+  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--color-surface));
   border-radius: 6px;
   background: repeating-linear-gradient(
     -45deg,
-    color-mix(in srgb, var(--green) 11%, white) 0 6px,
-    color-mix(in srgb, var(--green) 16%, white) 6px 12px
+    color-mix(in srgb, var(--green) 11%, var(--color-surface)) 0 6px,
+    color-mix(in srgb, var(--green) 16%, var(--color-surface)) 6px 12px
   );
-  color: #24402f;
+  color: var(--color-selectedText);
   font-size: 11px;
   text-align: left;
   cursor: grab;
@@ -706,7 +710,7 @@
   color: var(--green);
 }
 .cal-block.is-done .cal-title {
-  color: #7f897f;
+  color: var(--color-textMuted);
   text-decoration: line-through;
 }
 .tg-resize {
@@ -727,7 +731,7 @@
   height: 3px;
   margin-left: -11px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--green) 50%, white);
+  background: color-mix(in srgb, var(--green) 50%, var(--color-surface));
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -741,7 +745,7 @@
   border: 1.5px dashed var(--green);
   border-radius: 6px;
   background: color-mix(in srgb, var(--color-accentSoft) 70%, transparent);
-  color: #2f5a41;
+  color: var(--color-selectedText);
   font-size: 11px;
   overflow: hidden;
   pointer-events: none;
@@ -775,24 +779,24 @@
   padding: 0 6px;
   background: repeating-linear-gradient(
     45deg,
-    #eef1ec 0 4px,
+    var(--color-chip) 0 4px,
     transparent 4px 9px
   );
-  border-left: 2px solid #d5ddd5;
+  border-left: 2px solid var(--color-borderStrong);
   pointer-events: none;
   overflow: hidden;
 }
 .tg-band.is-travel {
   background: repeating-linear-gradient(
     45deg,
-    #f3eee5 0 4px,
+    var(--color-travel) 0 4px,
     transparent 4px 9px
   );
-  border-left-color: #dcc9a9;
+  border-left-color: var(--color-travelEdge);
 }
 .tg-band span {
   font-size: 9px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -806,7 +810,7 @@
   padding: 2px 6px;
   border: 2px dashed var(--green);
   border-radius: 6px;
-  background: #e7f0eacc;
+  background: color-mix(in srgb, var(--color-accentSoft) 80%, transparent);
   color: var(--green);
   font-size: 10px;
   font-weight: 650;
@@ -822,7 +826,7 @@
   min-width: 0;
 }
 .tg-zone + .tg-zone span {
-  color: #8a948c;
+  color: var(--color-muted);
 }
 .tg-zone-heads {
   display: flex;
@@ -836,7 +840,7 @@
   font-size: 9px;
   line-height: 1.25;
   text-align: right;
-  color: #6f7b72;
+  color: var(--color-textMuted);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -858,8 +862,8 @@
 .agenda-day h3 span {
   padding: 2px 7px;
   border-radius: 6px;
-  background: #eef2ec;
-  color: #5f6b62;
+  background: var(--color-chip);
+  color: var(--color-textSoft);
   font:
     600 11px "DM Sans",
     sans-serif;
@@ -876,7 +880,7 @@
 }
 .calendar-agenda-item.is-block {
   border-style: dashed;
-  border-color: color-mix(in srgb, var(--green) 40%, white);
+  border-color: color-mix(in srgb, var(--green) 40%, var(--color-surface));
 }
 .agenda-join {
   align-self: center;
@@ -889,7 +893,7 @@
   margin: -10px 23px 12px;
   font-size: 12px;
   line-height: 1.5;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .schedule-list {
   list-style: none;
@@ -909,11 +913,11 @@
   cursor: grab;
 }
 .schedule-item:hover {
-  border-color: #d3ddd3;
+  border-color: var(--color-borderHover);
 }
 .schedule-item .grip {
   flex: none;
-  color: #aab3ad;
+  color: var(--color-faint);
 }
 .schedule-main {
   flex: 1;
@@ -931,7 +935,7 @@
   display: block;
   margin-top: 2px;
   font-size: 11px;
-  color: #6f7b72;
+  color: var(--color-textMuted);
 }
 .panel-more {
   margin: 0 23px 14px;
@@ -964,10 +968,10 @@
   width: 100%;
   margin-top: 6px;
   padding: 8px 9px;
-  border: 1px solid #dfe5dc;
+  border: 1px solid var(--color-borderStrong);
   border-radius: 6px;
-  background: #fff;
-  color: #3f5038;
+  background: var(--color-surface);
+  color: var(--color-chipText);
   font-size: 12px;
 }
 .planner-form input[type="range"] {
@@ -1048,7 +1052,7 @@
 }
 .review-group li small {
   display: block;
-  color: #6f7b72;
+  color: var(--color-textMuted);
   font-size: 11px;
 }
 .review-group .link-button {
@@ -1078,4 +1082,334 @@
   .agenda-list {
     padding: 14px;
   }
+}
+
+/* Colour-coding: items in a list take the list's colour. Events tint their
+   bar with it; tasks keep their status dot and tint and take it on their
+   edge. Titles keep the text colour, so both themes stay readable. */
+.cal-entry.has-list.is-event {
+  --bar-edge: var(--list);
+  --bar-bg: color-mix(in srgb, var(--list) 16%, var(--color-surface));
+}
+.tg-allday-cell .cal-entry.has-list.is-task,
+.month-bar.has-list.is-task:not(.cont-before),
+.tg-event.has-list.is-task,
+.calendar-agenda-item.has-list {
+  box-shadow: inset 3px 0 0 var(--list);
+}
+.month-bar.has-list.is-task:not(.is-multi) {
+  padding-left: 8px;
+}
+@media (max-width: 640px) {
+  .month-dots i.has-list:not(.is-done) {
+    background: var(--list);
+  }
+}
+
+/* A time picked with a click in the week or day grid ("C" adds an event). */
+.tg-selected {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 0;
+  padding: 2px 6px;
+  border: 1.5px solid var(--green);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-accentSoft) 60%, transparent);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Frames: translucent bands in the frame's colour behind entries. Only the
+   label takes clicks, so picking times and dragging still work inside. */
+.tg-frame {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  border-left: 3px solid var(--frame);
+  background: color-mix(in srgb, var(--frame) 9%, transparent);
+  pointer-events: none;
+}
+.tg-frame.is-busy {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--frame) 13%, transparent) 0 6px,
+    color-mix(in srgb, var(--frame) 6%, transparent) 6px 12px
+  );
+}
+.tg-frame-label {
+  display: inline-block;
+  max-width: calc(100% - 6px);
+  margin: 2px 0 0 3px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--frame) 18%, var(--color-surface));
+  color: color-mix(in srgb, var(--frame) var(--tint-text), var(--color-text));
+  font-size: 10px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+/* Month view: a small mark per frame beside the date. */
+.month-cell {
+  position: relative;
+}
+.month-frames {
+  position: absolute;
+  top: 9px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+}
+.month-frames i {
+  width: 10px;
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+/* Tuning a plan: planned blocks can be dragged (pinned) and removed. */
+.cal-ghost.is-tunable {
+  pointer-events: auto;
+  cursor: grab;
+}
+.cal-ghost.is-tunable:active {
+  cursor: grabbing;
+}
+.cal-ghost.is-pinned {
+  border-style: solid;
+}
+.cal-ghost-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  color: var(--color-textSoft);
+}
+.cal-ghost-remove:hover {
+  color: var(--color-danger);
+}
+.tg-slot.is-copy {
+  z-index: 4;
+  opacity: 0.8;
+  pointer-events: none;
+}
+/* Keep-free ranges while tuning. */
+.tg-keepfree {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 3px 2px 6px;
+  border: 1.5px dashed var(--color-textMuted);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-textMuted) 10%, transparent) 0 5px,
+    transparent 5px 10px
+  );
+  color: var(--color-textSoft);
+  font-size: 10px;
+  font-weight: 650;
+  pointer-events: none;
+}
+.tg-keepfree.is-draft {
+  border-color: var(--green);
+  color: var(--green);
+}
+.tg-keepfree button {
+  display: inline-flex;
+  padding: 1px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  pointer-events: auto;
+}
+.tg-keepfree button:hover {
+  color: var(--color-danger);
+}
+.tg-col.is-selecting {
+  cursor: row-resize;
+}
+
+/* A note under the toolbar: a skipped frame day, a copied block. */
+.calendar-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+  font-size: 12px;
+}
+.calendar-note span {
+  flex: 1;
+  min-width: 0;
+}
+.calendar-note .text-button {
+  padding: 0;
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+}
+.calendar-note .icon-button {
+  color: inherit;
+}
+
+/* Planner: what to plan for, stale plans, the task checklist, keep-free. */
+.planner-scope {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+}
+.planner-scope legend {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.planner-scope small {
+  color: var(--color-textMuted);
+}
+.scope-lists {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-divider);
+}
+.plan-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warnBorder);
+  border-radius: 9px;
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+  font-size: 12px;
+}
+.plan-stale span {
+  flex: 1 1 160px;
+}
+.plan-stale .secondary {
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.plan-tasks,
+.plan-keepfree {
+  padding: 12px 20px 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.plan-tasks h3,
+.plan-keepfree h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.plan-tasks ul,
+.plan-keepfree ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.plan-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 12px;
+}
+.plan-task.is-out strong {
+  color: var(--color-textMuted);
+  text-decoration: line-through;
+}
+.plan-task-check {
+  display: flex;
+  align-items: flex-start;
+  flex: 1 1 170px;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.plan-task-check input {
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: var(--green);
+}
+.plan-task-check strong {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plan-task-check small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-textMuted);
+}
+.plan-estimate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-left: 24px;
+}
+.plan-estimate input[type="number"] {
+  width: 76px;
+  padding: 5px 7px;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 12px;
+}
+.plan-estimate .secondary {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.plan-keepfree li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid var(--color-divider);
+  font-size: 12px;
+}
+.plan-keepfree .panel-hint {
+  margin: 8px 0 0;
+}
+
+/* The frame editor over the calendar. */
+.frame-dialog {
+  width: 640px;
+  max-width: 100%;
+}
+.frame-dialog-body {
+  padding: 0 22px 22px;
 }

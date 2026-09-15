@@ -9,6 +9,7 @@ import {
   type User,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { celebrate } from "../lib/celebrate";
 import { session } from "../lib/session";
 
 export type AuthMode = "register" | "login";
@@ -171,6 +172,7 @@ export function usePlanner() {
   const setItemStatus = (i: Item, status: Status) =>
     act(async () => {
       await client.postItemUpdate(i.id, { status });
+      if (status === "done" && i.status !== "done") celebrate();
       await refresh();
     });
 

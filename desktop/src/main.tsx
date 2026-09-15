@@ -1,19 +1,29 @@
 import { colors, motion, statusTones } from "@orbyn/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
+import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
 import "./styles/global.css";
+import "./styles/theme.css";
 import "./styles/motion.css";
 
-const root = document.documentElement.style;
-for (const [name, value] of Object.entries(colors))
-  root.setProperty("--color-" + name, value);
-// Task status tones (same values as mobile), e.g. --status-blocked-fg.
-for (const [status, tone] of Object.entries(statusTones)) {
-  root.setProperty("--status-" + status + "-bg", tone.bg);
-  root.setProperty("--status-" + status + "-fg", tone.fg);
-}
+// The shared palette as the light theme, in a stylesheet (not inline on
+// <html>) so the dark values in styles/theme.css can override it.
+const light = [
+  ...Object.entries(colors).map(([name, value]) => `--color-${name}:${value};`),
+  // Task status tones (same values as mobile), e.g. --status-blocked-fg.
+  ...Object.entries(statusTones).map(
+    ([status, tone]) =>
+      `--status-${status}-bg:${tone.bg};--status-${status}-fg:${tone.fg};`,
+  ),
+].join("");
+const palette = document.createElement("style");
+palette.textContent = `:root,.theme-light{${light}}`;
+document.head.prepend(palette);
+applyTheme(savedTheme());
+followSystemTheme();
 
 // Shared motion tokens (the mobile app uses the same values).
+const root = document.documentElement.style;
 const bezier = (points: readonly number[]) =>
   "cubic-bezier(" + points.join(", ") + ")";
 root.setProperty("--motion-fast", motion.fast + "ms");

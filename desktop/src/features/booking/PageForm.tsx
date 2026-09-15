@@ -1175,7 +1175,7 @@ export function PageForm({
                   onChange={(e) => set("color", e.target.value.trim())}
                 />
                 <span
-                  className="accent-preview"
+                  className="accent-preview booking-accent"
                   style={accentStyle(draft.color)}
                   aria-hidden="true"
                 >

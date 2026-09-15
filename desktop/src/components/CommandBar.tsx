@@ -4,6 +4,7 @@ import {
   CalendarCheck,
   CalendarDays,
   CircleCheck,
+  Keyboard,
   ListChecks,
   ListTodo,
   Plus,
@@ -22,6 +23,7 @@ import {
   type Proposal,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { celebrate } from "../lib/celebrate";
 import type { View } from "../app/views";
 import { deviceTimeZone, errorText, nextUp } from "../lib/planning";
 import { ProposalReview } from "./ProposalReview";
@@ -37,6 +39,8 @@ type Props = {
   onOpenPlan: (plan: Plan) => void;
   /** Refresh the planner after the assistant's changes are applied. */
   onApplied: () => Promise<void>;
+  /** Opens the keyboard shortcut sheet. */
+  onShowShortcuts: () => void;
   report: (e: unknown) => void;
 };
 
@@ -71,6 +75,7 @@ export function CommandBar({
   onApplyPlan,
   onOpenPlan,
   onApplied,
+  onShowShortcuts,
   report,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -149,6 +154,14 @@ export function CommandBar({
       icon: Settings,
       run: go(() => onNavigate("Settings")),
     },
+    {
+      id: "shortcuts",
+      text: "keyboard shortcuts keys help",
+      label: "Keyboard shortcuts",
+      hint: "?",
+      icon: Keyboard,
+      run: go(onShowShortcuts),
+    },
   ];
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const matchingActions = words.length
@@ -221,6 +234,14 @@ export function CommandBar({
     try {
       await client.applyProposal(ask.proposal.id);
       setAsk({ ...ask, state: "applied" });
+      // Celebrate when the assistant's changes finish a task.
+      const finished = ask.proposal.actions.some(
+        (a) =>
+          a.operation === "update" &&
+          a.data?.status === "done" &&
+          items.find((i) => i.id === a.item_id)?.status !== "done",
+      );
+      if (finished) celebrate();
       await onApplied();
     } catch (e) {
       setAsk({ ...ask, error: errorText(e) });
