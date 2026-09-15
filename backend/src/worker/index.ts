@@ -9,6 +9,7 @@ import {
   scanPlanningNotices,
 } from "./planning.js";
 import { deliverWebhookOne } from "./webhooks.js";
+import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -56,6 +57,8 @@ export async function runWorker() {
           await scanPlanningNotices();
           lastNotices = Date.now();
         }
+        // Subscribed calendars: new ones within a cycle, the rest hourly.
+        await refreshDueSubscriptions();
         await enqueue();
         lastSchedule = Date.now();
       }

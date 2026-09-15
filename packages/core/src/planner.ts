@@ -25,6 +25,10 @@ const PLANNING_FIELDS = [
   "meeting_url",
   "rrule",
   "timezone",
+  "all_day",
+  "busy",
+  "color",
+  "alerts",
 ] as const;
 
 /**

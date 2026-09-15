@@ -4,7 +4,14 @@ import {
   blockDuplicateInput,
   blockInput,
   blockUpdate,
+  calendarFeedCreateInput,
+  calendarFeedSettingsInput,
+  calendarSearchQuery,
   fail,
+  type CalendarFeed,
+  type CalendarFeedSettings,
+  type CalendarSearch,
+  type CalendarSearchResult,
   frameInput,
   frameSkipInput,
   frameUpdate,
@@ -55,6 +62,30 @@ import {
   workingFree,
 } from "./plans.js";
 import { icsFeed } from "./ics.js";
+import { externalEntries } from "./subscriptions.js";
+import { settings } from "../../lib/settings.js";
+
+const DAY_MS = 86_400_000;
+
+/** What someone's feed links are and include. */
+async function feedSettings(db: Db | typeof pool, userId: string) {
+  const row = (
+    await db.query<{
+      full: boolean;
+      busy: boolean;
+      options: { include_blocks?: boolean };
+    }>(
+      `SELECT calendar_feed_hash IS NOT NULL AS full, calendar_busy_feed_hash IS NOT NULL AS busy,
+              calendar_feed_options AS options FROM users WHERE id = $1`,
+      [userId],
+    )
+  ).rows[0];
+  return {
+    enabled: row.full,
+    busy_enabled: row.busy,
+    include_blocks: !!row.options.include_blocks,
+  } satisfies CalendarFeedSettings;
+}
 
 async function ownBlock(db: Db, id: string, userId: string) {
   const row = (
@@ -115,12 +146,18 @@ export async function plannerRoutes(app: FastifyInstance) {
     const d = plannerPrefsInput.parse(r.body);
     return transaction(async (db) => {
       const current = await loadPrefs(db, u.id);
+      const alerts = current.default_alerts!;
       const next: PlannerPrefs = {
         ...current,
         ...d,
         planner_notices: {
           push: d.planner_notices?.push ?? current.planner_notices!.push,
           email: d.planner_notices?.email ?? current.planner_notices!.email,
+        },
+        default_alerts: {
+          event: d.default_alerts?.event ?? alerts.event,
+          task: d.default_alerts?.task ?? alerts.task,
+          all_day: d.default_alerts?.all_day ?? alerts.all_day,
         },
       };
       if (next.work_end <= next.work_start)
@@ -143,14 +180,14 @@ export async function plannerRoutes(app: FastifyInstance) {
            pad_percent, split_after_minutes, min_block_minutes, break_level, horizon_days,
            buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
            default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
-           deadline_notice_days, planner_notices, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
+           deadline_notice_days, planner_notices, default_alerts, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
            buffer_after_minutes=$12, adaptive_buffers=$13, default_travel_minutes=$14,
            extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17,
-           deadline_notice_days=$18, planner_notices=$19, updated_at=now()`,
+           deadline_notice_days=$18, planner_notices=$19, default_alerts=$20, updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -171,6 +208,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.pinned_user_ids,
           next.deadline_notice_days,
           JSON.stringify(next.planner_notices),
+          JSON.stringify(next.default_alerts),
         ],
       );
       return loadPrefs(db, u.id);
@@ -354,11 +392,12 @@ export async function plannerRoutes(app: FastifyInstance) {
     const from = new Date(q.from);
     const to = new Date(q.to);
     const prefs = await loadPrefs(db, u.id);
-    const [entries, blocks, places, frameRows] = await Promise.all([
+    const [entries, blocks, places, frameRows, external] = await Promise.all([
       calendarEntries(db, u.id, from, to),
       timeBlocks(db, u.id, from, to),
       loadPlaces(db, u.id),
       loadFrames(db, u.id),
+      externalEntries(db, u.id, from, to),
     ]);
     const frames: FrameOccurrence[] = frameRows
       .flatMap((f) =>
@@ -387,6 +426,60 @@ export async function plannerRoutes(app: FastifyInstance) {
       blocks,
       derived,
       frames,
+      external,
+    };
+  });
+
+  // Find events by words: yours (each occurrence, with its own changes) and
+  // those from calendars you subscribe to. A year either side by default.
+  app.get("/calendar/search", async (r): Promise<CalendarSearch> => {
+    const u = await authenticate(r);
+    const q = calendarSearchQuery.parse(r.query);
+    const db = reader(r.headers);
+    const now = Date.now();
+    const from = q.from ? new Date(q.from) : new Date(now - 365 * DAY_MS);
+    const to = q.to ? new Date(q.to) : new Date(now + 365 * DAY_MS);
+    if (to <= from) fail(422, "End must be after start");
+    const words = q.q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
+    const patterns = words.map(
+      (w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`,
+    );
+    // Items whose own words, or an occurrence's, match every word.
+    const matched = (
+      await db.query<{ id: string; notes: string }>(
+        `SELECT i.id, i.notes FROM items i
+         WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) w
+             WHERE (i.title || ' ' || i.notes || ' ' || i.location) NOT ILIKE w
+               AND NOT EXISTS (SELECT 1 FROM item_overrides o WHERE o.item_id = i.id
+                 AND (coalesce(o.data->>'title', '') || ' ' || coalesce(o.data->>'location', '')) ILIKE w))
+         LIMIT 500`,
+        [u.id, patterns],
+      )
+    ).rows;
+    const notes = new Map(matched.map((m) => [m.id, m.notes]));
+    const entries = matched.length
+      ? await calendarEntries(db, u.id, from, to, [...notes.keys()])
+      : [];
+    const results: CalendarSearchResult[] = [
+      ...entries
+        .filter((e) => {
+          const text =
+            `${e.title} ${e.location} ${notes.get(e.item_id) ?? ""}`.toLowerCase();
+          return words.every((w) => text.includes(w));
+        })
+        .map((e) => ({ source: "item" as const, ...e })),
+      ...(await externalEntries(db, u.id, from, to, false, patterns)).map(
+        (e) => ({ source: "external" as const, ...e }),
+      ),
+    ];
+    return {
+      q: q.q,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      results: results
+        .sort((a, b) => a.start_at.localeCompare(b.start_at))
+        .slice(0, 100),
     };
   });
 
@@ -658,22 +751,47 @@ export async function plannerRoutes(app: FastifyInstance) {
 
   // ---- calendar feed: a private link other calendar apps can subscribe to ------
 
-  app.post("/me/calendar-feed", async (r) => {
+  app.get("/me/calendar-feed", async (r): Promise<CalendarFeedSettings> => {
     const u = await authenticate(r);
+    return feedSettings(reader(r.headers), u.id);
+  });
+
+  app.put("/me/calendar-feed", async (r): Promise<CalendarFeedSettings> => {
+    const u = await authenticate(r);
+    const d = calendarFeedSettingsInput.parse(r.body ?? {});
+    await pool.query(
+      "UPDATE users SET calendar_feed_options = calendar_feed_options || $2::jsonb WHERE id = $1",
+      [u.id, JSON.stringify(d)],
+    );
+    return feedSettings(pool, u.id);
+  });
+
+  // The full link, or `{ "busy": true }` for one that only shows when you're
+  // busy (safe to share). Each is shown once; making it again replaces it.
+  app.post("/me/calendar-feed", async (r): Promise<CalendarFeed> => {
+    const u = await authenticate(r);
+    const d = calendarFeedCreateInput.parse(r.body ?? {});
     const token = randomBytes(24).toString("base64url");
-    await pool.query("UPDATE users SET calendar_feed_hash = $2 WHERE id = $1", [
-      u.id,
-      digest(token),
-    ]);
-    return { url: `${publicOrigin(r)}/calendar/feed/${token}.ics` };
+    await pool.query(
+      `UPDATE users SET ${d.busy ? "calendar_busy_feed_hash" : "calendar_feed_hash"} = $2 WHERE id = $1`,
+      [u.id, digest(token)],
+    );
+    return {
+      url: `${publicOrigin(r)}/calendar/feed/${token}.ics`,
+      busy: d.busy,
+    };
   });
 
   app.delete("/me/calendar-feed", async (r, reply) => {
     const u = await authenticate(r);
-    await pool.query(
-      "UPDATE users SET calendar_feed_hash = NULL WHERE id = $1",
-      [u.id],
-    );
+    const { busy } = z
+      .object({ busy: z.enum(["0", "1", "true", "false"]).optional() })
+      .parse(r.query);
+    const column =
+      busy === "1" || busy === "true"
+        ? "calendar_busy_feed_hash"
+        : "calendar_feed_hash";
+    await pool.query(`UPDATE users SET ${column} = NULL WHERE id = $1`, [u.id]);
     return reply.code(204).send();
   });
 
@@ -681,14 +799,33 @@ export async function plannerRoutes(app: FastifyInstance) {
     const { file } = z
       .object({ file: z.string().regex(/^[A-Za-z0-9_-]{20,64}\.ics$/) })
       .parse(r.params);
+    const { busy } = z.object({ busy: z.string().optional() }).parse(r.query);
+    const hash = digest(file.slice(0, -4));
     const user = (
-      await pool.query<{ id: string; name: string; disabled: boolean }>(
-        "SELECT id, name, disabled FROM users WHERE calendar_feed_hash = $1",
-        [digest(file.slice(0, -4))],
+      await pool.query<{
+        id: string;
+        name: string;
+        disabled: boolean;
+        busy_link: boolean;
+        options: { include_blocks?: boolean };
+      }>(
+        `SELECT id, name, disabled, calendar_busy_feed_hash = $1 AS busy_link,
+                calendar_feed_options AS options
+         FROM users WHERE calendar_feed_hash = $1 OR calendar_busy_feed_hash = $1`,
+        [hash],
       )
     ).rows[0];
     if (!user || user.disabled) fail(404, "Calendar not found");
-    const body = await icsFeed(pool, user.id, user.name);
+    const from = (await settings()).smtp.from;
+    const body = await icsFeed(pool, user.id, user.name, {
+      // The busy link never shows more; the full link can ask for less.
+      busyOnly: user.busy_link || busy === "1" || busy === "true",
+      includeBlocks: !!user.options.include_blocks,
+      organizer: {
+        name: user.name,
+        email: (from.match(/<([^>]+)>/)?.[1] ?? from).trim(),
+      },
+    });
     return reply
       .header("Content-Type", "text/calendar; charset=utf-8")
       .header("Cache-Control", "private, max-age=300")

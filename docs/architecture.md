@@ -54,21 +54,24 @@ rate limited separately from the rest of the API.
 
 ### Data model
 
-| Table                                                          | Purpose                                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                |
-| `sessions`                                                     | Hashed bearer tokens with expiry.                                                           |
-| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe. |
-| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                             |
-| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.      |
-| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                |
-| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                   |
-| `time_blocks`                                                  | Time each person set aside to work on a task.                                               |
-| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.    |
-| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.             |
-| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.  |
-| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                    |
-| `migrations`                                                   | Applied migration file names.                                                               |
+| Table                                                          | Purpose                                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                    |
+| `sessions`                                                     | Hashed bearer tokens with expiry.                                                               |
+| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe.     |
+| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                                 |
+| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.          |
+| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                    |
+| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                       |
+| `time_blocks`                                                  | Time each person set aside to work on a task.                                                   |
+| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.        |
+| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.                 |
+| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.      |
+| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                        |
+| `item_overrides`                                               | One occurrence of a repeating item changed on its own, keyed by its original start.             |
+| `item_attendees`                                               | People invited to an event by email, their answer, and their RSVP token (hashed and encrypted). |
+| `calendar_subscriptions`, `external_events`                    | Calendars read by ICS link, and their events as last fetched (read-only).                       |
+| `migrations`                                                   | Applied migration file names.                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL
@@ -111,11 +114,16 @@ team it leaves.
 
 ### Reminder pipeline
 
-1. Every 10 seconds the worker runs `enqueue()`. For each open item whose `due_at` minus
-   `reminder_minutes` has passed, it inserts one notification per channel: `inapp` always,
-   `email` if the user has email reminders on and SMTP is configured, and `push` for every
-   registered device. Personal items notify their owner; team items notify every active member. The unique key `(item_id, item_version, channel, destination)` makes this
-   idempotent, so restarting or running many workers never double-sends.
+1. Every 10 seconds the worker runs `enqueue()`. An item has up to five `alerts` (minutes before
+   `due_at`). For each open item whose latest passed alert hasn't been sent, it inserts one
+   notification per channel: `inapp` always, `email` if the user has email reminders on and SMTP
+   is configured, and `push` for every registered device. Personal items notify their owner; team
+   items notify every active member. The reminder's `ref` is the alert's minutes, and the unique
+   key `(item_id, item_version, channel, destination, kind, ref)` makes this idempotent, so
+   restarting or running many workers never double-sends. An item created after several of its
+   alerts have passed gets one reminder, not all of them. A repeating item's current occurrence
+   uses its own time, title and alerts when it was changed on its own, and gets none when it was
+   removed.
 2. `deliverOne()` claims a pending row with `SKIP LOCKED`, re-checks that the item is still open,
    still on the same `reminder_version`, that the recipient is still active and can still see the
    item, and that the destination is still valid. If not, the row
@@ -125,8 +133,8 @@ team it leaves.
    later. A `DeviceNotRegistered` receipt removes the device.
 4. Failures back off exponentially (30s, 60s, ... capped at 1h) and give up after 8 attempts.
 
-`reminder_version` only increments when the due date, reminder window, or done-to-todo status
-changes. Editing a title or notes does not resend a reminder that was already delivered. Reminder
+`reminder_version` only increments when the due date, the alerts, or done-to-todo status
+changes (or the current occurrence is changed or removed on its own). Editing a title or notes does not resend a reminder that was already delivered. Reminder
 text shows the due time in each recipient's planner time zone (`orbyn_local_time()`, which falls
 back to UTC for a zone Postgres doesn't know).
 
@@ -272,7 +280,8 @@ is passed to the model as data, and the prompt instructs it to treat titles and 
 ### Planning
 
 Everything planning needs lives on this server; nothing syncs with Google, Microsoft or iCloud.
-Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
+Other tools read Orbyn through the calendar feed, API keys and webhooks instead, and Orbyn reads
+other calendars only through their ICS links.
 
 - **Time zones and repeats** (`packages/core/src/time.ts`): wall-clock conversion that survives
   daylight-saving changes, and a subset of RFC 5545 RRULE (daily, weekly on chosen days, monthly
@@ -339,8 +348,38 @@ Other tools read Orbyn through the calendar feed, API keys and webhooks instead.
   rolled-back change sends nothing) and delivered by the notifier's lanes with an HMAC-SHA256
   signature and backoff. Webhook URLs must resolve to public addresses, checked on save and before
   every delivery (`lib/netguard.ts`), so users can't make the server call its own network.
+- **Events**: all-day items store local midnights in their zone (their end is the midnight after
+  the last day, counted in days so daylight saving can't move it) and are never busy; events
+  marked free aren't either, and neither gets buffers or travel. `busyIntervals()` is where both
+  rules live, so the planner, team time, booking pages and the busy feed agree.
+- **One occurrence or the rest** (`modules/items/occurrences.ts`): changing one occurrence of a
+  series writes an `item_overrides` row (only what differs from the series); removing one adds an
+  exdate, as `skip` always did. `expandSeries()` in `calendar.ts` applies both, including
+  occurrences moved into or out of a range, so every reader (calendar, busy time, conflicts,
+  search, the feed) sees the same thing; the notifier joins the current occurrence's row.
+  "This and following" ends the series with an `UNTIL` just before the occurrence and creates the
+  rest through `mutate()`. An edit to the whole series drops changes to occurrences that no
+  longer exist.
+- **Invitations** (`modules/items/attendees.ts`): `mutate()` keeps an event's invitees and, in
+  the same transaction, queues iCalendar emails (`REQUEST` or `CANCEL`) as `invite` rows in the
+  notifications outbox, so a rolled-back edit sends nothing and a mail outage never fails one; the
+  email lane sends the calendar part with nodemailer's `icalEvent` and drops invitations for
+  people since taken off. Each invitee's RSVP token is hashed for lookups and kept encrypted so
+  every email repeats the same link. Nothing is queued without SMTP.
 - **Calendar feed**: a private, rotatable iCalendar link (`/calendar/feed/<token>.ics`, only the
-  token's hash is stored) with repeating items as RRULEs in their own time zone.
+  token's hash is stored) with repeating items as RRULEs in their own time zone, changed
+  occurrences as `RECURRENCE-ID` events, all-day dates, free time, alerts and invitees, and
+  optionally time blocks. A second link shows only busy intervals, taken from `busyIntervals()`.
+- **Subscriptions** (`modules/planner/subscriptions.ts`, `icsParse.ts`): calendars read by ICS
+  link. The notifier claims due subscriptions (new ones, then hourly) and fetches them with the
+  same public-address guard as webhooks, re-checked on every redirect, with time and size limits
+  and conditional requests. A small parser reads events, zones, repeats in Orbyn's subset,
+  exdates and changed occurrences; the events replace the old ones in one transaction, and a
+  failure keeps them. They're expanded on read like items, and reach `busyIntervals()` only when
+  the subscription counts as busy.
+- **Search and overlays**: `GET /calendar/search` expands only the items whose words match, so
+  each occurrence is found with its own changes; `GET /availability` gives the busy intervals of
+  people who share a team with you, for drawing over your own calendar.
 
 ## Desktop / web (`desktop/`)
 

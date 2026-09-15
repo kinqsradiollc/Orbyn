@@ -47,7 +47,18 @@ import {
   type BookingView,
   type ManagedBooking,
   type CalendarFeed,
+  type CalendarFeedSettings,
+  type CalendarFeedSettingsInput,
+  type CalendarSearch,
+  type CalendarSubscription,
+  type CalendarSubscriptionInput,
+  type CalendarSubscriptionUpdate,
   type CalendarView,
+  type EditScope,
+  type QuickAddCreated,
+  type QuickAddResult,
+  type RsvpView,
+  type UserAvailability,
   type Frame,
   type FrameInput,
   type FrameUpdate,
@@ -80,6 +91,14 @@ import {
   type WebhookTestResult,
   type WebhookUpdate,
 } from "@orbyn/core";
+
+/** "?scope=this&occurrence=…" for edits to part of a repeating item. */
+const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
+  if (!o.scope || o.scope === "all") return "";
+  const q = new URLSearchParams({ scope: o.scope });
+  if (o.occurrence) q.set("occurrence", o.occurrence);
+  return `?${q}`;
+};
 
 /** After a write, reads ask for the primary database for this long. */
 const READ_YOUR_WRITES_MS = 5000;
@@ -478,12 +497,87 @@ export class OrbynClient {
       body: blockIds ? { block_ids: blockIds } : {},
     });
   }
-  /** Create (or replace) your private calendar subscription link. */
-  createCalendarFeed() {
-    return this.request<CalendarFeed>("/me/calendar-feed", { method: "POST" });
+  /**
+   * Create (or replace) your private calendar subscription link, or with
+   * `busy: true` the link that only shows when you're busy.
+   */
+  createCalendarFeed(options: { busy?: boolean } = {}) {
+    return this.request<CalendarFeed>("/me/calendar-feed", {
+      method: "POST",
+      body: options.busy ? { busy: true } : {},
+    });
   }
-  deleteCalendarFeed() {
-    return this.request<void>("/me/calendar-feed", { method: "DELETE" });
+  deleteCalendarFeed(options: { busy?: boolean } = {}) {
+    return this.request<void>(
+      `/me/calendar-feed${options.busy ? "?busy=1" : ""}`,
+      { method: "DELETE" },
+    );
+  }
+  /** Which feed links are on, and whether the feed includes time blocks. */
+  calendarFeedSettings() {
+    return this.request<CalendarFeedSettings>("/me/calendar-feed");
+  }
+  updateCalendarFeedSettings(input: CalendarFeedSettingsInput) {
+    return this.request<CalendarFeedSettings>("/me/calendar-feed", {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  // ---- calendars from other apps (ICS links) ----
+  listCalendarSubscriptions() {
+    return this.request<CalendarSubscription[]>("/me/calendar-subscriptions");
+  }
+  createCalendarSubscription(input: CalendarSubscriptionInput) {
+    return this.request<CalendarSubscription>("/me/calendar-subscriptions", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateCalendarSubscription(id: string, input: CalendarSubscriptionUpdate) {
+    return this.request<CalendarSubscription>(
+      `/me/calendar-subscriptions/${id}`,
+      { method: "PUT", body: input },
+    );
+  }
+  deleteCalendarSubscription(id: string) {
+    return this.request<void>(`/me/calendar-subscriptions/${id}`, {
+      method: "DELETE",
+    });
+  }
+  /** Fetch it now instead of waiting for the hourly refresh. */
+  refreshCalendarSubscription(id: string) {
+    return this.request<CalendarSubscription>(
+      `/me/calendar-subscriptions/${id}/refresh`,
+      { method: "POST" },
+    );
+  }
+
+  /** Events matching words, a year either side of today unless a range is given. */
+  searchCalendar(q: string, range: { from?: string; to?: string } = {}) {
+    const params = new URLSearchParams({ q });
+    if (range.from) params.set("from", range.from);
+    if (range.to) params.set("to", range.to);
+    return this.request<CalendarSearch>(`/calendar/search?${params}`);
+  }
+  /** Busy times of up to 10 people you share a team with (at most 31 days). */
+  availability(userIds: string[], from: string, to: string) {
+    const q = new URLSearchParams({ user_ids: userIds.join(","), from, to });
+    return this.request<UserAvailability[]>(`/availability?${q}`);
+  }
+
+  // ---- invitations (public: the invitee's private link) ----
+  getRsvp(token: string) {
+    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
+      anonymous: true,
+    });
+  }
+  answerRsvp(token: string, status: "accepted" | "declined" | "tentative") {
+    return this.request<RsvpView>(`/rsvp/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body: { status },
+      anonymous: true,
+    });
   }
 
   // ---- team time ----
@@ -767,11 +861,44 @@ export class OrbynClient {
   createItem(input: Partial<ItemInput> & { title: string }) {
     return this.request<Item>("/items", { method: "POST", body: input });
   }
-  updateItem(id: string, input: ItemInput & { version: number }) {
-    return this.request<Item>(`/items/${id}`, { method: "PUT", body: input });
+  /**
+   * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
+   * ;Cafe Roma"), parsed on the server without AI.
+   */
+  quickAdd(text: string, timezone?: string) {
+    return this.request<QuickAddCreated>("/items/quick", {
+      method: "POST",
+      body: { text, ...(timezone ? { timezone } : {}) },
+    });
   }
-  deleteItem(id: string, version: number) {
-    return this.request<void>(`/items/${id}?version=${version}`, {
+  /** What quick add would make of the text, with its chips. Nothing is saved. */
+  previewQuickAdd(text: string, timezone?: string) {
+    return this.request<QuickAddResult>("/items/quick", {
+      method: "POST",
+      body: { text, preview: true, ...(timezone ? { timezone } : {}) },
+    });
+  }
+  /**
+   * Save an item. For one occurrence of a repeating item pass `scope: "this"`
+   * (or `"following"` for it and every later one) and the `occurrence`.
+   */
+  updateItem(
+    id: string,
+    input: ItemInput & { version: number },
+    options: { scope?: EditScope; occurrence?: string } = {},
+  ) {
+    return this.request<Item>(`/items/${id}${scopeQuery(options)}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteItem(
+    id: string,
+    version: number,
+    options: { scope?: EditScope; occurrence?: string } = {},
+  ) {
+    const scope = scopeQuery(options).replace(/^\?/, "&");
+    return this.request<void>(`/items/${id}?version=${version}${scope}`, {
       method: "DELETE",
     });
   }

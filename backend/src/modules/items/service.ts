@@ -1,13 +1,32 @@
 import {
+  addDays,
+  dayTime,
   fail,
+  isLocalMidnight,
   itemData,
+  localDateKey,
   nextOccurrence,
   type Action,
   type Item,
+  type ItemInput,
+  type Kind,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import { requireTeam } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
+import {
+  isOccurrence,
+  loadPrefs,
+  occurrenceEnd,
+  type SeriesRow,
+} from "../planner/calendar.js";
+import {
+  inviteSnapshot,
+  loadInviteItem,
+  queueCancellations,
+  queueInvites,
+  syncAttendees,
+} from "./attendees.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -24,6 +43,10 @@ export type ItemRow = Item & {
   timezone: string;
   series_start: Date | string | null;
   exdates: (Date | string)[];
+  all_day: boolean;
+  busy: boolean;
+  color: string | null;
+  alerts: number[];
 };
 
 /** Item columns for responses: the team and assignee names and tag ids. */
@@ -157,10 +180,71 @@ const iso = (v: Date | string | null | undefined) =>
   v == null ? null : new Date(v).toISOString();
 
 /**
+ * An all-day item's times: `due_at` must be midnight in its time zone and
+ * `end_at` the midnight after its last day. An all-day event without an
+ * end lasts one day; an all-day task can have no end.
+ */
+export function allDayTimes(
+  kind: Kind,
+  dueAt: string | null,
+  endAt: string | null,
+  timeZone: string,
+) {
+  if (!dueAt) fail(422, "All-day items need a date.");
+  const start = new Date(dueAt);
+  if (!isLocalMidnight(start, timeZone))
+    fail(
+      422,
+      `All-day items start at midnight in their time zone (${timeZone}).`,
+    );
+  if (endAt && !isLocalMidnight(new Date(endAt), timeZone))
+    fail(422, "All-day items end at midnight at the end of their last day.");
+  return {
+    due_at: start.toISOString(),
+    end_at: endAt
+      ? new Date(endAt).toISOString()
+      : kind === "event"
+        ? dayTime(
+            addDays(localDateKey(start, timeZone), 1),
+            0,
+            timeZone,
+          ).toISOString()
+        : null,
+  };
+}
+
+const smallest = (alerts: number[]) =>
+  alerts.length ? Math.min(...alerts) : null;
+
+/**
+ * The alerts an item gets. Given alerts win. An older app's
+ * `reminder_minutes` sets them on a new item, and on an edit replaces the
+ * smallest (soonest) alert when it changed, so the others survive. Otherwise
+ * an edit keeps the saved alerts; a new item gets `defaults`.
+ */
+function alertsFor(
+  d: ItemInput,
+  saved: number[] | undefined,
+  defaults: number[],
+): number[] {
+  if (d.alerts !== undefined) return d.alerts;
+  if (d.reminder_minutes !== undefined) {
+    if (!saved) return [d.reminder_minutes];
+    const soonest = smallest(saved);
+    if (soonest === d.reminder_minutes) return saved;
+    return [
+      ...new Set([...saved.filter((a) => a !== soonest), d.reminder_minutes]),
+    ].sort((a, b) => a - b);
+  }
+  return saved ?? defaults;
+}
+
+/**
  * The single write path for planner items, used by the REST routes, AI
  * proposal application, and bookings. Enforces RBAC and optimistic locking on
  * `version`. Must run inside a transaction (it takes a row lock). Planning
- * fields left out of an edit keep their saved values.
+ * and event fields left out of an edit keep their saved values. People
+ * invited to an event are emailed about changes to it (when SMTP is set up).
  */
 export async function mutate(
   db: Db,
@@ -175,7 +259,10 @@ export async function mutate(
     if (item.version !== version)
       fail(409, "This item changed. Refresh and try again.");
     if (operation === "delete") {
+      const invited = await inviteSnapshot(db, item.id);
       await db.query("DELETE FROM items WHERE id=$1", [item_id]);
+      if (invited)
+        await queueCancellations(db, invited.item, invited.people, false);
       await queueWebhooks(db, "item.deleted", item, {
         id: item.id,
         title: item.title,
@@ -192,13 +279,27 @@ export async function mutate(
     const tagIds = d.tag_ids ?? [];
     await checkPlacement(db, actor.id, d.team_id, listId, tagIds);
     await checkAssignee(db, d.team_id, d.assignee_id ?? null);
+    const prefs = await loadPrefs(db, actor.id);
+    const allDay = d.all_day ?? false;
+    // An all-day item keeps its days in the planner's zone unless it has its own.
+    const timezone = d.timezone ?? (allDay ? prefs.timezone : "UTC");
+    const times = allDay
+      ? allDayTimes(d.kind, d.due_at, d.end_at, timezone)
+      : { due_at: d.due_at, end_at: d.end_at };
+    const alerts = alertsFor(
+      d,
+      undefined,
+      prefs.default_alerts![allDay ? "all_day" : d.kind],
+    );
     const created = (
       await db.query<{ id: string }>(
         `INSERT INTO items (title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
-           assignee_id, location, meeting_url, rrule, timezone, series_start)
+           assignee_id, location, meeting_url, rrule, timezone, series_start,
+           all_day, busy, color, alerts)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-           CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END)
+           CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
+           $19,$20,$21,$22::smallint[])
          RETURNING id`,
         [
           d.title,
@@ -206,9 +307,9 @@ export async function mutate(
           d.kind,
           d.status,
           d.priority,
-          d.due_at,
-          d.end_at,
-          d.reminder_minutes,
+          times.due_at,
+          times.end_at,
+          smallest(alerts),
           d.team_id,
           actor.id,
           d.progress ?? (d.status === "done" ? 100 : 0),
@@ -218,11 +319,19 @@ export async function mutate(
           d.location ?? "",
           d.meeting_url ?? "",
           d.rrule ?? null,
-          d.timezone ?? "UTC",
+          timezone,
+          allDay,
+          d.busy ?? true,
+          d.color ?? null,
+          alerts,
         ],
       )
     ).rows[0];
     await setTags(db, created.id, tagIds);
+    if (d.attendees?.length) {
+      await syncAttendees(db, created.id, d.attendees);
+      await queueInvites(db, created.id);
+    }
     const result = await loadItem(db, created.id);
     await queueWebhooks(
       db,
@@ -261,11 +370,30 @@ export async function mutate(
   await checkPlacement(db, owner, d.team_id, listId, tagIds);
   await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
   const rrule = keep(d.rrule, current.rrule);
-  const timezone = keep(d.timezone, current.timezone);
+  const allDay = keep(d.all_day, current.all_day);
+  let timezone = keep(d.timezone, current.timezone);
+  // Turning an item all-day keeps its days in the planner's zone.
+  if (
+    allDay &&
+    !current.all_day &&
+    d.timezone === undefined &&
+    timezone === "UTC"
+  )
+    timezone = (await loadPrefs(db, actor.id)).timezone;
+  const location = keep(d.location, current.location);
+  const meetingUrl = keep(d.meeting_url, current.meeting_url);
+  const alerts = alertsFor(d, current.alerts.map(Number), []);
 
   let status = d.status;
   let dueAt = d.due_at;
   let endAt = d.end_at;
+  if (allDay)
+    ({ due_at: dueAt, end_at: endAt } = allDayTimes(
+      d.kind,
+      dueAt,
+      endAt,
+      timezone,
+    ));
   let progress = d.progress ?? (d.status === "done" ? 100 : current.progress);
   let seriesStart = rrule ? (iso(current.series_start) ?? dueAt) : null;
   // A changed rule or a moved first date starts the series again from here.
@@ -292,9 +420,19 @@ export async function mutate(
     );
     if (next) {
       completedOccurrence = dueAt;
-      const length = endAt ? Date.parse(endAt) - Date.parse(dueAt) : 0;
+      const series: SeriesRow = {
+        id: current.id,
+        kind: d.kind,
+        due_at: new Date(dueAt),
+        end_at: endAt ? new Date(endAt) : null,
+        rrule,
+        timezone,
+        series_start: new Date(seriesStart),
+        exdates: exdates.map((x) => new Date(x)),
+        all_day: allDay,
+      };
       dueAt = next.toISOString();
-      endAt = length ? new Date(next.getTime() + length).toISOString() : null;
+      endAt = occurrenceEnd(series, next)?.toISOString() ?? null;
       status = "todo";
       progress = 0;
       await db.query("UPDATE item_steps SET done = false WHERE item_id = $1", [
@@ -312,9 +450,10 @@ export async function mutate(
        due_at=$6, end_at=$7, reminder_minutes=$8, team_id=$9, user_id=$10,
        progress=$12, estimate_minutes=$13, list_id=$14, assignee_id=$15,
        location=$16, meeting_url=$17, rrule=$18, timezone=$19, series_start=$20,
-       exdates=$21::timestamptz[], version=version+1,
+       exdates=$21::timestamptz[], all_day=$22, busy=$23, color=$24,
+       alerts=$25::smallint[], version=version+1,
        reminder_version = CASE WHEN due_at IS DISTINCT FROM $6::timestamptz
-         OR reminder_minutes <> $8 OR (status='done' AND $4 <> 'done')
+         OR alerts IS DISTINCT FROM $25::smallint[] OR (status='done' AND $4 <> 'done')
          OR team_id IS DISTINCT FROM $9::uuid
          THEN reminder_version + 1 ELSE reminder_version END,
        updated_at = now()
@@ -327,7 +466,7 @@ export async function mutate(
       d.priority,
       dueAt,
       endAt,
-      d.reminder_minutes,
+      smallest(alerts),
       d.team_id,
       owner,
       current.id,
@@ -335,15 +474,88 @@ export async function mutate(
       keep(d.estimate_minutes, current.estimate_minutes),
       listId,
       d.team_id ? assignee : null,
-      keep(d.location, current.location),
-      keep(d.meeting_url, current.meeting_url),
+      location,
+      meetingUrl,
       rrule,
       timezone,
       seriesStart,
       exdates,
+      allDay,
+      keep(d.busy, current.busy),
+      keep(d.color, current.color),
+      alerts,
     ],
   );
   await setTags(db, current.id, tagIds);
+
+  // Changes to single occurrences stay only while they're still occurrences.
+  if (!rrule)
+    await db.query("DELETE FROM item_overrides WHERE item_id = $1", [
+      current.id,
+    ]);
+  else if (
+    rrule !== current.rrule ||
+    seriesStart !== iso(current.series_start) ||
+    timezone !== current.timezone
+  ) {
+    const series: SeriesRow = {
+      id: current.id,
+      kind: d.kind,
+      due_at: new Date(dueAt!),
+      end_at: endAt ? new Date(endAt) : null,
+      rrule,
+      timezone,
+      series_start: seriesStart ? new Date(seriesStart) : null,
+      exdates: exdates.map((x) => new Date(x)),
+      all_day: allDay,
+    };
+    const stale = (
+      await db.query<{ occurrence: Date }>(
+        "SELECT occurrence FROM item_overrides WHERE item_id = $1",
+        [current.id],
+      )
+    ).rows
+      .map((r) => r.occurrence)
+      .filter((at) => !isOccurrence(series, at));
+    if (stale.length)
+      await db.query(
+        "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = ANY ($2::timestamptz[])",
+        [current.id, stale],
+      );
+  }
+
+  // Invitees: only events have them. They hear about changes to what, when
+  // and where; people added or taken off hear about that.
+  const invitees = d.kind === "event" ? d.attendees : [];
+  const sync = invitees
+    ? await syncAttendees(db, current.id, invitees)
+    : { added: [], removed: [] };
+  if (sync.removed.length) {
+    const now = await loadInviteItem(db, current.id);
+    if (now)
+      await queueCancellations(
+        db,
+        { ...now, kind: current.kind },
+        sync.removed,
+        true,
+      );
+  }
+  const noticeable =
+    current.kind !== d.kind ||
+    current.title !== d.title ||
+    iso(current.due_at) !== iso(dueAt) ||
+    iso(current.end_at) !== iso(endAt) ||
+    current.location !== location ||
+    current.meeting_url !== meetingUrl ||
+    current.rrule !== rrule ||
+    current.all_day !== allDay ||
+    (!!rrule && current.timezone !== timezone);
+  if (d.kind === "event") {
+    if (noticeable) await queueInvites(db, current.id, { updated: true });
+    else if (sync.added.length)
+      await queueInvites(db, current.id, { only: sync.added });
+  }
+
   if (completedOccurrence) {
     await recomputeProgress(db, current.id);
     await db.query(

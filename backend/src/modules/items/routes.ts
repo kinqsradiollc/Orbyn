@@ -1,24 +1,39 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  editScopeQuery,
   fail,
   itemData,
   itemsQuery,
+  parseQuickAdd,
   priorityScore,
   progressUpdateInput,
+  quickAddInput,
   skipOccurrenceInput,
   stepInput,
   stepUpdate,
   timeLogInput,
   type ItemDetail,
   type ItemSort,
+  type OccurrenceChanges,
+  type QuickAddCreated,
+  type QuickAddList,
+  type QuickAddMember,
+  type QuickAddResult,
 } from "@orbyn/core";
 import type { QueryResult } from "pg";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { largestFreeMinutes } from "../planner/plans.js";
+import {
+  deleteOccurrences,
+  editFollowing,
+  editOccurrence,
+  skipOccurrence,
+} from "./occurrences.js";
 import {
   ITEM_COLUMNS,
   ITEM_FROM,
@@ -36,7 +51,11 @@ const via =
   (text, values) =>
     db.query(text, values);
 
-/** A task with its checklist and its 100 most recent updates, newest first. */
+/**
+ * A task with its checklist and its 100 most recent updates, newest first;
+ * an event with the people invited and their answers; a repeating item with
+ * the occurrences changed on their own.
+ */
 export async function itemDetail(
   id: string,
   run: Run = (text, values) => pool.query(text, values),
@@ -60,7 +79,23 @@ export async function itemDetail(
       [id],
     )
   ).rows;
-  return { ...item, steps, updates };
+  const attendees = (
+    await run(
+      `SELECT id, email, name, status, responded_at FROM item_attendees
+       WHERE item_id = $1 ORDER BY created_at, email`,
+      [id],
+    )
+  ).rows;
+  const overrides = (
+    await run(
+      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1 ORDER BY occurrence",
+      [id],
+    )
+  ).rows.map((o: { occurrence: Date; data: OccurrenceChanges }) => ({
+    ...o.data,
+    occurrence: o.occurrence.toISOString(),
+  }));
+  return { ...item, steps, updates, attendees, overrides };
 }
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
@@ -198,19 +233,58 @@ export async function itemRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const d = skipOccurrenceInput.parse(r.body);
     return transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      if (!item.rrule)
-        fail(409, "Only repeating items have occurrences to skip.");
-      await db.query(
-        `UPDATE items SET exdates = array_append(exdates, $1::timestamptz),
-           version = version + 1, updated_at = now()
-         WHERE id = $2 AND NOT ($1::timestamptz = ANY (exdates))`,
-        [d.occurrence, id],
-      );
+      await skipOccurrence(db, u, id, d.occurrence);
       return itemDetail(id, via(db));
     });
   });
+
+  // Quick add: one line of text, parsed without AI, into a new item.
+  app.post(
+    "/items/quick",
+    async (r, reply): Promise<QuickAddResult | QuickAddCreated> => {
+      const u = await authenticate(r);
+      const d = quickAddInput.parse(r.body);
+      const timeZone = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
+      const mine = `(x.team_id IS NULL AND x.user_id = $1)
+        OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`;
+      const [lists, tags, members] = await Promise.all([
+        pool.query<QuickAddList>(
+          `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
+          [u.id],
+        ),
+        pool.query<QuickAddList>(
+          `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
+          [u.id],
+        ),
+        // Everyone who shares a team with you, and which of your teams.
+        pool.query<QuickAddMember>(
+          `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
+           FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
+           WHERE m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+           GROUP BY p.id, p.name, p.email`,
+          [u.id],
+        ),
+      ]);
+      const parsed = parseQuickAdd(d.text, {
+        timeZone,
+        lists: lists.rows,
+        tags: tags.rows,
+        members: members.rows,
+        selfId: u.id,
+      });
+      if (!parsed.input.title)
+        fail(422, 'Add a title, such as "Lunch with Sam tomorrow 1pm".');
+      if (d.preview) return parsed;
+      const item = await transaction((db) =>
+        mutate(db, u, {
+          operation: "create",
+          data: itemData.parse(parsed.input),
+        }),
+      );
+      reply.code(201);
+      return { item: item!, chips: parsed.chips };
+    },
+  );
 
   app.get("/items/:id", async (r) => {
     const u = await authenticate(r);
@@ -234,20 +308,23 @@ export async function itemRoutes(app: FastifyInstance) {
     return item;
   });
 
+  // ?scope=this|following changes one occurrence of a repeating item, or it
+  // and every later one; the default (all) changes the whole item.
   app.put("/items/:id", async (r) => {
     const u = await authenticate(r);
+    const scope = editScopeQuery.parse(r.query);
     const { version, ...raw } = z
       .object({ version: z.number().int().positive() })
       .passthrough()
       .parse(r.body);
     const data = itemData.parse(raw);
+    const id = idParam(r);
     return transaction((db) =>
-      mutate(db, u, {
-        operation: "update",
-        data,
-        item_id: idParam(r),
-        version,
-      }),
+      scope.scope === "this"
+        ? editOccurrence(db, u, id, version, scope.occurrence!, data)
+        : scope.scope === "following"
+          ? editFollowing(db, u, id, version, scope.occurrence!, data)
+          : mutate(db, u, { operation: "update", data, item_id: id, version }),
     );
   });
 
@@ -255,13 +332,17 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const q = z
       .object({ version: z.coerce.number().int().positive() })
+      .and(editScopeQuery)
       .parse(r.query);
+    const id = idParam(r);
     await transaction((db) =>
-      mutate(db, u, {
-        operation: "delete",
-        item_id: idParam(r),
-        version: q.version,
-      }),
+      q.scope === "all"
+        ? mutate(db, u, {
+            operation: "delete",
+            item_id: id,
+            version: q.version,
+          })
+        : deleteOccurrences(db, u, id, q.version, q.scope, q.occurrence!),
     );
     return reply.code(204).send();
   });

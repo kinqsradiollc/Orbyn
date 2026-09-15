@@ -32,6 +32,29 @@ const timeZoneField = z
   .trim()
   .max(80)
   .refine(isTimeZone, "Unknown time zone");
+const hexColor = z
+  .string()
+  .regex(/^#[0-9a-fA-F]{6}$/, "Colours look like #376c51");
+const emailAddress = z
+  .email()
+  .max(254)
+  .transform((s) => s.toLowerCase());
+
+/** Largest alert: four weeks before, in minutes. */
+export const MAX_ALERT_MINUTES = 40320;
+/** Alerts before an item, in minutes: up to 5, each at most four weeks. */
+export const alertsField = z
+  .array(z.number().int().min(0).max(MAX_ALERT_MINUTES))
+  .max(5, "Up to 5 alerts")
+  .transform((a) => [...new Set(a)].sort((x, y) => x - y));
+
+/** Someone invited to an event by email. */
+export const attendeeInput = z
+  .object({
+    email: emailAddress,
+    name: z.string().trim().max(120).optional(),
+  })
+  .strict();
 
 export const itemData = z
   .object({
@@ -42,12 +65,15 @@ export const itemData = z
     priority: z.enum(PRIORITIES).default("medium"),
     due_at: z.iso.datetime({ offset: true }).nullable().default(null),
     end_at: z.iso.datetime({ offset: true }).nullable().default(null),
-    reminder_minutes: z
-      .number()
-      .int()
-      .min(0)
-      .max(MAX_REMINDER_MINUTES)
-      .default(30),
+    /**
+     * Older apps' single reminder. When a write gives it without `alerts`,
+     * it sets the (smallest) alert. Responses carry the smallest alert, or
+     * null when there are none; null in a request means "not given".
+     */
+    reminder_minutes: z.preprocess(
+      (v) => (v === null ? undefined : v),
+      z.number().int().min(0).max(MAX_REMINDER_MINUTES).optional(),
+    ),
     /** Shared team this item belongs to; null for a personal item. */
     team_id: z.uuid().nullable().default(null),
     /** 0-100. Optional: omitted on edit keeps the saved value; checklists set it. */
@@ -70,14 +96,40 @@ export const itemData = z
       .refine(isValidRrule, "That repeat rule isn't supported")
       .nullable()
       .optional(),
-    /** The time zone a repeating item keeps its wall-clock time in. */
+    /** The time zone a repeating or all-day item keeps its wall-clock time in. */
     timezone: timeZoneField.optional(),
+    // Event fields. Like the planning fields, omitted on edit keeps the saved value.
+    /**
+     * A whole-day item: `due_at` is local midnight in its time zone and
+     * `end_at` the (exclusive) midnight it ends. Never busy.
+     */
+    all_day: z.boolean().optional(),
+    /** Whether an event counts as busy (default true). Free events don't block time. */
+    busy: z.boolean().optional(),
+    /** Its own colour on the calendar; null uses the list's or the default. */
+    color: hexColor.nullable().optional(),
+    /** Minutes before `due_at` to remind, up to 5 (0 = at the time). */
+    alerts: alertsField.optional(),
+    /** People invited by email (events only, up to 50). */
+    attendees: z
+      .array(attendeeInput)
+      .max(50, "Up to 50 people")
+      .refine(
+        (a) => new Set(a.map((x) => x.email)).size === a.length,
+        "Invite each person once",
+      )
+      .optional(),
   })
   .strict()
   .refine(
     (d) =>
       !d.end_at || (!!d.due_at && Date.parse(d.end_at) > Date.parse(d.due_at)),
     "End must be after start",
+  )
+  .refine((d) => !d.all_day || !!d.due_at, "All-day items need a date")
+  .refine(
+    (d) => !d.attendees?.length || d.kind === "event",
+    "Only events can have people invited",
   )
   .refine(
     (d) => d.kind !== "event" || !!d.due_at,
@@ -163,10 +215,7 @@ export const itemsQuery = pagination.extend({
   sort: z.enum(ITEM_SORTS).default("newest"),
 });
 
-const emailField = z
-  .email()
-  .max(254)
-  .transform((s) => s.toLowerCase());
+const emailField = emailAddress;
 
 export const teamInput = z
   .object({ name: z.string().trim().min(1).max(80) })
@@ -343,9 +392,7 @@ export type MaintenanceInput = z.input<typeof maintenanceInput>;
 
 // ---- Planning: lists, tags, time blocks, the planner ------------------------
 
-const color = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}$/, "Colours look like #376c51");
+const color = hexColor;
 const instant = z.iso.datetime({ offset: true });
 const clock = z
   .string()
@@ -432,6 +479,116 @@ export const timeLogInput = z
 /** Remove one occurrence from a repeating item. */
 export const skipOccurrenceInput = z.object({ occurrence: instant }).strict();
 
+export const EDIT_SCOPES = ["this", "following", "all"] as const;
+
+/**
+ * Which occurrences of a repeating item an edit or delete touches: only
+ * `occurrence`, it and every later one, or the whole series (the default).
+ */
+export const editScopeQuery = z
+  .object({
+    scope: z.enum(EDIT_SCOPES).default("all"),
+    occurrence: instant.optional(),
+  })
+  .refine(
+    (d) => d.scope === "all" || !!d.occurrence,
+    "Say which occurrence to change",
+  );
+
+/** Text typed into the command bar ("Lunch with @anna tomorrow 1pm ;Cafe Roma"). */
+export const quickAddInput = z
+  .object({
+    text: z.string().trim().min(1).max(500),
+    /** The device's zone, for words like "tomorrow" and "3pm"; your planner zone when omitted. */
+    timezone: timeZoneField.optional(),
+    /** Only parse it; nothing is created. */
+    preview: z.boolean().default(false),
+  })
+  .strict();
+
+export const RSVP_STATUSES = ["accepted", "declined", "tentative"] as const;
+/** An invitee's answer from their email link. */
+export const rsvpInput = z.object({ status: z.enum(RSVP_STATUSES) }).strict();
+
+/** A calendar from another app, by its iCalendar (ICS) link. */
+const subscriptionUrl = z
+  .string()
+  .trim()
+  .max(1000)
+  .regex(
+    /^(https?|webcal):\/\/\S+$/i,
+    "Calendar links start with https:// or webcal://",
+  )
+  // webcal:// is https:// for calendar apps.
+  .transform((u) => u.replace(/^webcal:\/\//i, "https://"));
+export const calendarSubscriptionInput = z
+  .object({
+    url: subscriptionUrl,
+    name: z.string().trim().min(1).max(80),
+    color: color.optional(),
+    /** Count its events as busy (for the planner, booking pages and teammates). */
+    busy: z.boolean().default(false),
+  })
+  .strict();
+export const calendarSubscriptionUpdate = z
+  .object({
+    url: subscriptionUrl.optional(),
+    name: z.string().trim().min(1).max(80).optional(),
+    color: color.optional(),
+    busy: z.boolean().optional(),
+  })
+  .strict()
+  .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+/** What your private calendar feed includes. */
+export const calendarFeedSettingsInput = z
+  .object({
+    /** Add your time blocks as "Focus: {task}". */
+    include_blocks: z.boolean().optional(),
+  })
+  .strict();
+/** Make a feed link: the full one, or one that only shows when you're busy. */
+export const calendarFeedCreateInput = z
+  .object({ busy: z.boolean().default(false) })
+  .strict();
+
+const MAX_SEARCH_MS = 800 * 86_400_000;
+/** Find events by words, a year either side of today unless a range is given. */
+export const calendarSearchQuery = z
+  .object({
+    q: z.string().trim().min(1).max(100),
+    from: instant.optional(),
+    to: instant.optional(),
+  })
+  .refine(
+    (d) => !d.from || !d.to || Date.parse(d.to) > Date.parse(d.from),
+    "End must be after start",
+  )
+  .refine(
+    (d) =>
+      !d.from ||
+      !d.to ||
+      Date.parse(d.to) - Date.parse(d.from) <= MAX_SEARCH_MS,
+    "Search 800 days or fewer at a time",
+  );
+
+/** Teammates' busy times to show over your own calendar. */
+export const availabilityQuery = z
+  .object({
+    /** Comma-separated user ids, up to 10. */
+    user_ids: z.string().trim().min(1).max(400),
+    from: instant,
+    to: instant,
+  })
+  .refine(
+    (d) => Date.parse(d.to) > Date.parse(d.from),
+    "End must be after start",
+  )
+  .refine(
+    (d) => Date.parse(d.to) - Date.parse(d.from) <= 31 * 86_400_000,
+    "Ask for 31 days or fewer at a time",
+  );
+
 export const BREAK_LEVELS = ["none", "light", "normal", "intense"] as const;
 
 /** A saved set of what the calendar shows. */
@@ -468,6 +625,15 @@ export const plannerPrefsInput = z
     /** Where planner notices (roll forward, at risk, due soon, conflicts) go besides the app. */
     planner_notices: z
       .object({ push: z.boolean().optional(), email: z.boolean().optional() })
+      .strict()
+      .optional(),
+    /** Alerts new items get when they're created without any; send a key to change it. */
+    default_alerts: z
+      .object({
+        event: alertsField.optional(),
+        task: alertsField.optional(),
+        all_day: alertsField.optional(),
+      })
       .strict()
       .optional(),
   })

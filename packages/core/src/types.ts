@@ -11,6 +11,11 @@ import type {
   bookingAvailability,
   bookingQuestion,
   BOOKING_VIEWS,
+  calendarFeedSettingsInput,
+  calendarSubscriptionInput,
+  calendarSubscriptionUpdate,
+  EDIT_SCOPES,
+  RSVP_STATUSES,
   dateOverride,
   BREAK_LEVELS,
   calendarSetInput,
@@ -162,7 +167,9 @@ export type Notice = {
     | "booking"
     | "rollforward"
     | "at_risk"
-    | "deadline";
+    | "deadline"
+    /** Someone you invited answered (`item_id` = the event, `ref` = the attendee). */
+    | "rsvp";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
@@ -342,7 +349,47 @@ export type ItemUpdate = {
 };
 
 /** A task with its checklist and progress timeline (newest first). */
-export type ItemDetail = Item & { steps: ItemStep[]; updates: ItemUpdate[] };
+export type ItemDetail = Item & {
+  steps: ItemStep[];
+  updates: ItemUpdate[];
+  /** People invited to an event, with their answers. */
+  attendees?: Attendee[];
+  /** Occurrences of a repeating item changed on their own. */
+  overrides?: ItemOverride[];
+};
+
+export type AttendeeStatus = "needs_action" | (typeof RSVP_STATUSES)[number];
+
+/** Someone invited to an event by email. */
+export type Attendee = {
+  id: string;
+  email: string;
+  name: string;
+  status: AttendeeStatus;
+  responded_at: string | null;
+};
+
+/** What changed on one occurrence of a series ("edit this one"). */
+export type OccurrenceChanges = {
+  title?: string;
+  notes?: string;
+  /** The occurrence's own start and end. */
+  due_at?: string;
+  end_at?: string | null;
+  location?: string;
+  meeting_url?: string;
+  busy?: boolean;
+  color?: string | null;
+  alerts?: number[];
+};
+
+/** One occurrence of a repeating item, changed on its own. */
+export type ItemOverride = OccurrenceChanges & {
+  /** Which occurrence (its original start). */
+  occurrence: string;
+};
+
+export type EditScope = (typeof EDIT_SCOPES)[number];
 
 // ---- Planning -----------------------------------------------------------------
 
@@ -406,6 +453,32 @@ export type CalendarEntry = {
   occurrence: string | null;
   rrule: string | null;
   version: number;
+  /** A whole-day entry: `start_at` and `end_at` are local midnights. */
+  all_day?: boolean;
+  /** Whether it counts as busy (false for free and all-day events). */
+  busy?: boolean;
+  color?: string | null;
+  /** Minutes before the start to remind. */
+  alerts?: number[];
+  /** True when this occurrence was changed on its own. */
+  overridden?: boolean;
+  /** How many people are invited. */
+  attendee_count?: number;
+};
+
+/** One occurrence of an event from a calendar you subscribe to (read-only). */
+export type ExternalEntry = {
+  subscription_id: string;
+  /** The subscription's name. */
+  name: string;
+  color: string;
+  title: string;
+  start_at: string;
+  end_at: string;
+  all_day: boolean;
+  location: string;
+  /** Whether it counts as busy (the subscription's setting). */
+  busy: boolean;
 };
 
 /** Time the calendar keeps around events: buffers and travel. */
@@ -438,6 +511,29 @@ export type CalendarView = {
   derived: DerivedBlock[];
   /** Your frames in the range. */
   frames?: FrameOccurrence[];
+  /** Events from calendars you subscribe to. */
+  external?: ExternalEntry[];
+};
+
+/** One event found by `GET /calendar/search`: yours, or from a subscription. */
+export type CalendarSearchResult =
+  | ({ source: "item" } & CalendarEntry)
+  | ({ source: "external" } & ExternalEntry);
+
+export type CalendarSearch = {
+  q: string;
+  from: string;
+  to: string;
+  /** Soonest first, up to 100. */
+  results: CalendarSearchResult[];
+};
+
+/** Busy times of someone you share a team with, for overlaying on your calendar. */
+export type UserAvailability = {
+  user_id: string;
+  name: string;
+  timezone: string;
+  busy: BusyInterval[];
 };
 
 export type BreakLevel = (typeof BREAK_LEVELS)[number];
@@ -466,9 +562,18 @@ export type PlannerPrefs = {
   deadline_notice_days?: number;
   /** Planner notices also go to push and email when these are on. */
   planner_notices?: PlannerNotices;
+  /** Alerts new items get when created without any. */
+  default_alerts?: DefaultAlerts;
 };
 
 export type PlannerNotices = { push: boolean; email: boolean };
+
+/** Minutes-before alerts for new events, tasks and all-day items. */
+export type DefaultAlerts = {
+  event: number[];
+  task: number[];
+  all_day: number[];
+};
 
 export type FrameFilters = z.output<typeof frameFilters>;
 
@@ -871,7 +976,48 @@ export type Webhook = {
 export type NewWebhook = Webhook & { secret: string };
 
 /** A private subscription link for other calendar apps. */
-export type CalendarFeed = { url: string };
+export type CalendarFeed = {
+  url: string;
+  /** True for the link that only shows when you're busy. */
+  busy?: boolean;
+};
+
+/** Which feed links are on (the links themselves are only shown once) and what they include. */
+export type CalendarFeedSettings = {
+  enabled: boolean;
+  busy_enabled: boolean;
+  include_blocks: boolean;
+};
+
+/** A calendar from another app that Orbyn reads by its ICS link. */
+export type CalendarSubscription = {
+  id: string;
+  url: string;
+  name: string;
+  color: string;
+  busy: boolean;
+  last_fetched_at: string | null;
+  /** Why the last refresh failed; null when it worked. */
+  last_error: string | null;
+  event_count: number;
+  created_at: string;
+};
+
+/** What an invitee sees from their RSVP link. */
+export type RsvpView = {
+  title: string;
+  start_at: string;
+  end_at: string | null;
+  all_day: boolean;
+  timezone: string;
+  rrule: string | null;
+  organizer: string;
+  location: string;
+  meeting_url: string;
+  name: string;
+  email: string;
+  status: AttendeeStatus;
+};
 
 // ---- Request bodies (what clients send) ------------------------------------------
 
@@ -893,6 +1039,15 @@ export type BlockDuplicateInput = z.input<typeof blockDuplicateInput>;
 export type BookingPageInput = z.input<typeof bookingPageInput>;
 export type BookingPageUpdate = z.input<typeof bookingPageUpdate>;
 export type BookingRequest = z.input<typeof bookingRequest>;
+export type CalendarSubscriptionInput = z.input<
+  typeof calendarSubscriptionInput
+>;
+export type CalendarSubscriptionUpdate = z.input<
+  typeof calendarSubscriptionUpdate
+>;
+export type CalendarFeedSettingsInput = z.input<
+  typeof calendarFeedSettingsInput
+>;
 export type WebhookInput = z.input<typeof webhookInput>;
 export type WebhookUpdate = z.input<typeof webhookUpdate>;
 export type WebhookTestResult = {

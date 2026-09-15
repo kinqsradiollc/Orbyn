@@ -137,6 +137,21 @@ export function dayTime(key: string, minutes: number, timeZone: string) {
   );
 }
 
+/** Whether `at` is midnight (the start of a day) in `timeZone`. */
+export function isLocalMidnight(at: Date, timeZone: string) {
+  return (
+    dayTime(localDateKey(at, timeZone), 0, timeZone).getTime() === at.getTime()
+  );
+}
+
+/** Whole days from the local day of `start` to that of `end`, in `timeZone`. */
+export function localDaysBetween(start: Date, end: Date, timeZone: string) {
+  const [a, b] = [localDateKey(start, timeZone), localDateKey(end, timeZone)];
+  return Math.round(
+    (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
 /** "09:30" -> 570. */
 export const clockMinutes = (clock: string) => {
   const [h, m] = clock.split(":").map(Number);

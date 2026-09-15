@@ -82,6 +82,10 @@ An item:
   "due_at": "2026-09-20T09:00:00+10:00",
   "end_at": null,
   "reminder_minutes": 30,
+  "alerts": [30],
+  "all_day": false,
+  "busy": true,
+  "color": null,
   "version": 1,
   "created_at": "...",
   "updated_at": "..."
@@ -103,11 +107,21 @@ Planning fields, all optional:
 | `location`         | Where an event happens; drives travel time.                                                                                                                                                |
 | `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
 | `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
-| `timezone`         | The IANA zone a repeating item keeps its wall-clock time in.                                                                                                                               |
+| `timezone`         | The IANA zone a repeating or all-day item keeps its wall-clock time in.                                                                                                                    |
+| `all_day`          | A whole-day item: `due_at` is midnight in its `timezone` (your planner zone when not given) and `end_at` the midnight after its last day (one day for an event when omitted). Never busy.  |
+| `busy`             | Whether an event counts as busy (default true). Free events don't block the planner, booking pages or teammates, and get no buffers or travel.                                             |
+| `color`            | `#rrggbb` for the calendar, or null.                                                                                                                                                       |
+| `alerts`           | Minutes before `due_at` to remind: up to 5, each 0 to 40320 (four weeks), sorted and without repeats.                                                                                      |
+| `attendees`        | Events only: up to 50 `{ "email", "name"? }` to invite by email (see [Invitations](#invitations)). Sending the list replaces it.                                                           |
 
 Rules: `kind` is `task` or `event`; events require `due_at`; `end_at` requires `due_at` and must be
-later; timestamps are ISO 8601 with an offset; `reminder_minutes` is 0 to 10080 (one week); a
-repeating item needs `due_at`; only team items can have an assignee, who must be in the team.
+later; timestamps are ISO 8601 with an offset; a repeating item needs `due_at`; only team items can
+have an assignee, who must be in the team.
+
+Alerts: a new item given no `alerts` gets your `default_alerts` (30 minutes before, until you change
+them). `reminder_minutes` (0 to 10080) is kept for older apps: sent without `alerts` it sets the
+alert on a new item and, on an edit, replaces the smallest alert when it changed. Responses carry
+it as the smallest alert, or null when there are none.
 
 A repeating item's `due_at` is its current occurrence and `series_start` its first. Completing a
 repeating task moves it to the next occurrence (its checklist resets and the timeline notes the
@@ -143,6 +157,52 @@ the item detail.
 
 `{ "occurrence": "2026-09-22T07:00:00+10:00" }` removes one occurrence from a repeating item. →
 the item detail; `409` for an item that doesn't repeat.
+
+### Repeating items: this one, this and following, or all
+
+`PUT /items/:id` and `DELETE /items/:id` take `?scope=this|following|all&occurrence=<start>`.
+`occurrence` is the occurrence's original start (a calendar entry's `occurrence`); `all`, the
+default, is the whole item as before. `422` when `occurrence` isn't one of the item's.
+
+- **this**: the body's `title`, `notes`, `due_at` and `end_at` (the occurrence's own times),
+  `location`, `meeting_url`, `busy`, `color` and `alerts` are saved for that occurrence alone.
+  Other fields belong to the series and are ignored. An edit that matches the series again removes
+  the change. Deleting it removes the occurrence (like `skip`). Either answers with the item, one
+  version on.
+- **following**: the series ends just before the occurrence and a new series starts there with
+  the body's changes (fields left out, such as the list, tags, alerts and invitees, are carried
+  over; a `COUNT` keeps what's left of it). Answers with the new series. Deleting ends the series
+  before the occurrence. From the first occurrence (a task's current one) it's the same as `all`.
+
+The calendar, busy time, the planner, reminders and the feed all use each occurrence's own
+changes. The item detail lists them as `overrides`: `{ occurrence, ...changes }`.
+
+### `POST /items/quick` (auth)
+
+`{ "text": "Lunch with @anna tomorrow 1pm ;Cafe Roma", "timezone"?: "Australia/Melbourne",
+"preview"?: false }` creates an item from one line, parsed without AI (`parseQuickAdd` in
+`@orbyn/core`, which the apps use too), → `201 { item, chips }`. With `preview: true` nothing is
+saved → `{ input, chips }`. `timezone` defaults to your planner zone. `422` when no title is left.
+
+| Write          | Means                                                                                                                      |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `;Cafe Roma`   | Location, up to the next marker, date or time (or a closing `;`)                                                           |
+| `@anna`        | Someone you share a team with (by name or email): the assignee of a team item, otherwise invited                           |
+| `@a@b.com`     | Invite anyone by email                                                                                                     |
+| `>Work`        | A list you can see, by name (a team's list makes it a team item)                                                           |
+| `#urgent`      | Tags, by name                                                                                                              |
+| `!` `!!` `!!!` | Low, medium, high priority (`!low`, `!high` work too)                                                                      |
+| dates          | `today`, `tonight`, `tomorrow`, `fri`, `next friday`, `sep 20`, `20/9`, `2026-09-20`, `in 3 days`, `next week`; `.fri` too |
+| times          | `3pm`, `15:30`, `at 9` (1 to 7 without am/pm are afternoon), `noon`, ranges `3-4pm`, `15:00-16:30`                         |
+| `for 2h` `45m` | An event's length, or a task's estimate                                                                                    |
+| `~45m`         | Always an estimate                                                                                                         |
+| `all day`      | A whole-day event                                                                                                          |
+
+A time range, a start with a length, `all day`, someone invited or the word "meeting" makes an
+event; anything else is a task. A date without a time is a whole day; a time without a date is
+its next one. `chips` are `{ kind, text, value }` for what was recognised (`kind` is `kind`,
+`date`, `time`, `duration`, `estimate`, `all_day`, `location`, `person`, `list`, `tag` or
+`priority`).
 
 ### `POST /items` (auth)
 
@@ -198,13 +258,13 @@ their own account here.
 `status` is `todo`, `in_progress`, `blocked`, or `done`, and `progress` is 0 to 100. List
 responses also include `steps_total`, `steps_done`, `updates_count`, and `last_update_at`.
 
-| Method and path                   | Body / result                                                                |
-| --------------------------------- | ---------------------------------------------------------------------------- |
-| `GET /items/:id`                  | The item with `steps[]` and its 100 most recent `updates[]`, newest first    |
-| `POST /items/:id/steps`           | `{ "title" }` adds a checklist step; returns the item detail                 |
-| `PUT /items/:id/steps/:stepId`    | `{ "title"?, "done"? }`; returns the item detail                             |
-| `DELETE /items/:id/steps/:stepId` | Removes a step; returns the item detail                                      |
-| `POST /items/:id/updates`         | `{ "body"?, "status"?, "progress"? }` posts a timeline entry; returns detail |
+| Method and path                   | Body / result                                                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET /items/:id`                  | The item with `steps[]`, its 100 most recent `updates[]` (newest first), `attendees[]` and `overrides[]` |
+| `POST /items/:id/steps`           | `{ "title" }` adds a checklist step; returns the item detail                                             |
+| `PUT /items/:id/steps/:stepId`    | `{ "title"?, "done"? }`; returns the item detail                                                         |
+| `DELETE /items/:id/steps/:stepId` | Removes a step; returns the item detail                                                                  |
+| `POST /items/:id/updates`         | `{ "body"?, "status"?, "progress"? }` posts a timeline entry; returns detail                             |
 
 When a task has steps, its progress is the share of steps done, and ticking the first step moves a
 `todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a
@@ -233,14 +293,15 @@ Same body. → `204`
 Up to 100 most recent in-app notices:
 `{ "id", "title", "body", "read", "created_at", "kind", "item_id", "ref" }[]`.
 
-| `kind`        | About                                                                  | `ref`          | Suggested action |
-| ------------- | ---------------------------------------------------------------------- | -------------- | ---------------- |
-| `reminder`    | An item's reminder; the due time is in your planner time zone          | empty          | Open the item    |
-| `conflict`    | An event now overlaps a future time block                              | the block      | Reschedule       |
-| `booking`     | A booking was made, requested, moved or cancelled                      | the booking    | Open the booking |
-| `rollforward` | Blocks from earlier days are unfinished (from your working start)      | the local date | Roll forward     |
-| `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date | Plan it          |
-| `deadline`    | A task is due within `deadline_notice_days` with no time set aside     | the local date | Plan it          |
+| `kind`        | About                                                                  | `ref`               | Suggested action |
+| ------------- | ---------------------------------------------------------------------- | ------------------- | ---------------- |
+| `reminder`    | An item's reminder; the due time is in your planner time zone          | the alert (minutes) | Open the item    |
+| `rsvp`        | Someone you invited answered (one notice per person, updated)          | the attendee        | Open the event   |
+| `conflict`    | An event now overlaps a future time block                              | the block           | Reschedule       |
+| `booking`     | A booking was made, requested, moved or cancelled                      | the booking         | Open the booking |
+| `rollforward` | Blocks from earlier days are unfinished (from your working start)      | the local date      | Roll forward     |
+| `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date      | Plan it          |
+| `deadline`    | A task is due within `deadline_notice_days` with no time set aside     | the local date      | Plan it          |
 
 Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) come at most once a day per
 task (once per block for conflicts, once per day for roll-forward). They also go to push and email
@@ -335,13 +396,31 @@ above change them). Deleting a list or tag keeps its items.
 At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
 
 - `entries`: one per occurrence of every dated item you can see. Repeating items appear once per
-  occurrence with `occurrence` set.
+  occurrence with `occurrence` set, and `overridden: true` on one changed on its own. Each also
+  has `all_day`, `busy` (false for free events, all-day items and tasks), `color`, `alerts` and
+  `attendee_count`.
 - `blocks`: your time blocks, with their task's title and status.
 - `derived`: buffers and travel time around events, worked out from your planner settings and
   places (never stored, so they always follow the events).
 - `frames`: each occurrence of your frames in the range:
   `{ frame_id, name, color, start_at, end_at, busy, date }` (`date` is the frame's local date, the
   one `skip` takes).
+- `external`: each occurrence of events from calendars you subscribe to (read-only):
+  `{ subscription_id, name, color, title, start_at, end_at, all_day, location, busy }`.
+
+### `GET /calendar/search?q=&from=&to=` (auth)
+
+Your events and dated tasks, and subscribed events, whose title, notes or location contain every
+word of `q`, a year either side of today unless `from`/`to` are given (800 days at most). Each
+occurrence of a repeating item is its own result, with its own changes. → `{ q, from, to, results }`,
+soonest first, up to 100; each result is a calendar entry with `source: "item"` or an external
+entry with `source: "external"`.
+
+### `GET /availability?user_ids=&from=&to=` (auth)
+
+Busy intervals of up to 10 people you share a team with (or yourself), to lay over your calendar,
+31 days at most: `[{ user_id, name, timezone, busy }]`. Anyone else is left out. Like team
+availability, only the times are shared, never what they're for.
 
 ### Time blocks
 
@@ -373,8 +452,9 @@ Time you set aside to work on a task. Each person has their own.
 | `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
 
 Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
-notices off) and `planner_notices` (`{ "push": true, "email": false }`; send either key to change
-it).
+notices off), `planner_notices` (`{ "push": true, "email": false }`; send either key to change
+it) and `default_alerts` (`{ "event": [30], "task": [30], "all_day": [30] }`, the alerts new items
+get; send any key to change it).
 
 A frame has `name`, `start_time`, `end_time`, `filters`, `color`, and either `days` (weekdays,
 0 = Sunday) or an `rrule` (which wins; for example `FREQ=MONTHLY;BYMONTHDAY=-1` for the last day
@@ -504,19 +584,27 @@ requested, moved and cancelled bookings.
 
 Other tools reach Orbyn through these; nothing is synced out of this server.
 
-| Method and path                 | Body / result                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| `GET /me/api-keys`              | Your keys (name, prefix, last used)                                                   |
-| `POST /me/api-keys`             | `{ "name" }` → `201` with `key` (shown once; send it as `Authorization: Bearer ok_…`) |
-| `DELETE /me/api-keys/:id`       | `204`                                                                                 |
-| `GET /me/webhooks`              | Your webhooks with their last delivery status                                         |
-| `POST /me/webhooks`             | `{ "url", "events" }` → `201` with `secret` (shown once)                              |
-| `PUT /me/webhooks/:id`          | `{ "url"?, "events"?, "active"? }`                                                    |
-| `DELETE /me/webhooks/:id`       | `204`                                                                                 |
-| `POST /me/webhooks/:id/test`    | Sends a `ping` now → `{ ok, status, error }`                                          |
-| `POST /me/calendar-feed`        | Creates or replaces your private feed link → `{ url }`                                |
-| `DELETE /me/calendar-feed`      | Turns the feed off                                                                    |
-| `GET /calendar/feed/:token.ics` | The feed, as iCalendar, for other calendar apps to subscribe to                       |
+| Method and path                               | Body / result                                                                                             |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `GET /me/api-keys`                            | Your keys (name, prefix, last used)                                                                       |
+| `POST /me/api-keys`                           | `{ "name" }` → `201` with `key` (shown once; send it as `Authorization: Bearer ok_…`)                     |
+| `DELETE /me/api-keys/:id`                     | `204`                                                                                                     |
+| `GET /me/webhooks`                            | Your webhooks with their last delivery status                                                             |
+| `POST /me/webhooks`                           | `{ "url", "events" }` → `201` with `secret` (shown once)                                                  |
+| `PUT /me/webhooks/:id`                        | `{ "url"?, "events"?, "active"? }`                                                                        |
+| `DELETE /me/webhooks/:id`                     | `204`                                                                                                     |
+| `POST /me/webhooks/:id/test`                  | Sends a `ping` now → `{ ok, status, error }`                                                              |
+| `GET /me/calendar-feed`                       | `{ enabled, busy_enabled, include_blocks }`                                                               |
+| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your time blocks as "Focus: {task}"                                           |
+| `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
+| `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
+| `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |
+| `GET /me/calendar-subscriptions`              | Calendars you subscribe to by link, with `last_fetched_at`, `last_error`, `event_count`                   |
+| `POST /me/calendar-subscriptions`             | `{ "url", "name", "color"?, "busy"? }` → `201`; `422` for a private address, `409` past 20                |
+| `PUT/DELETE /me/calendar-subscriptions/:id`   | Change `url`, `name`, `color`, `busy`; or remove it and its events                                        |
+| `POST /me/calendar-subscriptions/:id/refresh` | Fetch it now (10/min) → the subscription                                                                  |
+| `GET /rsvp/:token`                            | Anyone with the link: the invitation (see below)                                                          |
+| `POST /rsvp/:token`                           | Anyone with the link, 10/min: `{ "status": "accepted" \| "declined" \| "tentative" }`                     |
 
 API keys act as you, except in the admin console. Webhook events: `item.created`,
 `item.updated`, `item.completed`, `item.deleted`, `block.scheduled`, `booking.requested`,
@@ -525,6 +613,34 @@ Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-E
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
 HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried
 with backoff for up to 8 attempts. Webhooks must reach a public address.
+
+**The feed** has all-day items as dates, free events and tasks as `TRANSP:TRANSPARENT`, a
+`VALARM` per alert, invitees (`ORGANIZER`, `ATTENDEE` with their answers), repeating items as
+RRULEs in their own zone with `EXDATE`s, and occurrences changed on their own as extra events with
+`RECURRENCE-ID`. The busy-only link has its own token (so it can be shared without the full one)
+and lists nothing but "Busy" intervals: the same busy time teammates see, 30 days back to 180
+ahead.
+
+**Subscribing to other calendars.** Any iCalendar link (`https://` or `webcal://`) that reaches a
+public address: timetables, public holidays, a work calendar. The notifier fetches it soon after
+it's added and then hourly (asking only for changes), following up to 3 redirects, each checked
+again, within 15 seconds and 5 MB. A failed fetch keeps the last events and says why in
+`last_error`. Its events show in `GET /calendar` as `external`; they count as busy (for the
+planner, booking pages and teammates, as intervals only) only when `busy` is on, never when
+all-day or marked free, and they never leave the server otherwise.
+
+### Invitations
+
+Events can invite people by email (`attendees`); they need no account. With SMTP set up, each gets
+an email with an iCalendar invitation (`METHOD:REQUEST`, the event's UID, `SEQUENCE` = its
+version) their calendar app can add, and a private link, `<APP_URL>/rsvp/<token>?r=accepted`
+(or `tentative`, `declined`), where the web app shows the invitation and posts the answer (opening
+the link never answers by itself). New times, a new title, place or link, or a changed repeat
+send an updated invitation; people taken off, or everyone when the event is deleted, get a
+`METHOD:CANCEL`. Invitations wait in the notifier's email lane; without SMTP none are sent and
+nothing else changes. `GET /rsvp/:token` → `{ title, start_at, end_at, all_day, timezone, rrule,
+organizer, location, meeting_url, name, email, status }`. Each answer gives the organizer an
+in-app `rsvp` notice.
 
 ## Example session
 

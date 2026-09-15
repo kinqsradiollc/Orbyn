@@ -7,6 +7,7 @@ import {
 } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import {
+  blocksTime,
   calendarEntries,
   loadPrefs,
   timeBlocks,
@@ -35,9 +36,14 @@ export async function advanceRepeating(now = new Date()) {
       series_start: Date | null;
       exdates: Date[];
     }>(
-      `SELECT id, due_at, end_at, rrule, timezone, series_start, exdates FROM items
-       WHERE rrule IS NOT NULL AND kind = 'event' AND status <> 'done'
-         AND coalesce(end_at, due_at) < $1 AND due_at > $1 - interval '30 days'
+      // An occurrence moved on its own moves on once its own time has ended.
+      `SELECT i.id, i.due_at, i.end_at, i.rrule, i.timezone, i.series_start, i.exdates
+       FROM items i
+       LEFT JOIN item_overrides o ON o.item_id = i.id AND o.occurrence = i.due_at
+       WHERE i.rrule IS NOT NULL AND i.kind = 'event' AND i.status <> 'done'
+         AND coalesce((o.data->>'end_at')::timestamptz, (o.data->>'due_at')::timestamptz,
+                      i.end_at, i.due_at) < $1
+         AND i.due_at > $1 - interval '30 days'
        LIMIT 200`,
       [now],
     )
@@ -140,9 +146,8 @@ export async function scanConflicts(now = new Date()) {
       calendarEntries(pool, user_id, now, horizon),
       loadPrefs(pool, user_id),
     ]);
-    const events = entries.filter(
-      (e) => e.kind === "event" && e.status !== "done" && e.end_at,
-    );
+    // Free and all-day events don't clash with anything.
+    const events = entries.filter((e) => blocksTime(e) && e.end_at);
     const when = whenFormat(prefs.timezone);
     const nowIso = now.toISOString();
     for (const b of blocks) {

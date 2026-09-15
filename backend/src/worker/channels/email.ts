@@ -46,17 +46,29 @@ export type EmailNotification = {
   destination: string;
   title: string;
   body: string;
+  /** An iCalendar invitation or cancellation, sent as a text/calendar part. */
+  ical?: string | null;
 };
 
 export async function sendEmail(n: EmailNotification) {
   const { transport, from, host } = await mailer();
   if (!host) throw new Error("SMTP unavailable");
+  const method = n.ical?.match(/^METHOD:(\w+)/m)?.[1];
   await transport.sendMail({
     from,
     to: n.destination,
     subject: n.title,
     text: n.body,
     messageId: `<${n.id}@orbyn.local>`,
+    ...(n.ical
+      ? {
+          icalEvent: {
+            method: method ?? "REQUEST",
+            filename: "invite.ics",
+            content: n.ical,
+          },
+        }
+      : {}),
   });
 }
 

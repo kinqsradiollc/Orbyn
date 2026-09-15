@@ -1,5 +1,5 @@
 import { transaction, type Db } from "../db/pool.js";
-import { sendEmail } from "./channels/email.js";
+import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
 
 const MAX_ATTEMPTS = 8;
@@ -44,14 +44,17 @@ export async function deliverOne(): Promise<boolean> {
             )
           ).rowCount
         : true;
-    const stale = PLANNER_KINDS.includes(n.kind)
-      ? await plannerNoticeStale(db, n, item)
-      : !item ||
-        !item.can_see ||
-        item.disabled ||
-        item.status === "done" ||
-        item.reminder_version !== n.item_version ||
-        (n.channel === "email" && !item.email_reminders);
+    const stale =
+      n.kind === "invite"
+        ? await inviteStale(db, n)
+        : PLANNER_KINDS.includes(n.kind)
+          ? await plannerNoticeStale(db, n, item)
+          : !item ||
+            !item.can_see ||
+            item.disabled ||
+            item.status === "done" ||
+            item.reminder_version !== n.item_version ||
+            (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,
@@ -93,6 +96,34 @@ export async function deliverOne(): Promise<boolean> {
     }
     return true;
   });
+}
+
+/**
+ * An invitation goes out while SMTP is still set up and the organizer's
+ * account is active. One for a person since taken off the event is dropped
+ * (they get the cancellation instead); cancellations always go.
+ */
+async function inviteStale(
+  db: Db,
+  n: { user_id: string; ref: string },
+): Promise<boolean> {
+  if (!(await emailEnabled())) return true;
+  const owner = (
+    await db.query<{ disabled: boolean }>(
+      "SELECT disabled FROM users WHERE id = $1",
+      [n.user_id],
+    )
+  ).rows[0];
+  if (!owner || owner.disabled) return true;
+  const [method, attendee] = n.ref.split(":");
+  if (method === "REQUEST") {
+    const still = await db.query(
+      "SELECT 1 FROM item_attendees WHERE id::text = $1",
+      [attendee],
+    );
+    if (!still.rowCount) return true;
+  }
+  return false;
 }
 
 /**

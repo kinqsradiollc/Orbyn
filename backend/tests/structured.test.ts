@@ -44,7 +44,8 @@ test("a strict-schema reply with nulls parses, and defaults still apply", () => 
   assert.equal("item_id" in action, false);
   assert.equal(action.data?.notes, "");
   assert.equal(action.data?.priority, "medium");
-  assert.equal(action.data?.reminder_minutes, 30);
+  // Left unset: the user's default alerts are filled in when it's proposed.
+  assert.equal(action.data?.reminder_minutes, undefined);
   assert.equal(action.data?.end_at, null);
   assert.deepEqual(dropNulls("plain text"), "plain text");
   // Strict-schema replies arrive as lines and are joined back into Markdown.

@@ -1,11 +1,18 @@
 import type { FastifyInstance } from "fastify";
-import { actionSchema, chatRequest, fail, type ChatTurn } from "@orbyn/core";
+import {
+  actionSchema,
+  chatRequest,
+  fail,
+  MAX_REMINDER_MINUTES,
+  type ChatTurn,
+} from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { audit } from "../../lib/audit.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { pruneActions } from "./guards.js";
 import { resolveAi } from "./providers/resolve.js";
 import { runAgent } from "./agent/loop.js";
@@ -94,6 +101,30 @@ export async function aiRoutes(app: FastifyInstance) {
       ).rows;
       actions = pruneActions(actions, items, ctx.intentText).slice(0, 20);
     }
+    // New items proposed without alerts get the person's default alerts, so
+    // the review shows the reminder they'll really get.
+    const defaults = (await loadPrefs(pool, u.id)).default_alerts!;
+    actions = actions.map((a) => {
+      if (
+        a.operation !== "create" ||
+        !a.data ||
+        a.data.alerts !== undefined ||
+        a.data.reminder_minutes !== undefined
+      )
+        return a;
+      const alerts = defaults[a.data.all_day ? "all_day" : a.data.kind];
+      const soonest = alerts.length ? Math.min(...alerts) : null;
+      return {
+        ...a,
+        data: {
+          ...a.data,
+          alerts,
+          ...(soonest !== null && soonest <= MAX_REMINDER_MINUTES
+            ? { reminder_minutes: soonest }
+            : {}),
+        },
+      };
+    });
     r.log.info(
       {
         event: "ai_agent_turn",

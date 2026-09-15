@@ -1,11 +1,15 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
+  availabilityQuery,
+  fail,
   rangeQuery,
   suggestQuery,
   type MeetingSlot,
   type MemberAvailability,
   type MemberWorkload,
   type TeamAtRiskItem,
+  type UserAvailability,
 } from "@orbyn/core";
 import { reader, type Queryable as Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
@@ -53,7 +57,52 @@ const STEP_MS = 15 * 60_000;
 /** Free time shorter than this on either side of a meeting isn't worth protecting. */
 const FOCUS_MS = 45 * 60_000;
 
+/** Most people one overlay request can ask about. */
+const MAX_OVERLAY = 10;
+
 export async function teamPlanningRoutes(app: FastifyInstance) {
+  // Busy times of people you share a team with, to lay over your own
+  // calendar. Anyone else (or an unknown id) is simply left out.
+  app.get("/availability", async (r): Promise<UserAvailability[]> => {
+    const u = await authenticate(r);
+    const q = availabilityQuery.parse(r.query);
+    const ids = [
+      ...new Set(
+        q.user_ids
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (ids.length > MAX_OVERLAY)
+      fail(422, `Ask for ${MAX_OVERLAY} people or fewer at a time.`);
+    if (ids.some((id) => !z.uuid().safeParse(id).success))
+      fail(422, "Those aren't user ids.");
+    const db = reader(r.headers);
+    const people = (
+      await db.query<{ id: string; name: string }>(
+        `SELECT x.id, x.name FROM users x
+         WHERE x.id = ANY ($2::uuid[]) AND NOT x.disabled
+           AND (x.id = $1 OR EXISTS (
+             SELECT 1 FROM team_members a JOIN team_members b ON b.team_id = a.team_id
+             WHERE a.user_id = $1 AND b.user_id = x.id))`,
+        [u.id, ids],
+      )
+    ).rows;
+    const from = new Date(q.from);
+    const to = new Date(q.to);
+    return Promise.all(
+      ids
+        .flatMap((id) => people.filter((p) => p.id === id))
+        .map(async (p) => ({
+          user_id: p.id,
+          name: p.name,
+          timezone: (await loadPrefs(db, p.id)).timezone,
+          busy: await busyIntervals(db, p.id, from, to, TEAM_BUSY),
+        })),
+    );
+  });
+
   app.get(
     "/teams/:id/availability",
     async (r): Promise<MemberAvailability[]> => {

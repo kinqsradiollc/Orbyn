@@ -26,6 +26,7 @@ import { fail } from "@orbyn/core";
 import { membershipRole, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadItem, mutate } from "../items/service.js";
 import {
+  blocksTime,
   busyIntervals,
   calendarEntries,
   loadPrefs,
@@ -751,9 +752,8 @@ export async function reviewFor(
     timeBlocks(db, userId, now, horizon),
     atRiskFor(db, userId, now),
   ]);
-  const events = entries.filter(
-    (e) => e.kind === "event" && e.status !== "done" && e.end_at,
-  );
+  // Free and all-day events don't clash with anything.
+  const events = entries.filter((e) => blocksTime(e) && e.end_at);
   const nowIso = now.toISOString();
   const conflicts: PlannerReview["conflicts"] = [];
   for (const block of blocks) {
