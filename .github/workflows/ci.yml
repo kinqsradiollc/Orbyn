@@ -108,3 +108,18 @@ jobs:
       - name: Stop CI services
         if: always()
         run: docker compose down --volumes
+
+  mail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start local mail stack
+        run: ./scripts/mail-local.sh up
+      - name: Verify signed mail reaches the TLS-only test inbox
+        run: ./scripts/mail-local.sh test
+      - name: Mail logs
+        if: failure()
+        run: ./scripts/mail-local.sh logs
+      - name: Stop test mail stack
+        if: always()
+        run: docker compose -f mail/compose.local.yaml down --volumes

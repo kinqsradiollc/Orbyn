@@ -242,6 +242,37 @@ services:
       gateway: { condition: service_healthy }
     restart: unless-stopped
 
+  # Orbyn's own outbound mail server: it signs with DKIM and delivers straight
+  # to each recipient, or through a relay (mail/maddy-relay.conf). Nothing is
+  # published to the machine; only these services can hand mail over. Off
+  # unless asked for:  docker compose --profile mail up -d
+  # Point Orbyn at it with DOCKER_SMTP_HOST=mail and SMTP_PORT=587.
+  mail:
+    image: ${MADDY_IMAGE:-foxcpp/maddy:0.9.5}
+    profiles: [mail]
+    hostname: ${MAIL_HOSTNAME:-mail.localhost}
+    entrypoint: ["/bin/sh", "/data/conf/start.sh"]
+    environment:
+      MAIL_CONFIG: ${MAIL_CONFIG:-maddy.conf}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.localhost}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-localhost}
+      # Only read by maddy-relay.conf.
+      MAIL_RELAY: ${MAIL_RELAY:-}
+      MAIL_RELAY_USER: ${MAIL_RELAY_USER:-}
+      MAIL_RELAY_PASSWORD: ${MAIL_RELAY_PASSWORD:-}
+    volumes:
+      # DKIM keys and the retry queue live here; keep this volume.
+      - mail_data:/data
+      - ./mail:/data/conf:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "587"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 5
+    stop_grace_period: 30s
+    restart: unless-stopped
+
   mailpit:
     image: axllent/mailpit:v1.29
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
@@ -250,3 +281,4 @@ services:
 volumes:
   postgres_data:
   postgres_replica_data:
+  mail_data:

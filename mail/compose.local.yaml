@@ -1,0 +1,43 @@
+# A completely separate test stack. No public mail or Tunnel connection.
+name: orbyn-mail-local
+services:
+  mail:
+    image: foxcpp/maddy:0.9.5
+    entrypoint: ["/bin/sh", "/data/conf/start.sh"]
+    environment:
+      MAIL_CONFIG: maddy-relay.conf
+      MAIL_HOSTNAME: mail.orbyn.test
+      MAIL_DOMAIN: orbyn.test
+      MAIL_RELAY: tcp://inbox:1025
+      MAIL_RELAY_USER: local-test
+      MAIL_RELAY_PASSWORD: local-test
+      SSL_CERT_FILE: /certs/cert.pem
+    ports: ["127.0.0.1:11587:587"]
+    volumes:
+      - local_mail_data:/data
+      - .:/data/conf:ro
+      - ./.local:/certs:ro
+    healthcheck:
+      test: ["CMD", "nc", "-z", "127.0.0.1", "587"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    depends_on:
+      inbox: { condition: service_healthy }
+    restart: unless-stopped
+  inbox:
+    image: axllent/mailpit:v1.29
+    environment:
+      MP_SMTP_TLS_CERT: /certs/cert.pem
+      MP_SMTP_TLS_KEY: /certs/key.pem
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_DATABASE: /data/mailpit.db
+    ports: ["127.0.0.1:18025:8025"]
+    volumes:
+      - ./.local:/certs:ro
+      - local_inbox_data:/data
+    restart: unless-stopped
+volumes:
+  local_mail_data:
+  local_inbox_data:

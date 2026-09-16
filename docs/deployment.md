@@ -89,9 +89,135 @@ tunnel healthy. The API's host port stays on `127.0.0.1` (`API_BIND`); the web p
 every interface unless you set `WEB_PORT=127.0.0.1:8080`, which leaves the tunnel as the only way
 in.
 
-The token is passed in the environment, not on the command line, so it stays out of `docker ps`
-and `docker inspect`. To pin a cloudflared release instead of following `latest`, set
+The token is passed in the environment, not on the command line, so it stays out of `docker ps`.
+Docker administrators can still read it with `docker inspect`. To pin a cloudflared release instead of following `latest`, set
 `CLOUDFLARED_IMAGE`.
+
+## Testing your own mail server locally
+
+Run a separate Maddy → Mailpit stack on your development machine:
+
+```bash
+./scripts/mail-local.sh up
+./scripts/mail-local.sh test
+```
+
+Open [the local inbox](http://127.0.0.1:18025). Maddy accepts mail on
+`127.0.0.1:11587`, signs it for `orbyn.test`, and forwards every recipient to
+Mailpit over authenticated STARTTLS. Mailpit captures messages; it never delivers
+them to public recipients. No Tunnel, public DNS records, or production changes
+are needed. Both published ports bind only to loopback.
+
+The script generates an ignored, local-only certificate in `mail/.local`. Only
+the test Maddy container trusts this certificate; production TLS verification is
+unchanged. Docker, OpenSSL and Python 3 are required. The smoke test checks sender
+restrictions, SMTP submission, DKIM signature headers and delivery to the TLS-only
+inbox. It does not prove public DKIM verification or inbox placement.
+
+To use it from Orbyn's **Admin → System → SMTP**:
+
+| Setting               | Native local backend           | Docker Desktop backend         |
+| --------------------- | ------------------------------ | ------------------------------ |
+| Host                  | `127.0.0.1`                    | `host.docker.internal`         |
+| Port                  | `11587`                        | `11587`                        |
+| From                  | `Orbyn <reminders@orbyn.test>` | `Orbyn <reminders@orbyn.test>` |
+| Secure (implicit TLS) | off                            | off                            |
+| User / password       | empty                          | empty                          |
+
+These are the settings for the private submission hop; the relay hop uses TLS.
+Use them only on your local Orbyn instance. Settings saved in Admin override
+environment defaults. For an environment-based setup, use `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_FROM`, `SMTP_SECURE=false`, empty `SMTP_USER` /
+`SMTP_PASSWORD`, and `DOCKER_SMTP_HOST=host.docker.internal` for Docker Desktop,
+then recreate the backend containers. Linux Docker requires explicit host-gateway
+routing or a shared Docker network instead.
+
+`./scripts/mail-local.sh logs` shows delivery logs. `./scripts/mail-local.sh down`
+stops the stack while retaining DKIM keys, the queue, and captured messages in
+named volumes. This test stack does not supply user mailboxes or public inbound
+SMTP; Mailpit is a development inbox only.
+
+## Sending mail yourself
+
+Orbyn can send its own mail rather than handing it to a provider: the `mail` service signs each
+message with DKIM and delivers it straight to the recipient's server. It receives nothing, and its
+port is never published — only containers on its Docker network can hand mail over.
+Keep untrusted containers off that network: this private submission listener does
+not require authentication.
+
+Cloudflare Tunnel is for Orbyn's web traffic; it does not provide a public SMTP MX
+or carry this server's outbound SMTP. Cloudflare's
+[TCP application routes](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/protocols/)
+require a client-side connector, which recipient mail servers do not run.
+A full inbound mailbox service would additionally need public port 25, MX records,
+mailbox storage, authenticated submission, and TLS. Do not replace existing MX
+records when enabling this outbound-only service.
+
+Delivering directly needs two things from the network:
+
+- **Outbound port 25.** Most home and office connections block it, as do several clouds until you
+  ask. Check on the machine that will be sending:
+
+```bash
+nc -vz -w 5 gmail-smtp-in.l.google.com 25
+```
+
+- **A static address whose reverse DNS (PTR) matches `MAIL_HOSTNAME`**, set at that machine's
+  provider. Many receivers reject or penalize senders without valid matching reverse DNS.
+
+If either isn't possible, keep everything else and hand only the last hop to another server: set
+`MAIL_CONFIG=maddy-relay.conf` along with `MAIL_RELAY`, `MAIL_RELAY_USER` and
+`MAIL_RELAY_PASSWORD`. The queue, the retries and the DKIM signature stay here.
+
+### Setting it up
+
+1. In `.env`, set `MAIL_HOSTNAME=mail.your-domain` and `MAIL_DOMAIN=your-domain`, and point Orbyn
+   at it with `DOCKER_SMTP_HOST=mail`, `SMTP_PORT=587`, `SMTP_SECURE=false` and an `SMTP_FROM`
+   address on that domain.
+2. Start only the mail service with `docker compose up -d --wait mail`.
+   It generates a DKIM key on first start. Then run `./scripts/deploy.sh --no-pull`
+   to roll out the SMTP environment changes to the app. The deploy script starts
+   and waits for Maddy when `DOCKER_SMTP_HOST=mail`. Clear or update any SMTP
+   settings previously saved in Admin; those override the environment.
+3. Read the record it wants published:
+
+```bash
+docker compose exec mail cat /data/dkim_keys/your-domain_default.dns
+```
+
+4. Add these records. In Cloudflare, leave `mail.` **unproxied**: mail has to reach the address
+   itself, and the proxy only carries web traffic.
+
+| Name                             | Type | Value                                              |
+| -------------------------------- | ---- | -------------------------------------------------- |
+| `mail.your-domain`               | A    | the machine's public address, unproxied            |
+| `default._domainkey.your-domain` | TXT  | the contents of the `.dns` file above              |
+| `your-domain`                    | TXT  | `v=spf1 a:mail.your-domain -all`                   |
+| `_dmarc.your-domain`             | TXT  | `v=DMARC1; p=none;` — tighten once mail is landing |
+
+5. Ask the machine's provider to set reverse DNS for its address to `mail.your-domain`.
+6. Send a test from Admin → System, watching `docker compose logs -f mail`.
+   Confirm the recipient actually received it and inspect SPF/DKIM/DMARC results;
+   SMTP acceptance into Maddy's queue is not proof of final delivery.
+
+For relay mode, use your relay provider's SPF instructions instead of the direct
+server's A-record SPF rule. Keep a single SPF record per domain and merge any
+existing authorized senders. A relay may also require sender/domain verification;
+confirm it preserves your DKIM signature or provides its own aligned signature.
+The relay configuration requires TLS and validates its certificate. Both
+`tcp://host:587` (STARTTLS) and `tls://host:465` (implicit TLS) are supported.
+
+Back up the `mail_data` volume: it contains signing keys and queued mail. Never use
+`docker compose down --volumes` on a live deployment. Monitor mail health and
+delivery-error logs. This outbound-only setup logs failed deliveries and discards
+generated bounce reports; it does not send failure events back to Orbyn.
+After Maddy accepts a message, Orbyn records submission success even if a later
+delivery attempt fails. Keep existing incoming mail routing in place so replies
+and recipient-generated bounces can reach a monitored mailbox.
+
+Expect the first messages to be treated with suspicion until the address earns a reputation, so
+send a few at a time rather than a burst. Remove the `mailpit` service in production, so nothing
+silently swallows mail that should have gone out.
 
 ## Deploying without downtime
 

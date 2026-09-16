@@ -50,6 +50,20 @@ compose build
 log "Making sure the database and connection pooler are running"
 compose up -d --wait --no-recreate postgres pgbouncer
 
+# Bring up the selected mail backend before restarting its clients.
+# Explicitly selecting mail activates its optional profile.
+smtp_host=${DOCKER_SMTP_HOST:-$(setting DOCKER_SMTP_HOST mailpit)}
+case "$smtp_host" in
+  mail)
+    log "Starting the outbound mail server"
+    compose up -d --wait --wait-timeout 90 mail
+    ;;
+  mailpit)
+    log "Starting the development mail catcher"
+    compose up -d --wait mailpit
+    ;;
+esac
+
 log "Applying database migrations"
 compose run --rm migrate
 
@@ -141,7 +155,6 @@ if [ -n "$reason" ]; then
 else
   echo "Gateway unchanged."
 fi
-compose up -d --no-deps mailpit 2>/dev/null || true
 
 log "Deployed $GIT_SHA"
 compose ps
