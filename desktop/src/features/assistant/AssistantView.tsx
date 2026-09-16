@@ -44,7 +44,7 @@ export function AssistantView({
   // never the page, so the header and composer stay where they are.
   useEffect(() => {
     const el = threadRef.current;
-    if (!el) return;
+    if (!el || (turns.length === 0 && !thinking)) return;
     const reduce = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
