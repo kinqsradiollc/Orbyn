@@ -59,6 +59,36 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
     `VITE_API_URL=https://api.example.com` before `npm run build -w desktop` so the Electron app
     talks to production instead of localhost.
 
+## Public access through a Cloudflare tunnel
+
+Cloudflare reaches a `cloudflared` container inside the stack, so the machine needs no open port
+and no certificate of its own. The tunnel only runs when you ask for it.
+
+1. In Cloudflare (Zero Trust → Networks → Tunnels), create a tunnel and copy its token.
+2. Put it in `.env` as `CLOUDFLARE_TUNNEL_TOKEN=…`. Treat it as a secret: anyone holding it can
+   run your tunnel. `.env` is not in git.
+3. Give the tunnel a public hostname and point it at `http://gateway:8081` — the web app, with
+   the API under `/api`. One hostname serves both.
+4. Set `APP_URL` and `CORS_ORIGINS` to that address (`https://your-domain`), so booking and
+   invitation links, and the browser's own requests, use it.
+5. Set `GATEWAY_TRUSTED_PROXIES` to the Docker network range (for example `172.16.0.0/12`), so
+   rate limits and logs see the real client address instead of the tunnel container's, and clear
+   `GATEWAY_RATE_LIMIT_EXEMPT`.
+6. Start it:
+
+```bash
+docker compose --profile tunnel up -d
+```
+
+`docker compose logs -f cloudflared` shows it registering, and Cloudflare's dashboard shows the
+tunnel healthy. The API's host port stays on `127.0.0.1` (`API_BIND`); the web port listens on
+every interface unless you set `WEB_PORT=127.0.0.1:8080`, which leaves the tunnel as the only way
+in.
+
+The token is passed in the environment, not on the command line, so it stays out of `docker ps`
+and `docker inspect`. To pin a cloudflared release instead of following `latest`, set
+`CLOUDFLARED_IMAGE`.
+
 ## Deploying without downtime
 
 Use `scripts/deploy.sh` for every update, including `.env` changes:
