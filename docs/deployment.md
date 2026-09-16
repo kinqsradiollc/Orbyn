@@ -58,8 +58,10 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
 10. **Logs.** The API logs JSON to stdout with the authorization header and passwords redacted; the
     worker logs retry events as JSON. Ship stdout to your log system.
 11. **Desktop installers.** `npm run package -w desktop` builds dmg/nsis/AppImage. Set
-    `VITE_API_URL=https://api.example.com` before `npm run build -w desktop` so the Electron app
-    talks to production instead of localhost.
+    `VITE_API_URL=https://your-domain/api` before `npm run build -w desktop` so the Electron app
+    talks to production instead of localhost. In a browser the web app needs nothing: it calls
+    `/api` on the address it was served from. The mobile app needs the same address in
+    `EXPO_PUBLIC_API_URL`.
 
 ## Public access through a Cloudflare tunnel
 
