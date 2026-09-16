@@ -225,6 +225,23 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Public access without opening a port: Cloudflare connects to this container,
+  # which reaches the gateway's web port (the app, with the API under /api).
+  # Needs CLOUDFLARE_TUNNEL_TOKEN in .env; start it with
+  #   docker compose --profile tunnel up -d
+  cloudflared:
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:latest}
+    profiles: [tunnel]
+    # The token goes in the environment, not the command line, so it stays out
+    # of `docker ps` and `docker inspect`.
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      TUNNEL_METRICS: 127.0.0.1:2000
+    depends_on:
+      gateway: { condition: service_healthy }
+    restart: unless-stopped
+
   mailpit:
     image: axllent/mailpit:v1.29
     ports: ["127.0.0.1:8025:8025", "127.0.0.1:1025:1025"]
