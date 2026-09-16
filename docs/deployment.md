@@ -37,7 +37,9 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
    endpoint. Run the `migrate` command once per deploy, directly against the primary, before
    starting new service containers.
 3. **TLS and load balancing.** Put a load balancer (a cloud load balancer, Caddy, Traefik) in front
-   of two or more gateways and the web container. The mobile app and browsers must reach the API
+   of two or more gateways and the web container. Or serve the stack through
+   [a Cloudflare tunnel](#public-access-through-a-cloudflare-tunnel), where Cloudflare handles TLS
+   and the machine needs no open port. The mobile app and browsers must reach the API
    over HTTPS. Set `GATEWAY_TRUSTED_PROXIES` to the load balancer's ranges so rate limits see real
    client addresses, and leave `GATEWAY_RATE_LIMIT_EXEMPT` empty.
 4. **CORS.** Set `CORS_ORIGINS` to your web origin(s), for example `https://app.example.com`.
