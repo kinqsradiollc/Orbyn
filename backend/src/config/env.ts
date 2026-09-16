@@ -56,8 +56,12 @@ const schema = z.object({
   DEPLOY_URL: z.string().default(""),
   /** Parallel delivery lanes in the reminder service. */
   NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
-  /** Where people open the web app; used in booking links sent by email. */
-  APP_URL: z.string().default("http://localhost:8081"),
+  /**
+   * Where people open the web app; used in booking links sent by email.
+   * The default is the Compose stack's web port. Expo's dev server owns 8081,
+   * so a link there would open the mobile bundler instead of the app.
+   */
+  APP_URL: z.string().default("http://localhost:8080"),
   /**
    * "true" lets webhooks call private network addresses (local development
    * and tests only). Otherwise they must reach a public address.
