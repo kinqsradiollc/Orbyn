@@ -1,81 +1,60 @@
 /* Assistant chat. Namespaced "ai-" so it never collides with global.css. */
-/* The assistant page is exactly one screen tall under the pinned top bar:
-   the heading stays at the top, the card fills the rest, and only the
-   conversation scrolls, so the chat header and composer never move. */
+/* The whole content area is the chat: one screen tall under the pinned top
+   bar (and any banner above it), on one flat surface, with no page heading
+   or footer. Only the conversation scrolls; the slim top row and the
+   composer never move. */
+.shell:has(.ai-chat) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--color-surface);
+}
 .content:has(.ai-chat) {
+  flex: 1;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  height: calc(100dvh - var(--topbar-h, 77px));
+  width: 100%;
+  max-width: none;
   min-height: 0;
-  /* A chat reads best in one column: cap the page so the heading and the
-     card share the same width on wide monitors, centred in the shell. */
-  max-width: 1160px;
-  padding-top: 28px;
-  padding-bottom: 16px;
+  margin: 0;
+  padding: 0;
 }
-/* The heading is compact here (the card repeats the title), and the page
-   footer is left out so the conversation gets the room instead. */
-.content:has(.ai-chat) .page-heading {
-  margin-bottom: 18px;
-}
-.content:has(.ai-chat) > footer {
-  display: none;
+.content:has(.ai-chat) > .error {
+  margin: 12px 16px 0;
 }
 .content:has(.ai-chat) > .view-enter {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
-.ai-chat.card {
-  --ai-column: 800px;
-  --ai-inset: clamp(20px, 4vw, 48px);
+.ai-chat {
+  --ai-column: 760px;
+  --ai-inset: clamp(16px, 3vw, 32px);
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 0;
-  margin-bottom: 0;
 }
+/* Before the first message the section itself may scroll on a very short
+   window, so the composer and suggestions stay reachable. */
+.ai-chat.is-empty {
+  overflow: hidden auto;
+}
+
+/* Slim top row: just the "New chat" button, once there is a conversation. */
 .ai-chat-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px var(--ai-inset);
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px var(--ai-inset);
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
-}
-.ai-chat-title {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  gap: 4px;
-}
-.ai-chat-title strong {
-  font-family: "Manrope", sans-serif;
-  font-size: 15px;
-}
-.ai-chat-title small {
-  color: var(--muted);
-  font-size: 12px;
-}
-.ai-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  background: var(--color-accentSoft);
-  color: var(--green);
-}
-.ai-avatar-small {
-  width: 28px;
-  height: 28px;
-  margin-top: 2px;
 }
 .ai-ghost {
   display: inline-flex;
@@ -92,6 +71,18 @@
 .ai-ghost:hover:not(:disabled) {
   background: var(--color-surfaceMuted);
 }
+.ai-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ai-ghost.ai-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* The conversation: a centred column that scrolls behind the composer. */
 .ai-thread {
   flex: 1;
   min-height: 0;
@@ -99,61 +90,49 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 28px max(var(--ai-inset), calc((100% - var(--ai-column)) / 2));
+  gap: 28px;
+  padding: 8px max(var(--ai-inset), calc((100% - var(--ai-column)) / 2)) 36px;
   scrollbar-gutter: stable both-edges;
 }
-/* Centred while it fits; when it is taller than the window it starts at
-   the top and scrolls, instead of clipping its heading (auto margins would). */
-.ai-thread:has(.ai-empty) {
-  justify-content: safe center;
+/* Empty: the greeting sits about 40% of the way down, the composer directly
+   under it, the suggestions under that, and the note at the very bottom. */
+.ai-chat.is-empty .ai-thread {
+  flex: 0 1 44%;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding-bottom: 28px;
 }
-.ai-empty {
-  text-align: center;
-  width: 100%;
-  max-width: 680px;
-  margin: 0 auto;
-  padding: 16px 0;
-  flex-shrink: 0;
-}
-.ai-empty-mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: inline-grid;
-  place-items: center;
-  background: var(--color-accentSoft);
-  color: var(--green);
-  margin-bottom: 20px;
-}
-.ai-empty h2 {
+.ai-greeting {
   font-family: "Manrope", sans-serif;
-  font-size: clamp(24px, 3vw, 30px);
-  margin: 0 0 12px;
+  font-size: clamp(24px, 2.2vw, 28px);
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+  text-align: center;
+  margin: 0;
+  flex-shrink: 0;
+  animation: motion-fade-up var(--motion-slow) var(--ease-out) backwards;
 }
-.ai-empty p {
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.7;
-  max-width: 520px;
-  margin: 0 auto 28px;
-}
+
+/* Suggestions under the composer: plain rows, an icon and one line each. */
 .ai-suggestions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   text-align: left;
 }
 .ai-suggestions button {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 14px;
   text-align: left;
-  padding: 20px 40px 20px 20px;
-  line-height: 1.5;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 0 16px;
+  line-height: 1.4;
+  border: 0;
+  border-radius: 14px;
   background: #fff;
   cursor: pointer;
   transition:
@@ -166,20 +145,23 @@
   border-color: #cfe0d4;
   background: #f6f9f5;
 }
-.ai-suggestions strong {
-  font-size: 14px;
-  color: var(--color-text);
+.ai-suggestions button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .ai-suggestions span {
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 15px;
+  color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ai-suggestions svg {
-  position: absolute;
-  top: 14px;
-  right: 14px;
+  flex-shrink: 0;
   color: var(--green);
 }
+/* Messages. */
 .ai-row {
   display: flex;
   gap: 14px;
@@ -200,9 +182,9 @@
   animation-name: motion-slide-from-right;
 }
 .ai-bubble {
-  border-radius: 16px;
-  padding: 20px 24px;
-  line-height: 1.75;
+  border-radius: 20px;
+  padding: 12px 18px;
+  line-height: 1.6;
   font-size: 16px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -210,11 +192,21 @@
 .ai-bubble-user {
   background: var(--green);
   color: #fff;
-  border-bottom-right-radius: 5px;
-  max-width: min(640px, 85%);
+  border-bottom-right-radius: 6px;
+  max-width: 75%;
 }
-/* Replies size to their content: a one-liner stays a short bubble, a long
-   answer or a table wraps at the column's width. */
+/* Replies are plain text across the column; only the typing dots keep a
+   quiet bubble. */
+.ai-reply {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+}
 .ai-bubble-bot {
   background: #f6f8f6;
   border: 1px solid var(--border);
@@ -387,54 +379,100 @@
   color: var(--green);
   font-weight: 600;
 }
-/* Keep the composer aligned with the centered conversation column. */
-.ai-composer {
+
+/* The composer dock: pinned under the conversation, as wide as the column.
+   The list scrolls behind it, fading out just above it. */
+.ai-dock {
+  position: relative;
   flex-shrink: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
+  gap: 18px;
   width: calc(100% - var(--ai-inset) * 2);
   max-width: var(--ai-column);
   align-self: center;
+  padding-bottom: 6px;
+}
+.ai-chat:not(.is-empty) .ai-dock::before {
+  content: "";
+  position: absolute;
+  left: calc(50% - 50vw);
+  right: calc(50% - 50vw);
+  bottom: 100%;
+  height: 36px;
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
+  pointer-events: none;
+}
+/* One pill: quick actions, the field, send. */
+.ai-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0;
-  padding: 18px 18px 12px 22px;
+  padding: 6px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 26px;
   box-shadow: 0 6px 24px rgba(39, 56, 47, 0.07);
 }
 .ai-composer:focus-within {
   border-color: #b9d0c0;
 }
-/* Two lines at rest (three on tall windows); AssistantView grows it up to
-   40% of the window, then it scrolls inside. */
+/* One line at rest; AssistantView grows it with its text up to the
+   max-height (about eight lines), then it scrolls inside. */
 .ai-composer textarea {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: 0;
   outline: 0;
   resize: none;
   font: inherit;
   font-size: 16px;
-  line-height: 1.6;
-  padding: 4px 6px 4px 0;
-  min-height: calc(1.6em * 2 + 8px);
-  max-height: 40vh;
-  max-height: 40dvh;
-  overflow-y: auto;
+  line-height: 1.5;
+  padding: 8px 6px;
+  min-height: calc(1.5em + 16px);
+  max-height: calc(1.5em * 8 + 16px);
+  overflow-y: hidden;
   background: transparent;
   color: var(--color-text);
 }
-.ai-composer-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.ai-composer textarea::placeholder {
+  color: var(--muted);
 }
-.ai-composer-hint {
-  min-width: 0;
-  font-size: 12px;
+/* The focus ring follows the pill instead of drawing a box inside it. */
+.ai-composer textarea:focus,
+.ai-composer textarea:focus-visible {
+  outline: 0;
+}
+.ai-composer:has(textarea:focus-visible) {
+  outline: 2px solid var(--color-focusSoft);
+  outline-offset: 2px;
+}
+.ai-tool {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--color-textSoft);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+.ai-tool:hover:not(:disabled) {
+  background: var(--color-surfaceMuted);
+}
+.ai-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .ai-send {
   width: 40px;
@@ -457,8 +495,21 @@
     border-color var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
 }
+.ai-send:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ai-ghost:focus-visible,
+.ai-tool:focus-visible,
+.ai-send:focus-visible,
+.ai-suggestions button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .ai-send:active:not(:disabled),
+  .ai-tool:active:not(:disabled),
   .ai-ghost:active:not(:disabled),
   .ai-suggestions button:active:not(:disabled) {
     transform: scale(var(--motion-press-scale));
@@ -472,77 +523,60 @@
     box-shadow: 0 6px 18px #1c31240d;
   }
 }
-.ai-send:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
+
+/* The privacy note: one tiny line at the very bottom of the view. */
 .ai-note {
   display: block;
+  flex-shrink: 0;
+  margin-top: auto;
   text-align: center;
   color: var(--muted);
   font-size: 11px;
-  padding: 8px 22px 12px;
+  padding: 6px var(--ai-inset) 10px;
 }
-@media (min-height: 900px) {
-  .ai-composer textarea {
-    min-height: calc(1.6em * 3 + 8px);
-  }
-}
+
 /* Phones and narrow windows (the shell's own breakpoint): the column is the
-   whole card, the header wraps, and bubbles take more of the width. */
+   whole width with small gutters, and bubbles take more of it. */
 @media (max-width: 800px) {
-  .content:has(.ai-chat) {
-    padding-top: 20px;
-    padding-bottom: 12px;
+  .ai-chat {
+    --ai-inset: 12px;
   }
-  .ai-chat.card {
-    --ai-inset: 16px;
+  .ai-chat-head {
+    min-height: 44px;
+    padding: 4px var(--ai-inset);
   }
   .ai-thread {
     gap: 20px;
-    padding: 20px var(--ai-inset);
+    padding-top: 4px;
+    padding-bottom: 28px;
     scrollbar-gutter: auto;
+  }
+  .ai-greeting {
+    font-size: 22px;
   }
   .ai-row {
     gap: 8px;
   }
   .ai-bubble {
-    padding: 16px;
+    padding: 10px 14px;
     font-size: 15px;
   }
   .ai-bubble-user {
-    max-width: 90%;
+    max-width: 85%;
   }
-  .ai-composer {
-    padding: 14px;
+  .ai-reply {
+    font-size: 15px;
+    line-height: 1.65;
   }
-  .ai-chat-head {
-    flex-wrap: wrap;
+  .ai-dock {
+    gap: 12px;
   }
-  .ai-chat-title {
-    flex-basis: calc(100% - 50px);
-  }
-  .ai-empty {
-    padding: 0;
-  }
-  .ai-empty p {
-    margin-bottom: 20px;
-  }
-  .ai-chat-head {
-    padding: 12px 16px;
+  .ai-suggestions button {
+    min-height: 52px;
+    padding: 0 12px;
   }
   .ai-note {
-    padding: 6px 16px 10px;
-  }
-}
-/* The keyboard hint wraps on small phones; it stays as the field's
-   description for assistive tech. */
-@media (max-width: 480px) {
-  .ai-composer-hint {
-    display: none;
-  }
-  .ai-composer-bar {
-    justify-content: flex-end;
+    padding: 4px var(--ai-inset) 8px;
   }
 }
 
@@ -573,7 +607,7 @@
 }
 
 /* Tables scroll sideways inside their own box, so a wide one never widens
-   the bubble or the page on a phone. */
+   the column or the page on a phone. */
 .ai-table-wrap {
   max-width: 100%;
   overflow-x: auto;
@@ -600,7 +634,7 @@
   padding: 12px 14px;
   text-align: left;
   vertical-align: top;
-  /* The bubble breaks anywhere; cells break at words so the table scrolls. */
+  /* The reply breaks anywhere; cells break at words so the table scrolls. */
   overflow-wrap: normal;
   word-break: normal;
 }
@@ -657,59 +691,30 @@
   }
 }
 
-/* With a maintenance or update banner above the top bar, the page shell is
-   one screen tall and the assistant takes whatever space is left, so the
-   composer never drops below the screen. */
-.shell:has(.ai-chat) {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-.shell:has(.ai-chat) > .content:has(.ai-chat) {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
-
-/* Leave room for the conversation on short windows and landscape phones. */
+/* Short windows and landscape phones: the greeting sits higher, the rows
+   are tighter, and the field grows less before it scrolls. */
 @media (max-height: 700px) {
-  .content:has(.ai-chat) {
-    padding-top: 14px;
-    padding-bottom: 10px;
-  }
-  .content:has(.ai-chat) .page-heading {
-    margin-bottom: 12px;
-  }
-  /* The card's header already names the assistant. */
-  .content:has(.ai-chat) .page-heading p {
-    display: none;
-  }
-  .ai-chat-head {
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-  .ai-thread {
-    padding-top: 18px;
+  .ai-chat.is-empty .ai-thread {
+    flex-basis: 34%;
     padding-bottom: 18px;
   }
-  .ai-empty-mark {
-    width: 44px;
-    height: 44px;
-    margin-bottom: 12px;
+  .ai-chat-head {
+    min-height: 44px;
   }
-  .ai-empty h2 {
+  .ai-greeting {
     font-size: 22px;
-    margin-bottom: 8px;
   }
-  .ai-empty p {
-    margin-bottom: 16px;
+  .ai-dock {
+    gap: 10px;
+  }
+  .ai-suggestions button {
+    min-height: 46px;
   }
   .ai-composer textarea {
-    min-height: calc(1.6em * 1 + 8px);
-    max-height: 25dvh;
+    max-height: calc(1.5em * 5 + 16px);
   }
   .ai-note {
-    padding-top: 6px;
-    padding-bottom: 8px;
+    padding-top: 4px;
+    padding-bottom: 6px;
   }
 }
