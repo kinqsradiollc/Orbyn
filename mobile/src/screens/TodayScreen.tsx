@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
   inProgressEmpty,
   emptyPlans,
@@ -25,6 +25,8 @@ import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const COMING_UP = 5;
+/** From this window width the four stat tiles share one row. */
+const WIDE = 600;
 
 /**
  * Overview: four stat cards, then the work that matters now. Each item shows
@@ -55,6 +57,7 @@ export function TodayScreen({
   onOpenPlanner: (seed: Plan | null) => void;
 }) {
   const now = new Date();
+  const wide = useWindowDimensions().width >= WIDE;
   const {
     pending: open,
     attention,
@@ -98,7 +101,11 @@ export function TodayScreen({
       <QuickAdd userId={userId} onCreated={onQuickAdded} onAsk={onAsk} />
       <View style={s.stats}>
         {stats.map((stat, n) => (
-          <FadeIn key={stat.label} index={n} style={s.statCell}>
+          <FadeIn
+            key={stat.label}
+            index={n}
+            style={[s.statCell, wide && s.statCellWide]}
+          >
             <View
               style={s.stat}
               accessible
@@ -263,6 +270,7 @@ const s = themed(() =>
       marginBottom: 18,
     },
     statCell: { width: "50%", padding: 5 },
+    statCellWide: { width: "25%" },
     stat: {
       backgroundColor: colors.surface,
       borderWidth: 1,

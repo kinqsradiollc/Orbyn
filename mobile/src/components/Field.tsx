@@ -286,7 +286,12 @@ const s = themed(() =>
       paddingHorizontal: 15,
     },
     pickActive: { borderColor: colors.accent },
-    pickText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    pickText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+    },
     clear: {
       width: 44,
       height: 50,

@@ -7,6 +7,7 @@ import {
   Text,
   Vibration,
   View,
+  useWindowDimensions,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -64,6 +65,8 @@ const DAY_SHIFT = 72;
 const MAX_DAY_SHIFT = 6;
 /** Width of each teammate's busy strip, and the gap after it. */
 const STRIP = 4;
+/** Blocks shorter than this (at the default text size) show one line only. */
+const COMPACT_HEIGHT = 44;
 
 /** An occurrence of an item, time set aside for a task, or a planned block not saved yet. */
 export type TimelineSlot =
@@ -299,6 +302,8 @@ export function DayTimeline({
 }) {
   const now = useNow(60_000);
   const { listById } = usePlanning();
+  /** Two lines of title need more room at larger text sizes. */
+  const compactBelow = COMPACT_HEIGHT * useWindowDimensions().fontScale;
   const [drag, setDragState] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   /** The hours shown when a drag began, kept still until it ends. */
@@ -849,7 +854,7 @@ export function DayTimeline({
           ))}
           {placed.map((p) => {
             const slot = p.slot;
-            const compact = p.height < 44;
+            const compact = p.height < compactBelow;
             const range = `${timeLabel(p.start)} – ${timeLabel(p.end)}`;
             const box = {
               position: "absolute" as const,

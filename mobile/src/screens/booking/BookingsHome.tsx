@@ -30,7 +30,7 @@ import { client } from "../../lib/api";
 import { minutesLabel, rangeLabel, shareText } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { FadeIn, animateLayout } from "../../motion";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, fonts, radii, spacing, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
   EMPTY_VIEW,
@@ -410,9 +410,7 @@ function Stats({ stats }: { stats: BookingStats | null }) {
           <Text style={[s.statValue, t.warn && { color: colors.warning }]}>
             {t.value ?? "–"}
           </Text>
-          <Text style={shared.small} numberOfLines={1}>
-            {t.label}
-          </Text>
+          <Text style={shared.small}>{t.label}</Text>
           {!!t.sub && (
             <Text style={[shared.small, s.statSub]} numberOfLines={2}>
               {t.sub}
@@ -683,8 +681,8 @@ const s = themed(() =>
     search: { marginBottom: 12, justifyContent: "center" },
     searchIcon: { position: "absolute", left: 15, zIndex: 1 },
     searchInput: { paddingLeft: 42 },
-    pageScroll: { marginHorizontal: -20, marginTop: 12 },
-    pageChips: { paddingHorizontal: 20 },
+    pageScroll: { marginHorizontal: -spacing.page, marginTop: 12 },
+    pageChips: { paddingHorizontal: spacing.page },
     noWrap: { flexWrap: "nowrap" },
     dayHeading: { marginTop: 4 },
     row: {

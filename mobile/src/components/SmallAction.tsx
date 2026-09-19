@@ -20,6 +20,7 @@ export function SmallAction({
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
+      hitSlop={{ top: 6, bottom: 6 }}
       onPress={onPress}
       style={({ pressed }) => [
         s.action,

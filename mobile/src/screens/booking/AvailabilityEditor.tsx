@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import type { BookingAvailability } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ClockField, DateField, Field } from "../../components/Field";
@@ -29,6 +29,8 @@ export type CustomWeek = Omit<
 >;
 
 const MODES = ["working_hours", "custom"] as const;
+/** Below this window width a day's hours go under its name, not beside it. */
+const SIDE_BY_SIDE = 480;
 
 /** Start and end fields per range, a remove button each, and "Add hours". */
 function Ranges({
@@ -125,6 +127,7 @@ export function AvailabilityEditor({
   onOverrides: (overrides: OverrideDraft[]) => void;
 }) {
   const device = deviceTimeZone();
+  const narrow = useWindowDimensions().width < SIDE_BY_SIDE;
   const custom = availability.mode === "custom" ? availability : null;
   const setWeekly = (weekly: CustomWeek["weekly"]) =>
     custom &&
@@ -192,8 +195,10 @@ export function AvailabilityEditor({
               .filter((r) => r.day === d)
               .map(({ start, end }) => ({ start, end }));
             return (
-              <View key={d} style={s.day}>
-                <Text style={s.dayName}>{WEEKDAYS[d]}</Text>
+              <View key={d} style={[s.day, narrow && s.dayStacked]}>
+                <Text style={[s.dayName, narrow && s.dayNameStacked]}>
+                  {WEEKDAYS[d]}
+                </Text>
                 <View style={{ flex: 1 }}>
                   <Ranges
                     label={WEEKDAYS[d]}
@@ -311,6 +316,8 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
+    /** Narrow screens: the name above the hours, so each range keeps its width. */
+    dayStacked: { flexDirection: "column", gap: 6 },
     dayName: {
       width: 38,
       paddingTop: 15,
@@ -318,6 +325,7 @@ const s = themed(() =>
       fontSize: 14,
       color: colors.text,
     },
+    dayNameStacked: { width: "100%", paddingTop: 0 },
     empty: { paddingTop: 16, marginBottom: 8 },
     range: { marginBottom: 8 },
     dash: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },

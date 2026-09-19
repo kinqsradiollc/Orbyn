@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   dateLabel,
@@ -56,6 +57,8 @@ import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
+/** Line height of the update box; it grows to five lines before scrolling. */
+const NOTE_LINE = 21;
 /** Every status, closed ones last. */
 const STATUS_CHOICES: Status[] = [...statusOrder, "cancelled"];
 /** A task, its subtasks and theirs: the server's limit. */
@@ -162,6 +165,7 @@ function Body({
   const [composing, setComposing] = useState(false);
   const area = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(area);
+  const { fontScale } = useWindowDimensions();
   /** Progress being chosen, saved half a second after the last tap. */
   const [draft, setDraft] = useState<number | null>(null);
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -884,7 +888,11 @@ function Body({
             )}
             <View style={s.footerRow}>
               <TextInput
-                style={[shared.input, s.noteInput]}
+                style={[
+                  shared.input,
+                  s.noteInput,
+                  { maxHeight: NOTE_LINE * 5 * fontScale + 26 },
+                ]}
                 value={note}
                 onChangeText={setNote}
                 onFocus={() => setComposing(true)}
@@ -1373,13 +1381,8 @@ const s = themed(() =>
       paddingBottom: 10,
     },
     footerRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
-    /** Grows to five lines of 21 pt, then scrolls inside. */
-    noteInput: {
-      flex: 1,
-      minHeight: 50,
-      maxHeight: 21 * 5 + 26,
-      lineHeight: 21,
-    },
+    /** Grows to five lines, then scrolls inside (see NOTE_LINE). */
+    noteInput: { flex: 1, minHeight: 50, lineHeight: NOTE_LINE },
     composerLabel: { marginTop: 0 },
     send: {
       width: 50,

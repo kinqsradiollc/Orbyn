@@ -69,6 +69,11 @@ const s = themed(() =>
     },
     secondaryPressed: { backgroundColor: colors.surfaceMuted },
     disabled: { opacity: 0.45 },
-    text: { fontFamily: fonts.semibold, fontSize: 15 },
+    text: {
+      flexShrink: 1,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+    },
   }),
 );

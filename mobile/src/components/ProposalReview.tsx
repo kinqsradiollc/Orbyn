@@ -415,12 +415,14 @@ const s = themed(() =>
     },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     chip: {
+      maxWidth: "100%",
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.pill,
       paddingHorizontal: 9,
       paddingVertical: 4,
     },
     chipText: {
+      flexShrink: 1,
       fontFamily: fonts.medium,
       fontSize: 12,
       color: colors.textSoft,
@@ -469,6 +471,7 @@ const s = themed(() =>
       marginTop: 12,
     },
     followUp: {
+      maxWidth: "100%",
       backgroundColor: colors.background,
       borderWidth: 1,
       borderColor: colors.softBorder,
@@ -478,6 +481,7 @@ const s = themed(() =>
     },
     followUpPressed: { backgroundColor: colors.accentSoft },
     followUpText: {
+      flexShrink: 1,
       fontFamily: fonts.medium,
       fontSize: 12,
       color: colors.accent,
