@@ -13,6 +13,7 @@ import "./setup.js";
  */
 process.env.SMTP_HOST = "";
 const { buildApp } = await import("../src/app.js");
+const { largestFreeMinutes } = await import("../src/modules/planner/plans.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
@@ -118,6 +119,26 @@ before(async () => {
 after(async () => {
   await app.close();
   await pool.end();
+});
+
+test("the score's size reference skips a day with no room left for a block", async () => {
+  const me = await newUser();
+  const today = localDateKey(new Date(), TZ);
+  // Mid-morning: the rest of the 9-to-5 day is the reference.
+  const morning = await largestFreeMinutes(
+    pool,
+    me.id,
+    dayTime(today, 10 * 60, TZ),
+  );
+  assert.equal(morning, 7 * 60);
+  // Ten minutes before the day ends, nothing plannable fits today, so the
+  // next working day is the reference instead of a 10-minute scrap.
+  const lateInTheDay = await largestFreeMinutes(
+    pool,
+    me.id,
+    dayTime(today, 16 * 60 + 50, TZ),
+  );
+  assert.equal(lateInTheDay, 8 * 60);
 });
 
 test("items carry a priority score and sort by it, or by due, priority, estimate, title and age", async () => {

@@ -640,8 +640,9 @@ export async function workingFree(
 
 /**
  * The longest free working stretch left today, in minutes, or on the next
- * working day once today's hours are over. The priority score's size term
- * compares estimates with it.
+ * working day once today can't hold even one minimum block (the planner's
+ * `min_block_minutes`): with a few minutes to go, today is over for planning
+ * purposes. The priority score's size term compares estimates with it.
  */
 export async function largestFreeMinutes(
   db: Db,
@@ -658,9 +659,11 @@ export async function largestFreeMinutes(
     if (!spans.length) continue;
     const busy = await busyIntervals(db, userId, from, to);
     const free = freeSpans(spans, busy);
-    return Math.round(
+    const largest = Math.round(
       Math.max(0, ...free.map((s) => (s.end - s.start) / 60_000)),
     );
+    if (i === 0 && largest < prefs.min_block_minutes) continue;
+    return largest;
   }
   return 0;
 }
