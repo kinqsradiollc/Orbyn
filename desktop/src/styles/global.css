@@ -105,6 +105,9 @@ small {
   background: #fff;
   border-right: 1px solid var(--border);
   padding: 34px 20px 20px;
+  /* Short windows: the navigation scrolls instead of being cut off. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .brand {
   display: flex;
@@ -310,7 +313,14 @@ nav button i,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 31px;
+}
+.page-heading > div {
+  min-width: 0;
+}
+.page-heading h1 {
+  overflow-wrap: anywhere;
 }
 .eyebrow {
   display: block;
@@ -360,7 +370,7 @@ nav button i,
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   background: white;
   border: 1px solid var(--border);
   border-radius: 11px;
@@ -373,6 +383,9 @@ nav button i,
 }
 .stats > div:last-child {
   border: 0;
+}
+.stats > div {
+  min-width: 0;
 }
 .stats > div > span {
   display: flex;
@@ -907,7 +920,10 @@ footer svg {
 .modal {
   background: white;
   width: 530px;
+  /* Never wider than the backdrop's padding allows on a phone. */
+  max-width: 100%;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow: auto;
   border-radius: 13px;
   box-shadow: 0 20px 90px #1c312433;
@@ -1061,7 +1077,7 @@ footer svg {
     padding-top: 50px;
   }
   .overview-grid {
-    grid-template-columns: 1.8fr 1fr;
+    grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
   }
   .assistant-card {
     min-height: 370px;
@@ -1082,7 +1098,7 @@ footer svg {
     padding: 0 25px;
   }
   .overview-grid {
-    grid-template-columns: 1.4fr 1fr;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     gap: 17px;
   }
   .stats > div {
@@ -1150,7 +1166,7 @@ footer svg {
   }
   .overview-grid > div:nth-child(2) {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
   }
   .assistant-card {
@@ -1220,6 +1236,15 @@ footer svg {
   }
   .chat {
     padding: 15px;
+  }
+  .modal-backdrop {
+    padding: 12px;
+  }
+  .modal form {
+    padding: 18px 16px;
+  }
+  .stats > div {
+    padding: 0 10px;
   }
 }
 
@@ -1830,7 +1855,7 @@ footer svg {
 
 /* Overview */
 .stats-4 {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .stats > .stat-blocked strong {
   color: var(--status-blocked-fg);
@@ -2085,7 +2110,7 @@ footer svg {
     grid-template-columns: repeat(min(var(--cols, 4), 2), minmax(0, 1fr));
   }
   .stats-4 {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     row-gap: 18px;
   }
   .stats-4 > div:nth-child(2) {
@@ -2137,6 +2162,50 @@ footer svg {
 @media (max-width: 800px) {
   .shell {
     --topbar-h: 60px;
+  }
+}
+/* The breadcrumb gives way before the actions do, and clips with an
+   ellipsis rather than pushing the bell off screen. */
+.topbar > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar > div {
+  flex-shrink: 0;
+}
+
+/* Touch screens: comfortable targets without changing the pointer layout.
+   Checkboxes keep their size and gain an invisible hit area around them. */
+@media (pointer: coarse) {
+  .icon-button {
+    padding: 9px;
+  }
+  .check {
+    position: relative;
+  }
+  .check::after {
+    content: "";
+    position: absolute;
+    inset: -12px;
+  }
+  nav button {
+    min-height: 44px;
+  }
+  .tabs button,
+  .segmented button,
+  .filter-chips button,
+  .day-toggles button,
+  .status-picker button,
+  .progress-snaps button,
+  .booking-jump button,
+  .ai-follow-ups button {
+    min-height: 40px;
+  }
+  .primary,
+  .secondary {
+    min-height: 42px;
   }
 }
 

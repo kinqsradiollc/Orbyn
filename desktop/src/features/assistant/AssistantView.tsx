@@ -51,15 +51,22 @@ export function AssistantView({
     el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
   }, [turns.length, thinking]);
 
-  // Grow the composer with its content (three lines at rest) up to about
-  // 40% of the window; past that it scrolls inside.
+  // Grow the composer with its content up to about 40% of the window; past
+  // that it scrolls inside. The resting height is the stylesheet's
+  // min-height (two lines, one on short windows, three on tall ones). Text
+  // rewraps when the window changes size, so it is measured again then.
   useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = Math.round(window.innerHeight * COMPOSER_MAX_SHARE);
-    el.style.height = Math.min(el.scrollHeight, max) + "px";
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    const fit = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.style.height = "auto";
+      const max = Math.round(window.innerHeight * COMPOSER_MAX_SHARE);
+      el.style.height = Math.min(el.scrollHeight, max) + "px";
+      el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
   }, [message]);
 
   const send = () => {
@@ -181,7 +188,7 @@ export function AssistantView({
       >
         <textarea
           ref={inputRef}
-          rows={3}
+          rows={1}
           aria-label="Message your assistant"
           aria-describedby="ai-composer-hint"
           placeholder="Make a little space. Ask Orbyn…"
