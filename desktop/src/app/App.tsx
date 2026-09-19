@@ -11,6 +11,7 @@ import {
   type Status,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { setPageMeta } from "../lib/seo";
 import { usePlanner } from "../hooks/usePlanner";
 import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
@@ -126,18 +127,33 @@ export function App() {
     if (!token && path === "/app") navigatePath("/login", true);
   }, [token, path]);
   useEffect(() => {
-    // Public booking pages set their own titles.
+    // Public booking pages set their own titles and say noindex themselves.
     if (isPublicBooking) return;
-    document.title =
-      path === "/status"
-        ? "Service status · Orbyn"
-        : path === "/"
-          ? "Orbyn — Your life, in a better orbit"
+    const app =
+      "Tasks, calendar, planning and team time in one place, on your own server.";
+    setPageMeta(
+      path === "/"
+        ? {
+            title: "Orbyn — Your life, in a better orbit",
+            description: `${app} Plan your day, protect your focus and make time for the people who matter.`,
+            index: true,
+          }
+        : path === "/status"
+          ? {
+              title: "Service status · Orbyn",
+              description: "Whether every part of Orbyn is up right now.",
+              index: false,
+            }
           : token
-            ? view + " · Orbyn"
+            ? { title: view + " · Orbyn", description: app, index: false }
             : path === "/login"
-              ? "Sign in · Orbyn"
-              : "Create your space · Orbyn";
+              ? { title: "Sign in · Orbyn", description: app, index: false }
+              : {
+                  title: "Create your space · Orbyn",
+                  description: app,
+                  index: false,
+                },
+    );
   }, [path, token, view, isPublicBooking]);
 
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
