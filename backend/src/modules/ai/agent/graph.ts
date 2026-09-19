@@ -64,6 +64,7 @@ const PLAN_RULES = `Reply with one JSON object that has "summary" and "actions".
   - create: {"operation": "create", "data": {the new item}}
   - update: {"operation": "update", "item_id": "<the item's id from the planner data, like i3>", "data": {"title": <the new or current title>, and ONLY the fields that change; null for every other field}}
   - delete: {"operation": "delete", "item_id": "<the item's id, like i3>"}, only when the user asked to delete, remove or cancel it.
+- When the user says something happened ("the oral defence has been completed", "I paid the bill", "the meeting got cancelled"), update that item's status to "done" (or "cancelled" when it was called off); never just acknowledge it.
 - Items in the planner data have short ids (i1, i2, …): copy them exactly. If the item isn't there, say you couldn't find it and propose nothing for it.
 - If you can't tell which item the user means (several match), or an event has no time, ask one short question in "summary" and return no actions. Never ask for confirmation: the user approves every proposal anyway.
 - Times are ISO 8601 with the user's UTC offset for that date. A task with a day but no time is due at 09:00 that day. Events need a start time, and an end after it.`;

@@ -29,9 +29,17 @@ const COMPARED = [
 
 /** Words that ask for a change to the planner. */
 const CHANGE_INTENT =
-  /\b(add|create|make|schedule|book|plan|put|set|remind|move|reschedule|change|update|edit|rename|shift|push|postpone|delay|bring|mark|complete|finish|finished|done|tick|check off|start|block|unblock|progress|delete|remove|cancel|clear|drop|erase|trash|get rid of|archive|share|assign|prioriti[sz]e|split|duplicate|copy)\b/i;
+  /\b(add|create|make|schedule|book|plan|put|set|remind|move|reschedule|change|update|edit|rename|shift|push|postpone|delay|bring|mark|complete[ds]?|finish(?:ed|es)?|done|tick|check off|start|block|unblock|progress|delete|remove|cancel(?:l?ed)?|clear|drop|erase|trash|get rid of|archive|share|assign|prioriti[sz]e[ds]?|split|duplicate|copy)\b/i;
+/**
+ * Telling the assistant what happened ("the oral defence has been completed",
+ * "I paid the bill", "the meeting got cancelled", "the dentist didn't happen")
+ * asks for the item to be updated, even without a verb like "mark".
+ */
+const STATUS_STATEMENT =
+  /\b(?:is|was|are|were|has been|have been|had been|got|been|it['’]?s|that['’]?s|all)\s+(?:now\s+|already\s+|finally\s+)?(?:completed|done|finished|over|cancell?ed|called off|postponed|handled|sorted|resolved|submitted|delivered|attended|paid|sent|closed|wrapped up|taken care of|no longer needed|not happening|not needed)\b|\b(?:i|we)(?:['’]ve| have| already| just| finally)?\s+(?:already\s+|just\s+|finally\s+)?(?:did|done|finished|completed|attended|handled|sorted|submitted|delivered|paid|sent|went to|wrapped up|took care of|dealt with|got through|passed|skipped|missed)\b|\b(?:didn['’]?t|did not|won['’]?t|will not|isn['’]?t|is not) (?:happen|go ahead|take place|need)|\bno longer (?:need|relevant|happening)\b/i;
 /** Whether a message asks for any change to the planner. */
-export const wantsChanges = (message: string) => CHANGE_INTENT.test(message);
+export const wantsChanges = (message: string) =>
+  CHANGE_INTENT.test(message) || STATUS_STATEMENT.test(message);
 
 const DATE_OR_TIME =
   /\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week|next month|\d{1,2}(:\d{2})?\s?(am|pm)|\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*)\b/i;

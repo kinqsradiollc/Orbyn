@@ -605,6 +605,17 @@ test("only requests for changes may propose them", async () => {
     "Dinner with Sam Thursday 7pm",
     "Find the dentist appointment and move it to Friday",
     "Push watering the plants to next week",
+    // Telling the assistant what happened asks for the item to be updated.
+    "Oral defence has been completed",
+    "The oral defence is done",
+    "I finished the report",
+    "I've paid the electricity bill",
+    "We attended the dentist appointment",
+    "The team meeting got cancelled",
+    "Dentist didn't happen",
+    "That's sorted now",
+    "Mark the gym as done",
+    "Cancelled the dentist",
   ])
     assert.equal(mayChange(message), true, message);
   for (const message of [
@@ -613,8 +624,36 @@ test("only requests for changes may propose them", async () => {
     "Is the gym on Friday?",
     "Summarize my week",
     "Show me what's due next week",
+    "Is the oral defence done?",
+    "What did I finish this week?",
+    "Did the meeting get cancelled?",
   ])
     assert.equal(mayChange(message), false, message);
+});
+
+test("telling the assistant something happened lets it mark the item done", async () => {
+  const me = await newUser();
+  const item = await addItem(me.token, {
+    title: "Oral Defence",
+    kind: "event",
+    due_at: "2026-09-17T14:00:00+10:00",
+  });
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_update",
+          arguments: { changes: [{ id: item.id, fields: { status: "done" } }] },
+        },
+      ],
+    },
+    { content: "Proposed marking **Oral Defence** as done." },
+  );
+  const reply = await chat(me.token, "Oral defence has been completed");
+  assert.equal(reply.actions.length, 1);
+  assert.equal(reply.actions[0].operation, "update");
+  assert.equal(reply.actions[0].item_id, item.id);
+  assert.equal(reply.actions[0].data.status, "done");
 });
 
 test("a question proposes nothing, and asking drops earlier proposals", async () => {
