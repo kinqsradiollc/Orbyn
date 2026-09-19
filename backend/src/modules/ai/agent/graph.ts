@@ -33,8 +33,11 @@ import type { AgentResult } from "./loop.js";
  *
  * At most three model calls, and proposals still only come from the tools.
  */
-const DEADLINE_MS = 110_000;
-const ATTEMPT_MS = 45_000;
+// Under Cloudflare's 100 s limit on an origin's first byte: a reply that
+// takes longer reaches the browser as Cloudflare's HTML 524 page instead of
+// Orbyn's JSON. Two attempts must fit inside the deadline.
+const DEADLINE_MS = 85_000;
+const ATTEMPT_MS = 40_000;
 const MAX_HISTORY_CHARS = 4000;
 /** Room kept for the reply schema when fitting a request to the provider's limit. */
 const SCHEMA_RESERVE_BYTES = 8_000;

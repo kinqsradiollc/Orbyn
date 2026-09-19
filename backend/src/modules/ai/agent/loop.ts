@@ -28,8 +28,11 @@ import { runGraph } from "./graph.js";
 export const MAX_STEPS = 8;
 const MAX_CALLS_PER_STEP = 8;
 const GUARD_BUDGET = 2;
-const DEADLINE_MS = 110_000;
-const ATTEMPT_MS = 45_000;
+// Under Cloudflare's 100 s limit on an origin's first byte: a reply that
+// takes longer reaches the browser as Cloudflare's HTML 524 page instead of
+// Orbyn's JSON. Two attempts must fit inside the deadline.
+const DEADLINE_MS = 85_000;
+const ATTEMPT_MS = 40_000;
 const MAX_HISTORY_CHARS = 4000;
 
 export type AgentResult = {

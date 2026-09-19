@@ -114,6 +114,10 @@ tunnel healthy. The API's host port stays on `127.0.0.1` (`API_BIND`); the web p
 every interface unless you set `WEB_PORT=127.0.0.1:8080`, which leaves the tunnel as the only way
 in.
 
+Cloudflare waits at most 100 seconds for the first byte of a reply and then shows its own error
+page (HTTP 524). The AI assistant's deadline is 85 seconds so its answer always arrives first;
+if you raise it in `backend/src/modules/ai/agent/`, keep it under 100.
+
 The token is passed in the environment, not on the command line, so it stays out of `docker ps`.
 Docker administrators can still read it with `docker inspect`. To pin a cloudflared release instead of following `latest`, set
 `CLOUDFLARED_IMAGE`.
