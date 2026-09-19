@@ -409,6 +409,28 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 ## AI assistant
 
+### `POST /ai/chat/start` (auth, 10/min)
+
+Starts an assistant turn and returns `202 { "id": "job uuid" }` at once. The body is the same as
+`POST /ai/chat` below. The turn runs on the server for as long as the model needs (up to ten
+minutes), so a proxy's limit on one request (Cloudflare gives an origin 100 seconds) never cuts
+it off. Returns `503` when no provider is set up.
+
+### `GET /ai/chat/:id` (auth)
+
+The turn's state, for polling every second or two:
+
+```json
+{ "state": "running" }
+{ "state": "done", "proposal": { "...": "the POST /ai/chat reply" } }
+{ "state": "failed", "status": 502, "message": "The AI provider could not answer. Please try again." }
+```
+
+`status` and `message` are what `POST /ai/chat` would have answered with. A turn whose server copy
+stopped mid-way (a deploy) is reported as `failed` with status `503`. Only the user who started a
+turn can read it; turns are kept for a day. The apps use start + poll; `POST /ai/chat` remains for
+scripts that prefer one request.
+
 ### `POST /ai/chat` (auth, 10/min)
 
 ```json

@@ -1,6 +1,10 @@
 import type { FastifyBaseLogger } from "fastify";
 import type { Action, ChatTurn } from "@orbyn/core";
-import { ProviderError, type ResolvedAi } from "../providers/adapters.js";
+import {
+  attemptMsFor,
+  ProviderError,
+  type ResolvedAi,
+} from "../providers/adapters.js";
 import { parseReply } from "../replySchema.js";
 import {
   EMPTY_ANSWER_NOTE,
@@ -28,11 +32,10 @@ import { runGraph } from "./graph.js";
 export const MAX_STEPS = 8;
 const MAX_CALLS_PER_STEP = 8;
 const GUARD_BUDGET = 2;
-// Under Cloudflare's 100 s limit on an origin's first byte: a reply that
-// takes longer reaches the browser as Cloudflare's HTML 524 page instead of
-// Orbyn's JSON. Two attempts must fit inside the deadline.
-const DEADLINE_MS = 85_000;
-const ATTEMPT_MS = 40_000;
+// The turn runs in the background (POST /ai/chat/start, then polled), so
+// nothing in front of Orbyn cuts it off; this is the most a turn may take
+// in all. Each model call gets `attemptMsFor(ai)`.
+const DEADLINE_MS = 600_000;
 const MAX_HISTORY_CHARS = 4000;
 
 export type AgentResult = {
@@ -111,6 +114,7 @@ export async function runAgent(
   ];
   let mode: Mode = startingMode(ai);
   const deadline = AbortSignal.timeout(DEADLINE_MS);
+  const attemptMs = attemptMsFor(ai);
   let guards = GUARD_BUDGET;
   let toolsRan = 0;
   const seen = new Map<string, number>();
@@ -129,7 +133,7 @@ export async function runAgent(
         return await step(ai, fit(messages, ai), tools, {
           mode,
           toolsAllowed,
-          signal: AbortSignal.any([deadline, AbortSignal.timeout(ATTEMPT_MS)]),
+          signal: AbortSignal.any([deadline, AbortSignal.timeout(attemptMs)]),
         });
       } catch (error) {
         if (mode === "native" && rejectsTools(error)) {

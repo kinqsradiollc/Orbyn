@@ -115,8 +115,9 @@ every interface unless you set `WEB_PORT=127.0.0.1:8080`, which leaves the tunne
 in.
 
 Cloudflare waits at most 100 seconds for the first byte of a reply and then shows its own error
-page (HTTP 524). The AI assistant's deadline is 85 seconds so its answer always arrives first;
-if you raise it in `backend/src/modules/ai/agent/`, keep it under 100.
+page (HTTP 524). The AI assistant is built for this: the apps start a turn and poll for the answer
+in short requests, so a model that takes minutes (one running on your own machine) still answers.
+Model calls to a local address get five minutes each; hosted providers one.
 
 The token is passed in the environment, not on the command line, so it stays out of `docker ps`.
 Docker administrators can still read it with `docker inspect`. To pin a cloudflared release instead of following `latest`, set
