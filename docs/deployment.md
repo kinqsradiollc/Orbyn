@@ -385,6 +385,134 @@ automatically after CI passes on `main`. It needs these repository secrets:
 | `DEPLOY_PORT`        | Optional, defaults to 22                                                                |
 | `DEPLOY_KNOWN_HOSTS` | Optional output of `ssh-keyscan <host>`, to pin the server key                          |
 
+## Running it with plain Docker commands
+
+`scripts/deploy.sh` wraps these. Use them directly when you want to do one thing by hand, or on a
+machine where bash isn't convenient — Windows PowerShell, for instance. Every command runs from
+the repository folder, next to `compose.yaml`.
+
+First, tell Compose which optional services this machine uses, once, in `.env`:
+
+```bash
+COMPOSE_PROFILES=tunnel,mail
+```
+
+Every command below then includes the tunnel and your own mail server. Without that line, add
+`--profile tunnel --profile mail` to each one, or they are silently left out.
+
+### Install or update everything
+
+```bash
+git pull
+```
+
+```bash
+docker compose up -d --build --wait
+```
+
+That builds changed images, runs the database migrations first (every service waits for them to
+finish), starts or replaces containers, and waits until they report healthy. It replaces all
+changed containers at once, so expect a few seconds of downtime;
+[the script](#updating-the-server) avoids that and takes a backup first.
+
+To stamp the build with the commit, so Admin → System and `GET /version` show it:
+
+```bash
+GIT_SHA=$(git rev-parse --short HEAD) BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) docker compose up -d --build --wait
+```
+
+In PowerShell:
+
+```powershell
+$env:GIT_SHA = (git rev-parse --short HEAD); $env:BUILD_TIME = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+```
+
+```powershell
+docker compose up -d --build --wait
+```
+
+### Everyday commands
+
+| Task                                | Command                                                             |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| What is running                     | `docker compose ps`                                                 |
+| Follow one service's log            | `docker compose logs -f api` (or `mail`, `cloudflared`, `notifier`) |
+| Restart a service                   | `docker compose restart api`                                        |
+| Rebuild just one service            | `docker compose up -d --build --no-deps api`                        |
+| Apply migrations only               | `docker compose run --rm migrate`                                   |
+| Run more copies of a service        | `docker compose up -d --scale api=3 api`                            |
+| Stop everything, keep the data      | `docker compose stop`                                               |
+| Stop and remove the containers      | `docker compose down`                                               |
+| A database shell                    | `docker compose exec postgres psql -U orbyn -d orbyn`               |
+| Is the API healthy, and which build | `curl http://127.0.0.1:8008/health` and `.../version`               |
+| Reclaim disk after builds           | `docker image prune -f`                                             |
+
+Never run `docker compose down --volumes` on a server: it deletes the database and the mail
+server's signing key along with the containers.
+
+### Backing up and restoring the database
+
+Dump inside the container and copy the file out. This avoids shell redirection, which in Windows
+PowerShell would write the file as UTF-16 and corrupt the dump:
+
+```bash
+docker compose exec -T postgres sh -c "pg_dump -U orbyn -Fc orbyn > /tmp/orbyn.dump"
+```
+
+```bash
+docker compose cp postgres:/tmp/orbyn.dump ./orbyn.dump
+```
+
+To restore one, stop the services that write, put the data back, then start again:
+
+```bash
+docker compose stop api ai notifier status
+```
+
+```bash
+docker compose cp ./orbyn.dump postgres:/tmp/orbyn.dump
+```
+
+```bash
+docker compose exec -T postgres pg_restore -U orbyn -d orbyn --clean --if-exists /tmp/orbyn.dump
+```
+
+```bash
+docker compose up -d --wait
+```
+
+### The mail server
+
+```bash
+docker compose up -d --wait mail
+```
+
+```bash
+docker compose exec mail cat /data/dkim_keys/your-domain_default.dns
+```
+
+```bash
+docker compose logs -f mail
+```
+
+The second command prints the DKIM record to publish; put your sending domain in the filename, so
+for orbyn.dev it is `/data/dkim_keys/orbyn.dev_default.dns`. A message it accepted is logged as `delivered`
+when it reaches the recipient, or with the reason when it doesn't.
+
+### The tunnel
+
+```bash
+docker compose up -d cloudflared
+```
+
+```bash
+docker compose logs -f cloudflared
+```
+
+A healthy tunnel logs `Registered tunnel connection` four times, and Cloudflare's dashboard shows
+it as healthy. Its configuration lives in Cloudflare, not here: the public hostname points at
+`http://gateway:8081`.
+
 ## Settings in the app
 
 Admins change these in **Admin → System**; every instance picks them up within about 10 seconds,
