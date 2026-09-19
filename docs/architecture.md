@@ -163,7 +163,7 @@ reach, or whose block is gone.
 The assistant is deliberately a **propose-then-approve** agent, built like BrainRouter's agent
 loop (`backend/src/modules/ai/agent/`):
 
-1. `POST /ai/chat` runs a short tool loop. The model gets a system prompt with the user's local
+1. `POST /ai/chat/start` runs a short tool loop in the background (the apps poll `GET /ai/chat/:id`; `POST /ai/chat` does the same in one request). The model gets a system prompt with the user's local
    date, a small planner overview and tools, and calls the tools until it can answer: at most 8
    model calls, the last with tools turned off. Before the first call, the server looks up the
    user's items whose titles share words with the request. It adds them to the overview as

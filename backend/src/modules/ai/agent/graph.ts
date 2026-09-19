@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from "fastify";
 import { addDays, localDateKey, type ChatTurn } from "@orbyn/core";
 import {
+  attemptMsFor,
   complete,
   ProviderError,
   type ChatMessage,
@@ -33,11 +34,10 @@ import type { AgentResult } from "./loop.js";
  *
  * At most three model calls, and proposals still only come from the tools.
  */
-// Under Cloudflare's 100 s limit on an origin's first byte: a reply that
-// takes longer reaches the browser as Cloudflare's HTML 524 page instead of
-// Orbyn's JSON. Two attempts must fit inside the deadline.
-const DEADLINE_MS = 85_000;
-const ATTEMPT_MS = 40_000;
+// The turn runs in the background (POST /ai/chat/start, then polled), so
+// nothing in front of Orbyn cuts it off; this is the most a turn may take
+// in all. Each model call gets `attemptMsFor(ai)`.
+const DEADLINE_MS = 600_000;
 const MAX_HISTORY_CHARS = 4000;
 /** Room kept for the reply schema when fitting a request to the provider's limit. */
 const SCHEMA_RESERVE_BYTES = 8_000;
@@ -401,6 +401,7 @@ export async function runGraph(
     };
   }
   const deadline = AbortSignal.timeout(DEADLINE_MS);
+  const attemptMs = attemptMsFor(ai);
   const change = mayChange(ctx.intentText);
   const turns: ChatMessage[] = history.slice(-12).map((t) => ({
     role: t.role,
@@ -437,7 +438,7 @@ export async function runGraph(
       calls++;
       try {
         const content = await complete(ai, fit(request, ai, turns.length), {
-          signal: AbortSignal.any([deadline, AbortSignal.timeout(ATTEMPT_MS)]),
+          signal: AbortSignal.any([deadline, AbortSignal.timeout(attemptMs)]),
           ...(plan ? { responseFormat: REPLY_FORMAT } : {}),
         });
         if (!content.trim())

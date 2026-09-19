@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import type { Proposal } from "@orbyn/core";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 let providerResponse: unknown = {
@@ -195,6 +196,46 @@ test("validates dates, ownership fields, event starts, and pagination", async ()
     422,
   );
 });
+test("an assistant turn can be started, then polled for its answer", async () => {
+  providerResponse = { summary: "Nothing today.", actions: [] };
+  const started = await app.inject({
+    method: "POST",
+    url: "/ai/chat/start",
+    headers: headers(alice),
+    payload: { message: "What is on today?", timezone: "Australia/Melbourne" },
+  });
+  assert.equal(started.statusCode, 202);
+  const id = started.json().id;
+  let job = { state: "running" } as { state: string; proposal?: Proposal };
+  for (let i = 0; i < 50 && job.state === "running"; i++) {
+    await new Promise((r) => setTimeout(r, 20));
+    const r = await app.inject({
+      url: `/ai/chat/${id}`,
+      headers: headers(alice),
+    });
+    assert.equal(r.statusCode, 200);
+    job = r.json();
+  }
+  assert.equal(job.state, "done");
+  assert.equal(job.proposal?.summary, "Nothing today.");
+  assert.deepEqual(job.proposal?.actions, []);
+  // Someone else's turn is not there; a stopped copy's turn is reported.
+  assert.equal(
+    (await app.inject({ url: `/ai/chat/${id}`, headers: headers(bob) }))
+      .statusCode,
+    404,
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state='running', heartbeat_at=now() - interval '2 minutes' WHERE id=$1",
+    [id],
+  );
+  const stale = (
+    await app.inject({ url: `/ai/chat/${id}`, headers: headers(alice) })
+  ).json();
+  assert.equal(stale.state, "failed");
+  assert.equal(stale.status, 503);
+});
+
 test("AI summaries do not mutate and proposals apply exactly once", async () => {
   const summary = await app.inject({
     method: "POST",

@@ -115,6 +115,15 @@ const READ_YOUR_WRITES_MS = 5000;
 const RETRY_DELAY_MS = 300;
 /** How many unchanged-response bodies to remember for conditional GETs. */
 const MAX_CACHED = 100;
+/** Polling an assistant turn: first check, longest gap, and how long to wait in all. */
+const CHAT_POLL_MS = 1200;
+const CHAT_POLL_MAX_MS = 4000;
+const CHAT_WAIT_MS = 15 * 60_000;
+
+type ChatJob =
+  | { state: "running" }
+  | { state: "done"; proposal: Proposal }
+  | { state: "failed"; status?: number; message: string };
 
 /** What to say when a proxy answered instead of Orbyn (no JSON body). */
 function proxyMessage(status: number): string {
@@ -1066,12 +1075,31 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
-  /** Ask the assistant. Pass earlier turns in `history` for follow-up questions. */
-  chat(message: string, timezone: string, history: ChatTurn[] = []) {
-    return this.request<Proposal>("/ai/chat", {
+  /**
+   * Ask the assistant. Pass earlier turns in `history` for follow-up questions.
+   * The turn runs on the server while this polls for the answer, so a slow
+   * model (one on the user's own machine) is never cut off by a proxy's
+   * limit on a single request, and a dropped poll is simply tried again.
+   */
+  async chat(message: string, timezone: string, history: ChatTurn[] = []) {
+    const { id } = await this.request<{ id: string }>("/ai/chat/start", {
       method: "POST",
       body: { message, timezone, history: history.slice(-12) },
     });
+    const until = Date.now() + CHAT_WAIT_MS;
+    let delay = CHAT_POLL_MS;
+    while (Date.now() < until) {
+      await new Promise((r) => setTimeout(r, delay));
+      delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
+      const job = await this.request<ChatJob>(`/ai/chat/${id}`);
+      if (job.state === "done") return job.proposal;
+      if (job.state === "failed")
+        throw new HttpError(job.status ?? 502, job.message);
+    }
+    throw new HttpError(
+      504,
+      "That took too long to answer. Try again, or ask for less at once.",
+    );
   }
   applyProposal(id: string) {
     return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {

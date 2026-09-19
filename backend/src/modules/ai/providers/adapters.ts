@@ -1,5 +1,5 @@
 import type { AiRequestFormat } from "@orbyn/core";
-import { assertProviderUrl } from "./network.js";
+import { assertProviderUrl, isPrivateUrl } from "./network.js";
 
 /** Everything needed to call one provider with one model. */
 export type ResolvedAi = {
@@ -93,6 +93,14 @@ function keyFor(
   if (ai.defaultApiKey) return ai.defaultApiKey;
   return ai.local || isLoopback(ai.baseUrl) ? LOCAL_PLACEHOLDER_KEY : "";
 }
+
+/**
+ * How long one model call may take. A hosted provider that has not answered
+ * in a minute is stalled; a model on the user's own machine may simply be
+ * slow, and is given as long as its hardware needs.
+ */
+export const attemptMsFor = (ai: Pick<ResolvedAi, "local" | "baseUrl">) =>
+  ai.local || isPrivateUrl(ai.baseUrl) ? 300_000 : 60_000;
 
 export type Connection = Pick<ResolvedAi, "format" | "apiKey" | "baseUrl"> &
   Partial<Pick<ResolvedAi, "local" | "defaultApiKey">>;

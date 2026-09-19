@@ -20,6 +20,33 @@ function blockedAddress(address: string) {
 }
 
 /**
+ * Whether a provider URL points at a machine of the user's own: loopback,
+ * Docker's host alias, a bare container name, or a private network address.
+ * Such models answer as fast as their hardware allows, so they get more time.
+ */
+export function isPrivateUrl(raw: string): boolean {
+  let host: string;
+  try {
+    host = new URL(raw).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === "localhost" || host === "host.docker.internal") return true;
+  if (!host.includes(".") && isIP(host) === 0) return true;
+  if (/\.(local|internal|lan|home)$/.test(host)) return true;
+  if (isIP(host) === 4) {
+    const [a, b] = host.split(".").map(Number);
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  return host === "::1" || host.startsWith("fc") || host.startsWith("fd");
+}
+
+/**
  * Provider URLs may point at local model servers (loopback or private
  * networks, for LM Studio or Ollama), but never at cloud metadata endpoints.
  * Checked when a provider is saved and again before every outbound call.

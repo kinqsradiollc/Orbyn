@@ -332,10 +332,10 @@ for (const [name, ai] of [
     assert.equal(result.summary, "Your week is clear.");
     assert.equal(calls, 2);
     // One overall deadline, created once, then a shorter limit per attempt so a
-    // stalled reply is abandoned and retried. The deadline stays below
-    // Cloudflare's 100 s origin limit and the API client's 120 s.
-    assert.deepEqual(timeouts, [85_000, 40_000, 40_000]);
-    assert.ok(timeouts[0] < 100_000);
+    // stalled reply is abandoned and retried. The turn runs in the
+    // background, so the deadline is the most a whole turn may take; this
+    // provider's address is loopback, so each attempt gets local-model time.
+    assert.deepEqual(timeouts, [600_000, 300_000, 300_000]);
   });
 
 test("the agent loop does not retry errors a retry won't fix", async (t) => {
