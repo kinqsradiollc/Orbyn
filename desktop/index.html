@@ -4,7 +4,63 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8fa" />
-    <title>Orbyn — Make space for what matters</title>
+    <title>Orbyn — Your life, in a better orbit</title>
+    <meta
+      name="description"
+      content="Tasks, calendar, planning and team time in one place, on your own server. Plan your day, protect your focus and make time for the people who matter."
+    />
+    <!-- The app fills these in for the current address; these are the values
+         crawlers and link previews get without running any script. Change the
+         domain to your own when you host Orbyn elsewhere. -->
+    <link rel="canonical" href="https://orbyn.dev/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Orbyn" />
+    <meta property="og:title" content="Orbyn — Your life, in a better orbit" />
+    <meta
+      property="og:description"
+      content="Tasks, calendar, planning and team time in one place, on your own server."
+    />
+    <meta property="og:url" content="https://orbyn.dev/" />
+    <meta property="og:image" content="https://orbyn.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Orbyn — Your life, in a better orbit"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Orbyn — Your life, in a better orbit" />
+    <meta
+      name="twitter:description"
+      content="Tasks, calendar, planning and team time in one place, on your own server."
+    />
+    <meta name="twitter:image" content="https://orbyn.dev/og-image.png" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "Orbyn",
+            "url": "https://orbyn.dev/",
+            "image": "https://orbyn.dev/og-image.png",
+            "applicationCategory": "ProductivityApplication",
+            "operatingSystem": "Web, macOS, Windows, Linux, iOS, Android",
+            "description": "Tasks, calendar, planning and team time in one place, on your own server. Plan your day, protect your focus and make time for the people who matter."
+          },
+          {
+            "@type": "Organization",
+            "name": "Orbyn",
+            "url": "https://orbyn.dev/",
+            "logo": "https://orbyn.dev/icon-512.png"
+          }
+        ]
+      }
+    </script>
     <script>
       // Apply the saved theme before first paint (see src/lib/theme.ts): light
       // unless Dark, or System on a dark device, was chosen in Settings.
@@ -32,6 +88,12 @@
     </style>
   </head>
   <body>
+    <noscript>
+      <p style="font-family: sans-serif; padding: 24px">
+        Orbyn brings your tasks, calendar, planning and team time together in
+        one place, on your own server. It needs JavaScript to run.
+      </p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
