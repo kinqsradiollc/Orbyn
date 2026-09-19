@@ -431,6 +431,7 @@
 .tg-scroll {
   position: relative;
   max-height: min(640px, calc(100vh - 330px));
+  max-height: min(640px, calc(100dvh - 330px));
   min-height: 320px;
   overflow-y: auto;
   border-top: 1px solid var(--border);
@@ -1060,8 +1061,19 @@
     grid-template-columns: 1fr;
   }
   .calendar-side {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
     align-items: start;
+  }
+}
+/* Beside the planner the calendar is narrow: the day's task list goes
+   under the time grid instead of squeezing it. */
+@media (max-width: 1400px) {
+  .with-side .day-layout {
+    grid-template-columns: 1fr;
+  }
+  .with-side .day-tasks {
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
 }
 @media (max-width: 640px) {

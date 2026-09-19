@@ -518,6 +518,7 @@ kbd {
 .command-bar {
   width: min(620px, 100%);
   max-height: 72vh;
+  max-height: 72dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;

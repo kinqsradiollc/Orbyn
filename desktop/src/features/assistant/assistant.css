@@ -8,6 +8,19 @@
   box-sizing: border-box;
   height: calc(100dvh - var(--topbar-h, 77px));
   min-height: 0;
+  /* A chat reads best in one column: cap the page so the heading and the
+     card share the same width on wide monitors, centred in the shell. */
+  max-width: 1160px;
+  padding-top: 28px;
+  padding-bottom: 16px;
+}
+/* The heading is compact here (the card repeats the title), and the page
+   footer is left out so the conversation gets the room instead. */
+.content:has(.ai-chat) .page-heading {
+  margin-bottom: 18px;
+}
+.content:has(.ai-chat) > footer {
+  display: none;
 }
 .content:has(.ai-chat) > .view-enter {
   flex: 1;
@@ -16,7 +29,7 @@
   flex-direction: column;
 }
 .ai-chat.card {
-  --ai-column: 880px;
+  --ai-column: 800px;
   --ai-inset: clamp(20px, 4vw, 48px);
   flex: 1;
   min-height: 0;
@@ -24,12 +37,13 @@
   display: flex;
   flex-direction: column;
   padding: 0;
+  margin-bottom: 0;
 }
 .ai-chat-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px var(--ai-inset);
+  padding: 14px var(--ai-inset);
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
@@ -85,15 +99,20 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 28px;
-  padding: 32px max(var(--ai-inset), calc((100% - var(--ai-column)) / 2));
+  gap: 24px;
+  padding: 28px max(var(--ai-inset), calc((100% - var(--ai-column)) / 2));
   scrollbar-gutter: stable both-edges;
+}
+/* Centred while it fits; when it is taller than the window it starts at
+   the top and scrolls, instead of clipping its heading (auto margins would). */
+.ai-thread:has(.ai-empty) {
+  justify-content: safe center;
 }
 .ai-empty {
   text-align: center;
   width: 100%;
   max-width: 680px;
-  margin: auto;
+  margin: 0 auto;
   padding: 16px 0;
   flex-shrink: 0;
 }
@@ -194,11 +213,14 @@
   border-bottom-right-radius: 5px;
   max-width: min(640px, 85%);
 }
+/* Replies size to their content: a one-liner stays a short bubble, a long
+   answer or a table wraps at the column's width. */
 .ai-bubble-bot {
   background: #f6f8f6;
   border: 1px solid var(--border);
   border-top-left-radius: 5px;
-  flex: 1;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-width: 0;
   white-space: normal;
 }
@@ -385,8 +407,8 @@
 .ai-composer:focus-within {
   border-color: #b9d0c0;
 }
-/* Three lines at rest; AssistantView grows it up to 40% of the window, then
-   it scrolls inside. */
+/* Two lines at rest (three on tall windows); AssistantView grows it up to
+   40% of the window, then it scrolls inside. */
 .ai-composer textarea {
   display: block;
   width: 100%;
@@ -397,7 +419,7 @@
   font-size: 16px;
   line-height: 1.6;
   padding: 4px 6px 4px 0;
-  min-height: calc(1.6em * 3 + 8px);
+  min-height: calc(1.6em * 2 + 8px);
   max-height: 40vh;
   max-height: 40dvh;
   overflow-y: auto;
@@ -459,15 +481,26 @@
   text-align: center;
   color: var(--muted);
   font-size: 11px;
-  padding: 10px 22px 18px;
+  padding: 8px 22px 12px;
 }
-@media (max-width: 700px) {
+@media (min-height: 900px) {
+  .ai-composer textarea {
+    min-height: calc(1.6em * 3 + 8px);
+  }
+}
+/* Phones and narrow windows (the shell's own breakpoint): the column is the
+   whole card, the header wraps, and bubbles take more of the width. */
+@media (max-width: 800px) {
+  .content:has(.ai-chat) {
+    padding-top: 20px;
+    padding-bottom: 12px;
+  }
   .ai-chat.card {
     --ai-inset: 16px;
   }
   .ai-thread {
-    gap: 24px;
-    padding: 24px var(--ai-inset);
+    gap: 20px;
+    padding: 20px var(--ai-inset);
     scrollbar-gutter: auto;
   }
   .ai-row {
@@ -492,8 +525,24 @@
   .ai-empty {
     padding: 0;
   }
+  .ai-empty p {
+    margin-bottom: 20px;
+  }
   .ai-chat-head {
-    padding: 14px 16px;
+    padding: 12px 16px;
+  }
+  .ai-note {
+    padding: 6px 16px 10px;
+  }
+}
+/* The keyboard hint wraps on small phones; it stays as the field's
+   description for assistive tech. */
+@media (max-width: 480px) {
+  .ai-composer-hint {
+    display: none;
+  }
+  .ai-composer-bar {
+    justify-content: flex-end;
   }
 }
 
@@ -625,22 +674,42 @@
 /* Leave room for the conversation on short windows and landscape phones. */
 @media (max-height: 700px) {
   .content:has(.ai-chat) {
-    padding-top: 16px;
-    padding-bottom: 12px;
+    padding-top: 14px;
+    padding-bottom: 10px;
   }
   .content:has(.ai-chat) .page-heading {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+  }
+  /* The card's header already names the assistant. */
+  .content:has(.ai-chat) .page-heading p {
+    display: none;
   }
   .ai-chat-head {
-    padding-top: 12px;
-    padding-bottom: 12px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .ai-thread {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+  .ai-empty-mark {
+    width: 44px;
+    height: 44px;
+    margin-bottom: 12px;
+  }
+  .ai-empty h2 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+  .ai-empty p {
+    margin-bottom: 16px;
   }
   .ai-composer textarea {
-    min-height: calc(1.6em * 2 + 8px);
+    min-height: calc(1.6em * 1 + 8px);
     max-height: 25dvh;
   }
   .ai-note {
-    padding-top: 8px;
-    padding-bottom: 10px;
+    padding-top: 6px;
+    padding-bottom: 8px;
   }
 }
