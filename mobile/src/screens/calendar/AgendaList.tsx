@@ -1,5 +1,11 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   dayHeading,
   type CalendarEntry,
@@ -18,6 +24,9 @@ import { shared } from "../../styles";
 import { covers, startOfDay, timeLabel } from "./dates";
 
 type Timed = { start_at: string; end_at: string | null; all_day?: boolean };
+
+/** Width of the time column at the default text size. */
+const TIME_WIDTH = 64;
 
 /** All-day, or running over midnight: shown as "All day" rather than a time. */
 const wholeDay = (x: Timed) =>
@@ -177,6 +186,8 @@ function AgendaRow({
   | "onGhostMenu"
   | "onJoin"
 >) {
+  // "10:30 PM" at the user's text size; the column widens with it.
+  const timeWidth = TIME_WIDTH * Math.min(1.6, useWindowDimensions().fontScale);
   const time = (x: Timed) =>
     wholeDay(x)
       ? "All day"
@@ -266,7 +277,7 @@ function AgendaRow({
               : { backgroundColor: color },
           ]}
         />
-        <Text style={s.time}>{when}</Text>
+        <Text style={[s.time, { width: timeWidth }]}>{when}</Text>
         <View style={{ flex: 1 }}>
           <View style={s.titleRow}>
             {"external" in r && <Icon name="lock" size={10} color={color} />}
@@ -339,7 +350,6 @@ const s = themed(() =>
     pressed: { backgroundColor: colors.surfaceMuted },
     rail: { width: 4, alignSelf: "stretch", borderRadius: 2 },
     time: {
-      width: 64,
       fontFamily: fonts.medium,
       fontSize: 12,
       color: colors.muted,

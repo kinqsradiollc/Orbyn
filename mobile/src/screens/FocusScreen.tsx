@@ -236,6 +236,8 @@ function Body({
             <View style={s.timerCard}>
               <Text
                 style={s.timer}
+                numberOfLines={1}
+                adjustsFontSizeToFit
                 accessibilityRole="timer"
                 accessibilityLabel={`Timer ${clock(elapsed)}`}
               >

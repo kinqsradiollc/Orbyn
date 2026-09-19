@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { assistantSuggestions, type Item, type Plan } from "@orbyn/core";
 import { Button } from "../components/Button";
@@ -163,10 +164,12 @@ export function AssistantComposer({
 }) {
   const { message, setMessage, thinking, ask } = assistant;
   const canSend = !busy && !thinking && !!message.trim();
+  // Five lines at the user's text size, not five lines of the default size.
+  const { fontScale } = useWindowDimensions();
   return (
     <View style={s.composer}>
       <TextInput
-        style={s.input}
+        style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
         multiline
         placeholder="Make a little space. Ask Orbyn…"
         placeholderTextColor={colors.faint}
@@ -307,6 +310,7 @@ const s = themed(() =>
     intro: { marginBottom: 16 },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     chip: {
+      maxWidth: "100%",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.softBorder,
@@ -315,7 +319,12 @@ const s = themed(() =>
       paddingVertical: 9,
     },
     chipPressed: { backgroundColor: colors.accentSoft },
-    chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
+    chipText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
     threadHead: {
       flexDirection: "row",
       alignItems: "center",
@@ -400,7 +409,6 @@ const s = themed(() =>
     input: {
       flex: 1,
       minHeight: 44,
-      maxHeight: LINE * 5 + 22,
       fontFamily: fonts.regular,
       fontSize: 15,
       lineHeight: LINE,

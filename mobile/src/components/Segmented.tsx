@@ -51,6 +51,8 @@ export function Segmented<T extends string>({
           >
             <Text
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
               style={[
                 s.segmentText,
                 !label && s.capitalize,
@@ -83,6 +85,7 @@ const s = themed(() =>
     disabled: { opacity: 0.6 },
     segment: {
       flex: 1,
+      minWidth: 0,
       minHeight: 40,
       flexDirection: "row",
       gap: 6,
@@ -109,6 +112,7 @@ const s = themed(() =>
       elevation: 1,
     },
     segmentText: {
+      flexShrink: 1,
       fontFamily: fonts.medium,
       fontSize: 14,
       color: colors.muted,

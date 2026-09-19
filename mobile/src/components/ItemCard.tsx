@@ -351,7 +351,13 @@ const s = themed(() =>
     },
     done: { color: colors.faint, textDecorationLine: "line-through" },
     cancelled: { color: colors.faint },
-    meta: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 4 },
+    meta: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 5,
+      marginTop: 4,
+    },
     metaText: {
       flexShrink: 1,
       fontFamily: fonts.regular,

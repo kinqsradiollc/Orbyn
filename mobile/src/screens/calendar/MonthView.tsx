@@ -1,5 +1,11 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { monthGrid, sameDay, type FrameOccurrence } from "@orbyn/core";
 import { colors, fonts, radii, themed, tint } from "../../theme";
 import { covers } from "./dates";
@@ -7,9 +13,12 @@ import { layoutWeek, type MonthThing } from "./month";
 
 /** Bars shown per week row before "+N more". */
 const LANES = 3;
+/** Row heights at the default text size; they grow with the user's text size. */
 const LANE_HEIGHT = 17;
 const DATE_HEIGHT = 26;
 const MORE_HEIGHT = 16;
+/** Bar text stops growing here so a week row stays a row, not a page. */
+const MAX_SCALE = 1.5;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
@@ -35,6 +44,11 @@ export function MonthView({
   onMore: (day: Date) => void;
 }) {
   const today = new Date();
+  // Bar text scales with the user's text size; so must the rows that hold it.
+  const scale = Math.min(MAX_SCALE, useWindowDimensions().fontScale);
+  const lane = Math.round(LANE_HEIGHT * scale);
+  const dateRow = Math.round(DATE_HEIGHT * scale);
+  const moreRow = Math.round(MORE_HEIGHT * scale);
   return (
     <View>
       <View style={s.header}>
@@ -47,7 +61,14 @@ export function MonthView({
       {monthGrid(month).map((week, w) => {
         const { bars, hidden, total } = layoutWeek(things, week, LANES);
         return (
-          <View key={w} style={[s.week, w > 0 && s.weekDivider]}>
+          <View
+            key={w}
+            style={[
+              s.week,
+              { height: dateRow + LANES * lane + moreRow + 2 },
+              w > 0 && s.weekDivider,
+            ]}
+          >
             {week.map((day, c) => {
               const active = sameDay(day, selected);
               const isToday = sameDay(day, today);
@@ -107,7 +128,8 @@ export function MonthView({
                   style={[
                     s.barWrap,
                     {
-                      top: DATE_HEIGHT + b.lane * LANE_HEIGHT,
+                      top: dateRow + b.lane * lane,
+                      height: lane,
                       left: `${(b.startCol / 7) * 100}%`,
                       width: `${((b.endCol - b.startCol + 1) / 7) * 100}%`,
                     },
@@ -136,6 +158,7 @@ export function MonthView({
                   >
                     <Text
                       numberOfLines={1}
+                      maxFontSizeMultiplier={MAX_SCALE}
                       style={[s.barText, t.look === "done" && s.doneText]}
                     >
                       {t.title}
@@ -155,12 +178,15 @@ export function MonthView({
                   style={[
                     s.more,
                     {
-                      top: DATE_HEIGHT + LANES * LANE_HEIGHT,
+                      top: dateRow + LANES * lane,
+                      height: moreRow,
                       left: `${(c / 7) * 100}%`,
                     },
                   ]}
                 >
-                  <Text style={s.moreText}>+{n}</Text>
+                  <Text style={s.moreText} maxFontSizeMultiplier={MAX_SCALE}>
+                    +{n}
+                  </Text>
                 </Pressable>
               ) : null,
             )}
@@ -182,7 +208,8 @@ const s = themed(() =>
       color: colors.muted,
       marginBottom: 6,
     },
-    week: { height: DATE_HEIGHT + LANES * LANE_HEIGHT + MORE_HEIGHT + 2 },
+    /** Height set per render from the text size. */
+    week: {},
     weekDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
@@ -220,7 +247,6 @@ const s = themed(() =>
     frameMark: { width: 6, height: 3, borderRadius: 2 },
     barWrap: {
       position: "absolute",
-      height: LANE_HEIGHT,
       paddingHorizontal: 1,
       paddingBottom: 2,
     },
@@ -246,7 +272,6 @@ const s = themed(() =>
     more: {
       position: "absolute",
       width: `${100 / 7}%`,
-      height: MORE_HEIGHT,
       justifyContent: "center",
       paddingLeft: 4,
       borderRadius: radii.pill,

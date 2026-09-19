@@ -224,6 +224,7 @@ const s = themed(() =>
     },
     time: {
       width: 118,
+      flexShrink: 0,
       fontFamily: fonts.medium,
       fontSize: 12,
       color: colors.accent,
@@ -232,6 +233,7 @@ const s = themed(() =>
     blockMain: { flex: 1 },
     blockActions: {
       flexDirection: "row",
+      flexWrap: "wrap",
       gap: 8,
       paddingLeft: 128,
       paddingBottom: 8,

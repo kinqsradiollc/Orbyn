@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   ITEM_SORTS,
   isClosed,
@@ -38,8 +45,11 @@ import { readLocal, saveLocal } from "../lib/localPrefs";
 import { usePlanning } from "../lib/planningContext";
 import { isOverdue } from "../lib/progress";
 import { animateLayout, PressableScale } from "../motion";
-import { colors, fonts, radii, themed, statusTones } from "../theme";
+import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
+
+/** From this window width the board shows its status sections two across. */
+const BOARD_WIDE = 700;
 
 /** Case-insensitive match against the item's title and notes together. */
 export const matchesSearch = (item: Item, search: string) =>
@@ -249,6 +259,7 @@ export function TasksScreen({
   const [pins, setPins] = useState<Pin[]>(savedPins);
   const [sort, setSort] = useState<ItemSort>(savedSort);
   const [layout, setLayout] = useState<Layout>(savedLayout);
+  const twoColumns = useWindowDimensions().width >= BOARD_WIDE;
   const now = new Date();
   /** Whether a due date falls between local midnights `from` and `to` days away. */
   const within = (i: Item, from: number, to: number) => {
@@ -702,26 +713,32 @@ export function TasksScreen({
           />
         </>
       ) : layout === "board" ? (
-        // One section per status; each card moves with "Move to…".
-        (status === "all" ? BOARD_STATUSES : [status]).map((st) => {
-          const column = visible.filter((i) => i.status === st);
-          return (
-            <View key={st}>
-              <SectionHeading
-                title={statusLabels[st]}
-                count={column.length}
-                color={statusTones[st].fg}
-              />
-              {column.length > 0 ? (
-                <ItemRows items={column} {...rowProps} moveButton />
-              ) : (
-                <View style={s.emptyColumn}>
-                  <Text style={shared.small}>Nothing here yet.</Text>
-                </View>
-              )}
-            </View>
-          );
-        })
+        // One section per status; each card moves with "Move to…". On a wide
+        // screen the sections sit two across.
+        <View style={twoColumns && status === "all" && s.board}>
+          {(status === "all" ? BOARD_STATUSES : [status]).map((st) => {
+            const column = visible.filter((i) => i.status === st);
+            return (
+              <View
+                key={st}
+                style={twoColumns && status === "all" && s.boardColumn}
+              >
+                <SectionHeading
+                  title={statusLabels[st]}
+                  count={column.length}
+                  color={statusTones[st].fg}
+                />
+                {column.length > 0 ? (
+                  <ItemRows items={column} {...rowProps} moveButton />
+                ) : (
+                  <View style={s.emptyColumn}>
+                    <Text style={shared.small}>Nothing here yet.</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
       ) : (
         <>
           {sections.map((section) => (
@@ -825,9 +842,9 @@ const s = themed(() =>
     search: { marginBottom: 12, justifyContent: "center" },
     icon: { position: "absolute", left: 15, zIndex: 1 },
     input: { paddingLeft: 42 },
-    chipScroll: { marginHorizontal: -20, marginBottom: 10 },
-    filterScroll: { marginHorizontal: -20, marginBottom: 12 },
-    chips: { gap: 8, paddingHorizontal: 20 },
+    chipScroll: { marginHorizontal: -spacing.page, marginBottom: 10 },
+    filterScroll: { marginHorizontal: -spacing.page, marginBottom: 12 },
+    chips: { gap: 8, paddingHorizontal: spacing.page },
     chip: {
       flexDirection: "row",
       alignItems: "center",
@@ -879,11 +896,16 @@ const s = themed(() =>
     manualHint: { marginTop: -4, marginBottom: 14 },
     toolbar: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
+      gap: 8,
       marginBottom: 14,
     },
     toolbarActions: { flexDirection: "row", gap: 8 },
+    /** The board on a wide screen: status sections two across. */
+    board: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 },
+    boardColumn: { width: "50%", paddingHorizontal: 8 },
     emptyColumn: {
       borderWidth: 1,
       borderStyle: "dashed",
