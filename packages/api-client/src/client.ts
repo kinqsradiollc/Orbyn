@@ -116,6 +116,14 @@ const RETRY_DELAY_MS = 300;
 /** How many unchanged-response bodies to remember for conditional GETs. */
 const MAX_CACHED = 100;
 
+/** What to say when a proxy answered instead of Orbyn (no JSON body). */
+function proxyMessage(status: number): string {
+  if (status === 504 || status === 524)
+    return "That took too long to answer. Try again, or ask for less at once.";
+  if (status >= 500) return `Unable to reach Orbyn (HTTP ${status}).`;
+  return `Orbyn sent an unexpected reply (HTTP ${status}).`;
+}
+
 export type TokenSource = () =>
   string | null | undefined | Promise<string | null | undefined>;
 
@@ -124,7 +132,7 @@ export type OrbynClientOptions = {
   baseUrl: string;
   /** Returns the current session token, or nothing when signed out. */
   getToken?: TokenSource;
-  /** Per-request timeout. Defaults to 120s to outlast the assistant's 110s deadline. */
+  /** Per-request timeout. Defaults to 120s to outlast the assistant's 85s deadline. */
   timeoutMs?: number;
   /** Override fetch (tests, custom agents). Defaults to the global fetch. */
   fetch?: typeof fetch;
@@ -207,9 +215,11 @@ export class OrbynClient {
     if (response.status === 304 && cached)
       return (options.raw ? cached.text : JSON.parse(cached.text)) as T;
     if (!response.ok) {
+      // A body that isn't JSON came from something in front of Orbyn: a
+      // proxy's HTML error page (Cloudflare's 524 when a reply took too long).
       const error = (await response
         .json()
-        .catch(() => ({ message: "Unable to reach Orbyn" }))) as {
+        .catch(() => ({ message: proxyMessage(response.status) }))) as {
         message?: string;
       };
       throw new HttpError(response.status, error.message || "Request failed");
