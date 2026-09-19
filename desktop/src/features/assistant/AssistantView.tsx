@@ -1,17 +1,27 @@
-import { useEffect, useRef } from "react";
-import { ArrowUp, ArrowUpRight, RotateCcw, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowUp,
+  CalendarDays,
+  Flag,
+  PenLine,
+  Plus,
+  SquarePen,
+  Sunrise,
+  type LucideIcon,
+} from "lucide-react";
 import {
   assistantSuggestions as SUGGESTIONS,
   type Item,
   type Plan,
 } from "@orbyn/core";
+import { Popover } from "../../components/Popover";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
 import "./assistant.css";
 
-/** The composer grows with its text up to this share of the window. */
-const COMPOSER_MAX_SHARE = 0.4;
+/** One icon per suggestion, in the shared list's order. */
+const SUGGESTION_ICONS: LucideIcon[] = [CalendarDays, Flag, Sunrise, PenLine];
 
 type Props = {
   items: Item[];
@@ -34,14 +44,17 @@ export function AssistantView({
     assistant;
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
   const locked = busy || thinking;
+  const empty = turns.length === 0 && !thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
     .find((t) => t.role === "assistant")?.id;
 
   // Keep the newest message in view by scrolling the conversation itself,
-  // never the page, so the header and composer stay where they are.
+  // never the page, so the composer stays where it is. Once per message,
+  // not on every render.
   useEffect(() => {
     const el = threadRef.current;
     if (!el || (turns.length === 0 && !thinking)) return;
@@ -51,16 +64,15 @@ export function AssistantView({
     el.scrollTo({ top: el.scrollHeight, behavior: reduce ? "auto" : "smooth" });
   }, [turns.length, thinking]);
 
-  // Grow the composer with its content up to about 40% of the window; past
-  // that it scrolls inside. The resting height is the stylesheet's
-  // min-height (two lines, one on short windows, three on tall ones). Text
-  // rewraps when the window changes size, so it is measured again then.
+  // One line at rest; grows with its text up to the stylesheet's max-height
+  // (about eight lines), then scrolls inside. Text rewraps when the window
+  // changes size, so it is measured again then.
   useEffect(() => {
     const fit = () => {
       const el = inputRef.current;
       if (!el) return;
       el.style.height = "auto";
-      const max = Math.round(window.innerHeight * COMPOSER_MAX_SHARE);
+      const max = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
       el.style.height = Math.min(el.scrollHeight, max) + "px";
       el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
     };
@@ -73,61 +85,30 @@ export function AssistantView({
     if (!locked && message.trim()) void ask();
   };
 
+  const suggest = (text: string) => {
+    setQuickMenu(null);
+    void ask(text);
+  };
+
   return (
-    <section className="card ai-chat">
-      <header className="ai-chat-head">
-        <span className="ai-avatar">
-          <Sparkles size={16} />
-        </span>
-        <div className="ai-chat-title">
-          <strong>Orbyn assistant</strong>
-          <small>
-            {thinking
-              ? "Thinking…"
-              : "Summaries, plans, and changes you approve"}
-          </small>
-        </div>
+    <section className={"ai-chat" + (empty ? " is-empty" : "")}>
+      <div className="ai-chat-head">
         {turns.length > 0 && (
           <button
             type="button"
-            className="ai-ghost"
+            className="ai-ghost ai-icon"
             onClick={reset}
             disabled={thinking}
+            aria-label="New chat"
+            title="New chat"
           >
-            <RotateCcw size={14} /> New conversation
+            <SquarePen size={16} />
           </button>
         )}
-      </header>
+      </div>
 
       <div className="ai-thread" aria-live="polite" ref={threadRef}>
-        {turns.length === 0 && (
-          <div className="ai-empty">
-            <span className="ai-empty-mark">
-              <Sparkles size={26} />
-            </span>
-            <h2>What’s on your mind?</h2>
-            <p>
-              Ask for a summary, plan your day, or change items in plain
-              language. You’ll review every change before it’s saved.
-            </p>
-            <div className="ai-suggestions">
-              {SUGGESTIONS.map((s, n) => (
-                <button
-                  key={s.title}
-                  className="fade-up stagger"
-                  style={stagger(n)}
-                  type="button"
-                  disabled={locked}
-                  onClick={() => void ask(s.title)}
-                >
-                  <strong>{s.title}</strong>
-                  <span>{s.hint}</span>
-                  <ArrowUpRight size={14} />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        {empty && <h2 className="ai-greeting">What’s on your mind today?</h2>}
 
         {turns.map((turn) =>
           turn.role === "user" ? (
@@ -136,10 +117,7 @@ export function AssistantView({
             </div>
           ) : (
             <div key={turn.id} className="ai-row">
-              <span className="ai-avatar ai-avatar-small">
-                <Sparkles size={13} />
-              </span>
-              <div className="ai-bubble ai-bubble-bot">
+              <div className="ai-reply">
                 <ProposalReview
                   proposal={turn.proposal}
                   items={items}
@@ -163,9 +141,6 @@ export function AssistantView({
 
         {thinking && (
           <div className="ai-row">
-            <span className="ai-avatar ai-avatar-small">
-              <Sparkles size={13} />
-            </span>
             <div
               className="ai-bubble ai-bubble-bot ai-typing"
               role="status"
@@ -179,37 +154,52 @@ export function AssistantView({
         )}
       </div>
 
-      <form
-        className="ai-composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-      >
-        <textarea
-          ref={inputRef}
-          rows={1}
-          aria-label="Message your assistant"
-          aria-describedby="ai-composer-hint"
-          placeholder="Make a little space. Ask Orbyn…"
-          value={message}
-          maxLength={4000}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              send();
-            }
+      <div className="ai-dock">
+        <form
+          className="ai-composer"
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
           }}
-        />
-        <div className="ai-composer-bar">
-          <small id="ai-composer-hint" className="ai-muted ai-composer-hint">
-            Enter to send · Shift+Enter for a new line
-          </small>
+        >
+          <button
+            type="button"
+            className="ai-tool"
+            aria-label="Quick actions"
+            aria-haspopup="dialog"
+            aria-expanded={!!quickMenu}
+            disabled={locked}
+            onClick={(e) =>
+              setQuickMenu(
+                quickMenu ? null : e.currentTarget.getBoundingClientRect(),
+              )
+            }
+          >
+            <Plus size={20} />
+          </button>
+          <textarea
+            ref={inputRef}
+            rows={1}
+            aria-label="Message your assistant"
+            aria-describedby="ai-composer-hint"
+            placeholder="Ask Orbyn…"
+            value={message}
+            maxLength={4000}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => {
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing
+              ) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <span id="ai-composer-hint" className="sr-only">
+            Enter to send, Shift+Enter for a new line
+          </span>
           <button
             className="ai-send"
             aria-label="Send"
@@ -217,12 +207,60 @@ export function AssistantView({
           >
             <ArrowUp size={18} />
           </button>
-        </div>
-      </form>
+        </form>
+
+        {empty && (
+          <div className="ai-suggestions" aria-label="Suggestions">
+            {SUGGESTIONS.map((s, n) => {
+              const Icon = SUGGESTION_ICONS[n % SUGGESTION_ICONS.length];
+              return (
+                <button
+                  key={s.title}
+                  className="fade-up stagger"
+                  style={stagger(n)}
+                  type="button"
+                  disabled={locked}
+                  title={s.hint}
+                  onClick={() => suggest(s.title)}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  <span>{s.title}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <small className="ai-note">
         Your request and up to 100 recent items are shared with your configured
         AI provider.
       </small>
+
+      {quickMenu && (
+        <Popover
+          anchor={quickMenu}
+          label="Quick actions"
+          onClose={() => setQuickMenu(null)}
+        >
+          <div className="popover-actions">
+            {SUGGESTIONS.map((s, n) => {
+              const Icon = SUGGESTION_ICONS[n % SUGGESTION_ICONS.length];
+              return (
+                <button
+                  key={s.title}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => suggest(s.title)}
+                >
+                  <Icon size={15} aria-hidden="true" />
+                  {s.title}
+                </button>
+              );
+            })}
+          </div>
+        </Popover>
+      )}
     </section>
   );
 }

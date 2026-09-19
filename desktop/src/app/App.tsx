@@ -457,11 +457,13 @@ export function App() {
               </div>
             )}
             <div key={view} className="view-enter">
-              <PageHeading
-                view={view}
-                user={user}
-                onNewItem={() => newItem()}
-              />
+              {view !== "AI assistant" && (
+                <PageHeading
+                  view={view}
+                  user={user}
+                  onNewItem={() => newItem()}
+                />
+              )}
               {view === "Overview" && (
                 <OverviewView
                   {...listProps}
@@ -571,9 +573,11 @@ export function App() {
             {loading && (
               <small className="sync-status">Syncing your space…</small>
             )}
-            <footer>
-              A little more clarity. A little more you. <Orbit size={14} />
-            </footer>
+            {view !== "AI assistant" && (
+              <footer>
+                A little more clarity. A little more you. <Orbit size={14} />
+              </footer>
+            )}
           </main>
         </div>
         {shownTask && (
