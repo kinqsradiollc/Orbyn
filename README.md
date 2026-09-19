@@ -119,7 +119,7 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 - [Architecture](docs/architecture.md) - services, data model, reminder pipeline, AI proposal flow
 - [API reference](docs/api.md) - all HTTP endpoints
 - [Mobile guide](docs/mobile.md) - running on a device, push notifications, EAS builds
-- [Deployment](docs/deployment.md) - production checklist
+- [Deployment](docs/deployment.md) - go-live checklist, DNS records, Cloudflare tunnel, your own mail server, updating without downtime
 - [Scalability](docs/scalability.md) - multi-host topology, load balancer, replicas, capacity plan
 - [Kubernetes](deploy/k8s/README.md) - manifests with autoscaling, ingress and network policies
 
@@ -127,20 +127,23 @@ For mobile, see [docs/mobile.md](docs/mobile.md).
 
 All commands run from the repository root.
 
-| Command                      | Purpose                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| `npm install`                | Install every workspace (see the npm note below)                                         |
-| `npm run build:packages`     | Compile `@orbyn/core` and `@orbyn/api-client` to `dist/` (required before anything else) |
-| `npm run dev:packages`       | Rebuild the shared packages on change                                                    |
-| `npm run dev:api`            | API with hot reload on port 8000                                                         |
-| `npm run dev:web`            | Web app dev server on port 5173                                                          |
-| `npm run dev:mobile`         | Expo dev server                                                                          |
-| `npm run typecheck`          | Build packages, then type-check backend, desktop, and mobile                             |
-| `npm test`                   | Backend integration tests (needs an `orbyn_test` database)                               |
-| `npm run build`              | Build packages, backend, and the web bundle                                              |
-| `npm run format`             | Format everything with Prettier                                                          |
-| `npm run desktop -w desktop` | Launch the Electron shell against the built web app                                      |
-| `npm run package -w desktop` | Produce installers (dmg, nsis, AppImage)                                                 |
+| Command                       | Purpose                                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `npm install`                 | Install every workspace (see the npm note below)                                         |
+| `npm run build:packages`      | Compile `@orbyn/core` and `@orbyn/api-client` to `dist/` (required before anything else) |
+| `npm run dev:packages`        | Rebuild the shared packages on change                                                    |
+| `npm run dev:api`             | API with hot reload on port 8000                                                         |
+| `npm run dev:web`             | Web app dev server on port 5173                                                          |
+| `npm run dev:mobile`          | Expo dev server                                                                          |
+| `npm run typecheck`           | Build packages, then type-check backend, desktop, and mobile                             |
+| `npm test`                    | Backend integration tests (needs an `orbyn_test` database)                               |
+| `npm run build`               | Build packages, backend, and the web bundle                                              |
+| `npm run format`              | Format everything with Prettier                                                          |
+| `npm run desktop -w desktop`  | Launch the Electron shell against the built web app                                      |
+| `npm run package -w desktop`  | Produce installers (dmg, nsis, AppImage)                                                 |
+| `./scripts/deploy.sh`         | Install or update a server without downtime: pull, back up, build, migrate, roll out     |
+| `./scripts/deploy.sh --check` | Show what a deploy would do and check `.env`, changing nothing                           |
+| `./scripts/mail-local.sh`     | Start, test and stop a local stack for the self-hosted mail server                       |
 
 > **npm note.** npm 11.4.0 has a bug that creates broken symlinks for scoped workspace packages
 > (`node_modules/@orbyn/*`). Use npm 10.x (bundled with Node 22) or npm 11.5+. If
