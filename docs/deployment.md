@@ -3,6 +3,30 @@
 The Compose file in the repository is tuned for local development. This checklist covers what to
 change for a real deployment.
 
+## Going live on your domain
+
+The shortest path from a fresh server to a working site, with the details in the sections below.
+
+1. Put the domain on Cloudflare DNS and create a tunnel (Zero Trust → Networks → Tunnels); give it
+   a public hostname pointing at `http://gateway:8081`.
+2. On your machine, fill in `.env.production`: the tunnel token, `APP_URL` and `CORS_ORIGINS` as
+   `https://your-domain`, a generated `POSTGRES_PASSWORD` and `SECRETS_KEY`, `ADMIN_EMAILS`, and
+   how mail goes out (your own mail server, or a provider). Never commit it; git ignores it.
+3. Still on your machine, check the file before it travels:
+   `ENV_FILE=.env.production ./scripts/deploy.sh --check`. Then clone the repository on the server
+   and copy the file there as `.env`, next to `compose.yaml`.
+4. Run `./scripts/deploy.sh`. It starts everything, including the tunnel and the mail server when
+   `.env` asks for them, and prints the DKIM record the mail server wants published.
+5. Add the [DNS records](#dns-records): SPF and DMARC now, DKIM from step 4.
+6. Sign in with the `ADMIN_EMAILS` address, then in Admin → System send a test email and check the
+   received message's headers for `spf=pass` and `dkim=pass`.
+7. If SMTP settings were ever saved in Admin → System, clear them or set them to match `.env`:
+   saved settings win over the environment.
+8. Anything secret that was ever pasted into a chat, ticket or terminal history (an app password,
+   the tunnel token) — rotate it now that everything works.
+
+From then on, every update is `./scripts/deploy.sh` ([Updating the server](#updating-the-server)).
+
 ## Images
 
 Two images are built from the repository root:
@@ -45,7 +69,8 @@ For Kubernetes manifests (deployments, autoscaling, ingress, network policies), 
 4. **CORS.** Set `CORS_ORIGINS` to your web origin(s), for example `https://app.example.com`.
 5. **Email.** Set `DOCKER_SMTP_HOST` (or `SMTP_HOST` outside Compose) to your relay along with
    `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, and a `SMTP_FROM` on a domain you
-   control with SPF/DKIM configured. Remove the `mailpit` service.
+   control with SPF/DKIM configured — or run [your own mail server](#sending-mail-yourself).
+   Remove the `mailpit` service.
 6. **Push.** Set `EXPO_PUBLIC_EAS_PROJECT_ID` in the mobile build and, if enabled on your Expo
    account, `EXPO_ACCESS_TOKEN` on the worker.
 7. **Ports.** Keep the API bound to the internal network and expose only the proxy. The default
@@ -92,6 +117,40 @@ in.
 The token is passed in the environment, not on the command line, so it stays out of `docker ps`.
 Docker administrators can still read it with `docker inspect`. To pin a cloudflared release instead of following `latest`, set
 `CLOUDFLARED_IMAGE`.
+
+## DNS records
+
+Everything Orbyn needs from DNS, in one place. Web records are created by Cloudflare when you add
+the tunnel's public hostname; mail records you add yourself.
+
+| Record                           | Type  | Value                                                                | Proxy     |
+| -------------------------------- | ----- | -------------------------------------------------------------------- | --------- |
+| `your-domain`                    | CNAME | `<tunnel-id>.cfargotunnel.com` (added by the tunnel route)           | proxied   |
+| `www.your-domain`                | CNAME | the same, if you add a `www` route to the tunnel                     | proxied   |
+| `your-domain`                    | TXT   | SPF, see below                                                       | —         |
+| `default._domainkey.your-domain` | TXT   | the record `scripts/deploy.sh` prints after starting the mail server | —         |
+| `_dmarc.your-domain`             | TXT   | `v=DMARC1; p=none;`, then `p=quarantine` once mail is landing        | —         |
+| `mail.your-domain`               | A     | the server's address — **direct delivery only**                      | unproxied |
+
+SPF says who may send mail for the domain, and there may be only one SPF record:
+
+- Relaying through Google Workspace: `v=spf1 include:_spf.google.com ~all`
+- Delivering directly from the server: `v=spf1 a:mail.your-domain -all`
+- Both, or other senders too: merge them into the one record, e.g.
+  `v=spf1 include:_spf.google.com a:mail.your-domain ~all`
+
+Only the web records go through Cloudflare's proxy. Mail records are text, and a `mail.` A record
+must stay unproxied, because mail has to reach the address itself.
+
+Check what the world sees (a stale local cache can lie; ask a public resolver directly):
+
+```bash
+dig +short TXT your-domain @1.1.1.1
+```
+
+```bash
+dig +short TXT default._domainkey.your-domain @1.1.1.1
+```
 
 ## Testing your own mail server locally
 
@@ -251,25 +310,48 @@ Expect the first messages to be treated with suspicion until the address earns a
 send a few at a time rather than a burst. Remove the `mailpit` service in production, so nothing
 silently swallows mail that should have gone out.
 
-## Deploying without downtime
+## Updating the server
 
-Use `scripts/deploy.sh` for every update, including `.env` changes:
+One command installs, updates and repairs a server, without downtime:
 
 ```bash
-./scripts/deploy.sh            # git pull, build, migrate, roll out
-./scripts/deploy.sh --no-pull  # deploy what is checked out
+./scripts/deploy.sh
 ```
 
-Plain `docker compose up -d` replaces every changed container at once, so a service is down
-while its replacement starts. The script instead:
+Use it for every change: new code, a changed `.env`, a new mail or tunnel setting. Its options:
 
-1. builds images stamped with the commit (shown in Admin → System and at `GET /version`);
-2. applies database migrations before any new code serves traffic;
-3. for each backend service, starts new copies beside the old ones, waits until they pass their
+| Command                                                | What it does                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------- |
+| `./scripts/deploy.sh`                                  | Pull the latest code, then everything below                     |
+| `./scripts/deploy.sh --no-pull`                        | The same for what is checked out (after editing `.env`, say)    |
+| `./scripts/deploy.sh --no-backup`                      | Skip the database dump                                          |
+| `./scripts/deploy.sh --check`                          | Report the plan and check `.env` against itself; change nothing |
+| `ENV_FILE=.env.production ./scripts/deploy.sh --check` | The same check for a file you are about to copy to a server     |
+
+In order, it:
+
+1. pulls the code and builds images stamped with the commit (shown in Admin → System and at
+   `GET /version`);
+2. makes sure the database and pooler are running, without ever recreating them;
+3. dumps the database to `backups/` (keeping `BACKUP_KEEP`, default 7), so a migration can be
+   undone — see [Backups](#backups);
+4. starts or updates the Cloudflare tunnel when `CLOUDFLARE_TUNNEL_TOKEN` is set, and the mail
+   server (`DOCKER_SMTP_HOST=mail`) or the test inbox (`mailpit`), printing the mail server's DKIM
+   record and whether DNS has it;
+5. applies database migrations before any new code serves traffic;
+6. for each backend service, starts new copies beside the old ones, waits until they pass their
    health checks and the gateway has picked them up (it re-resolves every 10 seconds), then stops
    the old copies gracefully so in-flight requests finish;
-4. replaces the gateway only when its configuration or image changed (nginx starts in about a
-   second), and says why.
+7. replaces the gateway only when its configuration or image changed (nginx starts in about a
+   second), and says why;
+8. removes image layers no container uses any more, and confirms the version that is serving.
+
+Before doing any of that it checks `.env`: leftover `TODO` values, a tunnel with `APP_URL` or
+`CORS_ORIGINS` still on localhost (emailed links would point at your laptop), and a mail server
+missing its relay credentials. Problems stop it before anything changes.
+
+Plain `docker compose up -d` replaces every changed container at once, so a service is down
+while its replacement starts; the script avoids that.
 
 The gateway is the only container with host ports: it serves the API port (`API_PORT`) and the web
 port (`WEB_PORT`). The web app runs behind it like every other service, so it rolls over without
@@ -323,11 +405,35 @@ Admin → System shows the running version. With `UPDATE_REPO=owner/repo` (and `
 read-only token, for a private repository) it also shows the newest commit on `UPDATE_BRANCH`
 (default `main`), whether an update is available, and a link to the deploy workflow. After a
 deploy, the web app notices the new version and offers a reload; its page is served with
-`Cache-Control: no-cache`, so browsers never keep running old code.
+`Cache-Control: no-cache`, so browsers never keep running old code. The deploy workflow and the
+manual path run the same script: `./scripts/deploy.sh` on the server.
 
 ## Backups
 
-Everything lives in PostgreSQL. A nightly `pg_dump` of the `orbyn` database is a complete backup.
+Everything lives in PostgreSQL, plus two small things beside it: `.env` (the secrets key above all)
+and the mail server's `mail_data` volume, which holds its DKIM key.
+
+`scripts/deploy.sh` dumps the database to `backups/` before every migration and keeps the last
+`BACKUP_KEEP` (default 7). That covers "the update broke something"; for everything else — disk
+loss, a bad delete — take a nightly dump off the machine as well:
+
+```bash
+docker compose exec -T postgres pg_dump -U orbyn -Fc orbyn > orbyn-$(date -u +%F).dump
+```
+
+To restore a dump, stop the services that write, put the data back, then deploy again:
+
+```bash
+docker compose stop api ai notifier status
+```
+
+```bash
+docker compose exec -T postgres pg_restore -U orbyn -d orbyn --clean --if-exists < backups/orbyn-<stamp>.dump
+```
+
+```bash
+./scripts/deploy.sh --no-pull --no-backup
+```
 
 ## Scaling services
 

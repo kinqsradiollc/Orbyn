@@ -14,3 +14,6 @@ __pycache__/
 coverage/
 mobile/android
 mobile/ios
+
+# Database dumps taken by scripts/deploy.sh before each migration.
+backups/
