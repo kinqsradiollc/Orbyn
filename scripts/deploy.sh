@@ -51,7 +51,7 @@ log() { printf '\n==> %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
 compose() { docker compose "$@"; }
 # A value from .env without sourcing it (passwords may contain $ or quotes).
-setting() { local v; v=$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true); echo "${v:-${2:-}}"; }
+setting() { local v; v=$(grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\r' || true); echo "${v:-${2:-}}"; }
 
 [ -f "$ENV_FILE" ] || { echo "No $ENV_FILE next to compose.yaml; copy .env.example (or .env.production) first." >&2; exit 1; }
 
