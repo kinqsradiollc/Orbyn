@@ -24,6 +24,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Git Bash on Windows rewrites Unix-looking arguments into Windows paths, which
+# would turn a container path like /data/... into C:/Program Files/Git/data/...
+# Harmless everywhere else.
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+
 PULL=1 BACKUP=1 CHECK=0
 for arg in "$@"; do
   case "$arg" in

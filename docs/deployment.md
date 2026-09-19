@@ -328,6 +328,13 @@ Use it for every change: new code, a changed `.env`, a new mail or tunnel settin
 | `./scripts/deploy.sh --check`                          | Report the plan and check `.env` against itself; change nothing |
 | `ENV_FILE=.env.production ./scripts/deploy.sh --check` | The same check for a file you are about to copy to a server     |
 
+On **Windows**, run it from WSL (Ubuntu) or Git Bash, not PowerShell or CMD — it is a bash
+script. WSL is the better home for a server: install Docker Desktop with the WSL 2 backend, turn
+on integration for the distribution (Settings → Resources → WSL Integration), and keep the clone
+inside the WSL filesystem (`~/Orbyn`) rather than under `/mnt/c`, where Docker is much slower.
+Git Bash works too; the repository pins Unix line endings in every clone, so the scripts stay
+runnable.
+
 In order, it:
 
 1. pulls the code and builds images stamped with the commit (shown in Admin → System and at
