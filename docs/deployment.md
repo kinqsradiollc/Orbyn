@@ -169,6 +169,38 @@ If either isn't possible, keep everything else and hand only the last hop to ano
 `MAIL_CONFIG=maddy-relay.conf` along with `MAIL_RELAY`, `MAIL_RELAY_USER` and
 `MAIL_RELAY_PASSWORD`. The queue, the retries and the DKIM signature stay here.
 
+### Relaying through Google Workspace
+
+If the domain's mail already lives in Google Workspace, its SMTP relay is a natural last hop: no
+static address, reverse DNS or open port 25, and Google's own reputation carries the delivery.
+
+1. In Google Admin, go to Apps → Google Workspace → Gmail → Routing and configure **SMTP relay
+   service** (not Outbound gateway) at the top-level organisation:
+   - Allowed senders: **Only addresses in my domains**
+   - Authentication: **Require SMTP Authentication** on; **Only accept specified IP addresses** off
+   - Encryption: **Require TLS encryption** on
+
+   The sending domain must be a verified domain of that Workspace. Changes can take up to 24 hours.
+
+2. Create an **app password** for a Workspace user with Gmail (2-Step Verification must be on).
+   Never use the account's normal password.
+3. In `.env`:
+
+```bash
+MAIL_CONFIG=maddy-relay.conf
+MAIL_RELAY=tcp://smtp-relay.gmail.com:587
+MAIL_RELAY_USER=that-user@your-workspace-domain
+MAIL_RELAY_PASSWORD=the-app-password-without-spaces
+```
+
+4. DNS on the sending domain: keep the existing Google MX records; make the one SPF record
+   `v=spf1 include:_spf.google.com ~all` (merge any other senders into it — a domain may have
+   only one); publish the DKIM record from step 3 of the setup above; and add
+   `_dmarc` `v=DMARC1; p=none;`, tightening it once mail lands.
+
+Google enforces its relay sending limits, and the relay only accepts mail whose sender is on one
+of the Workspace's domains, which is what `SMTP_FROM` must use.
+
 ### Setting it up
 
 1. In `.env`, set `MAIL_HOSTNAME=mail.your-domain` and `MAIL_DOMAIN=your-domain`, and point Orbyn
