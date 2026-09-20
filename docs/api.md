@@ -502,7 +502,7 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 ### Booking pages — assignment
 
-Booking pages take `assignment`: `"collective"` (default — a time is offered only when every required host is free, and it goes on all their calendars) or `"round_robin"` (a time is offered when any host is free, and each booking goes to the host with the fewest so far; `bookings.assigned_user_id` records who). Set it on `POST`/`PUT /booking-pages`.
+Round-robin pages also take `routing`: `[{ question_id, equals, host_user_id }]` — when a booking's answer to that question equals the value, that host is preferred (if free at the slot), otherwise the fair pick still applies. Booking pages take `assignment`: `"collective"` (default — a time is offered only when every required host is free, and it goes on all their calendars) or `"round_robin"` (a time is offered when any host is free, and each booking goes to the host with the fewest so far; `bookings.assigned_user_id` records who). Set it on `POST`/`PUT /booking-pages`.
 
 ## Model Context Protocol (MCP)
 

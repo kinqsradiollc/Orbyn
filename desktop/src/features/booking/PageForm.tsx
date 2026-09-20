@@ -80,6 +80,7 @@ type Draft = {
   date_overrides: DateOverride[];
   questions: QuestionDraft[];
   assignment: "collective" | "round_robin";
+  routing: { question_id: string; equals: string; host_user_id: string }[];
   requires_approval: boolean;
   allow_reschedule: boolean;
   event_title: string;
@@ -148,6 +149,7 @@ const blank = (): Draft => ({
   date_overrides: [],
   questions: [],
   assignment: "collective",
+  routing: [],
   requires_approval: false,
   allow_reschedule: true,
   event_title: "{page} with {name}",
@@ -183,6 +185,7 @@ const draftFrom = (p: BookingPage): Draft => ({
   date_overrides: p.date_overrides,
   questions: p.questions.map((q) => ({ ...q, key: q.id, fixed: true })),
   assignment: p.assignment ?? "collective",
+  routing: p.routing ?? [],
   requires_approval: p.requires_approval,
   allow_reschedule: p.allow_reschedule,
   event_title: p.event_title,
@@ -539,6 +542,9 @@ export function PageForm({
         .map((o) => ({ date: o.date, hours: [...o.hours].sort(byStart) })),
       questions,
       assignment: draft.assignment,
+      routing: draft.routing.filter(
+        (r) => r.question_id && r.equals && r.host_user_id,
+      ),
       requires_approval: draft.requires_approval,
       allow_reschedule: draft.allow_reschedule,
       event_title: draft.event_title.trim(),
@@ -824,6 +830,104 @@ export function PageForm({
                     </small>
                   </span>
                 </label>
+                {draft.assignment === "round_robin" &&
+                  draft.questions.length > 0 && (
+                    <div className="routing-rules">
+                      <span className="settings-label">
+                        Send answers to a host
+                      </span>
+                      {draft.routing.map((rule, n) => (
+                        <div className="routing-rule" key={n}>
+                          <select
+                            aria-label="Question"
+                            value={rule.question_id}
+                            onChange={(e) =>
+                              set(
+                                "routing",
+                                draft.routing.map((r, i) =>
+                                  i === n
+                                    ? { ...r, question_id: e.target.value }
+                                    : r,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="">Question…</option>
+                            {draft.questions.map((q) => (
+                              <option key={q.id} value={q.id}>
+                                {q.label}
+                              </option>
+                            ))}
+                          </select>
+                          <span aria-hidden="true">=</span>
+                          <input
+                            aria-label="Answer"
+                            placeholder="answer"
+                            value={rule.equals}
+                            onChange={(e) =>
+                              set(
+                                "routing",
+                                draft.routing.map((r, i) =>
+                                  i === n
+                                    ? { ...r, equals: e.target.value }
+                                    : r,
+                                ),
+                              )
+                            }
+                          />
+                          <span aria-hidden="true">→</span>
+                          <select
+                            aria-label="Host"
+                            value={rule.host_user_id}
+                            onChange={(e) =>
+                              set(
+                                "routing",
+                                draft.routing.map((r, i) =>
+                                  i === n
+                                    ? { ...r, host_user_id: e.target.value }
+                                    : r,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="">Host…</option>
+                            {draft.co_hosts.map((h) => (
+                              <option key={h.user_id} value={h.user_id}>
+                                {hostName(h.user_id)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label="Remove rule"
+                            onClick={() =>
+                              set(
+                                "routing",
+                                draft.routing.filter((_, i) => i !== n),
+                              )
+                            }
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      {draft.routing.length < 20 && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() =>
+                            set("routing", [
+                              ...draft.routing,
+                              { question_id: "", equals: "", host_user_id: "" },
+                            ])
+                          }
+                        >
+                          <Plus size={13} /> Add a rule
+                        </button>
+                      )}
+                    </div>
+                  )}
               </fieldset>
             )}
           </div>

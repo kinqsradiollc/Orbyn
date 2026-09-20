@@ -189,3 +189,69 @@ test("a round-robin page can be switched back to collective", async () => {
   assert.equal(upd.status, 200, upd.raw.body);
   assert.equal(upd.body.assignment, "collective");
 });
+
+/** A page with one question and a routing rule sending "yes" to the mate. */
+async function routedPage(questionId: string) {
+  const r = await call(owner.token, "POST", "/booking-pages", {
+    slug: `rt-${randomUUID().slice(0, 8)}`,
+    title: "Routed call",
+    durations: [30],
+    min_notice_minutes: 0,
+    team_id: team,
+    assignment: "round_robin",
+    co_hosts: [{ user_id: mate.id, required: true }],
+    questions: [
+      { id: questionId, label: "Enterprise?", type: "text", required: false },
+    ],
+    routing: [
+      { question_id: questionId, equals: "yes", host_user_id: mate.id },
+    ],
+  });
+  assert.equal(r.status, 201, r.raw.body);
+  return r.body.slug as string;
+}
+
+test("a routing rule sends a matching answer to the chosen host", async () => {
+  const slug = await routedPage("ent");
+  const free = await slots(slug, 5);
+  const r = await call(null, "POST", `/book/${slug}`, {
+    start_at: free[0],
+    duration: 30,
+    name: "Big Co",
+    email: `big-${randomUUID()}@example.com`,
+    timezone: TZ,
+    answers: { ent: "yes" },
+  });
+  assert.equal(r.status, 201, r.raw.body);
+  const assigned = (
+    await pool.query<{ assigned_user_id: string | null }>(
+      `SELECT b.assigned_user_id FROM bookings b JOIN booking_pages p ON p.id = b.page_id
+         WHERE p.slug = $1`,
+      [slug],
+    )
+  ).rows[0].assigned_user_id;
+  assert.equal(assigned, mate.id, "the routed answer went to the mate");
+});
+
+test("a non-matching answer falls back to the fair pick", async () => {
+  const slug = await routedPage("ent");
+  const free = await slots(slug, 6);
+  // "no" matches no rule; the routed host isn't forced.
+  await call(null, "POST", `/book/${slug}`, {
+    start_at: free[0],
+    duration: 30,
+    name: "Small Co",
+    email: `small-${randomUUID()}@example.com`,
+    timezone: TZ,
+    answers: { ent: "no" },
+  });
+  const assigned = (
+    await pool.query<{ assigned_user_id: string | null }>(
+      `SELECT b.assigned_user_id FROM bookings b JOIN booking_pages p ON p.id = b.page_id
+         WHERE p.slug = $1`,
+      [slug],
+    )
+  ).rows[0].assigned_user_id;
+  // Fair pick with no history is the owner (first host); definitely assigned.
+  assert.ok(assigned, "still assigned to someone");
+});

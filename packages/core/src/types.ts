@@ -1013,6 +1013,8 @@ export type BookingPage = {
   /** collective: every required host must be free. round_robin: any host, and
    * each booking goes to the fairest available one. */
   assignment: "collective" | "round_robin";
+  /** Round-robin routing: an answer that equals a value prefers a host. */
+  routing: { question_id: string; equals: string; host_user_id: string }[];
   /** The hosts' event title; {page}, {name} and {email} are filled in. */
   event_title: string;
   confirmation_message: string;
