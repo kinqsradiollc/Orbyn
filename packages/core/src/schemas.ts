@@ -772,6 +772,8 @@ export const plannerPrefsInput = z
     buffer_scope: bufferScopeInput.optional(),
     /** Minutes added to every travel leg (0 to 30). */
     travel_padding_minutes: z.number().int().min(0).max(30).optional(),
+    /** Scale each task's estimate by how long that kind of task really takes. */
+    learn_estimates: z.boolean().optional(),
     /** Morning agenda and evening review emails; send the keys you change. */
     digest: z
       .object({

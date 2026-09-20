@@ -640,6 +640,18 @@ export type PlannerPrefs = {
   travel_padding_minutes?: number;
   /** Morning agenda and evening review emails. */
   digest?: DigestPrefs;
+  /** Scale each task's estimate by how long that kind of task really takes. */
+  learn_estimates?: boolean;
+};
+
+/** What the planner has learned about how long tasks really take. */
+export type EstimateModel = {
+  /** actual ÷ estimated over recent finished tasks; 1 until there's enough data. */
+  overall: { ratio: number; samples: number };
+  /** Per-tag ratios, only where there are enough finished tasks to trust. */
+  tags: { tag_id: string; name: string; ratio: number; samples: number }[];
+  /** Whether the planner is applying these corrections. */
+  applied: boolean;
 };
 
 export type BufferScope = z.output<typeof bufferScopeInput>;

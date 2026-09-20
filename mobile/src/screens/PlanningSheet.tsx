@@ -17,6 +17,7 @@ import {
   type BreakLevel,
   type BufferScope,
   type DigestPrefs,
+  type EstimateModel,
   type TravelMode,
   type Frame,
   type Place,
@@ -86,6 +87,7 @@ type Form = {
   scope: Omit<BufferScope, "min_minutes"> & { min: string };
   travelPad: string;
   digest: DigestPrefs;
+  learn_estimates: boolean;
 };
 
 /** Most minutes added to every travel time. */
@@ -118,6 +120,7 @@ const toForm = (p: PlannerPrefs): Form => ({
     morning_time: "07:00",
     evening_time: "17:00",
   },
+  learn_estimates: p.learn_estimates ?? false,
   timezone: p.timezone,
   work_days: p.work_days,
   work_start: p.work_start,
@@ -269,6 +272,7 @@ function Body({ teams }: { teams: Team[] }) {
   const [saved, setSaved] = useState(false);
   const [editingFrame, setEditingFrame] = useState<Frame | "new" | null>(null);
   const [editingPlace, setEditingPlace] = useState<Place | "new" | null>(null);
+  const [estimates, setEstimates] = useState<EstimateModel | null>(null);
   const device = deviceTimeZone();
 
   useEffect(() => {
@@ -282,6 +286,7 @@ function Body({ teams }: { teams: Team[] }) {
       setFrames(f);
       setPlaces(pl);
     });
+    client.getEstimates().then(setEstimates, () => setEstimates(null));
   }, [run]);
 
   const patch = (next: Partial<Form>) => {
@@ -324,6 +329,7 @@ function Body({ teams }: { teams: Team[] }) {
         buffer_scope: { ...scope, min_minutes: shortest },
         travel_padding_minutes: pad,
         digest: form.digest,
+        learn_estimates: form.learn_estimates,
       });
       setForm(toForm(p));
       setSaved(true);
@@ -685,6 +691,26 @@ function Body({ teams }: { teams: Team[] }) {
                   accessibilityLabel={`Travel padding, 0 to ${MAX_TRAVEL_PAD} minutes`}
                 />
               </Field>
+            </View>
+
+            <Text style={[shared.eyebrow, s.eyebrow]}>LEARNING</Text>
+            <Text style={[shared.small, s.sectionHint]}>
+              {estimates && estimates.overall.samples >= 3
+                ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
+                : "The planner learns how long tasks really take once you finish a few with an estimate and logged time."}
+            </Text>
+            <View style={s.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.switchTitle}>Adjust estimates from history</Text>
+                <Text style={shared.small}>
+                  Scales planned time; your estimates aren’t changed.
+                </Text>
+              </View>
+              <Switch
+                value={form.learn_estimates}
+                accessibilityLabel="Adjust estimates from history"
+                onValueChange={(learn_estimates) => patch({ learn_estimates })}
+              />
             </View>
 
             <Text style={[shared.eyebrow, s.eyebrow]}>DAILY DIGEST</Text>

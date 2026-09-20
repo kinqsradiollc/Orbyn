@@ -76,6 +76,7 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   buffer_scope: DEFAULT_BUFFER_SCOPE,
   travel_padding_minutes: 0,
   digest: DEFAULT_DIGEST,
+  learn_estimates: false,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -118,6 +119,7 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     buffer_scope: { ...DEFAULT_BUFFER_SCOPE, ...row.buffer_scope },
     travel_padding_minutes: row.travel_padding_minutes,
     digest: { ...DEFAULT_DIGEST, ...row.digest },
+    learn_estimates: row.learn_estimates ?? false,
   };
 }
 

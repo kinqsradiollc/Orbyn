@@ -68,6 +68,7 @@ import {
   type QuickAddResult,
   type RsvpView,
   type UserAvailability,
+  type EstimateModel,
   type Frame,
   type FrameInput,
   type FrameUpdate,
@@ -503,6 +504,10 @@ export class OrbynClient {
       method: "PUT",
       body: input,
     });
+  }
+  /** What the planner has learned about how long your tasks really take. */
+  getEstimates() {
+    return this.request<EstimateModel>("/planner/estimates");
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {
