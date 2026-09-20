@@ -40,6 +40,7 @@ import {
   type HabitPlan,
   type Place,
   type Plan,
+  type PlannerAnalytics,
   type PlannerPrefs,
   type PlannerReview,
   type PlanStaleness,
@@ -275,6 +276,56 @@ export async function plannerRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const prefs = await loadPrefs(db, u.id);
     return loadEstimateModel(db, u.id, !!prefs.learn_estimates);
+  });
+
+  // Where your set-aside time went: totals, by list and by tag, over a window.
+  app.get("/planner/analytics", async (r): Promise<PlannerAnalytics> => {
+    const u = await authenticate(r);
+    const db = reader(r.headers);
+    const days = Math.min(
+      365,
+      Math.max(1, Number((r.query as { days?: string }).days) || 30),
+    );
+    const from = new Date(Date.now() - days * 86_400_000);
+    const mins = `sum(extract(epoch FROM (b.end_at - b.start_at)) / 60)::int`;
+    const [planned, byList, byTag, completed] = await Promise.all([
+      db.query<{ minutes: number | null }>(
+        `SELECT ${mins} AS minutes FROM time_blocks b WHERE b.user_id=$1 AND b.start_at >= $2`,
+        [u.id, from.toISOString()],
+      ),
+      db.query<{ name: string | null; minutes: number }>(
+        `SELECT (SELECT name FROM lists l WHERE l.id = i.list_id) AS name, ${mins} AS minutes
+           FROM time_blocks b JOIN items i ON i.id = b.item_id
+          WHERE b.user_id=$1 AND b.start_at >= $2
+          GROUP BY i.list_id ORDER BY minutes DESC NULLS LAST LIMIT 12`,
+        [u.id, from.toISOString()],
+      ),
+      db.query<{ name: string; minutes: number }>(
+        `SELECT t.name, ${mins} AS minutes
+           FROM time_blocks b JOIN item_tags it ON it.item_id = b.item_id
+           JOIN tags t ON t.id = it.tag_id
+          WHERE b.user_id=$1 AND b.start_at >= $2
+          GROUP BY t.name ORDER BY minutes DESC LIMIT 12`,
+        [u.id, from.toISOString()],
+      ),
+      db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM items
+          WHERE user_id=$1 AND status='done' AND updated_at >= $2`,
+        [u.id, from.toISOString()],
+      ),
+    ]);
+    return {
+      from: from.toISOString(),
+      to: new Date().toISOString(),
+      days,
+      planned_minutes: planned.rows[0].minutes ?? 0,
+      completed: completed.rows[0].n,
+      by_list: byList.rows.map((x) => ({
+        name: x.name ?? "No list",
+        minutes: x.minutes,
+      })),
+      by_tag: byTag.rows.map((x) => ({ name: x.name, minutes: x.minutes })),
+    };
   });
 
   app.get("/planner/frames", async (r) => {

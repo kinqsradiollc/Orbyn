@@ -96,6 +96,7 @@ import {
   type PlaceInput,
   type PlaceUpdate,
   type Plan,
+  type PlannerAnalytics,
   type PlannerPrefs,
   type PlannerPrefsInput,
   type PlannerReview,
@@ -563,6 +564,10 @@ export class OrbynClient {
       method: "POST",
       body: input,
     });
+  }
+  /** Where your set-aside time went over the last `days`. */
+  getAnalytics(days = 30) {
+    return this.request<PlannerAnalytics>(`/planner/analytics?days=${days}`);
   }
   getPlannerPrefs() {
     return this.request<PlannerPrefs>("/planner/prefs");

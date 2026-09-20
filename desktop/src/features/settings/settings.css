@@ -400,3 +400,47 @@
   display: grid;
   gap: 4px;
 }
+
+/* Time analytics: totals and horizontal bars by list/tag. */
+.analytics-totals {
+  display: flex;
+  gap: 28px;
+  margin: 6px 0 14px;
+}
+.analytics-totals strong {
+  display: block;
+  font-size: 22px;
+}
+.analytics-totals small {
+  color: var(--muted);
+}
+.analytics-bars {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.analytics-bars li {
+  display: grid;
+  grid-template-columns: minmax(80px, 140px) 1fr auto;
+  gap: 12px;
+  align-items: center;
+  font-size: 13.5px;
+}
+.analytics-track {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--tint, transparent);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.analytics-fill {
+  display: block;
+  height: 100%;
+  background: var(--green);
+}
+.analytics-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
