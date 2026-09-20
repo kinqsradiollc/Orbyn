@@ -466,6 +466,12 @@ snapshot's versioning, staleness (14 days) and shape checks live in `@orbyn/core
 and are unit-tested. Making changes while offline still needs a connection; an offline write queue
 is a planned follow-up.
 
+Quick capture works through a deep link: opening `orbyn://add?text=…` (the app's URL scheme)
+creates a task from the text via `POST /items/quick` and refreshes. Because the iOS/Android
+Shortcuts app can open a URL — and Siri can run a Shortcut — people can say "add to Orbyn" and
+capture a task hands-free with no native extension. The link parser (`parseAddDeepLink` in
+`@orbyn/core`) is unit-tested; the handler lives in `usePlanner`.
+
 ### Design system
 
 The mobile app shares its look with the web app so both read as one product:

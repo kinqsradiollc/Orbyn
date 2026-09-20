@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Linking } from "react-native";
 import * as Notifications from "expo-notifications";
 import type {
   Item,
@@ -10,10 +10,12 @@ import type {
   Team,
   User,
 } from "@orbyn/core";
+import { parseAddDeepLink } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
+import { deviceTimeZone } from "../lib/planning";
 import { animateLayout } from "../motion";
 
 export type SignInInput = {
@@ -181,6 +183,32 @@ export function usePlanner() {
       .catch(() => setError("Unable to restore your session"))
       .finally(() => setReady(true));
   }, []);
+
+  // Quick capture: a Siri Shortcut, home-screen shortcut or share sheet can
+  // open `orbyn://add?text=…` to add a task hands-free. Create it and refresh.
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const handle = async (url: string | null) => {
+      const text = parseAddDeepLink(url);
+      if (!text) return;
+      try {
+        await client.quickAdd(text, deviceTimeZone());
+        if (alive && tokenRef.current === token)
+          await refresh({ animate: true });
+      } catch {
+        // Offline or a transient failure: the person can still add it by hand.
+      }
+    };
+    void Linking.getInitialURL().then((u) => {
+      if (alive) void handle(u);
+    });
+    const sub = Linking.addEventListener("url", (e) => void handle(e.url));
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, [token, refresh]);
 
   useEffect(() => {
     if (!token) return;

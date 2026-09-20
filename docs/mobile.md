@@ -53,6 +53,20 @@ Flow inside the app:
 If your Expo account has "enhanced push security" enabled, set `EXPO_ACCESS_TOKEN` in the root
 `.env` so the worker can authenticate.
 
+## Quick capture with Siri / Shortcuts
+
+The app registers the `orbyn://` URL scheme, and opening `orbyn://add?text=<your task>` adds a task
+from the text (via `POST /items/quick`) and refreshes. No native extension is needed:
+
+1. In the **Shortcuts** app, add an **Open URL** action with `orbyn://add?text=Buy%20milk` (or use
+   an **Ask for Input** / dictation step and put its result in the `text` query value).
+2. Name the Shortcut (e.g. "Add to Orbyn") and, on iOS, add it to Siri — then say it to capture a
+   task hands-free.
+
+The person must already be signed in on the device. On-device behaviour is verified by hand; the
+link parser (`parseAddDeepLink` in `@orbyn/core`) is unit-tested. Home-screen widgets and an Apple
+Watch app are separate native targets and are not part of this.
+
 ## Build and release
 
 ```bash
