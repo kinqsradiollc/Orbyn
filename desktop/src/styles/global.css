@@ -1902,6 +1902,10 @@ footer svg {
   flex: 1;
   min-width: 0;
 }
+/* A single long word is broken rather than spilling out of a narrow column. */
+.upcoming-main strong {
+  overflow-wrap: anywhere;
+}
 .upcoming-main .progress-bar {
   margin-top: 5px;
   max-width: 180px;
@@ -2291,4 +2295,116 @@ footer svg {
 .team-analytics-list .mono {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+/* Shared with the Overview strip and the Projects view. */
+/* One progress bar shape, reused on the card and the detail header. */
+.project-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-track);
+  overflow: hidden;
+}
+.project-bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 3px;
+}
+
+.chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  white-space: nowrap;
+  flex: none;
+}
+.chip-warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+
+/* ------------------------------------------ the rest of the workspace --- */
+
+/* Projects and recent documents, beneath the planner's own cards. */
+.workspace-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+  min-width: 0;
+}
+.workspace-strip .card {
+  min-width: 0;
+}
+.workspace-strip h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.strip-more {
+  margin-left: auto;
+  font-size: 0.82rem;
+}
+
+.strip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.strip-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 8px;
+  margin-inline: -8px;
+  border-radius: 8px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.strip-row:hover {
+  background: var(--color-hover);
+}
+.strip-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.strip-main strong {
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strip-main small,
+.strip-when {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+.strip-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strip-when {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* The bar spans the row, under both columns. */
+.strip-bar {
+  grid-column: 1 / -1;
+  margin-top: 2px;
 }

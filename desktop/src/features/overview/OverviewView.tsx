@@ -17,9 +17,11 @@ import {
   dateLabel,
   overviewItems,
   inProgressEmpty,
+  type Doc,
   type Item,
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
+import { WorkspaceStrip } from "./WorkspaceStrip";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -28,6 +30,8 @@ import { stagger } from "../../lib/motion";
 import { progressOf } from "../../lib/tasks";
 
 type Props = {
+  /** Opens a document found on the Overview. */
+  onOpenDoc: (doc: Doc) => void;
   items: Item[];
   busy: boolean;
   canWrite: (item: Item) => boolean;
@@ -47,6 +51,7 @@ export function OverviewView({
   onNewItem,
   onNavigate,
   onPlanDay,
+  onOpenDoc,
 }: Props) {
   const now = new Date();
   const {
@@ -79,19 +84,24 @@ export function OverviewView({
       />
     ));
 
+  // An empty planner still has a workspace: show any projects and documents
+  // under the prompt to add a first task, rather than an apparently empty app.
   if (!items.length)
     return (
-      <section className="card">
-        <EmptyState
-          icon={Sun}
-          title="Give your ideas a home."
-          body="Add a task or event to start building your plan. Progress, checklists and updates all live on each task."
-        >
-          <button className="primary" onClick={onNewItem}>
-            <Plus size={15} /> Make your first plan
-          </button>
-        </EmptyState>
-      </section>
+      <>
+        <section className="card">
+          <EmptyState
+            icon={Sun}
+            title="Give your ideas a home."
+            body="Add a task or event to start building your plan. Progress, checklists and updates all live on each task."
+          >
+            <button className="primary" onClick={onNewItem}>
+              <Plus size={15} /> Make your first plan
+            </button>
+          </EmptyState>
+        </section>
+        <WorkspaceStrip onOpenDoc={onOpenDoc} onNavigate={onNavigate} />
+      </>
     );
 
   return (
@@ -254,6 +264,10 @@ export function OverviewView({
           </section>
         </div>
       </div>
+      <WorkspaceStrip
+        onOpenDoc={onOpenDoc}
+        onNavigate={(view) => onNavigate(view)}
+      />
     </>
   );
 }
