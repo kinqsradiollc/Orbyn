@@ -103,6 +103,7 @@ export function SettingsScreen({
   onOpenConnections,
   onOpenBooking,
   onOpenTags,
+  onOpenDocs,
   onOpenHabits,
 }: {
   user: User | null;
@@ -112,6 +113,7 @@ export function SettingsScreen({
   onSignOut: () => void;
   teamCount: number;
   onOpenTeams: () => void;
+  onOpenDocs: () => void;
   onOpenAdmin: () => void;
   onOpenStatus: () => void;
   onOpenPlanning: () => void;
@@ -249,6 +251,13 @@ export function SettingsScreen({
           title="Planning"
           detail="Working hours, frames and places"
           onPress={onOpenPlanning}
+        />
+        <LinkRow
+          divider
+          icon="fileText"
+          title="Documents"
+          detail="Notes, briefs and today’s agenda"
+          onPress={onOpenDocs}
         />
         <LinkRow
           divider

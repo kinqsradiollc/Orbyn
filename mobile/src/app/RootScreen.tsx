@@ -56,6 +56,7 @@ import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
 import { TagsSheet } from "../screens/TagsSheet";
+import { DocsSheet } from "../screens/docs/DocsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
@@ -75,7 +76,8 @@ type SheetName =
   | "connections"
   | "booking"
   | "tags"
-  | "habits";
+  | "habits"
+  | "docs";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -676,6 +678,7 @@ export function RootScreen() {
                     onOpenConnections={() => setSheet("connections")}
                     onOpenBooking={openBookings}
                     onOpenTags={() => setSheet("tags")}
+                    onOpenDocs={() => setSheet("docs")}
                     onOpenHabits={() => setSheet("habits")}
                   />
                 )}
@@ -763,6 +766,12 @@ export function RootScreen() {
           onNewTask={newInList}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
+        />
+        <DocsSheet
+          visible={sheet === "docs"}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onItemsChanged={() => void refresh()}
         />
         <TagsSheet
           visible={sheet === "tags"}

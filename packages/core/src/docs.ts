@@ -225,7 +225,7 @@ export function serializeDoc(blocks: DocBlock[]): string {
 /** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
-    .map((b) => (b.type === "divider" ? "" : readable(b.text)))
+    .map((b) => (b.type === "divider" ? "" : mathToText(b.text)))
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
@@ -270,17 +270,28 @@ const SYMBOLS: Record<string, string> = {
 };
 
 /**
- * Turn a line into something that reads in a list row: maths loses its `$`
- * fences and its most common commands become the symbols they stand for, so a
- * preview shows "0 < \u03b7 < 1/\u03bc" rather than "$0 < \\eta < 1/\\mu$".
+ * Turn a line into something that reads as plain text: maths loses its `$`
+ * fences and its most common commands become the symbols they stand for, so
+ * "$0 < \\eta < 1/\\mu$" reads as "0 < \u03b7 < 1/\u03bc".
+ *
+ * Used for previews everywhere, and by the mobile app to show formulas, which
+ * has no typesetting engine of its own.
  */
-function readable(text: string): string {
+export function mathToText(text: string): string {
   return (
     text
       // Drop the fences; the maths itself stays.
       .replace(/\$([^$\n]+?)\$/g, "$1")
       // \frac{a}{b} reads as a/b.
       .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
+      // \| is the norm bars; \{ and \} are literal braces.
+      .replace(/\\\|/g, "\u2016")
+      .replace(/\\([{}])/g, "$1")
+      // Keep grouping on sub- and superscripts only where it carries meaning:
+      // x_{k+1} stays x_(k+1) rather than collapsing to a misleading x_k+1,
+      // while a single character needs no brackets at all.
+      .replace(/([_^])\{([^{}])\}/g, "$1$2")
+      .replace(/([_^])\{([^{}]{2,})\}/g, "$1($2)")
       // Known commands become symbols; the rest just lose the backslash.
       .replace(/\\([A-Za-z]+)/g, (_m, name: string) => SYMBOLS[name] ?? name)
       // Spacing commands (\, \; \! \quad) carry nothing in plain text.
