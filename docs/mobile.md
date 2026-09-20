@@ -87,6 +87,21 @@ How it works:
 - `mobile/modules/orbyn-watch/` is a local Expo native module (the phone side) that sends the glance
   to the Watch over WatchConnectivity.
 
+### What's verified
+
+The Swift type-checks against the SDKs shipped with Xcode (verified with Xcode 26 / Swift 6):
+
+```sh
+xcrun --sdk iphoneos swiftc -typecheck -parse-as-library -target arm64-apple-ios17.0 \
+  targets/widget/index.swift
+xcrun --sdk watchos swiftc -typecheck -parse-as-library -target arm64_32-apple-watchos10.0 \
+  targets/watch/index.swift
+```
+
+The `orbyn-watch` module's WatchConnectivity logic type-checks against the iOS SDK too; its Expo
+Module wrapper needs the Expo pods, so it is checked as part of a full build. Still to do on a Mac:
+the full app build (`pods` + link + signing) and running the widget/Watch on a device or simulator.
+
 To build it, add these to `app.json` (kept out of git because it also holds your EAS project id):
 
 ```jsonc
