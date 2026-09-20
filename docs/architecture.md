@@ -444,7 +444,9 @@ The same bundle runs three ways:
   per-client rate limit and security headers.
 - **Electron**: `electron.cjs` loads `dist/index.html` from disk in a sandboxed window with no
   Node integration. Since the origin is `file://`, the app calls `http://localhost:8008` unless
-  `VITE_API_URL` was baked in at build time.
+  `VITE_API_URL` was baked in at build time. It also adds a system-tray
+  icon: closing the window hides Orbyn to the tray (Dock on macOS) instead of quitting, the tray
+  menu opens the window or quits, and a left-click on the icon toggles the window.
 
 ## Mobile (`mobile/`)
 
