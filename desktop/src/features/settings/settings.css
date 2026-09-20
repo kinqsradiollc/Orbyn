@@ -246,3 +246,62 @@
   flex-wrap: wrap;
   gap: 12px 20px;
 }
+
+/* Habits editor: routine list, the inline form, and the weekly proposal. */
+.habit-form {
+  display: grid;
+  gap: 14px;
+}
+.habit-form > label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.settings-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+.settings-check input {
+  width: auto;
+}
+.settings-form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.habit-plan {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+.habit-proposal {
+  display: grid;
+  gap: 8px;
+}
+.habit-plan-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.habit-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 12.5px;
+}
+@media (max-width: 620px) {
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+}

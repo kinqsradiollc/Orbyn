@@ -53,6 +53,7 @@ export function SettingsScreen({
   onOpenConnections,
   onOpenBooking,
   onOpenTags,
+  onOpenHabits,
 }: {
   user: User | null;
   busy: boolean;
@@ -67,6 +68,7 @@ export function SettingsScreen({
   onOpenConnections: () => void;
   onOpenBooking: () => void;
   onOpenTags: () => void;
+  onOpenHabits: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const theme = useTheme();
@@ -174,6 +176,13 @@ export function SettingsScreen({
           title="Tags"
           detail="Yours and your teams’"
           onPress={onOpenTags}
+        />
+        <LinkRow
+          divider
+          icon="repeat"
+          title="Habits"
+          detail="Routines the planner fits into free time"
+          onPress={onOpenHabits}
         />
         <LinkRow
           divider

@@ -19,6 +19,7 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { DayPicker } from "../../components/DayPicker";
 import { BREAK_LABELS } from "../calendar/PlannerPanel";
 import { FrameForm } from "./FrameForm";
+import { HabitsEditor } from "./HabitsEditor";
 import {
   deviceTimeZone,
   minutesLabel,
@@ -543,6 +544,7 @@ export function PlanningSettings({ teams, report }: Props) {
         </form>
       </section>
       <FramesEditor teams={teams} report={report} />
+      <HabitsEditor report={report} />
       <PlacesEditor report={report} />
     </>
   );

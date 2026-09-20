@@ -71,6 +71,12 @@ import {
   type Frame,
   type FrameInput,
   type FrameUpdate,
+  type Habit,
+  type HabitBlock,
+  type HabitInput,
+  type HabitPlan,
+  type HabitPlanInput,
+  type HabitUpdate,
   type ItemSort,
   type ListInput,
   type ListUpdate,
@@ -515,6 +521,46 @@ export class OrbynClient {
   }
   deleteFrame(id: string) {
     return this.request<void>(`/planner/frames/${id}`, { method: "DELETE" });
+  }
+  // ---- habits ----
+  listHabits() {
+    return this.request<Habit[]>("/planner/habits");
+  }
+  createHabit(input: HabitInput) {
+    return this.request<Habit>("/planner/habits", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateHabit(id: string, input: HabitUpdate) {
+    return this.request<Habit>(`/planner/habits/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteHabit(id: string) {
+    return this.request<void>(`/planner/habits/${id}`, { method: "DELETE" });
+  }
+  /** Propose sessions for the active habits; nothing is saved. */
+  planHabits(input: HabitPlanInput = {}) {
+    return this.request<HabitPlan>("/planner/habits/plan", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Save proposed sessions, skipping any that now clash. */
+  applyHabitPlan(
+    blocks: { habit_id: string; start_at: string; end_at: string }[],
+  ) {
+    return this.request<HabitBlock[]>("/planner/habits/plan/apply", {
+      method: "POST",
+      body: { blocks },
+    });
+  }
+  deleteHabitBlock(id: string) {
+    return this.request<void>(`/planner/habits/blocks/${id}`, {
+      method: "DELETE",
+    });
   }
   /** Skip one date ("YYYY-MM-DD") of a frame. */
   skipFrame(id: string, date: string) {

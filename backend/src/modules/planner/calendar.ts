@@ -665,6 +665,19 @@ export async function busyIntervals(
         .filter((b) => !exclude.has(b.id))
         .map((b) => ({ start_at: b.start_at, end_at: b.end_at })),
     );
+    // Habit sessions are reserved time too, so tasks and other habits plan
+    // around them (this is what stops a habit being placed on top of one).
+    busy.push(
+      ...(
+        await db.query<{ start_at: Date; end_at: Date }>(
+          "SELECT start_at, end_at FROM habit_blocks WHERE user_id = $1 AND end_at > $2 AND start_at < $3",
+          [userId, from.toISOString(), to.toISOString()],
+        )
+      ).rows.map((b) => ({
+        start_at: b.start_at.toISOString(),
+        end_at: b.end_at.toISOString(),
+      })),
+    );
   }
   for (const e of await externalEntries(db, userId, from, to, true))
     busy.push({ start_at: e.start_at, end_at: e.end_at });
