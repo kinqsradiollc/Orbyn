@@ -54,10 +54,14 @@ export function DocBody({
                   style={styles.check}
                   accessibilityLabel={block.text || "Checklist item"}
                 />
-                <Text style={[styles.text, block.done && styles.done]}>
-                  {mathToText(block.text)}
-                  {block.id ? <Text style={styles.tag}> task</Text> : null}
-                </Text>
+                {/* The tag sits beside the label, not inside it, so a done
+                    line does not strike through the tag as well. */}
+                <View style={styles.todoText}>
+                  <Text style={[styles.text, block.done && styles.done]}>
+                    {mathToText(block.text)}
+                  </Text>
+                  {block.id ? <Text style={styles.tag}>task</Text> : null}
+                </View>
               </View>
             );
           case "quote":
@@ -100,6 +104,13 @@ const styles = themed(() =>
     h2: { fontSize: 16 },
     text: { color: colors.text, fontSize: 15, lineHeight: 22, flex: 1 },
     done: { color: colors.muted, textDecorationLine: "line-through" },
+    todoText: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+    },
     tag: { color: colors.muted, fontSize: 12, fontFamily: fonts.semibold },
     row: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
     marker: { color: colors.muted, fontSize: 15, lineHeight: 22, width: 16 },

@@ -1,5 +1,11 @@
 import React from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   inProgressEmpty,
   emptyPlans,
@@ -37,6 +43,7 @@ export function TodayScreen({
   items,
   onPlanDay,
   onOpenPlanner,
+  onOpenWorkspace,
   userId,
   onQuickAdded,
   onAsk,
@@ -55,6 +62,8 @@ export function TodayScreen({
   onPlanDay: () => void;
   /** Opens the Plan my day sheet, optionally on a plan to review. */
   onOpenPlanner: (seed: Plan | null) => void;
+  /** Opens the agenda, documents or projects sheet. */
+  onOpenWorkspace: (what: "agenda" | "docs" | "projects") => void;
 }) {
   const now = new Date();
   const wide = useWindowDimensions().width >= WIDE;
@@ -204,6 +213,46 @@ export function TodayScreen({
         </>
       )}
 
+      {/* The rest of the workspace: today's page, documents and projects. */}
+      <View style={shared.card}>
+        <Text style={shared.sectionTitle}>Your workspace</Text>
+        <View style={s.workspaceRows}>
+          {(
+            [
+              [
+                "agenda",
+                "sun",
+                "Today's agenda",
+                "Written for you each morning",
+              ],
+              [
+                "docs",
+                "fileText",
+                "Documents",
+                "Notes, briefs and meeting notes",
+              ],
+              ["projects", "boxes", "Projects", "Work grouped into stages"],
+            ] as const
+          ).map(([what, icon, title, detail]) => (
+            <Pressable
+              key={what}
+              style={({ pressed }) => [
+                s.workspaceRow,
+                pressed && s.workspacePressed,
+              ]}
+              onPress={() => onOpenWorkspace(what)}
+            >
+              <Icon name={icon} size={17} color={colors.muted} />
+              <View style={s.workspaceText}>
+                <Text style={s.workspaceTitle}>{title}</Text>
+                <Text style={s.workspaceDetail}>{detail}</Text>
+              </View>
+              <Icon name="chevronRight" size={16} color={colors.faint} />
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       <View style={shared.softCard}>
         <View style={s.badge}>
           <Icon name="sparkles" size={18} color={colors.accent} />
@@ -329,5 +378,20 @@ const s = themed(() =>
     plan: { flexDirection: "row", alignItems: "center", gap: 14 },
     planText: { flex: 1, gap: 3 },
     planButton: { marginBottom: 0 },
+    workspaceRows: { marginTop: 6 },
+    workspaceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 11,
+    },
+    workspacePressed: { opacity: 0.6 },
+    workspaceText: { flex: 1, gap: 2 },
+    workspaceTitle: {
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semibold,
+    },
+    workspaceDetail: { color: colors.muted, fontSize: 12 },
   }),
 );

@@ -23,11 +23,14 @@ const when = (iso: string) => {
  */
 export function DocsSheet({
   visible,
+  agenda,
   onClose,
   onDismiss,
   onItemsChanged,
 }: {
   visible: boolean;
+  /** Opens straight onto today's agenda instead of the list. */
+  agenda?: boolean;
   onClose: () => void;
   onDismiss?: () => void;
   /** Called when ticking a line changed a task in the planner. */
@@ -39,8 +42,16 @@ export function DocsSheet({
 
   useEffect(() => {
     if (!visible) return;
+    if (agenda) {
+      // Today's page is written on the server the first time it is asked for.
+      client.agendaToday().then(setOpen, () => setOpen(null));
+      return;
+    }
     client.listDocs().then(setDocs, () => setDocs([]));
-  }, [visible]);
+  }, [visible, agenda]);
+
+  // Leaving a sheet that opened on the agenda should close it, not show a list.
+  const back = agenda ? undefined : open ? () => setOpen(null) : undefined;
 
   const toggle = (index: number) => {
     if (!open) return;
@@ -62,9 +73,9 @@ export function DocsSheet({
   return (
     <Sheet
       visible={visible}
-      title={open ? open.title || "Untitled" : "Documents"}
+      title={open ? open.title || "Untitled" : agenda ? "Agenda" : "Documents"}
       onClose={onClose}
-      onBack={open ? () => setOpen(null) : undefined}
+      onBack={back}
       onDismiss={onDismiss}
     >
       <ScrollView
