@@ -82,6 +82,9 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  /* As wide as the page below it, so its actions sit with the document
+     rather than at the far edge of a wide window. */
+  max-width: 820px;
 }
 .doc-bar-actions {
   margin-left: auto;
@@ -484,4 +487,159 @@ h4.doc-heading {
   font-size: 0.78rem;
   color: var(--color-muted);
   background: var(--color-soft);
+}
+
+/* ---- block handle, menus, and the add-a-block row ---- */
+
+/* The handle lives in a gutter to the left of the text and shows itself
+   only when the row is hovered or focused, so the page reads as a page. */
+.doc-block-row {
+  position: relative;
+  min-width: 0;
+}
+.doc-handle {
+  position: absolute;
+  left: -34px;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.doc-block-row:hover .doc-handle,
+.doc-handle:focus-visible,
+.doc-block-row:focus-within .doc-handle {
+  opacity: 1;
+}
+.doc-handle:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+/* Where there is no gutter to spare, the handle tucks in at the right. */
+@media (max-width: 720px) {
+  .doc-handle {
+    left: auto;
+    right: 0;
+    top: 0;
+  }
+  .doc-block-row .doc-block {
+    padding-right: 30px;
+  }
+}
+
+.doc-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  margin-inline: -8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+  justify-self: start;
+}
+.doc-add:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.doc-add kbd,
+.doc-menu kbd {
+  margin-left: auto;
+  font:
+    600 0.7rem ui-monospace,
+    "SF Mono",
+    Menlo,
+    monospace;
+  color: var(--color-muted);
+  background: var(--color-chip);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.doc-menu {
+  display: grid;
+  gap: 8px;
+  margin: -4px;
+}
+.doc-menu-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 2px 6px 0;
+}
+/* Two columns keep eleven kinds short enough to open below the line. */
+.doc-menu-kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px 6px;
+}
+@media (max-width: 520px) {
+  .doc-menu-kinds {
+    grid-template-columns: 1fr;
+  }
+}
+.doc-menu-row {
+  display: grid;
+  gap: 1px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 6px;
+}
+.doc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-menu-item:hover,
+.doc-menu-item.is-highlight {
+  background: var(--color-hover);
+}
+.doc-menu-item.is-active {
+  background: var(--color-selected);
+}
+.doc-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.doc-menu-item.is-danger {
+  color: var(--color-danger);
+}
+.doc-menu-item > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.doc-menu-text {
+  display: grid;
+  min-width: 0;
+}
+.doc-menu-text strong {
+  font-weight: 600;
+}
+.doc-menu-text small {
+  color: var(--color-muted);
+  font-size: 0.76rem;
 }

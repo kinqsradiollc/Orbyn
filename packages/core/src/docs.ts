@@ -390,25 +390,114 @@ export function mergeDocs(
 }
 
 /**
- * What a brand new document starts with. It lives here rather than in either
- * app so a page begun on the phone and one begun on the desktop are the same
- * page, and so the example formula stays in step with what the parser can
- * actually read.
+ * The kinds of block a person can ask for by name — in a slash menu, a
+ * "turn into" menu, or a toolbar. One list, so every surface offers the same
+ * things in the same order and with the same words. `shorthand` is what you
+ * would type at the start of a line to get the same block.
  */
-export const starterDoc = (): DocBlock[] =>
-  parseDoc(
-    [
-      "## What this is",
-      "",
-      "Write here. Anything you type is saved as you go.",
-      "",
-      "- [ ] A checklist item",
-      "",
-      "Inline maths like $e^{i\\pi} + 1 = 0$ renders as you type, and a formula on",
-      "its own line looks like this:",
-      "",
-      "$$",
-      "\\int_{0}^{1} x^2 \\, dx = \\frac{1}{3}",
-      "$$",
-    ].join("\n"),
-  );
+export const BLOCK_KINDS: {
+  type: DocBlockType;
+  level?: 1 | 2 | 3;
+  label: string;
+  hint: string;
+  shorthand: string;
+}[] = [
+  { type: "paragraph", label: "Text", hint: "Plain writing", shorthand: "" },
+  {
+    type: "heading",
+    level: 1,
+    label: "Heading 1",
+    hint: "Big section title",
+    shorthand: "# ",
+  },
+  {
+    type: "heading",
+    level: 2,
+    label: "Heading 2",
+    hint: "Section title",
+    shorthand: "## ",
+  },
+  {
+    type: "heading",
+    level: 3,
+    label: "Heading 3",
+    hint: "Small title",
+    shorthand: "### ",
+  },
+  {
+    type: "bullet",
+    label: "Bulleted list",
+    hint: "A simple list",
+    shorthand: "- ",
+  },
+  {
+    type: "numbered",
+    label: "Numbered list",
+    hint: "A list in order",
+    shorthand: "1. ",
+  },
+  {
+    type: "todo",
+    label: "To-do",
+    hint: "A checkbox that can become a task",
+    shorthand: "- [ ] ",
+  },
+  {
+    type: "quote",
+    label: "Quote",
+    hint: "Set apart from the text",
+    shorthand: "> ",
+  },
+  {
+    type: "code",
+    label: "Code",
+    hint: "Kept exactly as typed",
+    shorthand: "```",
+  },
+  {
+    type: "math",
+    label: "Maths",
+    hint: "A formula on its own line, in LaTeX",
+    shorthand: "$$",
+  },
+  {
+    type: "divider",
+    label: "Divider",
+    hint: "A line across the page",
+    shorthand: "---",
+  },
+];
+
+/** The text a block carries, if it carries any. */
+export const blockText = (block: DocBlock): string =>
+  block.type === "divider" ? "" : block.text;
+
+/**
+ * The same words as a different kind of block — a paragraph made a heading,
+ * a bullet made a to-do. The text is kept; what was ticked or which language
+ * the code was in is not, because the new kind has no place for it.
+ */
+export function blockToType(
+  block: DocBlock,
+  type: DocBlockType,
+  level: 1 | 2 | 3 = 2,
+): DocBlock {
+  const text = blockText(block);
+  switch (type) {
+    case "heading":
+      return { type, level, text };
+    case "todo":
+      return {
+        type,
+        text,
+        done: block.type === "todo" ? block.done : false,
+        ...(block.type === "todo" && block.id ? { id: block.id } : {}),
+      };
+    case "code":
+      return { type, text, lang: block.type === "code" ? block.lang : "" };
+    case "divider":
+      return { type };
+    default:
+      return { type, text };
+  }
+}

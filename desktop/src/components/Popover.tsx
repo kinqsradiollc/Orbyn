@@ -13,13 +13,28 @@ type Props = {
   label: string;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * Whether focus moves into the popover on open and back on close. Off for
+   * a menu that assists typing — a slash menu over a text field — where
+   * taking focus would blur the field and end the edit it is helping with.
+   */
+  takeFocus?: boolean;
+  /** Width, when the default 300px is too narrow for what it holds. */
+  width?: number;
 };
 
 /**
  * A small floating menu next to what opened it. Escape or a click outside
  * closes it; focus moves in on open and back to the opener on close.
  */
-export function Popover({ anchor, label, onClose, children }: Props) {
+export function Popover({
+  anchor,
+  label,
+  onClose,
+  children,
+  takeFocus = true,
+  width,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: anchor.bottom + 6, left: anchor.left });
   const latest = useRef(onClose);
@@ -42,10 +57,13 @@ export function Popover({ anchor, label, onClose, children }: Props) {
   }, [anchor]);
 
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    ref.current
-      ?.querySelector<HTMLElement>("button:not(:disabled), a[href], input")
-      ?.focus();
+    const opener = takeFocus
+      ? (document.activeElement as HTMLElement | null)
+      : null;
+    if (takeFocus)
+      ref.current
+        ?.querySelector<HTMLElement>("button:not(:disabled), a[href], input")
+        ?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -64,7 +82,7 @@ export function Popover({ anchor, label, onClose, children }: Props) {
       document.removeEventListener("mousedown", onDown);
       opener?.focus?.();
     };
-  }, []);
+  }, [takeFocus]);
 
   return (
     <div
@@ -72,7 +90,11 @@ export function Popover({ anchor, label, onClose, children }: Props) {
       className="popover scale-in"
       role="dialog"
       aria-label={label}
-      style={{ top: pos.top, left: pos.left }}
+      style={{
+        top: pos.top,
+        left: pos.left,
+        ...(width ? { width: `min(${width}px, calc(100vw - 16px))` } : {}),
+      }}
     >
       {children}
     </div>
