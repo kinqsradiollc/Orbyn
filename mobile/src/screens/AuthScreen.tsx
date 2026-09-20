@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { client } from "../lib/api";
 import { Brand } from "../components/Brand";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -37,6 +38,7 @@ export function AuthScreen({
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [register, setRegister] = useState(true);
+  const [notice, setNotice] = useState("");
   return (
     <KeyboardAvoidingView
       style={s.screen}
@@ -120,6 +122,7 @@ export function AuthScreen({
             </Field>
           </FadeIn>
           <FadeIn index={6} duration={motion.slow}>
+            {!!notice && <Text style={s.notice}>{notice}</Text>}
             <ErrorBanner error={error} />
             <Button
               title={
@@ -138,6 +141,25 @@ export function AuthScreen({
                 })
               }
             />
+            {!register && (
+              <Pressable
+                accessibilityRole="button"
+                style={s.forgot}
+                disabled={busy}
+                onPress={() =>
+                  act(async () => {
+                    clearError();
+                    setNotice("");
+                    await client.forgotPassword(email.trim());
+                    setNotice(
+                      "If an account uses that address, a link to reset your password is on its way.",
+                    );
+                  })
+                }
+              >
+                <Text style={s.forgotText}>Forgot your password?</Text>
+              </Pressable>
+            )}
             <Pressable
               accessibilityRole="button"
               style={s.switch}
@@ -192,6 +214,18 @@ const s = themed(() =>
     },
     intro: { marginBottom: 28 },
     field: { marginBottom: 16 },
+    notice: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      color: colors.muted,
+      marginBottom: 12,
+    },
+    forgot: { alignItems: "center", paddingTop: 12 },
+    forgotText: {
+      fontFamily: fonts.semibold,
+      fontSize: 14,
+      color: colors.accent,
+    },
     switch: { alignItems: "center", paddingVertical: 12 },
     switchText: {
       fontFamily: fonts.regular,

@@ -560,6 +560,9 @@ test("quick add parses on the server and creates the item", async () => {
 });
 
 test("people invited by email get invitations, answer by link, and hear about changes", async () => {
+  // Register the inviter while mail is off, so they start confirmed; the
+  // invitations below still need SMTP set up when the event is created.
+  const me = await newUser();
   // Invitations only go out with SMTP set up; the lane never needs to reach it here.
   await pool.query(
     `INSERT INTO system_settings (key, value) VALUES ('smtp', $1)
@@ -576,7 +579,6 @@ test("people invited by email get invitations, answer by link, and hear about ch
     ],
   );
   invalidateSettings();
-  const me = await newUser();
   try {
     const event = await create(me.token, {
       title: "Design review",

@@ -221,6 +221,9 @@ export function usePlanner() {
       resetSession();
     });
 
+  /** Re-read the signed-in user, e.g. after confirming their email. */
+  const refreshUser = () => act(async () => setUser(await client.me()));
+
   return {
     token,
     ready,
@@ -242,6 +245,7 @@ export function usePlanner() {
     refresh,
     signIn,
     signOut,
+    refreshUser,
   };
 }
 

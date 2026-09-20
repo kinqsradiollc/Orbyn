@@ -1,7 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
-import { credentials, loginCredentials, fail } from "@orbyn/core";
+import {
+  credentials,
+  emailToken,
+  fail,
+  forgotPassword,
+  loginCredentials,
+  resetPassword,
+} from "@orbyn/core";
 import { adminEmails } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
@@ -14,6 +21,9 @@ import {
   type UserRow,
 } from "../../lib/auth.js";
 import { strictRateLimit } from "../../lib/params.js";
+import { emailEnabled } from "../../worker/channels/email.js";
+import { sendPasswordResetEmail, sendVerificationEmail } from "./mail.js";
+import { issueToken, pruneExpiredTokens, spendToken } from "./tokens.js";
 
 export async function authRoutes(app: FastifyInstance) {
   // Verified against unknown emails so timing does not reveal whether an account exists.
@@ -22,19 +32,30 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/register", strictRateLimit, async (r, reply) => {
     const d = credentials.parse(r.body);
     const hash = await argon2.hash(d.password);
+    const pending: (() => Promise<void>)[] = [];
     const u = await transaction(async (db) => {
       // Bootstrap: the first account, or any email in ADMIN_EMAILS, is an admin.
       await db.query("SELECT pg_advisory_xact_lock(786241)");
       const noAdmins = !(
         await db.query("SELECT 1 FROM users WHERE role='admin' LIMIT 1")
       ).rowCount;
-      const role = noAdmins || adminEmails.has(d.email) ? "admin" : "member";
+      const isAdmin = noAdmins || adminEmails.has(d.email);
+      const role = isAdmin ? "admin" : "member";
+      // Admins are trusted so they can set the workspace up (including mail).
+      // Otherwise confirmation is required only when mail can actually be
+      // sent; without a mail server there is no way to confirm an address.
+      const verified = isAdmin || !(await emailEnabled());
       const row = (
         await db.query<UserRow>(
-          "INSERT INTO users(email,name,password_hash,role) VALUES($1,$2,$3,$4) RETURNING *",
-          [d.email, d.name, hash, role],
+          "INSERT INTO users(email,name,password_hash,role,email_verified) VALUES($1,$2,$3,$4,$5) RETURNING *",
+          [d.email, d.name, hash, role, verified],
         )
       ).rows[0];
+      if (!verified) {
+        const token = await issueToken(db, row.id, "verify");
+        // Sent after the row is committed, so the link always resolves.
+        pending.push(() => sendVerificationEmail(row, token));
+      }
       await audit(
         {
           actorId: row.id,
@@ -47,7 +68,102 @@ export async function authRoutes(app: FastifyInstance) {
       );
       return row;
     });
+    for (const job of pending) await job();
     reply.code(201);
+    return issueSession(u);
+  });
+
+  // Confirm an email address from the link. Works signed in or not, so the
+  // link opens in any browser; a spent or expired link says so plainly.
+  app.post("/auth/verify-email", strictRateLimit, async (r, reply) => {
+    const { token } = emailToken.parse(r.body);
+    const userId = await transaction(async (db) => {
+      const id = await spendToken(db, token, "verify");
+      if (id)
+        await db.query("UPDATE users SET email_verified=true WHERE id=$1", [
+          id,
+        ]);
+      return id;
+    });
+    if (!userId)
+      fail(
+        410,
+        "This link has expired or was already used. Ask for a new one.",
+      );
+    await audit({
+      actorId: userId,
+      action: "user.email_verified",
+      targetType: "user",
+      targetId: userId,
+      details: { via: "link" },
+    });
+    return reply.code(204).send();
+  });
+
+  // Re-send the confirmation email to the signed-in user who needs it.
+  app.post("/auth/resend-verification", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    if (u.email_verified) return reply.code(204).send();
+    await pruneExpiredTokens();
+    const token = await transaction((db) => issueToken(db, u.id, "verify"));
+    await sendVerificationEmail(u, token);
+    return reply.code(204).send();
+  });
+
+  // Ask for a password-reset link. Always answered the same way, so it never
+  // reveals whether an account exists.
+  app.post("/auth/forgot-password", strictRateLimit, async (r, reply) => {
+    const { email } = forgotPassword.parse(r.body);
+    if (await emailEnabled()) {
+      await pruneExpiredTokens();
+      const u = (
+        await pool.query<UserRow>(
+          "SELECT * FROM users WHERE email=$1 AND disabled=false",
+          [email],
+        )
+      ).rows[0];
+      if (u) {
+        const token = await transaction((db) => issueToken(db, u.id, "reset"));
+        await sendPasswordResetEmail(u, token);
+      }
+    }
+    return reply.code(204).send();
+  });
+
+  // Set a new password from a reset link. Ends every other session and signs
+  // the user straight in. Proving control of the mailbox also confirms it.
+  app.post("/auth/reset-password", strictRateLimit, async (r) => {
+    const d = resetPassword.parse(r.body);
+    const hash = await argon2.hash(d.password);
+    const u = await transaction(async (db) => {
+      const userId = await spendToken(db, d.token, "reset");
+      if (!userId)
+        fail(
+          410,
+          "This link has expired or was already used. Ask for a new one.",
+        );
+      const row = (
+        await db.query<UserRow>(
+          `UPDATE users SET password_hash=$2, email_verified=true
+             WHERE id=$1 AND disabled=false RETURNING *`,
+          [userId, hash],
+        )
+      ).rows[0];
+      if (!row) fail(403, DISABLED_MESSAGE);
+      // Old sessions may be on someone else's device: end them all.
+      await db.query("DELETE FROM sessions WHERE user_id=$1", [row.id]);
+      await audit(
+        {
+          actorId: row.id,
+          action: "user.password_reset",
+          targetType: "user",
+          targetId: row.id,
+          details: { email: row.email },
+        },
+        db,
+      );
+      return row;
+    });
     return issueSession(u);
   });
 

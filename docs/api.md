@@ -73,9 +73,15 @@ with 0 for none, map 1–3 to `high`, 4–6 and 0 to `medium` and 7–9 to `low`
 }
 ```
 
-→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders", "role", "handle", "bio" } }`
+→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders", "email_verified", "role", "handle", "bio" } }`
 
 The email is trimmed and lowercased; a blank or missing `name` becomes "My space".
+
+When a mail server is configured, a new member starts with `email_verified: false` and gets a
+confirmation email; until they confirm (or an admin does), every route except `GET /me`,
+`POST /auth/logout`, `POST /auth/verify-email` and `POST /auth/resend-verification` answers `403`.
+The first admin (and any address in `ADMIN_EMAILS`) is always created verified, and with no mail
+server configured every account is verified at once (there would be no way to confirm it).
 
 ### `POST /auth/login`
 
@@ -86,11 +92,32 @@ email or password is always `401`, whatever its length: the sign-up password rul
 
 Revokes the current session. → `204`
 
+### `POST /auth/verify-email`
+
+`{ "token" }` from a confirmation link. Marks the address confirmed. → `204`. Works signed in or
+not, so the link opens in any browser. A spent or expired link is `410`.
+
+### `POST /auth/resend-verification` (auth)
+
+Sends the signed-in, unconfirmed user a fresh confirmation email (the newest link is the only one
+that works). → `204`, including when already confirmed.
+
+### `POST /auth/forgot-password`
+
+`{ "email" }`. Sends a reset link when the address belongs to an active account and mail is set up.
+Always → `204`, so it never reveals whether an account exists. Rate-limited.
+
+### `POST /auth/reset-password`
+
+`{ "token", "password" }` from a reset link. Sets the new password, confirms the address, ends
+every other session, and signs in. → `200` with the same response as register. A spent or expired
+link is `410`. The `password` must meet the sign-up rules.
+
 ## Profile
 
 ### `GET /me` (auth)
 
-→ `{ "id", "email", "name", "email_reminders", "role" }`. `role` is `admin` or `member`.
+→ `{ "id", "email", "name", "email_reminders", "email_verified", "role" }`. `role` is `admin` or `member`.
 
 ### `PUT /me` (auth)
 
@@ -336,14 +363,14 @@ A team must always keep an owner (`409`). System admins can manage any team as a
 All routes require a system admin (`403` otherwise). Admins see accounts, teams, membership, and
 counts, but never the contents of personal or team items.
 
-| Method and path           | Body / result                                                                      |
-| ------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /admin/overview`     | Counts of users, admins, disabled users, teams, items, open items, reminders       |
-| `GET /admin/users`        | `?search=&limit=&offset=` → `{ rows: AdminUser[], total }`                         |
-| `PUT /admin/users/:id`    | `{ "role"?: "admin" \| "member", "disabled"?: boolean }`; disabling signs them out |
-| `DELETE /admin/users/:id` | `204`; their sole-owned teams pass to the next most senior member                  |
-| `GET /admin/teams`        | Every team with counts                                                             |
-| `GET /admin/audit`        | `?limit=&offset=` → `{ rows: AuditEntry[], total }`, newest first                  |
+| Method and path           | Body / result                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /admin/overview`     | Counts of users, admins, disabled users, teams, items, open items, reminders                                                                                 |
+| `GET /admin/users`        | `?search=&limit=&offset=` → `{ rows: AdminUser[], total }`                                                                                                   |
+| `PUT /admin/users/:id`    | `{ "role"?: "admin" \| "member", "disabled"?: boolean, "email_verified"?: boolean }`; disabling signs them out; `email_verified` confirms an address by hand |
+| `DELETE /admin/users/:id` | `204`; their sole-owned teams pass to the next most senior member                                                                                            |
+| `GET /admin/teams`        | Every team with counts                                                                                                                                       |
+| `GET /admin/audit`        | `?limit=&offset=` → `{ rows: AuditEntry[], total }`, newest first                                                                                            |
 
 The last active admin cannot be demoted, disabled, or deleted (`409`), and admins cannot delete
 their own account here.

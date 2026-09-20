@@ -245,6 +245,16 @@ docker compose run --rm api node backend/dist/grant-admin.js someone@example.com
 
 Admins can then promote others from the Admin console in the web or mobile app.
 
+## 6a. Email confirmation
+
+Once a mail server is configured (Admin → System, or `SMTP_*`), new members must confirm their
+email before they can use the app: they get a confirmation link on sign-up, and until they follow
+it the app holds them at a "confirm your email" screen with a resend button. The first admin and
+any `ADMIN_EMAILS` address are created already confirmed, so setup is never blocked, and with no
+mail server every account is usable immediately. An admin can confirm anyone by hand from the Admin
+console (the **Verify** button next to an unconfirmed address) if a link is lost. Confirmation and
+password-reset links point at `APP_URL`, so set it to the address people actually open.
+
 ## 7. Smoke test
 
 `npm run smoke -w backend` calls every API endpoint through the shared client against a running

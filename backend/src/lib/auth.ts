@@ -24,6 +24,7 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   email: u.email as string,
   name: u.name as string,
   email_reminders: u.email_reminders as boolean,
+  email_verified: u.email_verified as boolean,
   role: u.role as SystemRole,
   handle: (u.handle as string | null | undefined) ?? null,
   bio: (u.bio as string | undefined) ?? "",
@@ -58,6 +59,29 @@ export async function apiKeyId(r: FastifyRequest): Promise<string | null> {
 export const DISABLED_MESSAGE =
   "This account has been disabled. Contact your Orbyn administrator.";
 
+export const UNVERIFIED_MESSAGE =
+  "Please confirm your email address to continue. Check your inbox for the link, or ask for a new one.";
+
+/**
+ * Routes an unverified user may still reach: reading who they are, signing
+ * out, and confirming or re-sending their verification email. Everything else
+ * is blocked until the address is confirmed. Matched against the route
+ * pattern (`request.routeOptions.url`), not the raw path.
+ */
+const VERIFICATION_EXEMPT = new Set([
+  "/me",
+  "/auth/logout",
+  "/auth/verify-email",
+  "/auth/resend-verification",
+]);
+
+/** Fail when `u` hasn't confirmed their email and this route requires it. */
+function requireVerified(r: FastifyRequest, u: UserRow) {
+  if (u.email_verified) return;
+  if (VERIFICATION_EXEMPT.has(r.routeOptions?.url ?? "")) return;
+  fail(403, UNVERIFIED_MESSAGE);
+}
+
 /** Requests signed in with a personal API key rather than a session. */
 const viaApiKey = new WeakSet<FastifyRequest>();
 
@@ -84,6 +108,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
       [digest(token)],
     );
     viaApiKey.add(r);
+    requireVerified(r, u);
     return u;
   }
   const u = (
@@ -94,6 +119,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   ).rows[0];
   if (!u) fail(401, "Session expired. Please sign in again.");
   if (u.disabled) fail(403, DISABLED_MESSAGE);
+  requireVerified(r, u);
   return u;
 }
 

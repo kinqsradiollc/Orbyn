@@ -2254,3 +2254,18 @@ footer svg {
     padding: 9px 20px;
   }
 }
+
+/* The "forgot password" link sits tight under the password field, right-aligned. */
+.auth-card .auth-forgot {
+  display: block;
+  margin: -4px 0 4px auto;
+  font-size: 13px;
+}
+
+/* The "unverified" pill and its Verify action sit under the email address. */
+.admin-unverified {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
