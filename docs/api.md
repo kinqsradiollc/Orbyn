@@ -986,3 +986,7 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 ### `GET /teams/:id/analytics` (auth, owners/admins)
 
 `?days=` (default 30). Set-aside time on the team's items, per member, with completed counts and a team total — aggregates only, never item titles. Owners and admins only.
+
+## CalDAV (read-only)
+
+`/dav/` is a read-only CalDAV server (PROPFIND, REPORT, GET) so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`). Writes are refused (`403`); two-way sync is a later step.

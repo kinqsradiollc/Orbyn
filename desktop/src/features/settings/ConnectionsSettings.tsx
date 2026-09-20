@@ -20,6 +20,7 @@ import { PortabilitySettings } from "./PortabilitySettings";
 import { EmailToTask } from "./EmailToTask";
 import { McpNote } from "./McpNote";
 import { ChatDelivery } from "./ChatDelivery";
+import { CalDavNote } from "./CalDavNote";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
 import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
@@ -101,6 +102,7 @@ export function ConnectionsSettings({ report }: Props) {
       <CalendarSubscriptions report={report} />
       <EmailToTask report={report} />
       <ChatDelivery report={report} />
+      <CalDavNote />
       <McpNote />
       <PortabilitySettings report={report} />
     </>
