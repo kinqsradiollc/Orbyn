@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Check, Download, Loader2, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Download,
+  ListPlus,
+  Loader2,
+  Trash2,
+} from "lucide-react";
 import {
   parseDoc,
   serializeBlock,
@@ -30,12 +37,16 @@ export function DocEditor({
   onBack,
   onChanged,
   onDeleted,
+  onItemsChanged,
   report,
 }: {
   doc: Doc;
-  onBack: () => void;
+  /** Left out for the agenda, which has no list to go back to. */
+  onBack?: () => void;
   onChanged: (doc: Doc) => void;
   onDeleted: (id: string) => void;
+  /** Called after checklist lines are turned into real tasks. */
+  onItemsChanged?: () => void;
   report: (e: unknown) => void;
 }) {
   const [title, setTitle] = useState(doc.title);
@@ -190,6 +201,40 @@ export function DocEditor({
     URL.revokeObjectURL(url);
   };
 
+  const openTodos = blocks.filter(
+    (b) => b.type === "todo" && !b.done && b.text.trim().length > 0,
+  ).length;
+
+  /** Turn the unticked checklist lines into real tasks. */
+  const makeTasks = () =>
+    void (async () => {
+      // Save first so the server works from what's on screen.
+      if (timer.current) clearTimeout(timer.current);
+      if (dirty.current) await persist(title, blocks);
+      try {
+        const { created } = await client.docToTasks(doc.id);
+        if (created > 0) {
+          // Tick the lines that became tasks, so the same ones can't be added
+          // twice and the page shows what has been captured.
+          const ticked = blocks.map((b) =>
+            b.type === "todo" && !b.done && b.text.trim().length > 0
+              ? { ...b, done: true }
+              : b,
+          );
+          setBlocks(ticked);
+          await persist(title, ticked);
+        }
+        onItemsChanged?.();
+        alert(
+          created === 0
+            ? "There were no unticked items to add."
+            : `Added ${created} task${created === 1 ? "" : "s"} to your planner. They're ticked here now.`,
+        );
+      } catch (e) {
+        report(e);
+      }
+    })();
+
   const remove = () => {
     if (!confirm(`Delete “${title || "Untitled"}”? This can't be undone.`))
       return;
@@ -202,9 +247,11 @@ export function DocEditor({
   return (
     <div className="doc-editor">
       <div className="doc-bar">
-        <button className="text-button" onClick={onBack}>
-          <ArrowLeft size={15} /> All documents
-        </button>
+        {onBack && (
+          <button className="text-button" onClick={onBack}>
+            <ArrowLeft size={15} /> All documents
+          </button>
+        )}
         <span className="doc-save" role="status">
           {save === "saving" && (
             <>
@@ -219,6 +266,11 @@ export function DocEditor({
           {save === "error" && "Not saved"}
         </span>
         <span className="doc-bar-actions">
+          {openTodos > 0 && (
+            <button className="text-button" onClick={makeTasks}>
+              <ListPlus size={15} /> Add {openTodos} to my tasks
+            </button>
+          )}
           <button
             className="icon-button"
             onClick={download}

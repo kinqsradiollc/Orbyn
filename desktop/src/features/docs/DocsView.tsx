@@ -33,7 +33,18 @@ const STARTER = parseDoc(
   ].join("\n"),
 );
 
-export function DocsView({ report }: { report: (e: unknown) => void }) {
+export function DocsView({
+  report,
+  onItemsChanged,
+  initialDoc,
+  onInitialDocShown,
+}: {
+  report: (e: unknown) => void;
+  onItemsChanged?: () => void;
+  /** A document to open straight away, e.g. a note opened from its event. */
+  initialDoc?: Doc | null;
+  onInitialDocShown?: () => void;
+}) {
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,6 +58,13 @@ export function DocsView({ report }: { report: (e: unknown) => void }) {
   useEffect(() => {
     void load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opening a note from its event hands the document straight to the editor.
+  useEffect(() => {
+    if (!initialDoc) return;
+    setOpen(initialDoc);
+    onInitialDocShown?.();
+  }, [initialDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = () => {
     setBusy(true);
@@ -65,6 +83,7 @@ export function DocsView({ report }: { report: (e: unknown) => void }) {
       <DocEditor
         doc={open}
         report={report}
+        onItemsChanged={onItemsChanged}
         onBack={() => {
           setOpen(null);
           void load();

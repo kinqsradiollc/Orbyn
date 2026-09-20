@@ -561,6 +561,22 @@ export class OrbynClient {
   }
 
   // ---- lists and tags ----
+  /** Today's agenda document, generated on first ask each day. */
+  agendaToday() {
+    return this.request<Doc>("/agenda/today");
+  }
+  /** The note for an event, created from a template the first time. */
+  itemNote(itemId: string) {
+    return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
+  }
+  /** Turn a document's unticked checklist lines into tasks. */
+  docToTasks(id: string) {
+    return this.request<{ created: number; items: Item[] }>(
+      `/docs/${id}/tasks`,
+      { method: "POST" },
+    );
+  }
+
   // Projects
   listProjects() {
     return this.request<Project[]>("/projects");
