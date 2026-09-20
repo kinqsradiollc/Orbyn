@@ -15,6 +15,7 @@ import {
   type TwoFactorSetup,
   type TwoFactorEnabled,
   type ImportSummary,
+  type ChatChannel,
   type InboxInfo,
   type ChatTurn,
   type Credentials,
@@ -374,6 +375,23 @@ export class OrbynClient {
       method: "POST",
       body: input,
     });
+  }
+  // ---- chat delivery ----
+  getChat() {
+    return this.request<ChatChannel>("/me/chat");
+  }
+  setChat(kind: "slack" | "discord", url: string) {
+    return this.request<ChatChannel>("/me/chat", {
+      method: "PUT",
+      body: { kind, url },
+    });
+  }
+  disableChat() {
+    return this.request<void>("/me/chat", { method: "DELETE" });
+  }
+  /** Post a test message to the connected chat webhook. */
+  testChat() {
+    return this.request<void>("/me/chat/test", { method: "POST" });
   }
   // ---- email to task ----
   getInbox() {

@@ -17,6 +17,7 @@ import { habitBlocksIn } from "../modules/planner/habits.js";
 import { reviewFor } from "../modules/planner/plans.js";
 import { appLink } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
+import { chatFor, postChat } from "../modules/chat/channel.js";
 
 /** "9:00 am" in the person's zone. */
 function clockOf(iso: string, tz: string) {
@@ -172,7 +173,7 @@ function localMinutes(now: Date, tz: string) {
  * replicas never send twice. Runs only when a mail server is configured.
  */
 export async function scanDigests(now = new Date()) {
-  if (!(await emailEnabled())) return;
+  const mailOn = await emailEnabled();
   const rows = (
     await pool.query<{
       user_id: string;
@@ -180,13 +181,17 @@ export async function scanDigests(now = new Date()) {
       name: string;
       timezone: string;
       digest: Partial<DigestPrefs> | null;
+      has_chat: boolean;
     }>(
-      `SELECT p.user_id, u.email, u.name, p.timezone, p.digest
+      `SELECT p.user_id, u.email, u.name, p.timezone, p.digest,
+              u.chat_webhook_kind IS NOT NULL AS has_chat
          FROM planner_prefs p JOIN users u ON u.id = p.user_id
         WHERE u.disabled = false
           AND ((p.digest->>'morning')::boolean OR (p.digest->>'evening')::boolean)`,
     )
   ).rows;
+  // Nothing can be delivered without at least one channel.
+  if (!mailOn && !rows.some((r) => r.has_chat)) return;
   for (const row of rows) {
     const tz = row.timezone || "UTC";
     const mins = localMinutes(now, tz);
@@ -212,12 +217,19 @@ export async function scanDigests(now = new Date()) {
           now,
           tz,
         );
-        await sendEmail({
-          id: randomUUID(),
-          destination: row.email,
-          title: subject,
-          body: lines.filter(Boolean).join("\n\n"),
-        });
+        const text = lines.filter(Boolean).join("\n\n");
+        if (mailOn)
+          await sendEmail({
+            id: randomUUID(),
+            destination: row.email,
+            title: subject,
+            body: text,
+          });
+        if (row.has_chat) {
+          const chat = await chatFor(row.user_id);
+          if (chat)
+            await postChat(chat.kind, chat.url, `*${subject}*\n\n${text}`);
+        }
       } catch {
         // A failed send isn't retried today; a missed digest beats a repeat.
       }

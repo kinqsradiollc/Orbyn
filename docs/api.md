@@ -92,6 +92,18 @@ email or password is always `401`, whatever its length: the sign-up password rul
 
 Revokes the current session. → `204`
 
+### `GET /me/chat` (auth) → `{ kind }`
+
+The connected chat webhook's service (`slack` | `discord`), or `null`.
+
+### `PUT /me/chat` (auth)
+
+`{ "kind": "slack" | "discord", "url" }`. Connects an incoming webhook (validated to the real Slack/Discord hosts over https). → `{ kind }`.
+
+### `DELETE /me/chat` (auth) → `204`. `POST /me/chat/test` (auth) posts a test message (`502` if the webhook can't be reached).
+
+The daily digest is posted to a connected webhook as well as (or instead of) email.
+
 ### `GET /me/inbox` (auth) → `{ address, configured }`
 
 Your email-to-task address (null until turned on), and whether the server has inbound mail set up.

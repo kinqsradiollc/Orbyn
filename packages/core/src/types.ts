@@ -125,6 +125,9 @@ export type ItemSyncPage = {
   has_more: boolean;
 };
 
+/** A connected chat webhook, or null kind when none. */
+export type ChatChannel = { kind: "slack" | "discord" | null };
+
 /** The email-to-task address, and whether the server has inbound mail set up. */
 export type InboxInfo = { address: string | null; configured: boolean };
 

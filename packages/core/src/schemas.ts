@@ -264,6 +264,14 @@ export const chatRequest = z.object({
 
 export const preferences = z.object({ email_reminders: z.boolean() });
 
+/** Connect a Slack or Discord incoming webhook for chat delivery. */
+export const chatWebhookInput = z
+  .object({
+    kind: z.enum(["slack", "discord"]),
+    url: z.string().trim().min(1).max(500),
+  })
+  .strict();
+
 /** Ask the assistant to draft a project (subtasks) for review. */
 export const projectRequest = z.object({
   prompt: z.string().trim().min(1).max(2000),

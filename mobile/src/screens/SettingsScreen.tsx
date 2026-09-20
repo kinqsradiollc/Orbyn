@@ -19,6 +19,7 @@ import {
   type ImportSummary,
   type InboxInfo,
   type PlannerAnalytics,
+  type ChatChannel,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -140,6 +141,9 @@ export function SettingsScreen({
   );
   const [inbox, setInbox] = useState<InboxInfo | null>(null);
   const [analytics, setAnalytics] = useState<PlannerAnalytics | null>(null);
+  const [chat, setChat] = useState<ChatChannel | null>(null);
+  const [chatKind, setChatKind] = useState<"slack" | "discord">("slack");
+  const [chatUrl, setChatUrl] = useState("");
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -172,6 +176,7 @@ export function SettingsScreen({
     );
     client.getInbox().then(setInbox, () => setInbox(null));
     client.getAnalytics(30).then(setAnalytics, () => setAnalytics(null));
+    client.getChat().then(setChat, () => setChat({ kind: null }));
   }, []);
   useEffect(() => {
     let live = true;
@@ -602,6 +607,79 @@ export function SettingsScreen({
               })
             }
           />
+        )}
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>CHAT DELIVERY</Text>
+      <View style={shared.card}>
+        <Text style={shared.body}>
+          Get your daily digest in Slack or Discord. Paste an incoming-webhook
+          URL from your workspace or server.
+        </Text>
+        {chat === null ? null : chat.kind ? (
+          <View style={s.importRow}>
+            <Text style={[s.prefTitle, { flex: 1 }]}>
+              {chat.kind === "slack" ? "Slack" : "Discord"} connected
+            </Text>
+            <SmallAction
+              label="Test"
+              disabled={busy}
+              onPress={() =>
+                void act(async () => {
+                  await client.testChat();
+                })
+              }
+            />
+            <SmallAction
+              label="Disconnect"
+              disabled={busy}
+              destructive
+              onPress={() =>
+                void act(async () => {
+                  await client.disableChat();
+                  setChat({ kind: null });
+                })
+              }
+            />
+          </View>
+        ) : (
+          <>
+            <View style={{ marginTop: 12 }}>
+              <Segmented
+                accessibilityLabel="Chat service"
+                options={["slack", "discord"] as const}
+                labels={{ slack: "Slack", discord: "Discord" }}
+                value={chatKind}
+                onChange={setChatKind}
+              />
+            </View>
+            <TextInput
+              style={[shared.input, { marginTop: 10 }]}
+              value={chatUrl}
+              onChangeText={setChatUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder={
+                chatKind === "slack"
+                  ? "https://hooks.slack.com/services/…"
+                  : "https://discord.com/api/webhooks/…"
+              }
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Webhook URL"
+            />
+            <Button
+              secondary
+              title="Connect"
+              disabled={busy || !chatUrl.trim()}
+              style={{ marginTop: 10, marginBottom: 0 }}
+              onPress={() =>
+                void act(async () => {
+                  setChat(await client.setChat(chatKind, chatUrl.trim()));
+                  setChatUrl("");
+                })
+              }
+            />
+          </>
         )}
       </View>
 
