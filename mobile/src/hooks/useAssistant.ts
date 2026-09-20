@@ -122,6 +122,45 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     });
   };
 
+  /** Draft a project (subtasks) from the prompt, as a reviewable proposal. */
+  const draftProject = (text: string = message) => {
+    const trimmed = text.trim();
+    if (!trimmed || thinking) return Promise.resolve();
+    const userTurn: Turn = {
+      id: nextId(),
+      role: "user",
+      text: `Draft a project: ${trimmed}`,
+    };
+    setTurns((t) => [...t, userTurn]);
+    setMessage("");
+    setThinking(true);
+    return act(async () => {
+      try {
+        const proposal = await client.draftProject(
+          trimmed,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
+        setTurns((t) => [
+          ...t,
+          {
+            id: nextId(),
+            role: "assistant",
+            proposal,
+            state: proposal.actions.length ? "pending" : "info",
+            before: [],
+            planApplied: false,
+          },
+        ]);
+      } catch (error) {
+        setTurns((t) => t.filter((x) => x.id !== userTurn.id));
+        setMessage(trimmed);
+        throw error;
+      } finally {
+        setThinking(false);
+      }
+    });
+  };
+
   const latestPending = () =>
     [...turnsRef.current]
       .reverse()
@@ -186,6 +225,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     /** The most recent reply still awaiting approval, if any. */
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,
+    draftProject,
     apply,
     applyPlan,
     discard,

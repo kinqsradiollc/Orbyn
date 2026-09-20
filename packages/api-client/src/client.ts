@@ -1229,6 +1229,13 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
+  /** Draft a project (subtasks) from a prompt, as a proposal to review. */
+  draftProject(prompt: string, timezone: string) {
+    return this.request<Proposal>("/ai/project", {
+      method: "POST",
+      body: { prompt, timezone },
+    });
+  }
   /**
    * Ask the assistant. Pass earlier turns in `history` for follow-up questions.
    * The turn runs on the server while this polls for the answer, so a slow

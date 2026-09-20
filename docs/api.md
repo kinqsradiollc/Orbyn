@@ -512,6 +512,10 @@ What the planner has learned about how long tasks really take: `{ overall: { rat
 
 `{ "kind": "morning" | "evening" }` (default `morning`). Emails you that digest now from your live data, to preview it. → `204`; `503` when no mail server is set up.
 
+### `POST /ai/project` (auth, 10/min)
+
+`{ "prompt", "timezone" }`. Drafts a project from the prompt: the AI provider returns a title and a set of subtasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
+
 ### `POST /ai/chat/start` (auth, 10/min)
 
 Starts an assistant turn and returns `202 { "id": "job uuid" }` at once. The body is the same as
