@@ -162,7 +162,7 @@ export function AssistantComposer({
   assistant: Assistant;
   busy: boolean;
 }) {
-  const { message, setMessage, thinking, ask } = assistant;
+  const { message, setMessage, thinking, ask, draftProject } = assistant;
   const canSend = !busy && !thinking && !!message.trim();
   // Five lines at the user's text size, not five lines of the default size.
   const { fontScale } = useWindowDimensions();
@@ -179,6 +179,25 @@ export function AssistantComposer({
         textAlignVertical="top"
         accessibilityLabel="Message your assistant"
       />
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Draft a project"
+        accessibilityState={{ disabled: !canSend }}
+        disabled={!canSend}
+        onPress={() => draftProject()}
+        style={({ pressed }) => [
+          s.project,
+          pressed && { opacity: 0.6 },
+          !canSend && { opacity: 0.4 },
+        ]}
+      >
+        <Icon
+          name="sparkles"
+          size={18}
+          color={colors.accent}
+          strokeWidth={2.2}
+        />
+      </PressableScale>
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel={thinking ? "Thinking" : "Send"}
@@ -421,6 +440,13 @@ const s = themed(() =>
       height: 44,
       borderRadius: 22,
       backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    project: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",
     },

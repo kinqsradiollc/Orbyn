@@ -264,6 +264,12 @@ export const chatRequest = z.object({
 
 export const preferences = z.object({ email_reminders: z.boolean() });
 
+/** Ask the assistant to draft a project (subtasks) for review. */
+export const projectRequest = z.object({
+  prompt: z.string().trim().min(1).max(2000),
+  timezone: z.string().max(80).default("UTC"),
+});
+
 /** Bring planner data in from an Orbyn export or a CSV. */
 export const importInput = z
   .object({

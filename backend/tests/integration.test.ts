@@ -508,3 +508,66 @@ test("device registration cannot be stolen and logout revokes the session", asyn
     401,
   );
 });
+
+test("drafting a project returns a reviewable proposal, applied on request", async () => {
+  providerResponse = {
+    title: "Launch the newsletter",
+    tasks: [
+      {
+        title: "Pick a platform",
+        notes: "",
+        estimate_minutes: 60,
+        due_in_days: 1,
+      },
+      {
+        title: "Write the first issue",
+        notes: "300 words",
+        estimate_minutes: 120,
+        due_in_days: 3,
+      },
+      {
+        title: "Invite subscribers",
+        notes: "",
+        estimate_minutes: 45,
+        due_in_days: 5,
+      },
+    ],
+  };
+  const draft = await app.inject({
+    method: "POST",
+    url: "/ai/project",
+    headers: headers(alice),
+    payload: {
+      prompt: "Start a weekly newsletter",
+      timezone: "Australia/Melbourne",
+    },
+  });
+  assert.equal(draft.statusCode, 200, draft.body);
+  const proposal = draft.json();
+  assert.match(proposal.summary, /Launch the newsletter/);
+  assert.equal(proposal.actions.length, 3);
+  assert.equal(proposal.actions[0].operation, "create");
+  assert.ok(
+    proposal.actions[0].data.due_at,
+    "tasks get due dates from the offsets",
+  );
+  assert.equal(proposal.actions[1].data.estimate_minutes, 120);
+
+  // Nothing is saved until the proposal is applied.
+  const before = (
+    await app.inject({ url: "/items", headers: headers(alice) })
+  ).json().length;
+  const applied = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: headers(alice),
+  });
+  assert.equal(applied.statusCode, 200, applied.body);
+  const after = (
+    await app.inject({ url: "/items", headers: headers(alice) })
+  ).json();
+  assert.equal(after.length, before + 3, "the three tasks were created");
+  assert.ok(
+    after.some((i: { title: string }) => i.title === "Pick a platform"),
+  );
+});

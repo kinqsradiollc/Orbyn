@@ -5,6 +5,7 @@ import {
   Flag,
   PenLine,
   Plus,
+  Sparkles,
   SquarePen,
   Sunrise,
   type LucideIcon,
@@ -40,8 +41,17 @@ export function AssistantView({
   onApplyPlan,
   onOpenPlan,
 }: Props) {
-  const { message, setMessage, turns, thinking, ask, apply, dismiss, reset } =
-    assistant;
+  const {
+    message,
+    setMessage,
+    turns,
+    thinking,
+    ask,
+    draftProject,
+    apply,
+    dismiss,
+    reset,
+  } = assistant;
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
@@ -88,6 +98,10 @@ export function AssistantView({
   const suggest = (text: string) => {
     setQuickMenu(null);
     void ask(text);
+  };
+  const startProject = () => {
+    setQuickMenu(null);
+    if (!locked && message.trim()) void draftProject();
   };
 
   return (
@@ -244,6 +258,15 @@ export function AssistantView({
           onClose={() => setQuickMenu(null)}
         >
           <div className="popover-actions">
+            <button
+              type="button"
+              disabled={locked || !message.trim()}
+              title="Turn what you typed into a project of tasks to review"
+              onClick={startProject}
+            >
+              <Sparkles size={15} aria-hidden="true" />
+              Draft a project from this
+            </button>
             {SUGGESTIONS.map((s, n) => {
               const Icon = SUGGESTION_ICONS[n % SUGGESTION_ICONS.length];
               return (
