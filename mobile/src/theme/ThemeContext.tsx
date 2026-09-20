@@ -62,7 +62,9 @@ export function useThemeController(): Theme {
   applyScheme(scheme);
 
   useEffect(() => {
-    Appearance.setColorScheme(
+    // Not every platform can be told the scheme (the web build cannot); there
+    // the tokens above already carry it, so skipping this changes nothing.
+    Appearance.setColorScheme?.(
       preference === "system" ? "unspecified" : preference,
     );
   }, [preference]);

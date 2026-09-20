@@ -7,7 +7,7 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { parseDoc, serializeDoc, docPreview, parseDocInline } =
+const { parseDoc, serializeDoc, docPreview, parseDocInline, mathToText } =
   await import("@orbyn/core");
 
 const app = await buildApp();
@@ -139,6 +139,19 @@ test("a preview leaves ordinary text alone", () => {
   assert.equal(
     docPreview(parseDoc("Costs $5 today and **bold** stays.")),
     "Costs $5 today and **bold** stays.",
+  );
+});
+
+test("maths reads with its norms and grouping intact", () => {
+  // Norm bars survive, and a subscript keeps its grouping rather than
+  // collapsing to a misleading "x_k+1".
+  assert.equal(
+    mathToText("$\\|x_{k+1}-x^*\\| \\le (1-\\eta\\mu)\\,\\|x_k - x^*\\|$"),
+    "\u2016x_(k+1)-x^*\u2016 \u2264 (1-\u03b7\u03bc) \u2016x_k - x^*\u2016",
+  );
+  assert.equal(
+    mathToText("$\\frac{1}{3} + \\int_{0}^{1} x^2$"),
+    "1/3 + \u222b_0^1 x^2",
   );
 });
 
