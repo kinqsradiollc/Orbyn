@@ -7,6 +7,7 @@ import {
   suggestQuery,
   type MeetingSlot,
   type MemberAvailability,
+  type TeamAnalytics,
   type MemberWorkload,
   type TeamAtRiskItem,
   type UserAvailability,
@@ -130,6 +131,56 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
       );
     },
   );
+
+  // Team owners' analytics: set-aside time on team items, per member, over a
+  // window. Aggregates only — no item titles — and owners/admins only.
+  app.get("/teams/:id/analytics", async (r): Promise<TeamAnalytics> => {
+    const u = await authenticate(r);
+    const teamId = idParam(r);
+    const db = reader(r.headers);
+    await requireTeam(teamId, u, "members:manage");
+    const days = Math.min(
+      365,
+      Math.max(1, Number((r.query as { days?: string }).days) || 30),
+    );
+    const from = new Date(Date.now() - days * 86_400_000);
+    const members = (await teamMembers(teamId)).slice(0, MAX_MEMBERS);
+    const mins = `sum(extract(epoch FROM (b.end_at - b.start_at)) / 60)::int`;
+    const planned = new Map<string, number>();
+    for (const row of (
+      await db.query<{ user_id: string; minutes: number }>(
+        `SELECT b.user_id, ${mins} AS minutes
+           FROM time_blocks b JOIN items i ON i.id = b.item_id
+          WHERE i.team_id = $1 AND b.start_at >= $2
+          GROUP BY b.user_id`,
+        [teamId, from.toISOString()],
+      )
+    ).rows)
+      planned.set(row.user_id, row.minutes);
+    const done = new Map<string, number>();
+    for (const row of (
+      await db.query<{ assignee_id: string | null; n: number }>(
+        `SELECT assignee_id, count(*)::int AS n FROM items
+          WHERE team_id = $1 AND status = 'done' AND updated_at >= $2
+          GROUP BY assignee_id`,
+        [teamId, from.toISOString()],
+      )
+    ).rows)
+      if (row.assignee_id) done.set(row.assignee_id, row.n);
+    const rows = members.map((m) => ({
+      user_id: m.user_id,
+      name: m.name,
+      planned_minutes: planned.get(m.user_id) ?? 0,
+      completed: done.get(m.user_id) ?? 0,
+    }));
+    return {
+      from: from.toISOString(),
+      to: new Date().toISOString(),
+      days,
+      total_planned_minutes: rows.reduce((s, m) => s + m.planned_minutes, 0),
+      members: rows.sort((a, b) => b.planned_minutes - a.planned_minutes),
+    };
+  });
 
   app.get("/teams/:id/workload", async (r): Promise<MemberWorkload[]> => {
     const u = await authenticate(r);

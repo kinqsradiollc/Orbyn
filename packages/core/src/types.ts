@@ -942,6 +942,20 @@ export type MemberAvailability = {
   busy: BusyInterval[];
 };
 
+/** Team owners' view: set-aside time on team items, per member. No titles. */
+export type TeamAnalytics = {
+  from: string;
+  to: string;
+  days: number;
+  total_planned_minutes: number;
+  members: {
+    user_id: string;
+    name: string;
+    planned_minutes: number;
+    completed: number;
+  }[];
+};
+
 export type MemberWorkload = {
   user_id: string;
   name: string;

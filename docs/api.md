@@ -982,3 +982,7 @@ curl -s -X POST $API/items -H "Authorization: Bearer $TOKEN" -H 'Content-Type: a
 
 curl -s $API/items -H "Authorization: Bearer $TOKEN"
 ```
+
+### `GET /teams/:id/analytics` (auth, owners/admins)
+
+`?days=` (default 30). Set-aside time on the team's items, per member, with completed counts and a team total — aggregates only, never item titles. Owners and admins only.

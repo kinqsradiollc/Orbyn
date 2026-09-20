@@ -2269,3 +2269,26 @@ footer svg {
   gap: 8px;
   margin-top: 4px;
 }
+
+/* Team owners' set-aside-time analytics. */
+.team-analytics {
+  margin-top: 18px;
+}
+.team-analytics-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.team-analytics-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: baseline;
+  font-size: 13.5px;
+}
+.team-analytics-list .mono {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
