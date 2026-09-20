@@ -105,9 +105,30 @@ small {
   background: #fff;
   border-right: 1px solid var(--border);
   padding: 34px 20px 20px;
-  /* Short windows: the navigation scrolls instead of being cut off. */
+  overscroll-behavior: contain;
+}
+.sidebar-head {
+  flex-shrink: 0;
+}
+/* Only the destinations scroll. Settings and your account stay put at the
+   bottom of the window, however short it is. */
+.sidebar > nav {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* Room for the scrollbar so it never sits on the labels. */
+  margin-right: -6px;
+  padding-right: 6px;
+  /* The last row fades out when the list runs past the window, so a short
+     window reads as "more below" rather than as a list that ends there.
+     When everything fits, the fade falls on empty space and is invisible. */
+  mask-image: linear-gradient(
+    to bottom,
+    currentColor calc(100% - 22px),
+    transparent
+  );
 }
 .brand {
   display: flex;
@@ -130,7 +151,7 @@ small {
   margin-left: -5px;
 }
 .workspace {
-  margin: 37px 0 31px;
+  margin: 20px 0 18px;
   display: flex;
   gap: 11px;
   align-items: center;
@@ -170,11 +191,21 @@ small {
   color: #9aa29d;
   font-weight: 600;
   padding: 0 12px;
-  margin-bottom: 12px;
+  margin-bottom: 7px;
 }
 nav {
   display: grid;
+  align-content: start;
   gap: 5px;
+}
+/* Three short lists rather than one long one. The gap between groups is
+   what separates them; the label names the group without shouting. */
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
+.nav-group + .nav-group {
+  margin-top: 15px;
 }
 nav button {
   border: 0;
@@ -182,13 +213,14 @@ nav button {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 13px 14px;
+  padding: 9px 14px;
   border-radius: 7px;
   color: #78817d;
   font-size: 13px;
   text-align: left;
 }
-nav button:hover {
+nav button:hover,
+.settings-link:hover {
   background: #f5f7f4;
 }
 nav button.active {
@@ -205,43 +237,17 @@ nav button i,
   margin-left: auto;
 }
 .sidebar-bottom {
-  margin-top: auto;
-  padding-top: 35px;
-}
-.sidebar-note {
-  border: 1px solid #e5eadd;
-  background: #f9faf5;
-  border-radius: 9px;
-  padding: 17px 14px;
-  margin-bottom: 21px;
-}
-.sidebar-note > svg {
-  color: #768962;
-  margin-bottom: 13px;
-}
-.sidebar-note strong {
-  display: block;
-  font-size: 11px;
-}
-.sidebar-note p {
-  font-size: 11px;
-  line-height: 1.8;
-  margin: 7px 0 12px;
-}
-.sidebar-note button {
-  border: 0;
-  background: none;
-  padding: 0;
-  color: #5d7854;
-  font-size: 10px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-shrink: 0;
+  padding-top: 14px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
 }
 .settings-link {
   border: 0;
   background: none;
-  padding: 12px;
+  width: 100%;
+  border-radius: 7px;
+  padding: 9px 14px;
   color: #77817a;
   display: flex;
   align-items: center;
@@ -250,8 +256,8 @@ nav button i,
 }
 .profile {
   border-top: 1px solid var(--border);
-  padding-top: 19px;
-  margin-top: 16px;
+  padding-top: 13px;
+  margin-top: 10px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -307,14 +313,14 @@ nav button i,
 .content {
   max-width: 1400px;
   margin: auto;
-  padding: 41px 43px 18px;
+  padding: 30px 43px 18px;
 }
 .page-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 31px;
+  margin-bottom: 22px;
 }
 .page-heading > div {
   min-width: 0;
@@ -328,7 +334,7 @@ nav button i,
   letter-spacing: 1.9px;
   font-weight: 600;
   color: #8b978b;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .page-heading p {
   font-size: 13px;
@@ -426,7 +432,7 @@ nav button i,
   overflow: hidden;
 }
 .section-heading {
-  padding: 22px 23px;
+  padding: 16px 21px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -515,23 +521,30 @@ nav button i,
 }
 .empty {
   text-align: center;
-  padding: 47px 20px 45px;
+  padding: 32px 20px 30px;
 }
 .empty > svg {
   color: #aab99a;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   stroke-width: 1.3;
 }
 .empty h3 {
   font-weight: 600;
-  margin-bottom: 9px;
+  margin-bottom: 7px;
 }
 .empty p {
   font-size: 13px;
   max-width: 420px;
   margin-left: auto;
   margin-right: auto;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
+}
+/* Inside a section card the empty state is an aside, not the main event. */
+.overview-section .empty {
+  padding: 22px 20px 20px;
+}
+.overview-section .empty > svg {
+  display: none;
 }
 .upcoming {
   display: flex;
@@ -588,11 +601,11 @@ nav button i,
   background: #eef1e5;
   border: 1px solid #e5e9d9;
   border-radius: 11px;
-  padding: 27px;
+  padding: 22px;
   position: relative;
   overflow: hidden;
-  min-height: 339px;
-  margin-bottom: 24px;
+  min-height: 228px;
+  margin-bottom: 16px;
 }
 .sparkle-box {
   width: 40px;
@@ -2337,14 +2350,21 @@ footer svg {
   gap: 16px;
   margin-top: 16px;
   min-width: 0;
+  /* Each card is as tall as what it holds. Stretching a short card to match
+     a long one beside it leaves a pane of empty white under the content. */
+  align-items: start;
 }
+/* These cards carry a plain heading rather than `.section-heading`, so the
+   inset is theirs to set — without it the progress bar sits on the border. */
 .workspace-strip .card {
   min-width: 0;
+  padding: 15px 19px 17px;
 }
 .workspace-strip h2 {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 8px;
 }
 .strip-more {
   margin-left: auto;
