@@ -84,6 +84,8 @@ How it works:
 - `mobile/targets/widget/` is a WidgetKit widget (small + medium) that reads the glance from the App
   Group. `mobile/targets/watch/` is a SwiftUI Watch app that receives the glance over
   WatchConnectivity and caches it.
+- `mobile/modules/orbyn-watch/` is a local Expo native module (the phone side) that sends the glance
+  to the Watch over WatchConnectivity.
 
 To build it, add these to `app.json` (kept out of git because it also holds your EAS project id):
 
@@ -114,9 +116,12 @@ npx expo prebuild -p ios --clean
 xed ios   # select the OrbynWidget / OrbynWatch scheme and run
 ```
 
-Remaining native wiring (documented TODOs in the target sources): the **phone side** must send the
-glance to the Watch with `WCSession.updateApplicationContext` (a small native module), since watchOS
-can't read the phone's App Group. The widget needs no extra wiring once the App Group is set.
+Phone → Watch sync is wired: the local Expo module `mobile/modules/orbyn-watch/` sends the glance
+to the Watch with `WCSession.updateApplicationContext` (watchOS can't read the phone's App Group),
+and `mobile/src/lib/widget.ts` calls it after each refresh. The JS side uses
+`requireOptionalNativeModule`, so it no-ops in Expo Go and CI and activates in a dev/prod build. The
+widget needs no extra wiring once the App Group is set. Everything native (widget, Watch app, and
+this module's Swift) is compiled and verified in Xcode, not by CI.
 
 ## Build and release
 
