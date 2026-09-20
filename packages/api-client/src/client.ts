@@ -5,6 +5,8 @@ import {
   type DocBlock,
   type DocKind,
   type DocSummary,
+  type Project,
+  type ProjectStatus,
   type AiModelList,
   type AiProvider,
   type AiProviderKind,
@@ -559,6 +561,52 @@ export class OrbynClient {
   }
 
   // ---- lists and tags ----
+  // Projects
+  listProjects() {
+    return this.request<Project[]>("/projects");
+  }
+  getProject(id: string) {
+    return this.request<Project>(`/projects/${id}`);
+  }
+  createProject(input: {
+    name: string;
+    summary?: string;
+    team_id?: string | null;
+    deadline?: string | null;
+    stages?: string[];
+  }) {
+    return this.request<Project>("/projects", { method: "POST", body: input });
+  }
+  updateProject(
+    id: string,
+    input: {
+      name?: string;
+      summary?: string;
+      status?: ProjectStatus;
+      deadline?: string | null;
+      doc_id?: string | null;
+      stages?: { id?: string; name: string }[];
+    },
+  ) {
+    return this.request<Project>(`/projects/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteProject(id: string) {
+    return this.request<void>(`/projects/${id}`, { method: "DELETE" });
+  }
+  /** Move a task into a project and stage, or pass null to unfile it. */
+  setItemProject(
+    itemId: string,
+    input: { project_id: string | null; stage_id?: string | null },
+  ) {
+    return this.request<{ ok: true }>(`/items/${itemId}/project`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
   // Documents
   listDocs() {
     return this.request<DocSummary[]>("/docs");

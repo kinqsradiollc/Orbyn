@@ -40,6 +40,7 @@ import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
 import { DocsView } from "../features/docs/DocsView";
+import { ProjectsView } from "../features/projects/ProjectsView";
 import {
   CalendarView,
   type CalendarMode,
@@ -547,6 +548,14 @@ export function App() {
                 />
               )}
               {view === "Docs" && <DocsView report={report} />}
+              {view === "Projects" && (
+                <ProjectsView
+                  items={items}
+                  report={report}
+                  onRefresh={() => void refresh()}
+                  onOpenItem={openItem}
+                />
+              )}
               {view === "Calendar" && (
                 <CalendarView
                   items={items}
