@@ -67,6 +67,13 @@ const schema = z.object({
    * and tests only). Otherwise they must reach a public address.
    */
   ALLOW_PRIVATE_WEBHOOKS: z.enum(["true", "false"]).default("false"),
+  /**
+   * Email-to-task. The mail server posts inbound mail to /inbound/mail with
+   * this shared secret; blank turns the endpoint off. The domain builds each
+   * person's address (<slug>@<domain>).
+   */
+  MAIL_INBOUND_SECRET: z.string().default(""),
+  MAIL_INBOUND_DOMAIN: z.string().default(""),
 });
 
 export type Env = z.infer<typeof schema>;

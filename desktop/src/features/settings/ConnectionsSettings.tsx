@@ -17,6 +17,7 @@ import {
 import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { PortabilitySettings } from "./PortabilitySettings";
+import { EmailToTask } from "./EmailToTask";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
 import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
@@ -96,6 +97,7 @@ export function ConnectionsSettings({ report }: Props) {
       <Webhooks report={report} />
       <CalendarFeedCard report={report} />
       <CalendarSubscriptions report={report} />
+      <EmailToTask report={report} />
       <PortabilitySettings report={report} />
     </>
   );

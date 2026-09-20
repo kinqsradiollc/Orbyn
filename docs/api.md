@@ -92,6 +92,22 @@ email or password is always `401`, whatever its length: the sign-up password rul
 
 Revokes the current session. → `204`
 
+### `GET /me/inbox` (auth) → `{ address, configured }`
+
+Your email-to-task address (null until turned on), and whether the server has inbound mail set up.
+
+### `POST /me/inbox/rotate` (auth)
+
+Turn email-to-task on, or roll to a fresh address if one leaks. → `{ address, configured }`.
+
+### `DELETE /me/inbox` (auth)
+
+Turn it off. → `204`.
+
+### `POST /inbound/mail`
+
+Called by the mail server, guarded by `X-Inbound-Secret: <MAIL_INBOUND_SECRET>` (the endpoint is off unless the secret is set). Body `{ to, from, subject, text }`: the recipient's local part selects the person, the subject becomes a task (dates and #tags parsed as in quick-add) and the body its notes. Only the account's own email may send. Always `202` (so the mail server never retries or bounces); `401` on a bad secret.
+
 ### `GET /me/export` (auth)
 
 Downloads a JSON archive of your personal data — lists, tags, habits and items — for keeping or moving.

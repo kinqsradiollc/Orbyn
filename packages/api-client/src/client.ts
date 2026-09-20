@@ -15,6 +15,7 @@ import {
   type TwoFactorSetup,
   type TwoFactorEnabled,
   type ImportSummary,
+  type InboxInfo,
   type ChatTurn,
   type Credentials,
   type Item,
@@ -372,6 +373,17 @@ export class OrbynClient {
       method: "POST",
       body: input,
     });
+  }
+  // ---- email to task ----
+  getInbox() {
+    return this.request<InboxInfo>("/me/inbox");
+  }
+  /** Turn on email-to-task, or roll to a fresh address. */
+  rotateInbox() {
+    return this.request<InboxInfo>("/me/inbox/rotate", { method: "POST" });
+  }
+  disableInbox() {
+    return this.request<void>("/me/inbox", { method: "DELETE" });
   }
   /** Confirm an email address from a verification link (signed in or not). */
   verifyEmail(token: string) {
