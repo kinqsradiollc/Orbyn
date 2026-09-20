@@ -69,6 +69,9 @@ export type AgentReply = z.output<typeof agentReply>;
 export type ChatTurn = z.output<typeof chatTurn>;
 
 export type Item = ItemInput & {
+  /** The project this task belongs to, and which of its stages. */
+  project_id?: string | null;
+  stage_id?: string | null;
   id: string;
   version: number;
   /** Creator for team items; owner for personal items. */

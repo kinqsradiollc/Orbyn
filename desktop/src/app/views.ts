@@ -5,6 +5,7 @@ import {
   ListChecks,
   ListTodo,
   FileText,
+  Boxes,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -13,7 +14,7 @@ import {
 } from "lucide-react";
 import { screens, screenTitle, type ScreenName } from "@orbyn/core";
 
-export type View = ScreenName | "Lists" | "Docs" | "Booking";
+export type View = ScreenName | "Lists" | "Docs" | "Projects" | "Booking";
 
 type Screen = { title: string; subtitle: string; eyebrow: string };
 
@@ -23,6 +24,12 @@ export const SCREENS: Record<View, Screen> = {
   Lists: {
     title: "Lists",
     subtitle: "Group tasks the way you think about them.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Projects: {
+    title: "Projects",
+    subtitle:
+      "Group related tasks into stages and see a piece of work end to end.",
     eyebrow: "YOUR PERSONAL ORBIT",
   },
   Docs: {
@@ -50,6 +57,7 @@ export const NAV: { label: View; icon: LucideIcon; adminOnly?: boolean }[] = [
   { label: "My tasks", icon: ListTodo },
   { label: "Lists", icon: ListChecks },
   { label: "Calendar", icon: CalendarDays },
+  { label: "Projects", icon: Boxes },
   { label: "Docs", icon: FileText },
   { label: "AI assistant", icon: Sparkles },
   { label: "Teams", icon: Users },
@@ -62,6 +70,7 @@ export const NAV: { label: View; icon: LucideIcon; adminOnly?: boolean }[] = [
 export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Settings",
   "Docs",
+  "Projects",
   "AI assistant",
   "Notifications",
   "Teams",

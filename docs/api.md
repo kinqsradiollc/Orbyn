@@ -214,6 +214,54 @@ Challenges are single-use and expire after five minutes.
 { "email_reminders": false }
 ```
 
+## Projects
+
+A project groups planner tasks into a named piece of work with ordered stages. Tasks are not
+copied — a project sets `project_id` and `stage_id` on the items that belong to it — so
+scheduling, reminders and the calendar keep working unchanged. Personal projects belong to their
+creator; team projects follow the same team roles as team items.
+
+### `GET /projects` (auth)
+
+→ `[ { "id", "name", "summary", "status", "deadline", "doc_id", "stages": [...], "task_count",
+"done_count", … } ]`. Archived projects sort last.
+
+### `POST /projects` (auth)
+
+```json
+{
+  "name": "Email campaign",
+  "deadline": null,
+  "stages": ["Planning", "Content"]
+}
+```
+
+Without `stages` a project starts with Planning, In progress, Review and Done. → `201`.
+
+### `GET /projects/:id` (auth)
+
+→ the project with its stages and task counts. `404` when it isn't yours.
+
+### `PUT /projects/:id` (auth)
+
+`name`, `summary`, `status` (`active`, `done`, `archived`), `deadline`, `doc_id` and `stages` are
+each optional. Sending `stages` replaces the set: entries with an `id` are renamed and reordered,
+entries without one are created, and any left out are removed — tasks in a removed stage stay in
+the project with no stage.
+
+### `DELETE /projects/:id` (auth)
+
+→ `204`. The project's tasks are kept and become unfiled.
+
+### `PUT /items/:id/project` (auth)
+
+```json
+{ "project_id": "uuid", "stage_id": "uuid" }
+```
+
+Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
+that belongs to a different project is `422`.
+
 ## Documents
 
 Notes, briefs and agendas that live beside the planner. A document is a list of blocks

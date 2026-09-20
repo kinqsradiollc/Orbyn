@@ -3,6 +3,7 @@ import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 import { DOC_KINDS } from "./docs.js";
+import { PROJECT_STATUSES } from "./projects.js";
 
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = [
@@ -282,6 +283,44 @@ export const docUpdate = z
     title: z.string().trim().max(200).optional(),
     content: docContent.optional(),
     version: z.number().int().positive(),
+  })
+  .strict();
+
+// Projects. Stages are given by name and order; the server keeps their ids.
+export const projectInput = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    summary: z.string().trim().max(2000).default(""),
+    team_id: z.uuid().nullable().default(null),
+    deadline: z.iso.datetime({ offset: true }).nullable().default(null),
+    stages: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+  })
+  .strict();
+
+export const projectUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    summary: z.string().trim().max(2000).optional(),
+    status: z.enum(PROJECT_STATUSES).optional(),
+    deadline: z.iso.datetime({ offset: true }).nullable().optional(),
+    doc_id: z.uuid().nullable().optional(),
+    stages: z
+      .array(
+        z.object({
+          id: z.uuid().optional(),
+          name: z.string().trim().min(1).max(60),
+        }),
+      )
+      .max(20)
+      .optional(),
+  })
+  .strict();
+
+/** Move a task into a project, a stage, or out of both. */
+export const projectAssign = z
+  .object({
+    project_id: z.uuid().nullable(),
+    stage_id: z.uuid().nullable().default(null),
   })
   .strict();
 
