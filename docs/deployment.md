@@ -533,6 +533,14 @@ Configure the mail server to POST each inbound message as JSON `{to, from, subje
 in Settings, gets a private `something@tasks.your-domain` address, and mail they send to it becomes
 a task. Only mail from their own account address is accepted.
 
+## Subscribing from a calendar app (CalDAV)
+
+Orbyn serves read-only CalDAV at `/dav/`, so people can add their events to Apple Calendar,
+Thunderbird or DAVx5. The gateway already routes `/dav/` and `/.well-known/caldav` to the API. In
+the calendar app, add a CalDAV account with the server `https://your-domain/`, the username set to
+the person's Orbyn email, and the password set to a personal API key they create in
+Settings -> Connections. It's read-only for now; two-way sync is planned.
+
 ## Search engines and link previews
 
 The homepage is the one page meant for search results; the app needs a sign-in, and the public

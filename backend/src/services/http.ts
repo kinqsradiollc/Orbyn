@@ -47,6 +47,15 @@ export async function createService(
     // Only enable where services are not reachable directly.
     trustProxy: env.TRUST_PROXY === "true",
   });
+  // WebDAV methods CalDAV clients use, with an XML body parser for them.
+  for (const method of ["PROPFIND", "REPORT", "PROPPATCH", "MKCALENDAR"])
+    app.addHttpMethod(method, { hasBody: true });
+  app.addContentTypeParser(
+    ["application/xml", "text/xml"],
+    { parseAs: "string" },
+    (_req, body, done) => done(null, body),
+  );
+
   // Allowed origins and the rate limit come from live settings (Admin ->
   // System, falling back to .env), so changing them needs no restart.
   await settings();
