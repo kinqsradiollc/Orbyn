@@ -157,6 +157,18 @@ export function intersect(a: Span[], b: Span[]): Span[] {
   return out;
 }
 
+/** Union of spans (for round-robin, where any host free means the slot is offered). */
+function mergeSpans(spans: Span[]): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const out: Span[] = [];
+  for (const s of sorted) {
+    const last = out.at(-1);
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
 /** The Monday a "YYYY-MM-DD" day's week starts on. */
 const weekOf = (day: string) => addDays(day, -((weekdayOf(day) + 6) % 7));
 
@@ -165,6 +177,8 @@ export type SlotOptions = {
   /** The booking being moved: its hold and events don't block its new time. */
   ignoreBookingId?: string;
   ignoreItemIds?: string[];
+  /** Check only this host (a round-robin booking's assigned host). */
+  assignedHost?: string;
 };
 
 /** Bookings still held (waiting for an email link or a host) on pages these people host. */
@@ -178,7 +192,9 @@ async function holdsFor(
   return (
     await db.query<{ start_at: Date; end_at: Date }>(
       `SELECT b.start_at, b.end_at FROM bookings b
-       WHERE b.page_id IN (SELECT page_id FROM booking_hosts WHERE user_id = ANY ($1::uuid[]))
+       WHERE (b.assigned_user_id = ANY ($1::uuid[])
+              OR (b.assigned_user_id IS NULL
+                  AND b.page_id IN (SELECT page_id FROM booking_hosts WHERE user_id = ANY ($1::uuid[]))))
          AND b.status IN ('pending', 'awaiting_approval') AND b.hold_until > now()
          AND b.start_at < $3 AND b.end_at > $2 AND b.id IS DISTINCT FROM $4::uuid`,
       [hosts, new Date(from), new Date(to), ignoreBookingId ?? null],
@@ -304,7 +320,16 @@ export async function availableSlots(
   );
   const latest = Math.min(to.getTime(), now + page.window_days * DAY);
   if (latest <= earliest) return [];
-  const required = page.hosts.filter((h) => h.required).map((h) => h.user_id);
+  // Who must be free, and how their free times combine. Round-robin offers a
+  // slot when ANY host is free (union); collective needs every required host
+  // (intersection). Checking one assigned host is a single-host intersection.
+  const roundRobin = page.assignment === "round_robin" && !options.assignedHost;
+  const candidates = options.assignedHost
+    ? [options.assignedHost]
+    : roundRobin
+      ? page.hosts.map((h) => h.user_id)
+      : page.hosts.filter((h) => h.required).map((h) => h.user_id);
+  const required = candidates;
   const before = page.buffer_before_minutes * MINUTE;
   const after = page.buffer_after_minutes * MINUTE;
   const tz = await pageTimeZone(db, page);
@@ -350,7 +375,11 @@ export async function availableSlots(
           )
         : hostSpans(prefs, page.date_overrides, tz, earliest, latest);
     const free = freeSpans(windows, mergeIntervals(grown));
-    common = common ? intersect(common, free) : free;
+    common = common
+      ? roundRobin
+        ? mergeSpans([...common, ...free])
+        : intersect(common, free)
+      : free;
   }
   if (!common?.length) return [];
 
@@ -388,4 +417,46 @@ export async function availableSlots(
       page.max_per_week && (perWeek.get(weekOf(day)) ?? 0) >= page.max_per_week
     );
   });
+}
+
+/**
+ * Which host a round-robin booking should go to: among the candidates free at
+ * this exact slot, the one with the fewest bookings on the page (fairest),
+ * breaking ties by the host order the page lists. Null when none is free.
+ */
+export async function chooseHost(
+  db: Queryable,
+  page: PageRow,
+  duration: number,
+  start: Date,
+  end: Date,
+  now = new Date(),
+): Promise<string | null> {
+  const counts = new Map<string, number>();
+  for (const row of (
+    await db.query<{ assigned_user_id: string | null; n: number }>(
+      `SELECT assigned_user_id, count(*)::int AS n FROM bookings
+         WHERE page_id = $1 AND assigned_user_id IS NOT NULL
+           AND status IN ('confirmed', 'pending', 'awaiting_approval')
+         GROUP BY assigned_user_id`,
+      [page.id],
+    )
+  ).rows)
+    if (row.assigned_user_id) counts.set(row.assigned_user_id, row.n);
+
+  let best: string | null = null;
+  let bestCount = Infinity;
+  for (const host of page.hosts) {
+    const free = await availableSlots(db, page, duration, start, end, {
+      now,
+      assignedHost: host.user_id,
+    });
+    if (!free.some((f) => f.start_at === start.toISOString())) continue;
+    const c = counts.get(host.user_id) ?? 0;
+    if (c < bestCount) {
+      best = host.user_id;
+      bestCount = c;
+    }
+  }
+  return best;
 }

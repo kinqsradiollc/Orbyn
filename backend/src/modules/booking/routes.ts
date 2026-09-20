@@ -32,7 +32,7 @@ import { authenticate, digest, type UserRow } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret } from "../../lib/secrets.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
-import { availableSlots, type PageRow } from "./availability.js";
+import { availableSlots, chooseHost, type PageRow } from "./availability.js";
 import {
   checkCoHosts,
   managesTeam,
@@ -221,6 +221,7 @@ const pageValues = (p: PageFields) => [
   p.confirmation_message,
   p.team_id ?? null,
   p.remind_before_minutes ?? DEFAULT_BOOKER_REMINDERS,
+  p.assignment,
 ];
 
 /** Lock a booking that `u` can act on, with its page. */
@@ -419,9 +420,9 @@ export async function bookingRoutes(app: FastifyInstance) {
                slot_interval_minutes, max_per_day, max_per_week, location, meeting_url, active,
                color, availability, date_overrides, questions, requires_approval,
                allow_reschedule, event_title, confirmation_message, team_id,
-               remind_before_minutes)
+               remind_before_minutes, assignment)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
-               $24,$25::smallint[])
+               $24,$25::smallint[],$26)
              RETURNING id`,
             [u.id, ...pageValues(fields)],
           )
@@ -468,7 +469,8 @@ export async function bookingRoutes(app: FastifyInstance) {
              max_per_week=$12, location=$13, meeting_url=$14, active=$15, color=$16,
              availability=$17, date_overrides=$18, questions=$19, requires_approval=$20,
              allow_reschedule=$21, event_title=$22, confirmation_message=$23,
-             team_id=$24, remind_before_minutes=$25::smallint[], updated_at=now()
+             team_id=$24, remind_before_minutes=$25::smallint[], assignment=$26,
+             updated_at=now()
            WHERE id=$1`,
           [current.id, ...pageValues(next)],
         )
@@ -844,14 +846,21 @@ export async function bookingRoutes(app: FastifyInstance) {
         const free = await availableSlots(db, page, d.duration, start, end);
         if (!free.some((s) => s.start_at === start.toISOString()))
           fail(409, "That time was just taken. Pick another time.");
+        // Round-robin: give this booking to the fairest host free at the slot.
+        const assigned =
+          page.assignment === "round_robin"
+            ? await chooseHost(db, page, d.duration, start, end)
+            : null;
+        if (page.assignment === "round_robin" && !assigned)
+          fail(409, "That time was just taken. Pick another time.");
         const confirmToken = randomBytes(24).toString("base64url");
         const manageToken = randomBytes(24).toString("base64url");
         const needsEmail = await emailEnabled();
         const booking = (
           await db.query<BookingRow>(
             `INSERT INTO bookings (page_id, start_at, end_at, name, email, note, timezone, answers,
-             confirm_token_hash, manage_token_hash, manage_token_encrypted)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+             confirm_token_hash, manage_token_hash, manage_token_encrypted, assigned_user_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
             [
               page.id,
               start,
@@ -864,6 +873,7 @@ export async function bookingRoutes(app: FastifyInstance) {
               needsEmail ? digest(confirmToken) : null,
               digest(manageToken),
               await encryptSecret(manageToken),
+              assigned,
             ],
           )
         ).rows[0];

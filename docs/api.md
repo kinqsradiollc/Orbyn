@@ -464,6 +464,10 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 → `204`
 
+### Booking pages — assignment
+
+Booking pages take `assignment`: `"collective"` (default — a time is offered only when every required host is free, and it goes on all their calendars) or `"round_robin"` (a time is offered when any host is free, and each booking goes to the host with the fewest so far; `bookings.assigned_user_id` records who). Set it on `POST`/`PUT /booking-pages`.
+
 ## AI assistant
 
 ### `PUT /planner/prefs` — daily digest

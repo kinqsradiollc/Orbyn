@@ -35,6 +35,7 @@ export type BookingRow = {
   manage_token_encrypted: string | null;
   reschedule_count: number;
   no_show: boolean;
+  assigned_user_id: string | null;
 };
 
 export type Actor = {
@@ -78,6 +79,14 @@ export async function logEvent(
   );
 }
 
+/** The hosts a booking actually involves: its assigned one for round-robin,
+ * or all the page's hosts for a collective booking. */
+export function effectiveHosts(page: PageRow, booking: BookingRow) {
+  return booking.assigned_user_id
+    ? page.hosts.filter((h) => h.user_id === booking.assigned_user_id)
+    : page.hosts;
+}
+
 /** In-app notices for the hosts. They point at the booking, not an event. */
 async function notifyHosts(
   db: Db,
@@ -86,8 +95,9 @@ async function notifyHosts(
   title: string,
   body: string,
   except?: string | null,
+  hosts = page.hosts,
 ) {
-  for (const host of page.hosts) {
+  for (const host of hosts) {
     if (host.user_id === except) continue;
     await db.query(
       `INSERT INTO notifications (user_id, item_id, item_version, channel, destination,
@@ -162,7 +172,7 @@ export function answerLines(page: PageRow, answers: Record<string, string>) {
 /** Put the booking on every host's calendar. */
 async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
   const ids: string[] = [];
-  for (const host of page.hosts) {
+  for (const host of effectiveHosts(page, booking)) {
     const item = await mutate(
       db,
       { id: host.user_id, role: "member" },
@@ -221,6 +231,7 @@ async function assertFree(
     now,
     ignoreBookingId: booking.id,
     ignoreItemIds: booking.item_ids,
+    assignedHost: booking.assigned_user_id ?? undefined,
   });
   if (!free.some((s) => s.start_at === start.toISOString()))
     fail(409, "That time isn't free any more. Pick another time.");
@@ -257,6 +268,7 @@ export async function confirm(
     `New booking: ${page.title}`,
     `${booking.name} booked ${whenLabel(booking.start_at, booking.end_at, tz)}.`,
     by.userId,
+    effectiveHosts(page, booking),
   );
   await queueWebhooks(
     db,
@@ -301,6 +313,8 @@ export async function awaitApproval(
     booking.id,
     `Booking request: ${page.title}`,
     `${booking.name} asked for ${whenLabel(booking.start_at, booking.end_at, tz)}. Approve or decline it in Bookings.`,
+    null,
+    effectiveHosts(page, booking),
   );
   await queueWebhooks(
     db,
@@ -445,6 +459,8 @@ export async function cancel(
       `${booking.name} cancelled ${whenLabel(booking.start_at, booking.end_at, tz)}.${
         reason ? ` Their note: ${reason}` : ""
       }`,
+      null,
+      effectiveHosts(page, booking),
     );
     await mailBooker(booking, `Cancelled: ${page.title}`, [
       `Hi ${booking.name},`,
@@ -549,6 +565,8 @@ export async function reschedule(
       booking.id,
       `Rescheduled: ${page.title}`,
       `${booking.name} moved their booking from ${from} to ${to}.`,
+      null,
+      effectiveHosts(page, booking),
     );
   const link = await manageLink(db, booking);
   await mailBooker(booking, `Rescheduled: ${page.title}`, [
