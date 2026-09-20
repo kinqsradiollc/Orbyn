@@ -125,6 +125,16 @@ export type ItemSyncPage = {
   has_more: boolean;
 };
 
+/** A summary of what an import did (or would do, on a dry run). */
+export type ImportSummary = {
+  created: number;
+  skipped: number;
+  lists_added: number;
+  tags_added: number;
+  sample: string[];
+  errors: string[];
+};
+
 /** A signed-in session, for the "where you're signed in" list. */
 export type Session = {
   id: string;

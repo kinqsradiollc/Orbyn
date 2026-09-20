@@ -264,6 +264,16 @@ export const chatRequest = z.object({
 
 export const preferences = z.object({ email_reminders: z.boolean() });
 
+/** Bring planner data in from an Orbyn export or a CSV. */
+export const importInput = z
+  .object({
+    format: z.enum(["orbyn", "csv"]),
+    data: z.string().min(1).max(5_000_000),
+    /** Preview counts without writing anything. */
+    dry_run: z.boolean().default(true),
+  })
+  .strict();
+
 export const pagination = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(500).default(200),

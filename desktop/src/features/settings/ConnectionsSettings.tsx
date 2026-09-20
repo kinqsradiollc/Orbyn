@@ -16,6 +16,7 @@ import {
 } from "@orbyn/core";
 import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
+import { PortabilitySettings } from "./PortabilitySettings";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
 import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
@@ -95,6 +96,7 @@ export function ConnectionsSettings({ report }: Props) {
       <Webhooks report={report} />
       <CalendarFeedCard report={report} />
       <CalendarSubscriptions report={report} />
+      <PortabilitySettings report={report} />
     </>
   );
 }

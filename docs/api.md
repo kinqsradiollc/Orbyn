@@ -92,6 +92,14 @@ email or password is always `401`, whatever its length: the sign-up password rul
 
 Revokes the current session. → `204`
 
+### `GET /me/export` (auth)
+
+Downloads a JSON archive of your personal data — lists, tags, habits and items — for keeping or moving.
+
+### `POST /me/import` (auth)
+
+`{ "format": "orbyn" | "csv", "data": string, "dry_run"?: bool }`. Brings items in; lists and tags are matched by name and created when missing. CSV needs a `title` column (optional `notes`, `due`, `priority`, `list`, `tags`). `dry_run` (default true) returns `{ created, skipped, lists_added, tags_added, sample, errors }` without writing.
+
 ### `GET /me/sessions` (auth)
 
 Where the account is signed in: `[{ id, created_at, last_seen_at, user_agent, current }]`, newest activity first. `current` marks the session making the request.
