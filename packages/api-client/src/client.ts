@@ -10,6 +10,7 @@ import {
   type AdminUser,
   type AuditEntry,
   type AuthResponse,
+  type Session,
   type ChatTurn,
   type Credentials,
   type Item,
@@ -316,6 +317,20 @@ export class OrbynClient {
   }
   logout() {
     return this.request<void>("/auth/logout", { method: "POST" });
+  }
+  /** Where you're signed in. */
+  listSessions() {
+    return this.request<Session[]>("/me/sessions");
+  }
+  /** Sign out one other device. */
+  revokeSession(id: string) {
+    return this.request<void>(`/me/sessions/${id}`, { method: "DELETE" });
+  }
+  /** Sign out everywhere except here. */
+  revokeOtherSessions() {
+    return this.request<{ signed_out: number }>("/me/sessions/revoke-others", {
+      method: "POST",
+    });
   }
   /** Confirm an email address from a verification link (signed in or not). */
   verifyEmail(token: string) {

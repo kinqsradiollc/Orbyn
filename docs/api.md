@@ -92,6 +92,18 @@ email or password is always `401`, whatever its length: the sign-up password rul
 
 Revokes the current session. → `204`
 
+### `GET /me/sessions` (auth)
+
+Where the account is signed in: `[{ id, created_at, last_seen_at, user_agent, current }]`, newest activity first. `current` marks the session making the request.
+
+### `DELETE /me/sessions/:id` (auth)
+
+Sign out one other device. → `204`; `404` for an unknown session or the current one (use `/auth/logout` for that).
+
+### `POST /me/sessions/revoke-others` (auth)
+
+Sign out everywhere except here. → `{ "signed_out": n }`.
+
 ### `POST /auth/verify-email`
 
 `{ "token" }` from a confirmation link. Marks the address confirmed. → `204`. Works signed in or
