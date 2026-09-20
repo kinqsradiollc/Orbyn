@@ -7,7 +7,7 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { projectProgress, projectAtRisk, DEFAULT_STAGES } =
+const { projectProgress, projectAtRisk, projectTimeline, DEFAULT_STAGES } =
   await import("@orbyn/core");
 
 const app = await buildApp();
@@ -234,4 +234,80 @@ test("someone else's project is not found", async () => {
   );
   const theirs = await call("GET", "/projects", undefined, () => otherToken);
   assert.ok(!theirs.json().some((x: { id: string }) => x.id === p.id));
+});
+
+test("a timeline lays dated tasks on one axis", () => {
+  const now = new Date("2026-09-20T00:00:00.000Z");
+  const project = {
+    deadline: "2026-09-24T00:00:00.000Z",
+    stages: [{ id: "s1", name: "Planning" }],
+  };
+  const line = projectTimeline(
+    project,
+    [
+      // Two hours of work due on the 21st.
+      {
+        id: "a",
+        title: "Draft",
+        due_at: "2026-09-21T00:00:00.000Z",
+        estimate_minutes: 120,
+        status: "todo",
+        stage_id: "s1",
+      },
+      // Overdue and unfinished.
+      {
+        id: "b",
+        title: "Chase",
+        due_at: "2026-09-19T00:00:00.000Z",
+        estimate_minutes: 60,
+        status: "todo",
+      },
+      // Finished, so not late even though it is in the past.
+      {
+        id: "c",
+        title: "Kickoff",
+        due_at: "2026-09-19T12:00:00.000Z",
+        estimate_minutes: 60,
+        status: "done",
+      },
+      // No date: a timeline can only show what has one.
+      { id: "d", title: "Someday", status: "todo" },
+    ],
+    now,
+  )!;
+
+  assert.ok(line);
+  assert.deepEqual(
+    line.bars.map((b) => b.id),
+    ["b", "c", "a"],
+    "bars run earliest first",
+  );
+  assert.equal(line.bars.find((b) => b.id === "b")!.late, true);
+  assert.equal(
+    line.bars.find((b) => b.id === "c")!.late,
+    false,
+    "done is never late",
+  );
+  assert.equal(line.bars.find((b) => b.id === "a")!.stage, "Planning");
+  // The axis starts at the earliest bar and ends at the deadline.
+  assert.equal(line.start, "2026-09-18T23:00:00.000Z");
+  assert.equal(line.end, "2026-09-24T00:00:00.000Z");
+  // Today and the deadline sit inside the range.
+  assert.ok(line.todayAt !== null && line.todayAt > 0 && line.todayAt < 100);
+  assert.equal(Math.round(line.deadlineAt!), 100);
+  // Every bar stays inside the chart.
+  for (const b of line.bars) {
+    assert.ok(b.left >= 0 && b.left <= 100, `${b.id} starts inside`);
+    assert.ok(b.left + b.width <= 100.01, `${b.id} ends inside`);
+    assert.ok(b.width >= 1.5, `${b.id} is visible`);
+  }
+});
+
+test("a project with no dated tasks has no timeline", () => {
+  assert.equal(
+    projectTimeline({ deadline: null, stages: [] }, [
+      { id: "a", title: "Undated", status: "todo" },
+    ]),
+    null,
+  );
 });

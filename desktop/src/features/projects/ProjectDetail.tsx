@@ -1,13 +1,22 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Columns3, List, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarRange,
+  Columns3,
+  List,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import {
   projectAtRisk,
   projectProgress,
+  projectTimeline,
   type Item,
   type Project,
   type ProjectStage,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { Timeline } from "./Timeline";
 
 /** Tasks that sit in this project, grouped by stage with the unfiled last. */
 function group(items: Item[], project: Project) {
@@ -43,7 +52,7 @@ export function ProjectDetail({
   onOpenItem: (item: Item) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [board, setBoard] = useState(false);
+  const [mode, setMode] = useState<"list" | "board" | "timeline">("list");
   /** The task being dragged across the board, if any. */
   const [dragging, setDragging] = useState<string | null>(null);
   const grouped = useMemo(() => group(items, project), [items, project]);
@@ -148,21 +157,28 @@ export function ProjectDetail({
         <div
           className="pboard-toggle"
           role="group"
-          aria-label="How to show the stages"
+          aria-label="How to show the work"
         >
           <button
-            className={board ? "" : "is-on"}
-            aria-pressed={!board}
-            onClick={() => setBoard(false)}
+            className={mode === "list" ? "is-on" : ""}
+            aria-pressed={mode === "list"}
+            onClick={() => setMode("list")}
           >
             <List size={14} /> List
           </button>
           <button
-            className={board ? "is-on" : ""}
-            aria-pressed={board}
-            onClick={() => setBoard(true)}
+            className={mode === "board" ? "is-on" : ""}
+            aria-pressed={mode === "board"}
+            onClick={() => setMode("board")}
           >
             <Columns3 size={14} /> Board
+          </button>
+          <button
+            className={mode === "timeline" ? "is-on" : ""}
+            aria-pressed={mode === "timeline"}
+            onClick={() => setMode("timeline")}
+          >
+            <CalendarRange size={14} /> Timeline
           </button>
         </div>
         <button
@@ -206,7 +222,9 @@ export function ProjectDetail({
         </div>
       </header>
 
-      {board ? (
+      {mode === "timeline" ? (
+        <Timeline project={project} items={items} onOpenItem={onOpenItem} />
+      ) : mode === "board" ? (
         <div className="pboard" aria-label="Stages as columns">
           {[
             ...project.stages.map((st) => ({ id: st.id, name: st.name })),
