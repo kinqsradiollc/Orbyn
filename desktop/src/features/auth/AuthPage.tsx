@@ -9,6 +9,7 @@ type Props = {
   error: string;
   onClearError: () => void;
   onSubmit: (mode: AuthMode, values: Record<string, string>) => void;
+  twoFactorRequired?: boolean;
 };
 
 export function AuthPage({
@@ -19,6 +20,7 @@ export function AuthPage({
   error,
   onClearError,
   onSubmit,
+  twoFactorRequired,
 }: Props) {
   const register = initialMode === "register";
   return (
@@ -109,7 +111,20 @@ export function AuthPage({
                 placeholder="At least 10 characters"
               />
             </label>
-            {!register && (
+            {!register && twoFactorRequired && (
+              <label>
+                Authenticator code
+                <input
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={20}
+                  placeholder="123456 or a recovery code"
+                />
+              </label>
+            )}
+            {!register && !twoFactorRequired && (
               <button
                 type="button"
                 className="text-button auth-forgot"

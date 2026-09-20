@@ -20,6 +20,8 @@ export type SignInInput = {
   password: string;
   name: string;
   register: boolean;
+  /** A two-step code, when the account has it on. */
+  code?: string;
 };
 
 /**
@@ -37,6 +39,7 @@ export function usePlanner() {
   const [lists, setLists] = useState<TaskList[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [error, setError] = useState("");
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const tokenRef = useRef(token);
@@ -198,19 +201,42 @@ export function usePlanner() {
   }, [token, refresh, checkMaintenance]);
 
   /** Register or log in, persist the session and enter the app. Call inside `act`. */
-  const signIn = async ({ email, password, name, register }: SignInInput) => {
+  const signIn = async ({
+    email,
+    password,
+    name,
+    register,
+    code,
+  }: SignInInput): Promise<boolean> => {
     // Clean values: no stray spaces, and a blank name means the default.
     const address = email.trim();
-    const result = register
-      ? await client.register({
-          email: address,
-          password,
-          name: name.trim() || undefined,
-        })
-      : await client.login({ email: address, password });
+    let result;
+    try {
+      result = register
+        ? await client.register({
+            email: address,
+            password,
+            name: name.trim() || undefined,
+          })
+        : await client.login({
+            email: address,
+            password,
+            code: code || undefined,
+          });
+    } catch (e) {
+      // Two-step is on: reveal the code field instead of a scary error.
+      if ((e as { message?: string }).message === "totp_required") {
+        setTwoFactorRequired(true);
+        setError("Enter the 6-digit code from your authenticator app.");
+        return false;
+      }
+      throw e;
+    }
+    setTwoFactorRequired(false);
     await saveSession(result.token);
     setToken(result.token);
     setUser(result.user);
+    return true;
   };
 
   const signOut = () =>
@@ -246,6 +272,8 @@ export function usePlanner() {
     signIn,
     signOut,
     refreshUser,
+    twoFactorRequired,
+    resetTwoFactor: () => setTwoFactorRequired(false),
   };
 }
 

@@ -457,6 +457,7 @@ export function App() {
         error={error}
         onClearError={() => planner.setError("")}
         onSubmit={(mode, values) => void planner.authenticate(mode, values)}
+        twoFactorRequired={planner.twoFactorRequired}
       />
     );
 

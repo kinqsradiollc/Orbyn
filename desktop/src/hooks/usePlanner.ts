@@ -22,6 +22,7 @@ export type AuthMode = "register" | "login";
 export function usePlanner() {
   const [token, setToken] = useState(() => session.get());
   const [user, setUser] = useState<User | null>(null);
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -156,17 +157,30 @@ export function usePlanner() {
 
   const authenticate = (mode: AuthMode, values: Record<string, string>) =>
     act(async () => {
-      const result =
-        mode === "register"
-          ? await client.register({
-              name: values.name,
-              email: values.email,
-              password: values.password,
-            })
-          : await client.login({
-              email: values.email,
-              password: values.password,
-            });
+      let result;
+      try {
+        result =
+          mode === "register"
+            ? await client.register({
+                name: values.name,
+                email: values.email,
+                password: values.password,
+              })
+            : await client.login({
+                email: values.email,
+                password: values.password,
+                code: values.code || undefined,
+              });
+      } catch (e) {
+        // The account has two-step on: reveal the code field, no scary error.
+        if ((e as { message?: string }).message === "totp_required") {
+          setTwoFactorRequired(true);
+          setError("Enter the 6-digit code from your authenticator app.");
+          return;
+        }
+        throw e;
+      }
+      setTwoFactorRequired(false);
       session.set(result.token);
       setToken(result.token);
       setUser(result.user);
@@ -226,6 +240,8 @@ export function usePlanner() {
     report,
     clearSession,
     authenticate,
+    twoFactorRequired,
+    resetTwoFactor: () => setTwoFactorRequired(false),
     adoptSession,
     refreshUser,
     logout,

@@ -8,6 +8,11 @@ import {
   forgotPassword,
   loginCredentials,
   resetPassword,
+  twoFactorDisable,
+  twoFactorEnable,
+  type TwoFactorEnabled,
+  type TwoFactorSetup,
+  type TwoFactorStatus,
 } from "@orbyn/core";
 import { adminEmails } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
@@ -24,6 +29,14 @@ import { strictRateLimit } from "../../lib/params.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./mail.js";
 import { issueToken, pruneExpiredTokens, spendToken } from "./tokens.js";
+import { enforceTwoFactor, twoFactorOn } from "./twoFactor.js";
+import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
+import {
+  generateSecret,
+  otpauthUri,
+  recoveryCode,
+  verifyTotp,
+} from "../../lib/totp.js";
 
 export async function authRoutes(app: FastifyInstance) {
   // Verified against unknown emails so timing does not reveal whether an account exists.
@@ -179,6 +192,8 @@ export async function authRoutes(app: FastifyInstance) {
     if (!u || !valid) fail(401, "Email or password is incorrect");
     // Checked only after the password so disabled status is not probeable.
     if (u.disabled) fail(403, DISABLED_MESSAGE);
+    // And two-step, if this account has it on.
+    await enforceTwoFactor(u.id, d.code);
     if (adminEmails.has(u.email) && u.role !== "admin") {
       u = (
         await pool.query<UserRow>(
@@ -200,6 +215,90 @@ export async function authRoutes(app: FastifyInstance) {
       });
     }
     return issueSession(u, r.headers["user-agent"] ?? "");
+  });
+
+  // Two-step verification. Setup stores an unconfirmed secret; enable proves a
+  // code works and hands back one-time recovery codes; disable needs the
+  // password. All are on the signed-in account.
+  app.get("/me/2fa", async (r): Promise<TwoFactorStatus> => {
+    const u = await authenticate(r);
+    return { enabled: await twoFactorOn(pool, u.id) };
+  });
+
+  app.post(
+    "/me/2fa/setup",
+    strictRateLimit,
+    async (r): Promise<TwoFactorSetup> => {
+      const u = await authenticate(r);
+      if (await twoFactorOn(pool, u.id))
+        fail(409, "Two-step is already on. Turn it off first to start over.");
+      const secret = generateSecret();
+      await pool.query(
+        `INSERT INTO user_totp (user_id, secret_encrypted, confirmed_at, recovery_hashes)
+         VALUES ($1, $2, NULL, '{}')
+       ON CONFLICT (user_id) DO UPDATE SET secret_encrypted = $2, confirmed_at = NULL, recovery_hashes = '{}'`,
+        [u.id, await encryptSecret(secret)],
+      );
+      return { secret, otpauth_uri: otpauthUri(secret, u.email) };
+    },
+  );
+
+  app.post(
+    "/me/2fa/enable",
+    strictRateLimit,
+    async (r): Promise<TwoFactorEnabled> => {
+      const u = await authenticate(r);
+      const { code } = twoFactorEnable.parse(r.body);
+      return transaction(async (db) => {
+        const row = (
+          await db.query<{
+            secret_encrypted: string;
+            confirmed_at: Date | null;
+          }>(
+            "SELECT secret_encrypted, confirmed_at FROM user_totp WHERE user_id=$1 FOR UPDATE",
+            [u.id],
+          )
+        ).rows[0];
+        if (!row) fail(409, "Start two-step setup first.");
+        if (row.confirmed_at) fail(409, "Two-step is already on.");
+        const secret = await decryptSecret(row.secret_encrypted);
+        if (!verifyTotp(secret, code))
+          fail(
+            422,
+            "That code didn't work. Check your authenticator and try again.",
+          );
+        const codes = Array.from({ length: 10 }, () => recoveryCode());
+        await db.query(
+          "UPDATE user_totp SET confirmed_at = now(), recovery_hashes = $2 WHERE user_id=$1",
+          [u.id, codes.map((c) => digest(c))],
+        );
+        await audit({
+          actorId: u.id,
+          action: "user.two_factor_enabled",
+          targetType: "user",
+          targetId: u.id,
+        });
+        return { recovery_codes: codes };
+      });
+    },
+  );
+
+  app.post("/me/2fa/disable", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    const { password } = twoFactorDisable.parse(r.body);
+    const row = (
+      await pool.query<UserRow>("SELECT * FROM users WHERE id=$1", [u.id])
+    ).rows[0];
+    if (!(await argon2.verify(row.password_hash, password)))
+      fail(403, "That password is incorrect.");
+    await pool.query("DELETE FROM user_totp WHERE user_id=$1", [u.id]);
+    await audit({
+      actorId: u.id,
+      action: "user.two_factor_disabled",
+      targetType: "user",
+      targetId: u.id,
+    });
+    return reply.code(204).send();
   });
 
   app.post("/auth/logout", async (r, reply) => {

@@ -104,6 +104,24 @@ Sign out one other device. → `204`; `404` for an unknown session or the curren
 
 Sign out everywhere except here. → `{ "signed_out": n }`.
 
+### `POST /auth/login` — two-step
+
+When an account has two-step on, `POST /auth/login` also takes `code` (a TOTP or a one-time recovery code). Without it the response is `401 { "message": "totp_required" }`, which tells the app to ask for the code; a wrong code is a `401` with a different message.
+
+### `GET /me/2fa` (auth) → `{ "enabled": bool }`
+
+### `POST /me/2fa/setup` (auth)
+
+Begin setup: `{ "secret", "otpauth_uri" }` to add to an authenticator app (by QR of the URI, or by typing the key). Nothing is enforced until enabled. `409` if two-step is already on.
+
+### `POST /me/2fa/enable` (auth)
+
+`{ "code" }` from the app. Confirms and returns `{ "recovery_codes": [...] }` (ten, shown once). `422` if the code is wrong.
+
+### `POST /me/2fa/disable` (auth)
+
+`{ "password" }`. Turns two-step off. → `204`; `403` if the password is wrong.
+
 ### `POST /auth/verify-email`
 
 `{ "token" }` from a confirmation link. Marks the address confirmed. → `204`. Works signed in or

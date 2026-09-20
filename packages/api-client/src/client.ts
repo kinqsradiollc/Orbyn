@@ -11,6 +11,9 @@ import {
   type AuditEntry,
   type AuthResponse,
   type Session,
+  type TwoFactorStatus,
+  type TwoFactorSetup,
+  type TwoFactorEnabled,
   type ChatTurn,
   type Credentials,
   type Item,
@@ -308,7 +311,7 @@ export class OrbynClient {
       anonymous: true,
     });
   }
-  login(input: Pick<Credentials, "email" | "password">) {
+  login(input: Pick<Credentials, "email" | "password"> & { code?: string }) {
     return this.request<AuthResponse>("/auth/login", {
       method: "POST",
       body: input,
@@ -330,6 +333,27 @@ export class OrbynClient {
   revokeOtherSessions() {
     return this.request<{ signed_out: number }>("/me/sessions/revoke-others", {
       method: "POST",
+    });
+  }
+  // ---- two-step verification ----
+  getTwoFactor() {
+    return this.request<TwoFactorStatus>("/me/2fa");
+  }
+  /** Begin setup: returns the secret and otpauth URI to add to an app. */
+  setupTwoFactor() {
+    return this.request<TwoFactorSetup>("/me/2fa/setup", { method: "POST" });
+  }
+  /** Confirm with a code; returns the one-time recovery codes. */
+  enableTwoFactor(code: string) {
+    return this.request<TwoFactorEnabled>("/me/2fa/enable", {
+      method: "POST",
+      body: { code },
+    });
+  }
+  disableTwoFactor(password: string) {
+    return this.request<void>("/me/2fa/disable", {
+      method: "POST",
+      body: { password },
     });
   }
   /** Confirm an email address from a verification link (signed in or not). */

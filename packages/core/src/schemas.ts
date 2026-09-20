@@ -44,7 +44,18 @@ export const credentials = z.object({
 export const loginCredentials = z.object({
   email: credentials.shape.email,
   password: z.string().min(1).max(128),
+  /** A two-step code (TOTP or a recovery code), when the account has it on. */
+  code: z.string().trim().max(20).optional(),
 });
+
+/** Confirm two-step setup with a code from the authenticator app. */
+export const twoFactorEnable = z
+  .object({ code: z.string().trim().min(6).max(10) })
+  .strict();
+/** Turn two-step off; the password guards it. */
+export const twoFactorDisable = z
+  .object({ password: z.string().min(1).max(128) })
+  .strict();
 
 /** "I forgot my password": always answered the same way, whoever the email is. */
 export const forgotPassword = z.object({ email: credentials.shape.email });
