@@ -388,3 +388,27 @@ export function mergeDocs(
 
   return { blocks: blocks.length ? blocks : emptyDoc(), conflicts };
 }
+
+/**
+ * What a brand new document starts with. It lives here rather than in either
+ * app so a page begun on the phone and one begun on the desktop are the same
+ * page, and so the example formula stays in step with what the parser can
+ * actually read.
+ */
+export const starterDoc = (): DocBlock[] =>
+  parseDoc(
+    [
+      "## What this is",
+      "",
+      "Write here. Anything you type is saved as you go.",
+      "",
+      "- [ ] A checklist item",
+      "",
+      "Inline maths like $e^{i\\pi} + 1 = 0$ renders as you type, and a formula on",
+      "its own line looks like this:",
+      "",
+      "$$",
+      "\\int_{0}^{1} x^2 \\, dx = \\frac{1}{3}",
+      "$$",
+    ].join("\n"),
+  );

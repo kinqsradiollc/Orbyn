@@ -3,7 +3,7 @@ import { FileText, FolderPlus, Plus, Star } from "lucide-react";
 import {
   favouriteKey,
   favouriteSet,
-  parseDoc,
+  starterDoc,
   type Doc,
   type DocSummary,
   type Favourite,
@@ -24,23 +24,6 @@ const when = (iso: string) => {
 };
 
 /** A starter document, so a new note is never a blank wall. */
-const STARTER = parseDoc(
-  [
-    "## What this is",
-    "",
-    "Write here. Anything you type is saved as you go.",
-    "",
-    "- [ ] A checklist item",
-    "",
-    "Inline maths like $e^{i\\pi} + 1 = 0$ renders as you type, and a formula on",
-    "its own line looks like this:",
-    "",
-    "$$",
-    "\\int_{0}^{1} x^2 \\, dx = \\frac{1}{3}",
-    "$$",
-  ].join("\n"),
-);
-
 export function DocsView({
   report,
   onItemsChanged,
@@ -110,7 +93,7 @@ export function DocsView({
     client
       .createDoc({
         title: "Untitled",
-        content: STARTER,
+        content: starterDoc(),
         folder_id: folderFilter === "none" ? null : folderFilter,
       })
       .then((doc) => {
