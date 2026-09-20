@@ -125,6 +125,9 @@ export type ItemSyncPage = {
   has_more: boolean;
 };
 
+/** The email-to-task address, and whether the server has inbound mail set up. */
+export type InboxInfo = { address: string | null; configured: boolean };
+
 /** A summary of what an import did (or would do, on a dry run). */
 export type ImportSummary = {
   created: number;

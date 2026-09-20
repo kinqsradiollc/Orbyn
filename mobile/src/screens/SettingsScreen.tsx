@@ -17,6 +17,7 @@ import {
   type Session,
   type TwoFactorSetup,
   type ImportSummary,
+  type InboxInfo,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -136,6 +137,7 @@ export function SettingsScreen({
   const [importPreview, setImportPreview] = useState<ImportSummary | null>(
     null,
   );
+  const [inbox, setInbox] = useState<InboxInfo | null>(null);
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -166,6 +168,7 @@ export function SettingsScreen({
       (r) => setTfaOn(r.enabled),
       () => setTfaOn(false),
     );
+    client.getInbox().then(setInbox, () => setInbox(null));
   }, []);
   useEffect(() => {
     let live = true;
@@ -565,6 +568,60 @@ export function SettingsScreen({
                 await client.revokeOtherSessions();
                 await loadSessions();
               })
+            }
+          />
+        )}
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>EMAIL TO TASK</Text>
+      <View style={shared.card}>
+        <Text style={shared.body}>
+          Send an email to your private address and it becomes a task — the
+          subject is the task, the body its notes. Only mail from your own
+          account address is accepted.
+        </Text>
+        {inbox === null ? null : !inbox.configured ? (
+          <Text style={[shared.small, { marginTop: 8 }]}>
+            Your admin hasn’t set up inbound mail yet.
+          </Text>
+        ) : inbox.address ? (
+          <>
+            <TextInput
+              style={[shared.input, { marginTop: 12 }]}
+              value={inbox.address}
+              editable={false}
+              selectTextOnFocus
+              accessibilityLabel="Your email-to-task address"
+            />
+            <View style={s.importRow}>
+              <SmallAction
+                label="New address"
+                disabled={busy}
+                onPress={() =>
+                  void act(async () => setInbox(await client.rotateInbox()))
+                }
+              />
+              <SmallAction
+                label="Turn off"
+                disabled={busy}
+                destructive
+                onPress={() =>
+                  void act(async () => {
+                    await client.disableInbox();
+                    setInbox((i) => (i ? { ...i, address: null } : i));
+                  })
+                }
+              />
+            </View>
+          </>
+        ) : (
+          <Button
+            secondary
+            title="Turn on email-to-task"
+            disabled={busy}
+            style={{ marginTop: 12, marginBottom: 0 }}
+            onPress={() =>
+              void act(async () => setInbox(await client.rotateInbox()))
             }
           />
         )}

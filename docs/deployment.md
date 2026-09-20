@@ -518,6 +518,21 @@ A healthy tunnel logs `Registered tunnel connection` four times, and Cloudflare'
 it as healthy. Its configuration lives in Cloudflare, not here: the public hostname points at
 `http://gateway:8081`.
 
+## Email to task
+
+Let people turn email into tasks. Set two variables and have the mail server hand inbound
+messages to Orbyn:
+
+- `MAIL_INBOUND_DOMAIN` — the domain their addresses use, for example `tasks.your-domain`. Point
+  its MX at your mail server.
+- `MAIL_INBOUND_SECRET` — a long random string. The endpoint is off until this is set.
+
+Configure the mail server to POST each inbound message as JSON `{to, from, subject, text}` to
+`http://gateway:8081/api/inbound/mail` with the header `X-Inbound-Secret: <MAIL_INBOUND_SECRET>`
+(maddy can pipe a message to a small script that does this). Each person then turns the feature on
+in Settings, gets a private `something@tasks.your-domain` address, and mail they send to it becomes
+a task. Only mail from their own account address is accepted.
+
 ## Search engines and link previews
 
 The homepage is the one page meant for search results; the app needs a sign-in, and the public
