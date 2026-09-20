@@ -38,7 +38,11 @@ async function credentialsOf(userId: string): Promise<StoredCredential[]> {
   ).rows;
 }
 
-async function saveChallenge(handle: string, userId: string | null, challenge: string) {
+async function saveChallenge(
+  handle: string,
+  userId: string | null,
+  challenge: string,
+) {
   await pool.query(
     `INSERT INTO webauthn_challenges (handle, user_id, challenge)
        VALUES ($1, $2, $3)
@@ -69,7 +73,10 @@ export async function registrationOptions(userId: string, email: string) {
       id: c.id,
       transports: c.transports as never,
     })),
-    authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+    authenticatorSelection: {
+      residentKey: "preferred",
+      userVerification: "preferred",
+    },
   });
   await saveChallenge(userId, userId, options.challenge);
   return options;
@@ -132,7 +139,10 @@ export async function authenticationOptions(email?: string) {
   const options = await generateAuthenticationOptions({
     rpID,
     userVerification: "preferred",
-    allowCredentials: allow.map((c) => ({ id: c.id, transports: c.transports as never })),
+    allowCredentials: allow.map((c) => ({
+      id: c.id,
+      transports: c.transports as never,
+    })),
   });
   const handle = randomBytes(18).toString("base64url");
   await saveChallenge(handle, null, options.challenge);

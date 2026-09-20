@@ -14,7 +14,12 @@ const password = "a-long-test-password";
 let token = "";
 let userId = "";
 const auth = () => ({ authorization: `Bearer ${token}` });
-const call = (method: "GET" | "POST" | "DELETE", url: string, payload?: unknown, headers = auth()) =>
+const call = (
+  method: "GET" | "POST" | "DELETE",
+  url: string,
+  payload?: unknown,
+  headers = auth(),
+) =>
   app.inject({
     method,
     url,
@@ -69,7 +74,10 @@ test("passkeys list and delete (seeded directly)", async () => {
   const list = (await call("GET", "/me/passkeys")).json();
   assert.equal(list.length, 1);
   assert.equal(list[0].name, "My Phone");
-  assert.equal((await call("DELETE", `/me/passkeys/${list[0].id}`)).statusCode, 204);
+  assert.equal(
+    (await call("DELETE", `/me/passkeys/${list[0].id}`)).statusCode,
+    204,
+  );
   assert.equal((await call("GET", "/me/passkeys")).json().length, 0);
 });
 

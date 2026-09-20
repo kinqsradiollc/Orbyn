@@ -346,7 +346,8 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/passkey", strictRateLimit, async (r) => {
     const d = passkeyAuth.parse(r.body);
     const userId = await verifyAuthentication(d.handle, d.response as never);
-    if (!userId) fail(401, "That passkey didn't work. Try again, or use your password.");
+    if (!userId)
+      fail(401, "That passkey didn't work. Try again, or use your password.");
     const u = (
       await pool.query<UserRow>("SELECT * FROM users WHERE id = $1", [userId])
     ).rows[0];
