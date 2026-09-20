@@ -70,7 +70,7 @@ export async function authRoutes(app: FastifyInstance) {
     });
     for (const job of pending) await job();
     reply.code(201);
-    return issueSession(u);
+    return issueSession(u, r.headers["user-agent"] ?? "");
   });
 
   // Confirm an email address from the link. Works signed in or not, so the
@@ -164,7 +164,7 @@ export async function authRoutes(app: FastifyInstance) {
       );
       return row;
     });
-    return issueSession(u);
+    return issueSession(u, r.headers["user-agent"] ?? "");
   });
 
   app.post("/auth/login", strictRateLimit, async (r) => {
@@ -199,7 +199,7 @@ export async function authRoutes(app: FastifyInstance) {
         },
       });
     }
-    return issueSession(u);
+    return issueSession(u, r.headers["user-agent"] ?? "");
   });
 
   app.post("/auth/logout", async (r, reply) => {

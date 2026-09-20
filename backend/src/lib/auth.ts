@@ -120,6 +120,11 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   if (!u) fail(401, "Session expired. Please sign in again.");
   if (u.disabled) fail(403, DISABLED_MESSAGE);
   requireVerified(r, u);
+  // Recorded at most once a minute, so it doesn't write on every request.
+  await pool.query(
+    "UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'",
+    [digest(token)],
+  );
   return u;
 }
 
@@ -140,12 +145,15 @@ export async function authorize(
 }
 
 /** Create a new opaque session token for a user. Only its hash is stored. */
-export async function issueSession(u: UserRow): Promise<AuthResponse> {
+export async function issueSession(
+  u: UserRow,
+  userAgent = "",
+): Promise<AuthResponse> {
   const token = randomBytes(48).toString("base64url");
-  await pool.query("INSERT INTO sessions(token_hash,user_id) VALUES($1,$2)", [
-    digest(token),
-    u.id,
-  ]);
+  await pool.query(
+    "INSERT INTO sessions(token_hash,user_id,user_agent) VALUES($1,$2,$3)",
+    [digest(token), u.id, userAgent.slice(0, 400)],
+  );
   return { token, user: publicUser(u) };
 }
 

@@ -125,6 +125,17 @@ export type ItemSyncPage = {
   has_more: boolean;
 };
 
+/** A signed-in session, for the "where you're signed in" list. */
+export type Session = {
+  id: string;
+  created_at: string;
+  last_seen_at: string;
+  /** The raw User-Agent, for the client to summarise into a device name. */
+  user_agent: string;
+  /** The session making the request. */
+  current: boolean;
+};
+
 export type User = {
   id: string;
   name: string;

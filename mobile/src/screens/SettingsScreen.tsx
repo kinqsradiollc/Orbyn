@@ -6,12 +6,14 @@ import {
   type PlannerPrefs,
   type PlannerPrefsInput,
   type User,
+  type Session,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
 import { Chip, ChipRow } from "../components/Chip";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
+import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { disablePush, enablePush } from "../lib/push";
 import {
@@ -37,6 +39,41 @@ const THEME_LABELS: Record<ThemePreference, string> = {
   system: "Automatic",
   light: "Light",
   dark: "Dark",
+};
+
+/** A friendly device name from a User-Agent string. */
+function deviceName(ua: string): string {
+  if (!ua) return "Unknown device";
+  const os = /iPhone/.test(ua)
+    ? "iPhone"
+    : /iPad/.test(ua)
+      ? "iPad"
+      : /Android/.test(ua)
+        ? "Android"
+        : /Mac OS X|Macintosh/.test(ua)
+          ? "Mac"
+          : /Windows/.test(ua)
+            ? "Windows"
+            : "";
+  const app = /Orbyn/.test(ua)
+    ? "Orbyn app"
+    : /Edg\//.test(ua)
+      ? "Edge"
+      : /Chrome\//.test(ua)
+        ? "Chrome"
+        : /Firefox\//.test(ua)
+          ? "Firefox"
+          : /Safari\//.test(ua)
+            ? "Safari"
+            : "";
+  return [app, os].filter(Boolean).join(" · ") || ua.slice(0, 32);
+}
+const sessionAgo = (iso: string) => {
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  return h < 24 ? `${h} h ago` : new Date(iso).toLocaleDateString();
 };
 
 export function SettingsScreen({
@@ -76,6 +113,7 @@ export function SettingsScreen({
   const [notices, setNotices] = useState<NoticePrefs | null>(null);
   /** Completing a task counts its blocks' past time as spent; null until loaded. */
   const [countBlocks, setCountBlocks] = useState<boolean | null>(null);
+  const [sessions, setSessions] = useState<Session[] | null>(null);
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -98,6 +136,11 @@ export function SettingsScreen({
   }, []);
   const saveNotices = (input: PlannerPrefsInput) =>
     act(async () => takePrefs(await client.updatePlannerPrefs(input)));
+  const loadSessions = () =>
+    client.listSessions().then(setSessions, () => setSessions([]));
+  useEffect(() => {
+    void loadSessions();
+  }, []);
   useEffect(() => {
     let live = true;
     client
@@ -347,6 +390,50 @@ export function SettingsScreen({
         />
       </View>
 
+      <Text style={[shared.eyebrow, s.section]}>SIGNED-IN DEVICES</Text>
+      <View style={shared.card}>
+        {(sessions ?? []).map((sess, i) => (
+          <View key={sess.id} style={[s.sessionRow, i > 0 && s.sessionDivider]}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.prefTitle}>
+                {deviceName(sess.user_agent)}
+                {sess.current ? "  · this device" : ""}
+              </Text>
+              <Text style={shared.small}>
+                Last active {sessionAgo(sess.last_seen_at)}
+              </Text>
+            </View>
+            {!sess.current && (
+              <SmallAction
+                label="Sign out"
+                disabled={busy}
+                onPress={() =>
+                  void act(async () => {
+                    await client.revokeSession(sess.id);
+                    await loadSessions();
+                  })
+                }
+              />
+            )}
+          </View>
+        ))}
+        {(sessions ?? []).some((x) => !x.current) && (
+          <Button
+            secondary
+            title="Sign out everywhere else"
+            icon="logOut"
+            disabled={busy}
+            style={{ marginTop: 12, marginBottom: 0 }}
+            onPress={() =>
+              void act(async () => {
+                await client.revokeOtherSessions();
+                await loadSessions();
+              })
+            }
+          />
+        )}
+      </View>
+
       <Text style={[shared.eyebrow, s.section]}>AI PROVIDER</Text>
       <View style={shared.card}>
         <Text style={shared.body}>
@@ -442,6 +529,18 @@ const s = themed(() =>
     },
     section: { marginTop: 8 },
     preference: { flexDirection: "row", alignItems: "center", gap: 16 },
+    sessionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 6,
+    },
+    sessionDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      marginTop: 6,
+      paddingTop: 12,
+    },
     prefTitle: {
       fontFamily: fonts.semibold,
       fontSize: 15,
