@@ -362,6 +362,7 @@ export function TeamDetail({
           team={team}
           userId={user?.id}
           canWrite={canWrite}
+          canManage={canManage}
           report={report}
           onNewEvent={(draft) => onNewTeamItem(team.id, draft)}
         />

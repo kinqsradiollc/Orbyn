@@ -91,6 +91,7 @@ import {
   type MeetingSlot,
   type MemberAvailability,
   type MemberWorkload,
+  type TeamAnalytics,
   type NewApiKey,
   type NewWebhook,
   type Place,
@@ -828,6 +829,12 @@ export class OrbynClient {
   teamWorkload(teamId: string, from: string, to: string) {
     const q = new URLSearchParams({ from, to });
     return this.request<MemberWorkload[]>(`/teams/${teamId}/workload?${q}`);
+  }
+  /** Team owners' analytics: set-aside time per member, over `days`. */
+  teamAnalytics(teamId: string, days = 30) {
+    return this.request<TeamAnalytics>(
+      `/teams/${teamId}/analytics?days=${days}`,
+    );
   }
   suggestMeetingTimes(
     teamId: string,

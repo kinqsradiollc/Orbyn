@@ -28,6 +28,7 @@ type Props = {
   team: TeamDetail;
   userId?: string;
   canWrite: boolean;
+  canManage: boolean;
   report: (e: unknown) => void;
   /** Opens a new team event prefilled with a meeting time. */
   onNewEvent: (draft: Partial<ItemInput>) => void;
@@ -59,6 +60,7 @@ export function TeamPlanning({
   team,
   userId,
   canWrite,
+  canManage,
   report,
   onNewEvent,
 }: Props) {
@@ -75,6 +77,12 @@ export function TeamPlanning({
   const workload = useRemote(
     () => client.teamWorkload(team.id, from, to),
     [team.id, from],
+    report,
+  );
+  const analytics = useRemote(
+    () =>
+      canManage ? client.teamAnalytics(team.id, 30) : Promise.resolve(null),
+    [team.id, canManage],
     report,
   );
   const pinned = prefs?.pinned_user_ids ?? [];
@@ -296,6 +304,24 @@ export function TeamPlanning({
           </div>
         )}
         {workload && <AtRiskList workload={workload} />}
+        {analytics && analytics.total_planned_minutes > 0 && (
+          <div className="team-analytics">
+            <h3 className="team-block-title">Set-aside time · last 30 days</h3>
+            <ul className="team-analytics-list">
+              {analytics.members
+                .filter((m) => m.planned_minutes > 0 || m.completed > 0)
+                .map((m) => (
+                  <li key={m.user_id}>
+                    <span className="team-analytics-name">{m.name}</span>
+                    <span className="mono">
+                      {Math.round(m.planned_minutes / 60)} h
+                    </span>
+                    <small className="muted">{m.completed} done</small>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <FindATime
