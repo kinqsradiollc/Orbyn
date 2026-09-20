@@ -16,6 +16,7 @@ import { TagSettings } from "./TagSettings";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { SessionsSettings } from "./SessionsSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
+import { PasskeysSettings } from "./PasskeysSettings";
 import "./settings.css";
 
 export type SettingsTab = "account" | "planning" | "tags" | "connections";
@@ -126,6 +127,7 @@ export function SettingsView({
               Each item has its own reminder timing.
             </p>
             <TwoFactorSettings report={report} />
+            <PasskeysSettings report={report} />
             <SessionsSettings report={report} />
             <hr />
             <h2>AI provider</h2>

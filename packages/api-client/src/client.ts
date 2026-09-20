@@ -16,6 +16,7 @@ import {
   type TwoFactorEnabled,
   type ImportSummary,
   type ChatChannel,
+  type Passkey,
   type InboxInfo,
   type ChatTurn,
   type Credentials,
@@ -359,6 +360,39 @@ export class OrbynClient {
     return this.request<void>("/me/2fa/disable", {
       method: "POST",
       body: { password },
+    });
+  }
+  // ---- passkeys ----
+  listPasskeys() {
+    return this.request<Passkey[]>("/me/passkeys");
+  }
+  passkeyRegisterOptions() {
+    return this.request<unknown>("/me/passkeys/options", { method: "POST" });
+  }
+  registerPasskey(response: unknown, name: string) {
+    return this.request<{ ok: boolean }>("/me/passkeys", {
+      method: "POST",
+      body: { response, name },
+    });
+  }
+  deletePasskey(id: string) {
+    return this.request<void>(`/me/passkeys/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+  /** Sign-in step 1: options + an opaque handle to send back. */
+  passkeyLoginOptions(email?: string) {
+    return this.request<{ handle: string; options: unknown }>(
+      "/auth/passkey/options",
+      { method: "POST", body: { email }, anonymous: true },
+    );
+  }
+  /** Sign-in step 2: the assertion, returns a session. */
+  passkeyLogin(handle: string, response: unknown) {
+    return this.request<AuthResponse>("/auth/passkey", {
+      method: "POST",
+      body: { handle, response },
+      anonymous: true,
     });
   }
   // ---- import / export ----
