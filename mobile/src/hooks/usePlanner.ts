@@ -13,6 +13,7 @@ import type {
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
+import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
 import { animateLayout } from "../motion";
 
 export type SignInInput = {
@@ -65,6 +66,7 @@ export function usePlanner() {
   }, [setMaintenance]);
 
   const resetSession = () => {
+    void clearCache();
     setToken("");
     setItems([]);
     setNotices([]);
@@ -130,6 +132,15 @@ export function usePlanner() {
         setTeams(t);
         setLists(l);
         setTags(g);
+        // Keep a copy on the device for the next offline / cold start.
+        void saveCache({
+          items: list,
+          user: u,
+          notices: n,
+          teams: t,
+          lists: l,
+          tags: g,
+        });
       } finally {
         if (tokenRef.current === token && !options?.silent)
           setRefreshing(false);
@@ -151,7 +162,22 @@ export function usePlanner() {
 
   useEffect(() => {
     loadSession()
-      .then((t) => setToken(t))
+      .then(async (t) => {
+        setToken(t);
+        // Offline-first: show the last data we saved while the network loads
+        // (or in its place, when there's no connection).
+        if (t) {
+          const cached = await loadCache();
+          if (cached && tokenRef.current === t) {
+            setItems(cached.items);
+            if (cached.user) setUser(cached.user);
+            setNotices(cached.notices);
+            setTeams(cached.teams);
+            setLists(cached.lists);
+            setTags(cached.tags);
+          }
+        }
+      })
       .catch(() => setError("Unable to restore your session"))
       .finally(() => setReady(true));
   }, []);
