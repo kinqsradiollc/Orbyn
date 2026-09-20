@@ -7,12 +7,16 @@ import {
   fail,
   forgotPassword,
   loginCredentials,
+  passkeyAuth,
+  passkeyAuthOptions,
+  passkeyRegister,
   resetPassword,
   twoFactorDisable,
   twoFactorEnable,
   type TwoFactorEnabled,
   type TwoFactorSetup,
   type TwoFactorStatus,
+  type Passkey,
 } from "@orbyn/core";
 import { adminEmails } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
@@ -29,6 +33,13 @@ import { strictRateLimit } from "../../lib/params.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./mail.js";
 import { issueToken, pruneExpiredTokens, spendToken } from "./tokens.js";
+import {
+  authenticationOptions,
+  listPasskeys,
+  registrationOptions,
+  verifyAuthentication,
+  verifyRegistration,
+} from "./webauthn.js";
 import { enforceTwoFactor, twoFactorOn } from "./twoFactor.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import {
@@ -299,6 +310,49 @@ export async function authRoutes(app: FastifyInstance) {
       targetId: u.id,
     });
     return reply.code(204).send();
+  });
+
+  // Passkeys (WebAuthn), additive to the password.
+  app.get("/me/passkeys", async (r): Promise<Passkey[]> => {
+    const u = await authenticate(r);
+    return listPasskeys(u.id);
+  });
+  app.post("/me/passkeys/options", strictRateLimit, async (r) => {
+    const u = await authenticate(r);
+    return registrationOptions(u.id, u.email);
+  });
+  app.post("/me/passkeys", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    const d = passkeyRegister.parse(r.body);
+    const ok = await verifyRegistration(u.id, d.response as never, d.name);
+    if (!ok) fail(400, "That passkey couldn't be verified. Try again.");
+    return reply.code(201).send({ ok: true });
+  });
+  app.delete("/me/passkeys/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const gone = await pool.query(
+      "DELETE FROM webauthn_credentials WHERE id = $1 AND user_id = $2",
+      [(r.params as { id: string }).id, u.id],
+    );
+    if (!gone.rowCount) fail(404, "Passkey not found");
+    return reply.code(204).send();
+  });
+
+  // Sign in with a passkey: fetch options, then send the assertion back.
+  app.post("/auth/passkey/options", strictRateLimit, async (r) => {
+    const d = passkeyAuthOptions.parse(r.body ?? {});
+    return authenticationOptions(d.email);
+  });
+  app.post("/auth/passkey", strictRateLimit, async (r) => {
+    const d = passkeyAuth.parse(r.body);
+    const userId = await verifyAuthentication(d.handle, d.response as never);
+    if (!userId)
+      fail(401, "That passkey didn't work. Try again, or use your password.");
+    const u = (
+      await pool.query<UserRow>("SELECT * FROM users WHERE id = $1", [userId])
+    ).rows[0];
+    if (!u || u.disabled) fail(403, DISABLED_MESSAGE);
+    return issueSession(u, r.headers["user-agent"] ?? "");
   });
 
   app.post("/auth/logout", async (r, reply) => {

@@ -179,6 +179,29 @@ Always → `204`, so it never reveals whether an account exists. Rate-limited.
 every other session, and signs in. → `200` with the same response as register. A spent or expired
 link is `410`. The `password` must meet the sign-up rules.
 
+### Passkeys (WebAuthn)
+
+Passkeys let people sign in with a device — Touch ID, Windows Hello, a phone or a security key —
+alongside their password, which keeps working. The relying-party id is the app's domain, so these
+only work once `APP_URL` is the address people actually open.
+
+Signed-in management:
+
+- `GET /me/passkeys` → `[ { "id", "name", "created_at", "last_used_at" } ]`.
+- `POST /me/passkeys/options` → the JSON creation options; call the browser's WebAuthn API with them.
+- `POST /me/passkeys` with `{ "response", "name" }` (the browser's attestation) → `201 { "ok": true }`.
+  An attestation that fails to verify is `400`.
+- `DELETE /me/passkeys/:id` → `204`.
+
+Sign-in (no auth):
+
+- `POST /auth/passkey/options` with `{ "email"? }` → `{ "handle", "options" }`. The optional email
+  narrows the credential list; omit it for a discoverable passkey.
+- `POST /auth/passkey` with `{ "handle", "response" }` (the browser's assertion) → `200` with the
+  same response as register. A bad handle or assertion is `401`.
+
+Challenges are single-use and expire after five minutes.
+
 ## Profile
 
 ### `GET /me` (auth)

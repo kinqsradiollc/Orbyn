@@ -141,6 +141,14 @@ export type ImportSummary = {
   errors: string[];
 };
 
+/** A registered passkey, for the settings list. */
+export type Passkey = {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+};
+
 /** A signed-in session, for the "where you're signed in" list. */
 export type Session = {
   id: string;

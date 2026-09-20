@@ -1,4 +1,4 @@
-import { ArrowRight, Orbit } from "lucide-react";
+import { ArrowRight, KeyRound, Orbit } from "lucide-react";
 import type { AuthMode } from "../../hooks/usePlanner";
 
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
   onClearError: () => void;
   onSubmit: (mode: AuthMode, values: Record<string, string>) => void;
   twoFactorRequired?: boolean;
+  onPasskey?: (email: string) => void;
 };
 
 export function AuthPage({
@@ -21,6 +22,7 @@ export function AuthPage({
   onClearError,
   onSubmit,
   twoFactorRequired,
+  onPasskey,
 }: Props) {
   const register = initialMode === "register";
   return (
@@ -146,6 +148,22 @@ export function AuthPage({
                   : "Sign in"}
               <ArrowRight size={17} />
             </button>
+            {!register && onPasskey && (
+              <button
+                type="button"
+                className="secondary wide"
+                disabled={busy}
+                onClick={(e) => {
+                  const form = e.currentTarget.closest("form");
+                  const email =
+                    (form?.elements.namedItem("email") as HTMLInputElement)
+                      ?.value ?? "";
+                  onPasskey(email);
+                }}
+              >
+                <KeyRound size={16} /> Sign in with a passkey
+              </button>
+            )}
           </form>
           <button
             className="text-button"

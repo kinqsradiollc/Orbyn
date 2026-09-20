@@ -8,6 +8,7 @@ import {
   type Team,
   type User,
 } from "@orbyn/core";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { client } from "../lib/api";
 import { celebrate } from "../lib/celebrate";
 import { session } from "../lib/session";
@@ -186,6 +187,23 @@ export function usePlanner() {
       setUser(result.user);
     });
 
+  /** Sign in with a passkey. Optional email narrows the credential list. */
+  const passkeyLogin = (email?: string) =>
+    act(async () => {
+      const { handle, options } = await client.passkeyLoginOptions(email);
+      // The browser prompts for the device/biometric here; a cancel throws.
+      const response = await startAuthentication({
+        optionsJSON: options as Parameters<
+          typeof startAuthentication
+        >[0]["optionsJSON"],
+      });
+      const result = await client.passkeyLogin(handle, response);
+      setTwoFactorRequired(false);
+      session.set(result.token);
+      setToken(result.token);
+      setUser(result.user);
+    });
+
   const logout = () =>
     act(async () => {
       await client.logout();
@@ -243,6 +261,7 @@ export function usePlanner() {
     twoFactorRequired,
     resetTwoFactor: () => setTwoFactorRequired(false),
     adoptSession,
+    passkeyLogin,
     refreshUser,
     logout,
     toggleItem,

@@ -69,6 +69,21 @@ export const resetPassword = z.object({
 /** Confirming an email address from a verification link. */
 export const emailToken = z.object({ token: z.string().min(1).max(400) });
 
+/** WebAuthn payloads are validated by the server library; keep them loose here. */
+const webauthnResponse = z.record(z.string(), z.unknown());
+export const passkeyRegister = z
+  .object({
+    response: webauthnResponse,
+    name: z.string().trim().max(60).default(""),
+  })
+  .strict();
+export const passkeyAuthOptions = z
+  .object({ email: z.string().trim().max(254).optional() })
+  .strict();
+export const passkeyAuth = z
+  .object({ handle: z.string().min(1).max(200), response: webauthnResponse })
+  .strict();
+
 /** A video-call link; empty for none. */
 const meetingUrl = z
   .string()
