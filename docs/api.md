@@ -214,6 +214,31 @@ Challenges are single-use and expire after five minutes.
 { "email_reminders": false }
 ```
 
+## Agenda and meeting notes
+
+Two kinds of document Orbyn writes for you. Both are ordinary documents once created, so they can
+be edited like any other page, and both are built from planner data alone — they read the same
+whether or not an AI provider is connected.
+
+### `GET /agenda/today` (auth)
+
+Today's agenda, in the person's planner time zone. Written the first time it's asked for each day
+(sections for the day's events, what's due today, what slipped and what's coming within a week),
+and returned unchanged after that, so edits are never overwritten. → a document with `kind`
+`agenda`, titled like "Sunday 20 September".
+
+### `POST /items/:id/note` (auth)
+
+The meeting note for an event, created from a template (Agenda, Notes, Decisions, Action items)
+the first time and returned as-is afterwards. → `201` when created, `200` when it already existed.
+A note for a team event belongs to the team, so one shared meeting keeps one shared note.
+
+### `POST /docs/:id/tasks` (auth)
+
+Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
+team, if it has one). → `{ "created": 2, "items": [ … ] }`. Blank and already-ticked lines are
+skipped.
+
 ## Projects
 
 A project groups planner tasks into a named piece of work with ordered stages. Tasks are not

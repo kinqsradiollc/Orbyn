@@ -11,6 +11,7 @@ import {
   Crosshair,
   Eye,
   MapPin,
+  NotebookPen,
   Video,
   ListChecks,
   MessageSquare,
@@ -85,6 +86,8 @@ type Props = {
   onOpenItem?: (item: Item) => void;
   /** Planner error handler (signs out on 401). */
   onError: (e: unknown) => void;
+  /** Opens (or starts) the meeting note for an event. */
+  onOpenNote?: (item: Item) => void;
 };
 
 const SNAPS = [0, 25, 50, 75, 100];
@@ -118,6 +121,7 @@ export function TaskDetail({
   onFocus,
   onChanged,
   onError,
+  onOpenNote,
   items,
   onOpenItem,
 }: Props) {
@@ -456,6 +460,14 @@ export function TaskDetail({
               >
                 <Video size={14} aria-hidden="true" /> Meeting link
               </a>
+            )}
+            {current.kind === "event" && onOpenNote && (
+              <button
+                className="drawer-fact link-button"
+                onClick={() => onOpenNote(current)}
+              >
+                <NotebookPen size={14} aria-hidden="true" /> Meeting note
+              </button>
             )}
           </div>
           <ItemFacts item={current} className="drawer-planning" />

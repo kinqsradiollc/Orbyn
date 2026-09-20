@@ -39,7 +39,9 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
+import type { Doc } from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
+import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
 import {
   CalendarView,
@@ -118,6 +120,8 @@ export function App() {
   const [openTask, setOpenTask] = useState<Item | null>(null);
   /** The task in focus mode. */
   const [focusTask, setFocusTask] = useState<Item | null>(null);
+  /** A meeting note opened from its event, handed to the Docs view. */
+  const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
@@ -547,7 +551,20 @@ export function App() {
                   onNewItem={(prefill) => newItem(null, prefill)}
                 />
               )}
-              {view === "Docs" && <DocsView report={report} />}
+              {view === "Agenda" && (
+                <AgendaView
+                  report={report}
+                  onItemsChanged={() => void refresh()}
+                />
+              )}
+              {view === "Docs" && (
+                <DocsView
+                  report={report}
+                  onItemsChanged={() => void refresh()}
+                  initialDoc={noteDoc}
+                  onInitialDocShown={() => setNoteDoc(null)}
+                />
+              )}
               {view === "Projects" && (
                 <ProjectsView
                   items={items}
@@ -657,6 +674,16 @@ export function App() {
             onOpenItem={setOpenTask}
             onChanged={refresh}
             onError={report}
+            onOpenNote={(event) => {
+              void client
+                .itemNote(event.id)
+                .then((note) => {
+                  closeTask();
+                  setNoteDoc(note);
+                  setView("Docs");
+                })
+                .catch(report);
+            }}
           />
         )}
         {shownFocus && (

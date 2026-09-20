@@ -1,18 +1,25 @@
 import type { FastifyInstance } from "fastify";
 import {
+  agendaTitle,
+  buildAgenda,
   docInput,
+  itemData,
   docPreview,
   docUpdate,
   fail,
+  meetingNoteTemplate,
   serializeDoc,
   type Doc,
   type DocBlock,
   type DocSummary,
+  type Item,
 } from "@orbyn/core";
-import { reader, transaction, type Db } from "../../db/pool.js";
+import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam } from "../../lib/teams.js";
+import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { loadPrefs } from "../planner/calendar.js";
+import { mutate } from "../items/service.js";
 
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
@@ -51,6 +58,15 @@ async function requireDoc(
   if (row.team_id) await requireTeam(row.team_id, u, permission, db);
   else if (row.user_id !== u.id) fail(404, "Document not found");
   return row;
+}
+
+/** A checklist line as the fields `mutate` needs to create a task. */
+function itemFromLine(text: string, teamId: string | null) {
+  return itemData.parse({
+    title: text.trim().slice(0, 200),
+    kind: "task",
+    team_id: teamId,
+  });
 }
 
 export async function docRoutes(app: FastifyInstance) {
@@ -169,6 +185,152 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
     });
+  });
+
+  /**
+   * Today's agenda. Generated once per day from the planner and then kept as
+   * an ordinary document, so edits survive; asking again the same day returns
+   * the same page rather than overwriting what you wrote.
+   */
+  app.get("/agenda/today", async (r) => {
+    const u = await authenticate(r);
+    const prefs = await loadPrefs(pool, u.id);
+    const tz = prefs.timezone || "UTC";
+    const now = new Date();
+    const title = agendaTitle(now, tz);
+
+    const existing = (
+      await pool.query<Doc>(
+        `SELECT ${COLUMNS}, d.content FROM docs d LEFT JOIN teams t ON t.id = d.team_id
+          WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.title = $2
+          ORDER BY d.created_at DESC LIMIT 1`,
+        [u.id, title],
+      )
+    ).rows[0];
+    if (existing) return existing;
+
+    const items = (
+      await pool.query<Item>(
+        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+           AND i.due_at IS NOT NULL
+         ORDER BY i.due_at LIMIT 500`,
+        [u.id],
+      )
+    ).rows;
+    const content = buildAgenda(items, { now, timeZone: tz });
+    return transaction(async (db) => {
+      const id = (
+        await db.query<{ id: string }>(
+          `INSERT INTO docs (user_id, title, kind, content)
+             VALUES ($1,$2,'agenda',$3::jsonb) RETURNING id`,
+          [u.id, title, JSON.stringify(content)],
+        )
+      ).rows[0].id;
+      return (
+        await db.query<Doc>(
+          `SELECT ${COLUMNS}, d.content FROM docs d
+             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+          [id],
+        )
+      ).rows[0];
+    });
+  });
+
+  /**
+   * The note for one event, created from a template the first time it's
+   * opened. It belongs to whoever opened it, and to the event's team when it
+   * has one, so a shared meeting keeps one shared note.
+   */
+  app.post("/items/:id/note", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const event = (
+      await pool.query<{
+        id: string;
+        title: string;
+        due_at: Date | null;
+        location: string;
+        team_id: string | null;
+        user_id: string;
+      }>(
+        `SELECT i.id, i.title, i.due_at, i.location, i.team_id, i.user_id
+           FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!event) fail(404, "Item not found");
+
+    const existing = (
+      await pool.query<Doc>(
+        `SELECT ${COLUMNS}, d.content FROM docs d LEFT JOIN teams t ON t.id = d.team_id
+          WHERE d.item_id = $1 AND d.kind = 'meeting'
+            AND (d.team_id IS NOT NULL OR d.user_id = $2)
+          ORDER BY d.created_at LIMIT 1`,
+        [id, u.id],
+      )
+    ).rows[0];
+    if (existing) return existing;
+
+    const prefs = await loadPrefs(pool, u.id);
+    const content = meetingNoteTemplate({
+      title: event.title,
+      due_at: event.due_at ? event.due_at.toISOString() : null,
+      location: event.location,
+      timeZone: prefs.timezone || "UTC",
+    });
+    const doc = await transaction(async (db) => {
+      const newId = (
+        await db.query<{ id: string }>(
+          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id)
+             VALUES ($1,$2,$3,'meeting',$4::jsonb,$5) RETURNING id`,
+          [u.id, event.team_id, event.title, JSON.stringify(content), id],
+        )
+      ).rows[0].id;
+      return (
+        await db.query<Doc>(
+          `SELECT ${COLUMNS}, d.content FROM docs d
+             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+          [newId],
+        )
+      ).rows[0];
+    });
+    reply.code(201);
+    return doc;
+  });
+
+  /**
+   * Turn a document's unticked checklist lines into real tasks. Blank lines
+   * are skipped, and the answer says how many were made, so the page can tell
+   * you plainly.
+   */
+  app.post("/docs/:id/tasks", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const doc = (
+      await pool.query<{ content: DocBlock[]; team_id: string | null }>(
+        `SELECT d.content, d.team_id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!doc) fail(404, "Document not found");
+    const lines = (doc.content ?? []).filter(
+      (b): b is Extract<DocBlock, { type: "todo" }> =>
+        b.type === "todo" && !b.done && b.text.trim().length > 0,
+    );
+    if (!lines.length) return { created: 0, items: [] };
+
+    const made = await transaction(async (db) => {
+      const out = [];
+      for (const line of lines) {
+        const item = await mutate(db, u, {
+          operation: "create",
+          data: itemFromLine(line.text, doc.team_id),
+        });
+        if (item) out.push(item);
+      }
+      return out;
+    });
+    return { created: made.length, items: made };
   });
 
   app.delete("/docs/:id", async (r, reply) => {
