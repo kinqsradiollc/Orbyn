@@ -43,6 +43,16 @@ export type Doc = {
   updated_at: string;
 };
 
+export type DocComment = {
+  id: string;
+  doc_id: string;
+  user_id: string;
+  author: string;
+  body: string;
+  resolved_at: string | null;
+  created_at: string;
+};
+
 /** A document in a list: no body, plus a short preview line. */
 export type DocSummary = Omit<Doc, "content"> & { preview: string };
 

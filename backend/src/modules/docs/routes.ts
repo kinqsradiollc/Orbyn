@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import {
   agendaTitle,
   buildAgenda,
+  docCommentInput,
+  docCommentUpdate,
   docInput,
   itemData,
   docPreview,
@@ -12,6 +14,7 @@ import {
   serializeDoc,
   type Doc,
   type DocBlock,
+  type DocComment,
   type DocSummary,
   type Item,
 } from "@orbyn/core";
@@ -453,6 +456,95 @@ export async function docRoutes(app: FastifyInstance) {
         content: await withTaskState(pool, id, updated.content ?? []),
       },
     };
+  });
+
+  /** Everyone's remarks on a document, oldest first. */
+  app.get("/docs/:id/comments", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const seen = (
+      await db.query(`SELECT 1 FROM docs d WHERE d.id = $2 AND ${VISIBLE}`, [
+        u.id,
+        id,
+      ])
+    ).rowCount;
+    if (!seen) fail(404, "Document not found");
+    return (
+      await db.query<DocComment>(
+        `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
+                c.resolved_at, c.created_at
+           FROM doc_comments c JOIN users u ON u.id = c.user_id
+          WHERE c.doc_id = $1 ORDER BY c.created_at`,
+        [id],
+      )
+    ).rows;
+  });
+
+  app.post("/docs/:id/comments", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { body } = docCommentInput.parse(r.body);
+    const comment = await transaction(async (db) => {
+      // Anyone who can read the document can remark on it.
+      await requireDoc(db, id, u, "items:read");
+      const made = (
+        await db.query<{ id: string }>(
+          "INSERT INTO doc_comments (doc_id, user_id, body) VALUES ($1,$2,$3) RETURNING id",
+          [id, u.id, body],
+        )
+      ).rows[0].id;
+      return (
+        await db.query<DocComment>(
+          `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
+                  c.resolved_at, c.created_at
+             FROM doc_comments c JOIN users u ON u.id = c.user_id
+            WHERE c.id = $1`,
+          [made],
+        )
+      ).rows[0];
+    });
+    reply.code(201);
+    return comment;
+  });
+
+  /** Resolve a remark, or bring it back. */
+  app.put("/docs/:id/comments/:commentId", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const commentId = String((r.params as { commentId: string }).commentId);
+    const { resolved } = docCommentUpdate.parse(r.body);
+    return transaction(async (db) => {
+      await requireDoc(db, id, u, "items:read");
+      const updated = (
+        await db.query<DocComment>(
+          `UPDATE doc_comments SET resolved_at = CASE WHEN $3 THEN now() ELSE NULL END
+            WHERE id = $1 AND doc_id = $2
+            RETURNING id, doc_id, user_id, body, resolved_at, created_at`,
+          [commentId, id, resolved],
+        )
+      ).rows[0];
+      if (!updated) fail(404, "Comment not found");
+      return updated;
+    });
+  });
+
+  /** Only the person who wrote a remark can take it back. */
+  app.delete("/docs/:id/comments/:commentId", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const commentId = String((r.params as { commentId: string }).commentId);
+    await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:read");
+      const gone = (
+        await db.query(
+          "DELETE FROM doc_comments WHERE id = $1 AND doc_id = $2 AND user_id = $3",
+          [commentId, id, u.id],
+        )
+      ).rowCount;
+      if (!gone) fail(404, "Comment not found");
+    });
+    reply.code(204);
   });
 
   app.delete("/docs/:id", async (r, reply) => {

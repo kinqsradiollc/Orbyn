@@ -287,6 +287,27 @@ the project with no stage.
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`.
 
+## Comments on a document
+
+One thread per document, so a remark survives the blocks being rewritten around it. Anyone who
+can read the document can comment on it; only the person who wrote a remark can withdraw it.
+
+### `GET /docs/:id/comments` (auth)
+
+→ `[ { "id", "author", "body", "resolved_at", "created_at", … } ]`, oldest first.
+
+### `POST /docs/:id/comments` (auth)
+
+`{ "body" }` → `201`. An empty body is `422`.
+
+### `PUT /docs/:id/comments/:commentId` (auth)
+
+`{ "resolved": true }` stamps the time it was resolved; `false` brings it back.
+
+### `DELETE /docs/:id/comments/:commentId` (auth)
+
+→ `204`, and `404` when the remark is someone else's.
+
 ## Folders and favourites
 
 Folders group documents inside a workspace; they are flat by design, since one level is enough to

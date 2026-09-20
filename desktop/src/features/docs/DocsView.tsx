@@ -44,10 +44,12 @@ const STARTER = parseDoc(
 export function DocsView({
   report,
   onItemsChanged,
+  userId,
   initialDoc,
   onInitialDocShown,
 }: {
   report: (e: unknown) => void;
+  userId?: string;
   onItemsChanged?: () => void;
   /** A document to open straight away, e.g. a note opened from its event. */
   initialDoc?: Doc | null;
@@ -124,6 +126,7 @@ export function DocsView({
       <DocEditor
         doc={open}
         report={report}
+        userId={userId}
         onItemsChanged={onItemsChanged}
         onBack={() => {
           setOpen(null);

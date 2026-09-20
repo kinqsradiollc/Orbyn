@@ -352,6 +352,13 @@ export const favouriteInput = z
   })
   .strict();
 
+/** A remark on a document. One thread per document, so it survives edits. */
+export const docCommentInput = z
+  .object({ body: z.string().trim().min(1).max(4000) })
+  .strict();
+
+export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
+
 export const actionSchema = z
   .object({
     operation: z.enum(["create", "update", "delete"]),
