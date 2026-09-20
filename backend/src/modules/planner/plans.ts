@@ -34,6 +34,7 @@ import {
   timeBlocks,
 } from "./calendar.js";
 import { loadFrames } from "./frames.js";
+import { loadEstimateModel, ratioFor } from "./estimates.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
   remainingOf,
@@ -259,10 +260,18 @@ export async function makePlan(
   const excluded = new Set(
     state.exclude_item_ids.filter((id) => !include.includes(id)),
   );
-  const tuned = (t: Candidate): SchedulerTask =>
-    state.estimates[t.id]
-      ? { ...t, estimate_minutes: state.estimates[t.id] }
-      : t;
+  // How long this person's tasks really take, applied only when they opt in.
+  const model = await loadEstimateModel(db, userId, !!prefs.learn_estimates);
+  const tuned = (t: Candidate): SchedulerTask => {
+    if (state.estimates[t.id])
+      return { ...t, estimate_minutes: state.estimates[t.id] };
+    if (model.applied && t.estimate_minutes != null) {
+      const r = ratioFor(t, model);
+      if (r !== 1)
+        return { ...t, estimate_minutes: Math.round(t.estimate_minutes * r) };
+    }
+    return t;
+  };
   const planned = tasks.filter((t) => !excluded.has(t.id)).map(tuned);
   const options: PlanOptions = {
     start_date: start,

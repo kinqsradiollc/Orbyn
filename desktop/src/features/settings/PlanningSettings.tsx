@@ -14,6 +14,7 @@ import {
   type TravelMode,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import type { EstimateModel } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { DayPicker } from "../../components/DayPicker";
@@ -93,9 +94,14 @@ export function PlanningSettings({ teams, report }: Props) {
   const { prefs, savePrefs, lists } = usePlanning();
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
   const [zoneToAdd, setZoneToAdd] = useState("");
+  const [estimates, setEstimates] = useState<EstimateModel | null>(null);
   const save = useAction(report);
   const preview = useAction(report);
   const zones = timeZones();
+
+  useEffect(() => {
+    client.getEstimates().then(setEstimates, () => setEstimates(null));
+  }, []);
 
   useEffect(() => {
     if (prefs && !draft) setDraft(draftFrom(prefs));
@@ -362,6 +368,42 @@ export function PlanningSettings({ teams, report }: Props) {
               </span>
             </label>
           </div>
+
+          <h3 className="settings-subtitle">Learning your estimates</h3>
+          <p className="muted">
+            The planner can scale each task by how long that kind of work really
+            takes you, from your finished tasks. Your estimates aren’t changed.
+          </p>
+          <div className="settings-grid">
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={draft.learn_estimates ?? false}
+                onChange={(e) => set("learn_estimates", e.target.checked)}
+              />
+              <span>
+                Adjust estimates from history
+                <small>
+                  {estimates && estimates.overall.samples >= 3
+                    ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
+                    : "A few finished tasks with an estimate and logged time are needed first."}
+                </small>
+              </span>
+            </label>
+          </div>
+          {estimates && estimates.tags.length > 0 && (
+            <ul className="estimate-tags">
+              {estimates.tags.slice(0, 6).map((t) => (
+                <li key={t.tag_id}>
+                  <span>#{t.name}</span>
+                  <span className="mono">{t.ratio}×</span>
+                  <small className="muted">{t.samples} tasks</small>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <h3 className="settings-subtitle">Daily digest</h3>
           <p className="muted">

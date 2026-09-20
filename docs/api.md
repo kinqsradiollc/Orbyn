@@ -440,6 +440,10 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "morning_time": "HH:MM", "evening_time": "HH:MM" }`. Both digests are **off by default**. When a mail server is configured, the worker emails each enabled digest once a day at its local time — a morning agenda (today's events, due tasks, set-aside time, habits, at-risk warnings) and an evening review (what's still open, tomorrow's start).
 
+### `GET /planner/estimates` (auth)
+
+What the planner has learned about how long tasks really take: `{ overall: { ratio, samples }, tags: [{ tag_id, name, ratio, samples }], applied }`. `ratio` is actual ÷ estimated over finished tasks (clamped 0.5–3, held at 1 below 3 samples). With `learn_estimates` on in planner prefs, the planner scales each task's estimate by the matching tag's ratio, else the overall one — the stored estimate is never changed.
+
 ### `POST /planner/digest/test` (auth)
 
 `{ "kind": "morning" | "evening" }` (default `morning`). Emails you that digest now from your live data, to preview it. → `204`; `503` when no mail server is set up.

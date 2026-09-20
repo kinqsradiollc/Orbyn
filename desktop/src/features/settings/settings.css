@@ -314,3 +314,24 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* Per-tag estimate ratios under the "learn estimates" toggle. */
+.estimate-tags {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+}
+.estimate-tags li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13.5px;
+}
+.estimate-tags .mono {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
