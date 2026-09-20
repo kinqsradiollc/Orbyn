@@ -14,6 +14,13 @@ const schema = z.object({
     .default("postgres://orbyn:orbyn@localhost:5432/orbyn"),
   /** Optional read replica (or its PgBouncer alias) for reads that tolerate a little lag. */
   DATABASE_READ_URL: z.string().default(""),
+  /**
+   * Direct line to the primary for LISTEN, which carries live document
+   * changes. PgBouncer in transaction pooling can't hold a LISTEN open, so
+   * set this to the database itself wherever DATABASE_URL goes through it.
+   * Empty means DATABASE_URL is already direct.
+   */
+  DATABASE_LISTEN_URL: z.string().default(""),
   PORT: z.coerce.number().default(8000),
   CORS_ORIGINS: z
     .string()

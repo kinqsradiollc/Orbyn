@@ -30,6 +30,7 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
+import { announceDocChange, closeLive, streamDocChanges } from "./live.js";
 
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
@@ -230,11 +231,24 @@ export async function docRoutes(app: FastifyInstance) {
       .send(`# ${doc.title}\n\n${serializeDoc(doc.content ?? [])}`);
   });
 
+  // Let go of the listening connection when the server stops.
+  app.addHook("onClose", () => closeLive());
+
+  /**
+   * Which open editor a request came from. Two tabs belonging to the same
+   * person are two editors, so this is the tab's own id rather than the
+   * user's; a tab should not be told about the change it just made itself.
+   */
+  const editorOf = (r: { headers: Record<string, unknown> }) =>
+    typeof r.headers["x-orbyn-editor"] === "string"
+      ? (r.headers["x-orbyn-editor"] as string).slice(0, 64)
+      : "";
+
   app.put("/docs/:id", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = docUpdate.parse(r.body);
-    return transaction(async (db) => {
+    const saved = await transaction(async (db) => {
       const current = await requireDoc(db, id, u, "items:write");
       if (current.version !== body.version)
         fail(
@@ -266,6 +280,34 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
     });
+    // Announced after the transaction commits, so anyone who comes running
+    // to re-read the document finds the new version already there.
+    await announceDocChange(pool, id, saved.version, editorOf(r));
+    return saved;
+  });
+
+  /**
+   * A document's changes as they happen, for editors that have it open. The
+   * stream carries only the news that the document moved on and to which
+   * version; the editor then re-reads it and merges. That keeps the wire
+   * small and means a reader that misses an event still catches up on the
+   * next one.
+   */
+  app.get("/docs/:id/live", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const doc = (
+      await reader(r.headers).query<{ id: string }>(
+        `SELECT d.id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!doc) fail(404, "Document not found");
+
+    const stop = await streamDocChanges(reply, id, editorOf(r));
+    r.raw.on("close", stop);
+    // Fastify must not also try to answer: the stream owns the response.
+    return reply;
   });
 
   /**
@@ -448,6 +490,7 @@ export async function docRoutes(app: FastifyInstance) {
         [id],
       )
     ).rows[0];
+    await announceDocChange(pool, id, updated.version, editorOf(r));
     return {
       created: made.length,
       items: made,

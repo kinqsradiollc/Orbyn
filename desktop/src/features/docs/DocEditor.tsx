@@ -6,8 +6,10 @@ import {
   ListPlus,
   Loader2,
   Trash2,
+  Users,
 } from "lucide-react";
 import {
+  mergeDocs,
   parseDoc,
   serializeBlock,
   serializeDoc,
@@ -22,6 +24,9 @@ import { DocComments } from "./DocComments";
 const SAVE_AFTER_MS = 800;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
+
+/** How long the "someone else edited this" note stays up. */
+const MERGE_NOTE_MS = 6_000;
 
 /**
  * Re-read an edited line, so "# " or "- " changes the block's type. Pasting
@@ -61,6 +66,16 @@ export function DocEditor({
   const [save, setSave] = useState<SaveState>("idle");
   const version = useRef(doc.version);
   const dirty = useRef(false);
+  /**
+   * The document as the server last had it. Merging needs this: it is what
+   * tells an edit made here apart from one that arrived from somewhere else.
+   */
+  const base = useRef<DocBlock[]>(doc.content);
+  /** Current state, readable from callbacks that were made earlier. */
+  const live = useRef({ title: doc.title, blocks: [] as DocBlock[] });
+  const [note, setNote] = useState("");
+  /** Which line is open for editing, readable from the live subscription. */
+  const focusedRef = useRef<number | null>(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -71,10 +86,44 @@ export function DocEditor({
       doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
     );
     version.current = doc.version;
+    base.current = doc.content;
     dirty.current = false;
     setSave("idle");
+    setNote("");
     setFocused(null);
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  live.current = { title, blocks };
+  focusedRef.current = focused;
+
+  /**
+   * Fold a copy of the document that came from elsewhere into what is on
+   * screen. Lines only one side touched are kept as they are; where both
+   * sides changed the same line, the version that is already saved stands
+   * and the other is put back on the line below, so nothing typed is lost.
+   * Returns the blocks now on screen.
+   */
+  const reconcile = useCallback((theirs: Doc): DocBlock[] => {
+    const mine = live.current.blocks;
+    const merge = mergeDocs(base.current, mine, theirs.content);
+    const next = merge.blocks.length
+      ? merge.blocks
+      : [{ type: "paragraph", text: "" } as DocBlock];
+    version.current = theirs.version;
+    base.current = theirs.content;
+    setBlocks(next);
+    // The title is one field; whoever saved last has it.
+    if (theirs.title !== live.current.title) setTitle(theirs.title);
+    live.current = { title: theirs.title, blocks: next };
+    setNote(
+      merge.conflicts.length === 1
+        ? "Someone else edited this. The line you changed is kept below theirs."
+        : merge.conflicts.length > 1
+          ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
+          : "Updated with someone else's changes.",
+    );
+    return next;
+  }, []);
 
   const persist = useCallback(
     async (nextTitle: string, nextBlocks: DocBlock[]) => {
@@ -86,15 +135,39 @@ export function DocEditor({
           version: version.current,
         });
         version.current = saved.version;
+        base.current = saved.content;
         dirty.current = false;
         setSave("saved");
         onChanged(saved);
       } catch (e) {
+        // Someone saved first. Take their copy, fold this edit into it and
+        // save again, rather than making the writer sort it out by hand.
+        if ((e as { statusCode?: number }).statusCode === 409) {
+          try {
+            const theirs = await client.getDoc(doc.id);
+            const merged = reconcile(theirs);
+            const saved = await client.updateDoc(doc.id, {
+              title: live.current.title,
+              content: merged,
+              version: version.current,
+            });
+            version.current = saved.version;
+            base.current = saved.content;
+            dirty.current = false;
+            setSave("saved");
+            onChanged(saved);
+            return;
+          } catch (again) {
+            setSave("error");
+            report(again);
+            return;
+          }
+        }
         setSave("error");
         report(e);
       }
     },
-    [doc.id, onChanged, report],
+    [doc.id, onChanged, reconcile, report],
   );
 
   /** Queue a save; typing again restarts the clock. */
@@ -117,6 +190,49 @@ export function DocEditor({
     },
     [],
   );
+
+  /**
+   * Follow the document while it is open. When it changes somewhere else the
+   * server says only that it moved on; the new copy is read here and folded
+   * in, so two people can work on the same page at once.
+   */
+  useEffect(() => {
+    const stop = client.watchDoc(doc.id, (remote) => {
+      if (remote && remote <= version.current) return;
+      void client.getDoc(doc.id).then((theirs) => {
+        if (theirs.version <= version.current) return;
+        // A line open for editing counts as ours even before a keystroke:
+        // replacing the whole page would pull the text out from under it.
+        if (!dirty.current && focusedRef.current === null) {
+          // Nothing of ours is waiting: just take their copy.
+          version.current = theirs.version;
+          base.current = theirs.content;
+          setTitle(theirs.title);
+          setBlocks(
+            theirs.content.length
+              ? theirs.content
+              : [{ type: "paragraph", text: "" }],
+          );
+          setNote("Updated with someone else's changes.");
+          onChanged(theirs);
+          return;
+        }
+        const merged = reconcile(theirs);
+        // Only send the merged page back when something of ours was waiting;
+        // an open but untouched line has nothing to add.
+        if (dirty.current) void persist(live.current.title, merged);
+        else onChanged(theirs);
+      }, report);
+    });
+    return stop;
+  }, [doc.id, onChanged, persist, reconcile, report]);
+
+  // The note is news, not a state to sit in.
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(""), MERGE_NOTE_MS);
+    return () => clearTimeout(t);
+  }, [note]);
 
   const update = (next: DocBlock[]) => {
     setBlocks(next);
@@ -268,6 +384,11 @@ export function DocEditor({
           )}
           {save === "error" && "Not saved"}
         </span>
+        {!!note && (
+          <span className="doc-merged" role="status">
+            <Users size={13} aria-hidden="true" /> {note}
+          </span>
+        )}
         <span className="doc-bar-actions">
           {openTodos > 0 && (
             <button className="text-button" onClick={makeTasks}>

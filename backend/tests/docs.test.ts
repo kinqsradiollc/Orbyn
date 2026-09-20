@@ -7,8 +7,14 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { parseDoc, serializeDoc, docPreview, parseDocInline, mathToText } =
-  await import("@orbyn/core");
+const {
+  parseDoc,
+  serializeDoc,
+  docPreview,
+  parseDocInline,
+  mathToText,
+  mergeDocs,
+} = await import("@orbyn/core");
 
 const app = await buildApp();
 let token = "";
@@ -46,6 +52,8 @@ before(async () => {
   otherToken = await register("Stranger");
 });
 after(async () => {
+  const { closeLive } = await import("../src/modules/docs/live.js");
+  await closeLive();
   await app.close();
   await pool.end();
 });
@@ -246,4 +254,101 @@ test("a document is deleted", async () => {
   const doc = (await call("POST", "/docs", { title: "Temp" })).json();
   assert.equal((await call("DELETE", `/docs/${doc.id}`)).statusCode, 204);
   assert.equal((await call("GET", `/docs/${doc.id}`)).statusCode, 404);
+});
+
+test("edits in different parts of a document merge without loss", () => {
+  const base = parseDoc("# Title\n\nFirst line.\n\nSecond line.");
+  // I rewrite the first line; they rewrite the second.
+  const mine = parseDoc("# Title\n\nMy first line.\n\nSecond line.");
+  const theirs = parseDoc("# Title\n\nFirst line.\n\nTheir second line.");
+
+  const { blocks, conflicts } = mergeDocs(base, mine, theirs);
+  assert.equal(conflicts.length, 0, "different lines never conflict");
+  const text = blocks.map((b) => (b.type === "divider" ? "" : b.text));
+  assert.deepEqual(text, ["Title", "My first line.", "Their second line."]);
+});
+
+test("the same line changed twice keeps both, theirs applied", () => {
+  const base = parseDoc("One line.");
+  const mine = parseDoc("My version.");
+  const theirs = parseDoc("Their version.");
+
+  const { blocks, conflicts } = mergeDocs(base, mine, theirs);
+  // Theirs is already saved, so it stands where the line was; mine follows it
+  // on the page rather than being dropped.
+  assert.equal(blocks.length, 2);
+  assert.equal(
+    blocks[0].type === "paragraph" && blocks[0].text,
+    "Their version.",
+  );
+  assert.equal(blocks[1].type === "paragraph" && blocks[1].text, "My version.");
+  assert.equal(conflicts.length, 1);
+  assert.equal(
+    conflicts[0].mine.type === "paragraph" && conflicts[0].mine.text,
+    "My version.",
+  );
+});
+
+test("a line added at the end by either side is kept", () => {
+  const base = parseDoc("One.");
+  const mine = parseDoc("One.\n\nMine at the end.");
+  const theirs = parseDoc("One.");
+  assert.equal(mergeDocs(base, mine, theirs).blocks.length, 2);
+  // And the other way round.
+  assert.equal(mergeDocs(base, theirs, mine).blocks.length, 2);
+});
+
+test("an identical edit on both sides is not a conflict", () => {
+  const base = parseDoc("Old.");
+  const same = parseDoc("New.");
+  const { blocks, conflicts } = mergeDocs(base, same, same);
+  assert.equal(conflicts.length, 0);
+  assert.equal(blocks[0].type === "paragraph" && blocks[0].text, "New.");
+});
+
+test("a change to a document reaches the people watching it", async () => {
+  const { announceDocChange, streamDocChanges, watcherCount } =
+    await import("../src/modules/docs/live.js");
+  const docId = randomUUID();
+  const written: string[] = [];
+  // Stands in for the HTTP response: we only care what goes down the wire.
+  const reply = {
+    raw: {
+      writeHead: () => {},
+      write: (chunk: string) => written.push(chunk),
+    },
+  } as never;
+
+  const stop = await streamDocChanges(reply, docId, "tab-a");
+  assert.equal(watcherCount(docId), 1);
+
+  // The watcher's own save is not news to them.
+  await announceDocChange(pool, docId, 4, "tab-a");
+  // Someone else's is.
+  await announceDocChange(pool, docId, 5, "tab-b");
+
+  const deadline = Date.now() + 5000;
+  while (!written.some((c) => c.startsWith("data:")) && Date.now() < deadline)
+    await new Promise((r) => setTimeout(r, 25));
+
+  const events = written
+    .filter((c) => c.startsWith("data:"))
+    .map((c) => JSON.parse(c.slice(5)) as { version: number; by: string });
+  assert.equal(events.length, 1, "only the other tab's save is announced");
+  assert.equal(events[0].version, 5);
+
+  stop();
+  assert.equal(watcherCount(docId), 0);
+});
+
+test("a stranger cannot watch a document they may not read", async () => {
+  const made = await call("POST", "/docs", { title: "Private" });
+  const id = made.json().id as string;
+  const res = await call(
+    "GET",
+    `/docs/${id}/live`,
+    undefined,
+    () => otherToken,
+  );
+  assert.equal(res.statusCode, 404);
 });

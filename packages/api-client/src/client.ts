@@ -193,6 +193,12 @@ export class OrbynClient {
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private lastWriteAt = 0;
+  /**
+   * This client's own id, made fresh each time the app starts. Two tabs are
+   * two editors, so the server can leave a tab out of the news about the
+   * change that tab just made.
+   */
+  readonly editorId = `e${Math.random().toString(36).slice(2, 10)}`;
   /** Last body per signed-in path, for 304 Not Modified replies. */
   private readonly cache = new Map<string, { etag: string; text: string }>();
 
@@ -225,6 +231,7 @@ export class OrbynClient {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(cached ? { "If-None-Match": cached.etag } : {}),
           ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
+          "X-Orbyn-Editor": this.editorId,
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -707,6 +714,79 @@ export class OrbynClient {
   }
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+  }
+
+  /**
+   * Watch a document for changes made elsewhere. Calls `onChange` with the
+   * version the document has reached; the caller then re-reads it. Returns a
+   * function that stops watching.
+   *
+   * This reads the stream with `fetch` rather than `EventSource`, which
+   * cannot carry an Authorization header and would force the token into the
+   * URL, where proxies and logs would keep it.
+   */
+  watchDoc(id: string, onChange: (version: number) => void): () => void {
+    const abort = new AbortController();
+    let stopped = false;
+    const run = async () => {
+      // Reconnect with a widening gap, so a server that is down is not
+      // hammered by every open tab at once.
+      let wait = 1_000;
+      while (!stopped) {
+        try {
+          const token = await this.getToken();
+          const response = await this.fetchImpl(
+            `${this.baseUrl}/docs/${id}/live`,
+            {
+              headers: {
+                accept: "text/event-stream",
+                "X-Orbyn-Editor": this.editorId,
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              signal: abort.signal,
+            },
+          );
+          // A document that is gone, or that this reader may not see, is not
+          // worth coming back to.
+          if (response.status === 404 || response.status === 403) return;
+          if (!response.ok || !response.body) throw new Error("no stream");
+          wait = 1_000;
+          const reader = response.body.getReader();
+          const decode = new TextDecoder();
+          let buffer = "";
+          while (!stopped) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decode.decode(value, { stream: true });
+            // Events are separated by a blank line; keep any partial tail.
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+            for (const part of parts) {
+              const line = part.split("\n").find((l) => l.startsWith("data:"));
+              if (!line) continue;
+              try {
+                const payload = JSON.parse(line.slice(5)) as {
+                  version?: number;
+                };
+                onChange(payload.version ?? 0);
+              } catch {
+                // A half-written event: the next one will bring us up to date.
+              }
+            }
+          }
+        } catch {
+          if (stopped) return;
+        }
+        if (stopped) return;
+        await new Promise((r) => setTimeout(r, wait));
+        wait = Math.min(wait * 2, 30_000);
+      }
+    };
+    void run();
+    return () => {
+      stopped = true;
+      abort.abort();
+    };
   }
 
   listLists() {

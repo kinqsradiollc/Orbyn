@@ -287,6 +287,38 @@ the project with no stage.
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`.
 
+## Live changes to a document
+
+Editors that have a document open follow it, so two people can work on the same page at once.
+
+### `GET /docs/:id/live` (auth)
+
+A server-sent event stream. Each event says only that the document moved on and to which version:
+
+```
+data: {"docId":"…","version":7,"by":"e4f1c2ab"}
+```
+
+The reader then re-reads the document and folds the new copy into what is on screen. Keeping the
+payload to a version number means a reader that misses an event still catches up on the next one.
+
+`by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
+request. A tab is never told about its own save. `404` when the document isn't yours to read.
+
+The stream is read with `fetch`, not `EventSource`, because `EventSource` cannot carry an
+`Authorization` header and the token must not travel in the URL.
+
+Changes travel between API copies on a Postgres `LISTEN`/`NOTIFY` channel. A transaction pooler
+cannot hold a `LISTEN` open, so where `DATABASE_URL` points at PgBouncer, set
+`DATABASE_LISTEN_URL` to the primary directly.
+
+### Two people editing the same line
+
+Each save carries the version it was made against, so the second one is refused with `409`. The
+editor answers a `409` by re-reading the document and merging: lines only one side touched are
+kept as they are, and where both rewrote the same line the saved version stands and the other
+follows it on the page, marked in a note. Nothing typed is dropped.
+
 ## Comments on a document
 
 One thread per document, so a remark survives the blocks being rewritten around it. Anyone who
