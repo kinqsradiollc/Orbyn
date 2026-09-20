@@ -2,13 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
+  Copy,
   Download,
+  GripVertical,
   ListPlus,
   Loader2,
+  Plus,
   Trash2,
   Users,
 } from "lucide-react";
 import {
+  BLOCK_KINDS,
+  blockToType,
   mergeDocs,
   parseDoc,
   serializeBlock,
@@ -18,7 +23,13 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { BlockView } from "./DocBlocks";
+import { DocBlockMenu, SlashMenu } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
+
+type Kind = (typeof BLOCK_KINDS)[number];
+
+/** Kinds that carry on when you press Enter at the end of a line. */
+const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
 
 /** How long to wait after typing stops before saving. */
 const SAVE_AFTER_MS = 800;
@@ -78,6 +89,14 @@ export function DocEditor({
   const focusedRef = useRef<number | null>(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The block whose handle menu is open, and where to hang it. */
+  const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
+  /** A line that starts with "/", waiting for a kind to be picked. */
+  const [slash, setSlash] = useState<{
+    index: number;
+    query: string;
+    at: DOMRect;
+  } | null>(null);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -250,16 +269,82 @@ export function DocEditor({
   };
 
   const insertAfter = (index: number) => {
+    const current = blocks[index];
     const next = blocks.slice();
-    next.splice(index + 1, 0, { type: "paragraph", text: "" });
+    // Enter at the end of a list item makes another; on an empty one it
+    // leaves the list instead, the way every editor since Word has.
+    if (LISTS.has(current.type)) {
+      if (!("text" in current) || current.text.trim() === "") {
+        next[index] = { type: "paragraph", text: "" };
+        update(next);
+        return;
+      }
+      next.splice(
+        index + 1,
+        0,
+        blockToType({ type: "paragraph", text: "" }, current.type),
+      );
+    } else next.splice(index + 1, 0, { type: "paragraph", text: "" });
     update(next);
     setFocused(index + 1);
   };
 
-  const removeAt = (index: number) => {
-    if (blocks.length === 1) return;
+  /** The same words as another kind of block. */
+  const turnInto = (index: number, kind: Kind) => {
     const next = blocks.slice();
-    next.splice(index, 1);
+    next[index] = blockToType(blocks[index], kind.type, kind.level);
+    update(next);
+  };
+
+  const moveBlock = (index: number, by: -1 | 1) => {
+    const to = index + by;
+    if (to < 0 || to >= blocks.length) return;
+    const next = blocks.slice();
+    [next[index], next[to]] = [next[to], next[index]];
+    update(next);
+  };
+
+  const duplicate = (index: number) => {
+    const next = blocks.slice();
+    const copy = { ...blocks[index] };
+    // A copied checklist line is a new line, not the same task twice.
+    if (copy.type === "todo") delete copy.id;
+    next.splice(index + 1, 0, copy);
+    update(next);
+  };
+
+  /** A "/" at the start of an empty line asks what the line should be. */
+  const watchSlash = (
+    index: number,
+    value: string,
+    el: HTMLTextAreaElement,
+  ) => {
+    const m = /^\/([^\s]*)$/.exec(value);
+    if (m && blocks[index].type === "paragraph")
+      setSlash({ index, query: m[1], at: el.getBoundingClientRect() });
+    else if (slash) setSlash(null);
+  };
+
+  const pickSlash = (kind: Kind) => {
+    if (!slash) return;
+    const next = blocks.slice();
+    next[slash.index] = blockToType(
+      { type: "paragraph", text: "" },
+      kind.type,
+      kind.level,
+    );
+    setSlash(null);
+    update(next);
+    // Stay on the line, now of its new kind, ready to type into.
+    setFocused(null);
+    requestAnimationFrame(() => setFocused(slash.index));
+  };
+
+  const removeAt = (index: number) => {
+    const next = blocks.slice();
+    // A page is never empty: the last block goes back to a blank line.
+    if (blocks.length === 1) next[0] = { type: "paragraph", text: "" };
+    else next.splice(index, 1);
     update(next);
     setFocused(Math.max(0, index - 1));
   };
@@ -401,8 +486,21 @@ export function DocEditor({
           )}
           <button
             className="icon-button"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(`# ${title}\n\n${markdown}`)
+                .then(() => setNote("Copied as Markdown."), report)
+            }
+            aria-label="Copy as Markdown"
+            title="Copy as Markdown"
+          >
+            <Copy size={15} />
+          </button>
+          <button
+            className="icon-button"
             onClick={download}
             aria-label="Export as Markdown"
+            title="Export as Markdown"
           >
             <Download size={15} />
           </button>
@@ -410,6 +508,7 @@ export function DocEditor({
             className="icon-button"
             onClick={remove}
             aria-label="Delete document"
+            title="Delete document"
           >
             <Trash2 size={15} />
           </button>
@@ -433,7 +532,7 @@ export function DocEditor({
           {blocks.map((block, index) =>
             focused === index ? (
               <textarea
-                key={index}
+                key={`${index}-${block.type}`}
                 id={`doc-block-${index}`}
                 ref={areaRef}
                 className="doc-input"
@@ -442,31 +541,82 @@ export function DocEditor({
                 onChange={(e) => {
                   e.currentTarget.style.height = "auto";
                   e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                  watchSlash(index, e.currentTarget.value, e.currentTarget);
                   editBlock(index, e.currentTarget.value);
                 }}
-                onKeyDown={(e) => onKey(e, index)}
+                onKeyDown={(e) => {
+                  // The slash menu owns Enter and the arrows while it is open.
+                  if (
+                    slash &&
+                    ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
+                  )
+                    return;
+                  onKey(e, index);
+                }}
                 onBlur={() => setFocused((f) => (f === index ? null : f))}
               />
             ) : (
-              <div
-                key={index}
-                className="doc-block"
-                role="button"
-                tabIndex={0}
-                onClick={() => setFocused(index)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setFocused(index);
+              <div key={index} className="doc-block-row">
+                <button
+                  className="doc-handle"
+                  aria-label="Block options"
+                  aria-haspopup="menu"
+                  onClick={(e) =>
+                    setMenu({
+                      index,
+                      at: e.currentTarget.getBoundingClientRect(),
+                    })
                   }
-                }}
-              >
-                <BlockView
-                  block={block}
-                  onToggleTodo={() => toggleTodo(index)}
-                />
+                >
+                  <GripVertical size={14} aria-hidden="true" />
+                </button>
+                <div
+                  className="doc-block"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setFocused(index)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      setFocused(index);
+                    }
+                  }}
+                >
+                  <BlockView
+                    block={block}
+                    onToggleTodo={() => toggleTodo(index)}
+                  />
+                </div>
               </div>
             ),
+          )}
+          <button
+            className="doc-add"
+            onClick={() => insertAfter(blocks.length - 1)}
+          >
+            <Plus size={14} aria-hidden="true" /> Add a block
+            <kbd>/</kbd>
+          </button>
+          {menu && (
+            <DocBlockMenu
+              anchor={menu.at}
+              block={blocks[menu.index]}
+              isFirst={menu.index === 0}
+              isLast={menu.index === blocks.length - 1}
+              onTurnInto={(kind) => turnInto(menu.index, kind)}
+              onMove={(by) => moveBlock(menu.index, by)}
+              onDuplicate={() => duplicate(menu.index)}
+              onDelete={() => removeAt(menu.index)}
+              onClose={() => setMenu(null)}
+            />
+          )}
+          {slash && (
+            <SlashMenu
+              anchor={slash.at}
+              query={slash.query}
+              onPick={pickSlash}
+              onClose={() => setSlash(null)}
+            />
           )}
         </div>
 

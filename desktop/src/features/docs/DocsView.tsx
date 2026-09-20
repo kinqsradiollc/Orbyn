@@ -3,7 +3,6 @@ import { FileText, FolderPlus, Plus, Star } from "lucide-react";
 import {
   favouriteKey,
   favouriteSet,
-  starterDoc,
   type Doc,
   type DocSummary,
   type Favourite,
@@ -92,8 +91,8 @@ export function DocsView({
     setBusy(true);
     client
       .createDoc({
-        title: "Untitled",
-        content: starterDoc(),
+        title: "",
+        content: [{ type: "paragraph", text: "" }],
         folder_id: folderFilter === "none" ? null : folderFilter,
       })
       .then((doc) => {

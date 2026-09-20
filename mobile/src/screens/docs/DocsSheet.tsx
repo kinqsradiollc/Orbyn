@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { starterDoc, type Doc, type DocSummary } from "@orbyn/core";
+import type { Doc, DocSummary } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -60,8 +60,8 @@ export function DocsSheet({
   const create = () =>
     void run(async () => {
       const made = await client.createDoc({
-        title: "Untitled",
-        content: starterDoc(),
+        title: "",
+        content: [{ type: "paragraph", text: "" }],
       });
       setDocs(null);
       setOpen(made);

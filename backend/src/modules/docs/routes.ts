@@ -179,7 +179,7 @@ export async function docRoutes(app: FastifyInstance) {
           [
             u.id,
             data.team_id,
-            data.title || "Untitled",
+            data.title,
             data.kind,
             JSON.stringify(data.content),
             data.item_id,
