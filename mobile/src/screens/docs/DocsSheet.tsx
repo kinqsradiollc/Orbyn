@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { Doc, DocSummary } from "@orbyn/core";
+import { starterDoc, type Doc, type DocSummary } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
-import { DocBody } from "./DocBody";
+import { DocEditor } from "./DocEditor";
+import { SmallAction } from "../../components/SmallAction";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -17,9 +18,10 @@ const when = (iso: string) => {
 };
 
 /**
- * Documents on the phone: the list, then one document to read, with its
- * checklist live so a line ticked here ticks its task too. Writing a document
- * stays on the desktop, where the editor and its typeset formulas live.
+ * Documents on the phone: the list, then one document to read and write,
+ * with its checklist live so a line ticked here ticks its task too. Formulas
+ * read as symbols here and are typeset on the desktop; the source is the
+ * same either way.
  */
 export function DocsSheet({
   visible,
@@ -50,25 +52,28 @@ export function DocsSheet({
     client.listDocs().then(setDocs, () => setDocs([]));
   }, [visible, agenda]);
 
-  // Leaving a sheet that opened on the agenda should close it, not show a list.
-  const back = agenda ? undefined : open ? () => setOpen(null) : undefined;
-
-  const toggle = (index: number) => {
-    if (!open) return;
-    const next = open.content.map((b, i) =>
-      i === index && b.type === "todo" ? { ...b, done: !b.done } : b,
-    );
-    // Show the tick at once, then let the server settle it.
-    setOpen({ ...open, content: next });
+  /** Start a page here rather than having to reach for a desktop. */
+  const create = () =>
     void run(async () => {
-      const saved = await client.updateDoc(open.id, {
-        content: next,
-        version: open.version,
+      const made = await client.createDoc({
+        title: "Untitled",
+        content: starterDoc(),
       });
-      setOpen(saved);
-      onItemsChanged?.();
+      setDocs(null);
+      setOpen(made);
     });
+
+  // Coming back to the list should show what was just written.
+  const backToList = () => {
+    setOpen(null);
+    client.listDocs().then(setDocs, () => setDocs([]));
   };
+
+  // Leaving a sheet that opened on the agenda should close it, not show a list.
+  const back = agenda ? undefined : open ? backToList : undefined;
+
+  /** The editor hands back whatever went wrong; show it where they are. */
+  const report = (e: unknown) => setError((e as Error).message || "Not saved");
 
   return (
     <Sheet
@@ -86,23 +91,32 @@ export function DocsSheet({
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
           {open ? (
-            <View style={styles.page}>
-              <Text style={styles.title}>{open.title || "Untitled"}</Text>
-              <Text style={styles.meta}>Edited {when(open.updated_at)}</Text>
-              <DocBody content={open.content} onToggleTodo={toggle} />
-              <Text style={styles.hint}>
-                Formulas read as symbols here. Open this document on the desktop
-                to edit it and see them typeset.
-              </Text>
-            </View>
+            <DocEditor
+              doc={open}
+              onChanged={setOpen}
+              onItemsChanged={onItemsChanged}
+              report={report}
+            />
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : docs.length === 0 ? (
-            <Text style={styles.empty}>
-              No documents yet. Make one on the desktop and it will show here.
-            </Text>
+            <View style={styles.list}>
+              <Text style={styles.empty}>
+                No documents yet. Start one and it is on every device.
+              </Text>
+              <SmallAction
+                label="New document"
+                disabled={busy}
+                onPress={create}
+              />
+            </View>
           ) : (
             <View style={styles.list}>
+              <SmallAction
+                label="New document"
+                disabled={busy}
+                onPress={create}
+              />
               {docs.map((doc) => (
                 <Pressable
                   key={doc.id}
