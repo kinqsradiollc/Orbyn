@@ -279,3 +279,127 @@
   border-color: var(--color-borderHover);
   background: var(--color-hover);
 }
+
+/* ---------------------------------------------------------- the board --- */
+
+/* One segmented control shape for List / Board. */
+.pboard-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-sunken);
+  margin-left: auto;
+  margin-right: 8px;
+}
+.pboard-toggle button {
+  font: inherit;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.pboard-toggle button.is-on {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* Columns scroll sideways on a narrow screen rather than squeezing. */
+.pboard {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  align-items: start;
+}
+
+.pboard-column {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+/* While something is being dragged, every column reads as a place to drop. */
+.pboard-column.is-target {
+  border-style: dashed;
+  border-color: var(--color-borderHover);
+}
+.pboard-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pboard-head strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pboard-head .stage-count {
+  margin-left: auto;
+}
+
+.pboard-cards {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pboard-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--color-text);
+  background: var(--color-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  cursor: grab;
+  min-width: 0;
+}
+.pboard-card:hover {
+  border-color: var(--color-borderHover);
+}
+.pboard-card.is-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+.pboard-card .stage-dot {
+  margin-top: 0.42em;
+}
+.pboard-card > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pboard-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  padding: 6px 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pboard-card,
+  .pboard-column {
+    transition:
+      border-color 0.15s ease,
+      opacity 0.15s ease;
+  }
+}
