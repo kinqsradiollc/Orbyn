@@ -22,13 +22,18 @@ import {
   Users,
   Wand2,
   type LucideIcon,
+  FileText,
+  Boxes,
 } from "lucide-react";
 import {
   dateLabel,
   parseQuickAdd,
   searchItems,
   type CalendarSearchResult,
+  type Doc,
+  type DocSummary,
   type Item,
+  type Project,
   type Plan,
   type Proposal,
   type QuickAddChip,
@@ -60,6 +65,10 @@ type Props = {
   onNewItem: () => void;
   onPlanDay: () => void;
   onNavigate: (view: View) => void;
+  /** Opens a document found by search. */
+  onOpenDoc?: (doc: Doc) => void;
+  /** Switches to a view (a project found by search). */
+  onGoToProjects?: () => void;
   /** Shows a day in the calendar (from an event search result). */
   onJumpToDate: (date: Date) => void;
   onApplyPlan: (plan: Plan) => Promise<string>;
@@ -127,6 +136,8 @@ function chipLabel(c: QuickAddChip) {
  */
 export function CommandBar({
   items,
+  onOpenDoc,
+  onGoToProjects,
   teams,
   userId,
   onClose,
@@ -192,6 +203,16 @@ export function CommandBar({
     fn();
   };
   const q = query.trim();
+
+  // Documents and projects, loaded once the bar is open so a search can reach
+  // them; they are small lists, so filtering happens here rather than round
+  // tripping for every keystroke.
+  const [docs, setDocs] = useState<DocSummary[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  useEffect(() => {
+    void client.listDocs().then(setDocs, () => setDocs([]));
+    void client.listProjects().then(setProjects, () => setProjects([]));
+  }, []);
 
   // Events, past and future, once there's something to look for.
   useEffect(() => {
@@ -335,6 +356,49 @@ export function CommandBar({
     group: q ? "Tasks" : "Next up",
     run: go(() => onOpenItem(i)),
   }));
+  const matches = (text: string) =>
+    words.length > 0 && words.every((w) => text.toLowerCase().includes(w));
+
+  const docCommands = q
+    ? docs
+        .filter((d) => matches(`${d.title} ${d.preview}`))
+        .slice(0, 4)
+        .map((d): Command => ({
+          id: "doc-" + d.id,
+          text: d.title,
+          label: d.title || "Untitled",
+          hint:
+            d.kind === "agenda"
+              ? "Agenda"
+              : d.kind === "meeting"
+                ? "Meeting note"
+                : "Document",
+          icon: FileText,
+          group: "Documents",
+          run: go(() => {
+            void client
+              .getDoc(d.id)
+              .then((full) => onOpenDoc?.(full))
+              .catch(() => {});
+          }),
+        }))
+    : [];
+
+  const projectCommands = q
+    ? projects
+        .filter((pr) => matches(`${pr.name} ${pr.summary}`))
+        .slice(0, 4)
+        .map((pr): Command => ({
+          id: "project-" + pr.id,
+          text: pr.name,
+          label: pr.name,
+          hint: `${pr.done_count} of ${pr.task_count} done`,
+          icon: Boxes,
+          group: "Projects",
+          run: go(() => onGoToProjects?.()),
+        }))
+    : [];
+
   const eventCommands = events.map((e, n): Command => ({
     id: "event-" + n,
     text: e.title,
@@ -391,6 +455,8 @@ export function CommandBar({
     ...(askCommand && question ? [askCommand] : []),
     ...(quickCommand && quickFirst ? [quickCommand] : []),
     ...tasks,
+    ...docCommands,
+    ...projectCommands,
     ...eventCommands,
     ...matchingActions,
     ...(quickCommand && !quickFirst ? [quickCommand] : []),
