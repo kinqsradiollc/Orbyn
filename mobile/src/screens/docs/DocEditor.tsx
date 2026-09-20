@@ -45,17 +45,23 @@ export function DocEditor({
   const [note, setNote] = useState("");
 
   const version = useRef(doc.version);
+  /** Whether an edit here is waiting to be saved. */
+  const dirty = useRef(false);
+  /** Which line is open, readable from the live subscription. */
+  const focusedRef = useRef<number | null>(null);
   const base = useRef<DocBlock[]>(doc.content);
   const live = useRef({ title: doc.title, blocks: doc.content });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   live.current = { title, blocks };
+  focusedRef.current = focused;
 
   useEffect(() => {
     setTitle(doc.title);
     setBlocks(doc.content.length ? doc.content : [EMPTY]);
     version.current = doc.version;
     base.current = doc.content;
+    dirty.current = false;
     setFocused(null);
     setNote("");
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -66,6 +72,13 @@ export function DocEditor({
     },
     [],
   );
+
+  // The note is news, not a state to sit in.
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNote(""), 6_000);
+    return () => clearTimeout(t);
+  }, [note]);
 
   /** Fold a copy that was saved elsewhere into what is on screen. */
   const reconcile = useCallback((theirs: Doc): DocBlock[] => {
@@ -97,6 +110,7 @@ export function DocEditor({
         });
         version.current = saved.version;
         base.current = saved.content;
+        dirty.current = false;
         onChanged(saved);
       } catch (e) {
         // Someone saved first: take their copy, fold this edit into it and
@@ -111,6 +125,7 @@ export function DocEditor({
             });
             version.current = saved.version;
             base.current = saved.content;
+            dirty.current = false;
             onChanged(saved);
           } catch (again) {
             report(again);
@@ -123,8 +138,43 @@ export function DocEditor({
     [doc.id, onChanged, reconcile, report],
   );
 
+  /**
+   * The subscription must outlive re-renders: it depends on the document,
+   * not on callbacks that are rebuilt each time the page is typed into.
+   * Without this the stream was torn down and reopened on every render,
+   * which on a phone is a request storm rather than a nuisance.
+   */
+  const onEvent = useRef<(version: number) => void>(() => {});
+  onEvent.current = (remote: number) => {
+    if (remote && remote <= version.current) return;
+    void client.getDoc(doc.id).then((theirs) => {
+      if (theirs.version <= version.current) return;
+      // A line open for editing counts as ours even before a keystroke.
+      if (!dirty.current && focusedRef.current === null) {
+        version.current = theirs.version;
+        base.current = theirs.content;
+        setTitle(theirs.title);
+        setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
+        live.current = { title: theirs.title, blocks: theirs.content };
+        setNote("Updated with someone else's changes.");
+        onChanged(theirs);
+        return;
+      }
+      const merged = reconcile(theirs);
+      if (dirty.current) void persist(live.current.title, merged);
+      else onChanged(theirs);
+    }, report);
+  };
+
+  /**
+   * Follow the document while it is open, so a page being written on a
+   * desktop at the same time does not go stale in your hand.
+   */
+  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
+
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
+      dirty.current = true;
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(
         () => void persist(nextTitle, nextBlocks),

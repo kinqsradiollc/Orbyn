@@ -82,7 +82,17 @@ export async function streamDocChanges(
 ): Promise<() => void> {
   await ensureListening();
 
+  // Writing to the raw socket goes around Fastify, so anything it had
+  // already set — the CORS headers above all — has to be carried over by
+  // hand. Without this the stream is unreadable from any origin other than
+  // the API's own, which is every phone and every split deployment.
+  const carried: Record<string, string> = {};
+  for (const [name, value] of Object.entries(reply.getHeaders?.() ?? {}))
+    if (value !== undefined && name.toLowerCase().startsWith("access-control-"))
+      carried[name] = String(value);
+
   reply.raw.writeHead(200, {
+    ...carried,
     "content-type": "text/event-stream",
     "cache-control": "no-cache, no-transform",
     connection: "keep-alive",

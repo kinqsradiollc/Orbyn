@@ -192,40 +192,44 @@ export function DocEditor({
   );
 
   /**
+   * The subscription must outlive re-renders: it depends on the document,
+   * not on callbacks that are rebuilt each time the page is typed into.
+   * Without this the stream was torn down and reopened on every keystroke.
+   */
+  const onEvent = useRef<(version: number) => void>(() => {});
+  onEvent.current = (remote: number) => {
+    if (remote && remote <= version.current) return;
+    void client.getDoc(doc.id).then((theirs) => {
+      if (theirs.version <= version.current) return;
+      // A line open for editing counts as ours even before a keystroke:
+      // replacing the whole page would pull the text out from under it.
+      if (!dirty.current && focusedRef.current === null) {
+        version.current = theirs.version;
+        base.current = theirs.content;
+        setTitle(theirs.title);
+        setBlocks(
+          theirs.content.length
+            ? theirs.content
+            : [{ type: "paragraph", text: "" }],
+        );
+        setNote("Updated with someone else's changes.");
+        onChanged(theirs);
+        return;
+      }
+      const merged = reconcile(theirs);
+      // Only send the merged page back when something of ours was waiting;
+      // an open but untouched line has nothing to add.
+      if (dirty.current) void persist(live.current.title, merged);
+      else onChanged(theirs);
+    }, report);
+  };
+
+  /**
    * Follow the document while it is open. When it changes somewhere else the
    * server says only that it moved on; the new copy is read here and folded
    * in, so two people can work on the same page at once.
    */
-  useEffect(() => {
-    const stop = client.watchDoc(doc.id, (remote) => {
-      if (remote && remote <= version.current) return;
-      void client.getDoc(doc.id).then((theirs) => {
-        if (theirs.version <= version.current) return;
-        // A line open for editing counts as ours even before a keystroke:
-        // replacing the whole page would pull the text out from under it.
-        if (!dirty.current && focusedRef.current === null) {
-          // Nothing of ours is waiting: just take their copy.
-          version.current = theirs.version;
-          base.current = theirs.content;
-          setTitle(theirs.title);
-          setBlocks(
-            theirs.content.length
-              ? theirs.content
-              : [{ type: "paragraph", text: "" }],
-          );
-          setNote("Updated with someone else's changes.");
-          onChanged(theirs);
-          return;
-        }
-        const merged = reconcile(theirs);
-        // Only send the merged page back when something of ours was waiting;
-        // an open but untouched line has nothing to add.
-        if (dirty.current) void persist(live.current.title, merged);
-        else onChanged(theirs);
-      }, report);
-    });
-    return stop;
-  }, [doc.id, onChanged, persist, reconcile, report]);
+  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
 
   // The note is news, not a state to sit in.
   useEffect(() => {

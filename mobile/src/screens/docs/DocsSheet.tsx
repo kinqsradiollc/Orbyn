@@ -7,6 +7,7 @@ import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
+import { DocComments } from "./DocComments";
 import { DocEditor } from "./DocEditor";
 import { SmallAction } from "../../components/SmallAction";
 
@@ -26,6 +27,7 @@ const when = (iso: string) => {
 export function DocsSheet({
   visible,
   agenda,
+  userId,
   onClose,
   onDismiss,
   onItemsChanged,
@@ -33,6 +35,8 @@ export function DocsSheet({
   visible: boolean;
   /** Opens straight onto today's agenda instead of the list. */
   agenda?: boolean;
+  /** Whose comments offer a remove button. */
+  userId?: string;
   onClose: () => void;
   onDismiss?: () => void;
   /** Called when ticking a line changed a task in the planner. */
@@ -91,12 +95,15 @@ export function DocsSheet({
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
           {open ? (
-            <DocEditor
-              doc={open}
-              onChanged={setOpen}
-              onItemsChanged={onItemsChanged}
-              report={report}
-            />
+            <>
+              <DocEditor
+                doc={open}
+                onChanged={setOpen}
+                onItemsChanged={onItemsChanged}
+                report={report}
+              />
+              <DocComments docId={open.id} userId={userId} report={report} />
+            </>
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : docs.length === 0 ? (

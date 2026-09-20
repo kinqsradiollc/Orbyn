@@ -773,6 +773,7 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "docs"}
+          userId={user?.id}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
