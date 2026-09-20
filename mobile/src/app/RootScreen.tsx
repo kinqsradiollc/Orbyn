@@ -43,6 +43,7 @@ import { AdminSheet } from "../screens/AdminSheet";
 import { AssistantComposer, AssistantScreen } from "../screens/AssistantScreen";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
+import { VerifyGateScreen } from "../screens/VerifyGateScreen";
 import { BookingSheet } from "../screens/BookingSheet";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ConnectionsSheet } from "../screens/ConnectionsSheet";
@@ -110,6 +111,7 @@ export function RootScreen() {
     refresh,
     signIn,
     signOut,
+    refreshUser,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
   const insets = useSafeAreaInsets();
@@ -202,6 +204,17 @@ export function RootScreen() {
         act={act}
         signIn={signIn}
         clearError={() => setError("")}
+      />
+    );
+  // Signed in but the email isn't confirmed yet: hold at the gate.
+  if (user && !user.email_verified)
+    return (
+      <VerifyGateScreen
+        email={user.email}
+        busy={busy}
+        act={act}
+        onContinue={() => void refreshUser()}
+        onSignOut={signOut}
       />
     );
 

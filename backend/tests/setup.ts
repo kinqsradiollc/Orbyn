@@ -17,6 +17,15 @@ loadEnv({
   quiet: true,
 });
 
+// Tests must not inherit the developer's real mail server from .env, nor the
+// schema's "localhost" SMTP_HOST default: mail state has to be deterministic,
+// or email-verification gating and reminders would behave differently on each
+// machine. An empty SMTP_HOST means "no mail server". Tests that need mail set
+// it through system_settings (with invalidateSettings), never the environment.
+process.env.SMTP_HOST = "";
+for (const key of ["SMTP_PORT", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"])
+  delete process.env[key];
+
 const url = process.env.TEST_DATABASE_URL;
 if (!url)
   throw new Error(
@@ -49,6 +58,14 @@ const marker = (
     "SELECT current_setting('orbyn.environment', true) AS env",
   )
 ).rows[0].env;
+// Start every test process with mail off, whatever a previous run left
+// behind: a stale smtp row would make new accounts start unverified and
+// silently break tests that never touch mail. Tables may not exist yet on a
+// brand-new database, so this is best-effort.
+if (marker === "test")
+  await client
+    .query("DELETE FROM system_settings WHERE key = 'smtp'")
+    .catch(() => {});
 await client.end();
 if (marker !== "test")
   throw new Error(

@@ -144,6 +144,16 @@ export function usePlanner() {
     }
   };
 
+  /** Adopt a session from a flow that returns one directly (password reset). */
+  const adoptSession = (result: { token: string; user: User }) => {
+    session.set(result.token);
+    setToken(result.token);
+    setUser(result.user);
+  };
+
+  /** Re-read the signed-in user, e.g. after confirming their email. */
+  const refreshUser = () => act(async () => setUser(await client.me()));
+
   const authenticate = (mode: AuthMode, values: Record<string, string>) =>
     act(async () => {
       const result =
@@ -216,6 +226,8 @@ export function usePlanner() {
     report,
     clearSession,
     authenticate,
+    adoptSession,
+    refreshUser,
     logout,
     toggleItem,
     setItemStatus,

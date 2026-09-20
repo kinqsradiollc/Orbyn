@@ -30,6 +30,12 @@ import { appliedText } from "../components/PlanCard";
 import { HomePage } from "../features/home/HomePage";
 import { StatusPage } from "../features/status/StatusPage";
 import { AuthPage } from "../features/auth/AuthPage";
+import {
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  VerifyEmailPage,
+  VerifyGate,
+} from "../features/auth/AccountFlows";
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
@@ -88,6 +94,8 @@ export function App() {
     act,
     refresh,
     report,
+    adoptSession,
+    refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
   const [view, setView] = useState<View>("Overview");
@@ -395,6 +403,48 @@ export function App() {
 
   if (!nativeDesktop && path === "/")
     return <HomePage signedIn={!!token} onNavigate={navigatePath} />;
+
+  // Account-flow pages reached from an email link or the sign-in page. They
+  // work signed in or not; the token comes from the link's query string.
+  if (path === "/forgot-password")
+    return (
+      <ForgotPasswordPage
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+  if (path === "/reset-password")
+    return (
+      <ResetPasswordPage
+        token={new URLSearchParams(location.search).get("token") ?? ""}
+        onAuthed={(result) => {
+          adoptSession(result);
+          navigatePath("/app", true);
+        }}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+  if (path === "/verify-email")
+    return (
+      <VerifyEmailPage
+        token={new URLSearchParams(location.search).get("token") ?? ""}
+        signedIn={!!token}
+        onVerified={() => void refreshUser()}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
+  // Signed in but the email isn't confirmed yet: hold at the gate.
+  if (token && user && !user.email_verified)
+    return (
+      <VerifyGate
+        email={user.email}
+        onContinue={() => void refreshUser()}
+        onLogout={() => void planner.logout()}
+      />
+    );
 
   if (!token)
     return (

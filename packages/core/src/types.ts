@@ -127,6 +127,9 @@ export type User = {
   name: string;
   email: string;
   email_reminders: boolean;
+  /** Whether the address is confirmed. Unconfirmed users can't use the app
+   * when a mail server is configured; admins can confirm anyone by hand. */
+  email_verified: boolean;
   role: SystemRole;
   /** Your public profile's address (/u/<handle>), if you made one. */
   handle?: string | null;

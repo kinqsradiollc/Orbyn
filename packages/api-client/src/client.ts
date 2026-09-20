@@ -310,6 +310,34 @@ export class OrbynClient {
   logout() {
     return this.request<void>("/auth/logout", { method: "POST" });
   }
+  /** Confirm an email address from a verification link (signed in or not). */
+  verifyEmail(token: string) {
+    return this.request<void>("/auth/verify-email", {
+      method: "POST",
+      body: { token },
+      anonymous: true,
+    });
+  }
+  /** Re-send the confirmation email to the signed-in, unconfirmed user. */
+  resendVerification() {
+    return this.request<void>("/auth/resend-verification", { method: "POST" });
+  }
+  /** Ask for a password-reset link. Always succeeds, whoever the email is. */
+  forgotPassword(email: string) {
+    return this.request<void>("/auth/forgot-password", {
+      method: "POST",
+      body: { email },
+      anonymous: true,
+    });
+  }
+  /** Set a new password from a reset link and sign in. */
+  resetPassword(token: string, password: string) {
+    return this.request<AuthResponse>("/auth/reset-password", {
+      method: "POST",
+      body: { token, password },
+      anonymous: true,
+    });
+  }
 
   // ---- profile ----
   me() {
@@ -1158,7 +1186,7 @@ export class OrbynClient {
   }
   adminUpdateUser(
     id: string,
-    input: { role?: SystemRole; disabled?: boolean },
+    input: { role?: SystemRole; disabled?: boolean; email_verified?: boolean },
   ) {
     return this.request<AdminUser>(`/admin/users/${id}`, {
       method: "PUT",

@@ -109,6 +109,15 @@ export function AuthPage({
                 placeholder="At least 10 characters"
               />
             </label>
+            {!register && (
+              <button
+                type="button"
+                className="text-button auth-forgot"
+                onClick={() => onNavigate("/forgot-password")}
+              >
+                Forgot your password?
+              </button>
+            )}
             {error && (
               <div role="alert" className="error">
                 {error}

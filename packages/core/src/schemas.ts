@@ -46,6 +46,18 @@ export const loginCredentials = z.object({
   password: z.string().min(1).max(128),
 });
 
+/** "I forgot my password": always answered the same way, whoever the email is. */
+export const forgotPassword = z.object({ email: credentials.shape.email });
+
+/** Setting a new password from a reset link. The password rules apply again. */
+export const resetPassword = z.object({
+  token: z.string().min(1).max(400),
+  password: credentials.shape.password,
+});
+
+/** Confirming an email address from a verification link. */
+export const emailToken = z.object({ token: z.string().min(1).max(400) });
+
 /** A video-call link; empty for none. */
 const meetingUrl = z
   .string()
@@ -328,10 +340,14 @@ export const adminUserUpdate = z
   .object({
     role: z.enum(SYSTEM_ROLES).optional(),
     disabled: z.boolean().optional(),
+    email_verified: z.boolean().optional(),
   })
   .strict()
   .refine(
-    (d) => d.role !== undefined || d.disabled !== undefined,
+    (d) =>
+      d.role !== undefined ||
+      d.disabled !== undefined ||
+      d.email_verified !== undefined,
     "Nothing to update",
   );
 

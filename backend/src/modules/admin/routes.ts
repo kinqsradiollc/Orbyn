@@ -15,7 +15,7 @@ import { authorize } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { TEAM_COLUMNS } from "../teams/routes.js";
 
-const USER_COLUMNS = `u.id, u.email, u.name, u.email_reminders, u.role, u.disabled, u.created_at,
+const USER_COLUMNS = `u.id, u.email, u.name, u.email_reminders, u.role, u.disabled, u.email_verified, u.created_at,
   (SELECT count(*)::int FROM team_members m WHERE m.user_id=u.id) AS team_count,
   (SELECT count(*)::int FROM items i WHERE i.user_id=u.id) AS item_count`;
 
@@ -90,25 +90,30 @@ export async function adminRoutes(app: FastifyInstance) {
     const d = adminUserUpdate.parse(r.body);
     return transaction(async (db) => {
       const target = (
-        await db.query<{ role: string; disabled: boolean; email: string }>(
-          "SELECT role, disabled, email FROM users WHERE id=$1 FOR UPDATE",
+        await db.query<{
+          role: string;
+          disabled: boolean;
+          email: string;
+          email_verified: boolean;
+        }>(
+          "SELECT role, disabled, email, email_verified FROM users WHERE id=$1 FOR UPDATE",
           [id],
         )
       ).rows[0];
       if (!target) fail(404, "User not found");
       const role = d.role ?? target.role;
       const disabled = d.disabled ?? target.disabled;
+      const emailVerified = d.email_verified ?? target.email_verified;
       const losesAdmin =
         target.role === "admin" &&
         !target.disabled &&
         (role !== "admin" || disabled);
       if (losesAdmin && (await otherActiveAdmins(id, db)) === 0)
         fail(409, LAST_ADMIN);
-      await db.query("UPDATE users SET role=$1, disabled=$2 WHERE id=$3", [
-        role,
-        disabled,
-        id,
-      ]);
+      await db.query(
+        "UPDATE users SET role=$1, disabled=$2, email_verified=$3 WHERE id=$4",
+        [role, disabled, emailVerified, id],
+      );
       if (disabled && !target.disabled)
         await db.query("DELETE FROM sessions WHERE user_id=$1", [id]);
       if (role !== target.role)
@@ -130,6 +135,19 @@ export async function adminRoutes(app: FastifyInstance) {
             targetType: "user",
             targetId: id,
             details: { email: target.email },
+          },
+          db,
+        );
+      if (emailVerified !== target.email_verified)
+        await audit(
+          {
+            actorId: actor.id,
+            action: emailVerified
+              ? "user.email_verified"
+              : "user.email_unverified",
+            targetType: "user",
+            targetId: id,
+            details: { email: target.email, via: "admin" },
           },
           db,
         );

@@ -117,6 +117,22 @@ const bob = await signUp("bob");
 const carol = await signUp("carol");
 created.push(alice.user.id, bob.user.id, carol.user.id);
 
+// With a mail server configured (the compose stack uses Mailpit), new members
+// start unconfirmed and every route but /me and the auth endpoints is 403.
+// Confirm them so the rest of the run isn't gated — and exercise the admin's
+// manual confirmation while we're here.
+await check(
+  "admin confirms new members (PUT /admin/users/:id { email_verified })",
+  async () => {
+    for (const u of [alice, bob, carol]) {
+      const updated = await admin.client.adminUpdateUser(u.user.id, {
+        email_verified: true,
+      });
+      assert(updated.email_verified, `${u.email} was not confirmed`);
+    }
+  },
+);
+
 await check("POST /auth/register creates members", async () => {
   for (const u of [alice, bob, carol])
     assert(u.user.role === "member", `${u.email} is ${u.user.role}`);

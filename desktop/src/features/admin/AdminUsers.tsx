@@ -45,7 +45,7 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
 
   const update = (
     target: AdminUser,
-    input: { role?: SystemRole; disabled?: boolean },
+    input: { role?: SystemRole; disabled?: boolean; email_verified?: boolean },
   ) =>
     void act(async () => {
       const next = await client.adminUpdateUser(target.id, input);
@@ -139,7 +139,21 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
                     <strong>{u.name}</strong>
                     {self && <span className="you-tag">You</span>}
                   </td>
-                  <td>{u.email}</td>
+                  <td>
+                    {u.email}
+                    {!u.email_verified && (
+                      <span className="admin-unverified">
+                        <span className="status-pill disabled">Unverified</span>
+                        <button
+                          className="link-button"
+                          disabled={busy}
+                          onClick={() => update(u, { email_verified: true })}
+                        >
+                          Verify
+                        </button>
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <select
                       className="role-select"
