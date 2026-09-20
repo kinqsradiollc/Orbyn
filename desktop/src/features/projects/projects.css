@@ -80,7 +80,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  /* Three view buttons plus the back and delete controls do not fit on a
+     phone; the row wraps rather than pushing the page sideways. */
+  flex-wrap: wrap;
+}
+.project-bar-top > .text-button {
+  white-space: nowrap;
 }
 
 .project-header {
@@ -291,7 +297,6 @@
   border-radius: 10px;
   background: var(--color-sunken);
   margin-left: auto;
-  margin-right: 8px;
 }
 .pboard-toggle button {
   font: inherit;
@@ -401,5 +406,150 @@
     transition:
       border-color 0.15s ease,
       opacity 0.15s ease;
+  }
+}
+
+/* -------------------------------------------------------- the timeline --- */
+
+.timeline {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.timeline-empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--color-borderStrong);
+  border-radius: 12px;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.timeline-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-rows {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+/* Today and the deadline run the full height behind the bars. The overlay
+   covers exactly the track column, so a mark's percentage lines up with a
+   bar's percentage instead of counting the label column too. */
+.timeline-marks {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: calc(12px + var(--label, 140px) + 10px);
+  right: 12px;
+  pointer-events: none;
+}
+.timeline-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+}
+.timeline-mark.is-today {
+  background: var(--color-now);
+}
+.timeline-mark.is-deadline {
+  background: var(--color-warn);
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: var(--label, 140px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.timeline-label {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.timeline-track {
+  position: relative;
+  display: block;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--color-track);
+  min-width: 0;
+}
+.timeline-bar {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--color-accent);
+  cursor: pointer;
+  padding: 0;
+  min-width: 4px;
+}
+.timeline-bar.is-done {
+  background: var(--color-selectedText);
+  opacity: 0.55;
+}
+.timeline-bar.is-late {
+  background: var(--color-danger);
+}
+.timeline-bar:hover {
+  filter: brightness(0.95);
+}
+
+.timeline-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.78rem;
+}
+.timeline-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.timeline-swatch.is-today {
+  background: var(--color-now);
+}
+.timeline-swatch.is-deadline {
+  background: var(--color-warn);
+  margin-left: 8px;
+}
+.timeline-swatch.is-late {
+  background: var(--color-danger);
+  margin-left: 8px;
+}
+
+.timeline-undated {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+/* A narrow screen gives the labels less room rather than squeezing the bars. */
+@media (max-width: 640px) {
+  .timeline-rows {
+    --label: 92px;
   }
 }
