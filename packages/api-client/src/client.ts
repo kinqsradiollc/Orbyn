@@ -172,6 +172,12 @@ export type OrbynClientOptions = {
   timeoutMs?: number;
   /** Override fetch (tests, custom agents). Defaults to the global fetch. */
   fetch?: typeof fetch;
+  /**
+   * Fetch used for streaming reads, which need a readable `response.body`.
+   * React Native's built-in fetch has no body stream, so the phone passes
+   * `expo/fetch` here; everywhere else the ordinary fetch already does.
+   */
+  streamFetch?: typeof fetch;
 };
 
 export type RequestOptions = {
@@ -192,6 +198,7 @@ export class OrbynClient {
   private readonly getToken: TokenSource;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly streamFetch: typeof fetch;
   private lastWriteAt = 0;
   /**
    * This client's own id, made fresh each time the app starts. Two tabs are
@@ -207,6 +214,7 @@ export class OrbynClient {
     this.getToken = options.getToken ?? (() => null);
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.fetchImpl = options.fetch ?? ((...args) => fetch(...args));
+    this.streamFetch = options.streamFetch ?? this.fetchImpl;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -735,7 +743,7 @@ export class OrbynClient {
       while (!stopped) {
         try {
           const token = await this.getToken();
-          const response = await this.fetchImpl(
+          const response = await this.streamFetch(
             `${this.baseUrl}/docs/${id}/live`,
             {
               headers: {
@@ -749,7 +757,11 @@ export class OrbynClient {
           // A document that is gone, or that this reader may not see, is not
           // worth coming back to.
           if (response.status === 404 || response.status === 403) return;
-          if (!response.ok || !response.body) throw new Error("no stream");
+          // No body stream means this runtime cannot read one at all, which
+          // retrying will never fix. Give up quietly rather than reconnecting
+          // for as long as the page is open — on a phone that is the battery.
+          if (!response.ok) throw new Error(`stream ${response.status}`);
+          if (!response.body) return;
           wait = 1_000;
           const reader = response.body.getReader();
           const decode = new TextDecoder();

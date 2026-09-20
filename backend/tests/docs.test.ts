@@ -313,6 +313,7 @@ test("a change to a document reaches the people watching it", async () => {
   const written: string[] = [];
   // Stands in for the HTTP response: we only care what goes down the wire.
   const reply = {
+    getHeaders: () => ({}),
     raw: {
       writeHead: () => {},
       write: (chunk: string) => written.push(chunk),
@@ -339,6 +340,36 @@ test("a change to a document reaches the people watching it", async () => {
 
   stop();
   assert.equal(watcherCount(docId), 0);
+});
+
+test("the live stream keeps the CORS headers Fastify set", async () => {
+  const { streamDocChanges, closeLive } =
+    await import("../src/modules/docs/live.js");
+  let sent: Record<string, string> = {};
+  // Writing to the raw socket goes around Fastify, so a header it set has to
+  // be carried over by hand or the stream is unreadable from any other
+  // origin — every phone, and every split deployment.
+  const reply = {
+    getHeaders: () => ({
+      "access-control-allow-origin": "https://app.example",
+      "access-control-expose-headers": "ETag",
+      "x-something-else": "ignored",
+    }),
+    raw: {
+      writeHead: (_code: number, headers: Record<string, string>) => {
+        sent = headers;
+      },
+      write: () => {},
+    },
+  } as never;
+
+  const stop = await streamDocChanges(reply, randomUUID(), "tab-a");
+  assert.equal(sent["access-control-allow-origin"], "https://app.example");
+  assert.equal(sent["access-control-expose-headers"], "ETag");
+  assert.equal(sent["x-something-else"], undefined);
+  assert.equal(sent["content-type"], "text/event-stream");
+  stop();
+  await closeLive();
 });
 
 test("a stranger cannot watch a document they may not read", async () => {
