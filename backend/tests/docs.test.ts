@@ -116,6 +116,39 @@ test("a preview is the plain text, shortened", () => {
   assert.ok(docPreview(parseDoc("x".repeat(400)), 40).endsWith("…"));
 });
 
+test("a preview reads maths as symbols, not markup", () => {
+  const preview = docPreview(
+    parseDoc(
+      [
+        "With $0 < \\eta < 1/\\mu$ it converges.",
+        "",
+        "$$",
+        "\\int_{0}^{1} x^2 \\, dx = \\frac{1}{3}",
+        "$$",
+      ].join("\n"),
+    ),
+  );
+  assert.equal(
+    preview,
+    "With 0 < \u03b7 < 1/\u03bc it converges. \u222b_0^1 x^2 dx = 1/3",
+  );
+});
+
+test("a preview leaves ordinary text alone", () => {
+  // A lone dollar is money, not maths, and other markup is left as typed.
+  assert.equal(
+    docPreview(parseDoc("Costs $5 today and **bold** stays.")),
+    "Costs $5 today and **bold** stays.",
+  );
+});
+
+test("an unknown command keeps its name, without the backslash", () => {
+  assert.equal(
+    docPreview(parseDoc("$\\widehat{x}$ and $\\zeta$")),
+    "widehatx and zeta",
+  );
+});
+
 test("create, read, edit and list a document", async () => {
   const created = await call("POST", "/docs", {
     title: "Convergence notes",
