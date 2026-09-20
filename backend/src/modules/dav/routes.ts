@@ -1,15 +1,19 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
-import { pool } from "../../db/pool.js";
+import { pool, transaction } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
+import { mutate } from "../items/service.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { eventLines, FEED_COLUMNS, type FeedItem } from "../planner/ics.js";
+import { itemData } from "@orbyn/core";
+import { parseICalendar } from "./ical.js";
 
-// A read-only CalDAV server, so Apple Calendar, Thunderbird and DAVx5 can
-// subscribe to a person's events natively (in addition to the ICS feed).
-// Two-way writes are deliberately out of scope here. The protocol responses
-// below are tested; real-client interop is verified by hand (see docs).
+// A CalDAV server, so Apple Calendar, Thunderbird and DAVx5 can subscribe to
+// a person's events natively (in addition to the ICS feed) and — for VEVENTs —
+// create, edit and delete them back. The protocol responses and the write
+// paths below are tested; real-client interop is verified by hand (see docs).
 
-type DavUser = { id: string; name: string };
+type DavUser = { id: string; name: string; role: "admin" | "member" };
 
 /** CalDAV clients authenticate with HTTP Basic; the password is an API key. */
 async function davAuth(r: FastifyRequest): Promise<DavUser | null> {
@@ -21,7 +25,7 @@ async function davAuth(r: FastifyRequest): Promise<DavUser | null> {
   if (!pass) return null;
   const u = (
     await pool.query<DavUser>(
-      "SELECT u.id, u.name FROM users u JOIN api_keys k ON k.user_id = u.id WHERE k.key_hash = $1 AND NOT u.disabled",
+      "SELECT u.id, u.name, u.role FROM users u JOIN api_keys k ON k.user_id = u.id WHERE k.key_hash = $1 AND NOT u.disabled",
       [digest(pass)],
     )
   ).rows[0];
@@ -39,6 +43,9 @@ const escapeXml = (s: string) =>
   s.replace(/[<>&"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const multistatus = (body: string) =>
   `${xmlHeader}<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:data:caldav" xmlns:CS="http://calendarserver.org/ns/">${body}</multistatus>`;
+
+const isUuid = (s: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
 /** The calendar's change tag: changes when any of the user's events change. */
 async function ctag(userId: string): Promise<string> {
@@ -65,6 +72,15 @@ async function events(userId: string) {
       [userId],
     )
   ).rows;
+  // A CalDAV-created event keeps the UID (and so the href) the client chose.
+  const uids = new Map(
+    (
+      await pool.query<{ item_id: string; uid: string }>(
+        "SELECT item_id, uid FROM caldav_objects WHERE user_id=$1",
+        [userId],
+      )
+    ).rows.map((m) => [m.item_id, m.uid]),
+  );
   return rows.map((r) => {
     const vevent = [
       "BEGIN:VCALENDAR",
@@ -73,8 +89,9 @@ async function events(userId: string) {
       ...eventLines(r),
       "END:VCALENDAR",
     ].join("\r\n");
+    const name = uids.get(r.id) ?? r.id;
     return {
-      href: `/dav/cal/default/${r.id}.ics`,
+      href: `/dav/cal/default/${name}.ics`,
       etag: `"${createHash("sha256").update(`${r.id}${r.updated_at.toISOString()}`).digest("hex").slice(0, 16)}"`,
       data: vevent,
     };
@@ -83,6 +100,27 @@ async function events(userId: string) {
 
 const CAL = "/dav/cal/default/";
 
+/** Resolve a `<name>.ics` file to one of the user's items, or null. */
+async function resolveFile(
+  userId: string,
+  file: string,
+): Promise<{ id: string; version: number } | null> {
+  const base = file.replace(/\.ics$/i, "");
+  let id: string | undefined = (
+    await pool.query<{ item_id: string }>(
+      "SELECT item_id FROM caldav_objects WHERE user_id=$1 AND uid=$2",
+      [userId, base],
+    )
+  ).rows[0]?.item_id;
+  const row = (
+    await pool.query<{ id: string; version: number }>(
+      "SELECT id, version FROM items WHERE id=$1 AND user_id=$2",
+      [id ?? (isUuid(base) ? base : null), userId],
+    )
+  ).rows[0];
+  return row ?? null;
+}
+
 export async function davRoutes(app: FastifyInstance) {
   app.route({
     method: "OPTIONS",
@@ -90,7 +128,7 @@ export async function davRoutes(app: FastifyInstance) {
     handler: async (_r, reply) =>
       reply
         .header("DAV", "1, 3, calendar-access")
-        .header("Allow", "OPTIONS, GET, HEAD, PROPFIND, REPORT")
+        .header("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT")
         .code(204)
         .send(),
   });
@@ -146,6 +184,17 @@ export async function davRoutes(app: FastifyInstance) {
         return multistatus(body);
       }
 
+      // A single event resource (clients probe it before an update).
+      if (path.startsWith("/cal/default/") && path.endsWith(".ics")) {
+        const file = path.slice("/cal/default/".length);
+        const found = (await events(u.id)).find((e) =>
+          e.href.endsWith(`/${file}`),
+        );
+        if (!found) return reply.code(404).send();
+        reply.code(207);
+        return multistatus(resourceResponse(found.href, found.etag));
+      }
+
       reply.code(404).send();
     },
   });
@@ -189,12 +238,9 @@ export async function davRoutes(app: FastifyInstance) {
     handler: async (r, reply) => {
       const u = await davAuth(r);
       if (!u) return unauthorized(reply);
-      const id = String((r.params as { file: string }).file).replace(
-        /\.ics$/,
-        "",
-      );
+      const file = String((r.params as { file: string }).file);
       const found = (await events(u.id)).find((e) =>
-        e.href.endsWith(`/${id}.ics`),
+        e.href.endsWith(`/${file}`),
       );
       if (!found) return reply.code(404).send();
       return reply
@@ -204,13 +250,103 @@ export async function davRoutes(app: FastifyInstance) {
     },
   });
 
-  // Read-only: refuse writes clearly rather than pretending to accept them.
-  for (const method of ["PUT", "DELETE", "PROPPATCH", "MKCALENDAR"] as const)
+  // Create or replace an event from a client (Apple Calendar, Thunderbird…).
+  app.route({
+    method: "PUT",
+    url: "/dav/cal/default/:file",
+    handler: async (r, reply) => {
+      const u = await davAuth(r);
+      if (!u) return unauthorized(reply);
+      const file = String((r.params as { file: string }).file);
+      const tz = (await loadPrefs(pool, u.id)).timezone;
+      const parsed = parseICalendar(String(r.body ?? ""), tz);
+      if (!parsed)
+        return reply.code(400).send("Could not read a VEVENT from the body.");
+      let data;
+      try {
+        data = itemData.parse({
+          title: parsed.title,
+          notes: parsed.notes,
+          kind: "event",
+          location: parsed.location,
+          due_at: parsed.due_at,
+          all_day: parsed.all_day,
+          timezone: parsed.timezone,
+          ...(parsed.end_at ? { end_at: parsed.end_at } : {}),
+          ...(parsed.rrule ? { rrule: parsed.rrule } : {}),
+        });
+      } catch (e) {
+        return reply.code(400).send((e as Error).message ?? "Invalid event.");
+      }
+      const existing = await resolveFile(u.id, file);
+      const actor = { id: u.id, role: u.role };
+      try {
+        if (existing) {
+          await transaction((db) =>
+            mutate(db, actor, {
+              operation: "update",
+              item_id: existing.id,
+              version: existing.version,
+              data,
+            }),
+          );
+          return reply.code(204).send();
+        }
+        const item = await transaction(async (db) => {
+          const created = await mutate(db, actor, {
+            operation: "create",
+            data,
+          });
+          const uid = file.replace(/\.ics$/i, "") || parsed.uid;
+          if (created && uid)
+            await db.query(
+              "INSERT INTO caldav_objects (user_id, uid, item_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+              [u.id, uid, created.id],
+            );
+          return created;
+        });
+        return reply.code(item ? 201 : 400).send();
+      } catch (e) {
+        const status = (e as { statusCode?: number }).statusCode ?? 400;
+        return reply
+          .code(status >= 400 && status < 500 ? status : 400)
+          .send((e as Error).message ?? "Could not save the event.");
+      }
+    },
+  });
+
+  // Delete an event a client removed.
+  app.route({
+    method: "DELETE",
+    url: "/dav/cal/default/:file",
+    handler: async (r, reply) => {
+      const u = await davAuth(r);
+      if (!u) return unauthorized(reply);
+      const file = String((r.params as { file: string }).file);
+      const existing = await resolveFile(u.id, file);
+      if (!existing) return reply.code(404).send();
+      await transaction((db) =>
+        mutate(
+          db,
+          { id: u.id, role: u.role },
+          {
+            operation: "delete",
+            item_id: existing.id,
+            version: existing.version,
+          },
+        ),
+      );
+      return reply.code(204).send();
+    },
+  });
+
+  // We don't let clients rename or make new calendars.
+  for (const method of ["PROPPATCH", "MKCALENDAR"] as const)
     app.route({
       method,
       url: "/dav/*",
       handler: async (_r, reply) =>
-        reply.code(403).send("This CalDAV calendar is read-only."),
+        reply.code(403).send("This calendar can't be renamed or replaced."),
     });
 }
 

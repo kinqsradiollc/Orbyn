@@ -7,6 +7,7 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { parseICalendar } = await import("../src/modules/dav/ical.js");
 
 const app = await buildApp();
 let session = "";
@@ -26,6 +27,25 @@ const dav = (method: string, url: string, body?: string, depth = "0") =>
     },
     ...(body ? { payload: body } : {}),
   });
+
+const putEvent = (url: string, ics: string) =>
+  app.inject({
+    method: "PUT",
+    url,
+    headers: { authorization: basic(), "content-type": "text/calendar" },
+    payload: ics,
+  });
+
+const vevent = (fields: string) =>
+  [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Test//EN",
+    "BEGIN:VEVENT",
+    fields,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
 
 before(async () => {
   await migrate();
@@ -122,7 +142,90 @@ test("GET returns one event as an .ics file", async () => {
   assert.match(r.body, /Design review/);
 });
 
-test("writes are refused (read-only)", async () => {
-  const r = await dav("PUT", "/dav/cal/default/new.ics", "BEGIN:VCALENDAR");
-  assert.equal(r.statusCode, 403);
+test("the parser reads times, all-day dates and a repeat rule", () => {
+  const timed = parseICalendar(
+    vevent(
+      "UID:p1\r\nDTSTART:20261001T090000Z\r\nDTEND:20261001T100000Z\r\nSUMMARY:Call\r\nRRULE:FREQ=WEEKLY",
+    ),
+    "UTC",
+  )!;
+  assert.equal(timed.uid, "p1");
+  assert.equal(timed.title, "Call");
+  assert.equal(timed.all_day, false);
+  assert.equal(timed.due_at, "2026-10-01T09:00:00.000Z");
+  assert.equal(timed.end_at, "2026-10-01T10:00:00.000Z");
+  assert.equal(timed.rrule, "FREQ=WEEKLY");
+  const allDay = parseICalendar(
+    vevent("UID:p2\r\nDTSTART;VALUE=DATE:20261005\r\nSUMMARY:Holiday"),
+    "UTC",
+  )!;
+  assert.equal(allDay.all_day, true);
+  assert.equal(allDay.due_at, "2026-10-05T00:00:00.000Z");
+  const zoned = parseICalendar(
+    vevent(
+      "UID:p3\r\nDTSTART;TZID=America/New_York:20261001T090000\r\nSUMMARY:NY",
+    ),
+    "UTC",
+  )!;
+  // 09:00 New York in October (EDT, UTC-4) is 13:00 UTC.
+  assert.equal(zoned.due_at, "2026-10-01T13:00:00.000Z");
+});
+
+test("a client can create an event, which then syncs back", async () => {
+  const r = await putEvent(
+    "/dav/cal/default/client-evt.ics",
+    vevent(
+      "UID:client-evt\r\nDTSTART:20261001T090000Z\r\nDTEND:20261001T100000Z\r\nSUMMARY:Client made this\r\nLOCATION:Cafe",
+    ),
+  );
+  assert.equal(r.statusCode, 201, r.body);
+  // It keeps the client's UID as its href.
+  const list = await dav("PROPFIND", "/dav/cal/default/", undefined, "1");
+  assert.match(list.body, /\/dav\/cal\/default\/client-evt\.ics/);
+  const got = await dav("GET", "/dav/cal/default/client-evt.ics");
+  assert.equal(got.statusCode, 200, got.body);
+  assert.match(got.body, /SUMMARY:Client made this/);
+  assert.match(got.body, /LOCATION:Cafe/);
+});
+
+test("a second PUT to the same href edits the event", async () => {
+  const r = await putEvent(
+    "/dav/cal/default/client-evt.ics",
+    vevent(
+      "UID:client-evt\r\nDTSTART:20261001T090000Z\r\nDTEND:20261001T103000Z\r\nSUMMARY:Renamed",
+    ),
+  );
+  assert.equal(r.statusCode, 204, r.body);
+  const got = await dav("GET", "/dav/cal/default/client-evt.ics");
+  assert.match(got.body, /SUMMARY:Renamed/);
+  assert.doesNotMatch(got.body, /Client made this/);
+});
+
+test("an all-day event round-trips as VALUE=DATE", async () => {
+  const r = await putEvent(
+    "/dav/cal/default/allday.ics",
+    vevent("UID:allday\r\nDTSTART;VALUE=DATE:20261005\r\nSUMMARY:Day off"),
+  );
+  assert.equal(r.statusCode, 201, r.body);
+  const got = await dav("GET", "/dav/cal/default/allday.ics");
+  assert.match(got.body, /DTSTART;VALUE=DATE:20261005/);
+});
+
+test("a bad body is a 400, not a 500", async () => {
+  const r = await putEvent("/dav/cal/default/nope.ics", "not a calendar");
+  assert.equal(r.statusCode, 400, r.body);
+});
+
+test("DELETE removes the event", async () => {
+  const del = await dav("DELETE", "/dav/cal/default/client-evt.ics");
+  assert.equal(del.statusCode, 204, del.body);
+  const got = await dav("GET", "/dav/cal/default/client-evt.ics");
+  assert.equal(got.statusCode, 404);
+  const missing = await dav("DELETE", "/dav/cal/default/client-evt.ics");
+  assert.equal(missing.statusCode, 404);
+});
+
+test("clients still can't rename or make calendars", async () => {
+  assert.equal((await dav("PROPPATCH", "/dav/cal/default/")).statusCode, 403);
+  assert.equal((await dav("MKCALENDAR", "/dav/cal/other/")).statusCode, 403);
 });

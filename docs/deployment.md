@@ -535,11 +535,11 @@ a task. Only mail from their own account address is accepted.
 
 ## Subscribing from a calendar app (CalDAV)
 
-Orbyn serves read-only CalDAV at `/dav/`, so people can add their events to Apple Calendar,
+Orbyn serves CalDAV at `/dav/`, so people can add their events to Apple Calendar,
 Thunderbird or DAVx5. The gateway already routes `/dav/` and `/.well-known/caldav` to the API. In
 the calendar app, add a CalDAV account with the server `https://your-domain/`, the username set to
 the person's Orbyn email, and the password set to a personal API key they create in
-Settings -> Connections. It's read-only for now; two-way sync is planned.
+Settings -> Connections. Events sync both ways: events created, edited or deleted in the calendar app sync back to Orbyn. Tasks and other kinds stay read-only.
 
 ## Search engines and link previews
 
