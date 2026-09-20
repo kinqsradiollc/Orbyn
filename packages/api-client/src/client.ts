@@ -6,6 +6,7 @@ import {
   type DocKind,
   type DocComment,
   type DocSummary,
+  type DocVersion,
   type Favourite,
   type FavouriteKind,
   type Folder,
@@ -722,6 +723,23 @@ export class OrbynClient {
   }
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+  }
+
+  /** Past states of a document, newest first, without their content. */
+  listDocVersions(id: string) {
+    return this.request<DocVersion[]>(`/docs/${id}/versions`);
+  }
+  /** One past state, with its content. */
+  getDocVersion(id: string, version: number) {
+    return this.request<Required<DocVersion>>(
+      `/docs/${id}/versions/${version}`,
+    );
+  }
+  /** Put a past state back; it becomes a new version on top. */
+  restoreDocVersion(id: string, version: number) {
+    return this.request<Doc>(`/docs/${id}/versions/${version}/restore`, {
+      method: "POST",
+    });
   }
 
   /**

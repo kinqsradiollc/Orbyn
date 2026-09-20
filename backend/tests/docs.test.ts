@@ -372,6 +372,74 @@ test("the live stream keeps the CORS headers Fastify set", async () => {
   await closeLive();
 });
 
+test("saving keeps the state it replaced, and a restore brings it back", async () => {
+  const made = await call("POST", "/docs", {
+    title: "Draft",
+    content: [{ type: "paragraph", text: "First words." }],
+  });
+  const id = made.json().id as string;
+  // Nothing has been replaced yet, so nothing is kept.
+  assert.deepEqual((await call("GET", `/docs/${id}/versions`)).json(), []);
+
+  const v2 = await call("PUT", `/docs/${id}`, {
+    version: 1,
+    content: [{ type: "paragraph", text: "Second words." }],
+  });
+  assert.equal(v2.json().version, 2);
+  const kept = (await call("GET", `/docs/${id}/versions`)).json() as {
+    version: number;
+    blocks: number;
+    author: string;
+  }[];
+  assert.equal(kept.length, 1, "the state before the save is kept");
+  assert.equal(kept[0].version, 1);
+  assert.equal(kept[0].blocks, 1);
+  assert.equal(kept[0].author, "Writer");
+
+  // A second save in the same sitting does not add another row.
+  await call("PUT", `/docs/${id}`, {
+    version: 2,
+    content: [{ type: "paragraph", text: "Third words." }],
+  });
+  assert.equal(
+    ((await call("GET", `/docs/${id}/versions`)).json() as unknown[]).length,
+    1,
+    "saves within a sitting coalesce",
+  );
+
+  const one = (await call("GET", `/docs/${id}/versions/1`)).json() as {
+    content: { text: string }[];
+  };
+  assert.equal(one.content[0].text, "First words.");
+
+  const restored = await call("POST", `/docs/${id}/versions/1/restore`);
+  assert.equal(restored.statusCode, 200);
+  const doc = restored.json() as {
+    version: number;
+    content: { text: string }[];
+  };
+  assert.equal(doc.content[0].text, "First words.");
+  assert.equal(doc.version, 4, "a restore is a new version on top");
+  // The state a restore replaced is kept too, so nothing is ever lost.
+  const after = (await call("GET", `/docs/${id}/versions`)).json() as {
+    version: number;
+  }[];
+  assert.deepEqual(
+    after.map((v) => v.version),
+    [3, 1],
+  );
+
+  const missing = await call("GET", `/docs/${id}/versions/99`);
+  assert.equal(missing.statusCode, 404);
+  const stranger = await call(
+    "GET",
+    `/docs/${id}/versions`,
+    undefined,
+    () => otherToken,
+  );
+  assert.equal(stranger.statusCode, 404);
+});
+
 test("a stranger cannot watch a document they may not read", async () => {
   const made = await call("POST", "/docs", { title: "Private" });
   const id = made.json().id as string;
