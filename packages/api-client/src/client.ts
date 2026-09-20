@@ -5,6 +5,9 @@ import {
   type DocBlock,
   type DocKind,
   type DocSummary,
+  type Favourite,
+  type FavouriteKind,
+  type Folder,
   type Project,
   type ProjectStatus,
   type AiModelList,
@@ -623,6 +626,32 @@ export class OrbynClient {
     });
   }
 
+  // Folders and favourites
+  listFolders() {
+    return this.request<Folder[]>("/folders");
+  }
+  createFolder(input: { name: string; team_id?: string | null }) {
+    return this.request<Folder>("/folders", { method: "POST", body: input });
+  }
+  renameFolder(id: string, input: { name?: string; position?: number }) {
+    return this.request<Folder>(`/folders/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteFolder(id: string) {
+    return this.request<void>(`/folders/${id}`, { method: "DELETE" });
+  }
+  listFavourites() {
+    return this.request<Favourite[]>("/favourites");
+  }
+  setFavourite(kind: FavouriteKind, targetId: string, starred: boolean) {
+    return this.request<void>("/favourites", {
+      method: "PUT",
+      body: { kind, target_id: targetId, starred },
+    });
+  }
+
   // Documents
   listDocs() {
     return this.request<DocSummary[]>("/docs");
@@ -635,13 +664,19 @@ export class OrbynClient {
     kind?: DocKind;
     team_id?: string | null;
     item_id?: string | null;
+    folder_id?: string | null;
     content?: DocBlock[];
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
   updateDoc(
     id: string,
-    input: { title?: string; content?: DocBlock[]; version: number },
+    input: {
+      title?: string;
+      content?: DocBlock[];
+      folder_id?: string | null;
+      version: number;
+    },
   ) {
     return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
   }

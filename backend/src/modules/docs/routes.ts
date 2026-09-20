@@ -29,7 +29,7 @@ import { mutate } from "../items/service.js";
  */
 
 const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
-  d.item_id, d.version, d.created_at, d.updated_at`;
+  d.item_id, d.folder_id, d.version, d.created_at, d.updated_at`;
 
 /** Documents `$1` can see: their own, and their teams'. */
 const VISIBLE = `((d.team_id IS NULL AND d.user_id = $1)
@@ -97,8 +97,8 @@ export async function docRoutes(app: FastifyInstance) {
     const doc = await transaction(async (db) => {
       const id = (
         await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id)
-             VALUES ($1,$2,$3,$4,$5::jsonb,$6) RETURNING id`,
+          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id, folder_id)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,
           [
             u.id,
             data.team_id,
@@ -106,6 +106,7 @@ export async function docRoutes(app: FastifyInstance) {
             data.kind,
             JSON.stringify(data.content),
             data.item_id,
+            data.folder_id,
           ],
         )
       ).rows[0].id;
@@ -168,6 +169,7 @@ export async function docRoutes(app: FastifyInstance) {
         `UPDATE docs SET
            title = coalesce($2, title),
            content = coalesce($3::jsonb, content),
+           folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
            version = version + 1,
            updated_at = now()
          WHERE id = $1`,
@@ -175,6 +177,8 @@ export async function docRoutes(app: FastifyInstance) {
           id,
           body.title ?? null,
           body.content === undefined ? null : JSON.stringify(body.content),
+          body.folder_id !== undefined,
+          body.folder_id ?? null,
         ],
       );
       return (
