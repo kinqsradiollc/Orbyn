@@ -981,6 +981,9 @@ export type BookingPage = {
   questions: BookingQuestion[];
   requires_approval: boolean;
   allow_reschedule: boolean;
+  /** collective: every required host must be free. round_robin: any host, and
+   * each booking goes to the fairest available one. */
+  assignment: "collective" | "round_robin";
   /** The hosts' event title; {page}, {name} and {email} are filled in. */
   event_title: string;
   confirmation_message: string;

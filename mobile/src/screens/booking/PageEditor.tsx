@@ -192,6 +192,9 @@ export function PageEditor({
   const [questions, setQuestions] = useState<QuestionDraft[]>(() =>
     (page?.questions ?? []).map(draftOf),
   );
+  const [assignment, setAssignment] = useState<"collective" | "round_robin">(
+    page?.assignment ?? "collective",
+  );
   const [approval, setApproval] = useState(page?.requires_approval ?? false);
   const [reschedule, setReschedule] = useState(page?.allow_reschedule ?? true);
   const [eventTitle, setEventTitle] = useState(
@@ -418,6 +421,7 @@ export function PageEditor({
               ? q.options.map((o) => o.trim()).filter(Boolean)
               : [],
         })),
+        assignment,
         requires_approval: approval,
         allow_reschedule: reschedule,
         event_title: eventTitle.trim(),
@@ -943,6 +947,26 @@ export function PageEditor({
             Only times when every required host is free are offered. Optional
             hosts join when they can. Up to {MAX_HOSTS} co-hosts.
           </Text>
+          {hosts.length > 0 && (
+            <View style={bs.gap}>
+              <Text style={shared.label}>How bookings are shared</Text>
+              <Segmented
+                accessibilityLabel="How bookings are shared"
+                options={["collective", "round_robin"] as const}
+                labels={{
+                  collective: "Everyone",
+                  round_robin: "Round-robin",
+                }}
+                value={assignment}
+                onChange={setAssignment}
+              />
+              <Text style={shared.small}>
+                {assignment === "round_robin"
+                  ? "A time is offered when any host is free; each booking goes to the host with the fewest so far."
+                  : "A time is offered only when every required host is free."}
+              </Text>
+            </View>
+          )}
           {candidates.length === 0 ? (
             <Text style={shared.small}>
               People in your teams can host with you. Join or make a team to add

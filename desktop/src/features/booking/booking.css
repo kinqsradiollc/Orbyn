@@ -1012,3 +1012,22 @@
     font-size: 14px;
   }
 }
+
+/* Radio rows for how a page's bookings are shared across hosts. */
+.radio-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+.radio-line input {
+  margin-top: 3px;
+}
+.radio-line span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.radio-line small {
+  color: var(--muted);
+}

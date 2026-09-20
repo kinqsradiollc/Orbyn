@@ -1217,6 +1217,8 @@ export const bookingPageInput = z
     availability: bookingAvailability.default({ mode: "working_hours" }),
     date_overrides: overrides.default([]),
     questions: questions.default([]),
+    /** How bookings are assigned across the hosts. */
+    assignment: z.enum(["collective", "round_robin"]).default("collective"),
     /** Hosts approve each request before it's booked. */
     requires_approval: z.boolean().default(false),
     /** Bookers can move their booking from their manage link. */
@@ -1252,6 +1254,7 @@ export const bookingPageUpdate = z
     availability: bookingAvailability.optional(),
     date_overrides: overrides.optional(),
     questions: questions.optional(),
+    assignment: z.enum(["collective", "round_robin"]).optional(),
     requires_approval: z.boolean().optional(),
     allow_reschedule: z.boolean().optional(),
     event_title: eventTitle.optional(),

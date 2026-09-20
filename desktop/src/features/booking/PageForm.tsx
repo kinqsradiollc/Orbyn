@@ -79,6 +79,7 @@ type Draft = {
   weekly: Weekly[];
   date_overrides: DateOverride[];
   questions: QuestionDraft[];
+  assignment: "collective" | "round_robin";
   requires_approval: boolean;
   allow_reschedule: boolean;
   event_title: string;
@@ -146,6 +147,7 @@ const blank = (): Draft => ({
   weekly: workdays(),
   date_overrides: [],
   questions: [],
+  assignment: "collective",
   requires_approval: false,
   allow_reschedule: true,
   event_title: "{page} with {name}",
@@ -180,6 +182,7 @@ const draftFrom = (p: BookingPage): Draft => ({
   weekly: p.availability.mode === "custom" ? p.availability.weekly : workdays(),
   date_overrides: p.date_overrides,
   questions: p.questions.map((q) => ({ ...q, key: q.id, fixed: true })),
+  assignment: p.assignment ?? "collective",
   requires_approval: p.requires_approval,
   allow_reschedule: p.allow_reschedule,
   event_title: p.event_title,
@@ -535,6 +538,7 @@ export function PageForm({
         .sort((a, b) => a.date.localeCompare(b.date))
         .map((o) => ({ date: o.date, hours: [...o.hours].sort(byStart) })),
       questions,
+      assignment: draft.assignment,
       requires_approval: draft.requires_approval,
       allow_reschedule: draft.allow_reschedule,
       event_title: draft.event_title.trim(),
@@ -787,6 +791,41 @@ export function PageForm({
                 </ul>
               )}
             </fieldset>
+            {draft.co_hosts.length > 0 && (
+              <fieldset className="settings-field wide">
+                <legend>How bookings are shared</legend>
+                <label className="radio-line">
+                  <input
+                    type="radio"
+                    name="assignment"
+                    checked={draft.assignment === "collective"}
+                    onChange={() => set("assignment", "collective")}
+                  />
+                  <span>
+                    Everyone together
+                    <small>
+                      A time is offered only when every required host is free,
+                      and it goes on all their calendars.
+                    </small>
+                  </span>
+                </label>
+                <label className="radio-line">
+                  <input
+                    type="radio"
+                    name="assignment"
+                    checked={draft.assignment === "round_robin"}
+                    onChange={() => set("assignment", "round_robin")}
+                  />
+                  <span>
+                    Round-robin
+                    <small>
+                      A time is offered when any host is free, and each booking
+                      goes to the host with the fewest so far.
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+            )}
           </div>
         </Section>
 
