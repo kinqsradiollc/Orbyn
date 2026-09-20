@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Columns3, List, Plus, Trash2 } from "lucide-react";
 import {
   projectAtRisk,
   projectProgress,
@@ -43,6 +43,9 @@ export function ProjectDetail({
   onOpenItem: (item: Item) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [board, setBoard] = useState(false);
+  /** The task being dragged across the board, if any. */
+  const [dragging, setDragging] = useState<string | null>(null);
   const grouped = useMemo(() => group(items, project), [items, project]);
   const percent = projectProgress(project);
   const risk = projectAtRisk(project);
@@ -142,6 +145,26 @@ export function ProjectDetail({
         <button className="text-button" onClick={onBack}>
           <ArrowLeft size={15} /> All projects
         </button>
+        <div
+          className="pboard-toggle"
+          role="group"
+          aria-label="How to show the stages"
+        >
+          <button
+            className={board ? "" : "is-on"}
+            aria-pressed={!board}
+            onClick={() => setBoard(false)}
+          >
+            <List size={14} /> List
+          </button>
+          <button
+            className={board ? "is-on" : ""}
+            aria-pressed={board}
+            onClick={() => setBoard(true)}
+          >
+            <Columns3 size={14} /> Board
+          </button>
+        </div>
         <button
           className="icon-button"
           onClick={remove}
@@ -183,150 +206,225 @@ export function ProjectDetail({
         </div>
       </header>
 
-      <div className="stage-list">
-        {project.stages.map((stage) => {
-          const rows = grouped.get(stage.id) ?? [];
-          return (
-            <section key={stage.id} className="stage">
-              <div className="stage-head">
-                <button
-                  className="stage-name"
-                  onClick={() => renameStage(stage)}
-                  title="Rename this stage"
-                >
-                  {stage.name}
-                </button>
-                <span className="muted stage-count">{rows.length}</span>
-                <button
-                  className="text-button"
-                  onClick={() => addExisting(stage.id)}
-                  disabled={busy}
-                >
-                  <Plus size={13} /> Add task
-                </button>
-                <button
-                  className="icon-button"
-                  onClick={() => removeStage(stage)}
-                  aria-label={`Remove the ${stage.name} stage`}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-              {rows.length === 0 ? (
-                <p className="stage-empty muted">Nothing here yet.</p>
-              ) : (
-                <ul className="stage-tasks">
+      {board ? (
+        <div className="pboard" aria-label="Stages as columns">
+          {[
+            ...project.stages.map((st) => ({ id: st.id, name: st.name })),
+            {
+              id: null as string | null,
+              name: "No stage",
+            },
+          ].map((column) => {
+            const rows = grouped.get(column.id) ?? [];
+            return (
+              <section
+                key={column.id ?? "none"}
+                className={"pboard-column" + (dragging ? " is-target" : "")}
+                onDragOver={(e) => {
+                  // Allowing the drop is what makes the column a target.
+                  if (dragging) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = e.dataTransfer.getData("text/plain") || dragging;
+                  const item = items.find((i) => i.id === id);
+                  setDragging(null);
+                  if (item && item.stage_id !== column.id)
+                    moveTo(item, column.id);
+                }}
+              >
+                <div className="pboard-head">
+                  <strong>{column.name}</strong>
+                  <span className="muted stage-count">{rows.length}</span>
+                </div>
+                <div className="pboard-cards">
                   {rows.map((item) => (
-                    <li key={item.id}>
-                      <button
-                        className="stage-task"
-                        onClick={() => onOpenItem(item)}
-                      >
-                        <span
-                          className={
-                            "stage-dot" +
-                            (item.status === "done" ? " is-done" : "")
-                          }
-                          aria-hidden="true"
-                        />
-                        <span
-                          className={
-                            item.status === "done" ? "stage-task-done" : ""
-                          }
-                        >
-                          {item.title}
-                        </span>
-                      </button>
-                      <select
-                        id={`stage-for-${item.id}`}
-                        className="stage-move"
-                        value={item.stage_id ?? ""}
-                        disabled={busy}
-                        aria-label={`Stage for ${item.title}`}
-                        onChange={(e) =>
-                          e.target.value === "__remove"
-                            ? unfile(item)
-                            : moveTo(item, e.target.value || null)
+                    <button
+                      key={item.id}
+                      className={
+                        "pboard-card" +
+                        (dragging === item.id ? " is-dragging" : "")
+                      }
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", item.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragging(item.id);
+                      }}
+                      onDragEnd={() => setDragging(null)}
+                      onClick={() => onOpenItem(item)}
+                    >
+                      <span
+                        className={
+                          "stage-dot" +
+                          (item.status === "done" ? " is-done" : "")
+                        }
+                        aria-hidden="true"
+                      />
+                      <span
+                        className={
+                          item.status === "done" ? "stage-task-done" : ""
                         }
                       >
-                        {project.stages.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                        <option value="">No stage</option>
-                        <option value="__remove">Remove from project</option>
-                      </select>
-                    </li>
+                        {item.title}
+                      </span>
+                    </button>
                   ))}
-                </ul>
-              )}
-            </section>
-          );
-        })}
-
-        <section className="stage">
-          <div className="stage-head">
-            <span className="stage-name is-static">No stage</span>
-            <span className="muted stage-count">
-              {(grouped.get(null) ?? []).length}
-            </span>
-            <button
-              className="text-button"
-              onClick={() => addExisting(null)}
-              disabled={busy}
-            >
-              <Plus size={13} /> Add task
-            </button>
-          </div>
-          {(grouped.get(null) ?? []).length === 0 ? (
-            <p className="stage-empty muted">Everything is filed.</p>
-          ) : (
-            <ul className="stage-tasks">
-              {(grouped.get(null) ?? []).map((item) => (
-                <li key={item.id}>
+                  {rows.length === 0 && (
+                    <p className="pboard-empty muted">Drop a task here.</p>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="stage-list">
+          {project.stages.map((stage) => {
+            const rows = grouped.get(stage.id) ?? [];
+            return (
+              <section key={stage.id} className="stage">
+                <div className="stage-head">
                   <button
-                    className="stage-task"
-                    onClick={() => onOpenItem(item)}
+                    className="stage-name"
+                    onClick={() => renameStage(stage)}
+                    title="Rename this stage"
                   >
-                    <span
-                      className={
-                        "stage-dot" + (item.status === "done" ? " is-done" : "")
-                      }
-                      aria-hidden="true"
-                    />
-                    <span>{item.title}</span>
+                    {stage.name}
                   </button>
-                  <select
-                    id={`stage-for-${item.id}`}
-                    className="stage-move"
-                    value=""
+                  <span className="muted stage-count">{rows.length}</span>
+                  <button
+                    className="text-button"
+                    onClick={() => addExisting(stage.id)}
                     disabled={busy}
-                    aria-label={`Stage for ${item.title}`}
-                    onChange={(e) =>
-                      e.target.value === "__remove"
-                        ? unfile(item)
-                        : moveTo(item, e.target.value || null)
-                    }
                   >
-                    <option value="">No stage</option>
-                    {project.stages.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
+                    <Plus size={13} /> Add task
+                  </button>
+                  <button
+                    className="icon-button"
+                    onClick={() => removeStage(stage)}
+                    aria-label={`Remove the ${stage.name} stage`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                {rows.length === 0 ? (
+                  <p className="stage-empty muted">Nothing here yet.</p>
+                ) : (
+                  <ul className="stage-tasks">
+                    {rows.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          className="stage-task"
+                          onClick={() => onOpenItem(item)}
+                        >
+                          <span
+                            className={
+                              "stage-dot" +
+                              (item.status === "done" ? " is-done" : "")
+                            }
+                            aria-hidden="true"
+                          />
+                          <span
+                            className={
+                              item.status === "done" ? "stage-task-done" : ""
+                            }
+                          >
+                            {item.title}
+                          </span>
+                        </button>
+                        <select
+                          id={`stage-for-${item.id}`}
+                          className="stage-move"
+                          value={item.stage_id ?? ""}
+                          disabled={busy}
+                          aria-label={`Stage for ${item.title}`}
+                          onChange={(e) =>
+                            e.target.value === "__remove"
+                              ? unfile(item)
+                              : moveTo(item, e.target.value || null)
+                          }
+                        >
+                          {project.stages.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                          <option value="">No stage</option>
+                          <option value="__remove">Remove from project</option>
+                        </select>
+                      </li>
                     ))}
-                    <option value="__remove">Remove from project</option>
-                  </select>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                  </ul>
+                )}
+              </section>
+            );
+          })}
 
-        <button className="add-stage" onClick={addStage} disabled={busy}>
-          <Plus size={14} /> Add a stage
-        </button>
-      </div>
+          <section className="stage">
+            <div className="stage-head">
+              <span className="stage-name is-static">No stage</span>
+              <span className="muted stage-count">
+                {(grouped.get(null) ?? []).length}
+              </span>
+              <button
+                className="text-button"
+                onClick={() => addExisting(null)}
+                disabled={busy}
+              >
+                <Plus size={13} /> Add task
+              </button>
+            </div>
+            {(grouped.get(null) ?? []).length === 0 ? (
+              <p className="stage-empty muted">Everything is filed.</p>
+            ) : (
+              <ul className="stage-tasks">
+                {(grouped.get(null) ?? []).map((item) => (
+                  <li key={item.id}>
+                    <button
+                      className="stage-task"
+                      onClick={() => onOpenItem(item)}
+                    >
+                      <span
+                        className={
+                          "stage-dot" +
+                          (item.status === "done" ? " is-done" : "")
+                        }
+                        aria-hidden="true"
+                      />
+                      <span>{item.title}</span>
+                    </button>
+                    <select
+                      id={`stage-for-${item.id}`}
+                      className="stage-move"
+                      value=""
+                      disabled={busy}
+                      aria-label={`Stage for ${item.title}`}
+                      onChange={(e) =>
+                        e.target.value === "__remove"
+                          ? unfile(item)
+                          : moveTo(item, e.target.value || null)
+                      }
+                    >
+                      <option value="">No stage</option>
+                      {project.stages.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                      <option value="__remove">Remove from project</option>
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <button className="add-stage" onClick={addStage} disabled={busy}>
+            <Plus size={14} /> Add a stage
+          </button>
+        </div>
+      )}
     </div>
   );
 }
