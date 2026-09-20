@@ -255,6 +255,8 @@ const docBlock = z.discriminatedUnion("type", [
     type: z.literal("todo"),
     text: z.string().max(4000),
     done: z.boolean(),
+    /** Set once the line has become a task; links the two together. */
+    id: z.string().max(64).optional(),
   }),
   z.object({ type: z.literal("quote"), text: z.string().max(4000) }),
   z.object({

@@ -218,3 +218,59 @@ test("unticked checklist lines become tasks, blanks and ticks are skipped", asyn
   const none = await call("POST", `/docs/${empty.id}/tasks`);
   assert.equal(none.json().created, 0);
 });
+
+test("a line that became a task stays tied to it, both ways", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Linked",
+      content: [
+        { type: "todo", done: false, text: "Send the recap" },
+        { type: "paragraph", text: "Context" },
+      ],
+    })
+  ).json();
+
+  const made = await call("POST", `/docs/${doc.id}/tasks`);
+  assert.equal(made.json().created, 1);
+  const task = made.json().items[0];
+
+  // The line now carries a stable id.
+  const linked = (await call("GET", `/docs/${doc.id}`)).json();
+  const line = linked.content[0];
+  assert.equal(line.type, "todo");
+  assert.ok(line.id, "the line carries an id once it is tied to a task");
+  assert.equal(line.done, false);
+
+  // Finishing the task in the planner ticks the line in the document.
+  await call("PUT", `/items/${task.id}`, {
+    title: task.title,
+    kind: "task",
+    status: "done",
+    version: task.version,
+  });
+  const afterTask = (await call("GET", `/docs/${doc.id}`)).json();
+  assert.equal(afterTask.content[0].done, true, "the tick follows the task");
+
+  // And unticking it in the document reopens the task.
+  const untick = afterTask.content.map((b: { type: string }) =>
+    b.type === "todo" ? { ...b, done: false } : b,
+  );
+  await call("PUT", `/docs/${doc.id}`, {
+    content: untick,
+    version: afterTask.version,
+  });
+  const reopened = (await call("GET", `/items/${task.id}`)).json();
+  assert.notEqual(reopened.status, "done", "the task follows the document");
+});
+
+test("asking twice does not make the same task again", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Once only",
+      content: [{ type: "todo", done: false, text: "Book the room" }],
+    })
+  ).json();
+  assert.equal((await call("POST", `/docs/${doc.id}/tasks`)).json().created, 1);
+  // The line is tied now, so a second ask has nothing left to make.
+  assert.equal((await call("POST", `/docs/${doc.id}/tasks`)).json().created, 0);
+});

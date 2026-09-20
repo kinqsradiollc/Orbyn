@@ -15,8 +15,11 @@ export type DocBlock =
   | { type: "paragraph"; text: string }
   | { type: "bullet"; text: string }
   | { type: "numbered"; text: string }
-  /** A checklist line; `done` is the ticked state. */
-  | { type: "todo"; text: string; done: boolean }
+  /**
+   * A checklist line; `done` is the ticked state. `id` is set once the line
+   * has become a task, so the two stay tied together as the document changes.
+   */
+  | { type: "todo"; text: string; done: boolean; id?: string }
   | { type: "quote"; text: string }
   | { type: "code"; text: string; lang: string }
   /** Display maths. `text` is LaTeX without the `$$` fences. */
