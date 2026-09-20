@@ -335,3 +335,47 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
+
+/* Two-step verification setup and recovery codes. */
+.two-factor-on {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.two-factor-setup,
+.two-factor-codes {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+}
+.two-factor-secret {
+  font-size: 18px;
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  word-break: break-all;
+}
+.two-factor-uri {
+  display: block;
+  font-size: 12px;
+  word-break: break-all;
+  margin-top: 6px;
+}
+.two-factor-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.two-factor-codes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 20px;
+}
+.two-factor-codes .mono {
+  font-variant-numeric: tabular-nums;
+}

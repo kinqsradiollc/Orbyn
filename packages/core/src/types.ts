@@ -136,6 +136,18 @@ export type Session = {
   current: boolean;
 };
 
+/** Two-step verification status. */
+export type TwoFactorStatus = { enabled: boolean };
+
+/** What setting up two-step returns, to show once. */
+export type TwoFactorSetup = {
+  secret: string;
+  otpauth_uri: string;
+};
+
+/** Recovery codes, shown once when two-step is turned on. */
+export type TwoFactorEnabled = { recovery_codes: string[] };
+
 export type User = {
   id: string;
   name: string;

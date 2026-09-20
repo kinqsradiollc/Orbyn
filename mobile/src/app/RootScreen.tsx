@@ -114,6 +114,7 @@ export function RootScreen() {
     signIn,
     signOut,
     refreshUser,
+    twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
   const insets = useSafeAreaInsets();
@@ -206,6 +207,7 @@ export function RootScreen() {
         act={act}
         signIn={signIn}
         clearError={() => setError("")}
+        twoFactorRequired={twoFactorRequired}
       />
     );
   // Signed in but the email isn't confirmed yet: hold at the gate.

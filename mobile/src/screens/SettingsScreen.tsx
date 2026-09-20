@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import {
   hasSystemPermission,
   statusHeadlines,
@@ -7,6 +15,7 @@ import {
   type PlannerPrefsInput,
   type User,
   type Session,
+  type TwoFactorSetup,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -114,6 +123,12 @@ export function SettingsScreen({
   /** Completing a task counts its blocks' past time as spent; null until loaded. */
   const [countBlocks, setCountBlocks] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<Session[] | null>(null);
+  const [tfaOn, setTfaOn] = useState<boolean | null>(null);
+  const [tfaSetup, setTfaSetup] = useState<TwoFactorSetup | null>(null);
+  const [tfaCode, setTfaCode] = useState("");
+  const [tfaCodes, setTfaCodes] = useState<string[] | null>(null);
+  const [tfaPassword, setTfaPassword] = useState("");
+  const [disabling, setDisabling] = useState(false);
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -140,6 +155,10 @@ export function SettingsScreen({
     client.listSessions().then(setSessions, () => setSessions([]));
   useEffect(() => {
     void loadSessions();
+    client.getTwoFactor().then(
+      (r) => setTfaOn(r.enabled),
+      () => setTfaOn(false),
+    );
   }, []);
   useEffect(() => {
     let live = true;
@@ -390,6 +409,116 @@ export function SettingsScreen({
         />
       </View>
 
+      <Text style={[shared.eyebrow, s.section]}>TWO-STEP VERIFICATION</Text>
+      <View style={shared.card}>
+        <Text style={shared.body}>
+          Ask for a code from an authenticator app at sign-in, on top of your
+          password.
+        </Text>
+        {tfaCodes ? (
+          <View style={{ marginTop: 12 }}>
+            <Text style={s.prefTitle}>Save your recovery codes</Text>
+            <Text style={shared.small}>
+              Each works once if you lose your authenticator. They won’t be
+              shown again.
+            </Text>
+            {tfaCodes.map((c) => (
+              <Text key={c} style={s.recoveryCode}>
+                {c}
+              </Text>
+            ))}
+            <Button
+              secondary
+              title="I’ve saved them"
+              disabled={busy}
+              style={{ marginTop: 12, marginBottom: 0 }}
+              onPress={() => setTfaCodes(null)}
+            />
+          </View>
+        ) : tfaOn ? (
+          disabling ? (
+            <View style={{ marginTop: 12 }}>
+              <TextInput
+                style={shared.input}
+                placeholder="Your password"
+                placeholderTextColor={colors.faint}
+                secureTextEntry
+                value={tfaPassword}
+                onChangeText={setTfaPassword}
+                accessibilityLabel="Password to turn off two-step"
+              />
+              <Button
+                destructive
+                title="Turn off two-step"
+                disabled={busy || !tfaPassword}
+                style={{ marginTop: 10, marginBottom: 0 }}
+                onPress={() =>
+                  void act(async () => {
+                    await client.disableTwoFactor(tfaPassword);
+                    setTfaOn(false);
+                    setDisabling(false);
+                    setTfaPassword("");
+                  })
+                }
+              />
+            </View>
+          ) : (
+            <Button
+              secondary
+              title="Turn off"
+              disabled={busy}
+              style={{ marginTop: 12, marginBottom: 0 }}
+              onPress={() => setDisabling(true)}
+            />
+          )
+        ) : tfaSetup ? (
+          <View style={{ marginTop: 12 }}>
+            <Text style={shared.small}>
+              Add this key to your authenticator app:
+            </Text>
+            <Text style={s.recoveryCode}>{tfaSetup.secret}</Text>
+            <TextInput
+              style={[shared.input, { marginTop: 10 }]}
+              placeholder="6-digit code"
+              placeholderTextColor={colors.faint}
+              value={tfaCode}
+              onChangeText={setTfaCode}
+              keyboardType="number-pad"
+              maxLength={10}
+              accessibilityLabel="Authenticator code"
+            />
+            <Button
+              title="Turn on"
+              disabled={busy || tfaCode.length < 6}
+              style={{ marginTop: 10, marginBottom: 0 }}
+              onPress={() =>
+                void act(async () => {
+                  const { recovery_codes } =
+                    await client.enableTwoFactor(tfaCode);
+                  setTfaOn(true);
+                  setTfaSetup(null);
+                  setTfaCode("");
+                  setTfaCodes(recovery_codes);
+                })
+              }
+            />
+          </View>
+        ) : (
+          <Button
+            secondary
+            title="Set up two-step"
+            icon="lock"
+            disabled={busy || tfaOn === null}
+            style={{ marginTop: 12, marginBottom: 0 }}
+            onPress={() =>
+              void act(async () => {
+                setTfaSetup(await client.setupTwoFactor());
+              })
+            }
+          />
+        )}
+      </View>
+
       <Text style={[shared.eyebrow, s.section]}>SIGNED-IN DEVICES</Text>
       <View style={shared.card}>
         {(sessions ?? []).map((sess, i) => (
@@ -540,6 +669,13 @@ const s = themed(() =>
       borderTopColor: colors.border,
       marginTop: 6,
       paddingTop: 12,
+    },
+    recoveryCode: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginTop: 4,
+      letterSpacing: 1,
     },
     prefTitle: {
       fontFamily: fonts.semibold,

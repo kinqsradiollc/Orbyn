@@ -26,12 +26,14 @@ export function AuthScreen({
   act,
   signIn,
   clearError,
+  twoFactorRequired,
 }: {
   busy: boolean;
   error: string;
   act: (fn: () => Promise<void>) => Promise<void>;
-  signIn: (input: SignInInput) => Promise<void>;
+  signIn: (input: SignInInput) => Promise<boolean>;
   clearError: () => void;
+  twoFactorRequired?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState("");
@@ -39,6 +41,7 @@ export function AuthScreen({
   const [name, setName] = useState("");
   const [register, setRegister] = useState(true);
   const [notice, setNotice] = useState("");
+  const [code, setCode] = useState("");
   return (
     <KeyboardAvoidingView
       style={s.screen}
@@ -120,6 +123,22 @@ export function AuthScreen({
                 textContentType={register ? "newPassword" : "password"}
               />
             </Field>
+            {!register && twoFactorRequired && (
+              <Field label="Authenticator code">
+                <TextInput
+                  style={shared.input}
+                  placeholder="123456 or a recovery code"
+                  placeholderTextColor={colors.faint}
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                  autoCapitalize="none"
+                  autoComplete="one-time-code"
+                  textContentType="oneTimeCode"
+                  maxLength={20}
+                />
+              </Field>
+            )}
           </FadeIn>
           <FadeIn index={6} duration={motion.slow}>
             {!!notice && <Text style={s.notice}>{notice}</Text>}
@@ -136,8 +155,17 @@ export function AuthScreen({
               disabled={busy}
               onPress={() =>
                 act(async () => {
-                  await signIn({ email, password, name, register });
-                  setPassword("");
+                  const ok = await signIn({
+                    email,
+                    password,
+                    name,
+                    register,
+                    code,
+                  });
+                  if (ok) {
+                    setPassword("");
+                    setCode("");
+                  }
                 })
               }
             />
