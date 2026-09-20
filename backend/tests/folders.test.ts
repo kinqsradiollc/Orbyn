@@ -206,3 +206,73 @@ test("favourites are private to the person who starred", async () => {
     !theirs.json().some((f: { target_id: string }) => f.target_id === doc.id),
   );
 });
+
+test("a remark can be left, resolved, brought back and withdrawn", async () => {
+  const doc = (await call("POST", "/docs", { title: "Reviewed" })).json();
+
+  const made = await call("POST", `/docs/${doc.id}/comments`, {
+    body: "The second section needs a number.",
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const comment = made.json();
+  assert.equal(comment.body, "The second section needs a number.");
+  assert.equal(comment.resolved_at, null);
+  assert.equal(comment.author, "Filer", "the thread says who wrote it");
+
+  const listed = (await call("GET", `/docs/${doc.id}/comments`)).json();
+  assert.equal(listed.length, 1);
+
+  const resolved = (
+    await call("PUT", `/docs/${doc.id}/comments/${comment.id}`, {
+      resolved: true,
+    })
+  ).json();
+  assert.ok(resolved.resolved_at, "resolving stamps the time");
+
+  const reopened = (
+    await call("PUT", `/docs/${doc.id}/comments/${comment.id}`, {
+      resolved: false,
+    })
+  ).json();
+  assert.equal(reopened.resolved_at, null, "and it can come back");
+
+  assert.equal(
+    (await call("DELETE", `/docs/${doc.id}/comments/${comment.id}`)).statusCode,
+    204,
+  );
+  assert.equal(
+    (await call("GET", `/docs/${doc.id}/comments`)).json().length,
+    0,
+  );
+});
+
+test("remarks follow the document: not yours, not seen", async () => {
+  const doc = (await call("POST", "/docs", { title: "Private" })).json();
+  await call("POST", `/docs/${doc.id}/comments`, { body: "Mine" });
+
+  assert.equal(
+    (await call("GET", `/docs/${doc.id}/comments`, undefined, () => otherToken))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `/docs/${doc.id}/comments`,
+        { body: "Butting in" },
+        () => otherToken,
+      )
+    ).statusCode,
+    404,
+  );
+});
+
+test("an empty remark is refused", async () => {
+  const doc = (await call("POST", "/docs", { title: "Strict" })).json();
+  assert.equal(
+    (await call("POST", `/docs/${doc.id}/comments`, { body: "   " }))
+      .statusCode,
+    422,
+  );
+});

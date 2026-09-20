@@ -12,9 +12,11 @@ import "./docs.css";
 export function AgendaView({
   report,
   onItemsChanged,
+  userId,
 }: {
   report: (e: unknown) => void;
   onItemsChanged: () => void;
+  userId?: string;
 }) {
   const [doc, setDoc] = useState<Doc | null>(null);
   const [failed, setFailed] = useState(false);
@@ -38,6 +40,7 @@ export function AgendaView({
     <DocEditor
       doc={doc}
       report={report}
+      userId={userId}
       onChanged={setDoc}
       onItemsChanged={onItemsChanged}
       // The agenda is always today's page; there is no list to go back to.

@@ -558,12 +558,14 @@ export function App() {
               {view === "Agenda" && (
                 <AgendaView
                   report={report}
+                  userId={user?.id}
                   onItemsChanged={() => void refresh()}
                 />
               )}
               {view === "Docs" && (
                 <DocsView
                   report={report}
+                  userId={user?.id}
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
                   onInitialDocShown={() => setNoteDoc(null)}

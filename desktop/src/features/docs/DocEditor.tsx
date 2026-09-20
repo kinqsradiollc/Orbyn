@@ -16,6 +16,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { BlockView } from "./DocBlocks";
+import { DocComments } from "./DocComments";
 
 /** How long to wait after typing stops before saving. */
 const SAVE_AFTER_MS = 800;
@@ -38,6 +39,7 @@ export function DocEditor({
   onChanged,
   onDeleted,
   onItemsChanged,
+  userId,
   report,
 }: {
   doc: Doc;
@@ -47,6 +49,8 @@ export function DocEditor({
   onDeleted: (id: string) => void;
   /** Called after checklist lines are turned into real tasks. */
   onItemsChanged?: () => void;
+  /** Whose comments show a remove button. */
+  userId?: string;
   report: (e: unknown) => void;
 }) {
   const [title, setTitle] = useState(doc.title);
@@ -348,6 +352,8 @@ export function DocEditor({
           <code>$$</code> for a formula. Inline maths goes between single{" "}
           <code>$</code> signs.
         </p>
+
+        <DocComments docId={doc.id} userId={userId} report={report} />
       </div>
     </div>
   );

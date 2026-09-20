@@ -4,6 +4,7 @@ import {
   type Doc,
   type DocBlock,
   type DocKind,
+  type DocComment,
   type DocSummary,
   type Favourite,
   type FavouriteKind,
@@ -625,6 +626,28 @@ export class OrbynClient {
     return this.request<{ ok: true }>(`/items/${itemId}/project`, {
       method: "PUT",
       body: input,
+    });
+  }
+
+  // Comments on a document
+  listDocComments(docId: string) {
+    return this.request<DocComment[]>(`/docs/${docId}/comments`);
+  }
+  addDocComment(docId: string, body: string) {
+    return this.request<DocComment>(`/docs/${docId}/comments`, {
+      method: "POST",
+      body: { body },
+    });
+  }
+  resolveDocComment(docId: string, commentId: string, resolved: boolean) {
+    return this.request<DocComment>(`/docs/${docId}/comments/${commentId}`, {
+      method: "PUT",
+      body: { resolved },
+    });
+  }
+  deleteDocComment(docId: string, commentId: string) {
+    return this.request<void>(`/docs/${docId}/comments/${commentId}`, {
+      method: "DELETE",
     });
   }
 
