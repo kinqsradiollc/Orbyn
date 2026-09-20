@@ -2,6 +2,7 @@ import { colors, motion, statusTones } from "@orbyn/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
+import "katex/dist/katex.min.css";
 import "./styles/global.css";
 import "./styles/theme.css";
 import "./styles/legacy-dark.css";

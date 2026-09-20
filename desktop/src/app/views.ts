@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ListChecks,
   ListTodo,
+  FileText,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { screens, screenTitle, type ScreenName } from "@orbyn/core";
 
-export type View = ScreenName | "Lists" | "Booking";
+export type View = ScreenName | "Lists" | "Docs" | "Booking";
 
 type Screen = { title: string; subtitle: string; eyebrow: string };
 
@@ -22,6 +23,12 @@ export const SCREENS: Record<View, Screen> = {
   Lists: {
     title: "Lists",
     subtitle: "Group tasks the way you think about them.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Docs: {
+    title: "Documents",
+    subtitle:
+      "Notes, briefs and working pages — with formulas that render as you type.",
     eyebrow: "YOUR PERSONAL ORBIT",
   },
   Booking: {
@@ -43,6 +50,7 @@ export const NAV: { label: View; icon: LucideIcon; adminOnly?: boolean }[] = [
   { label: "My tasks", icon: ListTodo },
   { label: "Lists", icon: ListChecks },
   { label: "Calendar", icon: CalendarDays },
+  { label: "Docs", icon: FileText },
   { label: "AI assistant", icon: Sparkles },
   { label: "Teams", icon: Users },
   { label: "Booking", icon: CalendarCheck },
@@ -53,6 +61,7 @@ export const NAV: { label: View; icon: LucideIcon; adminOnly?: boolean }[] = [
 /** Views whose heading does not offer the "New item" button. */
 export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Settings",
+  "Docs",
   "AI assistant",
   "Notifications",
   "Teams",

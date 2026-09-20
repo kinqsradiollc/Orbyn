@@ -12,3 +12,4 @@ export * from "./quickadd.js";
 export * from "./offline.js";
 export * from "./quickcapture.js";
 export * from "./glance.js";
+export * from "./docs.js";

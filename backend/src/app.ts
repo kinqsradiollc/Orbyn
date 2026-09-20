@@ -15,6 +15,7 @@ import { teamRoutes } from "./modules/teams/routes.js";
 import { adminRoutes } from "./modules/admin/routes.js";
 import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
+import { docRoutes } from "./modules/docs/routes.js";
 import { plannerRoutes } from "./modules/planner/routes.js";
 import { teamPlanningRoutes } from "./modules/teams/planning.js";
 import { accessRoutes } from "./modules/access/routes.js";
@@ -46,6 +47,7 @@ export const serviceModules: Record<
     teamRoutes,
     adminRoutes,
     organizeRoutes,
+    docRoutes,
     plannerRoutes,
     teamPlanningRoutes,
     accessRoutes,

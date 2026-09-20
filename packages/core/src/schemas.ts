@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
+import { DOC_KINDS } from "./docs.js";
 
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = [
@@ -235,6 +236,54 @@ export const itemData = z
     (d) => !d.parent_id || d.kind === "task",
     "Only tasks can be subtasks",
   );
+
+// Documents. The body is the editor's block list; each block is validated so a
+// malformed document can't be stored, and titles stay short enough to show in a
+// list row.
+const docBlock = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("heading"),
+    level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    text: z.string().max(2000),
+  }),
+  z.object({ type: z.literal("paragraph"), text: z.string().max(10000) }),
+  z.object({ type: z.literal("bullet"), text: z.string().max(4000) }),
+  z.object({ type: z.literal("numbered"), text: z.string().max(4000) }),
+  z.object({
+    type: z.literal("todo"),
+    text: z.string().max(4000),
+    done: z.boolean(),
+  }),
+  z.object({ type: z.literal("quote"), text: z.string().max(4000) }),
+  z.object({
+    type: z.literal("code"),
+    text: z.string().max(20000),
+    lang: z.string().max(20).default(""),
+  }),
+  z.object({ type: z.literal("math"), text: z.string().max(4000) }),
+  z.object({ type: z.literal("divider") }),
+]);
+
+export const docContent = z.array(docBlock).max(2000);
+
+export const docInput = z
+  .object({
+    title: z.string().trim().max(200).default("Untitled"),
+    kind: z.enum(DOC_KINDS).default("doc"),
+    team_id: z.uuid().nullable().default(null),
+    item_id: z.uuid().nullable().default(null),
+    content: docContent.default([]),
+  })
+  .strict();
+
+/** An edit. `version` guards against two tabs overwriting each other. */
+export const docUpdate = z
+  .object({
+    title: z.string().trim().max(200).optional(),
+    content: docContent.optional(),
+    version: z.number().int().positive(),
+  })
+  .strict();
 
 export const actionSchema = z
   .object({

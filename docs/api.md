@@ -214,6 +214,54 @@ Challenges are single-use and expire after five minutes.
 { "email_reminders": false }
 ```
 
+## Documents
+
+Notes, briefs and agendas that live beside the planner. A document is a list of blocks
+(`heading`, `paragraph`, `bullet`, `numbered`, `todo`, `quote`, `code`, `math`, `divider`).
+`math` blocks hold LaTeX without the `$$` fences, and inline maths lives between single `$`
+signs inside any text block, so a document always round-trips to Markdown with its formulas
+intact. Personal documents belong to their author; team documents follow the same team roles
+as team items (viewers read, members and above write).
+
+### `GET /docs` (auth)
+
+→ `[ { "id", "title", "kind", "team_id", "team_name", "preview", "version", "updated_at", … } ]`,
+newest edit first. The body is left out and `preview` carries the first ~120 characters, so a
+list stays light.
+
+### `POST /docs` (auth)
+
+```json
+{
+  "title": "Convergence notes",
+  "content": [{ "type": "math", "text": "E = mc^2" }]
+}
+```
+
+`kind` is `doc` (default), `agenda` or `meeting`; `team_id` puts it in a team; `item_id` links a
+meeting note to its event. → `201` with the full document.
+
+### `GET /docs/:id` (auth)
+
+→ the full document, including `content`. `404` when it isn't yours.
+
+### `GET /docs/:id/markdown` (auth)
+
+→ `text/markdown` of the document, title first, with any LaTeX kept as source.
+
+### `PUT /docs/:id` (auth)
+
+```json
+{ "title": "New title", "content": [], "version": 3 }
+```
+
+`version` is the version the edit was made against; a mismatch answers `409` rather than
+overwriting, so two open tabs can't clobber each other. `title` and `content` are each optional.
+
+### `DELETE /docs/:id` (auth)
+
+→ `204`.
+
 ## Items
 
 An item:

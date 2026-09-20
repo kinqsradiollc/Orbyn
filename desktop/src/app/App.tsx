@@ -39,6 +39,7 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
+import { DocsView } from "../features/docs/DocsView";
 import {
   CalendarView,
   type CalendarMode,
@@ -545,6 +546,7 @@ export function App() {
                   onNewItem={(prefill) => newItem(null, prefill)}
                 />
               )}
+              {view === "Docs" && <DocsView report={report} />}
               {view === "Calendar" && (
                 <CalendarView
                   items={items}
