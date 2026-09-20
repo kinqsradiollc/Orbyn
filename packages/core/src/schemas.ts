@@ -4,6 +4,7 @@ import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 import { DOC_KINDS } from "./docs.js";
 import { PROJECT_STATUSES } from "./projects.js";
+import { FAVOURITE_KINDS } from "./folders.js";
 
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = [
@@ -274,6 +275,7 @@ export const docInput = z
     team_id: z.uuid().nullable().default(null),
     item_id: z.uuid().nullable().default(null),
     content: docContent.default([]),
+    folder_id: z.uuid().nullable().default(null),
   })
   .strict();
 
@@ -282,6 +284,7 @@ export const docUpdate = z
   .object({
     title: z.string().trim().max(200).optional(),
     content: docContent.optional(),
+    folder_id: z.uuid().nullable().optional(),
     version: z.number().int().positive(),
   })
   .strict();
@@ -321,6 +324,29 @@ export const projectAssign = z
   .object({
     project_id: z.uuid().nullable(),
     stage_id: z.uuid().nullable().default(null),
+  })
+  .strict();
+
+// Folders and favourites.
+export const folderInput = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    team_id: z.uuid().nullable().default(null),
+  })
+  .strict();
+
+export const folderUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    position: z.number().int().min(0).max(999).optional(),
+  })
+  .strict();
+
+export const favouriteInput = z
+  .object({
+    kind: z.enum(FAVOURITE_KINDS),
+    target_id: z.uuid(),
+    starred: z.boolean(),
   })
   .strict();
 

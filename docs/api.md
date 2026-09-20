@@ -287,6 +287,39 @@ the project with no stage.
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`.
 
+## Folders and favourites
+
+Folders group documents inside a workspace; they are flat by design, since one level is enough to
+tidy a workspace without becoming a filing cabinet. Favourites pin the few things someone keeps
+coming back to, and are private to whoever starred them.
+
+### `GET /folders` (auth)
+
+→ `[ { "id", "name", "team_id", "position", "doc_count", … } ]`, personal folders first.
+
+### `POST /folders` (auth)
+
+`{ "name", "team_id"? }` → `201`. New folders go to the end of the list.
+
+### `PUT /folders/:id` (auth)
+
+`{ "name"?, "position"? }` → the folder.
+
+### `DELETE /folders/:id` (auth)
+
+→ `204`. The folder's documents are kept and become unfiled.
+
+### `GET /favourites` (auth)
+
+→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc` or `project`.
+
+### `PUT /favourites` (auth)
+
+`{ "kind", "target_id", "starred" }` → `204`. Starring something already starred is harmless.
+
+A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
+and leaving the field out keeps it where it is.
+
 ## Documents
 
 Notes, briefs and agendas that live beside the planner. A document is a list of blocks

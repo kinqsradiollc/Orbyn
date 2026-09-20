@@ -34,6 +34,7 @@ export type Doc = {
   kind: DocKind;
   content: DocBlock[];
   item_id: string | null;
+  folder_id: string | null;
   version: number;
   created_at: string;
   updated_at: string;

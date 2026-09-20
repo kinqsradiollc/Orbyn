@@ -296,3 +296,65 @@ h4.doc-heading {
     align-items: stretch;
   }
 }
+
+/* ------------------------------------------------- folders and stars --- */
+
+.folder-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.folder-chip {
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  background: var(--color-chip);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.folder-chip:hover {
+  color: var(--color-text);
+}
+.folder-chip.is-on {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+  font-weight: 600;
+}
+.folder-chip.is-add {
+  background: none;
+  border: 1px dashed var(--color-borderStrong);
+}
+.folder-n {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* The row and its star share one line; the star never crowds the title. */
+.docs-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+.doc-star {
+  background: none;
+  border: 0;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--color-muted);
+  cursor: pointer;
+  line-height: 0;
+}
+.doc-star:hover {
+  color: var(--color-text);
+  background: var(--color-hover);
+}
+.doc-star.is-on {
+  color: var(--color-accent);
+}
