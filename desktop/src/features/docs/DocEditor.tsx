@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   GripVertical,
+  History,
   ListPlus,
   Loader2,
   Plus,
@@ -25,6 +26,7 @@ import { client } from "../../lib/api";
 import { BlockView } from "./DocBlocks";
 import { DocBlockMenu, SlashMenu } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
+import { DocHistory } from "./DocHistory";
 
 type Kind = (typeof BLOCK_KINDS)[number];
 
@@ -91,6 +93,7 @@ export function DocEditor({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   /** A line that starts with "/", waiting for a kind to be picked. */
   const [slash, setSlash] = useState<{
     index: number;
@@ -485,6 +488,15 @@ export function DocEditor({
             </button>
           )}
           <button
+            className={"icon-button" + (showHistory ? " is-on" : "")}
+            onClick={() => setShowHistory((v) => !v)}
+            aria-label="Page history"
+            aria-pressed={showHistory}
+            title="Page history"
+          >
+            <History size={15} />
+          </button>
+          <button
             className="icon-button"
             onClick={() =>
               void navigator.clipboard
@@ -515,120 +527,143 @@ export function DocEditor({
         </span>
       </div>
 
-      <div className="doc-page">
-        <input
-          id="doc-title"
-          className="doc-title"
-          value={title}
-          placeholder="Untitled"
-          maxLength={200}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            queueSave(e.target.value, blocks);
-          }}
-        />
+      <div className={"doc-layout" + (showHistory ? " has-history" : "")}>
+        <div className="doc-page">
+          <input
+            id="doc-title"
+            className="doc-title"
+            value={title}
+            placeholder="Untitled"
+            maxLength={200}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              queueSave(e.target.value, blocks);
+            }}
+          />
 
-        <div className="doc-body">
-          {blocks.map((block, index) =>
-            focused === index ? (
-              <textarea
-                key={`${index}-${block.type}`}
-                id={`doc-block-${index}`}
-                ref={areaRef}
-                className="doc-input"
-                rows={1}
-                defaultValue={serializeBlock(block)}
-                onChange={(e) => {
-                  e.currentTarget.style.height = "auto";
-                  e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                  watchSlash(index, e.currentTarget.value, e.currentTarget);
-                  editBlock(index, e.currentTarget.value);
-                }}
-                onKeyDown={(e) => {
-                  // The slash menu owns Enter and the arrows while it is open.
-                  if (
-                    slash &&
-                    ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
-                  )
-                    return;
-                  onKey(e, index);
-                }}
-                onBlur={() => setFocused((f) => (f === index ? null : f))}
-              />
-            ) : (
-              <div key={index} className="doc-block-row">
-                <button
-                  className="doc-handle"
-                  aria-label="Block options"
-                  aria-haspopup="menu"
-                  onClick={(e) =>
-                    setMenu({
-                      index,
-                      at: e.currentTarget.getBoundingClientRect(),
-                    })
-                  }
-                >
-                  <GripVertical size={14} aria-hidden="true" />
-                </button>
-                <div
-                  className="doc-block"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setFocused(index)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      setFocused(index);
-                    }
+          <div className="doc-body">
+            {blocks.map((block, index) =>
+              focused === index ? (
+                <textarea
+                  key={`${index}-${block.type}`}
+                  id={`doc-block-${index}`}
+                  ref={areaRef}
+                  className="doc-input"
+                  rows={1}
+                  defaultValue={serializeBlock(block)}
+                  onChange={(e) => {
+                    e.currentTarget.style.height = "auto";
+                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                    watchSlash(index, e.currentTarget.value, e.currentTarget);
+                    editBlock(index, e.currentTarget.value);
                   }}
-                >
-                  <BlockView
-                    block={block}
-                    onToggleTodo={() => toggleTodo(index)}
-                  />
+                  onKeyDown={(e) => {
+                    // The slash menu owns Enter and the arrows while it is open.
+                    if (
+                      slash &&
+                      ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
+                    )
+                      return;
+                    onKey(e, index);
+                  }}
+                  onBlur={() => setFocused((f) => (f === index ? null : f))}
+                />
+              ) : (
+                <div key={index} className="doc-block-row">
+                  <button
+                    className="doc-handle"
+                    aria-label="Block options"
+                    aria-haspopup="menu"
+                    onClick={(e) =>
+                      setMenu({
+                        index,
+                        at: e.currentTarget.getBoundingClientRect(),
+                      })
+                    }
+                  >
+                    <GripVertical size={14} aria-hidden="true" />
+                  </button>
+                  <div
+                    className="doc-block"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setFocused(index)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        setFocused(index);
+                      }
+                    }}
+                  >
+                    <BlockView
+                      block={block}
+                      onToggleTodo={() => toggleTodo(index)}
+                    />
+                  </div>
                 </div>
-              </div>
-            ),
-          )}
-          <button
-            className="doc-add"
-            onClick={() => insertAfter(blocks.length - 1)}
-          >
-            <Plus size={14} aria-hidden="true" /> Add a block
-            <kbd>/</kbd>
-          </button>
-          {menu && (
-            <DocBlockMenu
-              anchor={menu.at}
-              block={blocks[menu.index]}
-              isFirst={menu.index === 0}
-              isLast={menu.index === blocks.length - 1}
-              onTurnInto={(kind) => turnInto(menu.index, kind)}
-              onMove={(by) => moveBlock(menu.index, by)}
-              onDuplicate={() => duplicate(menu.index)}
-              onDelete={() => removeAt(menu.index)}
-              onClose={() => setMenu(null)}
-            />
-          )}
-          {slash && (
-            <SlashMenu
-              anchor={slash.at}
-              query={slash.query}
-              onPick={pickSlash}
-              onClose={() => setSlash(null)}
-            />
-          )}
+              ),
+            )}
+            <button
+              className="doc-add"
+              onClick={() => insertAfter(blocks.length - 1)}
+            >
+              <Plus size={14} aria-hidden="true" /> Add a block
+              <kbd>/</kbd>
+            </button>
+            {menu && (
+              <DocBlockMenu
+                anchor={menu.at}
+                block={blocks[menu.index]}
+                isFirst={menu.index === 0}
+                isLast={menu.index === blocks.length - 1}
+                onTurnInto={(kind) => turnInto(menu.index, kind)}
+                onMove={(by) => moveBlock(menu.index, by)}
+                onDuplicate={() => duplicate(menu.index)}
+                onDelete={() => removeAt(menu.index)}
+                onClose={() => setMenu(null)}
+              />
+            )}
+            {slash && (
+              <SlashMenu
+                anchor={slash.at}
+                query={slash.query}
+                onPick={pickSlash}
+                onClose={() => setSlash(null)}
+              />
+            )}
+          </div>
+
+          <p className="doc-hint">
+            Click any line to edit it. Start a line with <code>#</code> for a
+            heading, <code>-</code> for a bullet, <code>- [ ]</code> for a
+            checkbox, <code>&gt;</code> to quote, <code>```</code> for code or{" "}
+            <code>$$</code> for a formula. Inline maths goes between single{" "}
+            <code>$</code> signs.
+          </p>
+
+          <DocComments docId={doc.id} userId={userId} report={report} />
         </div>
-
-        <p className="doc-hint">
-          Click any line to edit it. Start a line with <code>#</code> for a
-          heading, <code>-</code> for a bullet, <code>- [ ]</code> for a
-          checkbox, <code>&gt;</code> to quote, <code>```</code> for code or{" "}
-          <code>$$</code> for a formula. Inline maths goes between single{" "}
-          <code>$</code> signs.
-        </p>
-
-        <DocComments docId={doc.id} userId={userId} report={report} />
+        {showHistory && (
+          <DocHistory
+            doc={doc}
+            onClose={() => setShowHistory(false)}
+            report={report}
+            onRestored={(restored) => {
+              // The restored page is the page now: adopt it whole.
+              version.current = restored.version;
+              base.current = restored.content;
+              dirty.current = false;
+              setTitle(restored.title);
+              setBlocks(
+                restored.content.length
+                  ? restored.content
+                  : [{ type: "paragraph", text: "" }],
+              );
+              setNote("Restored an earlier version.");
+              onChanged(restored);
+            }}
+          />
+        )}
       </div>
     </div>
   );

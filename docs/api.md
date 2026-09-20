@@ -287,6 +287,27 @@ the project with no stage.
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`.
 
+## Page history
+
+Each time someone sits down and changes a document, the state they started from is kept. Saves
+arrive every second or so while someone types, so a state is kept only when the previous kept one
+is by someone else or more than five minutes old — history reads as sittings, not keystrokes.
+
+### `GET /docs/:id/versions` (auth)
+
+→ `[ { "version", "title", "author", "user_id", "created_at", "blocks" } ]`, newest first, without
+content. Empty until the document has been changed at least once.
+
+### `GET /docs/:id/versions/:version` (auth)
+
+→ the same fields plus `content`, the blocks as they were. `404` when that version is not kept.
+
+### `POST /docs/:id/versions/:version/restore` (auth)
+
+Puts that state back **as a new version on top** — history is only ever added to, and the state
+being replaced is kept like any other. → the document as it now is. Announced on the live channel,
+so other open tabs pick it up.
+
 ## Live changes to a document
 
 Editors that have a document open follow it, so two people can work on the same page at once.

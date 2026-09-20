@@ -28,6 +28,21 @@ export type DocBlock =
 
 export type DocBlockType = DocBlock["type"];
 
+/**
+ * A past state of a document, as history lists it. `content` is only
+ * carried when one version is asked for by itself; the list holds the size.
+ */
+export type DocVersion = {
+  version: number;
+  title: string;
+  /** Who saved the state that replaced this one. */
+  author: string | null;
+  user_id: string | null;
+  created_at: string;
+  blocks: number;
+  content?: DocBlock[];
+};
+
 export type Doc = {
   id: string;
   user_id: string;

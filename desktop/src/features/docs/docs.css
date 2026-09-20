@@ -643,3 +643,115 @@ h4.doc-heading {
   color: var(--color-muted);
   font-size: 0.76rem;
 }
+
+/* ---- page history ---- */
+
+/* The page and, when asked for, its history side by side. The bar above
+   stays 820px; the pair below may grow past it to fit the panel. */
+.doc-layout {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.doc-layout.has-history {
+  grid-template-columns: minmax(0, 820px) minmax(280px, 380px);
+}
+@media (max-width: 1100px) {
+  .doc-layout.has-history {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.icon-button.is-on {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+
+.doc-history {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  padding: 16px 18px 18px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.doc-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.doc-history-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  margin: 0;
+}
+.doc-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.doc-history-item {
+  width: 100%;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.doc-history-item:hover {
+  background: var(--color-hover);
+}
+.doc-history-item.is-chosen {
+  background: var(--color-selected);
+}
+.doc-history-item strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.doc-history-item small {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.doc-history-preview {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.doc-history-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-history-title {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+/* Read-only: no hover tint, no text cursor, so it is plainly not editable. */
+.doc-history-body .doc-block.is-static {
+  cursor: default;
+  font-size: 0.92rem;
+}
+.doc-history-body .doc-block.is-static:hover {
+  background: none;
+}

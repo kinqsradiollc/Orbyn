@@ -16,6 +16,7 @@ import {
   type DocBlock,
   type DocComment,
   type DocSummary,
+  type DocVersion,
   type Item,
 } from "@orbyn/core";
 import {
@@ -256,6 +257,7 @@ export async function docRoutes(app: FastifyInstance) {
           "This document changed somewhere else. Refresh and try again.",
         );
       if (body.content) await syncTicks(db, id, body.content);
+      await snapshot(db, id, u.id);
       await db.query(
         `UPDATE docs SET
            title = coalesce($2, title),
@@ -284,6 +286,146 @@ export async function docRoutes(app: FastifyInstance) {
     // to re-read the document finds the new version already there.
     await announceDocChange(pool, id, saved.version, editorOf(r));
     return saved;
+  });
+
+  /**
+   * Keep the state a save is about to replace. Saves come every second or
+   * so while someone types, so a state is kept only when the last kept one
+   * is by someone else or older than a sitting; history then reads as a
+   * list of sittings, not keystrokes.
+   */
+  const SITTING = "5 minutes";
+  async function snapshot(db: Queryable, docId: string, byUser: string) {
+    const current = (
+      await db.query<{ version: number; title: string; content: unknown }>(
+        "SELECT version, title, content FROM docs WHERE id = $1",
+        [docId],
+      )
+    ).rows[0];
+    if (!current) return;
+    const last = (
+      await db.query<{ user_id: string | null; recent: boolean }>(
+        `SELECT user_id, created_at > now() - $2::interval AS recent
+           FROM doc_versions WHERE doc_id = $1
+           ORDER BY version DESC LIMIT 1`,
+        [docId, SITTING],
+      )
+    ).rows[0];
+    if (last && last.recent && last.user_id === byUser) return;
+    await db.query(
+      `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
+         VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (doc_id, version) DO NOTHING`,
+      [
+        docId,
+        current.version,
+        current.title,
+        JSON.stringify(current.content),
+        byUser,
+      ],
+    );
+  }
+
+  const VERSION_COLUMNS = `v.version, v.title, v.created_at, v.user_id,
+    us.name AS author, jsonb_array_length(v.content) AS blocks`;
+
+  /** 404 unless the reader may see this document. */
+  async function mustSee(db: Queryable, id: string, u: UserRow) {
+    const row = (
+      await db.query<{ id: string }>(
+        `SELECT d.id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Document not found");
+  }
+
+  /** Past states of a document, newest first. */
+  app.get("/docs/:id/versions", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    await mustSee(reader(r.headers), id, u);
+    return (
+      await reader(r.headers).query<DocVersion>(
+        `SELECT ${VERSION_COLUMNS} FROM doc_versions v
+           LEFT JOIN users us ON us.id = v.user_id
+           WHERE v.doc_id = $1 ORDER BY v.version DESC LIMIT 200`,
+        [id],
+      )
+    ).rows;
+  });
+
+  /** One past state, with its content, to read or compare. */
+  app.get("/docs/:id/versions/:version", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const n = Number((r.params as { version: string }).version);
+    if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
+    await mustSee(reader(r.headers), id, u);
+    const row = (
+      await reader(r.headers).query<DocVersion>(
+        `SELECT ${VERSION_COLUMNS}, v.content FROM doc_versions v
+           LEFT JOIN users us ON us.id = v.user_id
+           WHERE v.doc_id = $1 AND v.version = $2`,
+        [id, n],
+      )
+    ).rows[0];
+    if (!row) fail(404, "That version is not kept");
+    return row;
+  });
+
+  /**
+   * Put a past state back. It becomes a new version on top, so history is
+   * only ever added to; the state being replaced is kept like any other.
+   */
+  app.post("/docs/:id/versions/:version/restore", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const n = Number((r.params as { version: string }).version);
+    if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
+    const restored = await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:write");
+      const past = (
+        await db.query<{ title: string; content: DocBlock[] }>(
+          "SELECT title, content FROM doc_versions WHERE doc_id = $1 AND version = $2",
+          [id, n],
+        )
+      ).rows[0];
+      if (!past) fail(404, "That version is not kept");
+      await syncTicks(db, id, past.content);
+      // A restore is a sitting of its own: always keep what it replaces.
+      const current = (
+        await db.query<{ version: number; title: string; content: unknown }>(
+          "SELECT version, title, content FROM docs WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      await db.query(
+        `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
+           VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (doc_id, version) DO NOTHING`,
+        [
+          id,
+          current.version,
+          current.title,
+          JSON.stringify(current.content),
+          u.id,
+        ],
+      );
+      await db.query(
+        `UPDATE docs SET title = $2, content = $3::jsonb, version = version + 1,
+           updated_at = now() WHERE id = $1`,
+        [id, past.title, JSON.stringify(past.content)],
+      );
+      return (
+        await db.query<Doc>(
+          `SELECT ${COLUMNS}, d.content FROM docs d
+             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+          [id],
+        )
+      ).rows[0];
+    });
+    await announceDocChange(pool, id, restored.version, editorOf(r));
+    return restored;
   });
 
   /**
