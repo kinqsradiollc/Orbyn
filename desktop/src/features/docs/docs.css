@@ -1,0 +1,298 @@
+/* Documents: a quiet reading surface that becomes an input where you click.
+   Every colour comes from the existing theme tokens — no new palette. */
+
+.docs-view {
+  display: grid;
+  gap: 18px;
+}
+
+.docs-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.docs-count {
+  font-size: 0.85rem;
+}
+
+.docs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.doc-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.doc-row:hover {
+  border-color: var(--color-borderHover);
+  background: var(--color-hover);
+}
+.doc-row > svg {
+  color: var(--color-muted);
+}
+.doc-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.doc-row-main strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 0.95rem;
+}
+.doc-row-main small,
+.doc-row-when {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+.doc-row-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-row-when {
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- editor --- */
+
+.doc-editor {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.doc-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.doc-bar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.doc-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  min-height: 18px;
+}
+.doc-save .spin {
+  animation: doc-spin 1s linear infinite;
+}
+@keyframes doc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-save .spin {
+    animation: none;
+  }
+}
+
+.doc-page {
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  padding: 28px clamp(18px, 4vw, 40px) 32px;
+  max-width: 820px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.doc-title {
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  background: none;
+  border: 0;
+  padding: 0 0 6px;
+  width: 100%;
+}
+.doc-title:focus {
+  outline: none;
+}
+.doc-title::placeholder {
+  color: var(--color-muted);
+}
+
+.doc-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+/* Grid items default to min-width:auto, which lets a long formula or code
+   line push the whole page sideways. Let them shrink so their own
+   overflow-x takes over instead. */
+.doc-body > *,
+.doc-block,
+.doc-block > * {
+  min-width: 0;
+}
+
+/* A block reads as text but is clickable; the hover tint shows it is editable. */
+.doc-block {
+  border-radius: 8px;
+  padding: 3px 8px;
+  margin-inline: -8px;
+  cursor: text;
+  min-height: 1.6em;
+}
+.doc-block:hover {
+  background: var(--color-hover);
+}
+.doc-block:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.doc-input {
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: var(--color-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin-inline: -8px;
+  width: calc(100% + 16px);
+  resize: none;
+  overflow: hidden;
+}
+.doc-input:focus {
+  outline: none;
+  border-color: var(--color-focus);
+}
+
+.doc-heading {
+  margin: 10px 0 2px;
+  font-family: "Manrope", sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+h2.doc-heading {
+  font-size: 1.3rem;
+}
+h3.doc-heading {
+  font-size: 1.1rem;
+}
+h4.doc-heading {
+  font-size: 0.98rem;
+}
+
+.doc-p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.doc-li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  line-height: 1.7;
+}
+.doc-marker {
+  color: var(--color-muted);
+  flex: none;
+  min-width: 1em;
+}
+.doc-check {
+  accent-color: var(--color-accent);
+  margin: 0;
+  flex: none;
+  /* Sit on the first line, not centred, when the label wraps. */
+  align-self: flex-start;
+  margin-top: 0.4em;
+}
+.doc-done {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.doc-quote {
+  margin: 4px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--color-borderStrong);
+  color: var(--color-muted);
+}
+
+.doc-code {
+  margin: 4px 0;
+  padding: 10px 12px;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.86rem;
+}
+.doc-code code {
+  background: none;
+  padding: 0;
+}
+
+.doc-divider {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 12px 0;
+}
+
+.doc-math {
+  margin: 6px 0;
+  padding: 10px 12px;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.math-inline .katex,
+.math-display .katex {
+  color: var(--color-text);
+}
+.math-error {
+  color: var(--color-warn);
+  background: var(--color-warnSoft);
+}
+
+.doc-hint {
+  margin: 10px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .doc-page {
+    padding: 20px 16px 24px;
+  }
+  .docs-head {
+    align-items: stretch;
+  }
+}

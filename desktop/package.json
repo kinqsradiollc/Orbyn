@@ -16,11 +16,13 @@
     "@orbyn/api-client": "1.0.0",
     "@orbyn/core": "1.0.0",
     "@simplewebauthn/browser": "^13.3.0",
+    "katex": "^0.16.47",
     "lucide-react": "^0.577.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@types/katex": "^0.16.8",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",

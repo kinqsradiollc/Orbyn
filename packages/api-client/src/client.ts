@@ -1,6 +1,10 @@
 import {
   HttpError,
   type AdminOverview,
+  type Doc,
+  type DocBlock,
+  type DocKind,
+  type DocSummary,
   type AiModelList,
   type AiProvider,
   type AiProviderKind,
@@ -555,6 +559,32 @@ export class OrbynClient {
   }
 
   // ---- lists and tags ----
+  // Documents
+  listDocs() {
+    return this.request<DocSummary[]>("/docs");
+  }
+  getDoc(id: string) {
+    return this.request<Doc>(`/docs/${id}`);
+  }
+  createDoc(input: {
+    title?: string;
+    kind?: DocKind;
+    team_id?: string | null;
+    item_id?: string | null;
+    content?: DocBlock[];
+  }) {
+    return this.request<Doc>("/docs", { method: "POST", body: input });
+  }
+  updateDoc(
+    id: string,
+    input: { title?: string; content?: DocBlock[]; version: number },
+  ) {
+    return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
+  }
+  deleteDoc(id: string) {
+    return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+  }
+
   listLists() {
     return this.request<TaskList[]>("/lists");
   }
