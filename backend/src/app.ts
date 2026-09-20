@@ -4,6 +4,7 @@ import { createService } from "./services/http.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
+import { mcpRoutes } from "./modules/mcp/routes.js";
 import { itemRoutes } from "./modules/items/routes.js";
 import { deviceRoutes } from "./modules/devices/routes.js";
 import { notificationRoutes } from "./modules/notifications/routes.js";
@@ -36,6 +37,7 @@ export const serviceModules: Record<
     authRoutes,
     userRoutes,
     inboundRoutes,
+    mcpRoutes,
     itemRoutes,
     deviceRoutes,
     notificationRoutes,
