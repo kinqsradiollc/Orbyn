@@ -492,6 +492,12 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 Booking pages take `assignment`: `"collective"` (default — a time is offered only when every required host is free, and it goes on all their calendars) or `"round_robin"` (a time is offered when any host is free, and each booking goes to the host with the fewest so far; `bookings.assigned_user_id` records who). Set it on `POST`/`PUT /booking-pages`.
 
+## Model Context Protocol (MCP)
+
+`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) so a person's own AI tools — Claude, Cursor, ChatGPT — can act on their planner. Authenticate with a personal API key as the `Authorization: Bearer ok_…` header. Point the client at `<APP_URL>/api/mcp`.
+
+Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools: `search_items` (query, limit?), `add_task` (title, notes?, due_at?, priority?), `get_agenda` (days?). Notifications (no `id`) get `202` with no body. Everything runs as the key's owner, with the same access their API key has.
+
 ## AI assistant
 
 ### `PUT /planner/prefs` — daily digest
