@@ -718,6 +718,11 @@ export function App() {
             items={items}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
+            onOpenDoc={(found) => {
+              setNoteDoc(found);
+              setView("Docs");
+            }}
+            onGoToProjects={() => setView("Projects")}
             onNewItem={() => newItem()}
             onPlanDay={planMyDay}
             onNavigate={navigate}
