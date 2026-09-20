@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import {
+  chatWebhookInput,
   fail,
   importInput,
   preferences,
+  type ChatChannel,
   type ImportSummary,
   type Session,
 } from "@orbyn/core";
@@ -15,6 +17,8 @@ import {
 } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { exportData, importData } from "../organize/portability.js";
+import { assertChatUrl, chatFor, postChat } from "../chat/channel.js";
+import { encryptSecret } from "../../lib/secrets.js";
 
 export async function userRoutes(app: FastifyInstance) {
   app.get("/me", async (r) => publicUser(await authenticate(r)));
@@ -102,5 +106,51 @@ export async function userRoutes(app: FastifyInstance) {
     return transaction((db) =>
       importData(db, { id: u.id, role: u.role }, d.format, d.data, d.dry_run),
     );
+  });
+
+  // Chat delivery: a Slack or Discord incoming webhook. The URL is a secret.
+  app.get("/me/chat", async (r): Promise<ChatChannel> => {
+    const u = await authenticate(r);
+    const kind = (
+      await pool.query<{ chat_webhook_kind: "slack" | "discord" | null }>(
+        "SELECT chat_webhook_kind FROM users WHERE id=$1",
+        [u.id],
+      )
+    ).rows[0].chat_webhook_kind;
+    return { kind };
+  });
+
+  app.put("/me/chat", async (r): Promise<ChatChannel> => {
+    const u = await authenticate(r);
+    const d = chatWebhookInput.parse(r.body);
+    assertChatUrl(d.kind, d.url);
+    await pool.query(
+      "UPDATE users SET chat_webhook_encrypted=$2, chat_webhook_kind=$3 WHERE id=$1",
+      [u.id, await encryptSecret(d.url), d.kind],
+    );
+    return { kind: d.kind };
+  });
+
+  app.delete("/me/chat", async (r, reply) => {
+    const u = await authenticate(r);
+    await pool.query(
+      "UPDATE users SET chat_webhook_encrypted=NULL, chat_webhook_kind=NULL WHERE id=$1",
+      [u.id],
+    );
+    return reply.code(204).send();
+  });
+
+  app.post("/me/chat/test", async (r, reply) => {
+    const u = await authenticate(r);
+    const chat = await chatFor(u.id);
+    if (!chat) fail(400, "Connect a chat webhook first.");
+    const ok = await postChat(
+      chat.kind,
+      chat.url,
+      "Orbyn is connected. Your reminders and daily digest will arrive here.",
+    );
+    if (!ok)
+      fail(502, "Couldn't reach the webhook. Check the URL and try again.");
+    return reply.code(204).send();
   });
 }

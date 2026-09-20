@@ -19,6 +19,7 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { PortabilitySettings } from "./PortabilitySettings";
 import { EmailToTask } from "./EmailToTask";
 import { McpNote } from "./McpNote";
+import { ChatDelivery } from "./ChatDelivery";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
 import { CalendarFeedCard, CalendarSubscriptions } from "./CalendarSettings";
@@ -99,6 +100,7 @@ export function ConnectionsSettings({ report }: Props) {
       <CalendarFeedCard report={report} />
       <CalendarSubscriptions report={report} />
       <EmailToTask report={report} />
+      <ChatDelivery report={report} />
       <McpNote />
       <PortabilitySettings report={report} />
     </>
