@@ -636,6 +636,12 @@ recording coordinate through PostgreSQL locks. Keep instances x `DB_POOL_MAX` wi
 `max_client_conn`. The full guide, with measured numbers and a capacity plan, is
 [scalability.md](scalability.md).
 
+One connection per API copy goes around PgBouncer: live documents ride a Postgres `LISTEN`, which a
+transaction pooler cannot hold open. `compose.yaml` sets `DATABASE_LISTEN_URL` to the primary
+directly, so with Compose there is nothing to do. Anywhere else that `DATABASE_URL` points at a
+pooler (Kubernetes, a managed pooler), set `DATABASE_LISTEN_URL` to the database itself — otherwise
+documents still save, but two open tabs never hear each other.
+
 ## Secrets key
 
 `SECRETS_KEY` is optional. Without it, Orbyn generates a key on first use and keeps it in the
