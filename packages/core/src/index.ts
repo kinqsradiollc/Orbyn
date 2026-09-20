@@ -10,3 +10,4 @@ export * from "./presentation.js";
 export * from "./richText.js";
 export * from "./quickadd.js";
 export * from "./offline.js";
+export * from "./quickcapture.js";
