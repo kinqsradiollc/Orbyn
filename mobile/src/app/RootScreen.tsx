@@ -57,6 +57,7 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
 import { TagsSheet } from "../screens/TagsSheet";
 import { DocsSheet } from "../screens/docs/DocsSheet";
+import { ProjectsSheet } from "../screens/docs/ProjectsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
@@ -77,7 +78,9 @@ type SheetName =
   | "booking"
   | "tags"
   | "habits"
-  | "docs";
+  | "docs"
+  | "agenda"
+  | "projects";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -575,6 +578,7 @@ export function RootScreen() {
                 {tab === "Today" && (
                   <TodayScreen
                     items={items}
+                    onOpenWorkspace={(what) => present({ sheet: what })}
                     onPlanDay={() => {
                       setTab("AI");
                       void assistant.ask(planDayPrompt);
@@ -772,6 +776,20 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
+        />
+        <DocsSheet
+          visible={sheet === "agenda"}
+          agenda
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onItemsChanged={() => void refresh()}
+        />
+        <ProjectsSheet
+          visible={sheet === "projects"}
+          items={items}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onOpenItem={openTask}
         />
         <TagsSheet
           visible={sheet === "tags"}
