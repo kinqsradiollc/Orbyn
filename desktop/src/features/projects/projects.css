@@ -74,36 +74,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* One progress bar shape, reused on the card and the detail header. */
-.project-bar {
-  display: block;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--color-track);
-  overflow: hidden;
-}
-.project-bar i {
-  display: block;
-  height: 100%;
-  background: var(--color-accent);
-  border-radius: 3px;
-}
-
-.chip {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-chip);
-  color: var(--color-chipText);
-  white-space: nowrap;
-  flex: none;
-}
-.chip-warn {
-  background: var(--color-warnSoft);
-  color: var(--color-warn);
-}
-
 /* ------------------------------------------------------------- detail --- */
 
 .project-bar-top {

@@ -527,6 +527,10 @@ export function App() {
                   {...listProps}
                   onNewItem={() => newItem()}
                   onNavigate={navigate}
+                  onOpenDoc={(found) => {
+                    setNoteDoc(found);
+                    setView("Docs");
+                  }}
                   onPlanDay={() => {
                     navigate("AI assistant");
                     void assistant.ask(planDayPrompt);
