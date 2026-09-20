@@ -431,7 +431,16 @@ export async function chooseHost(
   start: Date,
   end: Date,
   now = new Date(),
+  preferred?: string,
 ): Promise<string | null> {
+  // A routed host gets it when they're free; otherwise fall through to fair.
+  if (preferred && page.hosts.some((h) => h.user_id === preferred)) {
+    const free = await availableSlots(db, page, duration, start, end, {
+      now,
+      assignedHost: preferred,
+    });
+    if (free.some((f) => f.start_at === start.toISOString())) return preferred;
+  }
   const counts = new Map<string, number>();
   for (const row of (
     await db.query<{ assigned_user_id: string | null; n: number }>(

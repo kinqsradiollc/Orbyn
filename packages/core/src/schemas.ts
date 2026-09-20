@@ -1218,6 +1218,18 @@ const remindBefore = z
   .max(3, "Up to 3 reminders")
   .transform((a) => [...new Set(a)].sort((x, y) => y - x));
 
+export const routingRules = z
+  .array(
+    z
+      .object({
+        question_id: z.string().trim().min(1).max(40),
+        equals: z.string().trim().min(1).max(200),
+        host_user_id: z.uuid(),
+      })
+      .strict(),
+  )
+  .max(20);
+
 export const bookingPageInput = z
   .object({
     slug,
@@ -1243,6 +1255,8 @@ export const bookingPageInput = z
     questions: questions.default([]),
     /** How bookings are assigned across the hosts. */
     assignment: z.enum(["collective", "round_robin"]).default("collective"),
+    /** Route a matching answer to a host (round-robin pages). */
+    routing: routingRules.default([]),
     /** Hosts approve each request before it's booked. */
     requires_approval: z.boolean().default(false),
     /** Bookers can move their booking from their manage link. */
@@ -1279,6 +1293,7 @@ export const bookingPageUpdate = z
     date_overrides: overrides.optional(),
     questions: questions.optional(),
     assignment: z.enum(["collective", "round_robin"]).optional(),
+    routing: routingRules.optional(),
     requires_approval: z.boolean().optional(),
     allow_reschedule: z.boolean().optional(),
     event_title: eventTitle.optional(),

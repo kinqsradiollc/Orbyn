@@ -10,7 +10,7 @@ import type { InviteRow, PageRow } from "./availability.js";
 export const PAGE_COLUMNS = `p.id, p.owner_id, p.slug, p.title, p.description, p.durations, p.window_days,
   p.min_notice_minutes, p.buffer_before_minutes, p.buffer_after_minutes, p.slot_interval_minutes,
   p.max_per_day, p.max_per_week, p.location, p.meeting_url, p.active, p.color, p.availability,
-  p.date_overrides, p.questions, p.assignment, p.requires_approval, p.allow_reschedule, p.event_title,
+  p.date_overrides, p.questions, p.assignment, p.routing, p.requires_approval, p.allow_reschedule, p.event_title,
   p.confirmation_message, p.created_at, p.updated_at, p.team_id, p.remind_before_minutes,
   (SELECT name FROM teams WHERE id = p.team_id) AS team_name,
   coalesce((SELECT json_agg(json_build_object('user_id', h.user_id, 'name', u.name, 'required', h.required)
@@ -90,6 +90,7 @@ export async function inviteAsPage(
     date_overrides: [],
     questions: [],
     assignment: "collective",
+    routing: [],
     requires_approval: false,
     allow_reschedule: true,
     event_title: "{page} with {name}",

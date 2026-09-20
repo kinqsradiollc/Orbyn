@@ -222,6 +222,7 @@ const pageValues = (p: PageFields) => [
   p.team_id ?? null,
   p.remind_before_minutes ?? DEFAULT_BOOKER_REMINDERS,
   p.assignment,
+  JSON.stringify(p.routing ?? []),
 ];
 
 /** Lock a booking that `u` can act on, with its page. */
@@ -420,9 +421,9 @@ export async function bookingRoutes(app: FastifyInstance) {
                slot_interval_minutes, max_per_day, max_per_week, location, meeting_url, active,
                color, availability, date_overrides, questions, requires_approval,
                allow_reschedule, event_title, confirmation_message, team_id,
-               remind_before_minutes, assignment)
+               remind_before_minutes, assignment, routing)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
-               $24,$25::smallint[],$26)
+               $24,$25::smallint[],$26,$27)
              RETURNING id`,
             [u.id, ...pageValues(fields)],
           )
@@ -470,7 +471,7 @@ export async function bookingRoutes(app: FastifyInstance) {
              availability=$17, date_overrides=$18, questions=$19, requires_approval=$20,
              allow_reschedule=$21, event_title=$22, confirmation_message=$23,
              team_id=$24, remind_before_minutes=$25::smallint[], assignment=$26,
-             updated_at=now()
+             routing=$27, updated_at=now()
            WHERE id=$1`,
           [current.id, ...pageValues(next)],
         )
@@ -846,10 +847,24 @@ export async function bookingRoutes(app: FastifyInstance) {
         const free = await availableSlots(db, page, d.duration, start, end);
         if (!free.some((s) => s.start_at === start.toISOString()))
           fail(409, "That time was just taken. Pick another time.");
-        // Round-robin: give this booking to the fairest host free at the slot.
+        // Round-robin: give this booking to the fairest host free at the slot,
+        // preferring a host a routing rule points to for these answers.
+        const routed = page.routing.find(
+          (rule) =>
+            (answers[rule.question_id] ?? "").trim().toLowerCase() ===
+            rule.equals.trim().toLowerCase(),
+        )?.host_user_id;
         const assigned =
           page.assignment === "round_robin"
-            ? await chooseHost(db, page, d.duration, start, end)
+            ? await chooseHost(
+                db,
+                page,
+                d.duration,
+                start,
+                end,
+                undefined,
+                routed,
+              )
             : null;
         if (page.assignment === "round_robin" && !assigned)
           fail(409, "That time was just taken. Pick another time.");

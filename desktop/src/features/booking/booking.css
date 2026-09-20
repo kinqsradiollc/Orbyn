@@ -1031,3 +1031,21 @@
 .radio-line small {
   color: var(--muted);
 }
+
+/* Round-robin answer routing rules. */
+.routing-rules {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.routing-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.routing-rule select,
+.routing-rule input {
+  flex: 1;
+  min-width: 90px;
+}
