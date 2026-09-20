@@ -11,6 +11,7 @@
     "export": "expo export --platform ios --platform android"
   },
   "dependencies": {
+    "@bacons/apple-targets": "^5.0.0",
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/manrope": "^0.4.2",
     "@orbyn/api-client": "1.0.0",

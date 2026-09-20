@@ -16,6 +16,7 @@ import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
 import { deviceTimeZone } from "../lib/planning";
+import { publishGlance } from "../lib/widget";
 import { animateLayout } from "../motion";
 
 export type SignInInput = {
@@ -69,6 +70,7 @@ export function usePlanner() {
 
   const resetSession = () => {
     void clearCache();
+    publishGlance([]);
     setToken("");
     setItems([]);
     setNotices([]);
@@ -143,6 +145,8 @@ export function usePlanner() {
           lists: l,
           tags: g,
         });
+        // Refresh the home-screen widget's glance (iOS only; no-ops elsewhere).
+        publishGlance(list);
       } finally {
         if (tokenRef.current === token && !options?.silent)
           setRefreshing(false);

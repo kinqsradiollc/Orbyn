@@ -65,7 +65,58 @@ from the text (via `POST /items/quick`) and refreshes. No native extension is ne
 
 The person must already be signed in on the device. On-device behaviour is verified by hand; the
 link parser (`parseAddDeepLink` in `@orbyn/core`) is unit-tested. Home-screen widgets and an Apple
-Watch app are separate native targets and are not part of this.
+Watch app are separate native targets — see the next section.
+
+## Home-screen widget & Apple Watch (native)
+
+The app ships the data side of a home-screen widget and an Apple Watch app, plus the native target
+sources under `mobile/targets/`. The Swift is built in Xcode — it is **not** compiled by CI (CI only
+type-checks the JS and bundles with Metro), so treat it as reviewed-but-unverified until you build it
+on a Mac.
+
+How it works:
+
+- `@orbyn/core` `buildGlance()` turns the person's items into a compact "glance" (open/done tasks
+  today, overdue count, next event). It is unit-tested.
+- `mobile/src/lib/widget.ts` writes that glance to the shared **App Group** container after every
+  refresh and calls `ExtensionStorage.reloadWidget()` (`@bacons/apple-targets`). It no-ops off iOS
+  and in Expo Go, so it is always safe to call.
+- `mobile/targets/widget/` is a WidgetKit widget (small + medium) that reads the glance from the App
+  Group. `mobile/targets/watch/` is a SwiftUI Watch app that receives the glance over
+  WatchConnectivity and caches it.
+
+To build it, add these to `app.json` (kept out of git because it also holds your EAS project id):
+
+```jsonc
+{
+  "expo": {
+    "ios": {
+      "appleTeamId": "YOURTEAMID",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.orbyn.planner"],
+      },
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      "@react-native-community/datetimepicker",
+      "@bacons/apple-targets",
+    ],
+  },
+}
+```
+
+Then generate and build the native project:
+
+```sh
+cd mobile
+npx expo prebuild -p ios --clean
+xed ios   # select the OrbynWidget / OrbynWatch scheme and run
+```
+
+Remaining native wiring (documented TODOs in the target sources): the **phone side** must send the
+glance to the Watch with `WCSession.updateApplicationContext` (a small native module), since watchOS
+can't read the phone's App Group. The widget needs no extra wiring once the App Group is set.
 
 ## Build and release
 
