@@ -903,6 +903,19 @@ export type AtRiskTask = UnplacedTask & {
 };
 
 /** What needs attention in the plan. */
+/** Where set-aside time went over a period: totals, by list and by tag. */
+export type PlannerAnalytics = {
+  from: string;
+  to: string;
+  days: number;
+  /** Minutes set aside (time blocks) in the range. */
+  planned_minutes: number;
+  /** Tasks marked done in the range. */
+  completed: number;
+  by_list: { name: string; minutes: number }[];
+  by_tag: { name: string; minutes: number }[];
+};
+
 export type PlannerReview = {
   /** Past blocks whose tasks are still open. */
   unfinished: TimeBlock[];

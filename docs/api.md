@@ -504,6 +504,10 @@ Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools: `searc
 
 Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "morning_time": "HH:MM", "evening_time": "HH:MM" }`. Both digests are **off by default**. When a mail server is configured, the worker emails each enabled digest once a day at its local time — a morning agenda (today's events, due tasks, set-aside time, habits, at-risk warnings) and an evening review (what's still open, tomorrow's start).
 
+### `GET /planner/analytics` (auth)
+
+`?days=` (default 30). Where your set-aside time went: `{ from, to, days, planned_minutes, completed, by_list: [{name, minutes}], by_tag: [{name, minutes}] }`, from your own time blocks and finished tasks. Private to you.
+
 ### `GET /planner/estimates` (auth)
 
 What the planner has learned about how long tasks really take: `{ overall: { ratio, samples }, tags: [{ tag_id, name, ratio, samples }], applied }`. `ratio` is actual ÷ estimated over finished tasks (clamped 0.5–3, held at 1 below 3 samples). With `learn_estimates` on in planner prefs, the planner scales each task's estimate by the matching tag's ratio, else the overall one — the stored estimate is never changed.

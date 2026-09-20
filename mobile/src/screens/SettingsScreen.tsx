@@ -18,6 +18,7 @@ import {
   type TwoFactorSetup,
   type ImportSummary,
   type InboxInfo,
+  type PlannerAnalytics,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -138,6 +139,7 @@ export function SettingsScreen({
     null,
   );
   const [inbox, setInbox] = useState<InboxInfo | null>(null);
+  const [analytics, setAnalytics] = useState<PlannerAnalytics | null>(null);
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -169,6 +171,7 @@ export function SettingsScreen({
       () => setTfaOn(false),
     );
     client.getInbox().then(setInbox, () => setInbox(null));
+    client.getAnalytics(30).then(setAnalytics, () => setAnalytics(null));
   }, []);
   useEffect(() => {
     let live = true;
@@ -271,6 +274,35 @@ export function SettingsScreen({
           onPress={onOpenConnections}
         />
       </View>
+
+      {analytics && analytics.planned_minutes > 0 && (
+        <>
+          <Text style={[shared.eyebrow, s.section]}>WHERE YOUR TIME GOES</Text>
+          <View style={shared.card}>
+            <Text style={shared.body}>
+              {Math.round(analytics.planned_minutes / 60)} h set aside and{" "}
+              {analytics.completed} task
+              {analytics.completed === 1 ? "" : "s"} finished in the last 30
+              days.
+            </Text>
+            {analytics.by_list.slice(0, 5).map((l, i) => (
+              <View
+                key={l.name}
+                style={[s.analyticsRow, i > 0 && s.sessionDivider]}
+              >
+                <Text style={[shared.body, { flex: 1 }]} numberOfLines={1}>
+                  {l.name}
+                </Text>
+                <Text style={s.prefTitle}>
+                  {l.minutes >= 60
+                    ? `${Math.round(l.minutes / 60)} h`
+                    : `${l.minutes} min`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
 
       {countBlocks !== null && (
         <>
@@ -820,6 +852,12 @@ const s = themed(() =>
     },
     section: { marginTop: 8 },
     preference: { flexDirection: "row", alignItems: "center", gap: 16 },
+    analyticsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 6,
+    },
     sessionRow: {
       flexDirection: "row",
       alignItems: "center",
