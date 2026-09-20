@@ -472,3 +472,16 @@ h4.doc-heading {
   outline: none;
   border-color: var(--color-focus);
 }
+
+/* Word that the page changed under you, and what was done about it. */
+.doc-merged {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  background: var(--color-soft);
+}

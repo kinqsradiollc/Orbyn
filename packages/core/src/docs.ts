@@ -323,3 +323,68 @@ export const docTodos = (blocks: DocBlock[]) =>
   blocks.flatMap((b, index) =>
     b.type === "todo" ? [{ index, text: b.text, done: b.done }] : [],
   );
+
+// ------------------------------------------------------------- merging ---
+
+/** Two versions of a block that changed differently from the same start. */
+export type DocConflict = { index: number; mine: DocBlock; theirs: DocBlock };
+
+export type DocMerge = { blocks: DocBlock[]; conflicts: DocConflict[] };
+
+const sameBlock = (a: DocBlock, b: DocBlock) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Bring two people's edits together from the version they both started at.
+ *
+ * Blocks only one of them touched are taken as they left them. Where both
+ * changed the same block, theirs is kept and yours is handed back as a
+ * conflict, so the page can offer it rather than dropping it silently — the
+ * one thing a shared document must never do.
+ *
+ * Added and removed blocks are handled at the ends: whichever side is longer
+ * contributes its extra blocks, so two people writing in different parts of a
+ * page both keep their work.
+ */
+export function mergeDocs(
+  base: DocBlock[],
+  mine: DocBlock[],
+  theirs: DocBlock[],
+): DocMerge {
+  const conflicts: DocConflict[] = [];
+  const length = Math.max(base.length, mine.length, theirs.length);
+  const blocks: DocBlock[] = [];
+
+  for (let i = 0; i < length; i++) {
+    const b = base[i];
+    const m = mine[i];
+    const t = theirs[i];
+
+    // One side ran out: take whatever the other still has.
+    if (m === undefined && t === undefined) continue;
+    if (m === undefined) {
+      blocks.push(t);
+      continue;
+    }
+    if (t === undefined) {
+      blocks.push(m);
+      continue;
+    }
+
+    const iChanged = b === undefined || !sameBlock(b, m);
+    const theyChanged = b === undefined || !sameBlock(b, t);
+
+    if (!iChanged) blocks.push(t);
+    else if (!theyChanged) blocks.push(m);
+    else if (sameBlock(m, t)) blocks.push(m);
+    else {
+      // Both rewrote the same line. Neither is thrown away: the one already
+      // saved stands where the line was, and yours follows it, so whoever
+      // reads the page next can see both and decide.
+      blocks.push(t, m);
+      conflicts.push({ index: i, mine: m, theirs: t });
+    }
+  }
+
+  return { blocks: blocks.length ? blocks : emptyDoc(), conflicts };
+}
