@@ -16,6 +16,7 @@ import {
   type User,
   type Session,
   type TwoFactorSetup,
+  type ImportSummary,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -129,6 +130,12 @@ export function SettingsScreen({
   const [tfaCodes, setTfaCodes] = useState<string[] | null>(null);
   const [tfaPassword, setTfaPassword] = useState("");
   const [disabling, setDisabling] = useState(false);
+  const [exported, setExported] = useState("");
+  const [importText, setImportText] = useState("");
+  const [importFormat, setImportFormat] = useState<"csv" | "orbyn">("csv");
+  const [importPreview, setImportPreview] = useState<ImportSummary | null>(
+    null,
+  );
   const takePrefs = (p: PlannerPrefs) => {
     setNotices(noticePrefs(p));
     setCountBlocks(p.count_blocks_as_spent ?? false);
@@ -563,6 +570,104 @@ export function SettingsScreen({
         )}
       </View>
 
+      <Text style={[shared.eyebrow, s.section]}>IMPORT & EXPORT</Text>
+      <View style={shared.card}>
+        <Text style={shared.body}>
+          Take your data with you, or bring it in from another app.
+        </Text>
+        <Button
+          secondary
+          title="Export my data"
+          disabled={busy}
+          style={{ marginTop: 12, marginBottom: 0 }}
+          onPress={() =>
+            void act(async () => {
+              const archive = await client.exportData();
+              setExported(JSON.stringify(archive, null, 2));
+            })
+          }
+        />
+        {!!exported && (
+          <TextInput
+            style={[shared.input, s.exportBox]}
+            value={exported}
+            multiline
+            editable={false}
+            selectTextOnFocus
+            accessibilityLabel="Your export — long-press to copy"
+          />
+        )}
+        <Text style={[shared.label, { marginTop: 16 }]}>Import</Text>
+        <View style={{ marginTop: 8 }}>
+          <Segmented
+            accessibilityLabel="Import format"
+            options={["csv", "orbyn"] as const}
+            labels={{ csv: "CSV", orbyn: "Orbyn JSON" }}
+            value={importFormat}
+            onChange={(f) => {
+              setImportFormat(f);
+              setImportPreview(null);
+            }}
+          />
+        </View>
+        <TextInput
+          style={[shared.input, s.exportBox, { marginTop: 10 }]}
+          value={importText}
+          multiline
+          placeholder="Paste a CSV (with a title column) or an Orbyn export"
+          placeholderTextColor={colors.faint}
+          onChangeText={(t) => {
+            setImportText(t);
+            setImportPreview(null);
+          }}
+        />
+        <View style={s.importRow}>
+          <SmallAction
+            label="Preview"
+            disabled={busy || !importText.trim()}
+            onPress={() =>
+              void act(async () => {
+                setImportPreview(
+                  await client.importData({
+                    format: importFormat,
+                    data: importText,
+                    dry_run: true,
+                  }),
+                );
+              })
+            }
+          />
+          {importPreview && importPreview.created > 0 && (
+            <SmallAction
+              label={`Import ${importPreview.created}`}
+              disabled={busy}
+              onPress={() =>
+                void act(async () => {
+                  await client.importData({
+                    format: importFormat,
+                    data: importText,
+                    dry_run: false,
+                  });
+                  setImportText("");
+                  setImportPreview(null);
+                })
+              }
+            />
+          )}
+        </View>
+        {importPreview && (
+          <Text style={[shared.small, { marginTop: 8 }]}>
+            {importPreview.created} item
+            {importPreview.created === 1 ? "" : "s"},{" "}
+            {importPreview.lists_added} new list
+            {importPreview.lists_added === 1 ? "" : "s"},{" "}
+            {importPreview.tags_added} new tag
+            {importPreview.tags_added === 1 ? "" : "s"}
+            {importPreview.skipped ? `, ${importPreview.skipped} skipped` : ""}.
+          </Text>
+        )}
+      </View>
+
       <Text style={[shared.eyebrow, s.section]}>AI PROVIDER</Text>
       <View style={shared.card}>
         <Text style={shared.body}>
@@ -670,6 +775,14 @@ const s = themed(() =>
       marginTop: 6,
       paddingTop: 12,
     },
+    exportBox: {
+      marginTop: 12,
+      minHeight: 90,
+      maxHeight: 200,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+    },
+    importRow: { flexDirection: "row", gap: 12, marginTop: 10 },
     recoveryCode: {
       fontFamily: fonts.semibold,
       fontSize: 15,

@@ -14,6 +14,7 @@ import {
   type TwoFactorStatus,
   type TwoFactorSetup,
   type TwoFactorEnabled,
+  type ImportSummary,
   type ChatTurn,
   type Credentials,
   type Item,
@@ -354,6 +355,22 @@ export class OrbynClient {
     return this.request<void>("/me/2fa/disable", {
       method: "POST",
       body: { password },
+    });
+  }
+  // ---- import / export ----
+  /** Your planner data as a JSON archive to keep. */
+  exportData() {
+    return this.request<unknown>("/me/export");
+  }
+  /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
+  importData(input: {
+    format: "orbyn" | "csv";
+    data: string;
+    dry_run?: boolean;
+  }) {
+    return this.request<ImportSummary>("/me/import", {
+      method: "POST",
+      body: input,
     });
   }
   /** Confirm an email address from a verification link (signed in or not). */

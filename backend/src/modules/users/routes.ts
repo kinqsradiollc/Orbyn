@@ -1,6 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { fail, preferences, type Session } from "@orbyn/core";
-import { pool } from "../../db/pool.js";
+import {
+  fail,
+  importInput,
+  preferences,
+  type ImportSummary,
+  type Session,
+} from "@orbyn/core";
+import { pool, transaction } from "../../db/pool.js";
 import {
   authenticate,
   bearerToken,
@@ -8,6 +14,7 @@ import {
   publicUser,
 } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
+import { exportData, importData } from "../organize/portability.js";
 
 export async function userRoutes(app: FastifyInstance) {
   app.get("/me", async (r) => publicUser(await authenticate(r)));
@@ -75,5 +82,25 @@ export async function userRoutes(app: FastifyInstance) {
       [u.id, here],
     );
     return { signed_out: gone.rowCount ?? 0 };
+  });
+
+  // Leave with everything: your lists, tags, habits and personal items.
+  app.get("/me/export", async (r, reply) => {
+    const u = await authenticate(r);
+    const data = await exportData(pool, u.id);
+    reply.header(
+      "content-disposition",
+      `attachment; filename="orbyn-export-${new Date().toISOString().slice(0, 10)}.json"`,
+    );
+    return data;
+  });
+
+  // Bring items in from an Orbyn export or a CSV. Defaults to a dry run.
+  app.post("/me/import", async (r): Promise<ImportSummary> => {
+    const u = await authenticate(r);
+    const d = importInput.parse(r.body);
+    return transaction((db) =>
+      importData(db, { id: u.id, role: u.role }, d.format, d.data, d.dry_run),
+    );
   });
 }
