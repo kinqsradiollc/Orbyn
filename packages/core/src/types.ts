@@ -25,6 +25,9 @@ import type {
   frameInput,
   frameSkipInput,
   frameUpdate,
+  habitInput,
+  habitUpdate,
+  habitPlanInput,
   bufferScopeInput,
   inviteBookingRequest,
   itemData,
@@ -576,6 +579,8 @@ export type CalendarView = {
   frames?: FrameOccurrence[];
   /** Events from calendars you subscribe to. */
   external?: ExternalEntry[];
+  /** Habit sessions already set aside in the range. */
+  habit_blocks?: HabitBlock[];
 };
 
 /** One event found by `GET /calendar/search`: yours, or from a subscription. */
@@ -669,6 +674,64 @@ export type Frame = {
   exdates?: string[];
   /** Its time zone; the owner's planner zone when null. */
   timezone?: string | null;
+};
+
+/** How often a habit repeats. */
+export type HabitPeriod = "day" | "week";
+
+/**
+ * A flexible routine. The planner fits `cadence` sessions of `duration_minutes`
+ * into each period, on the allowed `days` and inside the time-of-day window,
+ * and moves them as the calendar changes — unlike a rigid recurring event.
+ */
+export type Habit = {
+  id: string;
+  name: string;
+  cadence: number;
+  period: HabitPeriod;
+  duration_minutes: number;
+  /** Weekdays a session may land on (0 = Sunday). */
+  days: number[];
+  /** Time-of-day window; null means "my working hours". */
+  window_start: string | null;
+  window_end: string | null;
+  priority: Priority;
+  active: boolean;
+  position: number;
+  created_at: string;
+  /** Sessions already set aside this period, and the target for it. */
+  progress?: { done: number; target: number };
+};
+
+/** One placed session of a habit, shown on the calendar. */
+export type HabitBlock = {
+  id: string;
+  habit_id: string;
+  name: string;
+  start_at: string;
+  end_at: string;
+  source: "manual" | "planner";
+};
+
+/** A session the habit planner proposes, before it is applied. */
+export type ProposedHabitBlock = {
+  habit_id: string;
+  name: string;
+  start_at: string;
+  end_at: string;
+};
+
+/** What planning habits found: sessions to add, and what couldn't be fit. */
+export type HabitPlan = {
+  blocks: ProposedHabitBlock[];
+  /** Per habit: how many of the period's target were placed. */
+  summary: {
+    habit_id: string;
+    name: string;
+    placed: number;
+    needed: number;
+    reason: string | null;
+  }[];
 };
 
 /** A place and the time it takes to get there. */
@@ -1166,6 +1229,9 @@ export type BlockUpdate = z.input<typeof blockUpdate>;
 export type PlannerPrefsInput = z.input<typeof plannerPrefsInput>;
 export type FrameInput = z.input<typeof frameInput>;
 export type FrameUpdate = z.input<typeof frameUpdate>;
+export type HabitInput = z.input<typeof habitInput>;
+export type HabitUpdate = z.input<typeof habitUpdate>;
+export type HabitPlanInput = z.input<typeof habitPlanInput>;
 export type PlaceInput = z.input<typeof placeInput>;
 export type PlaceUpdate = z.input<typeof placeUpdate>;
 export type PlanPreviewInput = z.input<typeof planPreviewInput>;

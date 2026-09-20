@@ -1,12 +1,15 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomBytes } from "node:crypto";
 import {
+  addDays,
   blockDuplicateInput,
   blockInput,
   blockUpdate,
   calendarFeedCreateInput,
   calendarFeedSettingsInput,
   calendarSearchQuery,
+  clockMinutes,
+  dayTime,
   fail,
   type CalendarFeed,
   type CalendarFeedSettings,
@@ -15,6 +18,10 @@ import {
   frameInput,
   frameSkipInput,
   frameUpdate,
+  habitApplyInput,
+  habitInput,
+  habitPlanInput,
+  habitUpdate,
   localDateKey,
   placeInput,
   placeUpdate,
@@ -26,6 +33,9 @@ import {
   type CalendarView,
   type Frame,
   type FrameOccurrence,
+  type Habit,
+  type HabitBlock,
+  type HabitPlan,
   type Place,
   type Plan,
   type PlannerPrefs,
@@ -64,6 +74,7 @@ import {
 } from "./plans.js";
 import { icsFeed } from "./ics.js";
 import { externalEntries } from "./subscriptions.js";
+import { habitBlocksIn, habitById, loadHabits, placeHabits } from "./habits.js";
 import { settings } from "../../lib/settings.js";
 
 const DAY_MS = 86_400_000;
@@ -342,6 +353,174 @@ export async function plannerRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
+  // ---- habits: flexible routines the planner fits into free time ----------
+
+  app.get("/planner/habits", async (r): Promise<Habit[]> => {
+    const u = await authenticate(r);
+    return loadHabits(reader(r.headers), u.id);
+  });
+
+  app.post("/planner/habits", async (r, reply): Promise<Habit> => {
+    const u = await authenticate(r);
+    const d = habitInput.parse(r.body);
+    const habit = (
+      await pool.query<{ id: string }>(
+        `INSERT INTO habits
+           (user_id, name, cadence, period, duration_minutes, days,
+            window_start, window_end, priority, active, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+           (SELECT coalesce(max(position), -1) + 1 FROM habits WHERE user_id = $1))
+         RETURNING id`,
+        [
+          u.id,
+          d.name,
+          d.cadence,
+          d.period,
+          d.duration_minutes,
+          d.days,
+          d.window_start,
+          d.window_end,
+          d.priority,
+          d.active,
+        ],
+      )
+    ).rows[0];
+    reply.code(201);
+    return (await habitById(pool, habit.id, u.id))!;
+  });
+
+  app.put("/planner/habits/:id", async (r): Promise<Habit> => {
+    const u = await authenticate(r);
+    const d = habitUpdate.parse(r.body);
+    return transaction(async (db) => {
+      const current = await habitById(db, idParam(r), u.id);
+      if (!current) fail(404, "Habit not found");
+      const start =
+        d.window_start === undefined ? current.window_start : d.window_start;
+      const end =
+        d.window_end === undefined ? current.window_end : d.window_end;
+      if (start && end && end <= start)
+        fail(422, "A habit's window ends after it starts");
+      await db.query(
+        `UPDATE habits SET name = $3, cadence = $4, period = $5,
+           duration_minutes = $6, days = $7, window_start = $8, window_end = $9,
+           priority = $10, active = $11, position = $12, updated_at = now()
+         WHERE id = $1 AND user_id = $2`,
+        [
+          current.id,
+          u.id,
+          d.name ?? current.name,
+          d.cadence ?? current.cadence,
+          d.period ?? current.period,
+          d.duration_minutes ?? current.duration_minutes,
+          d.days ?? current.days,
+          start,
+          end,
+          d.priority ?? current.priority,
+          d.active ?? current.active,
+          d.position ?? current.position,
+        ],
+      );
+      return (await habitById(db, current.id, u.id))!;
+    });
+  });
+
+  app.delete("/planner/habits/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM habits WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Habit not found");
+    return reply.code(204).send();
+  });
+
+  // Propose sessions for the active habits over the next few days. Nothing is
+  // saved; the client shows them and applies the ones the user keeps.
+  app.post("/planner/habits/plan", async (r): Promise<HabitPlan> => {
+    const u = await authenticate(r);
+    const d = habitPlanInput.parse(r.body);
+    const now = new Date();
+    const prefs = await loadPrefs(pool, u.id);
+    const start = d.start_date ?? localDateKey(now, prefs.timezone);
+    const days = Array.from({ length: d.days }, (_, i) => addDays(start, i));
+    const from = dayTime(days[0], 0, prefs.timezone);
+    const to = dayTime(addDays(days.at(-1)!, 1), 0, prefs.timezone);
+    const habits = await loadHabits(pool, u.id, true);
+    if (!habits.length) return { blocks: [], summary: [] };
+    const [busy, existing] = await Promise.all([
+      busyIntervals(pool, u.id, from, to),
+      habitBlocksIn(pool, u.id, from, to),
+    ]);
+    return placeHabits({
+      habits,
+      busy: busy.map((b) => ({
+        start: Date.parse(b.start_at),
+        end: Date.parse(b.end_at),
+      })),
+      days,
+      timezone: prefs.timezone,
+      workStart: clockMinutes(prefs.work_start),
+      workEnd: clockMinutes(prefs.work_end),
+      existing: existing.map((b) => ({
+        habit_id: b.habit_id,
+        start: Date.parse(b.start_at),
+      })),
+      now: now.getTime(),
+    });
+  });
+
+  // Save proposed sessions, skipping any that now clash with busy time.
+  app.post("/planner/habits/plan/apply", async (r): Promise<HabitBlock[]> => {
+    const u = await authenticate(r);
+    const d = habitApplyInput.parse(r.body);
+    return transaction(async (db) => {
+      const mine = new Set((await loadHabits(db, u.id)).map((h) => h.id));
+      const starts = d.blocks.map((b) => Date.parse(b.start_at));
+      const ends = d.blocks.map((b) => Date.parse(b.end_at));
+      const busy = await busyIntervals(
+        db,
+        u.id,
+        new Date(Math.min(...starts)),
+        new Date(Math.max(...ends)),
+      );
+      const created: string[] = [];
+      for (const b of d.blocks) {
+        if (!mine.has(b.habit_id)) continue;
+        if (Date.parse(b.end_at) <= Date.parse(b.start_at)) continue;
+        const clash = busy.some(
+          (x) => x.start_at < b.end_at && b.start_at < x.end_at,
+        );
+        if (clash) continue;
+        const { id } = (
+          await db.query<{ id: string }>(
+            `INSERT INTO habit_blocks (habit_id, user_id, start_at, end_at)
+             VALUES ($1, $2, $3, $4) RETURNING id`,
+            [b.habit_id, u.id, b.start_at, b.end_at],
+          )
+        ).rows[0];
+        created.push(id);
+        busy.push({ start_at: b.start_at, end_at: b.end_at });
+      }
+      return habitBlocksIn(
+        db,
+        u.id,
+        new Date(Math.min(...starts)),
+        new Date(Math.max(...ends) + 1),
+      );
+    });
+  });
+
+  app.delete("/planner/habits/blocks/:id", async (r, reply) => {
+    const u = await authenticate(r);
+    const deleted = await pool.query(
+      "DELETE FROM habit_blocks WHERE id = $1 AND user_id = $2",
+      [idParam(r), u.id],
+    );
+    if (!deleted.rowCount) fail(404, "Habit session not found");
+    return reply.code(204).send();
+  });
+
   app.get("/planner/places", async (r) => {
     const u = await authenticate(r);
     return loadPlaces(reader(r.headers), u.id);
@@ -407,13 +586,15 @@ export async function plannerRoutes(app: FastifyInstance) {
     const from = new Date(q.from);
     const to = new Date(q.to);
     const prefs = await loadPrefs(db, u.id);
-    const [entries, blocks, places, frameRows, external] = await Promise.all([
-      calendarEntries(db, u.id, from, to),
-      timeBlocks(db, u.id, from, to),
-      loadPlaces(db, u.id),
-      loadFrames(db, u.id),
-      externalEntries(db, u.id, from, to),
-    ]);
+    const [entries, blocks, places, frameRows, external, habit_blocks] =
+      await Promise.all([
+        calendarEntries(db, u.id, from, to),
+        timeBlocks(db, u.id, from, to),
+        loadPlaces(db, u.id),
+        loadFrames(db, u.id),
+        externalEntries(db, u.id, from, to),
+        habitBlocksIn(db, u.id, from, to),
+      ]);
     const frames: FrameOccurrence[] = frameRows
       .flatMap((f) =>
         frameSpans(f, from.getTime(), to.getTime(), prefs.timezone).map(
@@ -442,6 +623,7 @@ export async function plannerRoutes(app: FastifyInstance) {
       derived,
       frames,
       external,
+      habit_blocks,
     };
   });
 

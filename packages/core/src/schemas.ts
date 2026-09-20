@@ -856,6 +856,71 @@ export const frameUpdate = z
 /** Skip (or bring back) one date of a frame. */
 export const frameSkipInput = z.object({ date: dayKey }).strict();
 
+const HABIT_PERIODS = ["day", "week"] as const;
+const habitOrder = (d: {
+  window_start?: string | null;
+  window_end?: string | null;
+}) => !d.window_start || !d.window_end || d.window_end > d.window_start;
+export const habitInput = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    cadence: z.number().int().min(1).max(21),
+    period: z.enum(HABIT_PERIODS).default("week"),
+    duration_minutes: z.number().int().min(5).max(480),
+    days: weekdays.default([0, 1, 2, 3, 4, 5, 6]),
+    /** Time-of-day window; omit or null to use working hours. */
+    window_start: clock.nullable().default(null),
+    window_end: clock.nullable().default(null),
+    priority: z.enum(PRIORITIES).default("medium"),
+    active: z.boolean().default(true),
+  })
+  .strict()
+  .refine(habitOrder, "A habit's window ends after it starts")
+  .refine(
+    (d) => d.cadence <= (d.period === "day" ? 6 : 21),
+    "That's more sessions than the period can hold",
+  );
+export const habitUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    cadence: z.number().int().min(1).max(21).optional(),
+    period: z.enum(HABIT_PERIODS).optional(),
+    duration_minutes: z.number().int().min(5).max(480).optional(),
+    days: weekdays.optional(),
+    window_start: clock.nullable().optional(),
+    window_end: clock.nullable().optional(),
+    priority: z.enum(PRIORITIES).optional(),
+    active: z.boolean().optional(),
+    position: z.number().int().min(0).max(10000).optional(),
+  })
+  .strict()
+  .refine(habitOrder, "A habit's window ends after it starts")
+  .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+/** Planning habits over a window of days. */
+export const habitPlanInput = z
+  .object({
+    start_date: dayKey.optional(),
+    days: z.number().int().min(1).max(14).default(7),
+  })
+  .strict();
+export const habitApplyInput = z
+  .object({
+    blocks: z
+      .array(
+        z
+          .object({
+            habit_id: z.uuid(),
+            start_at: instant,
+            end_at: instant,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+  })
+  .strict();
+
 export const TRAVEL_MODES = ["walk", "cycle", "transit", "drive"] as const;
 
 /** A place and how long it takes to get there, for travel time. */

@@ -48,6 +48,7 @@ import { BookingSheet } from "../screens/BookingSheet";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ConnectionsSheet } from "../screens/ConnectionsSheet";
 import { FocusScreen } from "../screens/FocusScreen";
+import { HabitsSheet } from "../screens/HabitsSheet";
 import { InboxScreen } from "../screens/InboxScreen";
 import { ListsSheet } from "../screens/ListsSheet";
 import { PlanningSheet } from "../screens/PlanningSheet";
@@ -73,7 +74,8 @@ type SheetName =
   | "planning"
   | "connections"
   | "booking"
-  | "tags";
+  | "tags"
+  | "habits";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -672,6 +674,7 @@ export function RootScreen() {
                     onOpenConnections={() => setSheet("connections")}
                     onOpenBooking={openBookings}
                     onOpenTags={() => setSheet("tags")}
+                    onOpenHabits={() => setSheet("habits")}
                   />
                 )}
               </FadeIn>
@@ -762,6 +765,11 @@ export function RootScreen() {
         <TagsSheet
           visible={sheet === "tags"}
           teams={teams}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        />
+        <HabitsSheet
+          visible={sheet === "habits"}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         />
