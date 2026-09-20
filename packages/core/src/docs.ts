@@ -222,10 +222,70 @@ export function serializeDoc(blocks: DocBlock[]): string {
 /** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
-    .map((b) => (b.type === "divider" ? "" : b.text))
+    .map((b) => (b.type === "divider" ? "" : readable(b.text)))
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * The handful of LaTeX names worth spelling out in a one-line preview. Anything
+ * else keeps its name without the backslash, which reads better in a list than
+ * a wall of markup.
+ */
+const SYMBOLS: Record<string, string> = {
+  alpha: "\u03b1",
+  beta: "\u03b2",
+  gamma: "\u03b3",
+  delta: "\u03b4",
+  epsilon: "\u03b5",
+  eta: "\u03b7",
+  theta: "\u03b8",
+  lambda: "\u03bb",
+  mu: "\u03bc",
+  pi: "\u03c0",
+  sigma: "\u03c3",
+  phi: "\u03c6",
+  omega: "\u03c9",
+  Delta: "\u0394",
+  Sigma: "\u03a3",
+  Omega: "\u03a9",
+  infty: "\u221e",
+  le: "\u2264",
+  ge: "\u2265",
+  ne: "\u2260",
+  approx: "\u2248",
+  times: "\u00d7",
+  cdot: "\u00b7",
+  pm: "\u00b1",
+  to: "\u2192",
+  int: "\u222b",
+  sum: "\u2211",
+  sqrt: "\u221a",
+  nabla: "\u2207",
+  partial: "\u2202",
+};
+
+/**
+ * Turn a line into something that reads in a list row: maths loses its `$`
+ * fences and its most common commands become the symbols they stand for, so a
+ * preview shows "0 < \u03b7 < 1/\u03bc" rather than "$0 < \\eta < 1/\\mu$".
+ */
+function readable(text: string): string {
+  return (
+    text
+      // Drop the fences; the maths itself stays.
+      .replace(/\$([^$\n]+?)\$/g, "$1")
+      // \frac{a}{b} reads as a/b.
+      .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
+      // Known commands become symbols; the rest just lose the backslash.
+      .replace(/\\([A-Za-z]+)/g, (_m, name: string) => SYMBOLS[name] ?? name)
+      // Spacing commands (\, \; \! \quad) carry nothing in plain text.
+      .replace(/\\[,;!:> ]/g, " ")
+      // Grouping braces carry no meaning once it is plain text.
+      .replace(/[{}]/g, "")
+      .replace(/\s+/g, " ")
+  );
 }
 
 /** The first line or so of a document, for a list row. */
