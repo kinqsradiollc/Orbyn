@@ -772,6 +772,16 @@ export const plannerPrefsInput = z
     buffer_scope: bufferScopeInput.optional(),
     /** Minutes added to every travel leg (0 to 30). */
     travel_padding_minutes: z.number().int().min(0).max(30).optional(),
+    /** Morning agenda and evening review emails; send the keys you change. */
+    digest: z
+      .object({
+        morning: z.boolean().optional(),
+        evening: z.boolean().optional(),
+        morning_time: clock.optional(),
+        evening_time: clock.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -896,6 +906,11 @@ export const habitUpdate = z
   .strict()
   .refine(habitOrder, "A habit's window ends after it starts")
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+/** Ask the server to email you a digest now, to preview it. */
+export const digestTestInput = z
+  .object({ kind: z.enum(["morning", "evening"]).default("morning") })
+  .strict();
 
 /** Planning habits over a window of days. */
 export const habitPlanInput = z

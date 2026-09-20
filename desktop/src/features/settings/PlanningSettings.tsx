@@ -94,6 +94,7 @@ export function PlanningSettings({ teams, report }: Props) {
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
   const [zoneToAdd, setZoneToAdd] = useState("");
   const save = useAction(report);
+  const preview = useAction(report);
   const zones = timeZones();
 
   useEffect(() => {
@@ -123,6 +124,14 @@ export function PlanningSettings({ teams, report }: Props) {
   };
   const setScope = (patch: Partial<BufferScope>) =>
     set("buffer_scope", { ...scope, ...patch });
+  const digest = draft.digest ?? {
+    morning: false,
+    evening: false,
+    morning_time: "07:00",
+    evening_time: "17:00",
+  };
+  const setDigest = (patch: Partial<typeof digest>) =>
+    set("digest", { ...digest, ...patch });
   const toggleScopeTeam = (id: string) => {
     const current = scope.team_ids ?? teams.map((t) => t.id);
     const next = current.includes(id)
@@ -352,6 +361,72 @@ export function PlanningSettings({ teams, report }: Props) {
                 <small>Sent when the server has email set up.</small>
               </span>
             </label>
+          </div>
+
+          <h3 className="settings-subtitle">Daily digest</h3>
+          <p className="muted">
+            A short email with your day. Sent from the workspace’s own mail
+            server, at the times below in your zone. Off until you turn it on.
+          </p>
+          <div className="settings-grid">
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={digest.morning}
+                onChange={(e) => setDigest({ morning: e.target.checked })}
+              />
+              <span>
+                Morning agenda
+                <small>Today’s events, due tasks and set-aside time.</small>
+              </span>
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Morning time</span>
+              <input
+                type="time"
+                value={digest.morning_time}
+                onChange={(e) => setDigest({ morning_time: e.target.value })}
+              />
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={digest.evening}
+                onChange={(e) => setDigest({ evening: e.target.checked })}
+              />
+              <span>
+                Evening review
+                <small>What’s still open, and a look at tomorrow.</small>
+              </span>
+            </label>
+            <label className="settings-field">
+              <span className="settings-label">Evening time</span>
+              <input
+                type="time"
+                value={digest.evening_time}
+                onChange={(e) => setDigest({ evening_time: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="digest-preview">
+            <button
+              type="button"
+              className="secondary"
+              disabled={preview.pending}
+              onClick={() =>
+                void preview.run(async () => {
+                  await client.sendTestDigest("morning");
+                  return "Sent a preview to your email.";
+                })
+              }
+            >
+              {preview.pending ? "Sending…" : "Email me a preview"}
+            </button>
+            <OutcomeNote outcome={preview.outcome} />
           </div>
 
           <h3 className="settings-subtitle">Buffers and travel</h3>

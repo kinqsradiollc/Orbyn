@@ -44,6 +44,14 @@ export const DEFAULT_BUFFER_SCOPE: BufferScope = {
 /** An event without an end still takes this long on the calendar. */
 export const DEFAULT_EVENT_MINUTES = 30;
 
+/** Digests are opt-in: nobody is emailed a digest until they turn it on. */
+export const DEFAULT_DIGEST = {
+  morning: false,
+  evening: false,
+  morning_time: "07:00",
+  evening_time: "17:00",
+};
+
 export const DEFAULT_PREFS: PlannerPrefs = {
   timezone: "UTC",
   work_days: [1, 2, 3, 4, 5],
@@ -67,6 +75,7 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   count_blocks_as_spent: false,
   buffer_scope: DEFAULT_BUFFER_SCOPE,
   travel_padding_minutes: 0,
+  digest: DEFAULT_DIGEST,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -108,6 +117,7 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     count_blocks_as_spent: row.count_blocks_as_spent,
     buffer_scope: { ...DEFAULT_BUFFER_SCOPE, ...row.buffer_scope },
     travel_padding_minutes: row.travel_padding_minutes,
+    digest: { ...DEFAULT_DIGEST, ...row.digest },
   };
 }
 

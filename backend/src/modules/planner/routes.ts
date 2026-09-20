@@ -15,6 +15,7 @@ import {
   type CalendarFeedSettings,
   type CalendarSearch,
   type CalendarSearchResult,
+  digestTestInput,
   frameInput,
   frameSkipInput,
   frameUpdate,
@@ -74,6 +75,8 @@ import {
 } from "./plans.js";
 import { icsFeed } from "./ics.js";
 import { externalEntries } from "./subscriptions.js";
+import { buildEvening, buildMorning } from "../../worker/digest.js";
+import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
 import { habitBlocksIn, habitById, loadHabits, placeHabits } from "./habits.js";
 import { settings } from "../../lib/settings.js";
 
@@ -171,6 +174,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           task: d.default_alerts?.task ?? alerts.task,
           all_day: d.default_alerts?.all_day ?? alerts.all_day,
         },
+        digest: { ...current.digest!, ...d.digest },
       };
       if (next.work_end <= next.work_start)
         fail(422, "Working hours must end after they start.");
@@ -193,9 +197,9 @@ export async function plannerRoutes(app: FastifyInstance) {
            buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
            default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
            deadline_notice_days, planner_notices, default_alerts, count_blocks_as_spent,
-           buffer_scope, travel_padding_minutes, updated_at)
+           buffer_scope, travel_padding_minutes, digest, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-           $21,$22,$23, now())
+           $21,$22,$23,$24, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
@@ -203,7 +207,7 @@ export async function plannerRoutes(app: FastifyInstance) {
            extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17,
            deadline_notice_days=$18, planner_notices=$19, default_alerts=$20,
            count_blocks_as_spent=$21, buffer_scope=$22, travel_padding_minutes=$23,
-           updated_at=now()`,
+           digest=$24, updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -228,10 +232,37 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.count_blocks_as_spent ?? false,
           JSON.stringify(next.buffer_scope),
           next.travel_padding_minutes ?? 0,
+          JSON.stringify(next.digest),
         ],
       );
       return loadPrefs(db, u.id);
     });
+  });
+
+  // Send yourself a digest now, to preview it. Uses your live planner data.
+  app.post("/planner/digest/test", async (r, reply) => {
+    const u = await authenticate(r);
+    const { kind } = digestTestInput.parse(r.body);
+    if (!(await emailEnabled()))
+      fail(
+        503,
+        "No mail server is set up yet. An admin can add one in Admin → System.",
+      );
+    const prefs = await loadPrefs(pool, u.id);
+    const build = kind === "evening" ? buildEvening : buildMorning;
+    const { subject, lines } = await build(
+      u.id,
+      u.name,
+      new Date(),
+      prefs.timezone,
+    );
+    await sendEmail({
+      id: randomBytes(8).toString("hex"),
+      destination: u.email,
+      title: `${subject} (preview)`,
+      body: lines.filter(Boolean).join("\n\n"),
+    });
+    return reply.code(204).send();
   });
 
   app.get("/planner/frames", async (r) => {

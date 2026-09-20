@@ -9,6 +9,7 @@ import {
   scanPlanningNotices,
 } from "./planning.js";
 import { deliverWebhookOne } from "./webhooks.js";
+import { scanDigests } from "./digest.js";
 import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 
@@ -59,6 +60,7 @@ export async function runWorker() {
         }
         if (Date.now() - lastNotices >= NOTICES_MS) {
           await scanPlanningNotices();
+          await scanDigests();
           lastNotices = Date.now();
         }
         // Subscribed calendars: new ones within a cycle, the rest hourly.
