@@ -436,6 +436,14 @@ as your `planner_notices` preference says (push on and email off by default; ema
 
 ## AI assistant
 
+### `PUT /planner/prefs` — daily digest
+
+Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "morning_time": "HH:MM", "evening_time": "HH:MM" }`. Both digests are **off by default**. When a mail server is configured, the worker emails each enabled digest once a day at its local time — a morning agenda (today's events, due tasks, set-aside time, habits, at-risk warnings) and an evening review (what's still open, tomorrow's start).
+
+### `POST /planner/digest/test` (auth)
+
+`{ "kind": "morning" | "evening" }` (default `morning`). Emails you that digest now from your live data, to preview it. → `204`; `503` when no mail server is set up.
+
 ### `POST /ai/chat/start` (auth, 10/min)
 
 Starts an assistant turn and returns `202 { "id": "job uuid" }` at once. The body is the same as

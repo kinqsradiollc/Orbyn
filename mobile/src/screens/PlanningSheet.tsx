@@ -16,6 +16,7 @@ import {
   isTimeZone,
   type BreakLevel,
   type BufferScope,
+  type DigestPrefs,
   type TravelMode,
   type Frame,
   type Place,
@@ -84,6 +85,7 @@ type Form = {
   /** Which events get buffers; `team_ids` null means all your teams. */
   scope: Omit<BufferScope, "min_minutes"> & { min: string };
   travelPad: string;
+  digest: DigestPrefs;
 };
 
 /** Most minutes added to every travel time. */
@@ -110,6 +112,12 @@ const toForm = (p: PlannerPrefs): Form => ({
   travelPad: String(p.travel_padding_minutes ?? 0),
   horizon: HORIZONS[Math.min(7, Math.max(1, p.horizon_days || 1)) - 1],
   zones: (p.extra_timezones ?? []).slice(0, MAX_ZONES),
+  digest: p.digest ?? {
+    morning: false,
+    evening: false,
+    morning_time: "07:00",
+    evening_time: "17:00",
+  },
   timezone: p.timezone,
   work_days: p.work_days,
   work_start: p.work_start,
@@ -315,6 +323,7 @@ function Body({ teams }: { teams: Team[] }) {
         extra_timezones: form.zones,
         buffer_scope: { ...scope, min_minutes: shortest },
         travel_padding_minutes: pad,
+        digest: form.digest,
       });
       setForm(toForm(p));
       setSaved(true);
@@ -677,6 +686,63 @@ function Body({ teams }: { teams: Team[] }) {
                 />
               </Field>
             </View>
+
+            <Text style={[shared.eyebrow, s.eyebrow]}>DAILY DIGEST</Text>
+            <Text style={[shared.small, s.sectionHint]}>
+              A short email with your day, sent from the workspace’s own mail
+              server. Off until you turn it on.
+            </Text>
+            <View style={s.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.switchTitle}>Morning agenda</Text>
+              </View>
+              <Switch
+                value={form.digest.morning}
+                accessibilityLabel="Morning agenda email"
+                onValueChange={(morning) =>
+                  patch({ digest: { ...form.digest, morning } })
+                }
+              />
+            </View>
+            <Field label="Morning time">
+              <ClockField
+                label="Morning digest time"
+                value={form.digest.morning_time}
+                onChange={(morning_time) =>
+                  patch({ digest: { ...form.digest, morning_time } })
+                }
+              />
+            </Field>
+            <View style={s.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.switchTitle}>Evening review</Text>
+              </View>
+              <Switch
+                value={form.digest.evening}
+                accessibilityLabel="Evening review email"
+                onValueChange={(evening) =>
+                  patch({ digest: { ...form.digest, evening } })
+                }
+              />
+            </View>
+            <Field label="Evening time" style={s.last}>
+              <ClockField
+                label="Evening digest time"
+                value={form.digest.evening_time}
+                onChange={(evening_time) =>
+                  patch({ digest: { ...form.digest, evening_time } })
+                }
+              />
+            </Field>
+            <SmallAction
+              label="Email me a preview"
+              disabled={busy}
+              onPress={() =>
+                void run(async () => {
+                  await client.sendTestDigest("morning");
+                })
+              }
+            />
             <Button
               title={
                 busy ? "Saving…" : saved ? "Saved" : "Save planning settings"

@@ -638,11 +638,22 @@ export type PlannerPrefs = {
   buffer_scope?: BufferScope;
   /** Minutes added to every travel leg. */
   travel_padding_minutes?: number;
+  /** Morning agenda and evening review emails. */
+  digest?: DigestPrefs;
 };
 
 export type BufferScope = z.output<typeof bufferScopeInput>;
 
 export type PlannerNotices = { push: boolean; email: boolean };
+
+/** Daily digest emails, off by default and opt-in per person. */
+export type DigestPrefs = {
+  morning: boolean;
+  evening: boolean;
+  /** Local time each digest is sent, "HH:MM". */
+  morning_time: string;
+  evening_time: string;
+};
 
 /** Minutes-before alerts for new events, tasks and all-day items. */
 export type DefaultAlerts = {

@@ -504,6 +504,13 @@ export class OrbynClient {
       body: input,
     });
   }
+  /** Email yourself a digest now, to preview it. */
+  sendTestDigest(kind: "morning" | "evening" = "morning") {
+    return this.request<void>("/planner/digest/test", {
+      method: "POST",
+      body: { kind },
+    });
+  }
   listFrames() {
     return this.request<Frame[]>("/planner/frames");
   }

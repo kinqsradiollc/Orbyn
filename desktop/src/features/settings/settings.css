@@ -305,3 +305,12 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* The digest preview button sits under the digest toggles. */
+.digest-preview {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
