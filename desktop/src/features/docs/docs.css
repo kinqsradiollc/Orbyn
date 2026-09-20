@@ -358,3 +358,17 @@ h4.doc-heading {
 .doc-star.is-on {
   color: var(--color-accent);
 }
+
+/* A checklist line that is also a task in the planner. */
+.doc-linked {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}

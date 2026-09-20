@@ -201,8 +201,9 @@ export function DocEditor({
     URL.revokeObjectURL(url);
   };
 
+  // Lines already tied to a task are not offered again.
   const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && b.text.trim().length > 0,
+    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
   ).length;
 
   /** Turn the unticked checklist lines into real tasks. */
@@ -212,23 +213,21 @@ export function DocEditor({
       if (timer.current) clearTimeout(timer.current);
       if (dirty.current) await persist(title, blocks);
       try {
-        const { created } = await client.docToTasks(doc.id);
-        if (created > 0) {
-          // Tick the lines that became tasks, so the same ones can't be added
-          // twice and the page shows what has been captured.
-          const ticked = blocks.map((b) =>
-            b.type === "todo" && !b.done && b.text.trim().length > 0
-              ? { ...b, done: true }
-              : b,
-          );
-          setBlocks(ticked);
-          await persist(title, ticked);
+        const { created, doc: updated } = await client.docToTasks(doc.id);
+        // The server ties each line to its task and hands back the document;
+        // adopting it keeps the ids, so the lines now follow their tasks.
+        if (updated) {
+          version.current = updated.version;
+          dirty.current = false;
+          setBlocks(updated.content);
+          setSave("saved");
+          onChanged(updated);
         }
         onItemsChanged?.();
         alert(
           created === 0
-            ? "There were no unticked items to add."
-            : `Added ${created} task${created === 1 ? "" : "s"} to your planner. They're ticked here now.`,
+            ? "Every item here is already a task."
+            : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
         );
       } catch (e) {
         report(e);

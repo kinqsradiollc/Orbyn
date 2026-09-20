@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import {
   agendaTitle,
@@ -14,7 +15,13 @@ import {
   type DocSummary,
   type Item,
 } from "@orbyn/core";
-import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import {
+  pool,
+  reader,
+  transaction,
+  type Db,
+  type Queryable,
+} from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
@@ -58,6 +65,72 @@ async function requireDoc(
   if (row.team_id) await requireTeam(row.team_id, u, permission, db);
   else if (row.user_id !== u.id) fail(404, "Document not found");
   return row;
+}
+
+/**
+ * Show a document's checklist as its tasks actually stand. A line that became
+ * a task follows the task, so ticking it in the planner ticks it here too.
+ */
+async function withTaskState(
+  db: Queryable,
+  docId: string,
+  content: DocBlock[],
+): Promise<DocBlock[]> {
+  const ids = content.flatMap((b) => (b.type === "todo" && b.id ? [b.id] : []));
+  if (!ids.length) return content;
+  const rows = (
+    await db.query<{ block_id: string; status: string }>(
+      `SELECT l.block_id, i.status FROM doc_task_links l
+         JOIN items i ON i.id = l.item_id
+        WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[])`,
+      [docId, ids],
+    )
+  ).rows;
+  if (!rows.length) return content;
+  const done = new Map(rows.map((r) => [r.block_id, r.status === "done"]));
+  return content.map((b) =>
+    b.type === "todo" && b.id && done.has(b.id)
+      ? { ...b, done: done.get(b.id)! }
+      : b,
+  );
+}
+
+/**
+ * Ticking a linked line in a document finishes its task, and unticking one
+ * reopens it. Only lines whose state actually changed are written, so an
+ * ordinary edit doesn't touch the planner.
+ */
+async function syncTicks(
+  db: Db,
+  docId: string,
+  content: DocBlock[],
+): Promise<void> {
+  const ticks = new Map(
+    content.flatMap((b) =>
+      b.type === "todo" && b.id ? [[b.id, b.done] as const] : [],
+    ),
+  );
+  if (!ticks.size) return;
+  const rows = (
+    await db.query<{ block_id: string; item_id: string; status: string }>(
+      `SELECT l.block_id, l.item_id, i.status FROM doc_task_links l
+         JOIN items i ON i.id = l.item_id
+        WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[])
+        FOR UPDATE OF i`,
+      [docId, [...ticks.keys()]],
+    )
+  ).rows;
+  for (const row of rows) {
+    const wanted = ticks.get(row.block_id);
+    if (wanted === undefined) continue;
+    const isDone = row.status === "done";
+    if (wanted === isDone) continue;
+    await db.query(
+      `UPDATE items SET status = $2, progress = $3, updated_at = now()
+        WHERE id = $1`,
+      [row.item_id, wanted ? "done" : "todo", wanted ? 100 : 0],
+    );
+  }
 }
 
 /** A checklist line as the fields `mutate` needs to create a task. */
@@ -135,7 +208,7 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    return doc;
+    return { ...doc, content: await withTaskState(db, id, doc.content ?? []) };
   });
 
   /** Export as Markdown, with any LaTeX kept as source. */
@@ -165,6 +238,7 @@ export async function docRoutes(app: FastifyInstance) {
           409,
           "This document changed somewhere else. Refresh and try again.",
         );
+      if (body.content) await syncTicks(db, id, body.content);
       await db.query(
         `UPDATE docs SET
            title = coalesce($2, title),
@@ -317,12 +391,25 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    const lines = (doc.content ?? []).filter(
+    const content = doc.content ?? [];
+    const wanted = content.filter(
       (b): b is Extract<DocBlock, { type: "todo" }> =>
         b.type === "todo" && !b.done && b.text.trim().length > 0,
     );
-    if (!lines.length) return { created: 0, items: [] };
+    // A line that is already tied to a task is not made again.
+    const linked = new Set(
+      (
+        await pool.query<{ block_id: string }>(
+          "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
+          [id],
+        )
+      ).rows.map((r) => r.block_id),
+    );
+    const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
+    if (!lines.length) return { created: 0, items: [], doc: null };
 
+    // Each line gets a stable id, so the link survives later edits.
+    const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
     const made = await transaction(async (db) => {
       const out = [];
       for (const line of lines) {
@@ -330,11 +417,42 @@ export async function docRoutes(app: FastifyInstance) {
           operation: "create",
           data: itemFromLine(line.text, doc.team_id),
         });
-        if (item) out.push(item);
+        if (!item) continue;
+        await db.query(
+          `INSERT INTO doc_task_links (doc_id, block_id, item_id)
+             VALUES ($1,$2,$3)
+             ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
+          [id, ids.get(line), item.id],
+        );
+        out.push(item);
       }
+      // Write the ids back so the document knows which lines are tied.
+      const next = content.map((b) =>
+        ids.has(b as Extract<DocBlock, { type: "todo" }>)
+          ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
+          : b,
+      );
+      await db.query(
+        "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
+        [id, JSON.stringify(next)],
+      );
       return out;
     });
-    return { created: made.length, items: made };
+    const updated = (
+      await pool.query<Doc>(
+        `SELECT ${COLUMNS}, d.content FROM docs d
+           LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+        [id],
+      )
+    ).rows[0];
+    return {
+      created: made.length,
+      items: made,
+      doc: {
+        ...updated,
+        content: await withTaskState(pool, id, updated.content ?? []),
+      },
+    };
   });
 
   app.delete("/docs/:id", async (r, reply) => {

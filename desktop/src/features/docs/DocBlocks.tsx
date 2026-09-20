@@ -69,10 +69,22 @@ export function BlockView({
             className="doc-check"
             checked={block.done}
             onChange={onToggleTodo}
+            // Ticking a box is not a request to edit the line's source.
+            onClick={(e) => e.stopPropagation()}
             aria-label={block.text || "Checklist item"}
           />
           <span className={block.done ? "doc-done" : undefined}>
             <Inline text={block.text} />
+            {/* A line tied to a task says so, so ticking it here is clearly
+                the same as ticking it in the planner. */}
+            {block.id && (
+              <span
+                className="doc-linked"
+                title="This is a task in your planner"
+              >
+                task
+              </span>
+            )}
           </span>
         </div>
       );

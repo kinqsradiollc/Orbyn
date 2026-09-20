@@ -574,10 +574,12 @@ export class OrbynClient {
   }
   /** Turn a document's unticked checklist lines into tasks. */
   docToTasks(id: string) {
-    return this.request<{ created: number; items: Item[] }>(
-      `/docs/${id}/tasks`,
-      { method: "POST" },
-    );
+    return this.request<{
+      created: number;
+      items: Item[];
+      /** The document as it now stands, with the new lines tied to tasks. */
+      doc: Doc | null;
+    }>(`/docs/${id}/tasks`, { method: "POST" });
   }
 
   // Projects
