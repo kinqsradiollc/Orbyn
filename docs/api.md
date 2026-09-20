@@ -987,6 +987,13 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 
 `?days=` (default 30). Set-aside time on the team's items, per member, with completed counts and a team total — aggregates only, never item titles. Owners and admins only.
 
-## CalDAV (read-only)
+## CalDAV
 
-`/dav/` is a read-only CalDAV server (PROPFIND, REPORT, GET) so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`). Writes are refused (`403`); two-way sync is a later step.
+`/dav/` is a CalDAV server so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively — and, for events (`VEVENT`), create, edit and delete them back. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`).
+
+- `PROPFIND`, `REPORT`, `GET` read the calendar and its events.
+- `PUT` an `.ics` (one `VEVENT`) creates or replaces an event; the client's `UID` becomes the resource's href, so later edits map back to it. → `201` on create, `204` on replace. An unreadable body is `400`.
+- `DELETE` removes an event (`204`; `404` when it's already gone).
+- Making or renaming calendars (`MKCALENDAR`, `PROPPATCH`) is refused (`403`) — there's one calendar per person.
+
+Tasks and other kinds are read-only over CalDAV; only events accept writes. Real-client interop (Apple Calendar, Thunderbird, DAVx5) is verified by hand.

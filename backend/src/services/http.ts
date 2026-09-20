@@ -55,6 +55,12 @@ export async function createService(
     { parseAs: "string" },
     (_req, body, done) => done(null, body),
   );
+  // CalDAV clients PUT events as iCalendar text.
+  app.addContentTypeParser(
+    "text/calendar",
+    { parseAs: "string" },
+    (_req, body, done) => done(null, body),
+  );
 
   // Allowed origins and the rate limit come from live settings (Admin ->
   // System, falling back to .env), so changing them needs no restart.

@@ -180,8 +180,8 @@ ${UPSTREAM_STATUS}
       proxy_pass http://127.0.0.1:8080/;
     }
 
-    # Read-only CalDAV, served by the API at its own /dav path (no /api strip),
-    # so Apple Calendar, Thunderbird and DAVx5 can subscribe.
+    # CalDAV, served by the API at its own /dav path (no /api strip), so Apple
+    # Calendar, Thunderbird and DAVx5 can subscribe and write events back.
     location /dav/ {
       proxy_set_header Connection "";
       proxy_set_header Host $host;
