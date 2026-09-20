@@ -15,6 +15,7 @@
     "@expo-google-fonts/manrope": "^0.4.2",
     "@orbyn/api-client": "1.0.0",
     "@orbyn/core": "1.0.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~57.0.22",
     "expo-constants": "~57.0.18",

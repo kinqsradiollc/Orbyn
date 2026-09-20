@@ -457,6 +457,15 @@ notification permission, obtains an Expo push token, and registers it with `POST
 logout it deletes the device registration so reminders stop. Push notifications include the item id
 so tapping one can open the right task.
 
+The app is offline-first for reading: after every successful load it saves a snapshot of the
+planner data (items, profile, notifications, teams, lists, tags) to the device with
+`@react-native-async-storage/async-storage`. On a cold start with a restored session it shows that
+snapshot immediately, so the app is usable before — or without — a network round-trip; the next
+successful refresh replaces it, and a failed refresh leaves the cached data in place. The
+snapshot's versioning, staleness (14 days) and shape checks live in `@orbyn/core` (`offline.ts`)
+and are unit-tested. Making changes while offline still needs a connection; an offline write queue
+is a planned follow-up.
+
 ### Design system
 
 The mobile app shares its look with the web app so both read as one product:

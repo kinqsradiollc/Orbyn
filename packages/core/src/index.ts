@@ -9,3 +9,4 @@ export * from "./planner.js";
 export * from "./presentation.js";
 export * from "./richText.js";
 export * from "./quickadd.js";
+export * from "./offline.js";
