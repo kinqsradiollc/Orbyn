@@ -57,6 +57,8 @@ import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
 import { TagsSheet } from "../screens/TagsSheet";
+import { Sheet } from "../components/Sheet";
+import { BrowseScreen } from "../screens/BrowseScreen";
 import { DocsSheet } from "../screens/docs/DocsSheet";
 import { ProjectsSheet } from "../screens/docs/ProjectsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
@@ -82,7 +84,8 @@ type SheetName =
   | "docs"
   | "agenda"
   | "note"
-  | "projects";
+  | "projects"
+  | "settings";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -692,26 +695,12 @@ export function RootScreen() {
                     }
                   />
                 )}
-                {tab === "Settings" && (
-                  <SettingsScreen
+                {tab === "Browse" && (
+                  <BrowseScreen
                     user={user}
-                    busy={busy}
-                    act={act}
-                    onUser={setUser}
-                    onSignOut={() => {
-                      setPreview(null);
-                      signOut();
-                    }}
-                    teamCount={teams.length}
-                    onOpenTeams={() => setSheet("teams")}
-                    onOpenAdmin={() => setSheet("admin")}
-                    onOpenStatus={() => setSheet("status")}
-                    onOpenPlanning={() => setSheet("planning")}
-                    onOpenConnections={() => setSheet("connections")}
-                    onOpenBooking={openBookings}
-                    onOpenTags={() => setSheet("tags")}
-                    onOpenDocs={() => setSheet("docs")}
-                    onOpenHabits={() => setSheet("habits")}
+                    onOpen={(to) =>
+                      to === "booking" ? openBookings() : setSheet(to)
+                    }
                   />
                 )}
               </FadeIn>
@@ -808,6 +797,28 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         />
+        <Sheet
+          visible={sheet === "settings"}
+          title="Settings"
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        >
+          <SettingsScreen
+            user={user}
+            busy={busy}
+            act={act}
+            onUser={setUser}
+            onSignOut={() => {
+              setPreview(null);
+              signOut();
+            }}
+            onOpenStatus={() => setSheet("status")}
+            onOpenPlanning={() => setSheet("planning")}
+            onOpenConnections={() => setSheet("connections")}
+            onOpenTags={() => setSheet("tags")}
+            onOpenHabits={() => setSheet("habits")}
+          />
+        </Sheet>
         <DocsSheet
           visible={sheet === "docs"}
           userId={user?.id}
@@ -934,10 +945,11 @@ const s = themed(() =>
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
+    // The way to make anything, on every screen: it gets a thumb's worth.
     add: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",

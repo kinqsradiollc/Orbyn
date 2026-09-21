@@ -96,15 +96,10 @@ export function SettingsScreen({
   act,
   onUser,
   onSignOut,
-  teamCount,
-  onOpenTeams,
-  onOpenAdmin,
   onOpenStatus,
   onOpenPlanning,
   onOpenConnections,
-  onOpenBooking,
   onOpenTags,
-  onOpenDocs,
   onOpenHabits,
 }: {
   user: User | null;
@@ -112,14 +107,9 @@ export function SettingsScreen({
   act: (fn: () => Promise<void>) => Promise<void>;
   onUser: (user: User) => void;
   onSignOut: () => void;
-  teamCount: number;
-  onOpenTeams: () => void;
-  onOpenDocs: () => void;
-  onOpenAdmin: () => void;
   onOpenStatus: () => void;
   onOpenPlanning: () => void;
   onOpenConnections: () => void;
-  onOpenBooking: () => void;
   onOpenTags: () => void;
   onOpenHabits: () => void;
 }) {
@@ -215,34 +205,18 @@ export function SettingsScreen({
         </View>
       </View>
 
+      {/* Teams, Documents, Booking and the admin console are destinations on
+          the desktop's sidebar, not settings; they live on Browse now, where
+          the sidebar's other sections are. What is left here is what the
+          desktop's Settings page also holds. */}
       <Text style={[shared.eyebrow, s.section]}>WORKSPACE</Text>
       <View style={[shared.card, s.rows]}>
         <LinkRow
-          icon="users"
-          title="Teams"
-          detail={
-            teamCount
-              ? `${teamCount} team${teamCount === 1 ? "" : "s"}`
-              : "Share plans with others"
-          }
-          onPress={onOpenTeams}
-        />
-        <LinkRow
-          divider
           icon="activity"
           title="Service status"
           detail={statusHeadline || "Uptime and incidents"}
           onPress={onOpenStatus}
         />
-        {isAdmin && (
-          <LinkRow
-            divider
-            icon="shieldCheck"
-            title="Admin console"
-            detail="Users, teams and activity"
-            onPress={onOpenAdmin}
-          />
-        )}
       </View>
 
       <Text style={[shared.eyebrow, s.section]}>PLANNING</Text>
@@ -252,13 +226,6 @@ export function SettingsScreen({
           title="Planning"
           detail="Working hours, frames and places"
           onPress={onOpenPlanning}
-        />
-        <LinkRow
-          divider
-          icon="fileText"
-          title="Documents"
-          detail="Notes, briefs and today’s agenda"
-          onPress={onOpenDocs}
         />
         <LinkRow
           divider
@@ -273,13 +240,6 @@ export function SettingsScreen({
           title="Habits"
           detail="Routines the planner fits into free time"
           onPress={onOpenHabits}
-        />
-        <LinkRow
-          divider
-          icon="calendar"
-          title="Booking pages"
-          detail="Let people book time with you"
-          onPress={onOpenBooking}
         />
         <LinkRow
           divider
