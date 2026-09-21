@@ -947,3 +947,44 @@ export function reanchorSuggestions(
   }
   return moved;
 }
+
+// ---------------------------------------------------------------- search ---
+
+/** One thing found by a search: a page, or a task. */
+export type SearchHit = {
+  id: string;
+  type: "doc" | "task";
+  title: string;
+  kind: string;
+  team_id: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  updated_at: string;
+  /**
+   * A line of the thing, with the matched words wrapped in `[[` and `]]`.
+   * Markers rather than markup, so a client marks them however it likes and
+   * nothing has to trust a string from the database as HTML.
+   */
+  snippet: string;
+  /** The line that matched, so a hit can open where the words are. */
+  block_id: string | null;
+  rank: number;
+};
+
+/**
+ * Split a snippet into its plain and matched runs, in order. A snippet with
+ * no markers comes back as one plain run, which is what happens when the
+ * match was on the title rather than in the body.
+ */
+export function snippetRuns(snippet: string): { text: string; hit: boolean }[] {
+  const runs: { text: string; hit: boolean }[] = [];
+  let at = 0;
+  for (const m of snippet.matchAll(/\[\[(.*?)\]\]/g)) {
+    const start = m.index ?? 0;
+    if (start > at) runs.push({ text: snippet.slice(at, start), hit: false });
+    runs.push({ text: m[1], hit: true });
+    at = start + m[0].length;
+  }
+  if (at < snippet.length) runs.push({ text: snippet.slice(at), hit: false });
+  return runs.length ? runs : [{ text: snippet, hit: false }];
+}

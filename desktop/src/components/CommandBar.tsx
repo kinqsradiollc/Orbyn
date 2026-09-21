@@ -38,6 +38,8 @@ import {
   type Proposal,
   type QuickAddChip,
   type QuickAddMember,
+  type SearchHit,
+  snippetRuns,
   type Team,
 } from "@orbyn/core";
 import { client } from "../lib/api";
@@ -134,6 +136,15 @@ function chipLabel(c: QuickAddChip) {
  * one line ("Lunch with @anna fri 1pm ;Cafe Roma"), or ask the assistant.
  * Arrow keys move through results, Enter runs one, Escape closes.
  */
+/** A snippet as one line of plain words, with the match markers taken out. */
+const plainSnippet = (snippet: string) =>
+  snippetRuns(snippet)
+    .map((r) => r.text)
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 90);
+
 export function CommandBar({
   items,
   onOpenDoc,
@@ -208,6 +219,8 @@ export function CommandBar({
   // them; they are small lists, so filtering happens here rather than round
   // tripping for every keystroke.
   const [docs, setDocs] = useState<DocSummary[]>([]);
+  /** What the server found for what has been typed, ranked. */
+  const [hits, setHits] = useState<SearchHit[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   useEffect(() => {
     void client.listDocs().then(setDocs, () => setDocs([]));
@@ -337,6 +350,20 @@ export function CommandBar({
       run: go(onShowShortcuts),
     },
   ];
+  // Searching is a round trip, so it waits for a pause in the typing.
+  useEffect(() => {
+    if (q.trim().length < 2) {
+      setHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void client
+        .search(q.trim(), { type: "doc", limit: 5 })
+        .then(setHits, () => setHits([]));
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [q]);
+
   const words = q.toLowerCase().split(/\s+/).filter(Boolean);
   const matchingActions = words.length
     ? actions.filter((a) => words.every((w) => a.text.includes(w)))
@@ -359,30 +386,33 @@ export function CommandBar({
   const matches = (text: string) =>
     words.length > 0 && words.every((w) => text.toLowerCase().includes(w));
 
-  const docCommands = q
-    ? docs
-        .filter((d) => matches(`${d.title} ${d.preview}`))
-        .slice(0, 4)
-        .map((d): Command => ({
-          id: "doc-" + d.id,
-          text: d.title,
-          label: d.title || "Untitled",
-          hint:
-            d.kind === "agenda"
-              ? "Agenda"
-              : d.kind === "meeting"
-                ? "Meeting note"
-                : "Document",
-          icon: FileText,
-          group: "Documents",
-          run: go(() => {
-            void client
-              .getDoc(d.id)
-              .then((full) => onOpenDoc?.(full))
-              .catch(() => {});
-          }),
-        }))
-    : [];
+  /**
+   * Pages come from the server's search rather than from matching the
+   * words of the first two hundred loaded here: it ranks, it looks inside
+   * the body, and it still finds a page whose title was mistyped.
+   */
+  const docCommands = hits.map((h): Command => ({
+    id: "doc-" + h.id,
+    text: h.title,
+    label: h.title || "Untitled",
+    hint:
+      plainSnippet(h.snippet) ||
+      (h.kind === "note"
+        ? "Note"
+        : h.kind === "agenda"
+          ? "Agenda"
+          : h.kind === "meeting"
+            ? "Meeting note"
+            : "Document"),
+    icon: FileText,
+    group: "Documents",
+    run: go(() => {
+      void client
+        .getDoc(h.id)
+        .then((full) => onOpenDoc?.(full))
+        .catch(() => {});
+    }),
+  }));
 
   const projectCommands = q
     ? projects

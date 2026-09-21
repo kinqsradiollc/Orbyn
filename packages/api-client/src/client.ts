@@ -7,6 +7,7 @@ import {
   type DocComment,
   type DocSuggestion,
   type Proposed,
+  type SearchHit,
   type DocSummary,
   type DocVersion,
   type Favourite,
@@ -739,6 +740,29 @@ export class OrbynClient {
       method: "PUT",
       body: { kind, target_id: targetId, starred },
     });
+  }
+
+  /**
+   * Search pages and tasks together, ranked. Filters narrow the same query
+   * rather than choosing a different one, so a search with every filter off
+   * is the same search.
+   */
+  search(
+    q: string,
+    filter: {
+      type?: "doc" | "task";
+      kind?: DocKind;
+      project?: string;
+      tag?: string;
+      team?: string;
+      updated_after?: string;
+      limit?: number;
+    } = {},
+  ) {
+    const params = new URLSearchParams({ q });
+    for (const [k, v] of Object.entries(filter))
+      if (v !== undefined) params.set(k, String(v));
+    return this.request<SearchHit[]>(`/search?${params}`);
   }
 
   // Documents
