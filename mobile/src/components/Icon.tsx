@@ -170,6 +170,8 @@ const ICONS = {
   ],
   chevronRight: [["path", { d: "m9 18 6-6-6-6" }]],
   chevronLeft: [["path", { d: "m15 18-6-6 6-6" }]],
+  chevronDown: [["path", { d: "m6 9 6 6 6-6" }]],
+  chevronUp: [["path", { d: "m18 15-6-6-6 6" }]],
   trash: [
     ["path", { d: "M10 11v6" }],
     ["path", { d: "M14 11v6" }],
