@@ -15,6 +15,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
+import { DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
@@ -68,6 +69,61 @@ export function ProjectsSheet({
   const [failed, setFailed] = useState(false);
   /** The task whose stage is being chosen, if any. */
   const [moving, setMoving] = useState<string | null>(null);
+  /**
+   * A stage being named. `id` null means a new one. The desktop asks with
+   * `prompt`, which a phone has not got, so the name is typed in place.
+   */
+  const [stageDraft, setStageDraft] = useState<{
+    id: string | null;
+    name: string;
+  } | null>(null);
+  /** The stage an existing task is being picked for, if any. */
+  const [filling, setFilling] = useState<string | null | undefined>(undefined);
+
+  /** Save a patch to the open project and keep the list in step. */
+  const save = (patch: Parameters<typeof client.updateProject>[1]) =>
+    void run(async () => {
+      if (!open || !canWriteIn(open.team_id)) return;
+      setOpen(await client.updateProject(open.id, patch));
+      await reload();
+    });
+
+  /** The stages as the API wants them back: every one, named. */
+  const stagesOf = (project: Project) =>
+    project.stages.map((st) => ({ id: st.id, name: st.name }));
+
+  /** Add a stage, or rename the one being edited. */
+  const saveStage = () => {
+    const name = (stageDraft?.name ?? "").trim();
+    if (!open || !name) return setStageDraft(null);
+    const id = stageDraft?.id ?? null;
+    save({
+      stages:
+        id === null
+          ? [...stagesOf(open), { name }]
+          : stagesOf(open).map((st) => (st.id === id ? { ...st, name } : st)),
+    });
+    setStageDraft(null);
+  };
+
+  const removeStage = (stage: { id: string; name: string }) => {
+    if (!open) return;
+    confirmAction(
+      `Remove the “${stage.name}” stage?`,
+      "Its tasks stay in the project, without a stage.",
+      "Remove",
+      () => save({ stages: stagesOf(open).filter((st) => st.id !== stage.id) }),
+    );
+  };
+
+  /** Take a task out of the project altogether; it stays in the planner. */
+  const unfile = (item: Item) =>
+    void run(async () => {
+      if (!open || !canWriteIn(open.team_id)) return;
+      await client.setItemProject(item.id, { project_id: null });
+      setMoving(null);
+      onItemsChanged?.();
+    });
 
   /**
    * Move a task to another stage. The desktop does this by dragging across a
@@ -146,6 +202,9 @@ export function ProjectsSheet({
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  /** Tasks in no project at all, which any stage can take. */
+  const unfiled = items.filter((i) => !i.project_id && i.kind === "task");
 
   const tasksIn = (project: Project, stageId: string | null) =>
     items.filter(
@@ -227,6 +286,27 @@ export function ProjectsSheet({
                 {open.done_count} of {open.task_count} done ·{" "}
                 {dueLabel(open.deadline)}
               </Text>
+              {/* The desktop has a date field beside the progress bar; the
+                  phone only ever said what the deadline was. */}
+              {canWriteIn(open.team_id) && (
+                <DateField
+                  label="Deadline"
+                  clearable
+                  placeholder="No deadline"
+                  value={
+                    open.deadline
+                      ? new Date(open.deadline).toISOString().slice(0, 10)
+                      : null
+                  }
+                  onChange={(day) =>
+                    save({
+                      deadline: day
+                        ? new Date(`${day}T12:00:00`).toISOString()
+                        : null,
+                    })
+                  }
+                />
+              )}
 
               <ProjectTimeline
                 project={open}
@@ -248,10 +328,96 @@ export function ProjectsSheet({
                 const rows = tasksIn(open, stage.id as string | null);
                 return (
                   <View key={stage.id ?? "none"} style={styles.stage}>
-                    <View style={styles.stageHead}>
-                      <Text style={styles.stageName}>{stage.name}</Text>
-                      <Text style={styles.stageCount}>{rows.length}</Text>
-                    </View>
+                    {stageDraft?.id && stageDraft.id === stage.id ? (
+                      <TextInput
+                        style={styles.nameInput}
+                        value={stageDraft.name}
+                        autoFocus
+                        maxLength={80}
+                        placeholder="Stage name"
+                        placeholderTextColor={colors.faint}
+                        accessibilityLabel="Stage name"
+                        onChangeText={(name) =>
+                          setStageDraft({ id: stage.id, name })
+                        }
+                        onSubmitEditing={saveStage}
+                        onBlur={saveStage}
+                      />
+                    ) : (
+                      <View style={styles.stageHead}>
+                        <Text style={styles.stageName}>{stage.name}</Text>
+                        <Text style={styles.stageCount}>{rows.length}</Text>
+                      </View>
+                    )}
+                    {/* Everything you can do to a stage, on one row under
+                        its name: putting them beside the name wrapped "In
+                        progress" onto two lines. Naming a stage and getting
+                        rid of one were on the desktop only, as was filling a
+                        stage from the tasks that are in no project — without
+                        it the only way onto a phone's board was to make a
+                        task and then move it. "No stage" is not a stage, so
+                        it can only be filled. */}
+                    {canWriteIn(open.team_id) && (
+                      <View style={styles.stageActions}>
+                        <SmallAction
+                          label={
+                            filling === stage.id ? "Never mind" : "Add a task"
+                          }
+                          disabled={busy}
+                          onPress={() =>
+                            setFilling(
+                              filling === stage.id ? undefined : stage.id,
+                            )
+                          }
+                        />
+                        {stage.id !== null && (
+                          <>
+                            <SmallAction
+                              label="Rename"
+                              disabled={busy}
+                              onPress={() =>
+                                setStageDraft({
+                                  id: stage.id as string,
+                                  name: stage.name,
+                                })
+                              }
+                            />
+                            <View style={styles.spacer} />
+                            <SmallAction
+                              label="Remove"
+                              destructive
+                              disabled={busy}
+                              onPress={() =>
+                                removeStage({
+                                  id: stage.id as string,
+                                  name: stage.name,
+                                })
+                              }
+                            />
+                          </>
+                        )}
+                      </View>
+                    )}
+                    {filling === stage.id &&
+                      (unfiled.length === 0 ? (
+                        <Text style={styles.empty}>
+                          Every task is already in a project.
+                        </Text>
+                      ) : (
+                        <ChipRow label="Tasks with no project">
+                          {unfiled.slice(0, 20).map((task) => (
+                            <Chip
+                              key={task.id}
+                              label={task.title}
+                              selected={false}
+                              onPress={() => {
+                                setFilling(undefined);
+                                moveTo(task, stage.id as string | null);
+                              }}
+                            />
+                          ))}
+                        </ChipRow>
+                      ))}
                     {rows.length === 0 ? (
                       <Text style={styles.empty}>Nothing here yet.</Text>
                     ) : (
@@ -319,6 +485,13 @@ export function ProjectsSheet({
                                   onPress={() => moveTo(item, to.id)}
                                 />
                               ))}
+                              {/* The desktop can take a task out of the
+                                  project from here; so can the phone. */}
+                              <Chip
+                                label="Out of this project"
+                                selected={false}
+                                onPress={() => unfile(item)}
+                              />
                             </ChipRow>
                           )}
                         </View>
@@ -327,6 +500,30 @@ export function ProjectsSheet({
                   </View>
                 );
               })}
+
+              {canWriteIn(open.team_id) &&
+                (stageDraft && stageDraft.id === null ? (
+                  <TextInput
+                    style={styles.nameInput}
+                    value={stageDraft.name}
+                    autoFocus
+                    maxLength={80}
+                    placeholder="Name the new stage"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="New stage name"
+                    onChangeText={(name) => setStageDraft({ id: null, name })}
+                    onSubmitEditing={saveStage}
+                    onBlur={saveStage}
+                  />
+                ) : (
+                  <View style={styles.stageAdd}>
+                    <SmallAction
+                      label="Add a stage"
+                      disabled={busy}
+                      onPress={() => setStageDraft({ id: null, name: "" })}
+                    />
+                  </View>
+                ))}
             </View>
           ) : failed ? (
             <View style={styles.list}>
@@ -524,7 +721,19 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    stageHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+    stageHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    stageActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 2,
+    },
+    stageAdd: { flexDirection: "row", marginTop: 2 },
     stageName: {
       flex: 1,
       color: colors.text,

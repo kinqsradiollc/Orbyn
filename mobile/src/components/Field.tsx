@@ -136,7 +136,52 @@ function PickerField({
           </Pressable>
         )}
       </View>
-      {open && (
+      {open && Platform.OS === "web" && (
+        /* @react-native-community/datetimepicker has no web build, so in the
+           web build every date and time field opened nothing at all: the
+           button lit up and that was that. The browser has a picker of its
+           own, and it is the one a browser's user expects. */
+        <View style={s.webPicker}>
+          {React.createElement("input", {
+            type: mode,
+            autoFocus: true,
+            "aria-label": label,
+            value:
+              mode === "date"
+                ? dayKeyOf(value ?? new Date())
+                : timeOf(value ?? new Date()),
+            min:
+              mode === "date" && minimumDate
+                ? dayKeyOf(minimumDate)
+                : undefined,
+            onChange: (event: { target: { value: string } }) => {
+              const next = event.target.value;
+              if (!next) return;
+              if (mode === "date") {
+                const [y, mo, d] = next.split("-").map(Number);
+                onPick(new Date(y, mo - 1, d));
+                return;
+              }
+              const [h, mi] = next.split(":").map(Number);
+              const on = new Date(value ?? new Date());
+              on.setHours(h, mi, 0, 0);
+              onPick(on);
+            },
+            style: {
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px 14px",
+              color: colors.text,
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 12,
+              font: "inherit",
+              fontSize: 15,
+            },
+          })}
+        </View>
+      )}
+      {open && Platform.OS !== "web" && (
         <View style={Platform.OS === "ios" ? s.pickerCard : undefined}>
           <DateTimePicker
             value={value ?? new Date()}
@@ -193,6 +238,10 @@ export function ClockField({
     />
   );
 }
+
+/** A Date as "09:30", for the browser's own time picker. */
+const timeOf = (d: Date) =>
+  `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
 const dayKeyOf = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -286,6 +335,7 @@ const s = themed(() =>
       paddingHorizontal: 15,
     },
     pickActive: { borderColor: colors.accent },
+    webPicker: { marginTop: 8 },
     pickText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
