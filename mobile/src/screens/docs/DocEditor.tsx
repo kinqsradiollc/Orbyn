@@ -114,6 +114,13 @@ export function DocEditor({
       : "read",
   );
   const suggesting = mode === "suggest";
+  /**
+   * Whether the page itself may change. A proposal is a stretch of one named
+   * line, so a line added, taken away or moved cannot be proposed, and a
+   * ticked box finishes a real task. While suggesting those all used to go
+   * straight onto the page — the one thing suggesting is meant not to do.
+   */
+  const structural = !suggesting;
   /** Nothing typed changes the page itself in these modes. */
   const reading = mode === "read" || (!canWrite && !suggesting);
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
@@ -408,6 +415,7 @@ export function DocEditor({
 
   const moveLine = (by: -1 | 1) => {
     if (focused === null) return;
+    if (!structural) return;
     const to = focused + by;
     if (to < 0 || to >= blocks.length) return;
     const next = blocks.slice();
@@ -460,6 +468,7 @@ export function DocEditor({
 
   const deleteLine = () => {
     if (focused === null) return;
+    if (!structural) return;
     const next = blocks.slice();
     if (next.length > 1) next.splice(focused, 1);
     else next.splice(focused, 1, EMPTY);
@@ -604,12 +613,14 @@ export function DocEditor({
   };
 
   const addLine = () => {
+    if (!structural) return;
     const next = [...blocks, EMPTY];
     setBlocks(next);
     openWith("", next.length - 1);
   };
 
   const toggle = (index: number) => {
+    if (!structural) return;
     const next = blocks.map((b, i) =>
       i === index && b.type === "todo" ? { ...b, done: !b.done } : b,
     );
@@ -801,7 +812,7 @@ export function DocEditor({
           );
         }}
         onEditBlock={reading && !suggesting ? undefined : openLine}
-        onToggleTodo={reading ? undefined : toggle}
+        onToggleTodo={reading || !structural ? undefined : toggle}
       />
 
       {focused !== null && (!reading || suggesting) ? (
@@ -827,16 +838,20 @@ export function DocEditor({
             })}
           </ChipRow>
           <View style={styles.toolRow}>
-            <SmallAction
-              label="Move up"
-              disabled={focused === 0}
-              onPress={() => moveLine(-1)}
-            />
-            <SmallAction
-              label="Move down"
-              disabled={focused >= blocks.length - 1}
-              onPress={() => moveLine(1)}
-            />
+            {structural && (
+              <>
+                <SmallAction
+                  label="Move up"
+                  disabled={focused === 0}
+                  onPress={() => moveLine(-1)}
+                />
+                <SmallAction
+                  label="Move down"
+                  disabled={focused >= blocks.length - 1}
+                  onPress={() => moveLine(1)}
+                />
+              </>
+            )}
             <SmallAction
               label="Comment"
               disabled={false}
@@ -857,22 +872,32 @@ export function DocEditor({
           <View style={styles.toolFooter}>
             <SmallAction label="Done" disabled={false} onPress={commit} />
             <View style={styles.spacer} />
-            <SmallAction
-              label="Delete line"
-              destructive
-              disabled={false}
-              onPress={deleteLine}
-            />
+            {structural && (
+              <SmallAction
+                label="Delete line"
+                destructive
+                disabled={false}
+                onPress={deleteLine}
+              />
+            )}
           </View>
+          {!structural && (
+            <Text style={styles.hint}>
+              While you are suggesting, a line’s words are yours to change.
+              Moving and removing lines are the page’s to keep.
+            </Text>
+          )}
         </View>
       ) : (
-        <Pressable
-          onPress={addLine}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
-        >
-          <Text style={styles.addText}>+ Add a block</Text>
-        </Pressable>
+        structural && (
+          <Pressable
+            onPress={addLine}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
+          >
+            <Text style={styles.addText}>+ Add a block</Text>
+          </Pressable>
+        )
       )}
 
       <Text style={styles.hint}>
