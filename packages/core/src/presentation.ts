@@ -36,6 +36,7 @@ export type ScreenName =
   | "Teams"
   | "Notifications"
   | "Settings"
+  | "Browse"
   | "Admin";
 export const screens: Record<
   ScreenName,
@@ -76,6 +77,13 @@ export const screens: Record<
     title: "Settings",
     subtitle: "Your space, just the way you like it.",
     eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  // The phone's answer to the desktop's sidebar: every destination that is
+  // not one of the five tabs, in the sidebar's own order and wording.
+  Browse: {
+    title: "Everything else.",
+    subtitle: "Projects, pages, the people you plan with.",
+    eyebrow: "YOUR WHOLE SPACE",
   },
   Admin: {
     title: "Workspace admin",

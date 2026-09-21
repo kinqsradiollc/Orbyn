@@ -15,6 +15,14 @@ type Shape =
     ];
 
 const ICONS = {
+  // lucide "layout-grid": the phone's way into everything the desktop keeps
+  // in its sidebar.
+  layoutGrid: [
+    ["rect", { x: "3", y: "3", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "14", y: "3", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "14", y: "14", width: "7", height: "7", rx: "1" }],
+    ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }],
+  ],
   orbit: [
     ["path", { d: "M20.341 6.484A10 10 0 0 1 10.266 21.85" }],
     ["path", { d: "M3.659 17.516A10 10 0 0 1 13.74 2.152" }],
