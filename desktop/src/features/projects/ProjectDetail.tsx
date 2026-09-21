@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useMemo, useState } from "react";
 import {
@@ -362,7 +363,7 @@ export function ProjectDetail({
                             {item.title}
                           </span>
                         </button>
-                        <select
+                        <Select
                           id={`stage-for-${item.id}`}
                           className="stage-move"
                           value={item.stage_id ?? ""}
@@ -381,7 +382,7 @@ export function ProjectDetail({
                           ))}
                           <option value="">No stage</option>
                           <option value="__remove">Remove from project</option>
-                        </select>
+                        </Select>
                       </li>
                     ))}
                   </ul>
@@ -423,7 +424,7 @@ export function ProjectDetail({
                       />
                       <span>{item.title}</span>
                     </button>
-                    <select
+                    <Select
                       id={`stage-for-${item.id}`}
                       className="stage-move"
                       value=""
@@ -442,7 +443,7 @@ export function ProjectDetail({
                         </option>
                       ))}
                       <option value="__remove">Remove from project</option>
-                    </select>
+                    </Select>
                   </li>
                 ))}
               </ul>

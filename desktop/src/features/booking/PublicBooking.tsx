@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -144,7 +145,7 @@ function QuestionField({
       {q.label}
       {q.required && <Required />}
       {q.type === "choice" ? (
-        <select
+        <Select
           required={q.required}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -155,7 +156,7 @@ function QuestionField({
               {o}
             </option>
           ))}
-        </select>
+        </Select>
       ) : q.type === "long_text" ? (
         <textarea
           rows={3}
@@ -396,7 +397,7 @@ function BookPage({ slug }: { slug: string }) {
             <Globe size={14} aria-hidden="true" />
             <label>
               <span className="sr-only">Your time zone</span>
-              <select
+              <Select
                 value={tz}
                 onChange={(e) => {
                   setTz(e.target.value);
@@ -409,7 +410,7 @@ function BookPage({ slug }: { slug: string }) {
                     {z.replaceAll("_", " ")}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </li>
         </ul>

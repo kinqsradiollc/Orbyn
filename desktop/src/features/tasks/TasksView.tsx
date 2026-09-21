@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Columns3, List, ListTodo, Pin, Search, X } from "lucide-react";
 import {
@@ -573,7 +574,7 @@ export function TasksView({
       <div className="filter-bar" role="group" aria-label="Filters">
         <label className="filter-select">
           <span>Due</span>
-          <select
+          <Select
             value={due}
             onChange={(e) => setDue(e.target.value as DueFilter)}
           >
@@ -582,11 +583,11 @@ export function TasksView({
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="filter-select">
           <span>Priority</span>
-          <select
+          <Select
             value={priority}
             onChange={(e) => setPriority(e.target.value as Priority | "any")}
           >
@@ -594,11 +595,11 @@ export function TasksView({
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
-          </select>
+          </Select>
         </label>
         <label className="filter-select">
           <span>List</span>
-          <select value={listId} onChange={(e) => setListId(e.target.value)}>
+          <Select value={listId} onChange={(e) => setListId(e.target.value)}>
             <option value="any">Any list</option>
             <option value="none">No list</option>
             {lists.map((l) => (
@@ -606,22 +607,22 @@ export function TasksView({
                 {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="filter-select">
           <span>Tag</span>
-          <select value={tagId} onChange={(e) => setTagId(e.target.value)}>
+          <Select value={tagId} onChange={(e) => setTagId(e.target.value)}>
             <option value="any">Any tag</option>
             {tags.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="filter-select">
           <span>Size</span>
-          <select
+          <Select
             value={size}
             onChange={(e) => setSize(e.target.value as Size | "any")}
           >
@@ -631,12 +632,12 @@ export function TasksView({
                 {SIZE_LABELS[s]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {hasTeamItems && (
           <label className="filter-select">
             <span>Assignee</span>
-            <select
+            <Select
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
             >
@@ -650,13 +651,13 @@ export function TasksView({
                     {name}
                   </option>
                 ))}
-            </select>
+            </Select>
           </label>
         )}
         {layout === "list" && (
           <label className="filter-select">
             <span>Group by</span>
-            <select
+            <Select
               value={group}
               onChange={(e) => setGroup(e.target.value as Group)}
             >
@@ -664,12 +665,12 @@ export function TasksView({
               <option value="list">List</option>
               <option value="tag">Tag</option>
               <option value="size">Size</option>
-            </select>
+            </Select>
           </label>
         )}
         <label className="filter-select">
           <span>Sort</span>
-          <select
+          <Select
             value={sort}
             onChange={(e) => {
               const next = e.target.value as ItemSort;
@@ -682,7 +683,7 @@ export function TasksView({
                 {s.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {active && (
           <button className="text-button filter-clear" onClick={clear}>

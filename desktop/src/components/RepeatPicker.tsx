@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { describeRrule } from "@orbyn/core";
 import {
   rruleFromDraft,
@@ -40,7 +41,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
       <div className="repeat-row">
         <label>
           <span className="sr-only">How often</span>
-          <select
+          <Select
             value={d.freq}
             onChange={(e) => set({ freq: e.target.value as RepeatFreq })}
           >
@@ -49,7 +50,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {unit && (
           <label className="repeat-every">
@@ -92,7 +93,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
         <div className="repeat-row">
           <label>
             Ends
-            <select
+            <Select
               value={d.ends}
               onChange={(e) =>
                 set({ ends: e.target.value as RepeatDraft["ends"] })
@@ -101,7 +102,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
               <option value="never">Never</option>
               <option value="count">After a number of times</option>
               <option value="until">On a date</option>
-            </select>
+            </Select>
           </label>
           {d.ends === "count" && (
             <label>

@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -717,7 +718,7 @@ export function CalendarView({
             <label className="set-picker">
               <Layers size={14} aria-hidden="true" />
               <span className="sr-only">Calendar set</span>
-              <select
+              <Select
                 value={activeSet?.id ?? ""}
                 title="Calendar set (number keys)"
                 onChange={(e) => chooseSet(e.target.value)}
@@ -729,7 +730,7 @@ export function CalendarView({
                     {n < 9 ? ` (${n + 1})` : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <button
               className="icon-button"

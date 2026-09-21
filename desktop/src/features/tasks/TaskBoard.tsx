@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { CalendarClock, ListChecks, MessageSquare, Users } from "lucide-react";
 import {
   dateLabel,
@@ -118,7 +119,7 @@ export function TaskBoard({
                     </span>
                     <label className="board-move">
                       <span className="sr-only">Move {i.title} to</span>
-                      <select
+                      <Select
                         value={i.status}
                         disabled={busy || !writable}
                         title={writable ? "Move to…" : "View only"}
@@ -133,7 +134,7 @@ export function TaskBoard({
                               : "Move to " + statusLabels[s]}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                   </div>
                 </article>

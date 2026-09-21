@@ -2485,3 +2485,115 @@ footer svg {
   border-color: var(--color-danger);
   color: var(--color-white);
 }
+
+/* ---- Orbyn's own dropdown, in place of the platform's ---- */
+
+/* The closed control looks like every other field; the open list is drawn
+   here rather than by the operating system, so it matches the app. */
+.select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.select-control {
+  width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.select-control:hover:not(:disabled) {
+  border-color: var(--color-border-strong, var(--border));
+}
+.select-control:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.select[data-open] .select-control {
+  border-color: var(--color-focus);
+}
+.select-control > svg {
+  flex: none;
+  color: var(--color-muted);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.select[data-open] .select-control > svg {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .select-control > svg {
+    transition: none;
+  }
+}
+.select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-list {
+  /* Some of these sit inside an uppercase filter label; the list is its own
+     surface and should not inherit that. */
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-width: min(320px, 90vw);
+  max-height: min(280px, 50vh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 12px 34px var(--color-backdrop);
+}
+/* Near the bottom of the window it opens upwards instead. */
+.select-list.is-above {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.select-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-option > svg {
+  flex: none;
+  color: var(--color-accent);
+}
+.select-option.is-active {
+  background: var(--color-hover);
+}
+.select-option[aria-selected="true"] {
+  font-weight: 600;
+}
+.select-option.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}

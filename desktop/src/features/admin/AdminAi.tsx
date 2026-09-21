@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
@@ -288,7 +289,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                     <td>
                       <div className="ai-model">
                         {choices && choices.length > 0 && (
-                          <select
+                          <Select
                             aria-label={`Loaded models for ${p.name}`}
                             value={choices.includes(model) ? model : ""}
                             onChange={(e) =>
@@ -306,7 +307,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                                 {m}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         )}
                         <input
                           list={listId}
@@ -526,7 +527,7 @@ function ProviderForm({
       <form className="ai-form" onSubmit={submit}>
         <label className="wide">
           Provider
-          <select
+          <Select
             value={kind}
             disabled={!!existing}
             onChange={(e) => changeKind(e.target.value as AiProviderKind)}
@@ -545,7 +546,7 @@ function ProviderForm({
                 </option>
               ))}
             </optgroup>
-          </select>
+          </Select>
           <small className="field-hint">
             {def.hint}
             {existing ? " The provider type can't be changed." : ""}

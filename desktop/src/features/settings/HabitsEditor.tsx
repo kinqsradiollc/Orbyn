@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -336,13 +337,13 @@ function HabitForm({
         </label>
         <label>
           Per
-          <select
+          <Select
             value={d.period}
             onChange={(e) => set("period", e.target.value as "day" | "week")}
           >
             <option value="week">week</option>
             <option value="day">day</option>
-          </select>
+          </Select>
         </label>
         <label>
           Each takes (min)
@@ -383,14 +384,14 @@ function HabitForm({
         </label>
         <label>
           Priority
-          <select
+          <Select
             value={d.priority}
             onChange={(e) => set("priority", e.target.value as Priority)}
           >
             <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
-          </select>
+          </Select>
         </label>
       </div>
       <label className="settings-check">

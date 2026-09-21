@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Undo2 } from "lucide-react";
 import {
@@ -248,7 +249,7 @@ export function FrameForm({
         </div>
         <div className="settings-field wide">
           <label htmlFor="frame-repeat">Repeats</label>
-          <select
+          <Select
             id="frame-repeat"
             value={draft.mode}
             onChange={(e) => set({ mode: e.target.value as RepeatMode })}
@@ -258,7 +259,7 @@ export function FrameForm({
                 {o.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         {needsDays && (
           <div className="settings-field wide">
@@ -309,7 +310,7 @@ export function FrameForm({
         </div>
         <div className="settings-field">
           <label htmlFor="frame-zone">Time zone</label>
-          <select
+          <Select
             id="frame-zone"
             value={draft.timezone}
             onChange={(e) => set({ timezone: e.target.value })}
@@ -323,7 +324,7 @@ export function FrameForm({
                 {z.replaceAll("_", " ")}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <label className="switch-line settings-field">
           <input

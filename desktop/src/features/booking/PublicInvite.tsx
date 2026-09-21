@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
@@ -218,7 +219,7 @@ function InviteBook({ token }: { token: string }) {
             <Globe size={14} aria-hidden="true" />
             <label>
               <span className="sr-only">Your time zone</span>
-              <select
+              <Select
                 value={tz}
                 onChange={(e) => {
                   setTz(e.target.value);
@@ -231,7 +232,7 @@ function InviteBook({ token }: { token: string }) {
                     {z.replaceAll("_", " ")}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
           </li>
         </ul>

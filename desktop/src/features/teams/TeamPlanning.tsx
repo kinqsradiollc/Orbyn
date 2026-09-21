@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useState } from "react";
 import {
   CalendarPlus,
@@ -417,7 +418,7 @@ function FindATime({
         <label className="sr-only" htmlFor="find-length">
           Meeting length
         </label>
-        <select
+        <Select
           id="find-length"
           value={duration}
           onChange={(e) => setDuration(Number(e.target.value))}
@@ -427,7 +428,7 @@ function FindATime({
               {minutesLabel(m)}
             </option>
           ))}
-        </select>
+        </Select>
         <button
           className="primary"
           disabled={action.pending || !picked.length || tooMany}

@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useState, type KeyboardEvent } from "react";
 import { Check, Plus, X } from "lucide-react";
 import type { AttendeeStatus } from "@orbyn/core";
@@ -77,7 +78,7 @@ export function AlertsPicker({
       )}
       {adding ? (
         <div className="event-add-row">
-          <select
+          <Select
             aria-label="When to remind"
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
@@ -88,7 +89,7 @@ export function AlertsPicker({
               </option>
             ))}
             <option value="custom">Custom…</option>
-          </select>
+          </Select>
           {choice === "custom" && (
             <>
               <input
@@ -100,7 +101,7 @@ export function AlertsPicker({
                 onKeyDown={onEnter(add)}
                 onChange={(e) => setAmount(Number(e.target.value))}
               />
-              <select
+              <Select
                 aria-label="Unit"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value as keyof typeof UNITS)}
@@ -108,7 +109,7 @@ export function AlertsPicker({
                 <option value="min">minutes before</option>
                 <option value="hours">hours before</option>
                 <option value="days">days before</option>
-              </select>
+              </Select>
             </>
           )}
           <button type="button" className="secondary" onClick={add}>

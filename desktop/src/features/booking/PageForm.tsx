@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowDown,
@@ -595,7 +596,7 @@ export function PageForm({
           {ownerTeams.length > 0 && (
             <div className="settings-field">
               <label htmlFor="bp-owner">Owner</label>
-              <select
+              <Select
                 id="bp-owner"
                 value={draft.team_id ?? ""}
                 aria-describedby="bp-owner-hint"
@@ -607,7 +608,7 @@ export function PageForm({
                     {t.name}
                   </option>
                 ))}
-              </select>
+              </Select>
               <small id="bp-owner-hint" className="field-hint">
                 A team&apos;s owners and admins can change its pages; every
                 member sees them.
@@ -838,7 +839,7 @@ export function PageForm({
                       </span>
                       {draft.routing.map((rule, n) => (
                         <div className="routing-rule" key={n}>
-                          <select
+                          <Select
                             aria-label="Question"
                             value={rule.question_id}
                             onChange={(e) =>
@@ -858,7 +859,7 @@ export function PageForm({
                                 {q.label}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                           <span aria-hidden="true">=</span>
                           <input
                             aria-label="Answer"
@@ -876,7 +877,7 @@ export function PageForm({
                             }
                           />
                           <span aria-hidden="true">→</span>
-                          <select
+                          <Select
                             aria-label="Host"
                             value={rule.host_user_id}
                             onChange={(e) =>
@@ -896,7 +897,7 @@ export function PageForm({
                                 {hostName(h.user_id)}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                           <button
                             type="button"
                             className="icon-button"
@@ -968,7 +969,7 @@ export function PageForm({
             </fieldset>
             <div className="settings-field">
               <label htmlFor="bp-interval">Start times every</label>
-              <select
+              <Select
                 id="bp-interval"
                 value={draft.slot_interval_minutes}
                 onChange={(e) =>
@@ -980,7 +981,7 @@ export function PageForm({
                     {minutesLabel(m)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="settings-field">
               <label htmlFor="bp-window">Days ahead to show</label>
@@ -1115,7 +1116,7 @@ export function PageForm({
               <div className="settings-grid">
                 <div className="settings-field">
                   <label htmlFor="bp-zone">Time zone</label>
-                  <select
+                  <Select
                     id="bp-zone"
                     value={draft.timezone}
                     onChange={(e) => set("timezone", e.target.value)}
@@ -1128,7 +1129,7 @@ export function PageForm({
                         {z.replaceAll("_", " ")}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
               <div className="hours-week">
@@ -1182,7 +1183,7 @@ export function PageForm({
                       setOverride(i, { ...o, date: e.target.value })
                     }
                   />
-                  <select
+                  <Select
                     aria-label={`Hours on ${o.date || "this date"}`}
                     value={o.hours.length ? "custom" : "closed"}
                     onChange={(e) =>
@@ -1197,7 +1198,7 @@ export function PageForm({
                   >
                     <option value="closed">Unavailable</option>
                     <option value="custom">Custom hours</option>
-                  </select>
+                  </Select>
                   {o.hours.length > 0 && (
                     <Ranges
                       label={o.date || "This date"}
@@ -1259,7 +1260,7 @@ export function PageForm({
                     </div>
                     <div className="settings-field">
                       <label htmlFor={`bq-${q.key}-type`}>Answer</label>
-                      <select
+                      <Select
                         id={`bq-${q.key}-type`}
                         value={q.type}
                         onChange={(e) =>
@@ -1273,7 +1274,7 @@ export function PageForm({
                             {TYPE_LABELS[t]}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
                     <label className="switch-line compact settings-field question-required">
                       <input

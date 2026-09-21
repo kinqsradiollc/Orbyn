@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import {
   useEffect,
@@ -336,7 +337,7 @@ function InviteForm({
           </div>
           <div className="settings-field">
             <label htmlFor="inv-length">Length</label>
-            <select
+            <Select
               id="inv-length"
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
@@ -346,7 +347,7 @@ function InviteForm({
                   {minutesLabel(m)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="settings-field">
             <label htmlFor="inv-expires">Link works until (optional)</label>
