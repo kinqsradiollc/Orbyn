@@ -351,15 +351,107 @@ can comment on it; only the person who wrote a remark can withdraw it.
 
 ### `POST /docs/:id/comments` (auth)
 
-`{ "body", "block_id"?, "quote"? }` → `201`. An empty body is `422`.
+`{ "body", "block_id"?, "quote"?, "range_start"?, "range_end"?, "parent_id"?, "mentions"? }` → `201`.
+An empty body is `422`, and so is half a range.
 
 `block_id` ties the remark to one line, using the name that block carries in the document's content
-rather than its position, because editing moves blocks around. `quote` is what that line said at the
-time. Leave both out for a remark about the page as a whole.
+rather than its position, because editing moves blocks around. `range_start` and `range_end` narrow
+it to a stretch of that line, as character offsets into the line's **Markdown source** — so
+`**bold**` is eight characters, not four. `quote` is what those characters said at the time, and is
+what the remark is followed by. Leave the range out for a remark about the whole line, and the
+`block_id` out too for one about the page.
 
-A comment whose line is later deleted is **not** deleted with it: it comes back with its `block_id`
-no longer matching any block, and its `quote` still there, so it can be shown apart rather than
-disappearing.
+`parent_id` makes the remark a reply. Threads are one deep: replying to a reply joins the same
+thread rather than nesting further, because a margin has nowhere to put a third level.
+
+`mentions` are user ids, and only people who can already read the page are accepted — naming
+someone is not a way to show them a document. Each one gets an `inapp` notification of kind
+`mention`.
+
+**Following the words.** Every save re-anchors the open remarks on the lines that changed: the quote
+still at those offsets means nothing to do; the quote found elsewhere in the line moves the offsets
+to the nearest occurrence; the quote gone altogether sets `detached`. A detached remark is kept, with
+its `quote`, so it can be shown apart rather than disappearing. Restoring an old version runs the
+same pass.
+
+## Proposed changes
+
+A suggestion is a change to one line that lives beside the document until an editor takes it or
+leaves it. The document is untouched and its `version` unspent while a suggestion is open, so two
+people can propose changes to the same sentence without one of them losing a version race.
+
+**Anyone who can read a document may propose; only `items:write` may decide.** That is the whole
+difference between suggesting and editing.
+
+### `GET /docs/:id/suggestions` (auth)
+
+→ `[ { "id", "author", "block_id", "kind", "range_start", "range_end", "text", "quote", "note",
+"status", "detached", "created_at" } ]`, oldest first. `kind` is `replace`, `insert` or `delete`;
+`status` is `open`, `accepted` or `rejected`.
+
+### `POST /docs/:id/suggestions` (auth)
+
+`{ "changes": [ { "block_id", "kind", "range_start", "range_end", "text", "quote" } ], "note"? }`
+→ `201` with the rows created. Up to 50 changes in one call, because one edit to a page can touch
+several lines.
+
+### `POST /docs/:id/suggestions/:sid` (auth, `items:write`)
+
+`{ "take": true }` writes the change into the line, bumps the document's `version`, records who took
+it, and returns `{ "doc": … }`. `{ "take": false }` marks it rejected and returns `{ "doc": null }`.
+
+Deciding one that is already decided is `409`. So is taking one whose words have gone (`detached`),
+because there is nothing left to apply it to. Taking a proposal **unsettles** any other open one over
+the same characters — it stays `open` and becomes `detached`, so its author is told to look again
+rather than having it decided for them.
+
+### `DELETE /docs/:id/suggestions/:sid` (auth)
+
+→ `204`. Only its author, and only while it is still open.
+
+## The assistant, inside a page
+
+Separate from the Assistant tab, which is about your schedule. These two only ever work on one page,
+and **neither can change it**: an answer comes back as a proposal to take or leave.
+
+### `POST /docs/:id/assist` (auth, 10/min)
+
+`{ "block_id", "range_start", "range_end", "action", "instruction"? }` → `201` with a suggestion.
+
+`action` is one of `improve`, `shorten`, `expand`, `fix`, `formal`, `friendly`, `direct`,
+`summarise`, `checklist`, `continue` or `custom`; `instruction` is what was asked for when the action
+is `custom`. The provider is given the passage, the page's title and twenty lines either side —
+never the workspace.
+
+An answer identical to the passage is `409` rather than a proposal that would change nothing. A
+`block_id` that is not on the page is `404`, and an empty range is `422`. With no provider connected
+the route is `503` and says who can connect one.
+
+### `POST /docs/:id/ask` (auth, 10/min)
+
+`{ "question" }` → `{ "answer", "sources": [ { "block_id", "quote" } ] }`.
+
+Answered from that page and nothing else, and the sources are the lines the answer rests on so it
+can be checked. A provider that will not return JSON still has its words passed through, with no
+sources.
+
+## Search
+
+### `GET /search?q=&type=&kind=&project=&tag=&team=&updated_after=&limit=` (auth)
+
+→ `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
+"snippet", "block_id", "rank" } ]`, best first.
+
+`type` is `doc` or `task`; leave it out for both, ranked together on one scale. Pages are matched on
+a weighted `tsvector` — title A, headings B, tags and project name C, body D — and on the **letters**
+of the title as well, so `Lanch breif` finds Launch brief. Rank is the text match lifted for a
+recently edited page, plus a little for a title that merely looks like what was typed.
+
+`block_id` is the line that matched, so a hit can open where the words are. `snippet` wraps the
+matched words in `[[` and `]]` — markers rather than markup, so nothing has to trust a string from
+the database as HTML.
+
+A search only ever returns what the searcher can already see.
 
 ### `PUT /docs/:id/comments/:commentId` (auth)
 
