@@ -11,7 +11,16 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  justify-content: space-between;
+}
+/* The count keeps the left; the ways to start a page keep each other
+   company on the right. */
+.docs-count {
+  margin-right: auto;
+}
+.docs-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .docs-count {
   font-size: 0.85rem;
@@ -1063,17 +1072,20 @@ h4.doc-heading {
 /* How the page is being worked on. A page you can change offers the choice;
    a page you can only read says so once, plainly, instead of offering an
    editor that would refuse your first save. */
-.doc-mode {
+.doc-mode,
+.docs-kinds {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
   margin-right: auto;
+  align-self: start;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-sunken);
 }
-.doc-mode button {
+.doc-mode button,
+.docs-kinds button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1086,10 +1098,12 @@ h4.doc-heading {
   font-size: 0.78rem;
   cursor: pointer;
 }
-.doc-mode button:hover {
+.doc-mode button:hover,
+.docs-kinds button:hover {
   color: var(--color-text);
 }
-.doc-mode button.is-on {
+.doc-mode button.is-on,
+.docs-kinds button.is-on {
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: 0 1px 3px var(--color-backdrop);

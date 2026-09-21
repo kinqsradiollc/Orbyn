@@ -43,13 +43,11 @@ export function DocAsk({
 
   if (!open)
     return (
-      <View style={s.openRow}>
-        <SmallAction
-          label="Ask about this page"
-          disabled={false}
-          onPress={() => setOpen(true)}
-        />
-      </View>
+      <SmallAction
+        label="Ask this page"
+        disabled={false}
+        onPress={() => setOpen(true)}
+      />
     );
 
   return (
@@ -107,7 +105,6 @@ export function DocAsk({
 
 const s = themed(() =>
   StyleSheet.create({
-    openRow: { flexDirection: "row", marginTop: 4 },
     card: {
       gap: 10,
       marginTop: 4,

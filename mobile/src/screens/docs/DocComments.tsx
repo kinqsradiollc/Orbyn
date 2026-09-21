@@ -45,10 +45,7 @@ export function DocComments({
       <Text style={styles.title}>On the page</Text>
 
       {state.loose.length === 0 && (
-        <Text style={styles.empty}>
-          No comments about the page as a whole. To remark on one line, open it
-          and choose Comment.
-        </Text>
+        <Text style={styles.empty}>Nothing about the page as a whole yet.</Text>
       )}
 
       <DocThread

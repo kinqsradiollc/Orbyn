@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import {
   BLOCK_KINDS,
   blockText,
@@ -716,6 +723,7 @@ export function DocEditor({
           {modesFor(canWrite).map((m) => (
             <Chip
               key={m}
+              compact
               label={MODE_LABELS[m].name}
               selected={mode === m}
               accessibilityHint={MODE_LABELS[m].blurb}
@@ -816,70 +824,83 @@ export function DocEditor({
       />
 
       {focused !== null && (!reading || suggesting) ? (
+        /* Eleven kinds of line wrapped over three rows and took 374pt of an
+           812pt screen — half the phone, to say what one line is. They ride
+           in one row that scrolls now, the way every phone editor does it,
+           and the line's own actions ride in a second. */
         <View style={styles.tools}>
-          <ChipRow label="Kind of line">
-            {BLOCK_KINDS.map((kind) => {
-              const key = kindKey(kind);
-              const current = parseDoc(draft)[0] ?? EMPTY;
-              const selected =
-                (current.type === "heading"
-                  ? `heading-${current.level}`
-                  : current.type) === key;
-              return (
-                <Chip
-                  key={key}
-                  label={SHORT[key]}
-                  selected={selected}
-                  onPress={() => turnInto(kind)}
-                  accessibilityLabel={kind.label}
-                  accessibilityHint={kind.hint}
-                />
-              );
-            })}
-          </ChipRow>
-          <View style={styles.toolRow}>
-            {structural && (
-              <>
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.toolScroll}
+          >
+            <ChipRow label="Kind of line">
+              {BLOCK_KINDS.map((kind) => {
+                const key = kindKey(kind);
+                const current = parseDoc(draft)[0] ?? EMPTY;
+                const selected =
+                  (current.type === "heading"
+                    ? `heading-${current.level}`
+                    : current.type) === key;
+                return (
+                  <Chip
+                    key={key}
+                    label={SHORT[key]}
+                    selected={selected}
+                    onPress={() => turnInto(kind)}
+                    accessibilityLabel={kind.label}
+                    accessibilityHint={kind.hint}
+                  />
+                );
+              })}
+            </ChipRow>
+          </ScrollView>
+          <View style={styles.toolBottom}>
+            <ScrollView
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.toolScroll}
+            >
+              <View style={styles.toolRow}>
+                {structural && (
+                  <>
+                    <SmallAction
+                      label="Move up"
+                      disabled={focused === 0}
+                      onPress={() => moveLine(-1)}
+                    />
+                    <SmallAction
+                      label="Move down"
+                      disabled={focused >= blocks.length - 1}
+                      onPress={() => moveLine(1)}
+                    />
+                  </>
+                )}
                 <SmallAction
-                  label="Move up"
-                  disabled={focused === 0}
-                  onPress={() => moveLine(-1)}
+                  label="Comment"
+                  disabled={false}
+                  onPress={commentOnLine}
                 />
                 <SmallAction
-                  label="Move down"
-                  disabled={focused >= blocks.length - 1}
-                  onPress={() => moveLine(1)}
+                  label="On words"
+                  disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
+                  onPress={commentOnWords}
                 />
-              </>
-            )}
-            <SmallAction
-              label="Comment"
-              disabled={false}
-              onPress={commentOnLine}
-            />
-            <SmallAction
-              label="Comment on words"
-              disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
-              onPress={commentOnWords}
-            />
-          </View>
-          {/* Fifteen chips of three different kinds used to wrap into one
-              block, so leaving the line and losing it sat among the ways of
-              changing it — and the flex spacer that was meant to push Done
-              to the end only worked on a row that had not wrapped. Finishing
-              and deleting now have their own row under a rule, at the two
-              ends a thumb reaches for. */}
-          <View style={styles.toolFooter}>
+                {structural && (
+                  <SmallAction
+                    label="Delete"
+                    destructive
+                    disabled={false}
+                    onPress={deleteLine}
+                  />
+                )}
+              </View>
+            </ScrollView>
+            {/* Out of the scroll, so the way out of the line is always
+                where the thumb left it. */}
             <SmallAction label="Done" disabled={false} onPress={commit} />
-            <View style={styles.spacer} />
-            {structural && (
-              <SmallAction
-                label="Delete line"
-                destructive
-                disabled={false}
-                onPress={deleteLine}
-              />
-            )}
           </View>
           {!structural && (
             <Text style={styles.hint}>
@@ -900,26 +921,29 @@ export function DocEditor({
         )
       )}
 
-      <Text style={styles.hint}>
-        Tap a line to edit it. Return starts a new line; on an empty list item
-        it ends the list. The toolbar changes what a line is. Formulas read as
-        symbols here and are typeset on the desktop.
-      </Text>
-
-      {/* Asking about a page was on the desktop only. It follows the page
-          there and it follows the page here. Opening the line the answer
-          leant on is the whole point of it, so a source opens that line's
-          remarks — as close as a phone gets to scrolling the margin to it. */}
-      <DocAsk
-        docId={doc.id}
-        onGoToBlock={(blockId) => setOpenThread(blockId)}
-      />
+      {/* Four lines of instructions sat under every page, every time it was
+          opened. It says the one thing that is not obvious, and only while
+          there is a toolbar for it to be about. */}
+      {focused !== null && structural && (
+        <Text style={styles.hint}>
+          Return starts a new line; on an empty list item it ends the list.
+        </Text>
+      )}
 
       {/* Five ways to take the page away used to sit in one wrapped row with
           "Delete page" as the sixth chip, so the way to lose the page for
           good was a thumb's width from the way to keep a copy of it. The
           shapes now live behind one control, and deleting stands alone. */}
       <View style={styles.pageActions}>
+        {/* Asking about a page was on the desktop only. Opening the line the
+            answer leant on is the whole point of it, so a source opens that
+            line's remarks — as close as a phone gets to scrolling the margin
+            to it. It sits beside the page's other actions rather than on a
+            line of its own. */}
+        <DocAsk
+          docId={doc.id}
+          onGoToBlock={(blockId) => setOpenThread(blockId)}
+        />
         <SmallAction
           label={takeAwayLabel()}
           disabled={saving}
@@ -991,12 +1015,11 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surfaceMuted,
     },
-    toolRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      alignItems: "center",
-      gap: 8,
-    },
+    toolRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    /* Rows that scroll rather than wrap, so the toolbar is two rows tall
+       whatever a line can be turned into. */
+    toolScroll: { paddingRight: 4 },
+    toolBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
     toolFooter: {
       flexDirection: "row",
       alignItems: "center",

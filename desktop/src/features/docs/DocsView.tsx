@@ -167,6 +167,9 @@ export function DocsView({
 
   return (
     <div className="docs-view">
+      {/* The count on one side and the two ways to start on the other. They
+          were three children of a space-between row, so on a wide window
+          "New note" floated alone in the middle of it. */}
       <div className="docs-head">
         <span className="muted docs-count">
           {docs === null
@@ -175,42 +178,46 @@ export function DocsView({
               ? "1 document"
               : `${ordered.length} documents`}
         </span>
-        <button
-          className="text-button"
-          onClick={() => create("note")}
-          disabled={busy}
-        >
-          <Plus size={15} /> New note
-        </button>
-        <button
-          className="primary"
-          onClick={() => create("doc")}
-          disabled={busy}
-        >
-          <Plus size={15} /> New document
-        </button>
+        <div className="docs-head-actions">
+          <button
+            className="text-button"
+            onClick={() => create("note")}
+            disabled={busy}
+          >
+            <Plus size={15} /> New note
+          </button>
+          <button
+            className="primary"
+            onClick={() => create("doc")}
+            disabled={busy}
+          >
+            <Plus size={15} /> New document
+          </button>
+        </div>
       </div>
 
-      {/* Notes and pages live together; this says which you want to see. */}
-      <div className="folder-bar">
-        <button
-          className={"folder-chip" + (kindFilter === null ? " is-on" : "")}
-          onClick={() => setKindFilter(null)}
-        >
-          Everything
-        </button>
-        <button
-          className={"folder-chip" + (kindFilter === "doc" ? " is-on" : "")}
-          onClick={() => setKindFilter("doc")}
-        >
-          Pages
-        </button>
-        <button
-          className={"folder-chip" + (kindFilter === "note" ? " is-on" : "")}
-          onClick={() => setKindFilter("note")}
-        >
-          Notes <span className="folder-n">{noteCount}</span>
-        </button>
+      {/* Two different questions — which kind, and which folder — were two
+          rows of the same pill, which read as one pill soup. Choosing one of
+          three is a segmented control, the way the page's own modes are. */}
+      <div className="doc-mode docs-kinds" role="radiogroup" aria-label="Show">
+        {(
+          [
+            [null, "Everything", null],
+            ["doc", "Pages", null],
+            ["note", "Notes", noteCount],
+          ] as const
+        ).map(([kind, label, count]) => (
+          <button
+            key={label}
+            role="radio"
+            aria-checked={kindFilter === kind}
+            className={kindFilter === kind ? "is-on" : undefined}
+            onClick={() => setKindFilter(kind)}
+          >
+            {label}
+            {count !== null && <span className="folder-n">{count}</span>}
+          </button>
+        ))}
       </div>
 
       <div className="folder-bar">
