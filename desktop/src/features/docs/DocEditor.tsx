@@ -18,6 +18,7 @@ import {
   Loader2,
   MessageSquarePlus,
   Plus,
+  Sparkles,
   Trash2,
   Users,
 } from "lucide-react";
@@ -25,7 +26,10 @@ import {
   BLOCK_KINDS,
   blockToType,
   blockText,
+  DOC_AI_ACTIONS,
+  DOC_AI_LABELS,
   proposeEdit,
+  type DocAiAction,
   type DocMode,
   type DocSuggestion,
   carryBlockIds,
@@ -39,6 +43,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
+import { DocAskPanel } from "./DocAskPanel";
 import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
@@ -170,6 +175,8 @@ export function DocEditor({
   const [commented, setCommented] = useState<Record<string, Mark[]>>({});
   /** A live selection, and where to hang the button that acts on it. */
   const [picked, setPicked] = useState<Picked | null>(null);
+  /** Whether the list of things to ask the assistant for is showing. */
+  const [askMenu, setAskMenu] = useState(false);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -510,6 +517,47 @@ export function DocEditor({
         proposed: true,
       });
 
+  /**
+   * Ask the assistant for words in place of the selected ones. What comes
+   * back is a proposal like any other, so the page does not change until
+   * somebody takes it — which is what makes this safe on a shared page.
+   */
+  const assist = async (words: Picked, action: DocAiAction) => {
+    setAskMenu(false);
+    let instruction = "";
+    if (action === "custom") {
+      const asked = window.prompt(
+        "What should the assistant do with these words?",
+      );
+      if (!asked?.trim()) return;
+      instruction = asked.trim();
+    }
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+    setNote("Asking the assistant…");
+    try {
+      const made = await client.assistDoc(doc.id, {
+        block_id: words.blockId,
+        range_start: words.start,
+        range_end: words.end,
+        action,
+        instruction,
+      });
+      setSuggestions((list) => [...list, made]);
+      setNote("Suggested. Take it or leave it.");
+    } catch (e) {
+      setNote("");
+      report(e);
+    }
+  };
+
+  /** Put a line in view and single it out, for an answer that cites it. */
+  const goToBlock = (blockId: string) => {
+    const el = blockEls.current.get(blockId);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setActiveComment(blockId);
+  };
+
   const insertAfter = (index: number) => {
     const current = blocks[index];
     const next = blocks.slice();
@@ -837,6 +885,41 @@ export function DocEditor({
           >
             <MessageSquarePlus size={14} aria-hidden="true" /> Comment
           </button>
+          {/* Asking for words and saying something about them are the two
+              things anyone wants from a selection, so they sit together. */}
+          <button
+            className="text-button"
+            aria-haspopup="menu"
+            aria-expanded={askMenu}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setAskMenu((v) => !v)}
+          >
+            <Sparkles size={14} aria-hidden="true" /> Ask AI
+          </button>
+          {askMenu && (
+            <ul className="doc-ai-menu" role="menu">
+              {DOC_AI_ACTIONS.filter((a) => a !== "custom").map((action) => (
+                <li key={action}>
+                  <button
+                    role="menuitem"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void assist(picked, action)}
+                  >
+                    {DOC_AI_LABELS[action].name}
+                  </button>
+                </li>
+              ))}
+              <li>
+                <button
+                  role="menuitem"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void assist(picked, "custom")}
+                >
+                  {DOC_AI_LABELS.custom.name}…
+                </button>
+              </li>
+            </ul>
+          )}
         </div>
       )}
 
@@ -1008,6 +1091,7 @@ export function DocEditor({
         </div>
         {!showHistory && (
           <>
+            <DocAskPanel docId={doc.id} onGoToBlock={goToBlock} />
             <DocSuggestions
               suggestions={suggestions}
               canDecide={canWrite}

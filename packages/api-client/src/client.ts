@@ -5,6 +5,8 @@ import {
   type DocBlock,
   type DocKind,
   type DocComment,
+  type DocAiAction,
+  type DocAnswer,
   type DocSuggestion,
   type Proposed,
   type SearchHit,
@@ -671,6 +673,33 @@ export class OrbynClient {
     return this.request<DocComment>(`/docs/${docId}/comments`, {
       method: "POST",
       body: { body, ...anchor },
+    });
+  }
+
+  /**
+   * Ask the assistant for words in place of a stretch of a page. What comes
+   * back is a proposal like any other — nothing changes until it is taken.
+   */
+  assistDoc(
+    docId: string,
+    body: {
+      block_id: string;
+      range_start: number;
+      range_end: number;
+      action: DocAiAction;
+      instruction?: string;
+    },
+  ) {
+    return this.request<DocSuggestion>(`/docs/${docId}/assist`, {
+      method: "POST",
+      body,
+    });
+  }
+  /** Ask a question about one page, answered from that page alone. */
+  askDoc(docId: string, question: string) {
+    return this.request<DocAnswer>(`/docs/${docId}/ask`, {
+      method: "POST",
+      body: { question },
     });
   }
 
