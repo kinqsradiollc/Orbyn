@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   assistantSuggestions as SUGGESTIONS,
+  type DocSource,
   type Item,
   type Plan,
 } from "@orbyn/core";
@@ -32,6 +33,8 @@ type Props = {
   onApplyPlan: (plan: Plan) => Promise<string>;
   /** Shows a plan in the calendar's planner. */
   onOpenPlan: (plan: Plan) => void;
+  /** Opens a page the assistant read, at the line it cited. */
+  onOpenSource?: (source: DocSource) => void;
 };
 
 export function AssistantView({
@@ -40,6 +43,7 @@ export function AssistantView({
   assistant,
   onApplyPlan,
   onOpenPlan,
+  onOpenSource,
 }: Props) {
   const {
     message,
@@ -142,6 +146,7 @@ export function AssistantView({
                   onDismiss={() => dismiss(turn.id)}
                   onApplyPlan={onApplyPlan}
                   onOpenPlan={onOpenPlan}
+                  onOpenSource={onOpenSource}
                   onFollowUp={
                     turn.id === latestReplyId
                       ? (text) => void ask(text)

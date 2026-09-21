@@ -4,12 +4,14 @@ import {
   dateLabel,
   parseRichText,
   type Action,
+  type DocSource,
   type RichInline,
   type Item,
   type ItemInput,
   type Proposal,
 } from "@orbyn/core";
 import { Button } from "./Button";
+import { SmallAction } from "./SmallAction";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
 import { FadeIn, PressableScale } from "../motion";
@@ -264,6 +266,7 @@ export function ProposalReview({
   onApprove,
   onDiscard,
   onFollowUp,
+  onOpenSource,
 }: {
   proposal: Proposal;
   /** Current planner items, used to name items an action refers to by id. */
@@ -277,13 +280,31 @@ export function ProposalReview({
   onDiscard: () => void;
   /** Sends a suggested quick reply; only the latest reply gets one. */
   onFollowUp?: (text: string) => void;
+  /** Opens a page the assistant read, at the line it cited. */
+  onOpenSource?: (source: DocSource) => void;
 }) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
   const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
+  const sources = proposal.sources ?? [];
   return (
     <View>
       <SummaryText text={proposal.summary} />
+      {/* What the assistant actually read, so the answer can be checked
+          against it rather than taken on trust. */}
+      {sources.length > 0 && (
+        <View style={s.sources}>
+          <Text style={s.sourcesLabel}>READ</Text>
+          {sources.map((source) => (
+            <SmallAction
+              key={source.doc_id + (source.block_id ?? "")}
+              label={source.title || "Untitled"}
+              disabled={!onOpenSource}
+              onPress={() => onOpenSource?.(source)}
+            />
+          ))}
+        </View>
+      )}
       {count > 0 && (
         <View style={[s.actions, status === "discarded" && { opacity: 0.5 }]}>
           {proposal.actions.map((a, n) => {
@@ -372,6 +393,14 @@ export function ProposalReview({
 const s = themed(() =>
   StyleSheet.create({
     summary: { gap: 8 },
+    sources: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: 6,
+    },
+    sourcesLabel: { color: colors.muted, fontSize: 10, letterSpacing: 0.7 },
     heading: {
       fontFamily: fonts.bold,
       fontSize: 15,

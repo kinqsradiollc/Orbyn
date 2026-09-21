@@ -7,6 +7,7 @@ import {
   type Item,
   type ItemInput,
   type Plan,
+  type DocSource,
   type Proposal,
   parseRichText,
   type RichInline,
@@ -14,6 +15,7 @@ import {
 import type { TurnState } from "../hooks/useAssistant";
 import { stagger } from "../lib/motion";
 import { PlanCard } from "./PlanCard";
+import { FileText } from "lucide-react";
 
 type Props = {
   proposal: Proposal;
@@ -31,6 +33,8 @@ type Props = {
   onApplyPlan?: (plan: Plan) => Promise<string>;
   /** Shows the reply's plan in the calendar's planner. */
   onOpenPlan?: (plan: Plan) => void;
+  /** Opens a page the assistant read, at the line it cited. */
+  onOpenSource?: (source: DocSource) => void;
 };
 
 const OPERATION = {
@@ -245,14 +249,34 @@ export function ProposalReview({
   onFollowUp,
   onApplyPlan,
   onOpenPlan,
+  onOpenSource,
 }: Props) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
   const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
   const plan = proposal.plan;
+  const sources = proposal.sources ?? [];
   return (
     <div className="ai-proposal">
       <SummaryText text={proposal.summary} />
+      {/* What the assistant actually read, so the answer can be checked
+          against it rather than taken on trust. */}
+      {sources.length > 0 && (
+        <div className="ai-sources">
+          <span className="ai-sources-label">Read:</span>
+          {sources.map((s) => (
+            <button
+              key={s.doc_id + (s.block_id ?? "")}
+              className="ai-source"
+              title={s.quote}
+              disabled={!onOpenSource}
+              onClick={() => onOpenSource?.(s)}
+            >
+              <FileText size={12} aria-hidden="true" /> {s.title || "Untitled"}
+            </button>
+          ))}
+        </div>
+      )}
       {plan && (
         <PlanCard
           plan={plan}

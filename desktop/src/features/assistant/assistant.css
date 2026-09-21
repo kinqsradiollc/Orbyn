@@ -718,3 +718,43 @@
     padding-bottom: 6px;
   }
 }
+
+/* The pages the assistant actually read for an answer. Shown so the answer
+   can be checked against them rather than taken on trust. */
+.ai-sources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.ai-sources-label {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ai-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-sunken);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-source:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-focus);
+}
+.ai-source:disabled {
+  cursor: default;
+}

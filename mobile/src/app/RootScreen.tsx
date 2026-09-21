@@ -649,6 +649,12 @@ export function RootScreen() {
                     assistant={assistant}
                     items={items}
                     busy={busy}
+                    onOpenSource={(source) =>
+                      void client.getDoc(source.doc_id).then((doc) => {
+                        setNote(doc);
+                        setSheet("note");
+                      })
+                    }
                   />
                 )}
                 {tab === "Inbox" && (

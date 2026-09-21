@@ -6,6 +6,7 @@ import {
   STATUSES,
   itemData,
   type Action,
+  type DocSource,
   type Plan,
   type SystemRole,
 } from "@orbyn/core";
@@ -33,6 +34,12 @@ export type AgentContext = {
   clarification: { question: string; options: string[] } | null;
   /** A schedule planned this turn, for the user to review and apply. */
   plan?: Plan | null;
+  /**
+   * The pages read while answering, so the reply can point at them. These
+   * are what the assistant actually looked at, not what it claims to have
+   * used, which is the only version of a citation worth showing.
+   */
+  cited?: Map<string, DocSource>;
 };
 
 export const MAX_ACTIONS = 20;
@@ -802,6 +809,55 @@ const NO_ARGS: JsonSchema = {
 export const TOOLS: Tool[] = [
   tool(
     {
+      name: "search_docs",
+      description:
+        "Search the pages and notes this person can read — documents, meeting notes, agendas, project notes. Use this before answering anything about what was written down, decided or agreed. Returns ids and the line that matched, for citing.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["query"],
+        properties: {
+          query: {
+            type: "string",
+            description: "What to look for, in ordinary words.",
+          },
+          kind: {
+            type: "string",
+            enum: ["doc", "note", "agenda", "meeting"],
+            description: "Narrow to one kind of page.",
+          },
+          limit: { type: "number", description: "At most 10; 5 by default." },
+        },
+      },
+    },
+    z
+      .object({
+        query: z.string().trim().min(1).max(200),
+        kind: z.enum(["doc", "note", "agenda", "meeting"]).optional(),
+        limit: z.number().int().min(1).max(10).default(5),
+      })
+      .strict(),
+    (ctx, a) => searchDocs(ctx, a),
+  ),
+  tool(
+    {
+      name: "get_doc",
+      description:
+        "Read one page in full, line by line, with the block ids to cite lines by. Use after search_docs when the snippet is not enough.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["doc_id"],
+        properties: {
+          doc_id: { type: "string", description: "An id from search_docs." },
+        },
+      },
+    },
+    z.object({ doc_id: z.uuid() }).strict(),
+    (ctx, a) => readDoc(ctx, a),
+  ),
+  tool(
+    {
       name: "get_overview",
       description:
         "Counts plus overdue, today's and the next 7 days' items. Use for summaries and 'what needs my attention'.",
@@ -1068,6 +1124,97 @@ const errorResult = (message: string) => ({
 });
 
 /** Run one tool call. Every failure comes back as a result the model can act on. */
+/**
+ * What a document search hands back. Enough to name it and cite it, never
+ * the whole page — a page is fetched on purpose with get_doc.
+ */
+async function searchDocs(
+  ctx: AgentContext,
+  a: { query: string; kind?: string; limit: number },
+) {
+  const rows = (
+    await pool.query<{
+      id: string;
+      title: string;
+      kind: string;
+      project_name: string | null;
+      updated_at: string;
+      snippet: string;
+      block_id: string | null;
+    }>(
+      `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq)
+       SELECT d.id, d.title, d.kind, p.name AS project_name, d.updated_at,
+              ts_headline('english', doc_words(d.content, NULL), q.tsq,
+                          'StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1')
+                AS snippet,
+              (SELECT b->>'id' FROM jsonb_array_elements(d.content) b
+                WHERE b->>'text' IS NOT NULL AND b->>'id' IS NOT NULL
+                  AND to_tsvector('english', b->>'text') @@ q.tsq LIMIT 1) AS block_id
+         FROM docs d
+         LEFT JOIN projects p ON p.id = d.project_id
+         CROSS JOIN q
+        WHERE ((d.team_id IS NULL AND d.user_id = $1)
+               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
+          AND ($3::text IS NULL OR d.kind = $3)
+        ORDER BY ts_rank_cd(d.search, q.tsq) DESC, d.updated_at DESC
+        LIMIT $4`,
+      [ctx.user.id, a.query, a.kind ?? null, a.limit],
+    )
+  ).rows;
+  for (const row of rows)
+    ctx.cited?.set(row.id, {
+      doc_id: row.id,
+      title: row.title,
+      block_id: row.block_id,
+      quote: (row.snippet || "").slice(0, 300),
+    });
+  return {
+    items: rows,
+    note: rows.length
+      ? "Cite a page with its id and the block_id that matched."
+      : "Nothing written down matches. Say so rather than answering from memory.",
+  };
+}
+
+/** One page as plain text, line by line, with the names to cite lines by. */
+async function readDoc(ctx: AgentContext, a: { doc_id: string }) {
+  const doc = (
+    await pool.query<{
+      id: string;
+      title: string;
+      kind: string;
+      content: { id?: string; type: string; text?: string }[];
+      updated_at: string;
+    }>(
+      `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
+        WHERE d.id = $2
+          AND ((d.team_id IS NULL AND d.user_id = $1)
+               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+      [ctx.user.id, a.doc_id],
+    )
+  ).rows[0];
+  if (!doc) throw new Error("No such page, or it is not yours to read.");
+  ctx.cited?.set(doc.id, {
+    doc_id: doc.id,
+    title: doc.title,
+    block_id: null,
+    quote: (doc.content.find((b) => (b.text ?? "").trim())?.text ?? "").slice(
+      0,
+      300,
+    ),
+  });
+  return {
+    id: doc.id,
+    title: doc.title,
+    kind: doc.kind,
+    updated_at: doc.updated_at,
+    lines: doc.content
+      .filter((b) => (b.text ?? "").trim())
+      .map((b) => ({ block_id: b.id ?? null, text: b.text })),
+  };
+}
+
 export async function runTool(
   call: ToolCall,
   ctx: AgentContext,
