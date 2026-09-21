@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useState } from "react";
 import {
   Activity,
@@ -79,12 +80,15 @@ export function SettingsView({
         aria-labelledby={"settings-tab-" + tab}
       >
         {tab === "account" && (
-          <section className="card settings-card">
+          <SettingsSection className="card settings-card" defaultOpen>
             <h2>Your account</h2>
             <p>
               {user?.name} · {user?.email}
             </p>
-            <hr />
+          </SettingsSection>
+        )}
+        {tab === "account" && (
+          <SettingsSection className="card settings-card">
             <h2>Appearance</h2>
             <div className="preference theme-preference">
               <span>
@@ -106,7 +110,10 @@ export function SettingsView({
                 ))}
               </div>
             </div>
-            <hr />
+          </SettingsSection>
+        )}
+        {tab === "account" && (
+          <SettingsSection className="card settings-card">
             <h2>Stay in the loop</h2>
             <label className="preference">
               <span>
@@ -126,29 +133,34 @@ export function SettingsView({
               Mobile push notifications can be enabled in the Orbyn mobile app.
               Each item has its own reminder timing.
             </p>
+          </SettingsSection>
+        )}
+        {tab === "account" && (
+          <SettingsSection className="card settings-card" title="Signing in">
             <TwoFactorSettings report={report} />
             <PasskeysSettings report={report} />
             <SessionsSettings report={report} />
-            <hr />
+          </SettingsSection>
+        )}
+        {tab === "account" && (
+          <SettingsSection className="card settings-card">
             <h2>AI provider</h2>
             <p className="muted">
               An admin connects the AI provider in Admin → AI. Keys stay on the
               server.
             </p>
-            {onOpenStatus && (
-              <>
-                <hr />
-                <h2>Service status</h2>
-                <p className="muted">
-                  See whether Orbyn is running smoothly and review recent
-                  incidents.
-                </p>
-                <button className="secondary" onClick={onOpenStatus}>
-                  <Activity size={14} /> Service status
-                </button>
-              </>
-            )}
-          </section>
+          </SettingsSection>
+        )}
+        {tab === "account" && onOpenStatus && (
+          <SettingsSection className="card settings-card">
+            <h2>Service status</h2>
+            <p className="muted">
+              See whether Orbyn is running smoothly and review recent incidents.
+            </p>
+            <button className="secondary" onClick={onOpenStatus}>
+              <Activity size={14} /> Service status
+            </button>
+          </SettingsSection>
         )}
         {tab === "planning" && (
           <PlanningSettings teams={teams} report={report} />

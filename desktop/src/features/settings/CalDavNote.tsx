@@ -1,10 +1,14 @@
+import { SettingsSection } from "./SettingsSection";
 import { CalendarSync } from "lucide-react";
 
 /** How to subscribe to your events from a desktop/phone calendar app. */
 export function CalDavNote() {
   const url = `${location.origin.replace(/\/$/, "")}/dav/`;
   return (
-    <section className="card settings-card" aria-labelledby="caldav-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="caldav-title"
+    >
       <h2 id="caldav-title">
         <CalendarSync size={18} aria-hidden="true" /> Subscribe from a calendar
         app
@@ -15,6 +19,6 @@ export function CalDavNote() {
         personal API key (above) as the password.
       </p>
       <code className="two-factor-secret">{url}</code>
-    </section>
+    </SettingsSection>
   );
 }

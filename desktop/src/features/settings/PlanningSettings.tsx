@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
@@ -112,9 +113,9 @@ export function PlanningSettings({ teams, report }: Props) {
 
   if (!draft)
     return (
-      <section className="card settings-card">
+      <SettingsSection className="card settings-card">
         <p className="muted">Loading your planning settings…</p>
-      </section>
+      </SettingsSection>
     );
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
@@ -177,9 +178,12 @@ export function PlanningSettings({ teams, report }: Props) {
 
   return (
     <>
-      <section className="card settings-card" aria-labelledby="work-title">
+      <SettingsSection
+        className="card settings-card"
+        aria-labelledby="work-title"
+      >
+        <h2 id="work-title">How you work</h2>
         <form onSubmit={submit}>
-          <h2 id="work-title">How you work</h2>
           <p className="muted">
             The planner, buffers and travel time all follow these.
           </p>
@@ -662,7 +666,7 @@ export function PlanningSettings({ teams, report }: Props) {
             <OutcomeNote outcome={save.outcome} />
           </div>
         </form>
-      </section>
+      </SettingsSection>
       <TimeAnalytics report={report} />
       <FramesEditor teams={teams} report={report} />
       <HabitsEditor report={report} />
@@ -726,10 +730,9 @@ function FramesEditor({ teams, report }: Props) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="frames-title">
+    <SettingsSection className="card settings-card" title="Frames">
       <div className="settings-head">
         <div>
-          <h2 id="frames-title">Frames</h2>
           <p className="muted">
             Time set aside for a kind of work, like “Deep work, weekday
             mornings”. The planner fills frames with matching tasks.
@@ -803,7 +806,7 @@ function FramesEditor({ teams, report }: Props) {
         />
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -885,10 +888,9 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="places-title">
+    <SettingsSection className="card settings-card" title="Places">
       <div className="settings-head">
         <div>
-          <h2 id="places-title">Places</h2>
           <p className="muted">
             When an event&apos;s location mentions a place, the calendar keeps
             its travel time free before and after.
@@ -1051,6 +1053,6 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
         </form>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }

@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { Mail } from "lucide-react";
 import type { InboxInfo } from "@orbyn/core";
@@ -26,7 +27,10 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
     });
 
   return (
-    <section className="card settings-card" aria-labelledby="inbox-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="inbox-title"
+    >
       <h2 id="inbox-title">
         <Mail size={18} aria-hidden="true" /> Email to task
       </h2>
@@ -74,6 +78,6 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
         </button>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
