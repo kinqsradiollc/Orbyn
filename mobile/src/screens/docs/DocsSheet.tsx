@@ -102,6 +102,7 @@ export function DocsSheet({
               userId={userId}
               onChanged={setOpen}
               onItemsChanged={onItemsChanged}
+              onDeleted={backToList}
               report={report}
             />
           ) : docs === null ? (
@@ -167,12 +168,14 @@ function OpenDoc({
   userId,
   onChanged,
   onItemsChanged,
+  onDeleted,
   report,
 }: {
   doc: Doc;
   userId?: string;
   onChanged: (doc: Doc) => void;
   onItemsChanged?: () => void;
+  onDeleted: () => void;
   report: (e: unknown) => void;
 }) {
   // The lines as the editor has them, which runs ahead of the saved copy.
@@ -187,6 +190,7 @@ function OpenDoc({
         onBlocksChange={setBlocks}
         onChanged={onChanged}
         onItemsChanged={onItemsChanged}
+        onDeleted={onDeleted}
         report={report}
       />
       <DocComments state={comments} userId={userId} />

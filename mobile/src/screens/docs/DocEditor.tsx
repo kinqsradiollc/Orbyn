@@ -18,6 +18,7 @@ import type { DocCommentsState } from "./useDocComments";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import { confirmAction } from "../../lib/confirm";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -60,6 +61,7 @@ export function DocEditor({
   onBlocksChange,
   onChanged,
   onItemsChanged,
+  onDeleted,
   report,
 }: {
   doc: Doc;
@@ -71,6 +73,8 @@ export function DocEditor({
   onChanged: (doc: Doc) => void;
   /** Called when a tick here may have changed a task. */
   onItemsChanged?: () => void;
+  /** Called once the page has been deleted, to leave the editor. */
+  onDeleted?: () => void;
   report: (e: unknown) => void;
 }) {
   const [title, setTitle] = useState(doc.title);
@@ -416,6 +420,51 @@ export function DocEditor({
     void persist(title, next).then(() => onItemsChanged?.());
   };
 
+  /**
+   * Turn the unticked checklist lines into real tasks. The server ties each
+   * line to its task and hands the page back, so the lines follow them.
+   */
+  const makeTasks = () => {
+    if (timer.current) clearTimeout(timer.current);
+    void (async () => {
+      try {
+        if (dirty.current) await persist(title, blocks);
+        const { created, doc: updated } = await client.docToTasks(doc.id);
+        if (updated) {
+          version.current = updated.version;
+          base.current = updated.content;
+          dirty.current = false;
+          setBlocks(updated.content);
+          onChanged(updated);
+        }
+        onItemsChanged?.();
+        setNote(
+          created === 0
+            ? "Every item here is already a task."
+            : `Added ${created} task${created === 1 ? "" : "s"} to your planner.`,
+        );
+      } catch (e) {
+        report(e);
+      }
+    })();
+  };
+
+  const removePage = () =>
+    confirmAction(
+      `Delete “${title || "Untitled"}”?`,
+      "This cannot be undone.",
+      "Delete",
+      () => {
+        if (timer.current) clearTimeout(timer.current);
+        client.deleteDoc(doc.id).then(() => onDeleted?.(), report);
+      },
+    );
+
+  // Lines already tied to a task are not offered again.
+  const openTodos = blocks.filter(
+    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
+  ).length;
+
   return (
     <View style={styles.page}>
       <TextInput
@@ -544,6 +593,22 @@ export function DocEditor({
         it ends the list. The toolbar changes what a line is. Formulas read as
         symbols here and are typeset on the desktop.
       </Text>
+
+      <View style={styles.pageActions}>
+        {openTodos > 0 && (
+          <SmallAction
+            label={`Add ${openTodos} to my tasks`}
+            disabled={false}
+            onPress={makeTasks}
+          />
+        )}
+        <SmallAction
+          label="Delete page"
+          destructive
+          disabled={false}
+          onPress={removePage}
+        />
+      </View>
     </View>
   );
 }
@@ -588,6 +653,12 @@ const styles = themed(() =>
       gap: 8,
     },
     spacer: { flex: 1 },
+    pageActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 4,
+    },
     add: {
       minHeight: 36,
       justifyContent: "center",
