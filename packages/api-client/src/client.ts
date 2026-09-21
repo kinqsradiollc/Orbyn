@@ -742,8 +742,12 @@ export class OrbynClient {
   }
 
   // Documents
-  listDocs() {
-    return this.request<DocSummary[]>("/docs");
+  /** Every page you can see, newest edit first, optionally narrowed. */
+  listDocs(filter: { kind?: DocKind; project?: string; tag?: string } = {}) {
+    const q = new URLSearchParams(
+      Object.entries(filter).flatMap(([k, v]) => (v ? [[k, v]] : [])),
+    ).toString();
+    return this.request<DocSummary[]>(`/docs${q ? `?${q}` : ""}`);
   }
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
@@ -754,6 +758,8 @@ export class OrbynClient {
     team_id?: string | null;
     item_id?: string | null;
     folder_id?: string | null;
+    project_id?: string | null;
+    tags?: string[];
     content?: DocBlock[];
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
@@ -764,6 +770,8 @@ export class OrbynClient {
       title?: string;
       content?: DocBlock[];
       folder_id?: string | null;
+      project_id?: string | null;
+      tags?: string[];
       version: number;
     },
   ) {

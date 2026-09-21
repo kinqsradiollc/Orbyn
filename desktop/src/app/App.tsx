@@ -586,6 +586,12 @@ export function App() {
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
+                  onOpenNote={(docId) =>
+                    void client.getDoc(docId).then((doc) => {
+                      setNoteDoc(doc);
+                      setView("Docs");
+                    }, report)
+                  }
                 />
               )}
               {view === "Calendar" && (

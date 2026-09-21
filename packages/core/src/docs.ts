@@ -7,7 +7,12 @@
  * can always be exported and nothing is locked into the editor.
  */
 
-export const DOC_KINDS = ["doc", "agenda", "meeting"] as const;
+/**
+ * What a page is for. A note is an ordinary page that hangs off a project,
+ * a task or a team; everything else about it is the same, which is why it
+ * is a kind rather than a table of its own.
+ */
+export const DOC_KINDS = ["doc", "note", "agenda", "meeting"] as const;
 
 /**
  * How a page is being worked on.
@@ -109,6 +114,11 @@ export type Doc = {
   kind: DocKind;
   content: DocBlock[];
   item_id: string | null;
+  /** The project this note belongs to, for a note that belongs to one. */
+  project_id: string | null;
+  project_name?: string | null;
+  /** The tags on this page, from the same vocabulary tasks use. */
+  tags?: { id: string; name: string; color: string }[];
   folder_id: string | null;
   version: number;
   created_at: string;

@@ -853,3 +853,85 @@ test("a reader may propose; only a writer may decide", async () => {
   assert.equal(allowed.statusCode, 200);
   assert.equal(allowed.json().doc.content[0].text, "a common sentence");
 });
+
+// --- Notes -----------------------------------------------------------------
+
+test("a note hangs off a project and keeps its tags", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Q4 launch" })
+  ).json();
+  const tag = (await call("POST", "/tags", { name: "risk" })).json();
+  const note = (
+    await call("POST", "/docs", {
+      title: "Launch risks",
+      kind: "note",
+      project_id: project.id,
+      tags: [tag.id],
+      content: [{ type: "paragraph", text: "Legal review may run long" }],
+    })
+  ).json();
+  assert.equal(note.kind, "note");
+  assert.equal(note.project_id, project.id);
+  assert.equal(note.project_name, "Q4 launch");
+  assert.deepEqual(
+    note.tags.map((t: { name: string }) => t.name),
+    ["risk"],
+  );
+
+  const byProject = (await call("GET", `/docs?project=${project.id}`)).json();
+  assert.equal(byProject.length, 1);
+  assert.equal(byProject[0].id, note.id);
+
+  const byKind = (await call("GET", "/docs?kind=note")).json();
+  assert.ok(byKind.some((d: { id: string }) => d.id === note.id));
+
+  const byTag = (await call("GET", `/docs?tag=${tag.id}`)).json();
+  assert.equal(byTag.length, 1, "one note carries that tag");
+
+  // Ordinary pages are not notes, so the note filter leaves them out.
+  const plain = (await call("POST", "/docs", { title: "Just a page" })).json();
+  assert.ok(!byKind.some((d: { id: string }) => d.id === plain.id));
+});
+
+test("a note's project and tags can be changed, and cleared", async () => {
+  const project = (await call("POST", "/projects", { name: "Later" })).json();
+  const tag = (await call("POST", "/tags", { name: "later-tag" })).json();
+  const note = (
+    await call("POST", "/docs", { title: "Movable", kind: "note" })
+  ).json();
+  assert.equal(note.project_id, null);
+
+  const tied = (
+    await call("PUT", `/docs/${note.id}`, {
+      version: note.version,
+      project_id: project.id,
+      tags: [tag.id],
+    })
+  ).json();
+  assert.equal(tied.project_id, project.id);
+  assert.equal(tied.tags.length, 1);
+
+  const freed = (
+    await call("PUT", `/docs/${note.id}`, {
+      version: tied.version,
+      project_id: null,
+      tags: [],
+    })
+  ).json();
+  assert.equal(freed.project_id, null);
+  assert.deepEqual(freed.tags, []);
+});
+
+test("someone else's tag cannot be put on your note", async () => {
+  const theirs = (
+    await call("POST", "/tags", { name: "not-yours" }, () => otherToken)
+  ).json();
+  const note = (
+    await call("POST", "/docs", {
+      title: "Tag check",
+      kind: "note",
+      tags: [theirs.id],
+    })
+  ).json();
+  assert.deepEqual(note.tags, [], "a tag you cannot use is left out");
+});
