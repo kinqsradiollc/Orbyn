@@ -19,6 +19,7 @@ import {
   statusOrder,
   type Item,
   type ItemDetail,
+  type Project,
   type ItemStep,
   type ItemUpdate,
   type Priority,
@@ -26,6 +27,7 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { Chip, ChipRow } from "../components/Chip";
 import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
@@ -224,6 +226,28 @@ function Body({
     now,
   );
   const canWork = item.kind === "task" && !isClosed(item.status) && !readOnly;
+
+  /**
+   * Which project a task belongs to, and which stage within it. Loaded only
+   * when a task is open, since events never belong to a project.
+   */
+  const [projects, setProjects] = useState<Project[] | null>(null);
+  useEffect(() => {
+    if (item?.kind !== "task" || readOnly) return;
+    client.listProjects().then(setProjects, () => setProjects([]));
+  }, [item?.kind, readOnly]);
+
+  const project = projects?.find((p) => p.id === detail?.project_id) ?? null;
+
+  const putInProject = (projectId: string | null, stageId?: string | null) =>
+    void run(async () => {
+      await client.setItemProject(item.id, {
+        project_id: projectId,
+        ...(stageId === undefined ? {} : { stage_id: stageId }),
+      });
+      // `run` adopts what it is given, so hand back the item as it now is.
+      return client.getItem(item.id);
+    });
   const byId = new Map(items.map((i) => [i.id, i]));
   const parent = item.parent_id
     ? (byId.get(item.parent_id) ??
@@ -648,6 +672,53 @@ function Body({
               </>
             )}
           </FadeIn>
+
+          {/* Which project this belongs to, and where in it. */}
+          {item.kind === "task" && !readOnly && !!projects?.length && (
+            <FadeIn index={2} style={shared.card}>
+              <View style={s.cardHeading}>
+                <Text style={shared.sectionTitle} accessibilityRole="header">
+                  Project
+                </Text>
+              </View>
+              <ChipRow label="Project">
+                <Chip
+                  label="None"
+                  selected={!project}
+                  disabled={busy}
+                  onPress={() => putInProject(null)}
+                />
+                {projects.map((p) => (
+                  <Chip
+                    key={p.id}
+                    label={p.name}
+                    selected={project?.id === p.id}
+                    disabled={busy}
+                    onPress={() => putInProject(p.id)}
+                  />
+                ))}
+              </ChipRow>
+              {!!project && (
+                <ChipRow label="Stage">
+                  <Chip
+                    label="No stage"
+                    selected={!detail?.stage_id}
+                    disabled={busy}
+                    onPress={() => putInProject(project.id, null)}
+                  />
+                  {project.stages.map((stage) => (
+                    <Chip
+                      key={stage.id}
+                      label={stage.name}
+                      selected={detail?.stage_id === stage.id}
+                      disabled={busy}
+                      onPress={() => putInProject(project.id, stage.id)}
+                    />
+                  ))}
+                </ChipRow>
+              )}
+            </FadeIn>
+          )}
 
           {/* Subtasks */}
           {item.kind === "task" && (subtasks.length > 0 || canAddSubtask) && (

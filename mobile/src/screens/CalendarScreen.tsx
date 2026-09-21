@@ -613,6 +613,20 @@ export function CalendarScreen({
       onChanged();
     });
 
+  /**
+   * Leave one occurrence of a repeating item out, without touching the rest
+   * of the series or the item itself.
+   */
+  const skipOne = (itemId: string, occurrence: string, title: string) =>
+    act(async () => {
+      const item = await itemFor(itemId);
+      assertEditable(item);
+      await client.skipOccurrence(itemId, occurrence);
+      showNote(`Skipped this one. “${title}” still repeats.`);
+      reload();
+      onChanged();
+    });
+
   const blockMenu = (block: TimeBlock) => {
     const open = block.status !== "done";
     const actions: MenuAction[] = [
@@ -814,6 +828,13 @@ export function CalendarScreen({
         label: "Start focus",
         icon: "play",
         run: () => startFocus(entry.item_id),
+      });
+    // Only a repeating item has an occurrence to leave out.
+    if (entry.occurrence && editable)
+      actions.push({
+        label: "Skip this one",
+        icon: "chevronRight",
+        run: () => void skipOne(entry.item_id, entry.occurrence!, entry.title),
       });
     if (entry.meeting_url && canJoin(entry, now))
       actions.push({ label: "Join", icon: "video", run: () => join(entry) });
