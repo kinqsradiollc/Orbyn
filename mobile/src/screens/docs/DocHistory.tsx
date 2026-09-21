@@ -167,7 +167,7 @@ const styles = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      minHeight: 36,
+      minHeight: 44,
     },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
     toggle: { color: colors.accent, fontSize: 13, fontFamily: fonts.semibold },

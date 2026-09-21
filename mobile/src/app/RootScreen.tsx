@@ -556,13 +556,19 @@ export function RootScreen() {
                   })
                   .toUpperCase()}
               </Text>
-              {/* Keyed by tab: replays on navigation only, never on refresh. */}
-              <FadeIn key={`head-${tab}`} duration={motion.slow}>
-                <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-                <Text style={[shared.subtitle, s.subtitle]}>
-                  {tabSubtitle(tab)}
-                </Text>
-              </FadeIn>
+              {/* Keyed by tab: replays on navigation only, never on refresh.
+                  A conversation under way takes the heading's place, the way
+                  the desktop drops its greeting on the first message: on a
+                  812pt screen the headline and its line were holding a third
+                  of the room the chat itself wanted. */}
+              {!(tab === "AI" && messages > 0) && (
+                <FadeIn key={`head-${tab}`} duration={motion.slow}>
+                  <Text style={shared.title}>{tabTitle(tab, user)}</Text>
+                  <Text style={[shared.subtitle, s.subtitle]}>
+                    {tabSubtitle(tab)}
+                  </Text>
+                </FadeIn>
+              )}
               <ErrorBanner error={error} onDismiss={() => setError("")} />
             </View>
             {/* Sticky on the Calendar tab: its date navigation and view switch. */}

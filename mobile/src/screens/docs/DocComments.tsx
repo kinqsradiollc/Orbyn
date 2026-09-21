@@ -62,6 +62,7 @@ export function DocComments({
         <Pressable
           onPress={() => state.setShowResolved(!state.showResolved)}
           accessibilityRole="button"
+          style={styles.toggleRow}
         >
           <Text style={styles.toggle}>
             {state.showResolved ? "Hide" : "Show"} {state.resolvedCount}{" "}
@@ -83,6 +84,12 @@ const styles = themed(() =>
       borderTopColor: colors.border,
     },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
+    // A line of text is not a target a thumb can find; it gets a row.
+    toggleRow: {
+      minHeight: 44,
+      alignSelf: "flex-start",
+      justifyContent: "center",
+    },
     toggle: { color: colors.accent, fontSize: 13, fontFamily: fonts.semibold },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   }),

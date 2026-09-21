@@ -184,7 +184,10 @@ export function AssistantComposer({
       <TextInput
         style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
         multiline
-        placeholder="Make a little space. Ask Orbyn…"
+        // The longer line wrapped in the 209pt the two buttons leave it, so
+        // an empty composer stood two lines tall. The invitation is already
+        // on the card above; this is the same placeholder the desktop uses.
+        placeholder="Ask Orbyn…"
         placeholderTextColor={colors.faint}
         value={message}
         onChangeText={setMessage}
