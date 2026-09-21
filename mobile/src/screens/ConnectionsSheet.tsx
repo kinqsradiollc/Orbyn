@@ -22,7 +22,7 @@ import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
-import { client } from "../lib/api";
+import { client, webOrigin } from "../lib/api";
 import { parseMinutes, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
@@ -439,6 +439,45 @@ function Body() {
 
         <CalendarFeedCard />
         <SubscriptionsCard />
+
+        {/* Two addresses the desktop shows and the phone did not — and the
+            phone is where you are most likely to want the first of them,
+            since the calendar app you would subscribe is on it. */}
+        <Text style={[shared.eyebrow, s.eyebrow]}>FROM A CALENDAR APP</Text>
+        <View style={shared.card}>
+          <Text style={[shared.small, s.gap]}>
+            Add your Orbyn events to Apple Calendar, Thunderbird or DAVx5 over
+            CalDAV, read-only for now. Your email is the username and a personal
+            API key above is the password.
+          </Text>
+          <Text selectable style={s.code}>
+            {`${webOrigin}/dav/`}
+          </Text>
+          <SmallAction
+            label="Copy address"
+            disabled={false}
+            onPress={() => void shareText(`${webOrigin}/dav/`)}
+          />
+        </View>
+
+        <Text style={[shared.eyebrow, s.eyebrow]}>AN AI ASSISTANT (MCP)</Text>
+        <View style={shared.card}>
+          <Text style={[shared.small, s.gap]}>
+            Let your own AI tools — Claude, Cursor, ChatGPT — search and add to
+            your planner. Point an MCP client at the address below and sign it
+            in with a personal API key. It can do only what that key can.
+          </Text>
+          <Text selectable style={s.code}>
+            {`${client.baseUrl.replace(/\/$/, "")}/mcp`}
+          </Text>
+          <SmallAction
+            label="Copy address"
+            disabled={false}
+            onPress={() =>
+              void shareText(`${client.baseUrl.replace(/\/$/, "")}/mcp`)
+            }
+          />
+        </View>
       </View>
     </ScrollView>
   );
