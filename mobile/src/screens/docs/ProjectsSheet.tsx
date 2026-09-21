@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import {
   projectAtRisk,
   projectProgress,
   type Item,
   type Project,
 } from "@orbyn/core";
+import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { SmallAction } from "../../components/SmallAction";
+import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
@@ -39,11 +49,54 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
-  const { error, setError, run } = useRun();
+  /** A name being typed, for a new project or a rename. */
+  const [draft, setDraft] = useState<string | null>(null);
+  const { busy, error, setError, run } = useRun();
+
+  const reload = () =>
+    client.listProjects().then(setProjects, () => setProjects([]));
+
+  const create = () => {
+    const name = (draft ?? "").trim();
+    if (!name) return;
+    void run(async () => {
+      const made = await client.createProject({ name });
+      setDraft(null);
+      await reload();
+      setOpen(made);
+    });
+  };
+
+  const rename = () => {
+    const name = (draft ?? "").trim();
+    if (!open || !name || name === open.name) return setDraft(null);
+    void run(async () => {
+      const saved = await client.updateProject(open.id, { name });
+      setOpen(saved);
+      setDraft(null);
+      await reload();
+    });
+  };
+
+  const remove = () => {
+    if (!open) return;
+    confirmAction(
+      `Delete “${open.name}”?`,
+      "Its tasks stay in your planner, unfiled.",
+      "Delete",
+      () =>
+        void run(async () => {
+          await client.deleteProject(open.id);
+          setOpen(null);
+          await reload();
+        }),
+    );
+  };
 
   useEffect(() => {
     if (!visible) return;
-    client.listProjects().then(setProjects, () => setProjects([]));
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   const tasksIn = (project: Project, stageId: string | null) =>
@@ -69,11 +122,41 @@ export function ProjectsSheet({
 
           {open ? (
             <View style={styles.page}>
-              <View style={styles.titleRow}>
-                <Text style={styles.title}>{open.name}</Text>
-                {projectAtRisk(open) && (
-                  <Text style={styles.chip}>At risk</Text>
-                )}
+              {draft === null ? (
+                <View style={styles.titleRow}>
+                  <Text style={styles.title}>{open.name}</Text>
+                  {projectAtRisk(open) && (
+                    <Text style={styles.chip}>At risk</Text>
+                  )}
+                </View>
+              ) : (
+                <TextInput
+                  style={styles.nameInput}
+                  value={draft}
+                  autoFocus
+                  maxLength={120}
+                  placeholder="Project name"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Project name"
+                  onChangeText={setDraft}
+                  onSubmitEditing={rename}
+                  onBlur={rename}
+                />
+              )}
+              <View style={styles.actions}>
+                <SmallAction
+                  label={draft === null ? "Rename" : "Save"}
+                  disabled={busy}
+                  onPress={() =>
+                    draft === null ? setDraft(open.name) : rename()
+                  }
+                />
+                <SmallAction
+                  label="Delete project"
+                  destructive
+                  disabled={busy}
+                  onPress={remove}
+                />
               </View>
               {!!open.summary && (
                 <Text style={styles.summary}>{open.summary}</Text>
@@ -136,11 +219,75 @@ export function ProjectsSheet({
           ) : projects === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : projects.length === 0 ? (
-            <Text style={styles.empty}>
-              No projects yet. Start one on the desktop and it will show here.
-            </Text>
+            <View style={styles.list}>
+              <Text style={styles.empty}>
+                No projects yet. Group related tasks into stages and see a piece
+                of work end to end.
+              </Text>
+              {draft === null ? (
+                <Button
+                  title="New project"
+                  secondary
+                  disabled={busy}
+                  onPress={() => setDraft("")}
+                />
+              ) : (
+                <View style={styles.newRow}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={draft}
+                    autoFocus
+                    maxLength={120}
+                    placeholder="What is it called?"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="New project name"
+                    onChangeText={setDraft}
+                    onSubmitEditing={create}
+                  />
+                  <Button
+                    title="Create"
+                    disabled={busy || !draft.trim()}
+                    onPress={create}
+                  />
+                </View>
+              )}
+            </View>
           ) : (
             <View style={styles.list}>
+              {draft === null ? (
+                <Button
+                  title="New project"
+                  secondary
+                  disabled={busy}
+                  onPress={() => setDraft("")}
+                />
+              ) : (
+                <View style={styles.newRow}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={draft}
+                    autoFocus
+                    maxLength={120}
+                    placeholder="What is it called?"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="New project name"
+                    onChangeText={setDraft}
+                    onSubmitEditing={create}
+                  />
+                  <View style={styles.actions}>
+                    <SmallAction
+                      label="Cancel"
+                      disabled={busy}
+                      onPress={() => setDraft(null)}
+                    />
+                    <Button
+                      title="Create"
+                      disabled={busy || !draft.trim()}
+                      onPress={create}
+                    />
+                  </View>
+                </View>
+              )}
               {projects.map((p) => (
                 <Pressable
                   key={p.id}
@@ -221,6 +368,19 @@ const styles = themed(() =>
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
     page: { gap: 10 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    newRow: { gap: 8 },
+    nameInput: {
+      color: colors.text,
+      fontSize: 16,
+      fontFamily: fonts.semibold,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
     titleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     title: {
       flex: 1,
