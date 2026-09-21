@@ -1,3 +1,4 @@
+import { SettingsSection } from "./settings/SettingsSection";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -361,8 +362,7 @@ export function SettingsScreen({
         />
       </View>
 
-      <Text style={[shared.eyebrow, s.section]}>STAY IN THE LOOP</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Stay in the loop">
         <View style={s.preference}>
           <View style={{ flex: 1 }}>
             <Text style={s.prefTitle}>Email reminders</Text>
@@ -463,10 +463,9 @@ export function SettingsScreen({
             })
           }
         />
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>TWO-STEP VERIFICATION</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Two-step verification">
         <Text style={shared.body}>
           Ask for a code from an authenticator app at sign-in, on top of your
           password.
@@ -573,10 +572,9 @@ export function SettingsScreen({
             }
           />
         )}
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>SIGNED-IN DEVICES</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Signed-in devices">
         {(sessions ?? []).map((sess, i) => (
           <View key={sess.id} style={[s.sessionRow, i > 0 && s.sessionDivider]}>
             <View style={{ flex: 1 }}>
@@ -617,10 +615,9 @@ export function SettingsScreen({
             }
           />
         )}
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>CHAT DELIVERY</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Chat delivery">
         <Text style={shared.body}>
           Get your daily digest in Slack or Discord. Paste an incoming-webhook
           URL from your workspace or server.
@@ -690,10 +687,9 @@ export function SettingsScreen({
             />
           </>
         )}
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>EMAIL TO TASK</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Email to task">
         <Text style={shared.body}>
           Send an email to your private address and it becomes a task — the
           subject is the task, the body its notes. Only mail from your own
@@ -744,10 +740,9 @@ export function SettingsScreen({
             }
           />
         )}
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>IMPORT & EXPORT</Text>
-      <View style={shared.card}>
+      <SettingsSection title="Import & export">
         <Text style={shared.body}>
           Take your data with you, or bring it in from another app.
         </Text>
@@ -842,15 +837,14 @@ export function SettingsScreen({
             {importPreview.skipped ? `, ${importPreview.skipped} skipped` : ""}.
           </Text>
         )}
-      </View>
+      </SettingsSection>
 
-      <Text style={[shared.eyebrow, s.section]}>AI PROVIDER</Text>
-      <View style={shared.card}>
+      <SettingsSection title="AI provider">
         <Text style={shared.body}>
           An admin connects the AI provider in Admin → AI. Keys stay on the
           server, never on this device.
         </Text>
-      </View>
+      </SettingsSection>
 
       <Button
         destructive
