@@ -25,6 +25,7 @@ import {
   BLOCK_KINDS,
   blockToType,
   blockText,
+  type DocMode,
   carryBlockIds,
   mergeDocs,
   newBlockId,
@@ -35,6 +36,7 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { DocModeSwitch } from "./DocModeSwitch";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
@@ -65,6 +67,28 @@ function blocksFromSource(source: string): DocBlock[] {
   return parsed.length ? parsed : [{ type: "paragraph", text: "" }];
 }
 
+/** Where each page's chosen mode is remembered, between visits. */
+const MODE_KEY = "orbyn-doc-mode";
+
+const rememberedMode = (docId: string): DocMode | null => {
+  try {
+    const all = JSON.parse(localStorage.getItem(MODE_KEY) ?? "{}");
+    const m = all[docId];
+    return m === "edit" || m === "read" || m === "suggest" ? m : null;
+  } catch {
+    return null;
+  }
+};
+
+const rememberMode = (docId: string, mode: DocMode) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(MODE_KEY) ?? "{}");
+    localStorage.setItem(MODE_KEY, JSON.stringify({ ...all, [docId]: mode }));
+  } catch {
+    // Remembering is a convenience; a browser that refuses is not an error.
+  }
+};
+
 export function DocEditor({
   doc,
   onBack,
@@ -72,6 +96,8 @@ export function DocEditor({
   onDeleted,
   onItemsChanged,
   userId,
+  canWrite = true,
+  teamName,
   report,
 }: {
   doc: Doc;
@@ -83,9 +109,22 @@ export function DocEditor({
   onItemsChanged?: () => void;
   /** Whose comments show a remove button. */
   userId?: string;
+  /** False for a team page this reader may read but not change. */
+  canWrite?: boolean;
+  /** The team a page belongs to, named when explaining why it is read-only. */
+  teamName?: string | null;
   report: (e: unknown) => void;
 }) {
   const { ask, tell } = useConfirm();
+  /**
+   * A page opens the way it was last worked on, and always read-only for
+   * someone who cannot change it — landing in an editor that will refuse
+   * the first save is worse than not being offered one.
+   */
+  const [mode, setMode] = useState<DocMode>(() =>
+    canWrite ? (rememberedMode(doc.id) ?? "edit") : "read",
+  );
+  const reading = mode === "read" || !canWrite;
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -632,7 +671,19 @@ export function DocEditor({
           </span>
         )}
         <span className="doc-bar-actions">
-          {openTodos > 0 && (
+          <DocModeSwitch
+            mode={mode}
+            canWrite={canWrite}
+            teamName={doc.team_name}
+            onChange={(next) => {
+              // Leaving an open line behind would strand what was typed in
+              // it, so the page is settled before the mode changes.
+              setFocused(null);
+              setMode(next);
+              rememberMode(doc.id, next);
+            }}
+          />
+          {openTodos > 0 && !reading && (
             <button className="text-button" onClick={makeTasks}>
               <ListPlus size={15} /> Add {openTodos} to my tasks
             </button>
@@ -666,14 +717,16 @@ export function DocEditor({
           >
             <Download size={15} />
           </button>
-          <button
-            className="icon-button"
-            onClick={remove}
-            aria-label="Delete document"
-            title="Delete document"
-          >
-            <Trash2 size={15} />
-          </button>
+          {!reading && (
+            <button
+              className="icon-button"
+              onClick={remove}
+              aria-label="Delete document"
+              title="Delete document"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
         </span>
       </div>
 
@@ -705,21 +758,25 @@ export function DocEditor({
         }
       >
         <div className="doc-page" ref={pageRef}>
-          <input
-            id="doc-title"
-            className="doc-title"
-            value={title}
-            placeholder="Untitled"
-            maxLength={200}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              queueSave(e.target.value, blocks);
-            }}
-          />
+          {reading ? (
+            <h1 className="doc-title is-reading">{title || "Untitled"}</h1>
+          ) : (
+            <input
+              id="doc-title"
+              className="doc-title"
+              value={title}
+              placeholder="Untitled"
+              maxLength={200}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                queueSave(e.target.value, blocks);
+              }}
+            />
+          )}
 
           <div className="doc-body">
             {blocks.map((block, index) =>
-              focused === index ? (
+              focused === index && !reading ? (
                 <textarea
                   key={`${index}-${block.type}`}
                   id={`doc-block-${index}`}
@@ -767,24 +824,27 @@ export function DocEditor({
                     setActiveComment(block.id)
                   }
                 >
-                  <button
-                    className="doc-handle"
-                    aria-label="Block options"
-                    aria-haspopup="menu"
-                    onClick={(e) =>
-                      setMenu({
-                        index,
-                        at: e.currentTarget.getBoundingClientRect(),
-                      })
-                    }
-                  >
-                    <GripVertical size={14} aria-hidden="true" />
-                  </button>
+                  {!reading && (
+                    <button
+                      className="doc-handle"
+                      aria-label="Block options"
+                      aria-haspopup="menu"
+                      onClick={(e) =>
+                        setMenu({
+                          index,
+                          at: e.currentTarget.getBoundingClientRect(),
+                        })
+                      }
+                    >
+                      <GripVertical size={14} aria-hidden="true" />
+                    </button>
+                  )}
                   <div
                     className="doc-block"
-                    role="button"
-                    tabIndex={0}
+                    role={reading ? undefined : "button"}
+                    tabIndex={reading ? undefined : 0}
                     onClick={() => {
+                      if (reading) return;
                       // A click that ends a drag is a selection, not a
                       // request to edit: opening the input here would throw
                       // the selected words away before they can be used.
@@ -792,7 +852,7 @@ export function DocEditor({
                       setFocused(index);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (!reading && e.key === "Enter") {
                         e.preventDefault();
                         setFocused(index);
                       }
@@ -807,13 +867,15 @@ export function DocEditor({
                 </div>
               ),
             )}
-            <button
-              className="doc-add"
-              onClick={() => insertAfter(blocks.length - 1)}
-            >
-              <Plus size={14} aria-hidden="true" /> Add a block
-              <kbd>/</kbd>
-            </button>
+            {!reading && (
+              <button
+                className="doc-add"
+                onClick={() => insertAfter(blocks.length - 1)}
+              >
+                <Plus size={14} aria-hidden="true" /> Add a block
+                <kbd>/</kbd>
+              </button>
+            )}
             {menu && (
               <DocBlockMenu
                 anchor={menu.at}

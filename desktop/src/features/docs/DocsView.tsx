@@ -27,11 +27,16 @@ export function DocsView({
   report,
   onItemsChanged,
   userId,
+  canWriteDoc,
+  teamNameFor,
   initialDoc,
   onInitialDocShown,
 }: {
   report: (e: unknown) => void;
   userId?: string;
+  /** Whether this reader may change a page, by the team it belongs to. */
+  canWriteDoc?: (teamId: string | null) => boolean;
+  teamNameFor?: (teamId: string | null) => string | null;
   onItemsChanged?: () => void;
   /** A document to open straight away, e.g. a note opened from its event. */
   initialDoc?: Doc | null;
@@ -109,6 +114,10 @@ export function DocsView({
         doc={open}
         report={report}
         userId={userId}
+        canWrite={canWriteDoc ? canWriteDoc(open.team_id) : true}
+        teamName={
+          open.team_name ?? (teamNameFor ? teamNameFor(open.team_id) : null)
+        }
         onItemsChanged={onItemsChanged}
         onBack={() => {
           setOpen(null);

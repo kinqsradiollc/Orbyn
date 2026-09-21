@@ -11,11 +11,13 @@ import {
   serializeBlock,
   type Doc,
   type DocBlock,
+  type DocMode,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
 import type { DocCommentsState } from "./useDocComments";
+import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -55,6 +57,9 @@ const EMPTY: DocBlock = { type: "paragraph", text: "" };
  * the desktop editor does, so a page written on either reads the same on the
  * other.
  */
+/** Where each page's chosen mode is remembered, between visits. */
+const MODE_KEY = "orbyn-doc-mode:";
+
 export function DocEditor({
   doc,
   comments,
@@ -63,6 +68,7 @@ export function DocEditor({
   onChanged,
   onItemsChanged,
   onDeleted,
+  canWrite = true,
   report,
 }: {
   doc: Doc;
@@ -76,8 +82,23 @@ export function DocEditor({
   onItemsChanged?: () => void;
   /** Called once the page has been deleted, to leave the editor. */
   onDeleted?: () => void;
+  /** False for a team page this reader may read but not change. */
+  canWrite?: boolean;
   report: (e: unknown) => void;
 }) {
+  /**
+   * A page opens the way it was last worked on, and always read-only for
+   * someone who cannot change it: landing in an editor that will refuse the
+   * first save is worse than not being offered one.
+   */
+  const [mode, setMode] = useState<DocMode>(() =>
+    canWrite
+      ? readLocal(MODE_KEY + doc.id) === "read"
+        ? "read"
+        : "edit"
+      : "read",
+  );
+  const reading = mode === "read" || !canWrite;
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [EMPTY],
@@ -493,21 +514,44 @@ export function DocEditor({
 
   return (
     <View style={styles.page}>
-      <TextInput
-        style={styles.title}
-        value={title}
-        placeholder="Untitled"
-        placeholderTextColor={colors.faint}
-        maxLength={200}
-        accessibilityLabel="Document title"
-        onChangeText={(text) => {
-          setTitle(text);
-          queueSave(text, blocks);
-        }}
-      />
+      {reading ? (
+        <Text style={styles.title} accessibilityRole="header">
+          {title || "Untitled"}
+        </Text>
+      ) : (
+        <TextInput
+          style={styles.title}
+          value={title}
+          placeholder="Untitled"
+          placeholderTextColor={colors.faint}
+          maxLength={200}
+          accessibilityLabel="Document title"
+          onChangeText={(text) => {
+            setTitle(text);
+            queueSave(text, blocks);
+          }}
+        />
+      )}
 
       <View style={styles.statusRow}>
-        <Text style={styles.meta}>{saving ? "Saving…" : "Saved"}</Text>
+        {canWrite ? (
+          <SmallAction
+            label={reading ? "Edit" : "Done editing"}
+            disabled={false}
+            onPress={() => {
+              const next: DocMode = reading ? "edit" : "read";
+              // An open line would strand what was typed in it.
+              setFocused(null);
+              setMode(next);
+              saveLocal(MODE_KEY + doc.id, next);
+            }}
+          />
+        ) : (
+          <Text style={styles.meta}>View only</Text>
+        )}
+        <Text style={styles.meta}>
+          {reading ? "" : saving ? "Saving…" : "Saved"}
+        </Text>
         {!!note && (
           <Text style={styles.note} onPress={() => setNote("")}>
             {note}
@@ -571,11 +615,11 @@ export function DocEditor({
             />
           );
         }}
-        onEditBlock={openLine}
-        onToggleTodo={toggle}
+        onEditBlock={reading ? undefined : openLine}
+        onToggleTodo={reading ? undefined : toggle}
       />
 
-      {focused !== null ? (
+      {focused !== null && !reading ? (
         <View style={styles.tools}>
           <ChipRow label="Kind of line">
             {BLOCK_KINDS.map((kind) => {

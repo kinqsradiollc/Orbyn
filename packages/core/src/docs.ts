@@ -8,6 +8,37 @@
  */
 
 export const DOC_KINDS = ["doc", "agenda", "meeting"] as const;
+
+/**
+ * How a page is being worked on.
+ *
+ * `edit` changes the page itself; `read` changes nothing and is what a
+ * shared page opens in; `suggest` proposes changes an editor accepts or
+ * rejects. Remarks can be written in all three, because reading a page and
+ * having something to say about it are the same activity.
+ */
+export const DOC_MODES = ["edit", "suggest", "read"] as const;
+export type DocMode = (typeof DOC_MODES)[number];
+
+/**
+ * The modes someone may use, given whether they can change the page.
+ *
+ * Suggesting is not offered yet: it needs somewhere to keep a proposed
+ * change, which arrives with the suggestions table. Until then a viewer
+ * reads and remarks, which is the whole of what a viewer could do before.
+ */
+export const modesFor = (canWrite: boolean): DocMode[] =>
+  canWrite ? ["edit", "read"] : ["read"];
+
+/** What each mode is called, and what it does, in the page's own words. */
+export const MODE_LABELS: Record<DocMode, { name: string; blurb: string }> = {
+  edit: { name: "Editing", blurb: "Your changes go straight into the page." },
+  suggest: {
+    name: "Suggesting",
+    blurb: "Your changes wait for someone to accept them.",
+  },
+  read: { name: "Viewing", blurb: "Nothing you do changes the page." },
+};
 export type DocKind = (typeof DOC_KINDS)[number];
 
 /**

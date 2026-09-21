@@ -304,6 +304,12 @@ export function RootScreen() {
     setEditRepeat(null);
     setEditing(freshItem());
   };
+  /** Personal pages are always yours; a team's need `items:write`. */
+  const canWriteIn = (teamId: string | null) => {
+    const team = teamId && teams.find((t) => t.id === teamId);
+    return !team || hasTeamPermission(team.role, "items:write");
+  };
+
   const listHandlers = {
     busy,
     onAdd: openNew,
@@ -787,6 +793,7 @@ export function RootScreen() {
         <DocsSheet
           visible={sheet === "docs"}
           userId={user?.id}
+          canWriteDoc={canWriteIn}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
@@ -795,6 +802,7 @@ export function RootScreen() {
           visible={sheet === "note"}
           initialDoc={note}
           userId={user?.id}
+          canWriteDoc={canWriteIn}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
