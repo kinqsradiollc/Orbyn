@@ -898,3 +898,141 @@ h4.doc-heading {
 .doc-block-row.has-comment.is-active > .doc-block {
   background: var(--color-selected);
 }
+
+/* Remarks are shown under the words they are about, the way a highlighter
+   marks a phrase, rather than as a tint over the whole line. Two remarks
+   over the same words shade more strongly, so an overlap is visible. */
+.doc-mark {
+  background: var(--color-warn-soft);
+  border-radius: 2px;
+  box-shadow: inset 0 -1px 0 var(--color-accent);
+}
+.doc-mark.is-deep {
+  background: var(--color-chip);
+}
+.doc-mark.is-active {
+  background: var(--color-selected);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+/* The words themselves carry the mark now, so the line keeps only the edge
+   marker that says at a glance that something here has been remarked on. */
+.doc-block-row.has-comment > .doc-block {
+  background: none;
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.doc-block-row.has-comment.is-active > .doc-block {
+  background: none;
+}
+
+/* Acting on a selection: the button follows the words rather than sitting in
+   a toolbar, so it reads as belonging to what was just selected. */
+.doc-selection-bar {
+  position: fixed;
+  z-index: 40;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 4px 14px var(--color-backdrop);
+}
+.doc-selection-bar .text-button {
+  padding: 4px 8px;
+}
+
+/* A thread: the remark that started it, the answers, and a way in. */
+.doc-thread {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.doc-thread + .doc-thread {
+  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+}
+.doc-thread .doc-remark + .doc-remark {
+  margin-left: 10px;
+  border-left: 1px solid var(--color-border);
+  border-top: none;
+  padding-top: 0;
+  padding-left: 8px;
+}
+.doc-reply-open {
+  justify-self: start;
+  font-size: 0.78rem;
+}
+/* Words a remark points at that have since gone from the page. */
+.doc-card-quote.is-detached {
+  border-left-color: var(--color-muted);
+  text-decoration: line-through;
+}
+.doc-named {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* Naming someone in a remark. */
+.doc-mention-box {
+  position: relative;
+}
+.doc-mention-box textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.86rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-sunken);
+  color: var(--color-text);
+  padding: 8px 10px;
+}
+.doc-mention-box textarea:focus {
+  outline: none;
+  border-color: var(--color-focus);
+}
+.doc-mention-list {
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 18px var(--color-backdrop);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.doc-mention-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.doc-mention-list button:hover,
+.doc-mention-list button.is-on {
+  background: var(--color-hover);
+}
+.doc-mention-list strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.doc-mention-list small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}

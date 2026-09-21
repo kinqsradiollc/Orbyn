@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import type { DocComment } from "@orbyn/core";
+import { threadComments, type DocComment } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -35,11 +35,13 @@ export function DocThread({
   userId?: string;
   quote?: string | null;
   placeholder: string;
-  anchor?: { block_id: string; quote: string };
+  anchor?: Parameters<DocCommentsState["add"]>[1];
   autoFocus?: boolean;
   onDone?: () => void;
 }) {
   const [draft, setDraft] = useState("");
+  /** The remark being answered, and what has been typed under it. */
+  const [reply, setReply] = useState<{ id: string; text: string } | null>(null);
 
   const send = () => {
     const body = draft;
@@ -50,35 +52,96 @@ export function DocThread({
     });
   };
 
+  const sendReply = () => {
+    if (!reply) return;
+    const body = reply.text;
+    setReply(null);
+    void state.add(body, { parent_id: reply.id }).then((ok) => {
+      if (!ok) setReply({ id: reply.id, text: body });
+    });
+  };
+
   return (
     <View style={styles.thread}>
       {!!quote && <Text style={styles.quote}>“{quote}”</Text>}
 
-      {comments.map((c) => (
-        <View
-          key={c.id}
-          style={[styles.comment, !!c.resolved_at && styles.faded]}
-        >
-          <View style={styles.head}>
-            <Text style={styles.author}>{c.author}</Text>
-            <Text style={styles.when}>{when(c.created_at)}</Text>
-          </View>
-          <Text style={styles.body}>{c.body}</Text>
-          <View style={styles.actions}>
-            <SmallAction
-              label={c.resolved_at ? "Bring back" : "Resolve"}
-              disabled={state.busy}
-              onPress={() => state.setResolved(c, !c.resolved_at)}
-            />
-            {c.user_id === userId && (
-              <SmallAction
-                label="Remove"
-                destructive
-                disabled={state.busy}
-                onPress={() => state.remove(c)}
+      {threadComments(comments).map(({ comment, replies }) => (
+        <View key={comment.id} style={styles.group}>
+          {/* A remark whose words have gone still says what it was about. */}
+          {comment.detached && !!comment.quote && (
+            <Text style={styles.gone}>“{comment.quote}” — since removed</Text>
+          )}
+          {[comment, ...replies].map((c, depth) => (
+            <View
+              key={c.id}
+              style={[
+                styles.comment,
+                depth > 0 && styles.reply,
+                !!c.resolved_at && styles.faded,
+              ]}
+            >
+              <View style={styles.head}>
+                <Text style={styles.author}>{c.author}</Text>
+                <Text style={styles.when}>{when(c.created_at)}</Text>
+              </View>
+              <Text style={styles.body}>{c.body}</Text>
+              <View style={styles.actions}>
+                {depth === 0 && (
+                  <SmallAction
+                    label={c.resolved_at ? "Bring back" : "Resolve"}
+                    disabled={state.busy}
+                    onPress={() => state.setResolved(c, !c.resolved_at)}
+                  />
+                )}
+                {depth === 0 && !c.resolved_at && (
+                  <SmallAction
+                    label="Reply"
+                    disabled={state.busy}
+                    onPress={() =>
+                      setReply((r) =>
+                        r?.id === c.id ? null : { id: c.id, text: "" },
+                      )
+                    }
+                  />
+                )}
+                {c.user_id === userId && (
+                  <SmallAction
+                    label="Remove"
+                    destructive
+                    disabled={state.busy}
+                    onPress={() => state.remove(c)}
+                  />
+                )}
+              </View>
+            </View>
+          ))}
+          {reply?.id === comment.id && (
+            <View style={styles.replyBox}>
+              <TextInput
+                style={styles.input}
+                value={reply.text}
+                placeholder="Reply…"
+                placeholderTextColor={colors.faint}
+                multiline
+                autoFocus
+                maxLength={4000}
+                onChangeText={(text) => setReply({ id: comment.id, text })}
+                accessibilityLabel="Reply"
               />
-            )}
-          </View>
+              <View style={styles.send}>
+                <SmallAction
+                  label="Cancel"
+                  disabled={false}
+                  onPress={() => setReply(null)}
+                />
+                <Button
+                  title="Reply"
+                  disabled={state.busy || !reply.text.trim()}
+                  onPress={sendReply}
+                />
+              </View>
+            </View>
+          )}
         </View>
       ))}
 
@@ -110,6 +173,14 @@ export function DocThread({
 const styles = themed(() =>
   StyleSheet.create({
     thread: { gap: 8 },
+    group: { gap: 6 },
+    gone: {
+      color: colors.muted,
+      fontSize: 12,
+      textDecorationLine: "line-through",
+    },
+    reply: { marginLeft: 14, backgroundColor: colors.surfaceMuted },
+    replyBox: { gap: 8, marginLeft: 14 },
     quote: {
       color: colors.muted,
       fontSize: 13,

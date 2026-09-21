@@ -98,9 +98,146 @@ export type DocComment = {
   block_id: string | null;
   /** What the line said when the comment was written. */
   quote: string | null;
+  /**
+   * Where the quoted words sit in the block's Markdown source, as a
+   * half-open character range. Null on a remark about a whole line or the
+   * page, which is how every remark written before ranges existed reads.
+   */
+  range_start: number | null;
+  range_end: number | null;
+  /** The remark this replies to. A thread is one deep, as in a margin. */
+  parent_id: string | null;
+  /** True once the words it was written about have gone from the page. */
+  detached: boolean;
+  /** Who was named in the body, so the page can show them as people. */
+  mentions: DocMention[];
   resolved_at: string | null;
   created_at: string;
 };
+
+/** Someone named in a comment, by the `@` picker rather than by typing. */
+export type DocMention = { user_id: string; name: string };
+
+/** A comment and the replies written under it, oldest first. */
+export type DocThread = { comment: DocComment; replies: DocComment[] };
+
+/**
+ * Gather replies under the remarks they answer. A reply whose parent is not
+ * in the list stands on its own rather than disappearing, which is what
+ * happens when only the open remarks are being shown and its parent is
+ * resolved.
+ */
+export function threadComments(comments: DocComment[]): DocThread[] {
+  const threads = new Map<string, DocThread>();
+  const out: DocThread[] = [];
+  for (const c of comments)
+    if (!c.parent_id) {
+      const thread = { comment: c, replies: [] as DocComment[] };
+      threads.set(c.id, thread);
+      out.push(thread);
+    }
+  for (const c of comments)
+    if (c.parent_id) {
+      const thread = threads.get(c.parent_id);
+      if (thread) thread.replies.push(c);
+      else out.push({ comment: c, replies: [] });
+    }
+  return out;
+}
+
+/** Where a remark's words sit in a line. */
+export type DocRange = { start: number; end: number };
+
+/**
+ * Follow a remark's words as the line around them is edited.
+ *
+ * The words themselves are the anchor, not the place they were at: an edit
+ * before them moves them, an edit after them does not, and either way the
+ * remark should still point at the same words. So the quote is looked for
+ * again, and of several occurrences the one nearest to where it was wins.
+ * Only when the words have gone altogether does the remark come loose.
+ */
+export function reanchor(
+  quote: string,
+  was: DocRange,
+  text: string,
+): DocRange | null {
+  if (!quote) return null;
+  if (text.slice(was.start, was.end) === quote) return was;
+  const found: number[] = [];
+  for (
+    let at = text.indexOf(quote);
+    at !== -1;
+    at = text.indexOf(quote, at + 1)
+  )
+    found.push(at);
+  if (!found.length) return null;
+  const nearest = found.reduce((best, at) =>
+    Math.abs(at - was.start) < Math.abs(best - was.start) ? at : best,
+  );
+  return { start: nearest, end: nearest + quote.length };
+}
+
+/**
+ * Re-anchor every remark on a page against the blocks as they now stand.
+ * Returns only the remarks whose anchor actually moved or came loose, so a
+ * save that changed one line doesn't rewrite every row.
+ */
+export function reanchorComments(
+  comments: DocComment[],
+  blocks: DocBlock[],
+): {
+  id: string;
+  range_start: number | null;
+  range_end: number | null;
+  detached: boolean;
+}[] {
+  const source = new Map(
+    blocks.flatMap((b) => (b.id ? [[b.id, blockText(b)] as const] : [])),
+  );
+  const moved = [];
+  for (const c of comments) {
+    if (!c.block_id) continue;
+    const text = source.get(c.block_id);
+    // A block that has gone is handled by the page, not here: the remark
+    // keeps its range so it still reads if the block comes back.
+    if (text === undefined) continue;
+    if (c.range_start === null || c.range_end === null || !c.quote) {
+      // A whole-line remark only comes loose when its line goes.
+      if (c.detached)
+        moved.push({
+          id: c.id,
+          range_start: null,
+          range_end: null,
+          detached: false,
+        });
+      continue;
+    }
+    const next = reanchor(
+      c.quote,
+      { start: c.range_start, end: c.range_end },
+      text,
+    );
+    if (!next) {
+      if (!c.detached)
+        moved.push({
+          id: c.id,
+          range_start: c.range_start,
+          range_end: c.range_end,
+          detached: true,
+        });
+      continue;
+    }
+    if (next.start !== c.range_start || next.end !== c.range_end || c.detached)
+      moved.push({
+        id: c.id,
+        range_start: next.start,
+        range_end: next.end,
+        detached: false,
+      });
+  }
+  return moved;
+}
 
 /**
  * Sort comments into the ones still attached to a line and the ones whose
@@ -115,12 +252,16 @@ export function anchorComments(
   const anchored = new Map<string, DocComment[]>();
   const loose: DocComment[] = [];
   for (const c of comments) {
-    if (c.block_id && order.has(c.block_id)) {
+    if (c.block_id && order.has(c.block_id) && !c.detached) {
       const list = anchored.get(c.block_id) ?? [];
       list.push(c);
       anchored.set(c.block_id, list);
     } else loose.push(c);
   }
+  // Within a line, remarks read left to right, so the cards beside it are in
+  // the order the words they point at are read.
+  for (const list of anchored.values())
+    list.sort((a, b) => (a.range_start ?? -1) - (b.range_start ?? -1));
   return { anchored, loose };
 }
 
@@ -137,6 +278,14 @@ export const emptyDoc = (): DocBlock[] => [empty()];
 /** A run of inline text. `math` holds LaTeX source without its `$` fences. */
 export type DocInline = {
   text: string;
+  /**
+   * Where `text` starts in the line's Markdown source. Styling markers sit
+   * outside it, so `**bold**` gives a run whose `start` is past the stars and
+   * whose text is exactly as long as the source it came from. That keeps a
+   * comment's character range, which is measured on the source, convertible
+   * to a position on screen without a second parse.
+   */
+  start: number;
   bold?: boolean;
   italic?: boolean;
   code?: boolean;
@@ -158,16 +307,24 @@ export function parseDocInline(text: string): DocInline[] {
   let at = 0;
   for (const m of text.matchAll(INLINE_RE)) {
     const start = m.index ?? 0;
-    if (start > at) out.push({ text: text.slice(at, start) });
-    if (m[1] !== undefined) out.push({ text: m[1], math: true });
-    else if (m[2] !== undefined) out.push({ text: m[2], code: true });
-    else if (m[3] !== undefined) out.push({ text: m[3], link: m[4] });
-    else if (m[5] !== undefined) out.push({ text: m[5], bold: true });
-    else if (m[6] !== undefined) out.push({ text: m[6], italic: true });
+    if (start > at) out.push({ text: text.slice(at, start), start: at });
+    // Each branch's offset skips the opening marker, so the run's `start`
+    // points at the first character its `text` actually holds.
+    const inner = (group: number) => start + m[0].indexOf(m[group], 1);
+    if (m[1] !== undefined)
+      out.push({ text: m[1], start: inner(1), math: true });
+    else if (m[2] !== undefined)
+      out.push({ text: m[2], start: inner(2), code: true });
+    else if (m[3] !== undefined)
+      out.push({ text: m[3], start: inner(3), link: m[4] });
+    else if (m[5] !== undefined)
+      out.push({ text: m[5], start: inner(5), bold: true });
+    else if (m[6] !== undefined)
+      out.push({ text: m[6], start: inner(6), italic: true });
     at = start + m[0].length;
   }
-  if (at < text.length) out.push({ text: text.slice(at) });
-  return out.length ? out : [{ text: "" }];
+  if (at < text.length) out.push({ text: text.slice(at), start: at });
+  return out.length ? out : [{ text: "", start: 0 }];
 }
 
 // ----------------------------------------------------------------- parse ---

@@ -1,8 +1,15 @@
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
-import { anchorComments, type DocBlock, type DocComment } from "@orbyn/core";
+import {
+  anchorComments,
+  threadComments,
+  type DocBlock,
+  type DocComment,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
+import type { Mark } from "./marks";
+import { MentionBox, stillNamed } from "./MentionBox";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -10,6 +17,12 @@ const when = (iso: string) => {
     ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
     : date.toLocaleDateString([], { month: "short", day: "numeric" });
 };
+
+/** Make a name safe to put inside a regular expression. */
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Further than any line is long: how a whole-line remark shades its line. */
+const WHOLE_LINE = Number.MAX_SAFE_INTEGER;
 
 /** Gap kept between two cards when their lines sit closer than that. */
 const GAP = 10;
@@ -43,20 +56,34 @@ export function DocComments({
   /** Where each named block sits, measured from the top of the page. */
   tops: Record<string, number>;
   userId?: string;
-  /** A block the reader has chosen to comment on, before they have written. */
-  pending: { blockId: string; quote: string } | null;
-  onPendingChange: (p: { blockId: string; quote: string } | null) => void;
+  /** Words the reader has chosen to comment on, before they have written. */
+  pending: {
+    blockId: string;
+    quote: string;
+    range_start?: number;
+    range_end?: number;
+  } | null;
+  onPendingChange: (p: null) => void;
   /** The block whose card is singled out, from either side. */
   active: string | null;
   onActiveChange: (blockId: string | null) => void;
-  /** The lines that carry remarks, so the page can mark them. */
-  onAnchors: (blockIds: string[]) => void;
+  /** The stretches of each line that carry remarks, so the page can shade them. */
+  onAnchors: (marks: Record<string, Mark[]>) => void;
   report: (e: unknown) => void;
 }) {
   const { ask, tell } = useConfirm();
   const [comments, setComments] = useState<DocComment[] | null>(null);
   const [draft, setDraft] = useState("");
   const [pageDraft, setPageDraft] = useState("");
+  /** A reply being written, by the thread it answers. */
+  const [reply, setReply] = useState<{ id: string; text: string } | null>(null);
+  /** Everyone each composer has named, kept by id so a rename still reads. */
+  const namedDraft = useRef(new Map<string, string>());
+  const namedPage = useRef(new Map<string, string>());
+  const namedReply = useRef(new Map<string, string>());
+  const [mentions, setMentions] = useState<string[]>([]);
+  const [pageMentions, setPageMentions] = useState<string[]>([]);
+  const [replyMentions, setReplyMentions] = useState<string[]>([]);
   const [showResolved, setShowResolved] = useState(false);
   const [busy, setBusy] = useState(false);
   /** Card tops, once measured; keyed the same as the groups below. */
@@ -112,32 +139,72 @@ export function DocComments({
     });
   }, [groups.join("|"), JSON.stringify(tops), comments, pending, active]);
 
-  const marked = [...anchored.keys()].join("|");
+  /**
+   * The shading the page should draw: one stretch per remark that names a
+   * range, and nothing for a remark about a whole line, which the line's own
+   * marker already shows.
+   */
+  const railMarks: Record<string, Mark[]> = {};
+  for (const [blockId, list] of anchored)
+    railMarks[blockId] = list.map((c) =>
+      // A remark about a whole line has no range of its own, so it shades
+      // the line end to end; the cut is clamped to each run it meets.
+      c.range_start !== null && c.range_end !== null
+        ? { start: c.range_start, end: c.range_end, active: active === blockId }
+        : { start: 0, end: WHOLE_LINE, active: active === blockId },
+    );
+  if (pending?.range_start !== undefined && pending.range_end !== undefined)
+    railMarks[pending.blockId] = [
+      ...(railMarks[pending.blockId] ?? []),
+      { start: pending.range_start, end: pending.range_end, active: true },
+    ];
+  const marked = JSON.stringify(railMarks);
   useEffect(() => {
-    onAnchors(marked ? marked.split("|") : []);
+    onAnchors(JSON.parse(marked) as Record<string, Mark[]>);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marked]);
 
-  const add = (blockId: string | null, body: string, quote: string | null) => {
+  const add = (
+    body: string,
+    anchor?: Parameters<typeof client.addDocComment>[2],
+  ) => {
     const text = body.trim();
     if (!text || busy) return;
     setBusy(true);
     client
-      .addDocComment(
-        docId,
-        text,
-        blockId && quote !== null ? { block_id: blockId, quote } : undefined,
-      )
+      .addDocComment(docId, text, anchor)
       .then((made) => {
         setComments((list) => [...(list ?? []), made]);
-        if (blockId) {
+        if (made.parent_id) {
+          setReply(null);
+          namedReply.current.clear();
+          setReplyMentions([]);
+        } else if (made.block_id) {
           setDraft("");
+          namedDraft.current.clear();
+          setMentions([]);
           onPendingChange(null);
-          onActiveChange(blockId);
-        } else setPageDraft("");
+          onActiveChange(made.block_id);
+        } else {
+          setPageDraft("");
+          namedPage.current.clear();
+          setPageMentions([]);
+        }
       })
       .catch(report)
       .finally(() => setBusy(false));
+  };
+
+  /** Write the remark the reader has been composing about their selection. */
+  const addToSelection = () => {
+    if (!pending) return;
+    add(draft, {
+      block_id: pending.blockId,
+      quote: pending.quote,
+      range_start: pending.range_start,
+      range_end: pending.range_end,
+      mentions,
+    });
   };
 
   const setResolved = (c: DocComment, resolved: boolean) => {
@@ -197,8 +264,104 @@ export function DocComments({
           </button>
         )}
       </header>
-      <p>{c.body}</p>
+      <p>{said(c)}</p>
     </article>
+  );
+
+  /**
+   * A body with the people it names picked out. The names are plain words in
+   * the text, so this is only about how they read; nothing depends on it.
+   */
+  function said(c: DocComment) {
+    if (!c.mentions.length) return c.body;
+    const names = c.mentions
+      .map((m) => m.name)
+      .sort((a, b) => b.length - a.length);
+    const parts = c.body.split(
+      new RegExp(`(@(?:${names.map(escape).join("|")}))`, "g"),
+    );
+    return parts.map((part, i) =>
+      part.startsWith("@") && names.includes(part.slice(1)) ? (
+        <b key={i} className="doc-named">
+          {part}
+        </b>
+      ) : (
+        part
+      ),
+    );
+  }
+
+  /** One thread: the remark, its replies, and a box to answer in. */
+  const thread = (t: { comment: DocComment; replies: DocComment[] }) => (
+    <div key={t.comment.id} className="doc-thread">
+      {t.comment.quote && (
+        <p
+          className={
+            "doc-card-quote" + (t.comment.detached ? " is-detached" : "")
+          }
+          title={
+            t.comment.detached
+              ? "These words have since gone from the page"
+              : undefined
+          }
+        >
+          “{t.comment.quote}”
+        </p>
+      )}
+      {remark(t.comment)}
+      {t.replies.map(remark)}
+      {reply?.id === t.comment.id ? (
+        <div className="is-composer">
+          <MentionBox
+            id={`doc-reply-${t.comment.id}`}
+            autoFocus
+            docId={docId}
+            value={reply.text}
+            named={namedReply.current}
+            onNamed={setReplyMentions}
+            onChange={(text) => setReply({ id: t.comment.id, text })}
+            placeholder="Reply…"
+            onSubmit={() =>
+              add(reply.text, {
+                parent_id: t.comment.id,
+                mentions: replyMentions,
+              })
+            }
+            onCancel={() => setReply(null)}
+          />
+          <div className="doc-card-actions">
+            <button className="text-button" onClick={() => setReply(null)}>
+              Cancel
+            </button>
+            <button
+              className="primary"
+              disabled={busy || !reply.text.trim()}
+              onClick={() =>
+                add(reply.text, {
+                  parent_id: t.comment.id,
+                  mentions: replyMentions,
+                })
+              }
+            >
+              Reply
+            </button>
+          </div>
+        </div>
+      ) : (
+        !t.comment.resolved_at && (
+          <button
+            className="text-button doc-reply-open"
+            onClick={() => {
+              namedReply.current.clear();
+              setReplyMentions([]);
+              setReply({ id: t.comment.id, text: "" });
+            }}
+          >
+            Reply
+          </button>
+        )
+      )}
+    </div>
   );
 
   if (comments === null)
@@ -217,35 +380,26 @@ export function DocComments({
           <h3>
             <MessageSquare size={14} aria-hidden="true" /> On the page
           </h3>
-          {loose.map((c) => (
-            <div key={c.id} className="doc-card">
-              {c.quote && (
-                <p className="doc-card-quote" title="This line has since gone">
-                  “{c.quote}”
-                </p>
-              )}
-              {remark(c)}
+          {threadComments(loose).map((t) => (
+            <div key={t.comment.id} className="doc-card">
+              {thread(t)}
             </div>
           ))}
           <div className="doc-card is-composer">
-            <textarea
+            <MentionBox
               id="doc-comment-page"
+              docId={docId}
               value={pageDraft}
+              named={namedPage.current}
+              onNamed={setPageMentions}
+              onChange={setPageDraft}
               placeholder="Comment on the whole page…"
-              maxLength={4000}
-              rows={2}
-              onChange={(e) => setPageDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  add(null, pageDraft, null);
-                }
-              }}
+              onSubmit={() => add(pageDraft, { mentions: pageMentions })}
             />
             <button
               className="primary"
               disabled={busy || !pageDraft.trim()}
-              onClick={() => add(null, pageDraft, null)}
+              onClick={() => add(pageDraft, { mentions: pageMentions })}
             >
               Comment
             </button>
@@ -271,42 +425,42 @@ export function DocComments({
               style={{ top: placed[blockId] ?? 0 }}
               onClick={() => onActiveChange(blockId)}
             >
-              <p className="doc-card-quote">
-                “{list[0]?.quote ?? pending?.quote ?? ""}”
-              </p>
-              {list.map(remark)}
+              {threadComments(list).map(thread)}
               {isPending && (
-                <div className="is-composer">
-                  <textarea
-                    id="doc-comment-draft"
-                    autoFocus
-                    value={draft}
-                    placeholder="Comment on this line…"
-                    maxLength={4000}
-                    rows={2}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        add(blockId, draft, pending.quote);
+                <div className="doc-thread">
+                  <p className="doc-card-quote">“{pending.quote}”</p>
+                  <div className="is-composer">
+                    <MentionBox
+                      id="doc-comment-draft"
+                      autoFocus
+                      docId={docId}
+                      value={draft}
+                      named={namedDraft.current}
+                      onNamed={setMentions}
+                      onChange={setDraft}
+                      placeholder={
+                        pending.range_start === undefined
+                          ? "Comment on this line…"
+                          : "Comment on these words…"
                       }
-                      if (e.key === "Escape") onPendingChange(null);
-                    }}
-                  />
-                  <div className="doc-card-actions">
-                    <button
-                      className="text-button"
-                      onClick={() => onPendingChange(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="primary"
-                      disabled={busy || !draft.trim()}
-                      onClick={() => add(blockId, draft, pending.quote)}
-                    >
-                      Comment
-                    </button>
+                      onSubmit={addToSelection}
+                      onCancel={() => onPendingChange(null)}
+                    />
+                    <div className="doc-card-actions">
+                      <button
+                        className="text-button"
+                        onClick={() => onPendingChange(null)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="primary"
+                        disabled={busy || !draft.trim()}
+                        onClick={addToSelection}
+                      >
+                        Comment
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
