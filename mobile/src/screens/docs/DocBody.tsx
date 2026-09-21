@@ -8,6 +8,8 @@ import {
   View,
 } from "react-native";
 import { mathToText, type DocBlock } from "@orbyn/core";
+import { Inline } from "./Inline";
+import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /**
@@ -26,11 +28,14 @@ export function DocBody({
   onBlurLine,
   selection,
   counts,
+  marks = {},
   renderUnder,
   onOpenComments,
   onEditBlock,
 }: {
   content: DocBlock[];
+  /** Stretches of each line carrying a remark, to tint the words they name. */
+  marks?: Record<string, Mark[]>;
   onToggleTodo?: (index: number) => void;
   /** Which line is open for editing, if any. */
   editing?: number | null;
@@ -146,7 +151,7 @@ export function DocBody({
                   block.level === 1 ? styles.h1 : styles.h2,
                 ]}
               >
-                {mathToText(block.text)}
+                <Inline text={block.text} marks={marks[block.id ?? ""]} />
               </Text>,
             );
           case "bullet":
@@ -157,7 +162,9 @@ export function DocBody({
                 <Text style={styles.marker}>
                   {block.type === "bullet" ? "•" : "1."}
                 </Text>
-                <Text style={styles.text}>{mathToText(block.text)}</Text>
+                <Text style={styles.text}>
+                  <Inline text={block.text} marks={marks[block.id ?? ""]} />
+                </Text>
               </View>,
             );
           case "todo":
@@ -191,7 +198,7 @@ export function DocBody({
                   }
                 >
                   <Text style={[styles.text, block.done && styles.done]}>
-                    {mathToText(block.text)}
+                    <Inline text={block.text} marks={marks[block.id ?? ""]} />
                   </Text>
                   {block.id ? <Text style={styles.tag}>task</Text> : null}
                 </Pressable>
@@ -201,7 +208,9 @@ export function DocBody({
             return line(
               index,
               <View style={styles.quote}>
-                <Text style={styles.quoteText}>{mathToText(block.text)}</Text>
+                <Text style={styles.quoteText}>
+                  <Inline text={block.text} marks={marks[block.id ?? ""]} />
+                </Text>
               </View>,
             );
           case "code":
@@ -223,7 +232,9 @@ export function DocBody({
           default:
             return line(
               index,
-              <Text style={styles.text}>{mathToText(block.text)}</Text>,
+              <Text style={styles.text}>
+                <Inline text={block.text} marks={marks[block.id ?? ""]} />
+              </Text>,
             );
         }
       })}

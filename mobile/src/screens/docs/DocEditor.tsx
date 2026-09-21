@@ -21,6 +21,7 @@ import {
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
+import { markRanges } from "./marks";
 import { AskSheet } from "./AskSheet";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
@@ -682,6 +683,7 @@ export function DocEditor({
         onBlurLine={syncDraft}
         selection={caret}
         counts={comments.counts}
+        marks={markRanges(comments.anchored)}
         onOpenComments={(blockId) =>
           setOpenThread((open) => (open === blockId ? null : blockId))
         }

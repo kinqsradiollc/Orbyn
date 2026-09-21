@@ -1,6 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { Doc, DocKind, DocSummary } from "@orbyn/core";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import {
+  snippetRuns,
+  type Doc,
+  type DocKind,
+  type DocSummary,
+  type SearchHit,
+} from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -55,6 +68,9 @@ export function DocsSheet({
   const [open, setOpen] = useState<Doc | null>(null);
   /** null = every kind; "note" = only notes; "doc" = only plain pages. */
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
+  /** What has been typed into the search box, and what came back for it. */
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
   const { busy, error, setError, run } = useRun();
 
   useEffect(() => {
@@ -90,10 +106,51 @@ export function DocsSheet({
   // A page opened on its own has no list behind it to go back to.
   const back = agenda || initialDoc ? undefined : open ? backToList : undefined;
 
-  /** Notes and pages share a list; this narrows it to one or the other. */
-  const shown = (docs ?? []).filter(
-    (d) => kindFilter === null || d.kind === kindFilter,
-  );
+  // Searching is a round trip, so it waits for a pause in the typing.
+  useEffect(() => {
+    if (query.trim().length < 2) {
+      setHits(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      client
+        .search(query.trim(), {
+          type: "doc",
+          kind: kindFilter ?? undefined,
+          limit: 20,
+        })
+        .then(setHits, () => setHits([]));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, kindFilter]);
+
+  /**
+   * What the list shows: what was searched for, when something was, and
+   * otherwise everything of the chosen kind.
+   */
+  const shown: {
+    id: string;
+    title: string;
+    preview: string;
+    kind: string;
+    updated_at: string;
+  }[] = hits
+    ? hits.map((h) => ({
+        id: h.id,
+        title: h.title,
+        updated_at: h.updated_at,
+        preview: snippetRuns(h.snippet)
+          .map((r) => r.text)
+          .join("")
+          .replace(/\s+/g, " ")
+          .trim(),
+        kind: h.kind,
+      }))
+    : (docs ?? []).filter((d) => kindFilter === null || d.kind === kindFilter);
+
+  /** Open a page from the list, which for a search hit means fetching it. */
+  const openHit = (id: string) =>
+    void run(async () => setOpen(await client.getDoc(id)));
 
   /** The editor hands back whatever went wrong; show it where they are. */
   const report = (e: unknown) => setError((e as Error).message || "Not saved");
@@ -139,6 +196,23 @@ export function DocsSheet({
             </View>
           ) : (
             <View style={styles.list}>
+              <TextInput
+                style={styles.search}
+                value={query}
+                placeholder="Search pages and notes…"
+                placeholderTextColor={colors.faint}
+                autoCorrect={false}
+                returnKeyType="search"
+                onChangeText={setQuery}
+                accessibilityLabel="Search pages and notes"
+              />
+              {hits !== null && (
+                <Text style={styles.found}>
+                  {hits.length === 0
+                    ? "Nothing found."
+                    : `${hits.length} found`}
+                </Text>
+              )}
               {/* Notes and pages live together; this says which you want. */}
               <ChipRow label="Show">
                 {(["all", "doc", "note"] as const).map((k) => (
@@ -177,9 +251,7 @@ export function DocsSheet({
                     styles.row,
                     pressed && styles.rowPressed,
                   ]}
-                  onPress={() =>
-                    void run(async () => setOpen(await client.getDoc(doc.id)))
-                  }
+                  onPress={() => openHit(doc.id)}
                 >
                   <Icon name="fileText" size={16} color={colors.muted} />
                   <View style={styles.rowMain}>
@@ -248,6 +320,18 @@ function OpenDoc({
 const styles = themed(() =>
   StyleSheet.create({
     newRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+    search: {
+      color: colors.text,
+      fontSize: 15,
+      minHeight: 44,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      fontFamily: fonts.regular,
+    },
+    found: { color: colors.muted, fontSize: 12 },
     list: { gap: 8 },
     row: {
       flexDirection: "row",
