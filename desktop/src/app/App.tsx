@@ -224,6 +224,11 @@ export function App() {
     setEditing("new");
   };
 
+  /** Personal pages are always yours; a team's need `items:write`. */
+  const canWriteIn = (teamId: string | null) =>
+    !teamId ||
+    hasTeamPermission(teams.find((t) => t.id === teamId)?.role, "items:write");
+
   /** Personal items are always yours; team items need `items:write`. */
   const canWrite = (i: Item) => {
     if (!i.team_id) return true;
@@ -566,6 +571,10 @@ export function App() {
                 <DocsView
                   report={report}
                   userId={user?.id}
+                  canWriteDoc={canWriteIn}
+                  teamNameFor={(id) =>
+                    teams.find((t) => t.id === id)?.name ?? null
+                  }
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
                   onInitialDocShown={() => setNoteDoc(null)}

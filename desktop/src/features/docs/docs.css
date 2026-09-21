@@ -1036,3 +1036,53 @@ h4.doc-heading {
   color: var(--color-muted);
   font-size: 0.72rem;
 }
+
+/* How the page is being worked on. A page you can change offers the choice;
+   a page you can only read says so once, plainly, instead of offering an
+   editor that would refuse your first save. */
+.doc-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  margin-right: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-sunken);
+}
+.doc-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.doc-mode button:hover {
+  color: var(--color-text);
+}
+.doc-mode button.is-on {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px var(--color-backdrop);
+}
+.doc-mode-fixed {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: auto;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+/* A page being read has a title, not a field to type one in. */
+.doc-title.is-reading {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+}

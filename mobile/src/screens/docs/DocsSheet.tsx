@@ -31,6 +31,7 @@ export function DocsSheet({
   agenda,
   initialDoc,
   userId,
+  canWriteDoc,
   onClose,
   onDismiss,
   onItemsChanged,
@@ -40,6 +41,8 @@ export function DocsSheet({
   agenda?: boolean;
   /** Opens straight onto one page — a meeting note, say — not the list. */
   initialDoc?: Doc | null;
+  /** Whether this reader may change a page, by the team it belongs to. */
+  canWriteDoc?: (teamId: string | null) => boolean;
   /** Whose comments offer a remove button. */
   userId?: string;
   onClose: () => void;
@@ -105,6 +108,7 @@ export function DocsSheet({
             <OpenDoc
               doc={open}
               userId={userId}
+              canWriteDoc={canWriteDoc}
               onChanged={setOpen}
               onItemsChanged={onItemsChanged}
               onDeleted={backToList}
@@ -171,6 +175,7 @@ export function DocsSheet({
 function OpenDoc({
   doc,
   userId,
+  canWriteDoc,
   onChanged,
   onItemsChanged,
   onDeleted,
@@ -178,6 +183,7 @@ function OpenDoc({
 }: {
   doc: Doc;
   userId?: string;
+  canWriteDoc?: (teamId: string | null) => boolean;
   onChanged: (doc: Doc) => void;
   onItemsChanged?: () => void;
   onDeleted: () => void;
@@ -192,6 +198,7 @@ function OpenDoc({
         doc={doc}
         comments={comments}
         userId={userId}
+        canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}
         onBlocksChange={setBlocks}
         onChanged={onChanged}
         onItemsChanged={onItemsChanged}
