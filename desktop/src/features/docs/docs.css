@@ -1302,3 +1302,47 @@ h4.doc-heading {
 .doc-ask-source:hover {
   color: var(--color-text);
 }
+
+/* Taking the page away. The shapes it can come in are a short list, so they
+   are all offered rather than hidden behind a dialogue. */
+.doc-download {
+  position: relative;
+  display: inline-flex;
+}
+.doc-download-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  margin: 4px 0 0;
+  padding: 4px;
+  min-width: 170px;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 18px var(--color-backdrop);
+}
+.doc-download-menu button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-download-menu button:hover {
+  background: var(--color-hover);
+}
+.doc-download-menu small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}

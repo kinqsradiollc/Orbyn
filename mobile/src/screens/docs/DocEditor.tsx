@@ -26,6 +26,7 @@ import { AskSheet } from "./AskSheet";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
+import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -820,6 +821,14 @@ export function DocEditor({
       </Text>
 
       <View style={styles.pageActions}>
+        {formatsHere().map((format) => (
+          <SmallAction
+            key={format}
+            label={downloadLabel(format)}
+            disabled={saving}
+            onPress={() => void downloadDoc(doc.id, format).catch(report)}
+          />
+        ))}
         {openTodos > 0 && (
           <SmallAction
             label={`Add ${openTodos} to my tasks`}

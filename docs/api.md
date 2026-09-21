@@ -293,6 +293,22 @@ Each time someone sits down and changes a document, the state they started from 
 arrive every second or so while someone types, so a state is kept only when the previous kept one
 is by someone else or more than five minutes old — history reads as sittings, not keystrokes.
 
+### `GET /docs/:id/export?format=` (auth)
+
+`format` is `md` (the default), `txt`, `html`, `docx` or `pdf`; anything else is `422`. The reply
+carries a `content-disposition` with the file name, so every client saves the same file under the
+same name.
+
+`docx` and `pdf` are written directly rather than through a library — a `.docx` is a zip of XML and
+Node already has DEFLATE in `zlib`, and a PDF with the standard fourteen fonts needs no font
+embedded. That keeps the backend on the ten dependencies it has. The PDF carries headings, lists,
+checklists, quotes, code, rules, and bold and italic within a line; it has no images (a page has
+none) and writes a formula as the symbols it reads as, the same as everywhere outside the editor.
+
+### `GET /docs/:id/markdown` (auth)
+
+Kept for anything already pointing at it; `export?format=md` is the same bytes.
+
 ### `GET /docs/:id/versions` (auth)
 
 → `[ { "version", "title", "author", "user_id", "created_at", "blocks" } ]`, newest first, without

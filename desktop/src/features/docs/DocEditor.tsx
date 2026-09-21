@@ -28,8 +28,11 @@ import {
   blockText,
   DOC_AI_ACTIONS,
   DOC_AI_LABELS,
+  EXPORT_FORMATS,
+  EXPORT_LABELS,
   proposeEdit,
   type DocAiAction,
+  type ExportFormat,
   type DocMode,
   type DocSuggestion,
   carryBlockIds,
@@ -196,6 +199,8 @@ export function DocEditor({
   const [picked, setPicked] = useState<Picked | null>(null);
   /** Whether the list of things to ask the assistant for is showing. */
   const [askMenu, setAskMenu] = useState(false);
+  /** Whether the list of shapes to download the page in is showing. */
+  const [downloadMenu, setDownloadMenu] = useState(false);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -740,16 +745,27 @@ export function DocEditor({
 
   const markdown = useMemo(() => serializeDoc(blocks), [blocks]);
 
-  const download = () => {
-    const blob = new Blob([`# ${title}\n\n${markdown}`], {
-      type: "text/markdown",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title || "document"}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+  /**
+   * Take the page away as a file. The server decides what the file holds
+   * and what it is called, so a page saved from a phone and a page saved
+   * from here are the same file.
+   */
+  const download = async (format: ExportFormat) => {
+    setDownloadMenu(false);
+    setNote(`Making the ${EXPORT_LABELS[format].name} file…`);
+    try {
+      const { blob, name } = await client.exportDoc(doc.id, format);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNote("");
+    } catch (e) {
+      setNote("");
+      report(e);
+    }
   };
 
   // Lines already tied to a task are not offered again.
@@ -866,14 +882,33 @@ export function DocEditor({
           >
             <Copy size={15} />
           </button>
-          <button
-            className="icon-button"
-            onClick={download}
-            aria-label="Export as Markdown"
-            title="Export as Markdown"
-          >
-            <Download size={15} />
-          </button>
+          <span className="doc-download">
+            <button
+              className={"icon-button" + (downloadMenu ? " is-on" : "")}
+              onClick={() => setDownloadMenu((v) => !v)}
+              aria-label="Download this page"
+              aria-haspopup="menu"
+              aria-expanded={downloadMenu}
+              title="Download this page"
+            >
+              <Download size={15} />
+            </button>
+            {downloadMenu && (
+              <ul className="doc-download-menu" role="menu">
+                {EXPORT_FORMATS.map((format) => (
+                  <li key={format}>
+                    <button
+                      role="menuitem"
+                      onClick={() => void download(format)}
+                    >
+                      {EXPORT_LABELS[format].name}
+                      <small>.{EXPORT_LABELS[format].extension}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </span>
           {!reading && (
             <button
               className="icon-button"

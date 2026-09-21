@@ -11,7 +11,13 @@ import {
   itemData,
   docPreview,
   docSuggestionInput,
+  docToHtml,
+  docToMarkdown,
+  docToText,
   docUpdate,
+  EXPORT_FORMATS,
+  EXPORT_LABELS,
+  exportName,
   fail,
   applySuggestion,
   overlaps,
@@ -40,6 +46,8 @@ import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange, closeLive, streamDocChanges } from "./live.js";
+import { docToDocx } from "./docx.js";
+import { docToPdf } from "./pdf.js";
 
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
@@ -334,6 +342,49 @@ export async function docRoutes(app: FastifyInstance) {
   });
 
   /** Export as Markdown, with any LaTeX kept as source. */
+  /**
+   * A page as a file to keep: Markdown, plain words, a web page, Word or
+   * PDF. One route rather than five, because the only thing that differs is
+   * the shape the same blocks come out in.
+   */
+  app.get("/docs/:id/export", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { format } = z
+      .object({ format: z.enum(EXPORT_FORMATS).default("md") })
+      .strict()
+      .parse(r.query ?? {});
+    const doc = (
+      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
+        `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!doc) fail(404, "Document not found");
+    const title = doc.title || "Untitled";
+    const blocks = doc.content ?? [];
+    const body =
+      format === "docx"
+        ? docToDocx(title, blocks)
+        : format === "pdf"
+          ? docToPdf(title, blocks)
+          : format === "html"
+            ? docToHtml(title, blocks)
+            : format === "txt"
+              ? docToText(title, blocks)
+              : docToMarkdown(title, blocks);
+    return (
+      reply
+        .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
+        // The name is offered here so every client gets the same file name.
+        .header(
+          "content-disposition",
+          `attachment; filename="${exportName(title, format).replace(/"/g, "")}"`,
+        )
+        .send(body)
+    );
+  });
+
   app.get("/docs/:id/markdown", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);

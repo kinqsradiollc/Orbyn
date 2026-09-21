@@ -8,6 +8,7 @@ import {
   type DocAiAction,
   type DocAnswer,
   type DocSuggestion,
+  type ExportFormat,
   type Proposed,
   type SearchHit,
   type DocSummary,
@@ -221,6 +222,30 @@ export class OrbynClient {
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.fetchImpl = options.fetch ?? ((...args) => fetch(...args));
     this.streamFetch = options.streamFetch ?? this.fetchImpl;
+  }
+
+  /**
+   * A plain authenticated GET, for the few things that come back as a file
+   * rather than as JSON. No caching and no retries: a download either
+   * arrives or it is asked for again.
+   */
+  async raw(path: string): Promise<Response> {
+    const token = await this.getToken();
+    const response = await this.fetchImpl(this.baseUrl + path, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!response.ok) {
+      const problem = await response
+        .json()
+        .then((body: { message?: string }) => body.message)
+        .catch(() => "");
+      throw new HttpError(
+        response.status,
+        problem || "That file could not be made.",
+      );
+    }
+    return response;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -792,6 +817,17 @@ export class OrbynClient {
     for (const [k, v] of Object.entries(filter))
       if (v !== undefined) params.set(k, String(v));
     return this.request<SearchHit[]>(`/search?${params}`);
+  }
+
+  /**
+   * A page as a file to keep. Comes back as a blob with the name the server
+   * chose, so every client saves the same file under the same name.
+   */
+  async exportDoc(docId: string, format: ExportFormat) {
+    const response = await this.raw(`/docs/${docId}/export?format=${format}`);
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return { blob: await response.blob(), name: named ?? `document.${format}` };
   }
 
   // Documents
