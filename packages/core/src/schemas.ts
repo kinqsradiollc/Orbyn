@@ -402,6 +402,21 @@ export const docCommentInput = z
     { message: "A range needs a start before its end" },
   );
 
+/** What to look for, and how to narrow it. */
+export const searchQuery = z
+  .object({
+    q: z.string().trim().min(1).max(200),
+    /** "doc" searches pages only, "task" tasks only; both by default. */
+    type: z.enum(["doc", "task"]).optional(),
+    kind: z.enum(DOC_KINDS).optional(),
+    project: z.uuid().optional(),
+    tag: z.uuid().optional(),
+    team: z.uuid().optional(),
+    updated_after: z.iso.datetime({ offset: true }).optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+
 /** How a list of pages may be narrowed. */
 export const docListQuery = z
   .object({
