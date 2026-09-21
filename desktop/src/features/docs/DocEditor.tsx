@@ -600,7 +600,16 @@ export function DocEditor({
     setActiveComment(blockId);
   };
 
+  /**
+   * A proposal is a stretch of one named line, so there is no way to propose
+   * a line added, taken away, moved, copied, or a box ticked. Every one of
+   * those used to go straight onto the page while suggesting, which is the
+   * one thing suggesting is meant not to do.
+   */
+  const structural = !suggesting;
+
   const insertAfter = (index: number) => {
+    if (!structural) return;
     const current = blocks[index];
     const next = blocks.slice();
     // Enter at the end of a list item makes another; on an empty one it
@@ -621,14 +630,41 @@ export function DocEditor({
     setFocused(index + 1);
   };
 
+  /**
+   * Put what is being typed into the open line, without going near the page.
+   * The line is an uncontrolled textarea while suggesting, so it is written
+   * to directly and the draft kept in step.
+   */
+  const setLineSource = (source: string) => {
+    suggestDraft.current = source;
+    const el = areaRef.current;
+    if (!el) return;
+    el.value = source;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
   /** The same words as another kind of block. */
   const turnInto = (index: number, kind: Kind) => {
+    // A line's kind lives in its own words — the "# " in front of them — so
+    // while suggesting this is an ordinary change to the line, and becomes a
+    // proposal like any other. It applies to what has been typed, not to
+    // what the page still says.
+    if (suggesting) {
+      const typed = suggestDraft.current ?? serializeBlock(blocks[index]);
+      const current = blocksFromSource(typed)[0] ?? blocks[index];
+      setLineSource(
+        serializeBlock(blockToType(current, kind.type, kind.level)),
+      );
+      return;
+    }
     const next = blocks.slice();
     next[index] = blockToType(blocks[index], kind.type, kind.level);
     update(next);
   };
 
   const moveBlock = (index: number, by: -1 | 1) => {
+    if (!structural) return;
     const to = index + by;
     if (to < 0 || to >= blocks.length) return;
     const next = blocks.slice();
@@ -637,6 +673,7 @@ export function DocEditor({
   };
 
   const duplicate = (index: number) => {
+    if (!structural) return;
     const next = blocks.slice();
     const copy = { ...blocks[index] };
     // A copied checklist line is a new line, not the same task twice.
@@ -659,6 +696,15 @@ export function DocEditor({
 
   const pickSlash = (kind: Kind) => {
     if (!slash) return;
+    if (suggesting) {
+      setLineSource(
+        serializeBlock(
+          blockToType({ type: "paragraph", text: "" }, kind.type, kind.level),
+        ),
+      );
+      setSlash(null);
+      return;
+    }
     const next = blocks.slice();
     next[slash.index] = blockToType(
       { type: "paragraph", text: "" },
@@ -673,6 +719,7 @@ export function DocEditor({
   };
 
   const removeAt = (index: number) => {
+    if (!structural) return;
     const next = blocks.slice();
     // A page is never empty: the last block goes back to a blank line.
     if (blocks.length === 1) next[0] = { type: "paragraph", text: "" };
@@ -683,7 +730,7 @@ export function DocEditor({
 
   const toggleTodo = (index: number) => {
     const b = blocks[index];
-    if (b.type !== "todo") return;
+    if (b.type !== "todo" || !structural) return;
     const next = blocks.slice();
     next[index] = { ...b, done: !b.done };
     update(next);
@@ -1125,13 +1172,15 @@ export function DocEditor({
                               ]
                             : []
                         }
-                        onToggleTodo={() => toggleTodo(index)}
+                        onToggleTodo={
+                          structural ? () => toggleTodo(index) : undefined
+                        }
                       />
                     </div>
                   </div>
                 ),
               )}
-              {!reading && (
+              {!reading && structural && (
                 <button
                   className="doc-add"
                   onClick={() => insertAfter(blocks.length - 1)}
@@ -1151,6 +1200,7 @@ export function DocEditor({
                   onDuplicate={() => duplicate(menu.index)}
                   onComment={() => commentOn(menu.index)}
                   onDelete={() => removeAt(menu.index)}
+                  structural={structural}
                   onClose={() => setMenu(null)}
                 />
               )}
