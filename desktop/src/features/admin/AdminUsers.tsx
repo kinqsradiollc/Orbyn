@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
 import type { AdminUser, SystemRole } from "@orbyn/core";
@@ -11,6 +12,7 @@ type Props = Pick<TeamActions, "user" | "busy" | "act" | "refresh" | "report">;
 
 /** Searchable account table: system role, enable/disable, delete. */
 export function AdminUsers({ user, busy, act, refresh, report }: Props) {
+  const { ask, tell } = useConfirm();
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -53,34 +55,39 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
       await refresh();
     });
 
-  const changeRole = (target: AdminUser, role: SystemRole) => {
+  const changeRole = async (target: AdminUser, role: SystemRole) => {
     if (
       target.id === user?.id &&
       role !== "admin" &&
-      !window.confirm(
-        "Remove your own admin access? You'll lose access to this console.",
-      )
+      !(await ask({
+        title:
+          "Remove your own admin access? You'll lose access to this console.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
     )
       return;
     update(target, { role });
   };
 
-  const toggleDisabled = (target: AdminUser) => {
+  const toggleDisabled = async (target: AdminUser) => {
     if (
       !target.disabled &&
-      !window.confirm(
-        `Disable ${target.email}? They won't be able to sign in until you enable them again.`,
-      )
+      !(await ask({
+        title: `Disable ${target.email}? They won't be able to sign in until you enable them again.`,
+      }))
     )
       return;
     update(target, { disabled: !target.disabled });
   };
 
-  const remove = (target: AdminUser) => {
+  const remove = async (target: AdminUser) => {
     if (
-      !window.confirm(
-        `Permanently delete ${target.email}'s account? This can't be undone.`,
-      )
+      !(await ask({
+        title: `Permanently delete ${target.email}'s account? This can't be undone.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     void act(async () => {

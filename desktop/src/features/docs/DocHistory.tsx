@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState } from "react";
 import { History, RotateCcw, X } from "lucide-react";
 import type { Doc, DocVersion } from "@orbyn/core";
@@ -34,6 +35,7 @@ export function DocHistory({
   onClose: () => void;
   report: (e: unknown) => void;
 }) {
+  const { ask, tell } = useConfirm();
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [chosen, setChosen] = useState<Required<DocVersion> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -54,12 +56,12 @@ export function DocHistory({
       .finally(() => setBusy(false));
   };
 
-  const restore = () => {
+  const restore = async () => {
     if (!chosen) return;
     if (
-      !confirm(
-        `Put the page back as it was at ${when(chosen.created_at)}? What is there now is kept in history.`,
-      )
+      !(await ask({
+        title: `Put the page back as it was at ${when(chosen.created_at)}? What is there now is kept in history.`,
+      }))
     )
       return;
     setBusy(true);

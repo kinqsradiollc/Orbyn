@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
 import { anchorComments, type DocBlock, type DocComment } from "@orbyn/core";
@@ -52,6 +53,7 @@ export function DocComments({
   onAnchors: (blockIds: string[]) => void;
   report: (e: unknown) => void;
 }) {
+  const { ask, tell } = useConfirm();
   const [comments, setComments] = useState<DocComment[] | null>(null);
   const [draft, setDraft] = useState("");
   const [pageDraft, setPageDraft] = useState("");
@@ -147,8 +149,15 @@ export function DocComments({
       .finally(() => setBusy(false));
   };
 
-  const remove = (c: DocComment) => {
-    if (!confirm("Remove this comment?")) return;
+  const remove = async (c: DocComment) => {
+    if (
+      !(await ask({
+        title: "Remove this comment?",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
     setBusy(true);
     client
       .deleteDocComment(docId, c.id)

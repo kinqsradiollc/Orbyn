@@ -1,3 +1,4 @@
+import { useConfirm } from "../components/Confirm";
 import { useEffect, useState } from "react";
 import { Eye, Trash2, X } from "lucide-react";
 import {
@@ -83,6 +84,7 @@ export function ItemEditor({
   onSave,
   onDelete,
 }: Props) {
+  const { ask, tell } = useConfirm();
   const planning = usePlanning();
   const existing = editing === "new" ? null : editing;
   const isNew = !existing;
@@ -732,9 +734,16 @@ export function ItemEditor({
                 type="button"
                 className="danger"
                 disabled={busy}
-                onClick={() => {
+                onClick={async () => {
                   if (repeating) setAskDelete(true);
-                  else if (window.confirm("Delete this item?")) onDelete();
+                  else if (
+                    await ask({
+                      title: "Delete this item?",
+                      confirmLabel: "Delete",
+                      destructive: true,
+                    })
+                  )
+                    onDelete();
                 }}
               >
                 <Trash2 size={16} /> Delete

@@ -1,6 +1,7 @@
 import { colors, motion, statusTones } from "@orbyn/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
+import { ConfirmProvider } from "./components/Confirm";
 import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
 import "katex/dist/katex.min.css";
 import "./styles/global.css";
@@ -38,4 +39,8 @@ root.setProperty("--motion-press-scale", String(motion.pressScale));
 root.setProperty("--ease-out", bezier(motion.easeOut));
 root.setProperty("--ease-in-out", bezier(motion.easeInOut));
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <ConfirmProvider>
+    <App />
+  </ConfirmProvider>,
+);

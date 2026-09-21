@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Ban,
@@ -125,6 +126,7 @@ export function TaskDetail({
   items,
   onOpenItem,
 }: Props) {
+  const { ask, tell } = useConfirm();
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -940,11 +942,11 @@ export function TaskDetail({
             <button
               className="secondary"
               disabled={pending}
-              onClick={() => {
+              onClick={async () => {
                 if (
-                  window.confirm(
-                    `Cancel “${current.title}”? It closes without being done.`,
-                  )
+                  await ask({
+                    title: `Cancel “${current.title}”? It closes without being done.`,
+                  })
                 )
                   setStatus("cancelled");
               }}

@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -45,6 +46,7 @@ const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
 
 /** AI provider management for admins with `ai:manage`; the server enforces it too. */
 export function AdminAi({ busy, revision, act, report }: Props) {
+  const { ask, tell } = useConfirm();
   const [data, setData] = useState<AiProvidersResponse | null>(null);
   const [editing, setEditing] = useState<AiProvider | "new" | null>(null);
   /** Model chosen per provider row. */
@@ -112,11 +114,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       setTests((t) => ({ ...t, [p.id]: result }));
     });
 
-  const remove = (p: AiProvider) => {
+  const remove = async (p: AiProvider) => {
     if (
-      !window.confirm(
-        `Delete ${p.name}? Its saved key is removed too. If the assistant was using it, the assistant turns off until you choose another provider.`,
-      )
+      !(await ask({
+        title: `Delete ${p.name}? Its saved key is removed too. If the assistant was using it, the assistant turns off until you choose another provider.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     mutate(async () => {
@@ -125,11 +129,14 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     });
   };
 
-  const turnOff = () => {
+  const turnOff = async () => {
     if (
-      !window.confirm(
-        "Turn off the assistant? It stays off until you choose a provider again.",
-      )
+      !(await ask({
+        title:
+          "Turn off the assistant? It stays off until you choose a provider again.",
+        confirmLabel: "Turn off",
+        destructive: true,
+      }))
     )
       return;
     mutate(() => client.updateAiSettings({ provider_id: null }));
@@ -189,11 +196,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               setEditing(null);
             })
           }
-          onRemoveKey={(p) => {
+          onRemoveKey={async (p) => {
             if (
-              !window.confirm(
-                `Remove the saved key for ${p.name}? Requests will be sent without one.`,
-              )
+              !(await ask({
+                title: `Remove the saved key for ${p.name}? Requests will be sent without one.`,
+                confirmLabel: "Remove",
+                destructive: true,
+              }))
             )
               return;
             mutate(() => client.updateAiProvider(p.id, { api_key: "" }));

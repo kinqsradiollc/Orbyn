@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useState, type FormEvent } from "react";
 import { Check, ListChecks, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
@@ -70,6 +71,7 @@ export function ListsView({
   onNewItem,
   report,
 }: Props) {
+  const { ask, tell } = useConfirm();
   const { lists, reload } = usePlanning();
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -128,11 +130,13 @@ export function ListsView({
     ).then((ok) => ok && setEditing(null));
   };
 
-  const remove = (l: TaskList) => {
+  const remove = async (l: TaskList) => {
     if (
-      !window.confirm(
-        `Delete “${l.name}”? Its tasks stay; they just leave the list.`,
-      )
+      !(await ask({
+        title: `Delete “${l.name}”? Its tasks stay; they just leave the list.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     void run(async () => {

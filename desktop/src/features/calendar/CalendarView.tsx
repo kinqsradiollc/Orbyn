@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -174,6 +175,7 @@ export function CalendarView({
   onNewEvent,
   userId,
 }: Props) {
+  const { ask, tell } = useConfirm();
   const planning = usePlanning();
   const prefs = planning.prefs;
   const narrow = useMediaQuery("(max-width: 900px)");
@@ -992,11 +994,13 @@ export function CalendarView({
           onDuplicate={() => void duplicate(menu.block)}
           onReschedule={() => void reschedule(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
-          onDelete={() => {
+          onDelete={async () => {
             if (
-              window.confirm(
-                `Delete this time block for “${menu.block.title}”?`,
-              )
+              await ask({
+                title: `Delete this time block for “${menu.block.title}”?`,
+                confirmLabel: "Delete",
+                destructive: true,
+              })
             )
               void mutate(() => client.deleteBlock(menu.block.id));
           }}

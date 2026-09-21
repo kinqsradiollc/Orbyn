@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Copy,
@@ -110,6 +111,7 @@ export function ConnectionsSettings({ report }: Props) {
 }
 
 function ApiKeys({ report }: Props) {
+  const { ask, tell } = useConfirm();
   const [keys, setKeys] = useState<ApiKey[] | null>(null);
   const [name, setName] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
@@ -133,8 +135,14 @@ function ApiKeys({ report }: Props) {
       await load();
     });
   };
-  const remove = (k: ApiKey) => {
-    if (!window.confirm(`Delete “${k.name}”? Anything using it stops working.`))
+  const remove = async (k: ApiKey) => {
+    if (
+      !(await ask({
+        title: `Delete “${k.name}”? Anything using it stops working.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
       return;
     void action.run(async () => {
       await client.deleteApiKey(k.id);
@@ -200,6 +208,7 @@ function ApiKeys({ report }: Props) {
 }
 
 function Webhooks({ report }: Props) {
+  const { ask, tell } = useConfirm();
   const [hooks, setHooks] = useState<Webhook[] | null>(null);
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<WebhookEvent[]>(["item.created"]);
@@ -257,8 +266,15 @@ function Webhooks({ report }: Props) {
       }));
       await load();
     });
-  const remove = (h: Webhook) => {
-    if (!window.confirm(`Delete the webhook to ${h.url}?`)) return;
+  const remove = async (h: Webhook) => {
+    if (
+      !(await ask({
+        title: `Delete the webhook to ${h.url}?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deleteWebhook(h.id);
       await load();

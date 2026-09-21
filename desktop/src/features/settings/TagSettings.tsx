@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useState, type FormEvent } from "react";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { hasTeamPermission, type Tag, type Team } from "@orbyn/core";
@@ -11,6 +12,7 @@ type Props = { teams: Team[]; report: (e: unknown) => void };
 
 /** Personal and team tags: create, rename, recolour and delete. */
 export function TagSettings({ teams, report }: Props) {
+  const { ask, tell } = useConfirm();
   const { tags, reload } = usePlanning();
   const [editing, setEditing] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -53,9 +55,13 @@ export function TagSettings({ teams, report }: Props) {
       .then((ok) => ok && setEditing(null));
   };
 
-  const remove = (t: Tag) => {
+  const remove = async (t: Tag) => {
     if (
-      !window.confirm(`Delete the tag “${t.name}”? Tasks keep everything else.`)
+      !(await ask({
+        title: `Delete the tag “${t.name}”? Tasks keep everything else.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     void action.run(async () => {

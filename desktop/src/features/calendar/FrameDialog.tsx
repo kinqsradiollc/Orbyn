@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Frame, Team } from "@orbyn/core";
@@ -23,6 +24,7 @@ export function FrameDialog({
   onSaved,
   onDeleted,
 }: Props) {
+  const { ask, tell } = useConfirm();
   /** Undefined while loading; null when the frame is gone. */
   const [frame, setFrame] = useState<Frame | null | undefined>(undefined);
   const [deleting, setDeleting] = useState(false);
@@ -56,9 +58,11 @@ export function FrameDialog({
   const remove = async () => {
     if (!frame) return;
     if (
-      !window.confirm(
-        `Delete the frame “${frame.name}”? Every day of it goes, not just this one.`,
-      )
+      !(await ask({
+        title: `Delete the frame “${frame.name}”? Every day of it goes, not just this one.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     setDeleting(true);

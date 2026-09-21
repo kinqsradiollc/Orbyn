@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   CalendarClock,
@@ -69,6 +70,7 @@ const draftOf = (h: Habit): Draft => ({
 
 /** Habits: flexible routines the planner fits into free time. */
 export function HabitsEditor({ report }: Props) {
+  const { ask, tell } = useConfirm();
   const [habits, setHabits] = useState<Habit[] | null>(null);
   const [editing, setEditing] = useState<Habit | "new" | null>(null);
   const [plan, setPlan] = useState<HabitPlan | null>(null);
@@ -85,8 +87,15 @@ export function HabitsEditor({ report }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const remove = (h: Habit) => {
-    if (!window.confirm(`Delete the habit “${h.name}”?`)) return;
+  const remove = async (h: Habit) => {
+    if (
+      !(await ask({
+        title: `Delete the habit “${h.name}”?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deleteHabit(h.id);
       await load();

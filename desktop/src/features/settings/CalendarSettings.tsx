@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   CalendarPlus,
@@ -42,6 +43,7 @@ function LinkBox({ label, url }: { label: string; url: string }) {
  * shared without the details, and whether time blocks are included.
  */
 export function CalendarFeedCard({ report }: Props) {
+  const { ask, tell } = useConfirm();
   const [settings, setSettings] = useState<CalendarFeedSettings | null>(null);
   const [links, setLinks] = useState<{ full?: string; busy?: string }>({});
   const action = useAction(report);
@@ -63,13 +65,15 @@ export function CalendarFeedCard({ report }: Props) {
         ? "Made a new link. The old one no longer works."
         : "Your link is ready.";
     });
-  const turnOff = (busy: boolean) => {
+  const turnOff = async (busy: boolean) => {
     if (
-      !window.confirm(
-        busy
+      !(await ask({
+        title: busy
           ? "Turn off the busy-only link? Anyone using it stops seeing updates."
           : "Turn off the calendar feed? Subscribed apps stop updating.",
-      )
+        confirmLabel: "Turn off",
+        destructive: true,
+      }))
     )
       return;
     void action.run(async () => {
@@ -174,6 +178,7 @@ type SubDraft = { name: string; color: string; busy: boolean };
  * Their events show on your calendar, read-only.
  */
 export function CalendarSubscriptions({ report }: Props) {
+  const { ask, tell } = useConfirm();
   const [subs, setSubs] = useState<CalendarSubscription[] | null>(null);
   const [url, setUrl] = useState("");
   const [draft, setDraft] = useState<SubDraft>({
@@ -237,8 +242,15 @@ export function CalendarSubscriptions({ report }: Props) {
         ? `Couldn't fetch it: ${next.last_error}`
         : `Refreshed · ${plural(next.event_count, "event")}.`;
     });
-  const remove = (s: CalendarSubscription) => {
-    if (!window.confirm(`Remove “${s.name}” and its events?`)) return;
+  const remove = async (s: CalendarSubscription) => {
+    if (
+      !(await ask({
+        title: `Remove “${s.name}” and its events?`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deleteCalendarSubscription(s.id);
       await load();

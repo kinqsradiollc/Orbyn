@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useState } from "react";
 import {
   CalendarCheck,
@@ -51,6 +52,7 @@ type Tab = "bookings" | "pages" | "invites";
  * for one person, and your profile page.
  */
 export function BookingView({ user, teams, report, focus = null }: Props) {
+  const { ask, tell } = useConfirm();
   const [tab, setTab] = useState<Tab>("bookings");
   const [pages, setPages] = useState<BookingPage[] | null>(null);
   const [stats, setStats] = useState<BookingStats | null>(null);
@@ -103,8 +105,15 @@ export function BookingView({ user, teams, report, focus = null }: Props) {
     setTab("bookings");
   };
 
-  const remove = (p: BookingPage) => {
-    if (!window.confirm(`Delete “${p.title}”? Its link stops working.`)) return;
+  const remove = async (p: BookingPage) => {
+    if (
+      !(await ask({
+        title: `Delete “${p.title}”? Its link stops working.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deleteBookingPage(p.id);
       if (pageId === p.id) setPageId("");
