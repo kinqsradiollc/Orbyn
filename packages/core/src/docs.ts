@@ -507,7 +507,16 @@ export function serializeDoc(blocks: DocBlock[]): string {
 /** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
-    .map((b) => (b.type === "divider" ? "" : mathToText(b.text)))
+    .map((b) => {
+      if (b.type === "divider") return "";
+      // A maths block is LaTeX all the way through, with no fences to find
+      // it by, so it is spelled out whole.
+      if (b.type === "math") return mathToText(b.text);
+      // A preview is read, not rendered, so it should read as words. Maths
+      // was already spelled out here; the rest of the markers were not, and
+      // every list of documents showed "Pricing stays **unchanged**".
+      return plainText(b.text);
+    })
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
