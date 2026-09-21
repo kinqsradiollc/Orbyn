@@ -242,30 +242,47 @@ export const itemData = z
 // Documents. The body is the editor's block list; each block is validated so a
 // malformed document can't be stored, and titles stay short enough to show in a
 // list row.
+/**
+ * A line's name. Anything that points at a line — a comment, a task link —
+ * points at this, so every kind of block carries one. Only checklist lines
+ * used to, which meant a name given to a paragraph was quietly dropped on
+ * the next save and everything hanging on it came loose.
+ */
+const named = { id: z.string().max(64).optional() };
+
 const docBlock = z.discriminatedUnion("type", [
   z.object({
+    ...named,
     type: z.literal("heading"),
     level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     text: z.string().max(2000),
   }),
-  z.object({ type: z.literal("paragraph"), text: z.string().max(10000) }),
-  z.object({ type: z.literal("bullet"), text: z.string().max(4000) }),
-  z.object({ type: z.literal("numbered"), text: z.string().max(4000) }),
   z.object({
+    ...named,
+    type: z.literal("paragraph"),
+    text: z.string().max(10000),
+  }),
+  z.object({ ...named, type: z.literal("bullet"), text: z.string().max(4000) }),
+  z.object({
+    ...named,
+    type: z.literal("numbered"),
+    text: z.string().max(4000),
+  }),
+  z.object({
+    ...named,
     type: z.literal("todo"),
     text: z.string().max(4000),
     done: z.boolean(),
-    /** Set once the line has become a task; links the two together. */
-    id: z.string().max(64).optional(),
   }),
-  z.object({ type: z.literal("quote"), text: z.string().max(4000) }),
+  z.object({ ...named, type: z.literal("quote"), text: z.string().max(4000) }),
   z.object({
+    ...named,
     type: z.literal("code"),
     text: z.string().max(20000),
     lang: z.string().max(20).default(""),
   }),
-  z.object({ type: z.literal("math"), text: z.string().max(4000) }),
-  z.object({ type: z.literal("divider") }),
+  z.object({ ...named, type: z.literal("math"), text: z.string().max(4000) }),
+  z.object({ ...named, type: z.literal("divider") }),
 ]);
 
 export const docContent = z.array(docBlock).max(2000);
@@ -360,8 +377,24 @@ export const docCommentInput = z
     block_id: z.string().trim().min(1).max(64).optional(),
     /** What that line said at the time, so the remark still reads if it goes. */
     quote: z.string().trim().max(400).optional(),
+    /**
+     * The words being remarked on, as a character range into the block's
+     * Markdown source. Left out for a remark about a whole line.
+     */
+    range_start: z.number().int().min(0).max(100_000).optional(),
+    range_end: z.number().int().min(0).max(100_000).optional(),
+    /** The remark this answers. Threads are one deep. */
+    parent_id: z.uuid().optional(),
+    /** People named in the body, chosen from the picker rather than typed. */
+    mentions: z.array(z.uuid()).max(20).default([]),
   })
-  .strict();
+  .strict()
+  .refine(
+    (c) =>
+      (c.range_start === undefined) === (c.range_end === undefined) &&
+      (c.range_start === undefined || c.range_end! > c.range_start),
+    { message: "A range needs a start before its end" },
+  );
 
 export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
 

@@ -649,16 +649,33 @@ export class OrbynClient {
   listDocComments(docId: string) {
     return this.request<DocComment[]>(`/docs/${docId}/comments`);
   }
-  /** `anchor` ties the remark to one block; without it, to the page. */
+  /**
+   * `anchor` ties the remark to words in one block; without it, to the page.
+   * `parent_id` makes it a reply, and `mentions` are the people named in it.
+   */
   addDocComment(
     docId: string,
     body: string,
-    anchor?: { block_id: string; quote: string },
+    anchor?: {
+      block_id?: string;
+      quote?: string;
+      range_start?: number;
+      range_end?: number;
+      parent_id?: string;
+      mentions?: string[];
+    },
   ) {
     return this.request<DocComment>(`/docs/${docId}/comments`, {
       method: "POST",
       body: { body, ...anchor },
     });
+  }
+
+  /** People who can be named in a comment on this document. */
+  docPeople(docId: string) {
+    return this.request<{ id: string; name: string; email: string }[]>(
+      `/docs/${docId}/people`,
+    );
   }
   resolveDocComment(docId: string, commentId: string, resolved: boolean) {
     return this.request<DocComment>(`/docs/${docId}/comments/${commentId}`, {

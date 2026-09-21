@@ -10,6 +10,7 @@ import {
   docPreview,
   docUpdate,
   fail,
+  reanchorComments,
   meetingNoteTemplate,
   serializeDoc,
   type Doc,
@@ -42,6 +43,19 @@ import { announceDocChange, closeLive, streamDocChanges } from "./live.js";
 
 const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.folder_id, d.version, d.created_at, d.updated_at`;
+
+/**
+ * A comment as the clients read it: its anchor, its thread, and the people
+ * named in it gathered into one array so a card needs no second request.
+ */
+const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
+         c.block_id, c.quote, c.range_start, c.range_end, c.parent_id,
+         c.detached, c.resolved_at, c.created_at,
+         coalesce((SELECT json_agg(json_build_object('user_id', mu.id, 'name', mu.name)
+                                   ORDER BY mu.name)
+                     FROM doc_comment_mentions m JOIN users mu ON mu.id = m.user_id
+                    WHERE m.comment_id = c.id), '[]'::json) AS mentions
+    FROM doc_comments c JOIN users u ON u.id = c.user_id`;
 
 /** Documents `$1` can see: their own, and their teams'. */
 const VISIBLE = `((d.team_id IS NULL AND d.user_id = $1)
@@ -136,6 +150,36 @@ async function syncTicks(
       [row.item_id, wanted ? "done" : "todo", wanted ? 100 : 0],
     );
   }
+}
+
+/**
+ * Keep every remark pointing at the words it was written about.
+ *
+ * An edit before a remark's words moves them along the line; an edit that
+ * takes the words away leaves the remark with nothing to point at. Rather
+ * than throw it away, the remark is marked detached and shown apart with the
+ * words it quoted, so a thought survives the sentence it was about. Only the
+ * remarks whose anchor actually moved are written.
+ */
+async function followComments(
+  db: Db,
+  docId: string,
+  content: DocBlock[],
+): Promise<void> {
+  const comments = (
+    await db.query<DocComment>(
+      `SELECT id, block_id, quote, range_start, range_end, detached
+         FROM doc_comments WHERE doc_id = $1 AND resolved_at IS NULL`,
+      [docId],
+    )
+  ).rows;
+  if (!comments.length) return;
+  for (const moved of reanchorComments(comments, content))
+    await db.query(
+      `UPDATE doc_comments SET range_start = $2, range_end = $3, detached = $4
+        WHERE id = $1`,
+      [moved.id, moved.range_start, moved.range_end, moved.detached],
+    );
 }
 
 /** A checklist line as the fields `mutate` needs to create a task. */
@@ -257,6 +301,7 @@ export async function docRoutes(app: FastifyInstance) {
           "This document changed somewhere else. Refresh and try again.",
         );
       if (body.content) await syncTicks(db, id, body.content);
+      if (body.content) await followComments(db, id, body.content);
       await snapshot(db, id, u.id);
       await db.query(
         `UPDATE docs SET
@@ -393,6 +438,10 @@ export async function docRoutes(app: FastifyInstance) {
       ).rows[0];
       if (!past) fail(404, "That version is not kept");
       await syncTicks(db, id, past.content);
+      // Going back in time moves the words a remark points at, so the same
+      // pass a save makes runs here too — a remark left behind by a restore
+      // comes loose rather than pointing at the wrong sentence.
+      await followComments(db, id, past.content);
       // A restore is a sitting of its own: always keep what it replaces.
       const current = (
         await db.query<{ version: number; title: string; content: unknown }>(
@@ -657,11 +706,35 @@ export async function docRoutes(app: FastifyInstance) {
     if (!seen) fail(404, "Document not found");
     return (
       await db.query<DocComment>(
-        `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
-                c.block_id, c.quote, c.resolved_at, c.created_at
-           FROM doc_comments c JOIN users u ON u.id = c.user_id
-          WHERE c.doc_id = $1 ORDER BY c.created_at`,
+        `${COMMENT_SELECT} WHERE c.doc_id = $1 ORDER BY c.created_at`,
         [id],
+      )
+    ).rows;
+  });
+
+  /**
+   * Who can be named in a comment here: the team, or just the author on a
+   * personal page. The picker never offers someone who cannot read it.
+   */
+  app.get("/docs/:id/people", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const doc = (
+      await db.query<{ team_id: string | null; user_id: string }>(
+        `SELECT d.team_id, d.user_id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!doc) fail(404, "Document not found");
+    return (
+      await db.query<{ id: string; name: string; email: string }>(
+        doc.team_id
+          ? `SELECT u.id, u.name, u.email FROM users u
+               JOIN team_members m ON m.user_id = u.id AND m.team_id = $1
+              ORDER BY u.name`
+          : "SELECT id, name, email FROM users WHERE id = $1",
+        [doc.team_id ?? doc.user_id],
       )
     ).rows;
   });
@@ -669,30 +742,102 @@ export async function docRoutes(app: FastifyInstance) {
   app.post("/docs/:id/comments", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { body, block_id, quote } = docCommentInput.parse(r.body);
+    const input = docCommentInput.parse(r.body);
     const comment = await transaction(async (db) => {
       // Anyone who can read the document can remark on it.
-      await requireDoc(db, id, u, "items:read");
+      const doc = await requireDoc(db, id, u, "items:read");
+      if (input.parent_id) {
+        // A reply belongs to a remark on this page, and threads stay one
+        // deep: replying to a reply joins the same thread.
+        const parent = (
+          await db.query<{ id: string; parent_id: string | null }>(
+            "SELECT id, parent_id FROM doc_comments WHERE id = $1 AND doc_id = $2",
+            [input.parent_id, id],
+          )
+        ).rows[0];
+        if (!parent) fail(404, "Comment not found");
+        input.parent_id = parent.parent_id ?? parent.id;
+      }
       const made = (
         await db.query<{ id: string }>(
-          `INSERT INTO doc_comments (doc_id, user_id, body, block_id, quote)
-             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-          [id, u.id, body, block_id ?? null, quote ?? null],
+          `INSERT INTO doc_comments
+             (doc_id, user_id, body, block_id, quote,
+              range_start, range_end, parent_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [
+            id,
+            u.id,
+            input.body,
+            input.block_id ?? null,
+            input.quote ?? null,
+            input.range_start ?? null,
+            input.range_end ?? null,
+            input.parent_id ?? null,
+          ],
         )
       ).rows[0].id;
+      await nameMentions(db, doc, made, u, input.body, input.mentions);
       return (
-        await db.query<DocComment>(
-          `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
-                  c.block_id, c.quote, c.resolved_at, c.created_at
-             FROM doc_comments c JOIN users u ON u.id = c.user_id
-            WHERE c.id = $1`,
-          [made],
-        )
+        await db.query<DocComment>(`${COMMENT_SELECT} WHERE c.id = $1`, [made])
       ).rows[0];
     });
     reply.code(201);
     return comment;
   });
+
+  /**
+   * Record who a comment names, and tell them.
+   *
+   * Only people who can already see the document can be named: a mention is
+   * not a way to show a page to someone who has no business reading it. The
+   * notice is kept to one per person per comment by its ref.
+   */
+  async function nameMentions(
+    db: Db,
+    doc: Owned,
+    commentId: string,
+    by: UserRow,
+    body: string,
+    wanted: string[],
+  ) {
+    const ids = [...new Set(wanted)].filter((w) => w !== by.id);
+    if (!ids.length) return;
+    const allowed = (
+      await db.query<{ id: string; name: string }>(
+        doc.team_id
+          ? `SELECT u.id, u.name FROM users u
+               JOIN team_members m ON m.user_id = u.id AND m.team_id = $2
+              WHERE u.id = ANY($1::uuid[])`
+          : `SELECT u.id, u.name FROM users u WHERE u.id = ANY($1::uuid[]) AND u.id = $2`,
+        [ids, doc.team_id ?? doc.user_id],
+      )
+    ).rows;
+    if (!allowed.length) return;
+    await db.query(
+      `INSERT INTO doc_comment_mentions (comment_id, user_id)
+         SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+      [commentId, allowed.map((a) => a.id)],
+    );
+    const title = (
+      await db.query<{ title: string }>(
+        "SELECT title FROM docs WHERE id = $1",
+        [doc.id],
+      )
+    ).rows[0]?.title;
+    for (const person of allowed)
+      await db.query(
+        `INSERT INTO notifications (user_id, item_id, item_version, channel,
+           destination, title, body, state, kind, ref)
+         VALUES ($1, NULL, 0, 'inapp', '', $2, $3, 'sent', 'mention', $4)
+         ON CONFLICT DO NOTHING`,
+        [
+          person.id,
+          `${by.name} mentioned you in ${title ?? "a document"}`,
+          body.slice(0, 400),
+          `doc:${doc.id}:${commentId}`,
+        ],
+      );
+  }
 
   /** Resolve a remark, or bring it back. */
   app.put("/docs/:id/comments/:commentId", async (r) => {

@@ -14,6 +14,7 @@ import {
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
+import { WordPicker } from "./WordPicker";
 import type { DocCommentsState } from "./useDocComments";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
@@ -90,6 +91,13 @@ export function DocEditor({
   const [pending, setPending] = useState<{
     blockId: string;
     quote: string;
+    range_start?: number;
+    range_end?: number;
+  } | null>(null);
+  /** A line whose words are being chosen, and the source to choose from. */
+  const [picking, setPicking] = useState<{
+    blockId: string;
+    source: string;
   } | null>(null);
   /** Set when a line opens so the caret starts at its end; cleared on typing. */
   const [caret, setCaret] = useState<
@@ -340,8 +348,13 @@ export function DocEditor({
    * Remark on the open line. A line needs a name before anything can point
    * at it, so one is given here and saved with the page.
    */
-  const commentOnLine = () => {
-    if (focused === null) return;
+  /**
+   * Close the open line and make sure it has a saved name, so a remark
+   * written next has something to hang on. Gives back the name and the line
+   * as it now reads.
+   */
+  const settleLine = () => {
+    if (focused === null) return null;
     const parsed = parseDoc(draft)[0] ?? blocks[focused];
     const blockId = blocks[focused].id ?? newBlockId();
     const next = blocks.slice();
@@ -353,8 +366,21 @@ export function DocEditor({
     // with nothing to hang on.
     if (timer.current) clearTimeout(timer.current);
     void persist(title, next);
-    setPending({ blockId, quote: blockText(parsed).slice(0, 400) });
-    setOpenThread(blockId);
+    return { blockId, source: blockText(parsed) };
+  };
+
+  const commentOnLine = () => {
+    const line = settleLine();
+    if (!line) return;
+    setPending({ blockId: line.blockId, quote: line.source.slice(0, 400) });
+    setOpenThread(line.blockId);
+  };
+
+  /** Comment on some of a line's words rather than all of it. */
+  const commentOnWords = () => {
+    const line = settleLine();
+    if (!line) return;
+    setPicking(line);
   };
 
   const deleteLine = () => {
@@ -504,6 +530,23 @@ export function DocEditor({
         renderUnder={(blockId) => {
           const list = comments.anchored.get(blockId) ?? [];
           const waiting = pending?.blockId === blockId;
+          if (picking?.blockId === blockId)
+            return (
+              <WordPicker
+                source={picking.source}
+                onCancel={() => setPicking(null)}
+                onPick={(range) => {
+                  setPicking(null);
+                  setPending({
+                    blockId,
+                    quote: range.quote.slice(0, 400),
+                    range_start: range.start,
+                    range_end: range.end,
+                  });
+                  setOpenThread(blockId);
+                }}
+              />
+            );
           if (openThread !== blockId && !waiting) return null;
           return (
             <DocThread
@@ -515,7 +558,9 @@ export function DocEditor({
               autoFocus={waiting}
               anchor={{
                 block_id: blockId,
-                quote: list[0]?.quote ?? pending?.quote ?? "",
+                quote: pending?.quote ?? list[0]?.quote ?? "",
+                range_start: pending?.range_start,
+                range_end: pending?.range_end,
               }}
               // Stay open on the line just commented on, so the remark
               // that was written is there to read rather than folding away.
@@ -567,6 +612,11 @@ export function DocEditor({
               label="Comment"
               disabled={false}
               onPress={commentOnLine}
+            />
+            <SmallAction
+              label="Comment on words"
+              disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
+              onPress={commentOnWords}
             />
             <SmallAction
               label="Delete line"

@@ -38,7 +38,7 @@ export function useDocComments(
 
   const add = (
     body: string,
-    anchor?: { block_id: string; quote: string },
+    anchor?: Parameters<typeof client.addDocComment>[2],
   ): Promise<boolean> => {
     const text = body.trim();
     if (!text || sending.current) return Promise.resolve(false);
@@ -80,9 +80,14 @@ export function useDocComments(
       .finally(() => setBusy(false));
   };
 
-  /** How many open remarks each line carries, for the marks in the page. */
+  /**
+   * How many open remarks each line carries, for the marks in the page.
+   * Replies are part of the remark they answer, not remarks of their own,
+   * so a thread counts once however long it runs.
+   */
   const counts: Record<string, number> = {};
-  for (const [blockId, list] of anchored) counts[blockId] = list.length;
+  for (const [blockId, list] of anchored)
+    counts[blockId] = list.filter((c) => !c.parent_id).length;
 
   return {
     loading: comments === null,

@@ -499,3 +499,165 @@ test("a stranger cannot watch a document they may not read", async () => {
   );
   assert.equal(res.statusCode, 404);
 });
+
+// --- Comments on words, not lines -----------------------------------------
+
+test("a remark follows its words when the line around them is edited", async () => {
+  const made = await call("POST", "/docs", {
+    title: "Anchors",
+    content: [
+      {
+        type: "paragraph",
+        text: "ship the connector to every workspace",
+        id: "b1",
+      },
+    ],
+  });
+  const doc = made.json();
+  const put = await call("POST", `/docs/${doc.id}/comments`, {
+    body: "Which ones first?",
+    block_id: "b1",
+    quote: "every workspace",
+    range_start: 22,
+    range_end: 37,
+  });
+  assert.equal(put.statusCode, 201);
+  const comment = put.json();
+  assert.equal(comment.range_start, 22);
+  assert.equal(comment.detached, false);
+
+  // Words put in before the quote push it along the line.
+  const edited = await call("PUT", `/docs/${doc.id}`, {
+    version: doc.version,
+    content: [
+      {
+        type: "paragraph",
+        text: "we should ship the connector to every workspace",
+        id: "b1",
+      },
+    ],
+  });
+  assert.equal(edited.statusCode, 200);
+  const after = (await call("GET", `/docs/${doc.id}/comments`)).json();
+  assert.equal(after[0].range_start, 32);
+  assert.equal(after[0].range_end, 47);
+  assert.equal(after[0].detached, false);
+  assert.equal(
+    "we should ship the connector to every workspace".slice(32, 47),
+    "every workspace",
+  );
+});
+
+test("a remark whose words are deleted comes loose but is kept", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Loose",
+      content: [{ type: "paragraph", text: "cut this phrase out", id: "b1" }],
+    })
+  ).json();
+  await call("POST", `/docs/${doc.id}/comments`, {
+    body: "Why?",
+    block_id: "b1",
+    quote: "this phrase",
+    range_start: 4,
+    range_end: 15,
+  });
+  await call("PUT", `/docs/${doc.id}`, {
+    version: doc.version,
+    content: [{ type: "paragraph", text: "cut out", id: "b1" }],
+  });
+  const after = (await call("GET", `/docs/${doc.id}/comments`)).json();
+  assert.equal(after.length, 1, "the remark is not thrown away");
+  assert.equal(after[0].detached, true);
+  assert.equal(
+    after[0].quote,
+    "this phrase",
+    "it still says what it was about",
+  );
+});
+
+test("a half range is refused", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Half",
+      content: [{ type: "paragraph", text: "hello", id: "b1" }],
+    })
+  ).json();
+  const bad = await call("POST", `/docs/${doc.id}/comments`, {
+    body: "?",
+    block_id: "b1",
+    quote: "hello",
+    range_start: 0,
+  });
+  assert.equal(bad.statusCode, 422);
+});
+
+test("replies join one thread, however deep they are aimed", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Threads",
+      content: [{ type: "paragraph", text: "a point", id: "b1" }],
+    })
+  ).json();
+  const root = (
+    await call("POST", `/docs/${doc.id}/comments`, {
+      body: "First",
+      block_id: "b1",
+      quote: "a point",
+      range_start: 0,
+      range_end: 7,
+    })
+  ).json();
+  const reply = (
+    await call("POST", `/docs/${doc.id}/comments`, {
+      body: "Second",
+      parent_id: root.id,
+    })
+  ).json();
+  assert.equal(reply.parent_id, root.id);
+  // Replying to a reply still lands in the same thread, one deep.
+  const deeper = (
+    await call("POST", `/docs/${doc.id}/comments`, {
+      body: "Third",
+      parent_id: reply.id,
+    })
+  ).json();
+  assert.equal(deeper.parent_id, root.id);
+});
+
+test("a restore moves remarks with the words it brings back", async () => {
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Restore",
+      content: [{ type: "paragraph", text: "the first wording", id: "b1" }],
+    })
+  ).json();
+  await call("POST", `/docs/${doc.id}/comments`, {
+    body: "On the wording",
+    block_id: "b1",
+    quote: "first wording",
+    range_start: 4,
+    range_end: 17,
+  });
+  const second = (
+    await call("PUT", `/docs/${doc.id}`, {
+      version: doc.version,
+      content: [
+        { type: "paragraph", text: "a much later first wording", id: "b1" },
+      ],
+    })
+  ).json();
+  const moved = (await call("GET", `/docs/${doc.id}/comments`)).json();
+  assert.equal(moved[0].range_start, 13);
+  const kept = (await call("GET", `/docs/${doc.id}/versions`)).json();
+  const back = await call(
+    "POST",
+    `/docs/${doc.id}/versions/${kept[kept.length - 1].version}/restore`,
+    {},
+  );
+  assert.equal(back.statusCode, 200);
+  assert.ok(second.version);
+  const after = (await call("GET", `/docs/${doc.id}/comments`)).json();
+  assert.equal(after[0].range_start, 4, "back where it started");
+  assert.equal(after[0].detached, false);
+});

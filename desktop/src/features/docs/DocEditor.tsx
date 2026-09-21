@@ -16,6 +16,7 @@ import {
   History,
   ListPlus,
   Loader2,
+  MessageSquarePlus,
   Plus,
   Trash2,
   Users,
@@ -34,6 +35,8 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import type { Mark } from "./marks";
+import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
 import { DocBlockMenu, SlashMenu } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
@@ -106,15 +109,19 @@ export function DocEditor({
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  /** A line chosen for a comment, before anything has been written. */
+  /** Words chosen for a comment, before anything has been written. */
   const [pending, setPending] = useState<{
     blockId: string;
     quote: string;
+    range_start?: number;
+    range_end?: number;
   } | null>(null);
   /** The line whose comment card is singled out, from either side. */
   const [activeComment, setActiveComment] = useState<string | null>(null);
-  /** Lines that carry remarks, so they can be marked in the page. */
-  const [commented, setCommented] = useState<string[]>([]);
+  /** Stretches of each line that carry remarks, so the page can shade them. */
+  const [commented, setCommented] = useState<Record<string, Mark[]>>({});
+  /** A live selection, and where to hang the button that acts on it. */
+  const [picked, setPicked] = useState<Picked | null>(null);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -317,6 +324,64 @@ export function DocEditor({
     setPending({ blockId, quote: blockText(block).slice(0, 400) });
     setActiveComment(blockId);
   };
+
+  /**
+   * Comment on the words someone has selected.
+   *
+   * The line already has a name here — nothing can be selected in a line the
+   * page has not rendered, and rendering needs the name — so unlike
+   * commenting on a whole line this never has to write to the page first.
+   */
+  const commentOnSelection = (p: Picked) => {
+    // The name this points at may only exist in the open editor, so the page
+    // is saved now; the remark that follows then has a line to hang on.
+    if (!base.current.some((b) => b.id === p.blockId)) queueSave(title, blocks);
+    setPending({
+      blockId: p.blockId,
+      quote: p.quote.slice(0, 400),
+      range_start: p.start,
+      range_end: p.end,
+    });
+    setActiveComment(p.blockId);
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  /**
+   * Watch for words being selected on the page.
+   *
+   * A line without a name cannot carry a remark, so selecting inside one
+   * gives it a name as soon as the selection settles, rather than at the
+   * moment the button is pressed, when the page would re-render underneath
+   * the selection and lose it.
+   */
+  useEffect(() => {
+    const read = () => {
+      const page = pageRef.current;
+      if (!page) return;
+      const found = readSelection(page);
+      setPicked(found);
+    };
+    document.addEventListener("selectionchange", read);
+    return () => document.removeEventListener("selectionchange", read);
+  }, []);
+
+  /**
+   * Every line a reader can select in needs a name before they select, or the
+   * page is rewritten under a live selection and the words are lost. The
+   * names are given here and kept only in the open editor: writing them back
+   * would mean opening a document counted as editing it, which would reorder
+   * the list of documents for everyone. They are saved with the first remark
+   * that actually needs one.
+   */
+  useEffect(() => {
+    if (!blocks.some((b) => !b.id && "text" in b && b.text.trim())) return;
+    setBlocks((current) =>
+      current.map((b) =>
+        !b.id && "text" in b && b.text.trim() ? { ...b, id: newBlockId() } : b,
+      ),
+    );
+  }, [blocks]);
 
   const insertAfter = (index: number) => {
     const current = blocks[index];
@@ -612,6 +677,28 @@ export function DocEditor({
         </span>
       </div>
 
+      {/* The button that acts on a selection follows the words themselves,
+          so it reads as belonging to them rather than to the page. */}
+      {picked && !pending && (
+        <div
+          className="doc-selection-bar"
+          style={{
+            top: picked.at.top - 44,
+            left: picked.at.left + picked.at.width / 2,
+          }}
+          role="toolbar"
+          aria-label="Selected words"
+        >
+          <button
+            className="text-button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => commentOnSelection(picked)}
+          >
+            <MessageSquarePlus size={14} aria-hidden="true" /> Comment
+          </button>
+        </div>
+      )}
+
       <div
         className={
           "doc-layout" + (showHistory ? " has-history" : " has-comments")
@@ -660,9 +747,11 @@ export function DocEditor({
               ) : (
                 <div
                   key={index}
+                  data-block-id={block.id ?? undefined}
+                  data-block-source={blockText(block)}
                   className={
                     "doc-block-row" +
-                    (block.id && commented.includes(block.id)
+                    (block.id && commented[block.id]?.length
                       ? " has-comment"
                       : "") +
                     (block.id && block.id === activeComment ? " is-active" : "")
@@ -674,7 +763,7 @@ export function DocEditor({
                   }}
                   onClick={() =>
                     block.id &&
-                    commented.includes(block.id) &&
+                    commented[block.id]?.length &&
                     setActiveComment(block.id)
                   }
                 >
@@ -695,7 +784,13 @@ export function DocEditor({
                     className="doc-block"
                     role="button"
                     tabIndex={0}
-                    onClick={() => setFocused(index)}
+                    onClick={() => {
+                      // A click that ends a drag is a selection, not a
+                      // request to edit: opening the input here would throw
+                      // the selected words away before they can be used.
+                      if (!window.getSelection()?.isCollapsed) return;
+                      setFocused(index);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -705,6 +800,7 @@ export function DocEditor({
                   >
                     <BlockView
                       block={block}
+                      marks={(block.id && commented[block.id]) || []}
                       onToggleTodo={() => toggleTodo(index)}
                     />
                   </div>
