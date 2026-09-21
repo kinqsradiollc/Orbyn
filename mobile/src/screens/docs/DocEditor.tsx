@@ -26,7 +26,12 @@ import { AskSheet } from "./AskSheet";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
-import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
+import {
+  downloadDoc,
+  downloadLabel,
+  formatsHere,
+  takeAwayLabel,
+} from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -119,6 +124,8 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** Whether the shapes the page can be taken away in are showing. */
+  const [formats, setFormats] = useState(false);
   const [note, setNote] = useState("");
   /** The line whose remarks are open, and one waiting to be written on. */
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -689,21 +696,27 @@ export function DocEditor({
         onWithdraw={withdraw}
       />
 
+      {/* The mode you are in is the filled chip, as it is on the desktop and
+          as every other choice on the phone reads. It used to be the one
+          greyed out, with a tick — which said "unavailable", not "here". */}
       <View style={styles.statusRow}>
-        {modesFor(canWrite).map((m) => (
-          <SmallAction
-            key={m}
-            label={MODE_LABELS[m].name + (mode === m ? " ✓" : "")}
-            disabled={mode === m}
-            onPress={() => {
-              // Commit the open line before changing what it is allowed to do.
-              commit();
-              setFocused(null);
-              setMode(m);
-              saveLocal(MODE_KEY + doc.id, m);
-            }}
-          />
-        ))}
+        <ChipRow label="How you're working on this page">
+          {modesFor(canWrite).map((m) => (
+            <Chip
+              key={m}
+              label={MODE_LABELS[m].name}
+              selected={mode === m}
+              accessibilityHint={MODE_LABELS[m].blurb}
+              onPress={() => {
+                // Commit the open line before changing what it is allowed to do.
+                commit();
+                setFocused(null);
+                setMode(m);
+                saveLocal(MODE_KEY + doc.id, m);
+              }}
+            />
+          ))}
+        </ChipRow>
         <Text style={styles.meta}>
           {reading ? "" : saving ? "Saving…" : "Saved"}
         </Text>
@@ -859,15 +872,16 @@ export function DocEditor({
         symbols here and are typeset on the desktop.
       </Text>
 
+      {/* Five ways to take the page away used to sit in one wrapped row with
+          "Delete page" as the sixth chip, so the way to lose the page for
+          good was a thumb's width from the way to keep a copy of it. The
+          shapes now live behind one control, and deleting stands alone. */}
       <View style={styles.pageActions}>
-        {formatsHere().map((format) => (
-          <SmallAction
-            key={format}
-            label={downloadLabel(format)}
-            disabled={saving}
-            onPress={() => void downloadDoc(doc.id, format).catch(report)}
-          />
-        ))}
+        <SmallAction
+          label={takeAwayLabel()}
+          disabled={saving}
+          onPress={() => setFormats((v) => !v)}
+        />
         {openTodos > 0 && (
           <SmallAction
             label={`Add ${openTodos} to my tasks`}
@@ -875,6 +889,21 @@ export function DocEditor({
             onPress={makeTasks}
           />
         )}
+      </View>
+      {formats && (
+        <View style={styles.pageActions}>
+          {formatsHere().map((format) => (
+            <SmallAction
+              key={format}
+              label={downloadLabel(format)}
+              disabled={saving}
+              onPress={() => void downloadDoc(doc.id, format).catch(report)}
+            />
+          ))}
+        </View>
+      )}
+
+      <View style={styles.danger}>
         <SmallAction
           label="Delete page"
           destructive
@@ -931,6 +960,13 @@ const styles = themed(() =>
       flexWrap: "wrap",
       gap: 8,
       marginTop: 4,
+    },
+    danger: {
+      flexDirection: "row",
+      marginTop: 6,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     add: {
       minHeight: 44,

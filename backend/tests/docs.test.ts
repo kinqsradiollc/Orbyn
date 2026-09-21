@@ -963,7 +963,10 @@ test("a preview reads as words, not as Markdown", async () => {
         type: "paragraph",
         text: "Pricing stays **unchanged** until the *October* review.",
       },
-      { type: "paragraph", text: "Run `npm test`, see [the plan](https://x.test)." },
+      {
+        type: "paragraph",
+        text: "Run `npm test`, see [the plan](https://x.test).",
+      },
     ]),
     "Pricing stays unchanged until the October review. Run npm test, see the plan.",
   );

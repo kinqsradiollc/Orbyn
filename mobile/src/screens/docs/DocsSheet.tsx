@@ -477,63 +477,66 @@ export function DocsSheet({
                   ]}
                   onPress={() => openHit(doc.id)}
                 >
-                  <Icon name="fileText" size={16} color={colors.muted} />
-                  <View style={styles.rowMain}>
+                  <View style={styles.rowTop}>
+                    <Icon name="fileText" size={16} color={colors.muted} />
                     <Text style={styles.rowTitle} numberOfLines={1}>
                       {doc.title || "Untitled"}
                     </Text>
-                    <Text style={styles.rowPreview} numberOfLines={1}>
-                      {doc.preview || "Empty document"}
-                    </Text>
-                  </View>
-                  <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
-                  {/* The star and the folder sit outside the row's own press,
-                      or tapping either would open the page instead. */}
-                  <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      toggleStar(
-                        doc as DocSummary,
-                        !starred.has(favouriteKey("doc", doc.id)),
-                      );
-                    }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      starred.has(favouriteKey("doc", doc.id))
-                        ? `Unstar ${doc.title || "Untitled"}`
-                        : `Star ${doc.title || "Untitled"}`
-                    }
-                    style={styles.rowIcon}
-                  >
-                    <Icon
-                      name={
-                        starred.has(favouriteKey("doc", doc.id))
-                          ? "starFilled"
-                          : "star"
-                      }
-                      size={16}
-                      color={
-                        starred.has(favouriteKey("doc", doc.id))
-                          ? colors.accent
-                          : colors.faint
-                      }
-                    />
-                  </Pressable>
-                  {!hits && (
+                    {/* The star and the folder sit outside the row's own press,
+                        or tapping either would open the page instead. */}
                     <Pressable
                       onPress={(event) => {
                         event.stopPropagation();
-                        setFiling(doc as DocSummary);
+                        toggleStar(
+                          doc as DocSummary,
+                          !starred.has(favouriteKey("doc", doc.id)),
+                        );
                       }}
                       hitSlop={8}
                       accessibilityRole="button"
-                      accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                      accessibilityLabel={
+                        starred.has(favouriteKey("doc", doc.id))
+                          ? `Unstar ${doc.title || "Untitled"}`
+                          : `Star ${doc.title || "Untitled"}`
+                      }
                       style={styles.rowIcon}
                     >
-                      <Icon name="folder" size={16} color={colors.faint} />
+                      <Icon
+                        name={
+                          starred.has(favouriteKey("doc", doc.id))
+                            ? "starFilled"
+                            : "star"
+                        }
+                        size={16}
+                        color={
+                          starred.has(favouriteKey("doc", doc.id))
+                            ? colors.accent
+                            : colors.faint
+                        }
+                      />
                     </Pressable>
-                  )}
+                    {!hits && (
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          setFiling(doc as DocSummary);
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                        style={styles.rowIcon}
+                      >
+                        <Icon name="folder" size={16} color={colors.faint} />
+                      </Pressable>
+                    )}
+                  </View>
+                  {/* The time leads the preview rather than sitting up on
+                      the title's line, where it cost the title the 20pt that
+                      turned "Monday 21 September" into "Monday 21 Septe…". */}
+                  <Text style={styles.rowPreview} numberOfLines={2}>
+                    <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
+                    {"  ·  " + (doc.preview || "Empty document")}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -629,10 +632,12 @@ const styles = themed(() =>
       fontFamily: fonts.semibold,
     },
     list: { gap: 8 },
+    // Title, time and the two controls share the first line; the preview gets
+    // the whole width underneath. Laid out side by side on a 375pt phone the
+    // preview was down to 125pt — "We ship the conne…" — which told nobody
+    // anything.
     row: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
+      gap: 4,
       padding: 12,
       borderWidth: 1,
       borderColor: colors.border,
@@ -640,9 +645,14 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
     },
     rowPressed: { backgroundColor: colors.surfaceMuted },
-    rowMain: { flex: 1, gap: 2 },
-    rowTitle: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
-    rowPreview: { color: colors.muted, fontSize: 13 },
+    rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rowTitle: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 15,
+      fontFamily: fonts.semibold,
+    },
+    rowPreview: { color: colors.muted, fontSize: 13, lineHeight: 18 },
     rowWhen: { color: colors.muted, fontSize: 12 },
     page: { gap: 12 },
     title: { color: colors.text, fontSize: 22, fontFamily: fonts.display },

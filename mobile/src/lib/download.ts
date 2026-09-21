@@ -36,6 +36,10 @@ export async function downloadDoc(
   await Share.share({ title: name, message: await blob.text() });
 }
 
+/** What the one control that reveals the shapes is called. */
+export const takeAwayLabel = () =>
+  Platform.OS === "web" ? "Download…" : "Share…";
+
 /** What to call the action, given what it will actually do. */
 export const downloadLabel = (format: ExportFormat) =>
   Platform.OS === "web"
