@@ -33,18 +33,19 @@ const call = (
     ...(payload === undefined ? {} : { payload: payload as object }),
   });
 
-const register = async (name: string) =>
-  (
+let otherEmail = "";
+
+const register = async (name: string) => {
+  const email = `docs-${randomUUID()}@example.com`;
+  if (name === "Stranger") otherEmail = email;
+  return (
     await app.inject({
       method: "POST",
       url: "/auth/register",
-      payload: {
-        email: `docs-${randomUUID()}@example.com`,
-        password: "a-long-test-password",
-        name,
-      },
+      payload: { email, password: "a-long-test-password", name },
     })
   ).json().token as string;
+};
 
 before(async () => {
   await migrate();
@@ -660,4 +661,195 @@ test("a restore moves remarks with the words it brings back", async () => {
   const after = (await call("GET", `/docs/${doc.id}/comments`)).json();
   assert.equal(after[0].range_start, 4, "back where it started");
   assert.equal(after[0].detached, false);
+});
+
+// --- Proposed changes ------------------------------------------------------
+
+const pageWith = async (text: string, title = "Proposals") =>
+  (
+    await call("POST", "/docs", {
+      title,
+      content: [{ type: "paragraph", text, id: "b1" }],
+    })
+  ).json();
+
+test("a proposal leaves the page alone until it is taken", async () => {
+  const doc = await pageWith("ship the connector in October");
+  const made = await call("POST", `/docs/${doc.id}/suggestions`, {
+    changes: [
+      {
+        block_id: "b1",
+        kind: "replace",
+        range_start: "ship the connector in ".length,
+        range_end: "ship the connector in October".length,
+        text: "November",
+        quote: "October",
+      },
+    ],
+    note: "Legal review runs long",
+  });
+  assert.equal(made.statusCode, 201);
+  const [s] = made.json();
+  assert.equal(s.status, "open");
+
+  const untouched = (await call("GET", `/docs/${doc.id}`)).json();
+  assert.equal(untouched.content[0].text, "ship the connector in October");
+  assert.equal(untouched.version, doc.version, "no version was spent");
+
+  const taken = await call("POST", `/docs/${doc.id}/suggestions/${s.id}`, {
+    take: true,
+  });
+  assert.equal(taken.statusCode, 200);
+  assert.equal(
+    taken.json().doc.content[0].text,
+    "ship the connector in November",
+  );
+  assert.equal(taken.json().doc.version, doc.version + 1);
+});
+
+test("a rejected proposal changes nothing and cannot be decided twice", async () => {
+  const doc = await pageWith("keep this sentence as it is");
+  const [s] = (
+    await call("POST", `/docs/${doc.id}/suggestions`, {
+      changes: [
+        {
+          block_id: "b1",
+          kind: "delete",
+          range_start: 0,
+          range_end: 5,
+          text: "",
+          quote: "keep ",
+        },
+      ],
+    })
+  ).json();
+  const no = await call("POST", `/docs/${doc.id}/suggestions/${s.id}`, {
+    take: false,
+  });
+  assert.equal(no.statusCode, 200);
+  assert.equal(no.json().doc, null);
+  const after = (await call("GET", `/docs/${doc.id}`)).json();
+  assert.equal(after.content[0].text, "keep this sentence as it is");
+  const again = await call("POST", `/docs/${doc.id}/suggestions/${s.id}`, {
+    take: true,
+  });
+  assert.equal(again.statusCode, 409);
+});
+
+test("two proposals on the same words: taking one unsettles the other", async () => {
+  const doc = await pageWith("the price is ten pounds");
+  const propose = (text: string) =>
+    call("POST", `/docs/${doc.id}/suggestions`, {
+      changes: [
+        {
+          block_id: "b1",
+          kind: "replace",
+          range_start: "the price is ".length,
+          range_end: "the price is ten pounds".length,
+          text,
+          quote: "ten pounds",
+        },
+      ],
+    });
+  const [a] = (await propose("twelve pounds")).json();
+  const [b] = (await propose("nine pounds")).json();
+  await call("POST", `/docs/${doc.id}/suggestions/${a.id}`, { take: true });
+  const all = (await call("GET", `/docs/${doc.id}/suggestions`)).json();
+  const rival = all.find((x: { id: string }) => x.id === b.id);
+  assert.equal(rival.status, "open", "it is not decided for them");
+  assert.equal(rival.detached, true, "but it no longer points at anything");
+  const blocked = await call("POST", `/docs/${doc.id}/suggestions/${b.id}`, {
+    take: true,
+  });
+  assert.equal(blocked.statusCode, 409);
+});
+
+test("a proposal follows its words when the line is edited", async () => {
+  const doc = await pageWith("we review the pricing in spring");
+  const [s] = (
+    await call("POST", `/docs/${doc.id}/suggestions`, {
+      changes: [
+        {
+          block_id: "b1",
+          kind: "replace",
+          range_start: "we review the pricing in ".length,
+          range_end: "we review the pricing in spring".length,
+          text: "autumn",
+          quote: "spring",
+        },
+      ],
+    })
+  ).json();
+  await call("PUT", `/docs/${doc.id}`, {
+    version: doc.version,
+    content: [
+      {
+        type: "paragraph",
+        text: "as agreed we review the pricing in spring",
+        id: "b1",
+      },
+    ],
+  });
+  const moved = (await call("GET", `/docs/${doc.id}/suggestions`)).json()[0];
+  assert.equal(
+    "as agreed we review the pricing in spring".slice(
+      moved.range_start,
+      moved.range_end,
+    ),
+    "spring",
+  );
+  const taken = await call("POST", `/docs/${doc.id}/suggestions/${s.id}`, {
+    take: true,
+  });
+  assert.equal(
+    taken.json().doc.content[0].text,
+    "as agreed we review the pricing in autumn",
+  );
+});
+
+test("a reader may propose; only a writer may decide", async () => {
+  const team = (await call("POST", "/teams", { name: "Proposers" })).json();
+  await call("POST", `/teams/${team.id}/members`, {
+    email: otherEmail,
+    role: "viewer",
+  });
+  const doc = (
+    await call("POST", "/docs", {
+      title: "Team page",
+      team_id: team.id,
+      content: [{ type: "paragraph", text: "a shared sentence", id: "b1" }],
+    })
+  ).json();
+  const change = {
+    changes: [
+      {
+        block_id: "b1",
+        kind: "replace" as const,
+        range_start: 2,
+        range_end: 8,
+        text: "common",
+        quote: "shared",
+      },
+    ],
+  };
+  const proposed = await call(
+    "POST",
+    `/docs/${doc.id}/suggestions`,
+    change,
+    () => otherToken,
+  );
+  assert.equal(proposed.statusCode, 201, "a viewer may propose");
+  const [s] = proposed.json();
+  const refused = await call(
+    "POST",
+    `/docs/${doc.id}/suggestions/${s.id}`,
+    { take: true },
+    () => otherToken,
+  );
+  assert.equal(refused.statusCode, 403, "a viewer may not decide");
+  const allowed = await call("POST", `/docs/${doc.id}/suggestions/${s.id}`, {
+    take: true,
+  });
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(allowed.json().doc.content[0].text, "a common sentence");
 });

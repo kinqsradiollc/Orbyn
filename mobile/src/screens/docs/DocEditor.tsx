@@ -9,13 +9,18 @@ import {
   mergeDocs,
   parseDoc,
   serializeBlock,
+  modesFor,
+  proposeEdit,
+  MODE_LABELS,
   type Doc,
   type DocBlock,
   type DocMode,
+  type DocSuggestion,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
+import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { Chip, ChipRow } from "../../components/Chip";
@@ -98,7 +103,11 @@ export function DocEditor({
         : "edit"
       : "read",
   );
-  const reading = mode === "read" || !canWrite;
+  const suggesting = mode === "suggest";
+  /** Nothing typed changes the page itself in these modes. */
+  const reading = mode === "read" || (!canWrite && !suggesting);
+  const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
+  const [deciding, setDeciding] = useState(false);
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [EMPTY],
@@ -420,6 +429,9 @@ export function DocEditor({
    */
   const syncDraft = () => {
     if (focused === null) return;
+    // In suggesting mode nothing typed reaches the page; it becomes a
+    // proposal when the line is put away.
+    if (suggesting) return;
     const parsed = parseDoc(draft);
     const next = blocks.slice();
     // Re-reading the Markdown makes fresh blocks that know nothing of what
@@ -433,9 +445,68 @@ export function DocEditor({
     update(next);
   };
 
+  /**
+   * Turn what was typed into a proposed change.
+   *
+   * The line is compared with what the page still says, and the run that
+   * differs becomes one proposal — which reads as "this became that" rather
+   * than as a scatter of single characters.
+   */
+  const proposeLine = async () => {
+    if (focused === null) return;
+    const block = blocks[focused];
+    setFocused(null);
+    if (!block?.id) return;
+    const change = proposeEdit(block.id, serializeBlock(block), draft);
+    if (!change) return;
+    try {
+      const made = await client.proposeDocChanges(doc.id, [change]);
+      setSuggestions((list) => [...list, ...made]);
+      setNote("Suggested. It waits for someone to take it.");
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  const loadSuggestions = useCallback(() => {
+    client
+      .listDocSuggestions(doc.id)
+      .then(setSuggestions, () => setSuggestions([]));
+  }, [doc.id]);
+
+  useEffect(() => loadSuggestions(), [loadSuggestions]);
+
+  /** Take a proposal into the page, or leave it. */
+  const decide = (one: DocSuggestion, take: boolean) => {
+    setDeciding(true);
+    client
+      .decideDocSuggestion(doc.id, one.id, take)
+      .then(({ doc: saved }) => {
+        if (saved) {
+          version.current = saved.version;
+          base.current = saved.content;
+          setBlocks(saved.content);
+          onChanged(saved);
+        }
+        loadSuggestions();
+      })
+      .catch(report)
+      .finally(() => setDeciding(false));
+  };
+
+  const withdraw = (one: DocSuggestion) => {
+    setDeciding(true);
+    client
+      .withdrawDocSuggestion(doc.id, one.id)
+      .then(() => setSuggestions((list) => list.filter((x) => x.id !== one.id)))
+      .catch(report)
+      .finally(() => setDeciding(false));
+  };
+
   /** Put an edited line back. Several lines of text become several blocks. */
   const commit = () => {
     if (focused === null) return;
+    if (suggesting) return void proposeLine();
     let parsed = parseDoc(draft);
     // A bare "- " or "- [ ] " is an empty line that happens to have a
     // marker; putting it away should not leave a blank bullet on the page.
@@ -533,22 +604,29 @@ export function DocEditor({
         />
       )}
 
+      <DocSuggestions
+        suggestions={suggestions}
+        canDecide={canWrite}
+        userId={userId}
+        busy={deciding}
+        onDecide={decide}
+        onWithdraw={withdraw}
+      />
+
       <View style={styles.statusRow}>
-        {canWrite ? (
+        {modesFor(canWrite).map((m) => (
           <SmallAction
-            label={reading ? "Edit" : "Done editing"}
-            disabled={false}
+            key={m}
+            label={MODE_LABELS[m].name + (mode === m ? " ✓" : "")}
+            disabled={mode === m}
             onPress={() => {
-              const next: DocMode = reading ? "edit" : "read";
               // An open line would strand what was typed in it.
               setFocused(null);
-              setMode(next);
-              saveLocal(MODE_KEY + doc.id, next);
+              setMode(m);
+              saveLocal(MODE_KEY + doc.id, m);
             }}
           />
-        ) : (
-          <Text style={styles.meta}>View only</Text>
-        )}
+        ))}
         <Text style={styles.meta}>
           {reading ? "" : saving ? "Saving…" : "Saved"}
         </Text>
@@ -615,11 +693,11 @@ export function DocEditor({
             />
           );
         }}
-        onEditBlock={reading ? undefined : openLine}
+        onEditBlock={reading && !suggesting ? undefined : openLine}
         onToggleTodo={reading ? undefined : toggle}
       />
 
-      {focused !== null && !reading ? (
+      {focused !== null && (!reading || suggesting) ? (
         <View style={styles.tools}>
           <ChipRow label="Kind of line">
             {BLOCK_KINDS.map((kind) => {

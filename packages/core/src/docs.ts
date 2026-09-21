@@ -23,12 +23,12 @@ export type DocMode = (typeof DOC_MODES)[number];
 /**
  * The modes someone may use, given whether they can change the page.
  *
- * Suggesting is not offered yet: it needs somewhere to keep a proposed
- * change, which arrives with the suggestions table. Until then a viewer
- * reads and remarks, which is the whole of what a viewer could do before.
+ * Suggesting is open to everyone who can read: proposing a change is a way
+ * to say something about the words without being trusted to change them,
+ * which is exactly what a viewer needs.
  */
 export const modesFor = (canWrite: boolean): DocMode[] =>
-  canWrite ? ["edit", "read"] : ["read"];
+  canWrite ? ["edit", "suggest", "read"] : ["suggest", "read"];
 
 /** What each mode is called, and what it does, in the page's own words. */
 export const MODE_LABELS: Record<DocMode, { name: string; blurb: string }> = {
@@ -766,4 +766,174 @@ export function blockToType(
     default:
       return { type, text };
   }
+}
+
+// ----------------------------------------------------------- suggestions ---
+
+export const SUGGESTION_KINDS = ["replace", "insert", "delete"] as const;
+export type SuggestionKind = (typeof SUGGESTION_KINDS)[number];
+export const SUGGESTION_STATUSES = ["open", "accepted", "rejected"] as const;
+export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
+
+/**
+ * A change someone proposes to one line, waiting for an editor to take it
+ * or leave it. The page itself is untouched until then, so two people can
+ * propose changes to the same sentence without fighting over a version.
+ */
+export type DocSuggestion = {
+  id: string;
+  doc_id: string;
+  block_id: string;
+  user_id: string;
+  author: string;
+  kind: SuggestionKind;
+  /** The stretch of the line's source this is about. */
+  range_start: number;
+  range_end: number;
+  /** What it should say instead; empty for a deletion. */
+  text: string;
+  /** What it said when the change was proposed. */
+  quote: string;
+  /** A word from the person proposing it, if they left one. */
+  note: string;
+  status: SuggestionStatus;
+  /** True once the words it was about have gone from the page. */
+  detached: boolean;
+  created_at: string;
+};
+
+/** A proposed change, before it has been written down. */
+export type Proposed = {
+  block_id: string;
+  kind: SuggestionKind;
+  range_start: number;
+  range_end: number;
+  text: string;
+  quote: string;
+};
+
+/**
+ * What changed between two versions of one line.
+ *
+ * The unchanged run at each end is left alone and the difference between
+ * them is the change, which is how a person would describe an edit: "this
+ * bit became that bit". It gives one change per line rather than a scatter
+ * of single characters, so the card beside it reads as a sentence.
+ */
+export function diffLine(
+  before: string,
+  after: string,
+): { start: number; end: number; text: string } | null {
+  if (before === after) return null;
+  let head = 0;
+  while (
+    head < before.length &&
+    head < after.length &&
+    before[head] === after[head]
+  )
+    head++;
+  let tail = 0;
+  while (
+    tail < before.length - head &&
+    tail < after.length - head &&
+    before[before.length - 1 - tail] === after[after.length - 1 - tail]
+  )
+    tail++;
+  return {
+    start: head,
+    end: before.length - tail,
+    text: after.slice(head, after.length - tail),
+  };
+}
+
+/** The change one edited line proposes, or null when nothing changed. */
+export function proposeEdit(
+  blockId: string,
+  before: string,
+  after: string,
+): Proposed | null {
+  const change = diffLine(before, after);
+  if (!change) return null;
+  const removes = change.end > change.start;
+  return {
+    block_id: blockId,
+    kind: removes ? (change.text ? "replace" : "delete") : "insert",
+    range_start: change.start,
+    range_end: change.end,
+    text: change.text,
+    quote: before.slice(change.start, change.end),
+  };
+}
+
+/** A line with one proposed change written into it. */
+export const applySuggestion = (
+  text: string,
+  s: Pick<DocSuggestion, "range_start" | "range_end" | "text">,
+): string => text.slice(0, s.range_start) + s.text + text.slice(s.range_end);
+
+/**
+ * Two proposals that touch the same characters cannot both be taken: the
+ * second would be written against words the first has already replaced.
+ */
+export const overlaps = (
+  a: Pick<DocSuggestion, "block_id" | "range_start" | "range_end">,
+  b: Pick<DocSuggestion, "block_id" | "range_start" | "range_end">,
+) =>
+  a.block_id === b.block_id &&
+  a.range_start < b.range_end &&
+  b.range_start < a.range_end;
+
+/**
+ * Follow proposals as the page is edited, the same way remarks are followed.
+ * A proposal whose words have gone cannot be applied to anything, so it
+ * comes loose rather than being written somewhere it does not belong.
+ */
+export function reanchorSuggestions(
+  suggestions: DocSuggestion[],
+  blocks: DocBlock[],
+): { id: string; range_start: number; range_end: number; detached: boolean }[] {
+  const source = new Map(
+    blocks.flatMap((b) => (b.id ? [[b.id, blockText(b)] as const] : [])),
+  );
+  const moved = [];
+  for (const s of suggestions) {
+    const text = source.get(s.block_id);
+    if (text === undefined) continue;
+    // An insertion has no words of its own; it holds its place by the words
+    // it quoted around it, so it only moves when the line still reads alike.
+    if (!s.quote) {
+      const gone = s.range_start > text.length;
+      if (gone !== s.detached)
+        moved.push({
+          id: s.id,
+          range_start: Math.min(s.range_start, text.length),
+          range_end: Math.min(s.range_end, text.length),
+          detached: gone,
+        });
+      continue;
+    }
+    const next = reanchor(
+      s.quote,
+      { start: s.range_start, end: s.range_end },
+      text,
+    );
+    if (!next) {
+      if (!s.detached)
+        moved.push({
+          id: s.id,
+          range_start: s.range_start,
+          range_end: s.range_end,
+          detached: true,
+        });
+      continue;
+    }
+    if (next.start !== s.range_start || next.end !== s.range_end || s.detached)
+      moved.push({
+        id: s.id,
+        range_start: next.start,
+        range_end: next.end,
+        detached: false,
+      });
+  }
+  return moved;
 }
