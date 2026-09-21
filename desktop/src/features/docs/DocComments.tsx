@@ -89,6 +89,12 @@ export function DocComments({
   const [busy, setBusy] = useState(false);
   /** Card tops, once measured; keyed the same as the groups below. */
   const [placed, setPlaced] = useState<Record<string, number>>({});
+  /**
+   * How tall the anchored cards reach. Every card is positioned absolutely,
+   * so the canvas holding them has no height of its own and whatever comes
+   * after it would sit on top of them.
+   */
+  const [canvasHeight, setCanvasHeight] = useState(0);
   const cardEls = useRef(new Map<string, HTMLElement>());
   const [layoutVersion, setLayoutVersion] = useState(0);
   const railRef = useRef<HTMLDivElement>(null);
@@ -150,6 +156,7 @@ export function DocComments({
         Object.entries(next).every(([k, v]) => prev[k] === v);
       return same ? prev : next;
     });
+    setCanvasHeight(y > 0 ? y - GAP : 0);
   }, [
     groups.join("|"),
     JSON.stringify(tops),
@@ -403,42 +410,15 @@ export function DocComments({
 
   return (
     <div className="doc-margin" ref={railRef} aria-label="Comments">
-      {/* Always here: a remark about the page as a whole should not become
-          unreachable the moment someone comments on a line. */}
-      {
-        <section className="doc-margin-loose">
-          <h3>
-            <MessageSquare size={14} aria-hidden="true" /> On the page
-          </h3>
-          {threadComments(loose).map((t) => (
-            <div key={t.comment.id} className="doc-card">
-              {thread(t)}
-            </div>
-          ))}
-          <div className="doc-card is-composer">
-            <MentionBox
-              disabled={busy}
-              id="doc-comment-page"
-              docId={docId}
-              value={pageDraft}
-              named={namedPage.current}
-              onNamed={setPageMentions}
-              onChange={setPageDraft}
-              placeholder="Comment on the whole page…"
-              onSubmit={() => add(pageDraft, { mentions: pageMentions })}
-            />
-            <button
-              className="primary"
-              disabled={busy || !pageDraft.trim()}
-              onClick={() => add(pageDraft, { mentions: pageMentions })}
-            >
-              Comment
-            </button>
-          </div>
-        </section>
-      }
-
-      <div className="doc-margin-anchored" ref={anchoredRef}>
+      {/* First in the rail, so a card can reach the line it is about. With
+          the page-wide remarks above it the canvas began below them, and no
+          card could ever sit higher than that — every one hung too low, and
+          the first line's card hung lowest of all. */}
+      <div
+        className="doc-margin-anchored"
+        ref={anchoredRef}
+        style={{ minHeight: canvasHeight }}
+      >
         {groups.map((blockId) => {
           const list = anchored.get(blockId) ?? [];
           const isPending = pending?.blockId === blockId;
@@ -500,6 +480,41 @@ export function DocComments({
           );
         })}
       </div>
+
+      {/* Always here: a remark about the page as a whole should not become
+          unreachable the moment someone comments on a line. */}
+      {
+        <section className="doc-margin-loose">
+          <h3>
+            <MessageSquare size={14} aria-hidden="true" /> On the page
+          </h3>
+          {threadComments(loose).map((t) => (
+            <div key={t.comment.id} className="doc-card">
+              {thread(t)}
+            </div>
+          ))}
+          <div className="doc-card is-composer">
+            <MentionBox
+              disabled={busy}
+              id="doc-comment-page"
+              docId={docId}
+              value={pageDraft}
+              named={namedPage.current}
+              onNamed={setPageMentions}
+              onChange={setPageDraft}
+              placeholder="Comment on the whole page…"
+              onSubmit={() => add(pageDraft, { mentions: pageMentions })}
+            />
+            <button
+              className="primary"
+              disabled={busy || !pageDraft.trim()}
+              onClick={() => add(pageDraft, { mentions: pageMentions })}
+            >
+              Comment
+            </button>
+          </div>
+        </section>
+      }
 
       {done.length > 0 && (
         <button

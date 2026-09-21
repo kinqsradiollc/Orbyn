@@ -46,7 +46,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
-import { DocAskPanel } from "./DocAskPanel";
+import { DocChat } from "./DocChat";
 import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
@@ -203,6 +203,8 @@ export function DocEditor({
   const [askMenu, setAskMenu] = useState(false);
   /** Whether the list of shapes to download the page in is showing. */
   const [downloadMenu, setDownloadMenu] = useState(false);
+  /** Whether the conversation about this page is open. */
+  const [chat, setChat] = useState(false);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -416,14 +418,20 @@ export function DocEditor({
    * Choose a line to comment on. A line needs a name before anything can
    * point at it, so one is given here and saved with the page.
    */
+  /** Give a line a name, so a remark or a proposal can point at it. */
+  const nameBlock = (index: number): string => {
+    const block = blocks[index];
+    if (block.id) return block.id;
+    const blockId = newBlockId();
+    const next = blocks.slice();
+    next[index] = { ...block, id: blockId };
+    update(next);
+    return blockId;
+  };
+
   const commentOn = (index: number) => {
     const block = blocks[index];
-    const blockId = block.id ?? newBlockId();
-    if (!block.id) {
-      const next = blocks.slice();
-      next[index] = { ...block, id: blockId };
-      update(next);
-    }
+    const blockId = nameBlock(index);
     setPending({ blockId, quote: blockText(block).slice(0, 400) });
     setActiveComment(blockId);
   };
@@ -600,7 +608,16 @@ export function DocEditor({
     setActiveComment(blockId);
   };
 
+  /**
+   * A proposal is a stretch of one named line, so there is no way to propose
+   * a line added, taken away, moved, copied, or a box ticked. Every one of
+   * those used to go straight onto the page while suggesting, which is the
+   * one thing suggesting is meant not to do.
+   */
+  const structural = !suggesting;
+
   const insertAfter = (index: number) => {
+    if (!structural) return;
     const current = blocks[index];
     const next = blocks.slice();
     // Enter at the end of a list item makes another; on an empty one it
@@ -621,14 +638,41 @@ export function DocEditor({
     setFocused(index + 1);
   };
 
+  /**
+   * Put what is being typed into the open line, without going near the page.
+   * The line is an uncontrolled textarea while suggesting, so it is written
+   * to directly and the draft kept in step.
+   */
+  const setLineSource = (source: string) => {
+    suggestDraft.current = source;
+    const el = areaRef.current;
+    if (!el) return;
+    el.value = source;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
   /** The same words as another kind of block. */
   const turnInto = (index: number, kind: Kind) => {
+    // A line's kind lives in its own words — the "# " in front of them — so
+    // while suggesting this is an ordinary change to the line, and becomes a
+    // proposal like any other. It applies to what has been typed, not to
+    // what the page still says.
+    if (suggesting) {
+      const typed = suggestDraft.current ?? serializeBlock(blocks[index]);
+      const current = blocksFromSource(typed)[0] ?? blocks[index];
+      setLineSource(
+        serializeBlock(blockToType(current, kind.type, kind.level)),
+      );
+      return;
+    }
     const next = blocks.slice();
     next[index] = blockToType(blocks[index], kind.type, kind.level);
     update(next);
   };
 
   const moveBlock = (index: number, by: -1 | 1) => {
+    if (!structural) return;
     const to = index + by;
     if (to < 0 || to >= blocks.length) return;
     const next = blocks.slice();
@@ -637,6 +681,7 @@ export function DocEditor({
   };
 
   const duplicate = (index: number) => {
+    if (!structural) return;
     const next = blocks.slice();
     const copy = { ...blocks[index] };
     // A copied checklist line is a new line, not the same task twice.
@@ -659,6 +704,15 @@ export function DocEditor({
 
   const pickSlash = (kind: Kind) => {
     if (!slash) return;
+    if (suggesting) {
+      setLineSource(
+        serializeBlock(
+          blockToType({ type: "paragraph", text: "" }, kind.type, kind.level),
+        ),
+      );
+      setSlash(null);
+      return;
+    }
     const next = blocks.slice();
     next[slash.index] = blockToType(
       { type: "paragraph", text: "" },
@@ -673,6 +727,7 @@ export function DocEditor({
   };
 
   const removeAt = (index: number) => {
+    if (!structural) return;
     const next = blocks.slice();
     // A page is never empty: the last block goes back to a blank line.
     if (blocks.length === 1) next[0] = { type: "paragraph", text: "" };
@@ -683,7 +738,7 @@ export function DocEditor({
 
   const toggleTodo = (index: number) => {
     const b = blocks[index];
-    if (b.type !== "todo") return;
+    if (b.type !== "todo" || !structural) return;
     const next = blocks.slice();
     next[index] = { ...b, done: !b.done };
     update(next);
@@ -881,6 +936,17 @@ export function DocEditor({
               <ListPlus size={15} /> Add {openTodos} to my tasks
             </button>
           )}
+          {/* A conversation about the page sits beside the page's own tools,
+              not in the margin: the margin is where the remarks live. */}
+          <button
+            className={"icon-button" + (chat ? " is-on" : "")}
+            onClick={() => setChat((v) => !v)}
+            aria-label="Talk about this page"
+            aria-pressed={chat}
+            title="Talk about this page"
+          >
+            <Sparkles size={15} />
+          </button>
           <button
             className={"icon-button" + (showHistory ? " is-on" : "")}
             onClick={() => setShowHistory((v) => !v)}
@@ -999,175 +1065,183 @@ export function DocEditor({
         </div>
       )}
 
+      {/* Two columns and two children: the page with everything that belongs
+          under it, and the margin. Ask, suggestions and the margin used to be
+          three more children of the grid itself, so auto-placement put Ask in
+          the margin and pushed the remarks below the page. */}
       <div
         className={
           "doc-layout" + (showHistory ? " has-history" : " has-comments")
         }
       >
-        <div className="doc-page" ref={pageRef}>
-          {reading ? (
-            <h1 className="doc-title is-reading">{title || "Untitled"}</h1>
-          ) : (
-            <input
-              id="doc-title"
-              className="doc-title"
-              value={title}
-              placeholder="Untitled"
-              maxLength={200}
-              onChange={(e) => {
-                setTitle(e.target.value);
-                queueSave(e.target.value, blocks);
-              }}
-            />
-          )}
+        <div className="doc-main">
+          <div className="doc-page" ref={pageRef}>
+            {reading ? (
+              <h1 className="doc-title is-reading">{title || "Untitled"}</h1>
+            ) : (
+              <input
+                id="doc-title"
+                className="doc-title"
+                value={title}
+                placeholder="Untitled"
+                maxLength={200}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  queueSave(e.target.value, blocks);
+                }}
+              />
+            )}
 
-          <div className="doc-body" ref={bodyRef}>
-            {blocks.map((block, index) =>
-              focused === index && (!reading || suggesting) ? (
-                <textarea
-                  key={`${index}-${block.type}`}
-                  id={`doc-block-${index}`}
-                  ref={areaRef}
-                  className="doc-input"
-                  rows={1}
-                  defaultValue={serializeBlock(block)}
-                  onChange={(e) => {
-                    e.currentTarget.style.height = "auto";
-                    e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                    watchSlash(index, e.currentTarget.value, e.currentTarget);
-                    editBlock(index, e.currentTarget.value);
-                  }}
-                  onKeyDown={(e) => {
-                    // The slash menu owns Enter and the arrows while it is open.
-                    if (
-                      slash &&
-                      ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
-                    )
-                      return;
-                    onKey(e, index);
-                  }}
-                  onBlur={() => {
-                    if (suggesting) void proposeLine(index);
-                    setFocused((f) => (f === index ? null : f));
-                  }}
-                />
-              ) : (
-                <div
-                  key={index}
-                  data-block-id={block.id ?? undefined}
-                  data-block-source={blockText(block)}
-                  className={
-                    "doc-block-row" +
-                    (block.id && commented[block.id]?.length
-                      ? " has-comment"
-                      : "") +
-                    (block.id && block.id === activeComment ? " is-active" : "")
-                  }
-                  ref={(el) => {
-                    if (!block.id) return;
-                    if (el) blockEls.current.set(block.id, el);
-                    else blockEls.current.delete(block.id);
-                  }}
-                  onClick={() =>
-                    block.id &&
-                    commented[block.id]?.length &&
-                    setActiveComment(block.id)
-                  }
-                >
-                  {!reading && (
-                    <button
-                      className="doc-handle"
-                      aria-label="Block options"
-                      aria-haspopup="menu"
-                      onClick={(e) =>
-                        setMenu({
-                          index,
-                          at: e.currentTarget.getBoundingClientRect(),
-                        })
-                      }
-                    >
-                      <GripVertical size={14} aria-hidden="true" />
-                    </button>
-                  )}
-                  <div
-                    className="doc-block"
-                    role={reading && !suggesting ? undefined : "button"}
-                    tabIndex={reading && !suggesting ? undefined : 0}
-                    onClick={() => {
-                      if (reading && !suggesting) return;
-                      // A click that ends a drag is a selection, not a
-                      // request to edit: opening the input here would throw
-                      // the selected words away before they can be used.
-                      if (!window.getSelection()?.isCollapsed) return;
-                      setFocused(index);
+            <div className="doc-body" ref={bodyRef}>
+              {blocks.map((block, index) =>
+                focused === index && (!reading || suggesting) ? (
+                  <textarea
+                    key={`${index}-${block.type}`}
+                    id={`doc-block-${index}`}
+                    ref={areaRef}
+                    className="doc-input"
+                    rows={1}
+                    defaultValue={serializeBlock(block)}
+                    onChange={(e) => {
+                      e.currentTarget.style.height = "auto";
+                      e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                      watchSlash(index, e.currentTarget.value, e.currentTarget);
+                      editBlock(index, e.currentTarget.value);
                     }}
                     onKeyDown={(e) => {
-                      if ((!reading || suggesting) && e.key === "Enter") {
-                        e.preventDefault();
-                        setFocused(index);
-                      }
+                      // The slash menu owns Enter and the arrows while it is open.
+                      if (
+                        slash &&
+                        ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
+                      )
+                        return;
+                      onKey(e, index);
                     }}
+                    onBlur={() => {
+                      if (suggesting) void proposeLine(index);
+                      setFocused((f) => (f === index ? null : f));
+                    }}
+                  />
+                ) : (
+                  <div
+                    key={index}
+                    data-block-id={block.id ?? undefined}
+                    data-block-source={blockText(block)}
+                    className={
+                      "doc-block-row" +
+                      (block.id && commented[block.id]?.length
+                        ? " has-comment"
+                        : "") +
+                      (block.id && block.id === activeComment
+                        ? " is-active"
+                        : "")
+                    }
+                    ref={(el) => {
+                      if (!block.id) return;
+                      if (el) blockEls.current.set(block.id, el);
+                      else blockEls.current.delete(block.id);
+                    }}
+                    onClick={() =>
+                      block.id &&
+                      commented[block.id]?.length &&
+                      setActiveComment(block.id)
+                    }
                   >
-                    <BlockView
-                      block={block}
-                      marks={
-                        block.id
-                          ? [
-                              ...(commented[block.id] ?? []),
-                              ...proposedMarks[block.id],
-                            ]
-                          : []
-                      }
-                      onToggleTodo={() => toggleTodo(index)}
-                    />
+                    {!reading && (
+                      <button
+                        className="doc-handle"
+                        aria-label="Block options"
+                        aria-haspopup="menu"
+                        onClick={(e) =>
+                          setMenu({
+                            index,
+                            at: e.currentTarget.getBoundingClientRect(),
+                          })
+                        }
+                      >
+                        <GripVertical size={14} aria-hidden="true" />
+                      </button>
+                    )}
+                    <div
+                      className="doc-block"
+                      role={reading && !suggesting ? undefined : "button"}
+                      tabIndex={reading && !suggesting ? undefined : 0}
+                      onClick={() => {
+                        if (reading && !suggesting) return;
+                        // A click that ends a drag is a selection, not a
+                        // request to edit: opening the input here would throw
+                        // the selected words away before they can be used.
+                        if (!window.getSelection()?.isCollapsed) return;
+                        setFocused(index);
+                      }}
+                      onKeyDown={(e) => {
+                        if ((!reading || suggesting) && e.key === "Enter") {
+                          e.preventDefault();
+                          setFocused(index);
+                        }
+                      }}
+                    >
+                      <BlockView
+                        block={block}
+                        marks={
+                          block.id
+                            ? [
+                                ...(commented[block.id] ?? []),
+                                ...proposedMarks[block.id],
+                              ]
+                            : []
+                        }
+                        onToggleTodo={
+                          structural ? () => toggleTodo(index) : undefined
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
-              ),
-            )}
-            {!reading && (
-              <button
-                className="doc-add"
-                onClick={() => insertAfter(blocks.length - 1)}
-              >
-                <Plus size={14} aria-hidden="true" /> Add a block
-                <kbd>/</kbd>
-              </button>
-            )}
-            {menu && (
-              <DocBlockMenu
-                anchor={menu.at}
-                block={blocks[menu.index]}
-                isFirst={menu.index === 0}
-                isLast={menu.index === blocks.length - 1}
-                onTurnInto={(kind) => turnInto(menu.index, kind)}
-                onMove={(by) => moveBlock(menu.index, by)}
-                onDuplicate={() => duplicate(menu.index)}
-                onComment={() => commentOn(menu.index)}
-                onDelete={() => removeAt(menu.index)}
-                onClose={() => setMenu(null)}
-              />
-            )}
-            {slash && (
-              <SlashMenu
-                anchor={slash.at}
-                query={slash.query}
-                onPick={pickSlash}
-                onClose={() => setSlash(null)}
-              />
-            )}
-          </div>
+                ),
+              )}
+              {!reading && structural && (
+                <button
+                  className="doc-add"
+                  onClick={() => insertAfter(blocks.length - 1)}
+                >
+                  <Plus size={14} aria-hidden="true" /> Add a block
+                  <kbd>/</kbd>
+                </button>
+              )}
+              {menu && (
+                <DocBlockMenu
+                  anchor={menu.at}
+                  block={blocks[menu.index]}
+                  isFirst={menu.index === 0}
+                  isLast={menu.index === blocks.length - 1}
+                  onTurnInto={(kind) => turnInto(menu.index, kind)}
+                  onMove={(by) => moveBlock(menu.index, by)}
+                  onDuplicate={() => duplicate(menu.index)}
+                  onComment={() => commentOn(menu.index)}
+                  onDelete={() => removeAt(menu.index)}
+                  structural={structural}
+                  onClose={() => setMenu(null)}
+                />
+              )}
+              {slash && (
+                <SlashMenu
+                  anchor={slash.at}
+                  query={slash.query}
+                  onPick={pickSlash}
+                  onClose={() => setSlash(null)}
+                />
+              )}
+            </div>
 
-          <p className="doc-hint">
-            Click any line to edit it. Start a line with <code>#</code> for a
-            heading, <code>-</code> for a bullet, <code>- [ ]</code> for a
-            checkbox, <code>&gt;</code> to quote, <code>```</code> for code or{" "}
-            <code>$$</code> for a formula. Inline maths goes between single{" "}
-            <code>$</code> signs.
-          </p>
-        </div>
-        {!showHistory && (
-          <>
-            <DocAskPanel docId={doc.id} onGoToBlock={goToBlock} />
+            <p className="doc-hint">
+              Click any line to edit it. Start a line with <code>#</code> for a
+              heading, <code>-</code> for a bullet, <code>- [ ]</code> for a
+              checkbox, <code>&gt;</code> to quote, <code>```</code> for code or{" "}
+              <code>$$</code> for a formula. Inline maths goes between single{" "}
+              <code>$</code> signs.
+            </p>
+          </div>
+          {!showHistory && (
             <DocSuggestions
               suggestions={suggestions}
               canDecide={canWrite}
@@ -1176,6 +1250,10 @@ export function DocEditor({
               onDecide={decide}
               onWithdraw={withdraw}
             />
+          )}
+        </div>
+        {!showHistory && (
+          <>
             <DocComments
               docId={doc.id}
               blocks={blocks}
@@ -1213,6 +1291,18 @@ export function DocEditor({
           />
         )}
       </div>
+
+      {chat && (
+        <DocChat
+          docId={doc.id}
+          blocks={blocks}
+          canWrite={canWrite || suggesting}
+          onGoToBlock={goToBlock}
+          onNameBlock={nameBlock}
+          onSuggested={(made) => setSuggestions((list) => [...list, made])}
+          onClose={() => setChat(false)}
+        />
+      )}
     </div>
   );
 }

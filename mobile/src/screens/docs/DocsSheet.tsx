@@ -364,49 +364,69 @@ export function DocsSheet({
                     : `${hits.length} found`}
                 </Text>
               )}
-              {/* Notes and pages live together; this says which you want. */}
-              <ChipRow label="Show">
-                {(["all", "doc", "note"] as const).map((k) => (
-                  <Chip
-                    key={k}
-                    label={
-                      k === "all"
-                        ? "Everything"
-                        : k === "doc"
-                          ? "Pages"
-                          : "Notes"
-                    }
-                    selected={kindFilter === (k === "all" ? null : k)}
-                    onPress={() => setKindFilter(k === "all" ? null : k)}
-                  />
-                ))}
-              </ChipRow>
+              {/* Two rows of full-height pills stood between the search box
+                  and the first page — a hundred points of chrome before any
+                  of the pages. They are the compact chip now, and each rides
+                  one line that scrolls rather than wrapping. */}
+              <ScrollView
+                horizontal
+                keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={false}
+              >
+                <ChipRow label="Show">
+                  {(["all", "doc", "note"] as const).map((k) => (
+                    <Chip
+                      key={k}
+                      compact
+                      label={
+                        k === "all"
+                          ? "Everything"
+                          : k === "doc"
+                            ? "Pages"
+                            : "Notes"
+                      }
+                      selected={kindFilter === (k === "all" ? null : k)}
+                      onPress={() => setKindFilter(k === "all" ? null : k)}
+                    />
+                  ))}
+                </ChipRow>
+              </ScrollView>
               {/* Where a page is filed. A search looks past this. */}
-              <ChipRow label="Folder">
-                <Chip
-                  label="All"
-                  selected={folderFilter === null}
-                  onPress={() => setFolderFilter(null)}
-                />
-                {folders.map((f) => (
+              <ScrollView
+                horizontal
+                keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={false}
+              >
+                <ChipRow label="Folder">
                   <Chip
-                    key={f.id}
-                    label={`${f.name} ${countIn(f.id)}`}
-                    selected={folderFilter === f.id}
-                    onPress={() => setFolderFilter(f.id)}
+                    compact
+                    label="All"
+                    selected={folderFilter === null}
+                    onPress={() => setFolderFilter(null)}
                   />
-                ))}
-                <Chip
-                  label={`Unfiled ${countIn(null)}`}
-                  selected={folderFilter === "none"}
-                  onPress={() => setFolderFilter("none")}
-                />
-                <Chip
-                  label="+ Folder"
-                  selected={naming}
-                  onPress={() => setNaming((v) => !v)}
-                />
-              </ChipRow>
+                  {folders.map((f) => (
+                    <Chip
+                      key={f.id}
+                      compact
+                      label={`${f.name} ${countIn(f.id)}`}
+                      selected={folderFilter === f.id}
+                      onPress={() => setFolderFilter(f.id)}
+                    />
+                  ))}
+                  <Chip
+                    compact
+                    label={`Unfiled ${countIn(null)}`}
+                    selected={folderFilter === "none"}
+                    onPress={() => setFolderFilter("none")}
+                  />
+                  <Chip
+                    compact
+                    label="+ Folder"
+                    selected={naming}
+                    onPress={() => setNaming((v) => !v)}
+                  />
+                </ChipRow>
+              </ScrollView>
               {naming && (
                 <View style={styles.newFolder}>
                   <TextInput

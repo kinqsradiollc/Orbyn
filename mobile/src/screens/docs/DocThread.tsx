@@ -176,8 +176,11 @@ export function DocThread({
         {!!onDone && (
           <SmallAction label="Cancel" disabled={state.busy} onPress={onDone} />
         )}
+        {/* A composer's own button, not a page's: the standing margin under
+            every Button left it floating away from the box it belongs to. */}
         <Button
           title="Comment"
+          style={styles.sendButton}
           disabled={state.busy || !draft.trim()}
           onPress={send}
         />
@@ -189,6 +192,7 @@ export function DocThread({
 const styles = themed(() =>
   StyleSheet.create({
     thread: { gap: 8 },
+    sendButton: { marginBottom: 0, minHeight: 40, paddingHorizontal: 14 },
     group: { gap: 6 },
     gone: {
       color: colors.muted,
@@ -228,7 +232,7 @@ const styles = themed(() =>
     input: {
       color: colors.text,
       fontSize: 14,
-      minHeight: 56,
+      minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,

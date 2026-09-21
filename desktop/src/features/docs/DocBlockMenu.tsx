@@ -60,6 +60,7 @@ export function DocBlockMenu({
   onComment,
   onDelete,
   onClose,
+  structural = true,
 }: {
   anchor: DOMRect;
   block: DocBlock;
@@ -71,6 +72,12 @@ export function DocBlockMenu({
   onComment: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /**
+   * Whether the page itself may change. While suggesting it may not: a
+   * proposal is a stretch of one line, so a line moved, copied or taken
+   * away cannot be proposed — only its words can.
+   */
+  structural?: boolean;
 }) {
   const current = blockKey(block);
   return (
@@ -111,7 +118,24 @@ export function DocBlockMenu({
             );
           })}
         </div>
+        {!structural && (
+          <p className="doc-menu-note">
+            While you are suggesting, a line's words are yours to change.
+            Moving, copying and removing lines are the page's to keep.
+          </p>
+        )}
         <div className="doc-menu-row">
+          <button
+            className="doc-menu-item"
+            onClick={() => {
+              onComment();
+              onClose();
+            }}
+          >
+            <MessageSquarePlus size={15} aria-hidden="true" /> Comment
+          </button>
+        </div>
+        <div className="doc-menu-row" hidden={!structural}>
           <button
             className="doc-menu-item"
             disabled={isFirst}
@@ -140,15 +164,6 @@ export function DocBlockMenu({
             }}
           >
             <Copy size={15} aria-hidden="true" /> Duplicate
-          </button>
-          <button
-            className="doc-menu-item"
-            onClick={() => {
-              onComment();
-              onClose();
-            }}
-          >
-            <MessageSquarePlus size={15} aria-hidden="true" /> Comment
           </button>
           <button
             className="doc-menu-item is-danger"
