@@ -184,7 +184,10 @@ export function AssistantComposer({
       <TextInput
         style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
         multiline
-        placeholder="Make a little space. Ask Orbyn…"
+        // The longer line wrapped in the 209pt the two buttons leave it, so
+        // an empty composer stood two lines tall. The invitation is already
+        // on the card above; this is the same placeholder the desktop uses.
+        placeholder="Ask Orbyn…"
         placeholderTextColor={colors.faint}
         value={message}
         onChangeText={setMessage}
@@ -343,6 +346,9 @@ const s = themed(() =>
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     chip: {
       maxWidth: "100%",
+      // A finger's worth of height, like every other control on the phone.
+      minHeight: 44,
+      justifyContent: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.softBorder,
@@ -367,6 +373,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
+      minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

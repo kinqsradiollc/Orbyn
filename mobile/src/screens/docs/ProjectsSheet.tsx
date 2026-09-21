@@ -39,6 +39,7 @@ const dueLabel = (iso: string | null) =>
 export function ProjectsSheet({
   visible,
   items,
+  canWriteIn,
   onClose,
   onDismiss,
   onOpenItem,
@@ -47,6 +48,7 @@ export function ProjectsSheet({
 }: {
   visible: boolean;
   items: Item[];
+  canWriteIn: (teamId: string | null) => boolean;
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
@@ -74,7 +76,7 @@ export function ProjectsSheet({
    */
   const moveTo = (item: Item, stageId: string | null) =>
     void run(async () => {
-      if (!open) return;
+      if (!open || !canWriteIn(open.team_id)) return;
       await client.setItemProject(item.id, {
         project_id: open.id,
         stage_id: stageId,
@@ -114,7 +116,8 @@ export function ProjectsSheet({
 
   const rename = () => {
     const name = (draft ?? "").trim();
-    if (!open || !name || name === open.name) return setDraft(null);
+    if (!open || !canWriteIn(open.team_id) || !name || name === open.name)
+      return setDraft(null);
     void run(async () => {
       const saved = await client.updateProject(open.id, { name });
       setOpen(saved);
@@ -124,7 +127,7 @@ export function ProjectsSheet({
   };
 
   const remove = () => {
-    if (!open) return;
+    if (!open || !canWriteIn(open.team_id)) return;
     confirmAction(
       `Delete “${open.name}”?`,
       "Its tasks stay in your planner, unfiled.",
@@ -188,21 +191,27 @@ export function ProjectsSheet({
                   onBlur={rename}
                 />
               )}
-              <View style={styles.actions}>
-                <SmallAction
-                  label={draft === null ? "Rename" : "Save"}
-                  disabled={busy}
-                  onPress={() =>
-                    draft === null ? setDraft(open.name) : rename()
-                  }
-                />
-                <SmallAction
-                  label="Delete project"
-                  destructive
-                  disabled={busy}
-                  onPress={remove}
-                />
-              </View>
+              {canWriteIn(open.team_id) && (
+                <View style={styles.actions}>
+                  <SmallAction
+                    label={draft === null ? "Rename" : "Save"}
+                    disabled={busy}
+                    onPress={() =>
+                      draft === null ? setDraft(open.name) : rename()
+                    }
+                  />
+                  {/* Losing the project sat a thumb's width from renaming
+                      it. The desktop keeps its bin off on its own in the
+                      toolbar; here it goes to the far end of the row. */}
+                  <View style={styles.spacer} />
+                  <SmallAction
+                    label="Delete project"
+                    destructive
+                    disabled={busy}
+                    onPress={remove}
+                  />
+                </View>
+              )}
               {!!open.summary && (
                 <Text style={styles.summary}>{open.summary}</Text>
               )}
@@ -228,6 +237,7 @@ export function ProjectsSheet({
                 <ProjectNotes
                   projectId={open.id}
                   teamId={open.team_id}
+                  canWrite={canWriteIn(open.team_id)}
                   busy={busy}
                   report={(e) => setError((e as Error).message)}
                   onOpen={onOpenNote}
@@ -271,27 +281,30 @@ export function ProjectsSheet({
                             </Text>
                             {/* Outside the row's own press, or moving a task
                                 would open it instead. */}
-                            <Pressable
-                              onPress={() =>
-                                setMoving((m) =>
-                                  m === item.id ? null : item.id,
-                                )
-                              }
-                              hitSlop={8}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Move ${item.title}`}
-                              style={styles.moveButton}
-                            >
-                              <Icon
-                                name={
-                                  moving === item.id
-                                    ? "chevronUp"
-                                    : "chevronDown"
-                                }
-                                size={15}
-                                color={colors.faint}
-                              />
-                            </Pressable>
+                            {canWriteIn(open.team_id) && (
+                              <Pressable
+                                onPress={(event) => {
+                                  event.stopPropagation();
+                                  setMoving((m) =>
+                                    m === item.id ? null : item.id,
+                                  );
+                                }}
+                                hitSlop={8}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Move ${item.title}`}
+                                style={styles.moveButton}
+                              >
+                                <Icon
+                                  name={
+                                    moving === item.id
+                                      ? "chevronUp"
+                                      : "chevronDown"
+                                  }
+                                  size={15}
+                                  color={colors.faint}
+                                />
+                              </Pressable>
+                            )}
                           </Pressable>
                           {moving === item.id && (
                             <ChipRow label="Move to">
@@ -480,7 +493,8 @@ const styles = themed(() =>
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
     page: { gap: 10 },
-    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    actions: { flexDirection: "row", alignItems: "center", gap: 8 },
+    spacer: { flex: 1 },
     newRow: { gap: 8 },
     nameInput: {
       color: colors.text,

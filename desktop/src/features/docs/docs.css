@@ -73,6 +73,7 @@
 
 .doc-editor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
 }
@@ -87,6 +88,9 @@
   max-width: 820px;
 }
 .doc-bar-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
   margin-left: auto;
   display: flex;
   gap: 4px;
@@ -1345,4 +1349,44 @@ h4.doc-heading {
 .doc-download-menu small {
   color: var(--color-muted);
   font-size: 0.72rem;
+}
+
+/* Long author names and action rows must fit narrow document margins. */
+.doc-card-actions {
+  flex-wrap: wrap;
+}
+.doc-history {
+  max-height: calc(100dvh - 32px);
+}
+@media (max-width: 640px) {
+  .doc-history {
+    position: static;
+  }
+}
+@media (pointer: coarse) {
+  .doc-menu-item,
+  .doc-mode button,
+  .doc-card-actions button,
+  .doc-reply-open {
+    min-height: 44px;
+  }
+  .doc-mention-box textarea {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .doc-bar-actions {
+    width: 100%;
+    gap: 8px;
+  }
+  .doc-mode {
+    justify-content: space-between;
+    width: 100%;
+    margin-right: 0;
+  }
+  .doc-bar-actions > .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }

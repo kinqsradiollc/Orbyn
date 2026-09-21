@@ -143,11 +143,13 @@ test("a preview reads maths as symbols, not markup", () => {
   );
 });
 
-test("a preview leaves ordinary text alone", () => {
-  // A lone dollar is money, not maths, and other markup is left as typed.
+test("a preview reads as words, and a lone dollar is money", () => {
+  // A lone dollar is money, not maths. Markup used to be left as typed here
+  // too, which meant a list of documents showed a line as "Pricing stays
+  // **unchanged**" — markers are for rendering, and a preview is read.
   assert.equal(
-    docPreview(parseDoc("Costs $5 today and **bold** stays.")),
-    "Costs $5 today and **bold** stays.",
+    docPreview(parseDoc("Costs $5 today and **bold** goes.")),
+    "Costs $5 today and bold goes.",
   );
 });
 
@@ -949,4 +951,28 @@ test("a quote shown in a card reads as words, not as markers", async () => {
   assert.equal(plainText("Half is $\\frac{1}{2}$"), "Half is 1/2");
   // A line with nothing to strip is returned unchanged.
   assert.equal(plainText("Plain words only"), "Plain words only");
+});
+
+test("a preview reads as words, not as Markdown", async () => {
+  const { docPreview } = await import("@orbyn/core");
+  // A preview is read in a list, never rendered, so the markers that make
+  // a page look right on the page only make a list look broken.
+  assert.equal(
+    docPreview([
+      {
+        type: "paragraph",
+        text: "Pricing stays **unchanged** until the *October* review.",
+      },
+      {
+        type: "paragraph",
+        text: "Run `npm test`, see [the plan](https://x.test).",
+      },
+    ]),
+    "Pricing stays unchanged until the October review. Run npm test, see the plan.",
+  );
+  // Maths keeps being spelled out, as it already was.
+  assert.match(
+    docPreview([{ type: "paragraph", text: "Half is $\\frac{1}{2}$" }]),
+    /Half is 1\/2/,
+  );
 });

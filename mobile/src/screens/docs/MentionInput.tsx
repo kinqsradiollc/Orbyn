@@ -22,6 +22,7 @@ export function MentionInput({
   named,
   placeholder,
   autoFocus,
+  editable = true,
   accessibilityLabel,
 }: {
   docId: string;
@@ -32,6 +33,7 @@ export function MentionInput({
   named: Map<string, string>;
   placeholder: string;
   autoFocus?: boolean;
+  editable?: boolean;
   accessibilityLabel: string;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
@@ -83,6 +85,7 @@ export function MentionInput({
         placeholder={placeholder}
         placeholderTextColor={colors.faint}
         multiline
+        editable={editable}
         autoFocus={autoFocus}
         maxLength={4000}
         accessibilityLabel={accessibilityLabel}
@@ -92,7 +95,7 @@ export function MentionInput({
           onNamed(stillNamed(text, named));
         }}
       />
-      {query !== null && matches.length > 0 && (
+      {editable && query !== null && matches.length > 0 && (
         <View style={s.list} accessibilityRole="menu">
           {matches.map((person) => (
             <Pressable
@@ -127,6 +130,7 @@ const s = themed(() =>
       color: colors.text,
       fontSize: 14,
       minHeight: 56,
+      textAlignVertical: "top",
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,

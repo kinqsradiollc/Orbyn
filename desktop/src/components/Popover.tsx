@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { createPortal } from "react-dom";
+
 type Props = {
   /** Where it opened from; the popover sits below (or above) this box. */
   anchor: DOMRect;
@@ -43,18 +45,43 @@ export function Popover({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
-    const left = Math.min(
-      Math.max(8, anchor.left),
-      window.innerWidth - width - 8,
-    );
-    const below = anchor.bottom + 6;
-    const top =
-      below + height > window.innerHeight - 8
-        ? Math.max(8, anchor.top - height - 6)
-        : below;
-    setPos({ top, left });
-  }, [anchor]);
+    const place = () => {
+      const viewport = window.visualViewport;
+      const x = viewport?.offsetLeft ?? 0;
+      const y = viewport?.offsetTop ?? 0;
+      const availableWidth = viewport?.width ?? window.innerWidth;
+      const availableHeight = viewport?.height ?? window.innerHeight;
+      el.style.maxHeight = `${Math.max(0, availableHeight - 16)}px`;
+      el.style.maxWidth = `${Math.max(0, availableWidth - 16)}px`;
+      const { width, height } = el.getBoundingClientRect();
+      const left = Math.max(
+        x + 8,
+        Math.min(anchor.left, x + availableWidth - width - 8),
+      );
+      const below = anchor.bottom + 6;
+      const wanted =
+        below + height > y + availableHeight - 8
+          ? anchor.top - height - 6
+          : below;
+      const top = Math.max(
+        y + 8,
+        Math.min(wanted, y + availableHeight - height - 8),
+      );
+      setPos({ top, left });
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    window.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
+    };
+  }, [anchor, width]);
 
   useEffect(() => {
     const opener = takeFocus
@@ -71,20 +98,20 @@ export function Popover({
         latest.current();
       }
     };
-    const onDown = (e: MouseEvent) => {
+    const onDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node))
         latest.current();
     };
     document.addEventListener("keydown", onKey, true);
-    document.addEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown);
     return () => {
       document.removeEventListener("keydown", onKey, true);
-      document.removeEventListener("mousedown", onDown);
-      opener?.focus?.();
+      document.removeEventListener("pointerdown", onDown);
+      opener?.focus?.({ preventScroll: true });
     };
   }, [takeFocus]);
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       className="popover scale-in"
@@ -97,6 +124,7 @@ export function Popover({
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }

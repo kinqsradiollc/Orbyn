@@ -154,7 +154,7 @@ const s = themed(() =>
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
-    tab: { flex: 1, alignItems: "center", gap: 3 },
+    tab: { flex: 1, minHeight: 44, alignItems: "center", gap: 3 },
     iconWrap: {
       width: 48,
       height: 30,

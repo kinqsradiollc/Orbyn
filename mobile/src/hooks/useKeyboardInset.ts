@@ -46,7 +46,11 @@ export function useKeyboardInset(
       const node = area.current;
       if (top === null || !node) return;
       node.measureInWindow((_x, y, _width, height) => {
-        const next = Math.max(0, Math.round(y + height - top));
+        if (keyboardTop.current !== top) return;
+        const next = Math.min(
+          height,
+          Math.max(0, Math.round(y + height - top)),
+        );
         if (Math.abs(next - shown.current) < 1) return;
         if (duration && !isReducedMotion())
           LayoutAnimation.configureNext({
@@ -82,6 +86,16 @@ export function useKeyboardInset(
       shown.current = 0;
       setInset(0);
     };
+    // A sheet opened while the keyboard is already up gets the right inset
+    // straight away rather than on the next keyboard event. `metrics` is a
+    // native-only API — it does not exist in the web build, where calling it
+    // threw and took the whole screen down with it — so it is asked for
+    // rather than assumed.
+    const current = Keyboard.metrics?.();
+    if (current) {
+      keyboardTop.current = current.screenY;
+      measure();
+    }
     const subs =
       Platform.OS === "ios"
         ? [
@@ -92,7 +106,10 @@ export function useKeyboardInset(
             Keyboard.addListener("keyboardDidShow", show),
             Keyboard.addListener("keyboardDidHide", () => hide()),
           ];
-    return () => subs.forEach((sub) => sub.remove());
+    return () => {
+      keyboardTop.current = null;
+      subs.forEach((sub) => sub.remove());
+    };
   }, [enabled, measure]);
 
   /** Re-measure when the area itself moves or resizes while the keyboard is up. */

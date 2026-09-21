@@ -99,8 +99,12 @@ export function WordPicker({
             onPress={() => chosen && onAsk(chosen)}
           />
         )}
+        {/* The label used to grow to "Comment on these words" the moment a
+            word was picked, which took the row to 373pt on a 375pt screen
+            and pushed Cancel off the left edge, reading "ncel". The chosen
+            words are lit up right above it; the button need not repeat them. */}
         <Button
-          title={chosen ? "Comment on these words" : "Comment"}
+          title="Comment"
           disabled={!chosen}
           onPress={() => chosen && onPick(chosen)}
         />
@@ -133,6 +137,11 @@ const s = themed(() =>
     wordPressed: { opacity: 0.7 },
     wordText: { color: colors.text, fontSize: 15 },
     wordTextOn: { color: colors.accent, fontFamily: fonts.semibold },
-    actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      gap: 8,
+    },
   }),
 );

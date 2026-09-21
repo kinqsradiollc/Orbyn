@@ -20,12 +20,14 @@ export function ProjectNotes({
   projectId,
   teamId,
   busy,
+  canWrite,
   report,
   onOpen,
 }: {
   projectId: string;
   teamId: string | null;
   busy: boolean;
+  canWrite: boolean;
   report: (e: unknown) => void;
   onOpen: (docId: string) => void;
 }) {
@@ -39,6 +41,7 @@ export function ProjectNotes({
   useEffect(() => load(), [load]);
 
   const create = () => {
+    if (!canWrite || working) return;
     setWorking(true);
     client
       .createDoc({
@@ -87,12 +90,14 @@ export function ProjectNotes({
           </Pressable>
         ))
       )}
-      <Button
-        title="New note here"
-        secondary
-        disabled={busy || working}
-        onPress={create}
-      />
+      {canWrite && (
+        <Button
+          title="New note here"
+          secondary
+          disabled={busy || working}
+          onPress={create}
+        />
+      )}
     </View>
   );
 }

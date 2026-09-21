@@ -181,6 +181,8 @@ export function DocEditor({
   const focusedRef = useRef<number | null>(null);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const flushOnClose = useRef<() => void>(() => {});
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -261,54 +263,68 @@ export function DocEditor({
   }, []);
 
   const persist = useCallback(
-    async (nextTitle: string, nextBlocks: DocBlock[]) => {
-      setSave("saving");
-      try {
-        const saved = await client.updateDoc(doc.id, {
-          title: nextTitle,
-          content: nextBlocks,
-          version: version.current,
-        });
-        version.current = saved.version;
-        base.current = saved.content;
-        dirty.current = false;
-        setSave("saved");
-        onChanged(saved);
-      } catch (e) {
-        // Someone saved first. Take their copy, fold this edit into it and
-        // save again, rather than making the writer sort it out by hand.
-        if ((e as { statusCode?: number }).statusCode === 409) {
-          try {
-            const theirs = await client.getDoc(doc.id);
-            const merged = reconcile(theirs);
-            const saved = await client.updateDoc(doc.id, {
-              title: live.current.title,
-              content: merged,
-              version: version.current,
-            });
-            version.current = saved.version;
-            base.current = saved.content;
-            dirty.current = false;
-            setSave("saved");
-            onChanged(saved);
-            return;
-          } catch (again) {
-            setSave("error");
-            report(again);
-            return;
+    (nextTitle: string, nextBlocks: DocBlock[]) => {
+      const write = async () => {
+        setSave("saving");
+        try {
+          const saved = await client.updateDoc(doc.id, {
+            title: nextTitle,
+            content: nextBlocks,
+            version: version.current,
+          });
+          version.current = saved.version;
+          base.current = saved.content;
+          dirty.current =
+            live.current.title !== nextTitle ||
+            live.current.blocks !== nextBlocks;
+          setSave("saved");
+          onChanged(saved);
+        } catch (e) {
+          // Someone saved first. Take their copy, fold this edit into it and
+          // save again, rather than making the writer sort it out by hand.
+          if ((e as { statusCode?: number }).statusCode === 409) {
+            try {
+              const theirs = await client.getDoc(doc.id);
+              const merged = reconcile(theirs);
+              const saved = await client.updateDoc(doc.id, {
+                title: live.current.title,
+                content: merged,
+                version: version.current,
+              });
+              version.current = saved.version;
+              base.current = saved.content;
+              dirty.current =
+                live.current.title !== nextTitle ||
+                live.current.blocks !== nextBlocks;
+              setSave("saved");
+              onChanged(saved);
+              return;
+            } catch (again) {
+              setSave("error");
+              report(again);
+              return;
+            }
           }
+          setSave("error");
+          report(e);
         }
-        setSave("error");
-        report(e);
-      }
+      };
+      saveQueue.current = saveQueue.current.then(write, write);
+      return saveQueue.current;
     },
     [doc.id, onChanged, reconcile, report],
   );
+
+  flushOnClose.current = () => {
+    if (!canWrite || !dirty.current) return;
+    void persist(live.current.title, live.current.blocks);
+  };
 
   /** Queue a save; typing again restarts the clock. */
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
       dirty.current = true;
+      live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(
         () => void persist(nextTitle, nextBlocks),
@@ -319,12 +335,12 @@ export function DocEditor({
   );
 
   // Don't lose the last keystrokes when the editor closes.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      flushOnClose.current();
+    };
+  }, []);
 
   /**
    * The subscription must outlive re-renders: it depends on the document,
@@ -813,7 +829,11 @@ export function DocEditor({
       return;
     void client
       .deleteDoc(doc.id)
-      .then(() => onDeleted(doc.id))
+      .then(() => {
+        dirty.current = false;
+        flushOnClose.current = () => {};
+        onDeleted(doc.id);
+      })
       .catch(report);
   };
 
@@ -1173,6 +1193,7 @@ export function DocEditor({
         {showHistory && (
           <DocHistory
             doc={doc}
+            canWrite={canWrite}
             onClose={() => setShowHistory(false)}
             report={report}
             onRestored={(restored) => {

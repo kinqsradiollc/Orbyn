@@ -43,7 +43,9 @@ export function SmallAction({
 const s = themed(() =>
   StyleSheet.create({
     action: {
-      minHeight: 34,
+      minHeight: 44,
+      maxWidth: "100%",
+      paddingVertical: 8,
       paddingHorizontal: 12,
       borderRadius: radii.input - 3,
       borderWidth: 1,
@@ -52,6 +54,11 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    actionText: { fontFamily: fonts.semibold, fontSize: 13 },
+    actionText: {
+      flexShrink: 1,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+    },
   }),
 );

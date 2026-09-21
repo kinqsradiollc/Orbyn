@@ -51,27 +51,27 @@ export function DocThread({
 
   const send = () => {
     const body = draft;
-    setDraft("");
     void state.add(body, { ...(anchor ?? {}), mentions }).then((ok) => {
       if (ok) {
+        setDraft("");
         namedDraft.current.clear();
         setMentions([]);
         onDone?.();
-      } else setDraft(body);
+      }
     });
   };
 
   const sendReply = () => {
     if (!reply) return;
     const body = reply.text;
-    setReply(null);
     void state
       .add(body, { parent_id: reply.id, mentions: replyMentions })
       .then((ok) => {
         if (ok) {
+          setReply(null);
           namedReply.current.clear();
           setReplyMentions([]);
-        } else setReply({ id: reply.id, text: body });
+        }
       });
   };
 
@@ -135,6 +135,7 @@ export function DocThread({
             <View style={styles.replyBox}>
               <MentionInput
                 docId={state.docId}
+                editable={!state.busy}
                 value={reply.text}
                 onChangeText={(text) => setReply({ id: comment.id, text })}
                 onNamed={setReplyMentions}
@@ -146,7 +147,7 @@ export function DocThread({
               <View style={styles.send}>
                 <SmallAction
                   label="Cancel"
-                  disabled={false}
+                  disabled={state.busy}
                   onPress={() => setReply(null)}
                 />
                 <Button
@@ -161,6 +162,7 @@ export function DocThread({
       ))}
 
       <MentionInput
+        editable={!state.busy}
         docId={state.docId}
         value={draft}
         onChangeText={setDraft}
@@ -172,7 +174,7 @@ export function DocThread({
       />
       <View style={styles.send}>
         {!!onDone && (
-          <SmallAction label="Cancel" disabled={false} onPress={onDone} />
+          <SmallAction label="Cancel" disabled={state.busy} onPress={onDone} />
         )}
         <Button
           title="Comment"
@@ -213,7 +215,13 @@ const styles = themed(() =>
     },
     faded: { backgroundColor: colors.surfaceMuted },
     head: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-    author: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
+    author: {
+      flex: 1,
+      flexShrink: 1,
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fonts.semibold,
+    },
     when: { color: colors.muted, fontSize: 12 },
     body: { color: colors.text, fontSize: 14, lineHeight: 20 },
     actions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
@@ -229,6 +237,12 @@ const styles = themed(() =>
       paddingVertical: 10,
       textAlignVertical: "top",
     },
-    send: { flexDirection: "row", alignItems: "center", gap: 8 },
+    send: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      gap: 8,
+    },
   }),
 );

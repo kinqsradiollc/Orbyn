@@ -94,8 +94,12 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      minHeight: 38,
+      // A chip is a button, and a button wants a finger's worth of height.
+      // Everything else on the phone was raised to this; these were missed,
+      // and they are the controls people tap most — the status filters.
+      minHeight: 44,
       maxWidth: "100%",
+      paddingVertical: 8,
       paddingHorizontal: 13,
       borderRadius: radii.pill,
       borderWidth: 1,

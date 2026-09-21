@@ -1,6 +1,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts, themed } from "../../theme";
+import { Button } from "../../components/Button";
 import { DocThread } from "./DocThread";
 import type { DocCommentsState } from "./useDocComments";
 
@@ -27,6 +28,18 @@ export function DocComments({
       </View>
     );
 
+  if (state.failed)
+    return (
+      <View style={styles.section}>
+        <Text style={styles.empty}>Comments could not be loaded.</Text>
+        <Button
+          title="Retry comments"
+          secondary
+          onPress={() => void state.reload()}
+        />
+      </View>
+    );
+
   return (
     <View style={styles.section}>
       <Text style={styles.title}>On the page</Text>
@@ -38,19 +51,8 @@ export function DocComments({
         </Text>
       )}
 
-      {state.loose.map((c) => (
-        <DocThread
-          key={c.id}
-          comments={[c]}
-          state={state}
-          userId={userId}
-          quote={c.quote}
-          placeholder="Reply…"
-        />
-      ))}
-
       <DocThread
-        comments={[]}
+        comments={state.loose}
         state={state}
         userId={userId}
         placeholder="Comment on the whole page…"
@@ -60,6 +62,7 @@ export function DocComments({
         <Pressable
           onPress={() => state.setShowResolved(!state.showResolved)}
           accessibilityRole="button"
+          style={styles.toggleRow}
         >
           <Text style={styles.toggle}>
             {state.showResolved ? "Hide" : "Show"} {state.resolvedCount}{" "}
@@ -81,6 +84,12 @@ const styles = themed(() =>
       borderTopColor: colors.border,
     },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
+    // A line of text is not a target a thumb can find; it gets a row.
+    toggleRow: {
+      minHeight: 44,
+      alignSelf: "flex-start",
+      justifyContent: "center",
+    },
     toggle: { color: colors.accent, fontSize: 13, fontFamily: fonts.semibold },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   }),

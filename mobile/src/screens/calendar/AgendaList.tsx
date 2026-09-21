@@ -358,6 +358,6 @@ const s = themed(() =>
     title: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
     doneText: { color: colors.faint, textDecorationLine: "line-through" },
     extra: { flexDirection: "row", alignItems: "center", gap: 6 },
-    join: { marginBottom: 0, minHeight: 36, paddingHorizontal: 12 },
+    join: { marginBottom: 0, minHeight: 44, paddingHorizontal: 12 },
   }),
 );

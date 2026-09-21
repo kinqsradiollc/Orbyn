@@ -292,11 +292,14 @@ export function anchorComments(
   const order = new Map(blocks.map((b, i) => [b.id ?? "", i]));
   const anchored = new Map<string, DocComment[]>();
   const loose: DocComment[] = [];
+  const byId = new Map(comments.map((c) => [c.id, c]));
   for (const c of comments) {
-    if (c.block_id && order.has(c.block_id) && !c.detached) {
-      const list = anchored.get(c.block_id) ?? [];
+    // Replies inherit their thread's location; their own block_id is null.
+    const root = (c.parent_id && byId.get(c.parent_id)) || c;
+    if (root.block_id && order.has(root.block_id) && !root.detached) {
+      const list = anchored.get(root.block_id) ?? [];
       list.push(c);
-      anchored.set(c.block_id, list);
+      anchored.set(root.block_id, list);
     } else loose.push(c);
   }
   // Within a line, remarks read left to right, so the cards beside it are in
@@ -504,7 +507,16 @@ export function serializeDoc(blocks: DocBlock[]): string {
 /** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
-    .map((b) => (b.type === "divider" ? "" : mathToText(b.text)))
+    .map((b) => {
+      if (b.type === "divider") return "";
+      // A maths block is LaTeX all the way through, with no fences to find
+      // it by, so it is spelled out whole.
+      if (b.type === "math") return mathToText(b.text);
+      // A preview is read, not rendered, so it should read as words. Maths
+      // was already spelled out here; the rest of the markers were not, and
+      // every list of documents showed "Pricing stays **unchanged**".
+      return plainText(b.text);
+    })
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();

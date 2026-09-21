@@ -236,6 +236,8 @@ export function TodayScreen({
           ).map(([what, icon, title, detail]) => (
             <Pressable
               key={what}
+              accessibilityRole="button"
+              accessibilityLabel={title}
               style={({ pressed }) => [
                 s.workspaceRow,
                 pressed && s.workspacePressed,

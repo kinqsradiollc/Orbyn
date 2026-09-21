@@ -26,7 +26,12 @@ import { AskSheet } from "./AskSheet";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
-import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
+import {
+  downloadDoc,
+  downloadLabel,
+  formatsHere,
+  takeAwayLabel,
+} from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -119,6 +124,8 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** Whether the shapes the page can be taken away in are showing. */
+  const [formats, setFormats] = useState(false);
   const [note, setNote] = useState("");
   /** The line whose remarks are open, and one waiting to be written on. */
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -158,6 +165,8 @@ export function DocEditor({
   const base = useRef<DocBlock[]>(doc.content);
   const live = useRef({ title: doc.title, blocks: doc.content });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const flushOnClose = useRef<() => void>(() => {});
 
   live.current = { title, blocks };
   focusedRef.current = focused;
@@ -179,12 +188,12 @@ export function DocEditor({
     setNote("");
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      flushOnClose.current();
+    };
+  }, []);
 
   // The same page, but a newer copy handed in from outside — a restore from
   // the history section below. Our own saves and live updates move
@@ -228,43 +237,66 @@ export function DocEditor({
   }, []);
 
   const persist = useCallback(
-    async (nextTitle: string, nextBlocks: DocBlock[]) => {
-      setSaving(true);
-      try {
-        const saved = await client.updateDoc(doc.id, {
-          title: nextTitle,
-          content: nextBlocks,
-          version: version.current,
-        });
-        version.current = saved.version;
-        base.current = saved.content;
-        dirty.current = false;
-        onChanged(saved);
-      } catch (e) {
-        // Someone saved first: take their copy, fold this edit into it and
-        // save again rather than making the writer sort it out by hand.
-        if ((e as { statusCode?: number }).statusCode === 409) {
-          try {
-            const merged = reconcile(await client.getDoc(doc.id));
-            const saved = await client.updateDoc(doc.id, {
-              title: live.current.title,
-              content: merged,
-              version: version.current,
-            });
-            version.current = saved.version;
-            base.current = saved.content;
-            dirty.current = false;
-            onChanged(saved);
-          } catch (again) {
-            report(again);
-          }
-        } else report(e);
-      } finally {
-        setSaving(false);
-      }
+    (nextTitle: string, nextBlocks: DocBlock[]) => {
+      const write = async () => {
+        setSaving(true);
+        try {
+          const saved = await client.updateDoc(doc.id, {
+            title: nextTitle,
+            content: nextBlocks,
+            version: version.current,
+          });
+          version.current = saved.version;
+          base.current = saved.content;
+          dirty.current =
+            live.current.title !== nextTitle ||
+            live.current.blocks !== nextBlocks;
+          onChanged(saved);
+        } catch (e) {
+          // Someone saved first: take their copy, fold this edit into it and
+          // save again rather than making the writer sort it out by hand.
+          if ((e as { statusCode?: number }).statusCode === 409) {
+            try {
+              const merged = reconcile(await client.getDoc(doc.id));
+              const saved = await client.updateDoc(doc.id, {
+                title: live.current.title,
+                content: merged,
+                version: version.current,
+              });
+              version.current = saved.version;
+              base.current = saved.content;
+              dirty.current =
+                live.current.title !== nextTitle ||
+                live.current.blocks !== nextBlocks;
+              onChanged(saved);
+            } catch (again) {
+              report(again);
+            }
+          } else report(e);
+        } finally {
+          setSaving(false);
+        }
+      };
+      saveQueue.current = saveQueue.current.then(write, write);
+      return saveQueue.current;
     },
     [doc.id, onChanged, reconcile, report],
   );
+
+  flushOnClose.current = () => {
+    if (!canWrite || suggesting) return;
+    const next = live.current.blocks.slice();
+    if (focused !== null && next[focused]) {
+      const parsed = parseDoc(draft);
+      next.splice(
+        focused,
+        1,
+        ...carryBlockIds(next[focused], parsed.length ? parsed : [EMPTY]),
+      );
+    }
+    if (dirty.current || JSON.stringify(next) !== JSON.stringify(base.current))
+      void persist(live.current.title, next);
+  };
 
   /**
    * The subscription must outlive re-renders: it depends on the document,
@@ -303,6 +335,7 @@ export function DocEditor({
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
       dirty.current = true;
+      live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(
         () => void persist(nextTitle, nextBlocks),
@@ -455,6 +488,15 @@ export function DocEditor({
     if (parsed.length > 1) setFocused(focused + parsed.length - 1);
     update(next);
   };
+
+  // Save a paused edit while the keyboard stays open, not only after blur.
+  useEffect(() => {
+    if (focused === null || suggesting || reading) return;
+    if (serializeBlock(blocks[focused] ?? EMPTY) === draft) return;
+    const pending = setTimeout(syncDraft, 300);
+    return () => clearTimeout(pending);
+    // The draft is the source of this debounce; syncing blocks must not restart it.
+  }, [draft, focused, suggesting, reading]);
 
   /**
    * Turn what was typed into a proposed change.
@@ -612,7 +654,10 @@ export function DocEditor({
       "Delete",
       () => {
         if (timer.current) clearTimeout(timer.current);
-        client.deleteDoc(doc.id).then(() => onDeleted?.(), report);
+        client.deleteDoc(doc.id).then(() => {
+          flushOnClose.current = () => {};
+          onDeleted?.();
+        }, report);
       },
     );
 
@@ -651,20 +696,27 @@ export function DocEditor({
         onWithdraw={withdraw}
       />
 
+      {/* The mode you are in is the filled chip, as it is on the desktop and
+          as every other choice on the phone reads. It used to be the one
+          greyed out, with a tick — which said "unavailable", not "here". */}
       <View style={styles.statusRow}>
-        {modesFor(canWrite).map((m) => (
-          <SmallAction
-            key={m}
-            label={MODE_LABELS[m].name + (mode === m ? " ✓" : "")}
-            disabled={mode === m}
-            onPress={() => {
-              // An open line would strand what was typed in it.
-              setFocused(null);
-              setMode(m);
-              saveLocal(MODE_KEY + doc.id, m);
-            }}
-          />
-        ))}
+        <ChipRow label="How you're working on this page">
+          {modesFor(canWrite).map((m) => (
+            <Chip
+              key={m}
+              label={MODE_LABELS[m].name}
+              selected={mode === m}
+              accessibilityHint={MODE_LABELS[m].blurb}
+              onPress={() => {
+                // Commit the open line before changing what it is allowed to do.
+                commit();
+                setFocused(null);
+                setMode(m);
+                saveLocal(MODE_KEY + doc.id, m);
+              }}
+            />
+          ))}
+        </ChipRow>
         <Text style={styles.meta}>
           {reading ? "" : saving ? "Saving…" : "Saved"}
         </Text>
@@ -794,14 +846,22 @@ export function DocEditor({
               disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
               onPress={commentOnWords}
             />
+          </View>
+          {/* Fifteen chips of three different kinds used to wrap into one
+              block, so leaving the line and losing it sat among the ways of
+              changing it — and the flex spacer that was meant to push Done
+              to the end only worked on a row that had not wrapped. Finishing
+              and deleting now have their own row under a rule, at the two
+              ends a thumb reaches for. */}
+          <View style={styles.toolFooter}>
+            <SmallAction label="Done" disabled={false} onPress={commit} />
+            <View style={styles.spacer} />
             <SmallAction
               label="Delete line"
               destructive
               disabled={false}
               onPress={deleteLine}
             />
-            <View style={styles.spacer} />
-            <SmallAction label="Done" disabled={false} onPress={commit} />
           </View>
         </View>
       ) : (
@@ -820,15 +880,16 @@ export function DocEditor({
         symbols here and are typeset on the desktop.
       </Text>
 
+      {/* Five ways to take the page away used to sit in one wrapped row with
+          "Delete page" as the sixth chip, so the way to lose the page for
+          good was a thumb's width from the way to keep a copy of it. The
+          shapes now live behind one control, and deleting stands alone. */}
       <View style={styles.pageActions}>
-        {formatsHere().map((format) => (
-          <SmallAction
-            key={format}
-            label={downloadLabel(format)}
-            disabled={saving}
-            onPress={() => void downloadDoc(doc.id, format).catch(report)}
-          />
-        ))}
+        <SmallAction
+          label={takeAwayLabel()}
+          disabled={saving}
+          onPress={() => setFormats((v) => !v)}
+        />
         {openTodos > 0 && (
           <SmallAction
             label={`Add ${openTodos} to my tasks`}
@@ -836,6 +897,21 @@ export function DocEditor({
             onPress={makeTasks}
           />
         )}
+      </View>
+      {formats && (
+        <View style={styles.pageActions}>
+          {formatsHere().map((format) => (
+            <SmallAction
+              key={format}
+              label={downloadLabel(format)}
+              disabled={saving}
+              onPress={() => void downloadDoc(doc.id, format).catch(report)}
+            />
+          ))}
+        </View>
+      )}
+
+      <View style={styles.danger}>
         <SmallAction
           label="Delete page"
           destructive
@@ -886,6 +962,15 @@ const styles = themed(() =>
       alignItems: "center",
       gap: 8,
     },
+    toolFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 2,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
     spacer: { flex: 1 },
     pageActions: {
       flexDirection: "row",
@@ -893,8 +978,15 @@ const styles = themed(() =>
       gap: 8,
       marginTop: 4,
     },
+    danger: {
+      flexDirection: "row",
+      marginTop: 6,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
     add: {
-      minHeight: 36,
+      minHeight: 44,
       justifyContent: "center",
       paddingHorizontal: 6,
       marginHorizontal: -6,

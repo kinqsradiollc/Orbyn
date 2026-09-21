@@ -115,6 +115,7 @@ export function DocsView({
   if (open)
     return (
       <DocEditor
+        key={open.id}
         doc={open}
         report={report}
         userId={userId}
@@ -128,7 +129,7 @@ export function DocsView({
           void load();
         }}
         onChanged={(saved) => {
-          setOpen(saved);
+          setOpen((current) => (current?.id === saved.id ? saved : current));
           setDocs(
             (current) =>
               current?.map((d) =>
