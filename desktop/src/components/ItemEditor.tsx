@@ -1,3 +1,4 @@
+import { Select } from "../components/Select";
 import { useConfirm } from "../components/Confirm";
 import { useEffect, useState } from "react";
 import { Eye, Trash2, X } from "lucide-react";
@@ -466,32 +467,32 @@ export function ItemEditor({
             <div className="form-grid">
               <label>
                 Type
-                <select
+                <Select
                   name="kind"
                   value={kind}
                   onChange={(e) => setKind(e.target.value as Kind)}
                 >
                   <option value="task">Task</option>
                   <option value="event">Event</option>
-                </select>
+                </Select>
               </label>
               <label>
                 Priority
-                <select name="priority" defaultValue={base.priority}>
+                <Select name="priority" defaultValue={base.priority}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
-                </select>
+                </Select>
               </label>
               <label>
                 Status
-                <select name="status" defaultValue={base.status}>
+                <Select name="status" defaultValue={base.status}>
                   {STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {statusLabels[s]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               {existing && (
                 <label>
@@ -554,7 +555,7 @@ export function ItemEditor({
               )}
               <label>
                 Estimate
-                <select
+                <Select
                   value={estimateChoice}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -570,7 +571,7 @@ export function ItemEditor({
                     </option>
                   ))}
                   <option value="custom">Custom…</option>
-                </select>
+                </Select>
               </label>
               {customEstimate && (
                 <label>
@@ -591,7 +592,7 @@ export function ItemEditor({
               )}
               <label>
                 List
-                <select
+                <Select
                   value={listId ?? ""}
                   onChange={(e) => setListId(e.target.value || null)}
                 >
@@ -601,7 +602,7 @@ export function ItemEditor({
                       {l.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {!lists.length && (
                   <small className="field-hint">
                     {teamId
@@ -613,7 +614,7 @@ export function ItemEditor({
               {teamId && (
                 <label>
                   Assignee
-                  <select
+                  <Select
                     value={assigneeId ?? ""}
                     onChange={(e) => setAssigneeId(e.target.value || null)}
                   >
@@ -630,7 +631,7 @@ export function ItemEditor({
                             "Current assignee"}
                         </option>
                       )}
-                  </select>
+                  </Select>
                 </label>
               )}
             </div>
@@ -697,7 +698,7 @@ export function ItemEditor({
             <div className="form-grid">
               <label>
                 Share with
-                <select
+                <Select
                   name="team_id"
                   value={teamId ?? ""}
                   disabled={lockTeam}
@@ -709,7 +710,7 @@ export function ItemEditor({
                       {t.name}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {lockTeam && !readOnly && (
                   <small className="field-hint">
                     Only owners and admins can move items out of {teamName}.

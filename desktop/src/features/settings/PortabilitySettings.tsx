@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useState } from "react";
 import { Download, Upload } from "lucide-react";
 import type { ImportSummary } from "@orbyn/core";
@@ -77,7 +78,7 @@ export function PortabilitySettings({
       <div className="settings-grid">
         <label className="settings-field">
           <span className="settings-label">Format</span>
-          <select
+          <Select
             value={format}
             onChange={(e) => {
               setFormat(e.target.value as "orbyn" | "csv");
@@ -86,7 +87,7 @@ export function PortabilitySettings({
           >
             <option value="csv">CSV</option>
             <option value="orbyn">Orbyn export (JSON)</option>
-          </select>
+          </Select>
         </label>
         <label className="settings-field">
           <span className="settings-label">Choose a file</span>

@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useEffect, useState } from "react";
 import { MessagesSquare } from "lucide-react";
 import type { ChatChannel } from "@orbyn/core";
@@ -72,13 +73,13 @@ export function ChatDelivery({ report }: { report: (e: unknown) => void }) {
         <div className="settings-grid">
           <label className="settings-field">
             <span className="settings-label">Service</span>
-            <select
+            <Select
               value={kind}
               onChange={(e) => setKind(e.target.value as "slack" | "discord")}
             >
               <option value="slack">Slack</option>
               <option value="discord">Discord</option>
-            </select>
+            </Select>
           </label>
           <label className="settings-field wide">
             <span className="settings-label">Webhook URL</span>

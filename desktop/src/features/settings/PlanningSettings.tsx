@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
@@ -186,7 +187,7 @@ export function PlanningSettings({ teams, report }: Props) {
             <div className="settings-field wide">
               <label htmlFor="pref-zone">Time zone</label>
               <div className="field-row">
-                <select
+                <Select
                   id="pref-zone"
                   value={draft.timezone}
                   onChange={(e) => set("timezone", e.target.value)}
@@ -199,7 +200,7 @@ export function PlanningSettings({ teams, report }: Props) {
                       {z.replaceAll("_", " ")}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <button
                   type="button"
                   className="secondary"
@@ -285,7 +286,7 @@ export function PlanningSettings({ teams, report }: Props) {
             />
             <div className="settings-field">
               <label htmlFor="pref-breaks">Breaks</label>
-              <select
+              <Select
                 id="pref-breaks"
                 value={draft.break_level}
                 onChange={(e) =>
@@ -297,7 +298,7 @@ export function PlanningSettings({ teams, report }: Props) {
                     {BREAK_LABELS[b]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -625,7 +626,7 @@ export function PlanningSettings({ teams, report }: Props) {
               <label className="sr-only" htmlFor="pref-add-zone">
                 Time zone to add
               </label>
-              <select
+              <Select
                 id="pref-add-zone"
                 value={zoneToAdd}
                 onChange={(e) => setZoneToAdd(e.target.value)}
@@ -638,7 +639,7 @@ export function PlanningSettings({ teams, report }: Props) {
                       {z.replaceAll("_", " ")}
                     </option>
                   ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 className="secondary"
@@ -994,7 +995,7 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
             </div>
             <div className="settings-field">
               <label htmlFor="place-mode">How you get there</label>
-              <select
+              <Select
                 id="place-mode"
                 value={draft.mode ?? ""}
                 onChange={(e) =>
@@ -1010,7 +1011,7 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
                     {MODE_LABELS[m]}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div className="settings-field">
               <label htmlFor="place-peak">At rush hour (min)</label>

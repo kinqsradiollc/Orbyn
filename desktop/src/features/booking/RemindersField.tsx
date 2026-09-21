@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useId, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { alertLabel } from "../../components/EventFields";
@@ -46,7 +47,7 @@ export function RemindersField({
           <label className="sr-only" htmlFor={id}>
             Add a reminder
           </label>
-          <select
+          <Select
             id={id}
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
@@ -57,7 +58,7 @@ export function RemindersField({
                 {alertLabel(m)}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             type="button"
             className="secondary"

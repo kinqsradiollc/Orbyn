@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useState, type FormEvent } from "react";
 import { Check, ListChecks, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -283,7 +284,7 @@ export function ListsView({
               onChange={(e) => setName(e.target.value)}
             />
             {writableTeams.length > 0 && (
-              <select
+              <Select
                 aria-label="Who the list is for"
                 value={scope}
                 onChange={(e) => setScope(e.target.value)}
@@ -294,7 +295,7 @@ export function ListsView({
                     {t.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
             <button
               className="primary"

@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CalendarCheck, Download, Plus, Search } from "lucide-react";
@@ -224,14 +225,14 @@ export function BookingsInbox({
         {(pages.length > 1 || pageId) && (
           <label className="filter-select">
             Page
-            <select value={pageId} onChange={(e) => onPageId(e.target.value)}>
+            <Select value={pageId} onChange={(e) => onPageId(e.target.value)}>
               <option value="">All pages</option>
               {pages.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.title}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
       </div>

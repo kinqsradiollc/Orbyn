@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import {
   useCallback,
   useEffect,
@@ -340,7 +341,7 @@ export function PlannerPanel({
         </label>
         <label>
           Days
-          <select
+          <Select
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
           >
@@ -349,7 +350,7 @@ export function PlannerPanel({
                 {d === 1 ? "1 day" : `${d} days`}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         {(teams.length > 0 || lists.length > 0) && (
           <fieldset className="wide planner-scope">
@@ -444,7 +445,7 @@ export function PlannerPanel({
         </label>
         <label className="wide">
           Breaks
-          <select
+          <Select
             value={breakLevel}
             onChange={(e) => setBreakLevel(e.target.value as BreakLevel)}
           >
@@ -453,7 +454,7 @@ export function PlannerPanel({
                 {BREAK_LABELS[b]}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <div className="wide planner-buttons">
           <button className="primary" disabled={busy}>

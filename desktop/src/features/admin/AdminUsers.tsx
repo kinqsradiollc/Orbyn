@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Search, Trash2 } from "lucide-react";
@@ -162,7 +163,7 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
                     )}
                   </td>
                   <td>
-                    <select
+                    <Select
                       className="role-select"
                       aria-label={`System role for ${u.name}`}
                       value={u.role}
@@ -173,7 +174,7 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
                     >
                       <option value="admin">Admin</option>
                       <option value="member">Member</option>
-                    </select>
+                    </Select>
                   </td>
                   <td>
                     <span

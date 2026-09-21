@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -284,7 +285,7 @@ export function TeamDetail({
                   </td>
                   <td>{m.email}</td>
                   <td>
-                    <select
+                    <Select
                       className="role-select"
                       aria-label={`Role for ${m.name}`}
                       value={m.role}
@@ -298,7 +299,7 @@ export function TeamDetail({
                           {TEAM_ROLE_LABELS[r]}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </td>
                   <td className="row-actions">
                     {self ? (
@@ -353,7 +354,7 @@ export function TeamDetail({
             aria-label="New member email"
             placeholder="teammate@example.com"
           />
-          <select
+          <Select
             name="role"
             aria-label="New member role"
             defaultValue="member"
@@ -363,7 +364,7 @@ export function TeamDetail({
                 {TEAM_ROLE_LABELS[r]}
               </option>
             ))}
-          </select>
+          </Select>
           <button className="primary" disabled={busy}>
             <UserPlus size={15} /> Add member
           </button>

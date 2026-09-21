@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useState, type FormEvent } from "react";
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -189,7 +190,7 @@ export function TagSettings({ teams, report }: Props) {
             onChange={(e) => setName(e.target.value)}
           />
           {writable.length > 0 && (
-            <select
+            <Select
               aria-label="Who the tag is for"
               value={scope}
               onChange={(e) => setScope(e.target.value)}
@@ -200,7 +201,7 @@ export function TagSettings({ teams, report }: Props) {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <button className="primary" disabled={action.pending || !name.trim()}>
             <Plus size={14} /> Create tag

@@ -1,3 +1,4 @@
+import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -855,7 +856,7 @@ export function TaskDetail({
                 <div className="update-composer-row">
                   <label>
                     <span className="sr-only">Change status</span>
-                    <select
+                    <Select
                       value={nextStatus}
                       onChange={(e) =>
                         setNextStatus(e.target.value as Status | "")
@@ -869,7 +870,7 @@ export function TaskDetail({
                           Move to {statusLabels[s]}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </label>
                   <button
                     className="primary"
