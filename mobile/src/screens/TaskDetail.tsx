@@ -93,6 +93,7 @@ export function TaskDetail({
   onEdit,
   onFocus,
   onChanged,
+  onOpenNote,
   onOpenItem,
 }: {
   visible: boolean;
@@ -112,6 +113,8 @@ export function TaskDetail({
   onFocus: (item: Item) => void;
   /** Called after every change so lists and counts refresh. */
   onChanged: () => void;
+  /** Open (or start) the meeting note for an event. */
+  onOpenNote?: (event: Item) => void;
 }) {
   return (
     <Sheet
@@ -129,6 +132,7 @@ export function TaskDetail({
           onEdit={onEdit}
           onFocus={onFocus}
           onChanged={onChanged}
+          onOpenNote={onOpenNote}
           onOpenItem={onOpenItem}
         />
       )}
@@ -144,6 +148,7 @@ function Body({
   onEdit,
   onFocus,
   onChanged,
+  onOpenNote,
   onOpenItem,
 }: {
   seed: Item;
@@ -152,6 +157,7 @@ function Body({
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
+  onOpenNote?: (event: Item) => void;
   onOpenItem: (item: Item) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
@@ -926,6 +932,15 @@ function Body({
             icon="arrowRight"
             onPress={openEditor}
           />
+          {item.kind === "event" && !readOnly && !!onOpenNote && (
+            <Button
+              secondary
+              title="Meeting note"
+              icon="fileText"
+              disabled={busy}
+              onPress={() => onOpenNote(item)}
+            />
+          )}
           {item.kind === "task" && !readOnly && !isClosed(item.status) && (
             <Button
               destructive
