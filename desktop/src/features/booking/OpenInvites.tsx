@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import {
   useEffect,
   useRef,
@@ -81,6 +82,7 @@ type Props = {
  * are free, and it's booked at once.
  */
 export function OpenInvites({ user, teams, report }: Props) {
+  const { ask, tell } = useConfirm();
   const [invites, setInvites] = useState<OpenInvite[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -98,11 +100,11 @@ export function OpenInvites({ user, teams, report }: Props) {
 
   const copy = (inv: OpenInvite) =>
     void copyText(inv.url).then((ok) => ok && setCopied(inv.id));
-  const withdraw = (inv: OpenInvite) => {
+  const withdraw = async (inv: OpenInvite) => {
     if (
-      !window.confirm(
-        `Withdraw “${inv.title}”? Its link stops working${inv.booking ? " and the booking is cancelled" : ""}.`,
-      )
+      !(await ask({
+        title: `Withdraw “${inv.title}”? Its link stops working${inv.booking ? " and the booking is cancelled" : ""}.`,
+      }))
     )
       return;
     void action.run(async () => {

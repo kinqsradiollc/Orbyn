@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import { Copy, ExternalLink, UserRound } from "lucide-react";
 import type { Profile } from "@orbyn/core";
@@ -7,6 +8,7 @@ import { copyText } from "../../lib/planning";
 
 /** Your public profile page: a handle and a short bio, listing your booking pages. */
 export function ProfileCard({ report }: { report: (e: unknown) => void }) {
+  const { ask, tell } = useConfirm();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [handle, setHandle] = useState("");
   const [bio, setBio] = useState("");
@@ -35,8 +37,14 @@ export function ProfileCard({ report }: { report: (e: unknown) => void }) {
       return next.handle ? "Saved. Your page is live." : "Saved.";
     });
   };
-  const turnOff = () => {
-    if (!window.confirm("Turn off your profile page? Its link stops working."))
+  const turnOff = async () => {
+    if (
+      !(await ask({
+        title: "Turn off your profile page? Its link stops working.",
+        confirmLabel: "Turn off",
+        destructive: true,
+      }))
+    )
       return;
     void action.run(async () => {
       const next = await client.updateProfile({ handle: null });

@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import {
@@ -685,6 +686,7 @@ function filterSummary(f: FrameFilters, names: Map<string, string>) {
 
 /** Frames: recurring windows reserved for a kind of work. */
 function FramesEditor({ teams, report }: Props) {
+  const { ask, tell } = useConfirm();
   const { lists, tags } = usePlanning();
   const [frames, setFrames] = useState<Frame[] | null>(null);
   const [editing, setEditing] = useState<Frame | "new" | null>(null);
@@ -706,8 +708,15 @@ function FramesEditor({ teams, report }: Props) {
     ...teams.map((t) => [t.id, t.name] as [string, string]),
   ]);
 
-  const remove = (f: Frame) => {
-    if (!window.confirm(`Delete the frame “${f.name}”?`)) return;
+  const remove = async (f: Frame) => {
+    if (
+      !(await ask({
+        title: `Delete the frame “${f.name}”?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deleteFrame(f.id);
       await load();
@@ -823,6 +832,7 @@ const MODE_LABELS: Record<TravelMode, string> = {
 
 /** Places and how long it takes to get there, for travel time around events. */
 function PlacesEditor({ report }: { report: (e: unknown) => void }) {
+  const { ask, tell } = useConfirm();
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<PlaceDraft>(blankPlace);
@@ -857,8 +867,15 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
       .then((ok) => ok && setEditing(null));
   };
 
-  const remove = (p: Place) => {
-    if (!window.confirm(`Delete the place “${p.label}”?`)) return;
+  const remove = async (p: Place) => {
+    if (
+      !(await ask({
+        title: `Delete the place “${p.label}”?`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     void action.run(async () => {
       await client.deletePlace(p.id);
       await load();

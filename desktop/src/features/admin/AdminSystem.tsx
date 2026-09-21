@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -606,6 +607,7 @@ function MaintenanceCard({
   report: Report;
   onChange?: (m: Maintenance) => void;
 }) {
+  const { ask, tell } = useConfirm();
   const [state, setState] = useState<Maintenance | null>(null);
   const [message, setMessage] = useState("");
   const [until, setUntil] = useState("");
@@ -639,12 +641,13 @@ function MaintenanceCard({
       return state?.enabled ? "Saved." : "Maintenance mode is on.";
     });
 
-  const toggle = (enabled: boolean) => {
+  const toggle = async (enabled: boolean) => {
     if (
       enabled &&
-      !window.confirm(
-        "Turn on maintenance mode? Members can still view everything, but they can't change anything until you turn it off. Admins can still work.",
-      )
+      !(await ask({
+        title:
+          "Turn on maintenance mode? Members can still view everything, but they can't change anything until you turn it off. Admins can still work.",
+      }))
     )
       return;
     apply(enabled);

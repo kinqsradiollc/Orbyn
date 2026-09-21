@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ListTodo,
@@ -68,6 +69,7 @@ export function TeamDetail({
   onNewTeamItem,
   onToggle,
 }: Props) {
+  const { ask, tell } = useConfirm();
   const [team, setTeam] = useState<TeamDetailData | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const seq = useRef(0);
@@ -119,28 +121,35 @@ export function TeamDetail({
       await refresh();
     });
 
-  const changeRole = (m: TeamMember, role: TeamRole) => {
+  const changeRole = async (m: TeamMember, role: TeamRole) => {
     if (
       m.user_id === user?.id &&
-      !window.confirm(
-        `Change your own role to ${TEAM_ROLE_LABELS[role]}? You may lose access to some controls.`,
-      )
+      !(await ask({
+        title: `Change your own role to ${TEAM_ROLE_LABELS[role]}? You may lose access to some controls.`,
+      }))
     )
       return;
     mutate(() => client.updateTeamMember(team.id, m.user_id, { role }));
   };
 
-  const remove = (m: TeamMember) => {
-    if (!window.confirm(`Remove ${m.name} from ${team.name}?`)) return;
+  const remove = async (m: TeamMember) => {
+    if (
+      !(await ask({
+        title: `Remove ${m.name} from ${team.name}?`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
     mutate(() => client.removeTeamMember(team.id, m.user_id));
   };
 
-  const leave = () => {
+  const leave = async () => {
     if (!user) return;
     if (
-      !window.confirm(
-        `Leave ${team.name}? You'll lose access to its shared items.`,
-      )
+      !(await ask({
+        title: `Leave ${team.name}? You'll lose access to its shared items.`,
+      }))
     )
       return;
     void act(async () => {
@@ -150,9 +159,13 @@ export function TeamDetail({
     });
   };
 
-  const deleteTeam = () => {
+  const deleteTeam = async () => {
     if (
-      !window.confirm(`Delete ${team.name} for everyone? This can't be undone.`)
+      !(await ask({
+        title: `Delete ${team.name} for everyone? This can't be undone.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
     )
       return;
     void act(async () => {

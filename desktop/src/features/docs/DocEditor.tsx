@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -81,6 +82,7 @@ export function DocEditor({
   userId?: string;
   report: (e: unknown) => void;
 }) {
+  const { ask, tell } = useConfirm();
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -512,18 +514,25 @@ export function DocEditor({
           onChanged(updated);
         }
         onItemsChanged?.();
-        alert(
-          created === 0
-            ? "Every item here is already a task."
-            : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
-        );
+        await tell({
+          title:
+            created === 0
+              ? "Every item here is already a task."
+              : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
+        });
       } catch (e) {
         report(e);
       }
     })();
 
-  const remove = () => {
-    if (!confirm(`Delete “${title || "Untitled"}”? This can't be undone.`))
+  const remove = async () => {
+    if (
+      !(await ask({
+        title: `Delete “${title || "Untitled"}”? This can't be undone.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
       return;
     void client
       .deleteDoc(doc.id)

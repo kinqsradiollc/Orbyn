@@ -2428,3 +2428,60 @@ footer svg {
   grid-column: 1 / -1;
   margin-top: 2px;
 }
+
+/* Orbyn's own question box, in place of the browser's confirm and alert. */
+.confirm-dialog {
+  display: grid;
+}
+.confirm-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 22px 22px 6px;
+}
+.confirm-body h2 {
+  font-size: 1.05rem;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.confirm-body p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.confirm-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-danger-soft, var(--color-chip));
+  color: var(--color-danger);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 22px 20px;
+}
+.confirm-actions .ghost {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: 7px;
+  padding: 11px 17px;
+  font: inherit;
+}
+.confirm-actions .ghost:hover {
+  background: var(--color-hover);
+}
+/* A filled button for an action that destroys something. */
+.primary.is-destructive {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-white);
+}

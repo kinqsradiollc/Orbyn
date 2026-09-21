@@ -1,3 +1,4 @@
+import { useConfirm } from "../../components/Confirm";
 import { useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -51,6 +52,7 @@ export function ProjectDetail({
   onItemsChanged: () => void;
   onOpenItem: (item: Item) => void;
 }) {
+  const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"list" | "board" | "timeline">("list");
   /** The task being dragged across the board, if any. */
@@ -91,11 +93,13 @@ export function ProjectDetail({
     });
   };
 
-  const removeStage = (stage: ProjectStage) => {
+  const removeStage = async (stage: ProjectStage) => {
     if (
-      !confirm(
-        `Remove the “${stage.name}” stage? Its tasks stay in the project.`,
-      )
+      !(await ask({
+        title: `Remove the “${stage.name}” stage? Its tasks stay in the project.`,
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
     )
       return;
     save({
@@ -114,9 +118,9 @@ export function ProjectDetail({
       .finally(() => setBusy(false));
   };
 
-  const addExisting = (stageId: string | null) => {
+  const addExisting = async (stageId: string | null) => {
     if (!unfiledPool.length) {
-      alert("Every task is already in a project.");
+      await tell({ title: "Every task is already in a project." });
       return;
     }
     const list = unfiledPool
@@ -139,8 +143,15 @@ export function ProjectDetail({
       .finally(() => setBusy(false));
   };
 
-  const remove = () => {
-    if (!confirm(`Delete “${project.name}”? Its tasks stay, unfiled.`)) return;
+  const remove = async () => {
+    if (
+      !(await ask({
+        title: `Delete “${project.name}”? Its tasks stay, unfiled.`,
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
     client.deleteProject(project.id).then(onDeleted).catch(report);
   };
 
