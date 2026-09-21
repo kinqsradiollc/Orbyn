@@ -5,6 +5,8 @@ import {
   type DocBlock,
   type DocKind,
   type DocComment,
+  type DocSuggestion,
+  type Proposed,
   type DocSummary,
   type DocVersion,
   type Favourite,
@@ -668,6 +670,30 @@ export class OrbynClient {
     return this.request<DocComment>(`/docs/${docId}/comments`, {
       method: "POST",
       body: { body, ...anchor },
+    });
+  }
+
+  // Proposed changes to a document
+  listDocSuggestions(docId: string) {
+    return this.request<DocSuggestion[]>(`/docs/${docId}/suggestions`);
+  }
+  /** Propose changes. Anyone who can read the document may propose. */
+  proposeDocChanges(docId: string, changes: Proposed[], note = "") {
+    return this.request<DocSuggestion[]>(`/docs/${docId}/suggestions`, {
+      method: "POST",
+      body: { changes, note },
+    });
+  }
+  /** Take a proposal into the page, or leave it. Returns the page if taken. */
+  decideDocSuggestion(docId: string, id: string, take: boolean) {
+    return this.request<{ doc: Doc | null }>(
+      `/docs/${docId}/suggestions/${id}`,
+      { method: "POST", body: { take } },
+    );
+  }
+  withdrawDocSuggestion(docId: string, id: string) {
+    return this.request<void>(`/docs/${docId}/suggestions/${id}`, {
+      method: "DELETE",
     });
   }
 

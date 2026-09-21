@@ -25,7 +25,9 @@ import {
   BLOCK_KINDS,
   blockToType,
   blockText,
+  proposeEdit,
   type DocMode,
+  type DocSuggestion,
   carryBlockIds,
   mergeDocs,
   newBlockId,
@@ -37,6 +39,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
+import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
@@ -124,7 +127,13 @@ export function DocEditor({
   const [mode, setMode] = useState<DocMode>(() =>
     canWrite ? (rememberedMode(doc.id) ?? "edit") : "read",
   );
-  const reading = mode === "read" || !canWrite;
+  const suggesting = mode === "suggest";
+  /** Nothing typed changes the page itself in these modes. */
+  const reading = mode === "read" || (!canWrite && !suggesting);
+  const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
+  const [deciding, setDeciding] = useState(false);
+  /** What a line being suggested on has been typed into, before it is sent. */
+  const suggestDraft = useRef<string | null>(null);
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -337,6 +346,12 @@ export function DocEditor({
   };
 
   const editBlock = (index: number, source: string) => {
+    // In suggesting mode nothing typed reaches the page: the line is held
+    // aside and becomes a proposal when the line is left.
+    if (suggesting) {
+      suggestDraft.current = source;
+      return;
+    }
     const next = blocks.slice();
     // Re-reading the Markdown makes fresh blocks; the old line's name goes
     // back on the first of them, or its comments and its task lose it.
@@ -421,6 +436,79 @@ export function DocEditor({
       ),
     );
   }, [blocks]);
+
+  /**
+   * Turn what was typed into a line into a proposed change.
+   *
+   * The line is compared with what the page still says, and the run that
+   * differs becomes one proposal — which reads as "this became that" rather
+   * than as a scatter of single characters.
+   */
+  const proposeLine = async (index: number) => {
+    const typed = suggestDraft.current;
+    suggestDraft.current = null;
+    const block = blocks[index];
+    if (typed === null || !block?.id) return;
+    const change = proposeEdit(block.id, serializeBlock(block), typed);
+    if (!change) return;
+    try {
+      const made = await client.proposeDocChanges(doc.id, [change]);
+      setSuggestions((list) => [...list, ...made]);
+      setNote("Suggested. It waits for someone to take it.");
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  const loadSuggestions = useCallback(() => {
+    client
+      .listDocSuggestions(doc.id)
+      .then(setSuggestions, () => setSuggestions([]));
+  }, [doc.id]);
+
+  useEffect(() => loadSuggestions(), [loadSuggestions]);
+
+  /** Take a proposal into the page, or leave it. */
+  const decide = (s: DocSuggestion, take: boolean) => {
+    setDeciding(true);
+    client
+      .decideDocSuggestion(doc.id, s.id, take)
+      .then(({ doc: saved }) => {
+        if (saved) {
+          version.current = saved.version;
+          base.current = saved.content;
+          setBlocks(saved.content);
+          onChanged(saved);
+        }
+        loadSuggestions();
+      })
+      .catch(report)
+      .finally(() => setDeciding(false));
+  };
+
+  const withdraw = (s: DocSuggestion) => {
+    setDeciding(true);
+    client
+      .withdrawDocSuggestion(doc.id, s.id)
+      .then(() => setSuggestions((list) => list.filter((x) => x.id !== s.id)))
+      .catch(report)
+      .finally(() => setDeciding(false));
+  };
+
+  /**
+   * Where proposed changes fall in the page, so the words they would change
+   * are shaded as well as listed. An insertion has no words of its own, so
+   * it shades the character it would sit beside.
+   */
+  const proposedMarks: Record<string, Mark[]> = {};
+  for (const block of blocks) if (block.id) proposedMarks[block.id] = [];
+  for (const s of suggestions)
+    if (s.status === "open" && !s.detached && proposedMarks[s.block_id])
+      proposedMarks[s.block_id].push({
+        start: s.range_start,
+        end: Math.max(s.range_end, s.range_start + 1),
+        proposed: true,
+      });
 
   const insertAfter = (index: number) => {
     const current = blocks[index];
@@ -776,7 +864,7 @@ export function DocEditor({
 
           <div className="doc-body">
             {blocks.map((block, index) =>
-              focused === index && !reading ? (
+              focused === index && (!reading || suggesting) ? (
                 <textarea
                   key={`${index}-${block.type}`}
                   id={`doc-block-${index}`}
@@ -799,7 +887,10 @@ export function DocEditor({
                       return;
                     onKey(e, index);
                   }}
-                  onBlur={() => setFocused((f) => (f === index ? null : f))}
+                  onBlur={() => {
+                    if (suggesting) void proposeLine(index);
+                    setFocused((f) => (f === index ? null : f));
+                  }}
                 />
               ) : (
                 <div
@@ -841,10 +932,10 @@ export function DocEditor({
                   )}
                   <div
                     className="doc-block"
-                    role={reading ? undefined : "button"}
-                    tabIndex={reading ? undefined : 0}
+                    role={reading && !suggesting ? undefined : "button"}
+                    tabIndex={reading && !suggesting ? undefined : 0}
                     onClick={() => {
-                      if (reading) return;
+                      if (reading && !suggesting) return;
                       // A click that ends a drag is a selection, not a
                       // request to edit: opening the input here would throw
                       // the selected words away before they can be used.
@@ -852,7 +943,7 @@ export function DocEditor({
                       setFocused(index);
                     }}
                     onKeyDown={(e) => {
-                      if (!reading && e.key === "Enter") {
+                      if ((!reading || suggesting) && e.key === "Enter") {
                         e.preventDefault();
                         setFocused(index);
                       }
@@ -860,7 +951,14 @@ export function DocEditor({
                   >
                     <BlockView
                       block={block}
-                      marks={(block.id && commented[block.id]) || []}
+                      marks={
+                        block.id
+                          ? [
+                              ...(commented[block.id] ?? []),
+                              ...proposedMarks[block.id],
+                            ]
+                          : []
+                      }
                       onToggleTodo={() => toggleTodo(index)}
                     />
                   </div>
@@ -909,18 +1007,28 @@ export function DocEditor({
           </p>
         </div>
         {!showHistory && (
-          <DocComments
-            docId={doc.id}
-            blocks={blocks}
-            tops={tops}
-            userId={userId}
-            pending={pending}
-            onPendingChange={setPending}
-            active={activeComment}
-            onActiveChange={setActiveComment}
-            onAnchors={setCommented}
-            report={report}
-          />
+          <>
+            <DocSuggestions
+              suggestions={suggestions}
+              canDecide={canWrite}
+              userId={userId}
+              busy={deciding}
+              onDecide={decide}
+              onWithdraw={withdraw}
+            />
+            <DocComments
+              docId={doc.id}
+              blocks={blocks}
+              tops={tops}
+              userId={userId}
+              pending={pending}
+              onPendingChange={setPending}
+              active={activeComment}
+              onActiveChange={setActiveComment}
+              onAnchors={setCommented}
+              report={report}
+            />
+          </>
         )}
         {showHistory && (
           <DocHistory

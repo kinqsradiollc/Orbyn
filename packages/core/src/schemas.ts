@@ -398,6 +398,29 @@ export const docCommentInput = z
 
 export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
 
+/** Changes proposed to a page, sent together as one edit produced them. */
+export const docSuggestionInput = z
+  .object({
+    changes: z
+      .array(
+        z.object({
+          block_id: z.string().trim().min(1).max(64),
+          kind: z.enum(["replace", "insert", "delete"]),
+          range_start: z.number().int().min(0).max(100_000),
+          range_end: z.number().int().min(0).max(100_000),
+          text: z.string().max(10_000).default(""),
+          quote: z.string().max(10_000).default(""),
+        }),
+      )
+      .min(1)
+      .max(50),
+    note: z.string().trim().max(2000).default(""),
+  })
+  .strict()
+  .refine((s) => s.changes.every((c) => c.range_end >= c.range_start), {
+    message: "A change needs a start before its end",
+  });
+
 export const actionSchema = z
   .object({
     operation: z.enum(["create", "update", "delete"]),

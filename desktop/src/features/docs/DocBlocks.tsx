@@ -21,7 +21,8 @@ function Pieces({ run, marks }: { run: DocInline; marks: Mark[] }) {
             piece.depth
               ? "doc-mark" +
                 (piece.depth > 1 ? " is-deep" : "") +
-                (piece.active ? " is-active" : "")
+                (piece.active ? " is-active" : "") +
+                (piece.proposed ? " is-proposed" : "")
               : undefined
           }
         >

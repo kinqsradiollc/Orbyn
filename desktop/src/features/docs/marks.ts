@@ -1,7 +1,13 @@
 import type { DocInline } from "@orbyn/core";
 
-/** A stretch of a line that carries a remark. */
-export type Mark = { start: number; end: number; active?: boolean };
+/** A stretch of a line that carries a remark, or a proposed change. */
+export type Mark = {
+  start: number;
+  end: number;
+  active?: boolean;
+  /** True when this marks words somebody has proposed changing. */
+  proposed?: boolean;
+};
 
 /** One piece of a run, after the marks over it have been cut in. */
 export type Piece = {
@@ -11,6 +17,8 @@ export type Piece = {
   /** How many remarks cover it; more than one shades darker. */
   depth: number;
   active: boolean;
+  /** True when a proposed change covers this piece. */
+  proposed: boolean;
 };
 
 /**
@@ -23,7 +31,15 @@ export type Piece = {
  */
 export function cut(run: DocInline, marks: Mark[]): Piece[] {
   const len = run.text.length;
-  const whole = [{ text: run.text, start: run.start, depth: 0, active: false }];
+  const whole = [
+    {
+      text: run.text,
+      start: run.start,
+      depth: 0,
+      active: false,
+      proposed: false,
+    },
+  ];
   if (!marks.length || !len) return whole;
   const edges = new Set<number>([0, len]);
   let touched = false;
@@ -50,6 +66,7 @@ export function cut(run: DocInline, marks: Mark[]): Piece[] {
       start: run.start + from,
       depth: over.length,
       active: over.some((m) => m.active),
+      proposed: over.some((m) => m.proposed),
     });
   }
   return pieces;

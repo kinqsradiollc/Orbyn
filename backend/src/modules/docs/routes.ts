@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   agendaTitle,
   buildAgenda,
@@ -8,14 +9,19 @@ import {
   docInput,
   itemData,
   docPreview,
+  docSuggestionInput,
   docUpdate,
   fail,
+  applySuggestion,
+  overlaps,
   reanchorComments,
+  reanchorSuggestions,
   meetingNoteTemplate,
   serializeDoc,
   type Doc,
   type DocBlock,
   type DocComment,
+  type DocSuggestion,
   type DocSummary,
   type DocVersion,
   type Item,
@@ -182,6 +188,32 @@ async function followComments(
     );
 }
 
+/**
+ * Keep open proposals pointing at the words they would change. A proposal
+ * whose words have gone cannot be written anywhere sensible, so it comes
+ * loose and is shown as needing a fresh look rather than applied blind.
+ */
+async function followSuggestions(
+  db: Db,
+  docId: string,
+  content: DocBlock[],
+): Promise<void> {
+  const open = (
+    await db.query<DocSuggestion>(
+      `SELECT id, block_id, quote, range_start, range_end, detached
+         FROM doc_suggestions WHERE doc_id = $1 AND status = 'open'`,
+      [docId],
+    )
+  ).rows;
+  if (!open.length) return;
+  for (const moved of reanchorSuggestions(open, content))
+    await db.query(
+      `UPDATE doc_suggestions SET range_start = $2, range_end = $3, detached = $4
+        WHERE id = $1`,
+      [moved.id, moved.range_start, moved.range_end, moved.detached],
+    );
+}
+
 /** A checklist line as the fields `mutate` needs to create a task. */
 function itemFromLine(text: string, teamId: string | null) {
   return itemData.parse({
@@ -302,6 +334,7 @@ export async function docRoutes(app: FastifyInstance) {
         );
       if (body.content) await syncTicks(db, id, body.content);
       if (body.content) await followComments(db, id, body.content);
+      if (body.content) await followSuggestions(db, id, body.content);
       await snapshot(db, id, u.id);
       await db.query(
         `UPDATE docs SET
@@ -442,6 +475,7 @@ export async function docRoutes(app: FastifyInstance) {
       // pass a save makes runs here too — a remark left behind by a restore
       // comes loose rather than pointing at the wrong sentence.
       await followComments(db, id, past.content);
+      await followSuggestions(db, id, past.content);
       // A restore is a sitting of its own: always keep what it replaces.
       const current = (
         await db.query<{ version: number; title: string; content: unknown }>(
@@ -874,6 +908,185 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rowCount;
       if (!gone) fail(404, "Comment not found");
+    });
+    reply.code(204);
+  });
+
+  // --- Proposed changes --------------------------------------------------
+
+  const SUGGESTION_SELECT = `SELECT s.id, s.doc_id, s.block_id, s.user_id,
+         u.name AS author, s.kind, s.range_start, s.range_end, s.text,
+         s.quote, s.note, s.status, s.detached, s.created_at
+    FROM doc_suggestions s JOIN users u ON u.id = s.user_id`;
+
+  /** Every proposal on a page, oldest first. */
+  app.get("/docs/:id/suggestions", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    await mustSee(db, id, u);
+    return (
+      await db.query<DocSuggestion>(
+        `${SUGGESTION_SELECT} WHERE s.doc_id = $1 ORDER BY s.created_at`,
+        [id],
+      )
+    ).rows;
+  });
+
+  /**
+   * Propose changes to a page. Anyone who can read it may propose, which is
+   * the point: a proposal is a way to say something about the words without
+   * being trusted to change them.
+   */
+  app.post("/docs/:id/suggestions", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { changes, note } = docSuggestionInput.parse(r.body);
+    const made = await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:read");
+      const ids: string[] = [];
+      for (const c of changes)
+        ids.push(
+          (
+            await db.query<{ id: string }>(
+              `INSERT INTO doc_suggestions
+                 (doc_id, user_id, block_id, kind, range_start, range_end,
+                  text, quote, note)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+              [
+                id,
+                u.id,
+                c.block_id,
+                c.kind,
+                c.range_start,
+                c.range_end,
+                c.text,
+                c.quote,
+                note,
+              ],
+            )
+          ).rows[0].id,
+        );
+      return (
+        await db.query<DocSuggestion>(
+          `${SUGGESTION_SELECT} WHERE s.id = ANY($1::uuid[]) ORDER BY s.created_at`,
+          [ids],
+        )
+      ).rows;
+    });
+    reply.code(201);
+    return made;
+  });
+
+  /**
+   * Take a proposal, or leave it. Only someone who may change the page can
+   * decide; proposing is open to every reader, deciding is not.
+   *
+   * Accepting writes the change into the line and bumps the page's version,
+   * so it shows in history as an ordinary edit with the accepter's name on
+   * it. Any other open proposal over the same words would then be written
+   * against words that are no longer there, so it comes loose and is shown
+   * as needing a fresh look.
+   */
+  app.post("/docs/:id/suggestions/:sid", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const sid = String((r.params as { sid: string }).sid);
+    const { take } = z
+      .object({ take: z.boolean() })
+      .strict()
+      .parse(r.body ?? {});
+    const out = await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:write");
+      const s = (
+        await db.query<DocSuggestion>(
+          `${SUGGESTION_SELECT} WHERE s.id = $1 AND s.doc_id = $2 FOR UPDATE OF s`,
+          [sid, id],
+        )
+      ).rows[0];
+      if (!s) fail(404, "Suggestion not found");
+      if (s.status !== "open") fail(409, "That suggestion was already decided");
+      if (!take) {
+        await db.query(
+          `UPDATE doc_suggestions SET status = 'rejected', resolved_by = $2,
+             resolved_at = now() WHERE id = $1`,
+          [sid, u.id],
+        );
+        return null;
+      }
+      if (s.detached)
+        fail(
+          409,
+          "The words this was about have gone from the page. Look at it again.",
+        );
+      const doc = (
+        await db.query<{ content: DocBlock[]; title: string }>(
+          "SELECT content, title FROM docs WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      const at = doc.content.findIndex((b) => b.id === s.block_id);
+      if (at === -1) fail(409, "That line has gone from the page.");
+      const block = doc.content[at];
+      if (block.type === "divider") fail(409, "That line has no words.");
+      const next = doc.content.slice();
+      next[at] = { ...block, text: applySuggestion(block.text, s) };
+      await snapshot(db, id, u.id);
+      await syncTicks(db, id, next);
+      await db.query(
+        `UPDATE docs SET content = $2::jsonb, version = version + 1,
+           updated_at = now() WHERE id = $1`,
+        [id, JSON.stringify(next)],
+      );
+      await db.query(
+        `UPDATE doc_suggestions SET status = 'accepted', resolved_by = $2,
+           resolved_at = now() WHERE id = $1`,
+        [sid, u.id],
+      );
+      // Everything else on the page now points at words that may have moved.
+      await followComments(db, id, next);
+      await followSuggestions(db, id, next);
+      // A proposal over the very same words can no longer be written.
+      const rivals = (
+        await db.query<DocSuggestion>(
+          `${SUGGESTION_SELECT} WHERE s.doc_id = $1 AND s.status = 'open'
+             AND s.block_id = $2 AND s.id <> $3`,
+          [id, s.block_id, sid],
+        )
+      ).rows;
+      for (const rival of rivals)
+        if (overlaps(rival, s))
+          await db.query(
+            "UPDATE doc_suggestions SET detached = true WHERE id = $1",
+            [rival.id],
+          );
+      return (
+        await db.query<Doc>(
+          `SELECT ${COLUMNS}, d.content FROM docs d
+             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+          [id],
+        )
+      ).rows[0];
+    });
+    if (out) await announceDocChange(pool, id, out.version, editorOf(r));
+    return { doc: out };
+  });
+
+  /** Take back a proposal you made. Only its author, and only while open. */
+  app.delete("/docs/:id/suggestions/:sid", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const sid = String((r.params as { sid: string }).sid);
+    await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:read");
+      const gone = (
+        await db.query(
+          `DELETE FROM doc_suggestions
+            WHERE id = $1 AND doc_id = $2 AND user_id = $3 AND status = 'open'`,
+          [sid, id, u.id],
+        )
+      ).rowCount;
+      if (!gone) fail(404, "Suggestion not found");
     });
     reply.code(204);
   });
