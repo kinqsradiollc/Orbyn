@@ -429,6 +429,13 @@ export type AiSettings = {
   /** Where the assistant's configuration currently comes from. */
   /** "none" means the assistant is off until an admin chooses a provider. */
   source: "database" | "none";
+  /** Whether pages are found by meaning as well as by words. */
+  semantic_search: boolean;
+  /**
+   * Whether this database could do that at all. False on a Postgres without
+   * pgvector, where the setting is there but has nothing to turn on.
+   */
+  semantic_possible: boolean;
   updated_at: string | null;
 };
 

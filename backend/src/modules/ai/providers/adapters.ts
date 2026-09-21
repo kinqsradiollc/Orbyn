@@ -387,3 +387,40 @@ export async function listModels(ai: Connection): Promise<string[]> {
   ].filter((id): id is string => !!id);
   return [...new Set(ids)].sort();
 }
+
+/**
+ * Measure a batch of passages, for finding a page that says the thing in
+ * other words.
+ *
+ * Only the OpenAI-shaped endpoint is spoken here: it is what every
+ * self-hosted runner and every hosted provider worth the name offers for
+ * embeddings, and a provider without it simply has semantic search off.
+ */
+export async function embed(
+  ai: Connection & { model: string },
+  passages: string[],
+  options: { model?: string; timeoutMs?: number } = {},
+): Promise<number[][]> {
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 60_000);
+  const response = await send(
+    `${trimSlash(ai.baseUrl)}/embeddings`,
+    {
+      method: "POST",
+      headers: headers(ai),
+      body: JSON.stringify({
+        model: options.model ?? ai.model,
+        input: passages,
+      }),
+    },
+    signal,
+    ai.apiKey,
+  );
+  const body = await json<{ data?: { embedding?: number[] }[] }>(response);
+  const rows = body.data ?? [];
+  if (rows.length !== passages.length)
+    throw new ProviderError(
+      "embedding_count",
+      "The provider measured a different number of passages than it was given.",
+    );
+  return rows.map((r) => r.embedding ?? []);
+}

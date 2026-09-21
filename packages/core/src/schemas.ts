@@ -709,6 +709,12 @@ export const aiSettingsInput = z
   .object({
     provider_id: z.uuid().nullable(),
     model: z.string().trim().max(200).default(""),
+    /**
+     * Whether to find pages by meaning as well as by words. Off unless
+     * asked for: measuring a page means sending its words to the provider,
+     * which is a decision for whoever runs the workspace.
+     */
+    semantic_search: z.boolean().optional(),
   })
   .strict();
 
