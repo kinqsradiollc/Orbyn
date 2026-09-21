@@ -846,14 +846,22 @@ export function DocEditor({
               disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
               onPress={commentOnWords}
             />
+          </View>
+          {/* Fifteen chips of three different kinds used to wrap into one
+              block, so leaving the line and losing it sat among the ways of
+              changing it — and the flex spacer that was meant to push Done
+              to the end only worked on a row that had not wrapped. Finishing
+              and deleting now have their own row under a rule, at the two
+              ends a thumb reaches for. */}
+          <View style={styles.toolFooter}>
+            <SmallAction label="Done" disabled={false} onPress={commit} />
+            <View style={styles.spacer} />
             <SmallAction
               label="Delete line"
               destructive
               disabled={false}
               onPress={deleteLine}
             />
-            <View style={styles.spacer} />
-            <SmallAction label="Done" disabled={false} onPress={commit} />
           </View>
         </View>
       ) : (
@@ -953,6 +961,15 @@ const styles = themed(() =>
       flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
+    },
+    toolFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 2,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     spacer: { flex: 1 },
     pageActions: {
