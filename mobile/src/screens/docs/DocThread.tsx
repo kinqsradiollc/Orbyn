@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { plainText, threadComments, type DocComment } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
 import type { DocCommentsState } from "./useDocComments";
+import { MentionInput } from "./MentionInput";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -42,13 +43,21 @@ export function DocThread({
   const [draft, setDraft] = useState("");
   /** The remark being answered, and what has been typed under it. */
   const [reply, setReply] = useState<{ id: string; text: string } | null>(null);
+  /** Everyone each composer has named, kept by id so a rename still reads. */
+  const namedDraft = useRef(new Map<string, string>());
+  const namedReply = useRef(new Map<string, string>());
+  const [mentions, setMentions] = useState<string[]>([]);
+  const [replyMentions, setReplyMentions] = useState<string[]>([]);
 
   const send = () => {
     const body = draft;
     setDraft("");
-    void state.add(body, anchor).then((ok) => {
-      if (ok) onDone?.();
-      else setDraft(body);
+    void state.add(body, { ...(anchor ?? {}), mentions }).then((ok) => {
+      if (ok) {
+        namedDraft.current.clear();
+        setMentions([]);
+        onDone?.();
+      } else setDraft(body);
     });
   };
 
@@ -56,9 +65,14 @@ export function DocThread({
     if (!reply) return;
     const body = reply.text;
     setReply(null);
-    void state.add(body, { parent_id: reply.id }).then((ok) => {
-      if (!ok) setReply({ id: reply.id, text: body });
-    });
+    void state
+      .add(body, { parent_id: reply.id, mentions: replyMentions })
+      .then((ok) => {
+        if (ok) {
+          namedReply.current.clear();
+          setReplyMentions([]);
+        } else setReply({ id: reply.id, text: body });
+      });
   };
 
   return (
@@ -119,15 +133,14 @@ export function DocThread({
           ))}
           {reply?.id === comment.id && (
             <View style={styles.replyBox}>
-              <TextInput
-                style={styles.input}
+              <MentionInput
+                docId={state.docId}
                 value={reply.text}
-                placeholder="Reply…"
-                placeholderTextColor={colors.faint}
-                multiline
-                autoFocus
-                maxLength={4000}
                 onChangeText={(text) => setReply({ id: comment.id, text })}
+                onNamed={setReplyMentions}
+                named={namedReply.current}
+                placeholder="Reply…"
+                autoFocus
                 accessibilityLabel="Reply"
               />
               <View style={styles.send}>
@@ -147,15 +160,14 @@ export function DocThread({
         </View>
       ))}
 
-      <TextInput
-        style={styles.input}
+      <MentionInput
+        docId={state.docId}
         value={draft}
-        placeholder={placeholder}
-        placeholderTextColor={colors.faint}
-        multiline
-        autoFocus={autoFocus}
-        maxLength={4000}
         onChangeText={setDraft}
+        onNamed={setMentions}
+        named={namedDraft.current}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
         accessibilityLabel="New comment"
       />
       <View style={styles.send}>

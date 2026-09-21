@@ -832,6 +832,13 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenItem={openTask}
+          onOpenNote={(docId) =>
+            void client.getDoc(docId).then((doc) => {
+              setNote(doc);
+              setSheet("note");
+            })
+          }
+          onItemsChanged={() => void refresh()}
         />
         <TagsSheet
           visible={sheet === "tags"}

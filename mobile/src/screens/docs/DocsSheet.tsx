@@ -8,10 +8,14 @@ import {
   View,
 } from "react-native";
 import {
+  favouriteKey,
+  favouriteSet,
   snippetRuns,
   type Doc,
   type DocKind,
   type DocSummary,
+  type Favourite,
+  type Folder,
   type SearchHit,
 } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
@@ -22,6 +26,7 @@ import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
+import { SmallAction } from "../../components/SmallAction";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
@@ -71,6 +76,19 @@ export function DocsSheet({
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
+  /** The folders a page can be filed in, and which one is being shown. */
+  const [folders, setFolders] = useState<Folder[]>([]);
+  /** null = everywhere; a folder id = that folder; "none" = unfiled. */
+  const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  /** The pages this person has starred, which float to the top. */
+  const [stars, setStars] = useState<Favourite[]>([]);
+  /** A page whose folder is being chosen. */
+  const [filing, setFiling] = useState<DocSummary | null>(null);
+  /** Whether a new folder is being named, and what it will be called. */
+  const [naming, setNaming] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  /** True when the list could not be read, which is not the same as empty. */
+  const [failed, setFailed] = useState(false);
   const { busy, error, setError, run } = useRun();
 
   useEffect(() => {
@@ -81,8 +99,72 @@ export function DocsSheet({
       client.agendaToday().then(setOpen, () => setOpen(null));
       return;
     }
-    client.listDocs().then(setDocs, () => setDocs([]));
+    void loadList();
+    // Folders and stars are small lists and only matter beside the pages,
+    // so they are fetched with them rather than kept in the app's state.
+    client.listFolders().then(setFolders, () => setFolders([]));
+    client.listFavourites().then(setStars, () => setStars([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, agenda, initialDoc]);
+
+  /**
+   * Read the list of pages.
+   *
+   * A failure is not an empty workspace. Turning one into the other told
+   * people their documents were gone whenever the network hiccuped, so a
+   * failure says so and offers to try again.
+   */
+  const loadList = () =>
+    client.listDocs().then(
+      (list) => {
+        setDocs(list);
+        setFailed(false);
+      },
+      (e: Error) => {
+        setDocs(null);
+        setFailed(true);
+        setError(e.message || "Could not reach your documents.");
+      },
+    );
+
+  /** Star a page, or take the star off. Starred pages come first. */
+  const toggleStar = (doc: DocSummary, starred: boolean) => {
+    setStars((all) =>
+      starred
+        ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
+        : all.filter((f) => !(f.kind === "doc" && f.target_id === doc.id)),
+    );
+    client.setFavourite("doc", doc.id, starred).catch(report);
+  };
+
+  /** Put a page in a folder, or take it out of one. */
+  const fileIn = (doc: DocSummary, folderId: string | null) =>
+    void run(async () => {
+      const full = await client.getDoc(doc.id);
+      await client.updateDoc(doc.id, {
+        version: full.version,
+        folder_id: folderId,
+      });
+      setFiling(null);
+      setDocs(
+        (all) =>
+          all?.map((d) =>
+            d.id === doc.id ? { ...d, folder_id: folderId } : d,
+          ) ?? all,
+      );
+    });
+
+  /** Start a folder. Named here rather than in a settings screen. */
+  const newFolder = () =>
+    void run(async () => {
+      const name = folderName.trim();
+      if (!name) return;
+      const made = await client.createFolder({ name });
+      setFolders((all) => [...all, made]);
+      setFolderName("");
+      setNaming(false);
+      setFolderFilter(made.id);
+    });
 
   /** Start a page here rather than having to reach for a desktop. */
   const create = (kind: DocKind = "doc") =>
@@ -99,7 +181,7 @@ export function DocsSheet({
   // Coming back to the list should show what was just written.
   const backToList = () => {
     setOpen(null);
-    client.listDocs().then(setDocs, () => setDocs([]));
+    void loadList();
   };
 
   // Leaving a sheet that opened on the agenda should close it, not show a list.
@@ -128,13 +210,18 @@ export function DocsSheet({
    * What the list shows: what was searched for, when something was, and
    * otherwise everything of the chosen kind.
    */
-  const shown: {
+  const starred = favouriteSet(stars);
+
+  type Row = {
     id: string;
     title: string;
     preview: string;
     kind: string;
     updated_at: string;
-  }[] = hits
+    folder_id?: string | null;
+  };
+
+  const narrowed: Row[] = hits
     ? hits.map((h) => ({
         id: h.id,
         title: h.title,
@@ -146,7 +233,28 @@ export function DocsSheet({
           .trim(),
         kind: h.kind,
       }))
-    : (docs ?? []).filter((d) => kindFilter === null || d.kind === kindFilter);
+    : (docs ?? [])
+        .filter((d) => kindFilter === null || d.kind === kindFilter)
+        // A search looks everywhere; a folder only narrows the plain list.
+        .filter((d) =>
+          folderFilter === null
+            ? true
+            : folderFilter === "none"
+              ? !d.folder_id
+              : d.folder_id === folderFilter,
+        );
+
+  /** Starred pages first, then the rest, each keeping its own order. */
+  const shown: Row[] = [
+    ...narrowed.filter((d) => starred.has(favouriteKey("doc", d.id))),
+    ...narrowed.filter((d) => !starred.has(favouriteKey("doc", d.id))),
+  ];
+
+  /** How many pages sit in each folder, for the chips to say. */
+  const countIn = (id: string | null) =>
+    (docs ?? []).filter((d) =>
+      id === null ? !d.folder_id : d.folder_id === id,
+    ).length;
 
   /** Open a page from the list, which for a search hit means fetching it. */
   const openHit = (id: string) =>
@@ -180,6 +288,18 @@ export function DocsSheet({
               onDeleted={backToList}
               report={report}
             />
+          ) : failed ? (
+            <View style={styles.list}>
+              <Text style={styles.empty}>
+                Your documents could not be reached. They are still there.
+              </Text>
+              <Button
+                title="Try again"
+                secondary
+                disabled={busy}
+                onPress={() => void loadList()}
+              />
+            </View>
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : docs.length === 0 ? (
@@ -230,6 +350,52 @@ export function DocsSheet({
                   />
                 ))}
               </ChipRow>
+              {/* Where a page is filed. A search looks past this. */}
+              <ChipRow label="Folder">
+                <Chip
+                  label="All"
+                  selected={folderFilter === null}
+                  onPress={() => setFolderFilter(null)}
+                />
+                {folders.map((f) => (
+                  <Chip
+                    key={f.id}
+                    label={`${f.name} ${countIn(f.id)}`}
+                    selected={folderFilter === f.id}
+                    onPress={() => setFolderFilter(f.id)}
+                  />
+                ))}
+                <Chip
+                  label={`Unfiled ${countIn(null)}`}
+                  selected={folderFilter === "none"}
+                  onPress={() => setFolderFilter("none")}
+                />
+                <Chip
+                  label="+ Folder"
+                  selected={naming}
+                  onPress={() => setNaming((v) => !v)}
+                />
+              </ChipRow>
+              {naming && (
+                <View style={styles.newFolder}>
+                  <TextInput
+                    style={styles.search}
+                    value={folderName}
+                    placeholder="Name the folder"
+                    placeholderTextColor={colors.faint}
+                    autoFocus
+                    maxLength={60}
+                    onChangeText={setFolderName}
+                    onSubmitEditing={newFolder}
+                    accessibilityLabel="New folder name"
+                  />
+                  <Button
+                    title="Add"
+                    disabled={busy || !folderName.trim()}
+                    onPress={newFolder}
+                  />
+                </View>
+              )}
               <View style={styles.newRow}>
                 <Button
                   title="New document"
@@ -244,6 +410,33 @@ export function DocsSheet({
                   onPress={() => create("note")}
                 />
               </View>
+              {!!filing && (
+                <View style={styles.filing}>
+                  <Text style={styles.filingTitle}>
+                    File “{filing.title || "Untitled"}”
+                  </Text>
+                  <ChipRow label="Folder">
+                    <Chip
+                      label="Unfiled"
+                      selected={!filing.folder_id}
+                      onPress={() => fileIn(filing, null)}
+                    />
+                    {folders.map((f) => (
+                      <Chip
+                        key={f.id}
+                        label={f.name}
+                        selected={filing.folder_id === f.id}
+                        onPress={() => fileIn(filing, f.id)}
+                      />
+                    ))}
+                  </ChipRow>
+                  <SmallAction
+                    label="Cancel"
+                    disabled={false}
+                    onPress={() => setFiling(null)}
+                  />
+                </View>
+              )}
               {shown.map((doc) => (
                 <Pressable
                   key={doc.id}
@@ -263,6 +456,49 @@ export function DocsSheet({
                     </Text>
                   </View>
                   <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
+                  {/* The star and the folder sit outside the row's own press,
+                      or tapping either would open the page instead. */}
+                  <Pressable
+                    onPress={() =>
+                      toggleStar(
+                        doc as DocSummary,
+                        !starred.has(favouriteKey("doc", doc.id)),
+                      )
+                    }
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      starred.has(favouriteKey("doc", doc.id))
+                        ? `Unstar ${doc.title || "Untitled"}`
+                        : `Star ${doc.title || "Untitled"}`
+                    }
+                    style={styles.rowIcon}
+                  >
+                    <Icon
+                      name={
+                        starred.has(favouriteKey("doc", doc.id))
+                          ? "starFilled"
+                          : "star"
+                      }
+                      size={16}
+                      color={
+                        starred.has(favouriteKey("doc", doc.id))
+                          ? colors.accent
+                          : colors.faint
+                      }
+                    />
+                  </Pressable>
+                  {!hits && (
+                    <Pressable
+                      onPress={() => setFiling(doc as DocSummary)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                      style={styles.rowIcon}
+                    >
+                      <Icon name="folder" size={16} color={colors.faint} />
+                    </Pressable>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -332,6 +568,21 @@ const styles = themed(() =>
       fontFamily: fonts.regular,
     },
     found: { color: colors.muted, fontSize: 12 },
+    newFolder: { flexDirection: "row", gap: 8, alignItems: "center" },
+    rowIcon: { padding: 4 },
+    filing: {
+      gap: 8,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surfaceMuted,
+    },
+    filingTitle: {
+      color: colors.text,
+      fontSize: 14,
+      fontFamily: fonts.semibold,
+    },
     list: { gap: 8 },
     row: {
       flexDirection: "row",

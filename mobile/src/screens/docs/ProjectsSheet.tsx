@@ -14,6 +14,7 @@ import {
   type Project,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
+import { Chip, ChipRow } from "../../components/Chip";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
@@ -21,6 +22,8 @@ import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
+import { ProjectNotes } from "./ProjectNotes";
+import { ProjectTimeline } from "./ProjectTimeline";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const dueLabel = (iso: string | null) =>
@@ -39,12 +42,18 @@ export function ProjectsSheet({
   onClose,
   onDismiss,
   onOpenItem,
+  onOpenNote,
+  onItemsChanged,
 }: {
   visible: boolean;
   items: Item[];
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
+  /** Opens one of a project's notes, in the page editor. */
+  onOpenNote?: (docId: string) => void;
+  /** Called when a task moved, so the planner's lists catch up. */
+  onItemsChanged?: () => void;
 }) {
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -53,8 +62,44 @@ export function ProjectsSheet({
   const [draft, setDraft] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
 
+  /** True when the list could not be read, which is not the same as empty. */
+  const [failed, setFailed] = useState(false);
+  /** The task whose stage is being chosen, if any. */
+  const [moving, setMoving] = useState<string | null>(null);
+
+  /**
+   * Move a task to another stage. The desktop does this by dragging across a
+   * board; a phone has no room for one, so the stages are offered as a list
+   * under the task instead.
+   */
+  const moveTo = (item: Item, stageId: string | null) =>
+    void run(async () => {
+      if (!open) return;
+      await client.setItemProject(item.id, {
+        project_id: open.id,
+        stage_id: stageId,
+      });
+      setMoving(null);
+      onItemsChanged?.();
+    });
+
+  /**
+   * Read the list of projects. A failure is not an empty workspace: saying
+   * "no projects yet" when the network hiccuped tells someone their work
+   * has gone.
+   */
   const reload = () =>
-    client.listProjects().then(setProjects, () => setProjects([]));
+    client.listProjects().then(
+      (list) => {
+        setProjects(list);
+        setFailed(false);
+      },
+      (e: Error) => {
+        setProjects(null);
+        setFailed(true);
+        setError(e.message || "Could not reach your projects.");
+      },
+    );
 
   const create = () => {
     const name = (draft ?? "").trim();
@@ -174,6 +219,21 @@ export function ProjectsSheet({
                 {dueLabel(open.deadline)}
               </Text>
 
+              <ProjectTimeline
+                project={open}
+                tasks={items.filter((i) => i.project_id === open.id)}
+              />
+
+              {!!onOpenNote && (
+                <ProjectNotes
+                  projectId={open.id}
+                  teamId={open.team_id}
+                  busy={busy}
+                  report={(e) => setError((e as Error).message)}
+                  onOpen={onOpenNote}
+                />
+              )}
+
               {[...open.stages, { id: null, name: "No stage" }].map((stage) => {
                 const rows = tasksIn(open, stage.id as string | null);
                 return (
@@ -186,35 +246,86 @@ export function ProjectsSheet({
                       <Text style={styles.empty}>Nothing here yet.</Text>
                     ) : (
                       rows.map((item) => (
-                        <Pressable
-                          key={item.id}
-                          style={({ pressed }) => [
-                            styles.task,
-                            pressed && styles.rowPressed,
-                          ]}
-                          onPress={() => onOpenItem?.(item)}
-                        >
-                          <View
-                            style={[
-                              styles.dot,
-                              item.status === "done" && styles.dotDone,
+                        <View key={item.id}>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.task,
+                              pressed && styles.rowPressed,
                             ]}
-                          />
-                          <Text
-                            style={[
-                              styles.taskText,
-                              item.status === "done" && styles.taskDone,
-                            ]}
-                            numberOfLines={2}
+                            onPress={() => onOpenItem?.(item)}
                           >
-                            {item.title}
-                          </Text>
-                        </Pressable>
+                            <View
+                              style={[
+                                styles.dot,
+                                item.status === "done" && styles.dotDone,
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.taskText,
+                                item.status === "done" && styles.taskDone,
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {item.title}
+                            </Text>
+                            {/* Outside the row's own press, or moving a task
+                                would open it instead. */}
+                            <Pressable
+                              onPress={() =>
+                                setMoving((m) =>
+                                  m === item.id ? null : item.id,
+                                )
+                              }
+                              hitSlop={8}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Move ${item.title}`}
+                              style={styles.moveButton}
+                            >
+                              <Icon
+                                name={
+                                  moving === item.id
+                                    ? "chevronUp"
+                                    : "chevronDown"
+                                }
+                                size={15}
+                                color={colors.faint}
+                              />
+                            </Pressable>
+                          </Pressable>
+                          {moving === item.id && (
+                            <ChipRow label="Move to">
+                              {[
+                                ...open.stages,
+                                { id: null as string | null, name: "No stage" },
+                              ].map((to) => (
+                                <Chip
+                                  key={to.id ?? "none"}
+                                  label={to.name}
+                                  selected={to.id === stage.id}
+                                  onPress={() => moveTo(item, to.id)}
+                                />
+                              ))}
+                            </ChipRow>
+                          )}
+                        </View>
                       ))
                     )}
                   </View>
                 );
               })}
+            </View>
+          ) : failed ? (
+            <View style={styles.list}>
+              <Text style={styles.empty}>
+                Your projects could not be reached. They are still there.
+              </Text>
+              <Button
+                title="Try again"
+                secondary
+                disabled={busy}
+                onPress={() => void reload()}
+              />
             </View>
           ) : projects === null ? (
             <Text style={styles.empty}>Loading…</Text>
@@ -341,6 +452,7 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
+    moveButton: { padding: 4 },
     rowPressed: { backgroundColor: colors.surfaceMuted },
     cardTop: { flexDirection: "row", alignItems: "center", gap: 8 },
     cardName: {
