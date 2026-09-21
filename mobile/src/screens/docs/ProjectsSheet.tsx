@@ -23,6 +23,7 @@ import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { ProjectNotes } from "./ProjectNotes";
+import { ProjectTimeline } from "./ProjectTimeline";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const dueLabel = (iso: string | null) =>
@@ -217,6 +218,11 @@ export function ProjectsSheet({
                 {open.done_count} of {open.task_count} done ·{" "}
                 {dueLabel(open.deadline)}
               </Text>
+
+              <ProjectTimeline
+                project={open}
+                tasks={items.filter((i) => i.project_id === open.id)}
+              />
 
               {!!onOpenNote && (
                 <ProjectNotes

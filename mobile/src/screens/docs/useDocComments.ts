@@ -90,6 +90,8 @@ export function useDocComments(
     counts[blockId] = list.filter((c) => !c.parent_id).length;
 
   return {
+    /** The page these belong to, so a composer can ask who may be named. */
+    docId,
     loading: comments === null,
     anchored,
     loose,
