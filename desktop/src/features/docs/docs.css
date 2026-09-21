@@ -658,6 +658,13 @@ h4.doc-heading {
   align-items: start;
   min-width: 0;
 }
+/* The page column: the page itself and anything that reads as part of it. */
+.doc-main {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
 .doc-layout.has-history {
   grid-template-columns: minmax(0, 820px) minmax(280px, 380px);
 }
@@ -814,11 +821,15 @@ h4.doc-heading {
     transition: none;
   }
 }
-/* Below the margin breakpoint the cards are an ordinary list again. */
+/* Below the margin breakpoint the cards are an ordinary list again, and the
+   canvas no longer needs height reserved for cards that are back in flow. */
 @media (max-width: 1100px) {
   .doc-card.is-anchored {
     position: static;
     margin-bottom: 10px;
+  }
+  .doc-margin-anchored {
+    min-height: 0 !important;
   }
 }
 .doc-card.is-anchored.is-active {
