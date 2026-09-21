@@ -26,6 +26,18 @@ export const spacing = {
   maxContent: 720,
 } as const;
 
+/**
+ * One height for anything a thumb presses. A screen of the same kind of
+ * button was coming out at 40, 44 and 48 depending on which component drew
+ * it; a row of controls that disagree by four points looks like a mistake,
+ * because it is one. `compact` is the deliberate exception — chrome rather
+ * than the point of the screen — and keeps its target through hitSlop.
+ */
+export const controls = {
+  tap: 44,
+  compact: 30,
+} as const;
+
 export const radii = {
   input: 12,
   card: 16,

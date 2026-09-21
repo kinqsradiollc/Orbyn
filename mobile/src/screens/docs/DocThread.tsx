@@ -192,7 +192,7 @@ export function DocThread({
 const styles = themed(() =>
   StyleSheet.create({
     thread: { gap: 8 },
-    sendButton: { marginBottom: 0, minHeight: 40, paddingHorizontal: 14 },
+    sendButton: { marginBottom: 0, paddingHorizontal: 14 },
     group: { gap: 6 },
     gone: {
       color: colors.muted,

@@ -7,7 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { controls, colors, fonts, radii, themed } from "../theme";
 
 /**
  * A choice chip: single choice (radio) or one of many (checkbox). Selected
@@ -109,7 +109,7 @@ const s = themed(() =>
       // A chip is a button, and a button wants a finger's worth of height.
       // Everything else on the phone was raised to this; these were missed,
       // and they are the controls people tap most — the status filters.
-      minHeight: 44,
+      minHeight: controls.tap,
       maxWidth: "100%",
       paddingVertical: 8,
       paddingHorizontal: 13,
@@ -118,7 +118,11 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    compact: { minHeight: 30, paddingVertical: 4, paddingHorizontal: 11 },
+    compact: {
+      minHeight: controls.compact,
+      paddingVertical: 4,
+      paddingHorizontal: 11,
+    },
     compactText: { fontSize: 13 },
     disabled: { opacity: 0.45 },
     dot: { width: 8, height: 8, borderRadius: 4 },

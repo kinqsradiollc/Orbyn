@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, fonts, radii, themed } from "../theme";
+import { controls, colors, fonts, radii, themed } from "../theme";
 
 /**
  * iOS-style segmented control. With `wrap`, segments become chips that flow
@@ -86,7 +86,7 @@ const s = themed(() =>
     segment: {
       flex: 1,
       minWidth: 0,
-      minHeight: 40,
+      minHeight: controls.tap,
       flexDirection: "row",
       gap: 6,
       borderRadius: radii.input - 3,

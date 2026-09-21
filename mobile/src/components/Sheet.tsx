@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "./Icon";
-import { colors, fonts, spacing, themed } from "../theme";
+import { controls, colors, fonts, spacing, themed } from "../theme";
 
 /**
  * Page sheet shared by Teams and the Admin console: the same Modal pattern as
@@ -119,7 +119,7 @@ const s = themed(() =>
     },
     round: {
       width: 44,
-      height: 44,
+      height: controls.tap,
       borderRadius: 22,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
