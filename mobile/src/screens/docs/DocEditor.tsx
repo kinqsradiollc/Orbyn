@@ -443,6 +443,22 @@ export function DocEditor({
    * written next has something to hang on. Gives back the name and the line
    * as it now reads.
    */
+  /**
+   * Give any line a saved name, so a proposal made about it has something to
+   * hang on. Saved at once for the same reason settleLine saves at once.
+   */
+  const nameBlockAt = (index: number): string => {
+    const block = blocks[index];
+    if (block.id) return block.id;
+    const blockId = newBlockId();
+    const next = blocks.slice();
+    next[index] = { ...block, id: blockId };
+    setBlocks(next);
+    if (timer.current) clearTimeout(timer.current);
+    void persist(title, next);
+    return blockId;
+  };
+
   const settleLine = () => {
     if (focused === null) return null;
     const parsed = parseDoc(draft)[0] ?? blocks[focused];
@@ -942,7 +958,11 @@ export function DocEditor({
             line of its own. */}
         <DocAsk
           docId={doc.id}
+          blocks={blocks}
+          canWrite={canWrite || suggesting}
           onGoToBlock={(blockId) => setOpenThread(blockId)}
+          onNameBlock={nameBlockAt}
+          onSuggested={(made) => setSuggestions((list) => [...list, made])}
         />
         <SmallAction
           label={takeAwayLabel()}
