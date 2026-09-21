@@ -1,6 +1,11 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import { DOC_AI_ACTIONS, DOC_AI_LABELS, type DocAiAction } from "@orbyn/core";
+import {
+  DOC_AI_ACTIONS,
+  DOC_AI_LABELS,
+  plainText,
+  type DocAiAction,
+} from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -26,7 +31,7 @@ export function AskSheet({
 
   return (
     <View style={s.wrap}>
-      <Text style={s.quote}>“{quote}”</Text>
+      <Text style={s.quote}>“{plainText(quote)}”</Text>
       <View style={s.actions}>
         {DOC_AI_ACTIONS.filter((a) => a !== "custom").map((a) => (
           <SmallAction

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import { threadComments, type DocComment } from "@orbyn/core";
+import { plainText, threadComments, type DocComment } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -63,13 +63,15 @@ export function DocThread({
 
   return (
     <View style={styles.thread}>
-      {!!quote && <Text style={styles.quote}>“{quote}”</Text>}
+      {!!quote && <Text style={styles.quote}>“{plainText(quote)}”</Text>}
 
       {threadComments(comments).map(({ comment, replies }) => (
         <View key={comment.id} style={styles.group}>
           {/* A remark whose words have gone still says what it was about. */}
           {comment.detached && !!comment.quote && (
-            <Text style={styles.gone}>“{comment.quote}” — since removed</Text>
+            <Text style={styles.gone}>
+              “{plainText(comment.quote)}” — since removed
+            </Text>
           )}
           {[comment, ...replies].map((c, depth) => (
             <View

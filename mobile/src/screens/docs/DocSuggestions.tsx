@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { DocSuggestion } from "@orbyn/core";
+import { plainText, type DocSuggestion } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -39,9 +39,9 @@ export function DocSuggestions({
         <View key={one.id} style={[s.card, one.detached && s.faded]}>
           <Text style={s.author}>{one.author}</Text>
           <Text style={s.change}>
-            {!!one.quote && <Text style={s.was}>{one.quote}</Text>}
+            {!!one.quote && <Text style={s.was}>{plainText(one.quote)}</Text>}
             {!!one.quote && !!one.text && <Text style={s.arrow}> → </Text>}
-            {!!one.text && <Text style={s.now}>{one.text}</Text>}
+            {!!one.text && <Text style={s.now}>{plainText(one.text)}</Text>}
           </Text>
           {!!one.note && <Text style={s.note}>{one.note}</Text>}
           {one.detached ? (

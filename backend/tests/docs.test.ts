@@ -935,3 +935,18 @@ test("someone else's tag cannot be put on your note", async () => {
   ).json();
   assert.deepEqual(note.tags, [], "a tag you cannot use is left out");
 });
+
+test("a quote shown in a card reads as words, not as markers", async () => {
+  const { plainText } = await import("@orbyn/core");
+  assert.equal(
+    plainText("Pricing stays **unchanged** until the *October* review."),
+    "Pricing stays unchanged until the October review.",
+  );
+  assert.equal(plainText("Run `npm test` first"), "Run npm test first");
+  assert.equal(plainText("See [the brief](https://x.test)"), "See the brief");
+  // Inline maths loses its fences and is read as symbols.
+  assert.equal(plainText("Cost is $x_1$ today"), "Cost is x_1 today");
+  assert.equal(plainText("Half is $\\frac{1}{2}$"), "Half is 1/2");
+  // A line with nothing to strip is returned unchanged.
+  assert.equal(plainText("Plain words only"), "Plain words only");
+});

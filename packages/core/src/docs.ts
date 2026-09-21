@@ -1029,3 +1029,16 @@ export type DocSource = {
   block_id: string | null;
   quote: string;
 };
+
+/**
+ * A line as it reads, with its Markdown markers taken off.
+ *
+ * The page itself renders those markers as styling, but a quote of a line
+ * shown inside a card — a comment's anchor, a proposed change, a citation —
+ * is plain text in a small box, and there `**unchanged**` reads as two stars,
+ * a word and two more stars. This is what to show there.
+ */
+export const plainText = (text: string): string =>
+  parseDocInline(text)
+    .map((run) => (run.math ? mathToText(run.text) : run.text))
+    .join("");
