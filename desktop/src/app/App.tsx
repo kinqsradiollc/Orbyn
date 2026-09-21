@@ -224,6 +224,13 @@ export function App() {
     setEditing("new");
   };
 
+  /** Open a page the assistant cited, where the assistant cited it. */
+  const openSource = (source: { doc_id: string }) =>
+    void client.getDoc(source.doc_id).then((doc) => {
+      setNoteDoc(doc);
+      setView("Docs");
+    }, report);
+
   /** Personal pages are always yours; a team's need `items:write`. */
   const canWriteIn = (teamId: string | null) =>
     !teamId ||
@@ -631,6 +638,7 @@ export function App() {
                   assistant={assistant}
                   onApplyPlan={applyPlan}
                   onOpenPlan={openPlan}
+                  onOpenSource={openSource}
                 />
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
@@ -749,6 +757,7 @@ export function App() {
             onNavigate={navigate}
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
+            onOpenSource={openSource}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
             teams={teams}

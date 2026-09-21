@@ -1016,3 +1016,16 @@ export type DocAnswer = {
   /** Lines of the page the answer leans on, so it can be checked. */
   sources: { block_id: string; quote: string }[];
 };
+
+/**
+ * A page the assistant read while answering. These are the pages it
+ * actually opened, not the ones it says it used — which is the only kind of
+ * citation worth showing someone.
+ */
+export type DocSource = {
+  doc_id: string;
+  title: string;
+  /** The line that matched, when a search found one. */
+  block_id: string | null;
+  quote: string;
+};

@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { Action, ChatTurn } from "@orbyn/core";
+import type { Action, ChatTurn, DocSource } from "@orbyn/core";
 import {
   attemptMsFor,
   ProviderError,
@@ -42,6 +42,8 @@ export type AgentResult = {
   summary: string;
   actions: Action[];
   follow_ups: string[];
+  /** Pages read while answering, so the reply can point at them. */
+  sources: DocSource[];
   /** The reply came in the old single-JSON format (actions not yet vetted). */
   legacy: boolean;
   steps: number;
@@ -219,6 +221,7 @@ export async function runAgent(
       summary,
       actions,
       follow_ups: ctx.clarification?.options ?? [],
+      sources: [...(ctx.cited?.values() ?? [])].slice(0, 6),
       legacy,
       steps,
       partial,

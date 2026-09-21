@@ -1,3 +1,5 @@
+import type { DocSource } from "./docs.js";
+
 import type { z } from "zod";
 import type {
   actionSchema,
@@ -297,6 +299,8 @@ export type Proposal = AgentReply & {
    * question ("Which Dentist: Tuesday 9am or Friday 2pm?").
    */
   follow_ups?: string[];
+  /** Pages the assistant read while answering, so an answer can be checked. */
+  sources?: DocSource[];
   /** A schedule the assistant planned; the apps show it to review and apply. */
   plan?: Plan | null;
 };

@@ -38,6 +38,7 @@ import {
   type Proposal,
   type QuickAddChip,
   type QuickAddMember,
+  type DocSource,
   type SearchHit,
   snippetRuns,
   type Team,
@@ -75,6 +76,8 @@ type Props = {
   onJumpToDate: (date: Date) => void;
   onApplyPlan: (plan: Plan) => Promise<string>;
   onOpenPlan: (plan: Plan) => void;
+  /** Opens a page the assistant read, at the line it cited. */
+  onOpenSource?: (source: DocSource) => void;
   /** Refresh the planner after something is created or applied. */
   onApplied: () => Promise<void>;
   /** Opens the keyboard shortcut sheet. */
@@ -159,6 +162,7 @@ export function CommandBar({
   onJumpToDate,
   onApplyPlan,
   onOpenPlan,
+  onOpenSource,
   onApplied,
   onShowShortcuts,
   report,

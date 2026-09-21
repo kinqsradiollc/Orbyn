@@ -66,6 +66,7 @@ async function answer(
     intentText: intentOf(d.message, d.history),
     actions: [],
     clarification: null,
+    cited: new Map(),
   };
   let result;
   try {
@@ -161,6 +162,7 @@ async function answer(
     summary: result.summary,
     actions,
     follow_ups: result.follow_ups,
+    sources: result.sources,
     plan: ctx.plan ?? null,
   };
 }

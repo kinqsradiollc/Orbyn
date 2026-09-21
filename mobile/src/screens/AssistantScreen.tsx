@@ -8,7 +8,12 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { assistantSuggestions, type Item, type Plan } from "@orbyn/core";
+import {
+  assistantSuggestions,
+  type DocSource,
+  type Item,
+  type Plan,
+} from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlanView } from "../components/PlanView";
@@ -30,10 +35,13 @@ export function AssistantScreen({
   assistant,
   items,
   busy,
+  onOpenSource,
 }: {
   assistant: Assistant;
   items: Item[];
   busy: boolean;
+  /** Opens a page the assistant read, at the line it cited. */
+  onOpenSource?: (source: DocSource) => void;
 }) {
   const { turns, thinking, ask, apply, discard, reset } = assistant;
   const locked = busy || thinking;
@@ -115,6 +123,7 @@ export function AssistantScreen({
                   state={turn.state}
                   onApprove={() => apply(turn.id)}
                   onDiscard={() => discard(turn.id)}
+                  onOpenSource={onOpenSource}
                   onFollowUp={
                     turn.id === latestReplyId
                       ? (text) => void ask(text)
