@@ -370,6 +370,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
+      minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
