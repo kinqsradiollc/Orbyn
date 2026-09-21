@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useState, type FormEvent } from "react";
@@ -88,7 +89,10 @@ export function TagSettings({ teams, report }: Props) {
   ];
 
   return (
-    <section className="card settings-card" aria-labelledby="tags-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="tags-title"
+    >
       <h2 id="tags-title">Tags</h2>
       <p className="muted">
         Tags cut across lists, like “errand” or “waiting”. Personal tags go on
@@ -210,6 +214,6 @@ export function TagSettings({ teams, report }: Props) {
         <Swatches label="New tag colour" value={color} onChange={setColor} />
       </form>
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }

@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import type { PlannerAnalytics } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -45,10 +46,12 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="analytics-title">
+    <SettingsSection
+      className="card settings-card"
+      title="Where your time goes"
+    >
       <div className="settings-head">
         <div>
-          <h2 id="analytics-title">Where your time goes</h2>
           <p className="muted">
             Time you set aside on the calendar, by list and tag. Private to you.
           </p>
@@ -100,6 +103,6 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
           )}
         </>
       )}
-    </section>
+    </SettingsSection>
   );
 }

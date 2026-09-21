@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
@@ -136,10 +137,9 @@ export function HabitsEditor({ report }: Props) {
     });
 
   return (
-    <section className="card settings-card" aria-labelledby="habits-title">
+    <SettingsSection className="card settings-card" title="Habits">
       <div className="settings-head">
         <div>
-          <h2 id="habits-title">Habits</h2>
           <p className="muted">
             Routines like “Gym 3× a week”. The planner fits them into free time
             and moves them when your week changes — no rigid recurring event.
@@ -268,7 +268,7 @@ export function HabitsEditor({ report }: Props) {
 
       <OutcomeNote outcome={action.outcome} />
       <OutcomeNote outcome={planning.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
 

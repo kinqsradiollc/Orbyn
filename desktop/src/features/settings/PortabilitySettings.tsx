@@ -1,3 +1,5 @@
+import { SettingsSection } from "./SettingsSection";
+import { FilePicker } from "../../components/FilePicker";
 import { Select } from "../../components/Select";
 import { useState } from "react";
 import { Download, Upload } from "lucide-react";
@@ -54,7 +56,10 @@ export function PortabilitySettings({
     });
 
   return (
-    <section className="card settings-card" aria-labelledby="portability-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="portability-title"
+    >
       <h2 id="portability-title">Import &amp; export</h2>
       <p className="muted">
         Take your planner data with you, or bring it in from another app.
@@ -89,14 +94,14 @@ export function PortabilitySettings({
             <option value="orbyn">Orbyn export (JSON)</option>
           </Select>
         </label>
-        <label className="settings-field">
+        <div className="settings-field">
           <span className="settings-label">Choose a file</span>
-          <input
-            type="file"
+          <FilePicker
             accept=".csv,.json,text/csv,application/json"
-            onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+            hint="or drop a CSV or JSON here"
+            onFile={onFile}
           />
-        </label>
+        </div>
       </div>
       <textarea
         className="portability-paste"
@@ -147,6 +152,6 @@ export function PortabilitySettings({
         </div>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }

@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -75,7 +76,7 @@ function OnceSecret({ label, value }: { label: string; value: string }) {
 export function ConnectionsSettings({ report }: Props) {
   return (
     <>
-      <section className="card settings-card">
+      <SettingsSection className="card settings-card">
         <h2>
           <ShieldCheck size={16} aria-hidden="true" /> Connections
         </h2>
@@ -96,7 +97,7 @@ export function ConnectionsSettings({ report }: Props) {
           </a>{" "}
           (OpenAPI).
         </p>
-      </section>
+      </SettingsSection>
       <ApiKeys report={report} />
       <Webhooks report={report} />
       <CalendarFeedCard report={report} />
@@ -152,7 +153,10 @@ function ApiKeys({ report }: Props) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="keys-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="keys-title"
+    >
       <h2 id="keys-title">
         <KeyRound size={16} aria-hidden="true" /> Personal API keys
       </h2>
@@ -203,7 +207,7 @@ function ApiKeys({ report }: Props) {
         </button>
       </form>
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -283,7 +287,10 @@ function Webhooks({ report }: Props) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="hooks-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="hooks-title"
+    >
       <h2 id="hooks-title">
         <WebhookIcon size={16} aria-hidden="true" /> Webhooks
       </h2>
@@ -431,6 +438,6 @@ function Webhooks({ report }: Props) {
         </button>
       </form>
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }

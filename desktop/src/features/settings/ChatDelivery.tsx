@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { Select } from "../../components/Select";
 import { useEffect, useState } from "react";
 import { MessagesSquare } from "lucide-react";
@@ -38,7 +39,10 @@ export function ChatDelivery({ report }: { report: (e: unknown) => void }) {
     });
 
   return (
-    <section className="card settings-card" aria-labelledby="chat-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="chat-title"
+    >
       <h2 id="chat-title">
         <MessagesSquare size={18} aria-hidden="true" /> Chat delivery
       </h2>
@@ -105,6 +109,6 @@ export function ChatDelivery({ report }: { report: (e: unknown) => void }) {
         </div>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }

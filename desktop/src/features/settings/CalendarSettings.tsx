@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -135,7 +136,10 @@ export function CalendarFeedCard({ report }: Props) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="feed-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="feed-title"
+    >
       <h2 id="feed-title">
         <CalendarSync size={16} aria-hidden="true" /> Calendar feed
       </h2>
@@ -166,7 +170,7 @@ export function CalendarFeedCard({ report }: Props) {
         </>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -259,7 +263,10 @@ export function CalendarSubscriptions({ report }: Props) {
   };
 
   return (
-    <section className="card settings-card" aria-labelledby="subs-title">
+    <SettingsSection
+      className="card settings-card"
+      aria-labelledby="subs-title"
+    >
       <h2 id="subs-title">
         <CalendarPlus size={16} aria-hidden="true" /> Subscribed calendars
       </h2>
@@ -443,6 +450,6 @@ export function CalendarSubscriptions({ report }: Props) {
         </button>
       </form>
       <OutcomeNote outcome={action.outcome} />
-    </section>
+    </SettingsSection>
   );
 }
