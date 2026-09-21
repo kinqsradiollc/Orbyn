@@ -658,7 +658,7 @@ export async function docRoutes(app: FastifyInstance) {
     return (
       await db.query<DocComment>(
         `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
-                c.resolved_at, c.created_at
+                c.block_id, c.quote, c.resolved_at, c.created_at
            FROM doc_comments c JOIN users u ON u.id = c.user_id
           WHERE c.doc_id = $1 ORDER BY c.created_at`,
         [id],
@@ -669,20 +669,21 @@ export async function docRoutes(app: FastifyInstance) {
   app.post("/docs/:id/comments", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { body } = docCommentInput.parse(r.body);
+    const { body, block_id, quote } = docCommentInput.parse(r.body);
     const comment = await transaction(async (db) => {
       // Anyone who can read the document can remark on it.
       await requireDoc(db, id, u, "items:read");
       const made = (
         await db.query<{ id: string }>(
-          "INSERT INTO doc_comments (doc_id, user_id, body) VALUES ($1,$2,$3) RETURNING id",
-          [id, u.id, body],
+          `INSERT INTO doc_comments (doc_id, user_id, body, block_id, quote)
+             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+          [id, u.id, body, block_id ?? null, quote ?? null],
         )
       ).rows[0].id;
       return (
         await db.query<DocComment>(
           `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
-                  c.resolved_at, c.created_at
+                  c.block_id, c.quote, c.resolved_at, c.created_at
              FROM doc_comments c JOIN users u ON u.id = c.user_id
             WHERE c.id = $1`,
           [made],

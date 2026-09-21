@@ -354,7 +354,13 @@ export const favouriteInput = z
 
 /** A remark on a document. One thread per document, so it survives edits. */
 export const docCommentInput = z
-  .object({ body: z.string().trim().min(1).max(4000) })
+  .object({
+    body: z.string().trim().min(1).max(4000),
+    /** The block being remarked on; left out for a remark about the page. */
+    block_id: z.string().trim().min(1).max(64).optional(),
+    /** What that line said at the time, so the remark still reads if it goes. */
+    quote: z.string().trim().max(400).optional(),
+  })
   .strict();
 
 export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();

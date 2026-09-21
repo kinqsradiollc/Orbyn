@@ -10,23 +10,49 @@
 export const DOC_KINDS = ["doc", "agenda", "meeting"] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
 
-export type DocBlock =
-  | { type: "heading"; level: 1 | 2 | 3; text: string }
-  | { type: "paragraph"; text: string }
-  | { type: "bullet"; text: string }
-  | { type: "numbered"; text: string }
-  /**
-   * A checklist line; `done` is the ticked state. `id` is set once the line
-   * has become a task, so the two stay tied together as the document changes.
-   */
-  | { type: "todo"; text: string; done: boolean; id?: string }
-  | { type: "quote"; text: string }
-  | { type: "code"; text: string; lang: string }
-  /** Display maths. `text` is LaTeX without the `$$` fences. */
-  | { type: "math"; text: string }
-  | { type: "divider" };
+/**
+ * A block's own name, kept so other things can point at this line and still
+ * find it after the page is rewritten around it: the task a checklist line
+ * became, and the comments written about it. It is bookkeeping rather than
+ * content — it is not written to Markdown, and two blocks that differ only
+ * by it are the same block.
+ */
+type Named = { id?: string };
+
+export type DocBlock = Named &
+  (
+    | { type: "heading"; level: 1 | 2 | 3; text: string }
+    | { type: "paragraph"; text: string }
+    | { type: "bullet"; text: string }
+    | { type: "numbered"; text: string }
+    /** A checklist line; `done` is the ticked state. */
+    | { type: "todo"; text: string; done: boolean }
+    | { type: "quote"; text: string }
+    | { type: "code"; text: string; lang: string }
+    /** Display maths. `text` is LaTeX without the `$$` fences. */
+    | { type: "math"; text: string }
+    | { type: "divider" }
+  );
 
 export type DocBlockType = DocBlock["type"];
+
+/**
+ * Editing a line means re-reading its Markdown, which produces fresh blocks
+ * that know nothing of what pointed at the old one. This puts the old name
+ * back on the first of them, so a checklist line keeps its task and a
+ * commented line keeps its comments when the words around them change.
+ */
+export function carryBlockIds(
+  previous: DocBlock | undefined,
+  fresh: DocBlock[],
+): DocBlock[] {
+  if (!previous?.id || !fresh.length || fresh[0].id) return fresh;
+  return [{ ...fresh[0], id: previous.id }, ...fresh.slice(1)];
+}
+
+/** A name no other block in this document is using. */
+export const newBlockId = (): string =>
+  `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 /**
  * A past state of a document, as history lists it. `content` is only
@@ -64,9 +90,39 @@ export type DocComment = {
   user_id: string;
   author: string;
   body: string;
+  /**
+   * The block this was written about, or null for a remark about the page as
+   * a whole. A comment whose block is no longer there is not thrown away: it
+   * is shown apart, with the words it was written about.
+   */
+  block_id: string | null;
+  /** What the line said when the comment was written. */
+  quote: string | null;
   resolved_at: string | null;
   created_at: string;
 };
+
+/**
+ * Sort comments into the ones still attached to a line and the ones whose
+ * line has gone. Anchored comments come back in the page's own order, so a
+ * margin can lay them out beside the text rather than by when they arrived.
+ */
+export function anchorComments(
+  comments: DocComment[],
+  blocks: DocBlock[],
+): { anchored: Map<string, DocComment[]>; loose: DocComment[] } {
+  const order = new Map(blocks.map((b, i) => [b.id ?? "", i]));
+  const anchored = new Map<string, DocComment[]>();
+  const loose: DocComment[] = [];
+  for (const c of comments) {
+    if (c.block_id && order.has(c.block_id)) {
+      const list = anchored.get(c.block_id) ?? [];
+      list.push(c);
+      anchored.set(c.block_id, list);
+    } else loose.push(c);
+  }
+  return { anchored, loose };
+}
 
 /** A document in a list: no body, plus a short preview line. */
 export type DocSummary = Omit<Doc, "content"> & { preview: string };
@@ -346,8 +402,15 @@ export type DocConflict = { index: number; mine: DocBlock; theirs: DocBlock };
 
 export type DocMerge = { blocks: DocBlock[]; conflicts: DocConflict[] };
 
-const sameBlock = (a: DocBlock, b: DocBlock) =>
-  JSON.stringify(a) === JSON.stringify(b);
+/**
+ * Whether two blocks say the same thing. The name is left out: giving a line
+ * a name (by commenting on it, say) changes nothing a reader would see, and
+ * counting that as an edit would raise a conflict over nothing.
+ */
+const sameBlock = (a: DocBlock, b: DocBlock) => {
+  const strip = ({ id: _id, ...rest }: DocBlock) => rest;
+  return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
+};
 
 /**
  * Bring two people's edits together from the version they both started at.
@@ -506,7 +569,7 @@ export function blockToType(
         type,
         text,
         done: block.type === "todo" ? block.done : false,
-        ...(block.type === "todo" && block.id ? { id: block.id } : {}),
+        ...(block.id ? { id: block.id } : {}),
       };
     case "code":
       return { type, text, lang: block.type === "code" ? block.lang : "" };

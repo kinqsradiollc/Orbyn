@@ -342,8 +342,8 @@ follows it on the page, marked in a note. Nothing typed is dropped.
 
 ## Comments on a document
 
-One thread per document, so a remark survives the blocks being rewritten around it. Anyone who
-can read the document can comment on it; only the person who wrote a remark can withdraw it.
+A comment is either about one line or about the page as a whole. Anyone who can read the document
+can comment on it; only the person who wrote a remark can withdraw it.
 
 ### `GET /docs/:id/comments` (auth)
 
@@ -351,7 +351,15 @@ can read the document can comment on it; only the person who wrote a remark can 
 
 ### `POST /docs/:id/comments` (auth)
 
-`{ "body" }` → `201`. An empty body is `422`.
+`{ "body", "block_id"?, "quote"? }` → `201`. An empty body is `422`.
+
+`block_id` ties the remark to one line, using the name that block carries in the document's content
+rather than its position, because editing moves blocks around. `quote` is what that line said at the
+time. Leave both out for a remark about the page as a whole.
+
+A comment whose line is later deleted is **not** deleted with it: it comes back with its `block_id`
+no longer matching any block, and its `quote` still there, so it can be shown apart rather than
+disappearing.
 
 ### `PUT /docs/:id/comments/:commentId` (auth)
 
