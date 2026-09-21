@@ -36,12 +36,15 @@ export function AssistantScreen({
   items,
   busy,
   onOpenSource,
+  onKeptNote,
 }: {
   assistant: Assistant;
   items: Item[];
   busy: boolean;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
+  /** Opens a note once it has been kept. */
+  onKeptNote?: (docId: string) => void;
 }) {
   const { turns, thinking, ask, apply, discard, reset } = assistant;
   const locked = busy || thinking;
@@ -124,6 +127,7 @@ export function AssistantScreen({
                   onApprove={() => apply(turn.id)}
                   onDiscard={() => discard(turn.id)}
                   onOpenSource={onOpenSource}
+                  onKeptNote={onKeptNote}
                   onFollowUp={
                     turn.id === latestReplyId
                       ? (text) => void ask(text)

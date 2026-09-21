@@ -655,6 +655,12 @@ export function RootScreen() {
                         setSheet("note");
                       })
                     }
+                    onKeptNote={(docId) =>
+                      void client.getDoc(docId).then((doc) => {
+                        setNote(doc);
+                        setSheet("note");
+                      })
+                    }
                   />
                 )}
                 {tab === "Inbox" && (

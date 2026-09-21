@@ -35,6 +35,8 @@ type Props = {
   onOpenPlan: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
+  /** Opens a note once it has been kept. */
+  onKeptNote?: (docId: string) => void;
 };
 
 export function AssistantView({
@@ -44,6 +46,7 @@ export function AssistantView({
   onApplyPlan,
   onOpenPlan,
   onOpenSource,
+  onKeptNote,
 }: Props) {
   const {
     message,
@@ -147,6 +150,7 @@ export function AssistantView({
                   onApplyPlan={onApplyPlan}
                   onOpenPlan={onOpenPlan}
                   onOpenSource={onOpenSource}
+                  onKeptNote={onKeptNote}
                   onFollowUp={
                     turn.id === latestReplyId
                       ? (text) => void ask(text)

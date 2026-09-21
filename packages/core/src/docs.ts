@@ -1042,3 +1042,25 @@ export const plainText = (text: string): string =>
   parseDocInline(text)
     .map((run) => (run.math ? mathToText(run.text) : run.text))
     .join("");
+
+/**
+ * A note the assistant has drafted, waiting for someone to keep it.
+ *
+ * It does not ride on the proposal system the way a task does. A proposal
+ * is typed for items the whole way through — the schema, the table, the
+ * apply route and the review cards — and a document is a different animal.
+ * A draft travels with the reply instead, is shown as itself, and becomes a
+ * page only when somebody says so. Nothing is written until then.
+ */
+export type DraftNote = {
+  title: string;
+  content: DocBlock[];
+  /** The project it should hang off, when the assistant found one. */
+  project_id: string | null;
+  project_name: string | null;
+  /** The task it is about, for a note drafted from one. */
+  item_id: string | null;
+  team_id: string | null;
+  /** Why the assistant thought this was worth writing down. */
+  note: string;
+};

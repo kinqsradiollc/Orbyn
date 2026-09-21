@@ -451,6 +451,25 @@ Answered from that page and nothing else, and the sources are the lines the answ
 can be checked. A provider that will not return JSON still has its words passed through, with no
 sources.
 
+### The assistant writing things down
+
+Two tools let the assistant put words on a page, and neither writes on its own.
+
+`propose_note` drafts a note. The draft travels back with the reply as `notes: [{title, content,
+project_id, project_name, item_id, team_id, note}]` and becomes a page only when someone keeps it —
+the client then calls `POST /docs` with `kind: "note"`. A project or task id the model names is
+checked against what the asker can actually see and dropped when it is not theirs; at most three
+drafts in a turn.
+
+It rides with the reply rather than through the proposal system on purpose: `actionSchema`, the
+proposals table, the apply route and both clients' review cards are all typed for items, and a
+document is a different animal.
+
+`propose_doc_edit` proposes changes to words on an existing page. These are written as ordinary
+`doc_suggestions`, so they wait **beside the page** with the same Take or Leave as a colleague's —
+which is where a change to a sentence should be read. The words to change are looked for in the page
+as it stands; anything that does not match comes back in `not_found` rather than being guessed at.
+
 ## Search
 
 ### `GET /search?q=&type=&kind=&project=&tag=&team=&updated_after=&limit=` (auth)

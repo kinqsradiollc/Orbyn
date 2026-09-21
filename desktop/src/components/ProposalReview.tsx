@@ -15,6 +15,7 @@ import {
 import type { TurnState } from "../hooks/useAssistant";
 import { stagger } from "../lib/motion";
 import { PlanCard } from "./PlanCard";
+import { DraftNotes } from "./DraftNotes";
 import { FileText } from "lucide-react";
 
 type Props = {
@@ -35,6 +36,8 @@ type Props = {
   onOpenPlan?: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
+  /** Opens a note once it has been kept. */
+  onKeptNote?: (docId: string) => void;
 };
 
 const OPERATION = {
@@ -250,6 +253,7 @@ export function ProposalReview({
   onApplyPlan,
   onOpenPlan,
   onOpenSource,
+  onKeptNote,
 }: Props) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
@@ -284,6 +288,11 @@ export function ProposalReview({
           onOpenInPlanner={onOpenPlan && (() => onOpenPlan(plan))}
         />
       )}
+      <DraftNotes
+        notes={proposal.notes ?? []}
+        onKept={onKeptNote}
+        report={() => {}}
+      />
       {count > 0 && (
         <div
           className={

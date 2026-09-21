@@ -12,6 +12,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "./Button";
 import { SmallAction } from "./SmallAction";
+import { DraftNotes } from "./DraftNotes";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
 import { FadeIn, PressableScale } from "../motion";
@@ -267,6 +268,7 @@ export function ProposalReview({
   onDiscard,
   onFollowUp,
   onOpenSource,
+  onKeptNote,
 }: {
   proposal: Proposal;
   /** Current planner items, used to name items an action refers to by id. */
@@ -282,6 +284,8 @@ export function ProposalReview({
   onFollowUp?: (text: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
+  /** Opens a note once it has been kept. */
+  onKeptNote?: (docId: string) => void;
 }) {
   const count = proposal.actions.length;
   const status = state ?? (count ? "pending" : "info");
@@ -305,6 +309,11 @@ export function ProposalReview({
           ))}
         </View>
       )}
+      <DraftNotes
+        notes={proposal.notes ?? []}
+        onKept={onKeptNote}
+        report={() => {}}
+      />
       {count > 0 && (
         <View style={[s.actions, status === "discarded" && { opacity: 0.5 }]}>
           {proposal.actions.map((a, n) => {
