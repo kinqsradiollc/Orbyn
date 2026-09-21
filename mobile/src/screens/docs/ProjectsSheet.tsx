@@ -21,6 +21,7 @@ import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
+import { ProjectNotes } from "./ProjectNotes";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const dueLabel = (iso: string | null) =>
@@ -39,12 +40,15 @@ export function ProjectsSheet({
   onClose,
   onDismiss,
   onOpenItem,
+  onOpenNote,
 }: {
   visible: boolean;
   items: Item[];
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
+  /** Opens one of a project's notes, in the page editor. */
+  onOpenNote?: (docId: string) => void;
 }) {
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -53,8 +57,26 @@ export function ProjectsSheet({
   const [draft, setDraft] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
 
+  /** True when the list could not be read, which is not the same as empty. */
+  const [failed, setFailed] = useState(false);
+
+  /**
+   * Read the list of projects. A failure is not an empty workspace: saying
+   * "no projects yet" when the network hiccuped tells someone their work
+   * has gone.
+   */
   const reload = () =>
-    client.listProjects().then(setProjects, () => setProjects([]));
+    client.listProjects().then(
+      (list) => {
+        setProjects(list);
+        setFailed(false);
+      },
+      (e: Error) => {
+        setProjects(null);
+        setFailed(true);
+        setError(e.message || "Could not reach your projects.");
+      },
+    );
 
   const create = () => {
     const name = (draft ?? "").trim();
@@ -174,6 +196,16 @@ export function ProjectsSheet({
                 {dueLabel(open.deadline)}
               </Text>
 
+              {!!onOpenNote && (
+                <ProjectNotes
+                  projectId={open.id}
+                  teamId={open.team_id}
+                  busy={busy}
+                  report={(e) => setError((e as Error).message)}
+                  onOpen={onOpenNote}
+                />
+              )}
+
               {[...open.stages, { id: null, name: "No stage" }].map((stage) => {
                 const rows = tasksIn(open, stage.id as string | null);
                 return (
@@ -215,6 +247,18 @@ export function ProjectsSheet({
                   </View>
                 );
               })}
+            </View>
+          ) : failed ? (
+            <View style={styles.list}>
+              <Text style={styles.empty}>
+                Your projects could not be reached. They are still there.
+              </Text>
+              <Button
+                title="Try again"
+                secondary
+                disabled={busy}
+                onPress={() => void reload()}
+              />
             </View>
           ) : projects === null ? (
             <Text style={styles.empty}>Loading…</Text>
