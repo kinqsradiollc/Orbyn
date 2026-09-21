@@ -158,6 +158,8 @@ export function DocEditor({
   const base = useRef<DocBlock[]>(doc.content);
   const live = useRef({ title: doc.title, blocks: doc.content });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const flushOnClose = useRef<() => void>(() => {});
 
   live.current = { title, blocks };
   focusedRef.current = focused;
@@ -179,12 +181,12 @@ export function DocEditor({
     setNote("");
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    return () => {
       if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
+      flushOnClose.current();
+    };
+  }, []);
 
   // The same page, but a newer copy handed in from outside — a restore from
   // the history section below. Our own saves and live updates move
@@ -228,43 +230,66 @@ export function DocEditor({
   }, []);
 
   const persist = useCallback(
-    async (nextTitle: string, nextBlocks: DocBlock[]) => {
-      setSaving(true);
-      try {
-        const saved = await client.updateDoc(doc.id, {
-          title: nextTitle,
-          content: nextBlocks,
-          version: version.current,
-        });
-        version.current = saved.version;
-        base.current = saved.content;
-        dirty.current = false;
-        onChanged(saved);
-      } catch (e) {
-        // Someone saved first: take their copy, fold this edit into it and
-        // save again rather than making the writer sort it out by hand.
-        if ((e as { statusCode?: number }).statusCode === 409) {
-          try {
-            const merged = reconcile(await client.getDoc(doc.id));
-            const saved = await client.updateDoc(doc.id, {
-              title: live.current.title,
-              content: merged,
-              version: version.current,
-            });
-            version.current = saved.version;
-            base.current = saved.content;
-            dirty.current = false;
-            onChanged(saved);
-          } catch (again) {
-            report(again);
-          }
-        } else report(e);
-      } finally {
-        setSaving(false);
-      }
+    (nextTitle: string, nextBlocks: DocBlock[]) => {
+      const write = async () => {
+        setSaving(true);
+        try {
+          const saved = await client.updateDoc(doc.id, {
+            title: nextTitle,
+            content: nextBlocks,
+            version: version.current,
+          });
+          version.current = saved.version;
+          base.current = saved.content;
+          dirty.current =
+            live.current.title !== nextTitle ||
+            live.current.blocks !== nextBlocks;
+          onChanged(saved);
+        } catch (e) {
+          // Someone saved first: take their copy, fold this edit into it and
+          // save again rather than making the writer sort it out by hand.
+          if ((e as { statusCode?: number }).statusCode === 409) {
+            try {
+              const merged = reconcile(await client.getDoc(doc.id));
+              const saved = await client.updateDoc(doc.id, {
+                title: live.current.title,
+                content: merged,
+                version: version.current,
+              });
+              version.current = saved.version;
+              base.current = saved.content;
+              dirty.current =
+                live.current.title !== nextTitle ||
+                live.current.blocks !== nextBlocks;
+              onChanged(saved);
+            } catch (again) {
+              report(again);
+            }
+          } else report(e);
+        } finally {
+          setSaving(false);
+        }
+      };
+      saveQueue.current = saveQueue.current.then(write, write);
+      return saveQueue.current;
     },
     [doc.id, onChanged, reconcile, report],
   );
+
+  flushOnClose.current = () => {
+    if (!canWrite || suggesting) return;
+    const next = live.current.blocks.slice();
+    if (focused !== null && next[focused]) {
+      const parsed = parseDoc(draft);
+      next.splice(
+        focused,
+        1,
+        ...carryBlockIds(next[focused], parsed.length ? parsed : [EMPTY]),
+      );
+    }
+    if (dirty.current || JSON.stringify(next) !== JSON.stringify(base.current))
+      void persist(live.current.title, next);
+  };
 
   /**
    * The subscription must outlive re-renders: it depends on the document,
@@ -303,6 +328,7 @@ export function DocEditor({
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
       dirty.current = true;
+      live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(
         () => void persist(nextTitle, nextBlocks),
@@ -455,6 +481,15 @@ export function DocEditor({
     if (parsed.length > 1) setFocused(focused + parsed.length - 1);
     update(next);
   };
+
+  // Save a paused edit while the keyboard stays open, not only after blur.
+  useEffect(() => {
+    if (focused === null || suggesting || reading) return;
+    if (serializeBlock(blocks[focused] ?? EMPTY) === draft) return;
+    const pending = setTimeout(syncDraft, 300);
+    return () => clearTimeout(pending);
+    // The draft is the source of this debounce; syncing blocks must not restart it.
+  }, [draft, focused, suggesting, reading]);
 
   /**
    * Turn what was typed into a proposed change.
@@ -612,7 +647,10 @@ export function DocEditor({
       "Delete",
       () => {
         if (timer.current) clearTimeout(timer.current);
-        client.deleteDoc(doc.id).then(() => onDeleted?.(), report);
+        client.deleteDoc(doc.id).then(() => {
+          flushOnClose.current = () => {};
+          onDeleted?.();
+        }, report);
       },
     );
 
@@ -658,7 +696,8 @@ export function DocEditor({
             label={MODE_LABELS[m].name + (mode === m ? " ✓" : "")}
             disabled={mode === m}
             onPress={() => {
-              // An open line would strand what was typed in it.
+              // Commit the open line before changing what it is allowed to do.
+              commit();
               setFocused(null);
               setMode(m);
               saveLocal(MODE_KEY + doc.id, m);
@@ -894,7 +933,7 @@ const styles = themed(() =>
       marginTop: 4,
     },
     add: {
-      minHeight: 36,
+      minHeight: 44,
       justifyContent: "center",
       paddingHorizontal: 6,
       marginHorizontal: -6,

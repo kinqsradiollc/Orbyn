@@ -69,6 +69,23 @@ export function AssistantView({
     .reverse()
     .find((t) => t.role === "assistant")?.id;
 
+  // Mobile keyboards resize the visual viewport even when 100dvh stays unchanged.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const update = () =>
+      document.documentElement.style.setProperty(
+        "--chat-viewport-height",
+        `${viewport.height}px`,
+      );
+    update();
+    viewport.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--chat-viewport-height");
+    };
+  }, []);
+
   // Keep the newest message in view by scrolling the conversation itself,
   // never the page, so the composer stays where it is. Once per message,
   // not on every render.

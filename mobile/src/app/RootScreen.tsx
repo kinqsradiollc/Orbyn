@@ -822,11 +822,14 @@ export function RootScreen() {
         <DocsSheet
           visible={sheet === "agenda"}
           agenda
+          userId={user?.id}
+          canWriteDoc={canWriteIn}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          canWriteIn={canWriteIn}
           visible={sheet === "projects"}
           items={items}
           onClose={closeSheet}

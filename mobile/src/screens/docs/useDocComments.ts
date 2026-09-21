@@ -16,6 +16,9 @@ export function useDocComments(
   report: (e: unknown) => void,
 ) {
   const [comments, setComments] = useState<DocComment[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const [busy, setBusy] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
   /** A tap can land twice before the button re-renders as disabled. */
@@ -23,7 +26,17 @@ export function useDocComments(
 
   const load = useCallback(
     () =>
-      client.listDocComments(docId).then(setComments, () => setComments([])),
+      client.listDocComments(docId).then(
+        (rows) => {
+          setComments(rows);
+          setFailed(false);
+        },
+        (error) => {
+          setComments([]);
+          setFailed(true);
+          reportRef.current(error);
+        },
+      ),
     [docId],
   );
 
@@ -32,7 +45,12 @@ export function useDocComments(
   }, [load]);
 
   const all = comments ?? [];
-  const open = all.filter((c) => !c.resolved_at);
+  const resolvedThreads = new Set(
+    all.filter((c) => c.resolved_at).map((c) => c.id),
+  );
+  const open = all.filter(
+    (c) => !c.resolved_at && !resolvedThreads.has(c.parent_id ?? ""),
+  );
   const resolved = all.filter((c) => c.resolved_at);
   const { anchored, loose } = anchorComments(showResolved ? all : open, blocks);
 
@@ -64,7 +82,7 @@ export function useDocComments(
     setBusy(true);
     client
       .resolveDocComment(docId, c.id, next)
-      .then(() => void load())
+      .then(() => load())
       .catch(report)
       .finally(() => setBusy(false));
   };
@@ -74,7 +92,10 @@ export function useDocComments(
     client
       .deleteDocComment(docId, c.id)
       .then(() =>
-        setComments((list) => list?.filter((x) => x.id !== c.id) ?? list),
+        setComments(
+          (list) =>
+            list?.filter((x) => x.id !== c.id && x.parent_id !== c.id) ?? list,
+        ),
       )
       .catch(report)
       .finally(() => setBusy(false));
@@ -93,6 +114,8 @@ export function useDocComments(
     /** The page these belong to, so a composer can ask who may be named. */
     docId,
     loading: comments === null,
+    failed,
+    reload: load,
     anchored,
     loose,
     counts,

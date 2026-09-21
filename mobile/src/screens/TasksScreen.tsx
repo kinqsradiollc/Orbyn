@@ -849,7 +849,10 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      minHeight: 36,
+      // The status filters are the most-tapped control on this screen, and
+      // were the last ones still under a finger's width.
+      minHeight: 44,
+      paddingVertical: 8,
       paddingHorizontal: 13,
       borderRadius: radii.pill,
       borderWidth: 1,
@@ -867,7 +870,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      minHeight: 36,
+      minHeight: 44,
+      paddingVertical: 8,
       paddingHorizontal: 12,
       borderRadius: radii.input,
       borderWidth: 1,

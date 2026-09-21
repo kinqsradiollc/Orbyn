@@ -41,6 +41,7 @@ export function Topbar({
       <div>
         <button
           className="command-trigger"
+          aria-label="Search or ask"
           aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
           onClick={onOpenCommand}
         >

@@ -118,6 +118,7 @@ export function TaskDetail({
 }) {
   return (
     <Sheet
+      avoidKeyboard={false}
       visible={visible}
       title={item?.kind === "event" ? "Event" : "Task"}
       onClose={onClose}
@@ -1328,7 +1329,7 @@ const s = themed(() =>
       backgroundColor: colors.surface,
       paddingHorizontal: 10,
     },
-    statusChipCompact: { flexBasis: "auto", minHeight: 36, flexGrow: 0 },
+    statusChipCompact: { flexBasis: "auto", minHeight: 44, flexGrow: 0 },
     statusDot: { width: 8, height: 8, borderRadius: 4 },
     statusText: {
       fontFamily: fonts.semibold,

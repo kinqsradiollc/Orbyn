@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useRef } from "react";
+import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import {
   Modal,
   Platform,
@@ -22,6 +23,7 @@ export function Sheet({
   onClose,
   onBack,
   onDismiss,
+  avoidKeyboard = true,
   children,
 }: {
   visible: boolean;
@@ -31,8 +33,12 @@ export function Sheet({
   onBack?: () => void;
   /** iOS: called once the dismiss animation has finished. */
   onDismiss?: () => void;
+  /** Disable when the content already handles keyboard overlap. */
+  avoidKeyboard?: boolean;
   children: React.ReactNode;
 }) {
+  const area = useRef<View>(null);
+  const keyboard = useKeyboardInset(area, visible && avoidKeyboard);
   return (
     <Modal
       visible={visible}
@@ -73,7 +79,14 @@ export function Sheet({
               <Icon name="x" size={18} color={colors.textSoft} />
             </Pressable>
           </View>
-          {children}
+          <View
+            ref={area}
+            collapsable={false}
+            onLayout={keyboard.onLayout}
+            style={{ flex: 1, paddingBottom: keyboard.inset }}
+          >
+            {children}
+          </View>
         </SafeAreaView>
       </SafeAreaProvider>
     </Modal>
@@ -105,9 +118,9 @@ const s = themed(() =>
       color: colors.text,
     },
     round: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",

@@ -35,9 +35,11 @@ const when = (iso: string) => {
 export function DocHistory({
   doc,
   onRestored,
+  canWrite = true,
   report,
 }: {
   doc: Doc;
+  canWrite?: boolean;
   onRestored: (doc: Doc) => void;
   report: (e: unknown) => void;
 }) {
@@ -65,7 +67,7 @@ export function DocHistory({
   };
 
   const restore = () => {
-    if (!chosen) return;
+    if (!chosen || !canWrite) return;
     const go = () => {
       setBusy(true);
       client
@@ -114,7 +116,7 @@ export function DocHistory({
             {versions.map((v) => (
               <Pressable
                 key={v.version}
-                disabled={busy}
+                disabled={busy || !canWrite}
                 onPress={() => pick(v)}
                 accessibilityRole="button"
                 style={({ pressed }) => [
@@ -143,7 +145,7 @@ export function DocHistory({
           <Button
             title="Restore this version"
             secondary
-            disabled={busy}
+            disabled={busy || !canWrite}
             onPress={restore}
           />
         </View>

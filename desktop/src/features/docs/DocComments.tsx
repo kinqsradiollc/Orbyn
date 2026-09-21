@@ -90,6 +90,7 @@ export function DocComments({
   /** Card tops, once measured; keyed the same as the groups below. */
   const [placed, setPlaced] = useState<Record<string, number>>({});
   const cardEls = useRef(new Map<string, HTMLElement>());
+  const [layoutVersion, setLayoutVersion] = useState(0);
   const railRef = useRef<HTMLDivElement>(null);
   const anchoredRef = useRef<HTMLDivElement>(null);
 
@@ -102,7 +103,12 @@ export function DocComments({
   }, [docId]);
 
   const all = comments ?? [];
-  const open = all.filter((c) => !c.resolved_at);
+  const resolvedThreads = new Set(
+    all.filter((c) => c.resolved_at).map((c) => c.id),
+  );
+  const open = all.filter(
+    (c) => !c.resolved_at && !resolvedThreads.has(c.parent_id ?? ""),
+  );
   const done = all.filter((c) => c.resolved_at);
   const shown = showResolved ? all : open;
   const { anchored, loose } = anchorComments(shown, blocks);
@@ -111,6 +117,12 @@ export function DocComments({
   const groups = [...anchored.keys()];
   if (pending && !anchored.has(pending.blockId)) groups.push(pending.blockId);
   groups.sort((a, b) => (tops[a] ?? 0) - (tops[b] ?? 0));
+
+  useEffect(() => {
+    const observer = new ResizeObserver(() => setLayoutVersion((n) => n + 1));
+    for (const element of cardEls.current.values()) observer.observe(element);
+    return () => observer.disconnect();
+  }, [groups.join("|")]);
 
   /**
    * Put each card level with its line, then push any that would overlap the
@@ -138,7 +150,14 @@ export function DocComments({
         Object.entries(next).every(([k, v]) => prev[k] === v);
       return same ? prev : next;
     });
-  }, [groups.join("|"), JSON.stringify(tops), comments, pending, active]);
+  }, [
+    groups.join("|"),
+    JSON.stringify(tops),
+    comments,
+    pending,
+    active,
+    layoutVersion,
+  ]);
 
   /**
    * The shading the page should draw: one stretch per remark that names a
@@ -147,13 +166,19 @@ export function DocComments({
    */
   const railMarks: Record<string, Mark[]> = {};
   for (const [blockId, list] of anchored)
-    railMarks[blockId] = list.map((c) =>
-      // A remark about a whole line has no range of its own, so it shades
-      // the line end to end; the cut is clamped to each run it meets.
-      c.range_start !== null && c.range_end !== null
-        ? { start: c.range_start, end: c.range_end, active: active === blockId }
-        : { start: 0, end: WHOLE_LINE, active: active === blockId },
-    );
+    railMarks[blockId] = list
+      .filter((c) => !c.parent_id)
+      .map((c) =>
+        // A remark about a whole line has no range of its own, so it shades
+        // the line end to end; the cut is clamped to each run it meets.
+        c.range_start !== null && c.range_end !== null
+          ? {
+              start: c.range_start,
+              end: c.range_end,
+              active: active === blockId,
+            }
+          : { start: 0, end: WHOLE_LINE, active: active === blockId },
+      );
   if (pending?.range_start !== undefined && pending.range_end !== undefined)
     railMarks[pending.blockId] = [
       ...(railMarks[pending.blockId] ?? []),
@@ -212,7 +237,7 @@ export function DocComments({
     setBusy(true);
     client
       .resolveDocComment(docId, c.id, resolved)
-      .then(() => void load())
+      .then(() => load())
       .catch(report)
       .finally(() => setBusy(false));
   };
@@ -230,7 +255,10 @@ export function DocComments({
     client
       .deleteDocComment(docId, c.id)
       .then(() =>
-        setComments((list) => list?.filter((x) => x.id !== c.id) ?? list),
+        setComments(
+          (list) =>
+            list?.filter((x) => x.id !== c.id && x.parent_id !== c.id) ?? list,
+        ),
       )
       .catch(report)
       .finally(() => setBusy(false));
@@ -314,6 +342,7 @@ export function DocComments({
       {reply?.id === t.comment.id ? (
         <div className="is-composer">
           <MentionBox
+            disabled={busy}
             id={`doc-reply-${t.comment.id}`}
             autoFocus
             docId={docId}
@@ -388,6 +417,7 @@ export function DocComments({
           ))}
           <div className="doc-card is-composer">
             <MentionBox
+              disabled={busy}
               id="doc-comment-page"
               docId={docId}
               value={pageDraft}
@@ -432,6 +462,7 @@ export function DocComments({
                   <p className="doc-card-quote">“{plainText(pending.quote)}”</p>
                   <div className="is-composer">
                     <MentionBox
+                      disabled={busy}
                       id="doc-comment-draft"
                       autoFocus
                       docId={docId}

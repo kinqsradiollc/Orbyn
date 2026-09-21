@@ -343,6 +343,9 @@ const s = themed(() =>
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     chip: {
       maxWidth: "100%",
+      // A finger's worth of height, like every other control on the phone.
+      minHeight: 44,
+      justifyContent: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.softBorder,

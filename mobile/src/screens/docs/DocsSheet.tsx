@@ -194,6 +194,7 @@ export function DocsSheet({
       setHits(null);
       return;
     }
+    let active = true;
     const timer = setTimeout(() => {
       client
         .search(query.trim(), {
@@ -201,9 +202,22 @@ export function DocsSheet({
           kind: kindFilter ?? undefined,
           limit: 20,
         })
-        .then(setHits, () => setHits([]));
+        .then(
+          (rows) => {
+            if (active) setHits(rows);
+          },
+          (e) => {
+            if (active) {
+              setHits([]);
+              setError((e as Error).message);
+            }
+          },
+        );
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [query, kindFilter]);
 
   /**
@@ -280,10 +294,27 @@ export function DocsSheet({
 
           {open ? (
             <OpenDoc
+              key={open.id}
               doc={open}
               userId={userId}
               canWriteDoc={canWriteDoc}
-              onChanged={setOpen}
+              onChanged={(saved) => {
+                setOpen((current) =>
+                  current?.id === saved.id ? saved : current,
+                );
+                setDocs(
+                  (current) =>
+                    current?.map((d) =>
+                      d.id === saved.id
+                        ? {
+                            ...d,
+                            title: saved.title,
+                            updated_at: saved.updated_at,
+                          }
+                        : d,
+                    ) ?? current,
+                );
+              }}
               onItemsChanged={onItemsChanged}
               onDeleted={backToList}
               report={report}
@@ -459,12 +490,13 @@ export function DocsSheet({
                   {/* The star and the folder sit outside the row's own press,
                       or tapping either would open the page instead. */}
                   <Pressable
-                    onPress={() =>
+                    onPress={(event) => {
+                      event.stopPropagation();
                       toggleStar(
                         doc as DocSummary,
                         !starred.has(favouriteKey("doc", doc.id)),
-                      )
-                    }
+                      );
+                    }}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel={
@@ -490,7 +522,10 @@ export function DocsSheet({
                   </Pressable>
                   {!hits && (
                     <Pressable
-                      onPress={() => setFiling(doc as DocSummary)}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        setFiling(doc as DocSummary);
+                      }}
                       hitSlop={8}
                       accessibilityRole="button"
                       accessibilityLabel={`File ${doc.title || "Untitled"}`}
@@ -548,7 +583,12 @@ function OpenDoc({
         report={report}
       />
       <DocComments state={comments} userId={userId} />
-      <DocHistory doc={doc} onRestored={onChanged} report={report} />
+      <DocHistory
+        doc={doc}
+        canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}
+        onRestored={onChanged}
+        report={report}
+      />
     </>
   );
 }
@@ -569,7 +609,12 @@ const styles = themed(() =>
     },
     found: { color: colors.muted, fontSize: 12 },
     newFolder: { flexDirection: "row", gap: 8, alignItems: "center" },
-    rowIcon: { padding: 4 },
+    rowIcon: {
+      minWidth: 44,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     filing: {
       gap: 8,
       padding: 12,

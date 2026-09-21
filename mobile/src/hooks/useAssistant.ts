@@ -44,16 +44,22 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const sending = useRef(false);
+  const generation = useRef(0);
   const turnsRef = useRef(turns);
   turnsRef.current = turns;
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
   useEffect(() => {
-    if (!token) {
-      setTurns([]);
-      setMessage("");
-    }
+    generation.current += 1;
+    sending.current = false;
+    setThinking(false);
+    setTurns([]);
+    setMessage("");
+    return () => {
+      generation.current += 1;
+    };
   }, [token]);
 
   const history = (): ChatTurn[] =>
@@ -82,7 +88,9 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   const ask = (text: string = message) => {
     const trimmed = text.trim();
-    if (!trimmed || thinking) return Promise.resolve();
+    if (!trimmed || sending.current) return Promise.resolve();
+    sending.current = true;
+    const request = generation.current;
     const prior = history();
     const userTurn: Turn = { id: nextId(), role: "user", text: trimmed };
     setTurns((t) => [...t, userTurn]);
@@ -95,11 +103,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           Intl.DateTimeFormat().resolvedOptions().timeZone,
           prior,
         );
+        if (request !== generation.current) return;
         const touched = new Set(
           proposal.actions
             .map((a) => a.item_id)
             .filter((id): id is string => !!id),
         );
+        if (request !== generation.current) return;
         setTurns((t) => [
           ...t,
           {
@@ -112,12 +122,16 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           },
         ]);
       } catch (error) {
+        if (request !== generation.current) return;
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
         setTurns((t) => t.filter((x) => x.id !== userTurn.id));
-        setMessage(trimmed);
+        setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
         throw error;
       } finally {
-        setThinking(false);
+        if (request === generation.current) {
+          sending.current = false;
+          setThinking(false);
+        }
       }
     });
   };
@@ -125,7 +139,9 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   /** Draft a project (subtasks) from the prompt, as a reviewable proposal. */
   const draftProject = (text: string = message) => {
     const trimmed = text.trim();
-    if (!trimmed || thinking) return Promise.resolve();
+    if (!trimmed || sending.current) return Promise.resolve();
+    sending.current = true;
+    const request = generation.current;
     const userTurn: Turn = {
       id: nextId(),
       role: "user",
@@ -140,6 +156,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           trimmed,
           Intl.DateTimeFormat().resolvedOptions().timeZone,
         );
+        if (request !== generation.current) return;
         setTurns((t) => [
           ...t,
           {
@@ -152,11 +169,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           },
         ]);
       } catch (error) {
+        if (request !== generation.current) return;
         setTurns((t) => t.filter((x) => x.id !== userTurn.id));
-        setMessage(trimmed);
+        setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
         throw error;
       } finally {
-        setThinking(false);
+        if (request === generation.current) {
+          sending.current = false;
+          setThinking(false);
+        }
       }
     });
   };
@@ -212,6 +233,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   };
 
   const reset = () => {
+    if (sending.current) return;
     setTurns([]);
     setMessage("");
   };

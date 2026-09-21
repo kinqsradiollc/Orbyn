@@ -27,10 +27,12 @@ const when = (iso: string) => {
 export function DocHistory({
   doc,
   onRestored,
+  canWrite = true,
   onClose,
   report,
 }: {
   doc: Doc;
+  canWrite?: boolean;
   onRestored: (doc: Doc) => void;
   onClose: () => void;
   report: (e: unknown) => void;
@@ -57,7 +59,7 @@ export function DocHistory({
   };
 
   const restore = async () => {
-    if (!chosen) return;
+    if (!chosen || !canWrite) return;
     if (
       !(await ask({
         title: `Put the page back as it was at ${when(chosen.created_at)}? What is there now is kept in history.`,
@@ -106,7 +108,7 @@ export function DocHistory({
                   "doc-history-item" +
                   (chosen?.version === v.version ? " is-chosen" : "")
                 }
-                disabled={busy}
+                disabled={busy || !canWrite}
                 onClick={() => open(v)}
               >
                 <strong>{when(v.created_at)}</strong>
@@ -127,7 +129,11 @@ export function DocHistory({
             <span className="muted small">
               As it was at {when(chosen.created_at)}
             </span>
-            <button className="text-button" disabled={busy} onClick={restore}>
+            <button
+              className="text-button"
+              disabled={busy || !canWrite}
+              onClick={restore}
+            >
               <RotateCcw size={14} aria-hidden="true" /> Restore this version
             </button>
           </div>

@@ -24,6 +24,7 @@ export function MentionBox({
   autoFocus,
   onSubmit,
   onCancel,
+  disabled = false,
 }: {
   id: string;
   value: string;
@@ -37,6 +38,7 @@ export function MentionBox({
   autoFocus?: boolean;
   onSubmit: () => void;
   onCancel?: () => void;
+  disabled?: boolean;
 }) {
   const [people, setPeople] = useState<Person[] | null>(null);
   const [query, setQuery] = useState<string | null>(null);
@@ -90,6 +92,8 @@ export function MentionBox({
     <div className="doc-mention-box">
       <textarea
         id={id}
+        disabled={disabled}
+        aria-label={placeholder}
         ref={areaRef}
         autoFocus={autoFocus}
         value={value}

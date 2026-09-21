@@ -1100,3 +1100,9 @@ kbd {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Menus remain reachable when the keyboard or a short window reduces space. */
+.popover {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

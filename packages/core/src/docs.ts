@@ -292,11 +292,14 @@ export function anchorComments(
   const order = new Map(blocks.map((b, i) => [b.id ?? "", i]));
   const anchored = new Map<string, DocComment[]>();
   const loose: DocComment[] = [];
+  const byId = new Map(comments.map((c) => [c.id, c]));
   for (const c of comments) {
-    if (c.block_id && order.has(c.block_id) && !c.detached) {
-      const list = anchored.get(c.block_id) ?? [];
+    // Replies inherit their thread's location; their own block_id is null.
+    const root = (c.parent_id && byId.get(c.parent_id)) || c;
+    if (root.block_id && order.has(root.block_id) && !root.detached) {
+      const list = anchored.get(root.block_id) ?? [];
       list.push(c);
-      anchored.set(c.block_id, list);
+      anchored.set(root.block_id, list);
     } else loose.push(c);
   }
   // Within a line, remarks read left to right, so the cards beside it are in
