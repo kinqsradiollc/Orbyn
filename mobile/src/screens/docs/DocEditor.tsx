@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   BLOCK_KINDS,
+  blockText,
   blockToType,
+  carryBlockIds,
+  newBlockId,
   mergeDocs,
   parseDoc,
   serializeBlock,
@@ -10,6 +13,8 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
+import { DocThread } from "./DocThread";
+import type { DocCommentsState } from "./useDocComments";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -50,11 +55,19 @@ const EMPTY: DocBlock = { type: "paragraph", text: "" };
  */
 export function DocEditor({
   doc,
+  comments,
+  userId,
+  onBlocksChange,
   onChanged,
   onItemsChanged,
   report,
 }: {
   doc: Doc;
+  /** The page's comments, so a line can show its own underneath. */
+  comments: DocCommentsState;
+  userId?: string;
+  /** The lines as they stand, so comments can be matched to them before a save. */
+  onBlocksChange?: (blocks: DocBlock[]) => void;
   onChanged: (doc: Doc) => void;
   /** Called when a tick here may have changed a task. */
   onItemsChanged?: () => void;
@@ -68,6 +81,12 @@ export function DocEditor({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
+  /** The line whose remarks are open, and one waiting to be written on. */
+  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [pending, setPending] = useState<{
+    blockId: string;
+    quote: string;
+  } | null>(null);
   /** Set when a line opens so the caret starts at its end; cleared on typing. */
   const [caret, setCaret] = useState<
     { start: number; end: number } | undefined
@@ -89,6 +108,13 @@ export function DocEditor({
 
   live.current = { title, blocks };
   focusedRef.current = focused;
+
+  // What is on screen, for whoever needs to match something to a line before
+  // the page has been saved.
+  useEffect(() => {
+    onBlocksChange?.(blocks);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocks]);
 
   useEffect(() => {
     setTitle(doc.title);
@@ -273,7 +299,12 @@ export function DocEditor({
     const fresh: DocBlock = LISTS.has(current.type)
       ? blockToType(EMPTY, current.type)
       : EMPTY;
-    next.splice(focused, 1, ...(parsed.length ? parsed : [EMPTY]), fresh);
+    next.splice(
+      focused,
+      1,
+      ...carryBlockIds(blocks[focused], parsed.length ? parsed : [EMPTY]),
+      fresh,
+    );
     const at = focused + Math.max(parsed.length, 1);
     update(next);
     openWith(serializeBlock(fresh) + tail, at);
@@ -293,10 +324,33 @@ export function DocEditor({
     const to = focused + by;
     if (to < 0 || to >= blocks.length) return;
     const next = blocks.slice();
-    next[focused] = parseDoc(draft)[0] ?? EMPTY;
+    next[focused] = carryBlockIds(blocks[focused], [
+      parseDoc(draft)[0] ?? EMPTY,
+    ])[0];
     [next[focused], next[to]] = [next[to], next[focused]];
     update(next);
     setFocused(to);
+  };
+
+  /**
+   * Remark on the open line. A line needs a name before anything can point
+   * at it, so one is given here and saved with the page.
+   */
+  const commentOnLine = () => {
+    if (focused === null) return;
+    const parsed = parseDoc(draft)[0] ?? blocks[focused];
+    const blockId = blocks[focused].id ?? newBlockId();
+    const next = blocks.slice();
+    next.splice(focused, 1, { ...parsed, id: blockId });
+    setFocused(null);
+    setBlocks(next);
+    // Saved at once rather than on the usual delay: the remark about to be
+    // written points at this name, and a name that is not saved is a remark
+    // with nothing to hang on.
+    if (timer.current) clearTimeout(timer.current);
+    void persist(title, next);
+    setPending({ blockId, quote: blockText(parsed).slice(0, 400) });
+    setOpenThread(blockId);
   };
 
   const deleteLine = () => {
@@ -317,7 +371,13 @@ export function DocEditor({
     if (focused === null) return;
     const parsed = parseDoc(draft);
     const next = blocks.slice();
-    next.splice(focused, 1, ...(parsed.length ? parsed : [EMPTY]));
+    // Re-reading the Markdown makes fresh blocks that know nothing of what
+    // pointed at the old line; its name goes back on the first of them.
+    next.splice(
+      focused,
+      1,
+      ...carryBlockIds(blocks[focused], parsed.length ? parsed : [EMPTY]),
+    );
     if (parsed.length > 1) setFocused(focused + parsed.length - 1);
     update(next);
   };
@@ -335,7 +395,7 @@ export function DocEditor({
     if (!parsed.length) {
       if (next.length > 1) next.splice(focused, 1);
       else next.splice(focused, 1, EMPTY);
-    } else next.splice(focused, 1, ...parsed);
+    } else next.splice(focused, 1, ...carryBlockIds(blocks[focused], parsed));
     setFocused(null);
     update(next);
   };
@@ -388,6 +448,35 @@ export function DocEditor({
         onCommit={commit}
         onBlurLine={syncDraft}
         selection={caret}
+        counts={comments.counts}
+        onOpenComments={(blockId) =>
+          setOpenThread((open) => (open === blockId ? null : blockId))
+        }
+        renderUnder={(blockId) => {
+          const list = comments.anchored.get(blockId) ?? [];
+          const waiting = pending?.blockId === blockId;
+          if (openThread !== blockId && !waiting) return null;
+          return (
+            <DocThread
+              comments={list}
+              state={comments}
+              userId={userId}
+              quote={list[0]?.quote ?? pending?.quote}
+              placeholder="Comment on this line…"
+              autoFocus={waiting}
+              anchor={{
+                block_id: blockId,
+                quote: list[0]?.quote ?? pending?.quote ?? "",
+              }}
+              // Stay open on the line just commented on, so the remark
+              // that was written is there to read rather than folding away.
+              onDone={() => {
+                setPending(null);
+                setOpenThread(blockId);
+              }}
+            />
+          );
+        }}
         onEditBlock={openLine}
         onToggleTodo={toggle}
       />
@@ -424,6 +513,11 @@ export function DocEditor({
               label="Move down"
               disabled={focused >= blocks.length - 1}
               onPress={() => moveLine(1)}
+            />
+            <SmallAction
+              label="Comment"
+              disabled={false}
+              onPress={commentOnLine}
             />
             <SmallAction
               label="Delete line"

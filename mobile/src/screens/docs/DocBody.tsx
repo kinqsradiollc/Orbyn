@@ -25,6 +25,9 @@ export function DocBody({
   onCommit,
   onBlurLine,
   selection,
+  counts,
+  renderUnder,
+  onOpenComments,
   onEditBlock,
 }: {
   content: DocBlock[];
@@ -47,22 +50,68 @@ export function DocBody({
    * typing after Return lands before the "- " the new list item begins with.
    */
   selection?: { start: number; end: number };
+  /** How many open remarks each named line carries. */
+  counts?: Record<string, number>;
+  /** What to show under a line — its remarks, when they are open. */
+  renderUnder?: (blockId: string) => React.ReactNode;
+  onOpenComments?: (blockId: string) => void;
   onEditBlock?: (index: number) => void;
 }) {
+  /**
+   * Wrap a line so tapping it opens it, and hang its remarks underneath —
+   * a phone has no margin, so under the line is as beside it as it gets.
+   */
+  /**
+   * Mark a line that carries remarks and hang them underneath — a phone has
+   * no margin, so under the line is as beside it as it gets. Kept apart from
+   * the tap-to-edit wrapper below, because a checklist line builds its own
+   * row (its switch must stay outside the tappable label) and still needs
+   * its remarks shown.
+   */
+  const decorate = (index: number, body: React.ReactNode) => {
+    const id = content[index].id;
+    const count = (id && counts?.[id]) || 0;
+    const under = id ? renderUnder?.(id) : null;
+    if (!count && !under) return <View key={index}>{body}</View>;
+    return (
+      <View key={index} style={styles.commented}>
+        <View style={styles.commentedRow}>
+          <View style={styles.commentedBody}>{body}</View>
+          {count > 0 && (
+            <Pressable
+              onPress={() => id && onOpenComments?.(id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${count} comment${count === 1 ? "" : "s"} on this line`}
+              style={({ pressed }) => [
+                styles.badge,
+                pressed && styles.linePressed,
+              ]}
+            >
+              <Text style={styles.badgeText}>{count}</Text>
+            </Pressable>
+          )}
+        </View>
+        {under}
+      </View>
+    );
+  };
+
   /** Wrap a line so tapping it opens it, when the page can be edited. */
   const line = (index: number, node: React.ReactNode) =>
-    onEditBlock ? (
-      <Pressable
-        key={index}
-        onPress={() => onEditBlock(index)}
-        style={({ pressed }) => [styles.line, pressed && styles.linePressed]}
-        accessibilityRole="button"
-        accessibilityLabel="Edit this line"
-      >
-        {node}
-      </Pressable>
-    ) : (
-      <View key={index}>{node}</View>
+    decorate(
+      index,
+      onEditBlock ? (
+        <Pressable
+          onPress={() => onEditBlock(index)}
+          style={({ pressed }) => [styles.line, pressed && styles.linePressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Edit this line"
+        >
+          {node}
+        </Pressable>
+      ) : (
+        node
+      ),
     );
 
   return (
@@ -115,8 +164,9 @@ export function DocBody({
             // The switch stays outside the tappable label: wrapping the whole
             // row would mean a tap meant to tick a line opened it for editing
             // instead.
-            return (
-              <View key={index} style={[styles.row, styles.line]}>
+            return decorate(
+              index,
+              <View style={[styles.row, styles.line]}>
                 <Switch
                   value={block.done}
                   onValueChange={() => onToggleTodo?.(index)}
@@ -145,7 +195,7 @@ export function DocBody({
                   </Text>
                   {block.id ? <Text style={styles.tag}>task</Text> : null}
                 </Pressable>
-              </View>
+              </View>,
             );
           case "quote":
             return line(
@@ -192,6 +242,33 @@ const styles = themed(() =>
       paddingVertical: 2,
     },
     linePressed: { backgroundColor: colors.surfaceMuted },
+    /* A line with remarks is marked the way a highlighter would mark it. */
+    commented: {
+      gap: 8,
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: radii.input,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.accent,
+      backgroundColor: colors.warningSoft,
+    },
+    commentedRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    commentedBody: { flex: 1, minWidth: 0 },
+    badge: {
+      minWidth: 24,
+      height: 24,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.accentSoft,
+    },
+    badgeText: {
+      color: colors.accent,
+      fontSize: 12,
+      fontFamily: fonts.semibold,
+    },
     editing: { gap: 6, alignItems: "flex-start" },
     input: {
       alignSelf: "stretch",
