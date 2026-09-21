@@ -945,10 +945,11 @@ const s = themed(() =>
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
+    // The way to make anything, on every screen: it gets a thumb's worth.
     add: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",

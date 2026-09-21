@@ -85,6 +85,10 @@ export function DocBody({
           {count > 0 && (
             <Pressable
               onPress={() => id && onOpenComments?.(id)}
+              // The way into a line's remarks. A 24pt pill is the right size
+              // beside a line of text and the wrong size for a thumb, so the
+              // target grows without the pill doing the same.
+              hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel={`${count} comment${count === 1 ? "" : "s"} on this line`}
               style={({ pressed }) => [
