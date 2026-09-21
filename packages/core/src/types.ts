@@ -1,4 +1,4 @@
-import type { DocSource } from "./docs.js";
+import type { DocSource, DraftNote } from "./docs.js";
 
 import type { z } from "zod";
 import type {
@@ -301,6 +301,8 @@ export type Proposal = AgentReply & {
   follow_ups?: string[];
   /** Pages the assistant read while answering, so an answer can be checked. */
   sources?: DocSource[];
+  /** Notes it has drafted, which become pages only when someone keeps them. */
+  notes?: DraftNote[];
   /** A schedule the assistant planned; the apps show it to review and apply. */
   plan?: Plan | null;
 };

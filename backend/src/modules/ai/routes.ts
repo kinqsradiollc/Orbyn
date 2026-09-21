@@ -67,6 +67,7 @@ async function answer(
     actions: [],
     clarification: null,
     cited: new Map(),
+    notes: [],
   };
   let result;
   try {
@@ -163,6 +164,7 @@ async function answer(
     actions,
     follow_ups: result.follow_ups,
     sources: result.sources,
+    notes: result.notes,
     plan: ctx.plan ?? null,
   };
 }

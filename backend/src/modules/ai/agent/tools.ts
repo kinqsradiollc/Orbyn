@@ -1,12 +1,16 @@
 import { z } from "zod";
 import {
+  blockText,
   isClosed,
   KINDS,
+  parseDoc,
   PRIORITIES,
   STATUSES,
   itemData,
   type Action,
+  type DocBlock,
   type DocSource,
+  type DraftNote,
   type Plan,
   type SystemRole,
 } from "@orbyn/core";
@@ -40,6 +44,8 @@ export type AgentContext = {
    * used, which is the only version of a citation worth showing.
    */
   cited?: Map<string, DocSource>;
+  /** Notes drafted this turn, for the user to keep or discard. */
+  notes?: DraftNote[];
 };
 
 export const MAX_ACTIONS = 20;
@@ -858,6 +864,104 @@ export const TOOLS: Tool[] = [
   ),
   tool(
     {
+      name: "propose_note",
+      description:
+        "Draft a note for the user to keep. Use when they ask you to write something up, summarise a meeting, or capture decisions. The draft is shown to them and saved only if they keep it — never say it is saved.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["title", "body"],
+        properties: {
+          title: { type: "string", description: "A short, plain title." },
+          body: {
+            type: "string",
+            description:
+              "The note in Markdown: # headings, - bullets, - [ ] checklist lines, > quotes.",
+          },
+          project_id: {
+            type: "string",
+            description:
+              "A project id from search_docs or get_overview to hang it off.",
+          },
+          item_id: {
+            type: "string",
+            description:
+              "A task id from search_items, for a note about one task.",
+          },
+          why: {
+            type: "string",
+            description: "One line on why it is worth keeping.",
+          },
+        },
+      },
+    },
+    z
+      .object({
+        title: z.string().trim().min(1).max(200),
+        body: z.string().max(20_000),
+        project_id: z.uuid().optional(),
+        item_id: z.uuid().optional(),
+        why: z.string().trim().max(300).optional(),
+      })
+      .strict(),
+    (ctx, a) => draftNote(ctx, a),
+  ),
+  tool(
+    {
+      name: "propose_doc_edit",
+      description:
+        "Propose changes to words on an existing page. They appear beside the page for the user to take or leave, exactly like a colleague's suggestions. Quote the words to change exactly as get_doc returned them.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["doc_id", "changes"],
+        properties: {
+          doc_id: { type: "string", description: "An id from search_docs." },
+          changes: {
+            type: "array",
+            description: "At most 10 changes.",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["find", "replace"],
+              properties: {
+                find: {
+                  type: "string",
+                  description: "The exact words on the page to change.",
+                },
+                replace: {
+                  type: "string",
+                  description:
+                    "What they should say instead. Empty removes them.",
+                },
+              },
+            },
+          },
+          why: { type: "string", description: "One line on why." },
+        },
+      },
+    },
+    z
+      .object({
+        doc_id: z.uuid(),
+        changes: z
+          .array(
+            z
+              .object({
+                find: z.string().min(1).max(2000),
+                replace: z.string().max(2000),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(10),
+        why: z.string().trim().max(300).optional(),
+      })
+      .strict(),
+    (ctx, a) => proposeDocEdit(ctx, a),
+  ),
+  tool(
+    {
       name: "get_overview",
       description:
         "Counts plus overdue, today's and the next 7 days' items. Use for summaries and 'what needs my attention'.",
@@ -1212,6 +1316,136 @@ async function readDoc(ctx: AgentContext, a: { doc_id: string }) {
     lines: doc.content
       .filter((b) => (b.text ?? "").trim())
       .map((b) => ({ block_id: b.id ?? null, text: b.text })),
+  };
+}
+
+/**
+ * Draft a note. Nothing is written: the draft travels back with the reply
+ * and becomes a page only if someone keeps it.
+ */
+async function draftNote(
+  ctx: AgentContext,
+  a: {
+    title: string;
+    body: string;
+    project_id?: string;
+    item_id?: string;
+    why?: string;
+  },
+) {
+  if (!ctx.notes) throw new Error("Notes cannot be drafted here.");
+  if (ctx.notes.length >= 3)
+    throw new Error("That is enough notes for one turn.");
+  // A project or task named here has to be one this person can actually
+  // see; the model is not trusted with an id it invented.
+  let project: { id: string; name: string; team_id: string | null } | null =
+    null;
+  if (a.project_id)
+    project =
+      (
+        await pool.query<{ id: string; name: string; team_id: string | null }>(
+          `SELECT p.id, p.name, p.team_id FROM projects p
+            WHERE p.id = $2
+              AND ((p.team_id IS NULL AND p.user_id = $1)
+                   OR p.team_id IN (SELECT team_id FROM team_members
+                                     WHERE user_id = $1))`,
+          [ctx.user.id, a.project_id],
+        )
+      ).rows[0] ?? null;
+  let item: { id: string; team_id: string | null } | null = null;
+  if (a.item_id)
+    item =
+      (
+        await pool.query<{ id: string; team_id: string | null }>(
+          `SELECT i.id, i.team_id FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+          [ctx.user.id, a.item_id],
+        )
+      ).rows[0] ?? null;
+
+  const content = parseDoc(a.body);
+  const draft: DraftNote = {
+    title: a.title.slice(0, 200),
+    content: content.length ? content : [{ type: "paragraph", text: "" }],
+    project_id: project?.id ?? null,
+    project_name: project?.name ?? null,
+    item_id: item?.id ?? null,
+    team_id: project?.team_id ?? item?.team_id ?? null,
+    note: (a.why ?? "").slice(0, 300),
+  };
+  ctx.notes.push(draft);
+  return {
+    drafted: draft.title,
+    lines: draft.content.length,
+    project: draft.project_name,
+    note: "The draft is shown to the user, who decides whether to keep it. Say what you drafted; never say it is saved.",
+  };
+}
+
+/**
+ * Propose changes to a page. These go where a colleague's proposals go —
+ * beside the words, with the same Take or Leave — rather than into the
+ * reply, because a change to a sentence is read next to that sentence.
+ */
+async function proposeDocEdit(
+  ctx: AgentContext,
+  a: {
+    doc_id: string;
+    changes: { find: string; replace: string }[];
+    why?: string;
+  },
+) {
+  const doc = (
+    await pool.query<{ id: string; content: DocBlock[]; title: string }>(
+      `SELECT d.id, d.content, d.title FROM docs d
+        WHERE d.id = $2
+          AND ((d.team_id IS NULL AND d.user_id = $1)
+               OR d.team_id IN (SELECT team_id FROM team_members
+                                 WHERE user_id = $1))`,
+      [ctx.user.id, a.doc_id],
+    )
+  ).rows[0];
+  if (!doc) throw new Error("No such page, or it is not yours to read.");
+
+  const made: string[] = [];
+  const missed: string[] = [];
+  for (const change of a.changes.slice(0, 10)) {
+    // The words to change are looked for in the page as it stands; a
+    // proposal against words that are not there would have nothing to apply.
+    const block = doc.content.find(
+      (b) => b.id && blockText(b).includes(change.find),
+    );
+    if (!block?.id) {
+      missed.push(change.find);
+      continue;
+    }
+    const source = blockText(block);
+    const at = source.indexOf(change.find);
+    await pool.query(
+      `INSERT INTO doc_suggestions
+         (doc_id, user_id, block_id, kind, range_start, range_end,
+          text, quote, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        doc.id,
+        ctx.user.id,
+        block.id,
+        change.replace ? "replace" : "delete",
+        at,
+        at + change.find.length,
+        change.replace,
+        change.find,
+        `Assistant${a.why ? ` · ${a.why.slice(0, 120)}` : ""}`,
+      ],
+    );
+    made.push(change.find);
+  }
+  return {
+    proposed: made.length,
+    on: doc.title,
+    not_found: missed,
+    note: made.length
+      ? "These wait beside the page for the user to take or leave. Say what you proposed; never say the page is changed."
+      : "Nothing matched. Quote the words exactly as get_doc returned them.",
   };
 }
 

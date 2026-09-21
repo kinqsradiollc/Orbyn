@@ -78,6 +78,8 @@ type Props = {
   onOpenPlan: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
+  /** Opens a note once it has been kept. */
+  onKeptNote?: (docId: string) => void;
   /** Refresh the planner after something is created or applied. */
   onApplied: () => Promise<void>;
   /** Opens the keyboard shortcut sheet. */
@@ -163,6 +165,7 @@ export function CommandBar({
   onApplyPlan,
   onOpenPlan,
   onOpenSource,
+  onKeptNote,
   onApplied,
   onShowShortcuts,
   report,

@@ -758,3 +758,54 @@
 .ai-source:disabled {
   cursor: default;
 }
+
+/* A note the assistant drafted. Shown as itself — its title, its length and
+   the start of what it says — because the decision is whether it is worth
+   keeping, which cannot be made from a summary of a summary. */
+.ai-drafts {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  min-width: 0;
+}
+.ai-draft {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.ai-draft header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+.ai-draft header strong {
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ai-draft-preview {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.ai-draft-why {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.ai-draft-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}

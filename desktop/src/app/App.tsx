@@ -639,6 +639,7 @@ export function App() {
                   onApplyPlan={applyPlan}
                   onOpenPlan={openPlan}
                   onOpenSource={openSource}
+                  onKeptNote={(docId) => openSource({ doc_id: docId })}
                 />
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
@@ -758,6 +759,7 @@ export function App() {
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
             onOpenSource={openSource}
+            onKeptNote={(docId) => openSource({ doc_id: docId })}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
             teams={teams}
