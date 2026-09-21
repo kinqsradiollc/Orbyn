@@ -7,9 +7,10 @@ import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
+import { Button } from "../../components/Button";
 import { DocComments } from "./DocComments";
+import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
-import { SmallAction } from "../../components/SmallAction";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -103,6 +104,7 @@ export function DocsSheet({
                 report={report}
               />
               <DocComments docId={open.id} userId={userId} report={report} />
+              <DocHistory doc={open} onRestored={setOpen} report={report} />
             </>
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
@@ -111,16 +113,18 @@ export function DocsSheet({
               <Text style={styles.empty}>
                 No documents yet. Start one and it is on every device.
               </Text>
-              <SmallAction
-                label="New document"
+              <Button
+                title="New document"
+                secondary
                 disabled={busy}
                 onPress={create}
               />
             </View>
           ) : (
             <View style={styles.list}>
-              <SmallAction
-                label="New document"
+              <Button
+                title="New document"
+                secondary
                 disabled={busy}
                 onPress={create}
               />

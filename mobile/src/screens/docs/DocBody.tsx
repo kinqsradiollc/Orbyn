@@ -23,6 +23,8 @@ export function DocBody({
   draft = "",
   onDraftChange,
   onCommit,
+  onBlurLine,
+  selection,
   onEditBlock,
 }: {
   content: DocBlock[];
@@ -33,6 +35,18 @@ export function DocBody({
   draft?: string;
   onDraftChange?: (text: string) => void;
   onCommit?: () => void;
+  /**
+   * The field lost focus. On a phone that happens whenever the keyboard is
+   * put away, and on the web the moment another control is tapped, so it
+   * must not close or remove the line — only keep the words safe.
+   */
+  onBlurLine?: () => void;
+  /**
+   * Where the caret should sit, set once when a line opens. Without it the
+   * web build leaves the caret at the start after the value is replaced, so
+   * typing after Return lands before the "- " the new list item begins with.
+   */
+  selection?: { start: number; end: number };
   onEditBlock?: (index: number) => void;
 }) {
   /** Wrap a line so tapping it opens it, when the page can be edited. */
@@ -67,21 +81,10 @@ export function DocBody({
                 placeholder="Write something…"
                 placeholderTextColor={colors.faint}
                 onChangeText={onDraftChange}
-                onBlur={onCommit}
+                onBlur={onBlurLine}
+                selection={selection}
                 accessibilityLabel="Line being edited"
               />
-              {/* Putting the line away should not depend on the keyboard
-                  going away: on a phone it often does not. */}
-              <Pressable
-                onPress={onCommit}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.doneBtn,
-                  pressed && styles.linePressed,
-                ]}
-              >
-                <Text style={styles.doneText}>Done</Text>
-              </Pressable>
             </View>
           );
         switch (block.type) {
@@ -190,17 +193,6 @@ const styles = themed(() =>
     },
     linePressed: { backgroundColor: colors.surfaceMuted },
     editing: { gap: 6, alignItems: "flex-start" },
-    doneBtn: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: radii.pill,
-      backgroundColor: colors.accentSoft,
-    },
-    doneText: {
-      color: colors.accent,
-      fontSize: 13,
-      fontFamily: fonts.semibold,
-    },
     input: {
       alignSelf: "stretch",
       color: colors.text,

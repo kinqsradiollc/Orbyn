@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import {
+  BLOCK_KINDS,
+  blockToType,
   mergeDocs,
   parseDoc,
   serializeBlock,
@@ -8,9 +10,32 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
+import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
+
+/** Kinds that carry on when Return is pressed at the end of a line. */
+const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
+/** Kinds whose text may hold line breaks of its own. */
+const MULTILINE = new Set<DocBlock["type"]>(["code", "math"]);
+
+/** Short names for the toolbar, where a phone has no room for "Bulleted list". */
+const SHORT: Record<string, string> = {
+  paragraph: "Text",
+  "heading-1": "H1",
+  "heading-2": "H2",
+  "heading-3": "H3",
+  bullet: "\u2022 List",
+  numbered: "1. List",
+  todo: "\u2610 To-do",
+  quote: "\u201C Quote",
+  code: "Code",
+  math: "\u2211 Maths",
+  divider: "\u2014 Divider",
+};
+const kindKey = (k: (typeof BLOCK_KINDS)[number]) =>
+  k.type === "heading" ? `heading-${k.level}` : k.type;
 
 /** How long to wait after typing stops before saving. */
 const SAVE_AFTER_MS = 900;
@@ -43,6 +68,15 @@ export function DocEditor({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState("");
+  /** Set when a line opens so the caret starts at its end; cleared on typing. */
+  const [caret, setCaret] = useState<
+    { start: number; end: number } | undefined
+  >();
+  const openWith = (text: string, index: number) => {
+    setDraft(text);
+    setCaret({ start: text.length, end: text.length });
+    setFocused(index);
+  };
 
   const version = useRef(doc.version);
   /** Whether an edit here is waiting to be saved. */
@@ -72,6 +106,21 @@ export function DocEditor({
     },
     [],
   );
+
+  // The same page, but a newer copy handed in from outside — a restore from
+  // the history section below. Our own saves and live updates move
+  // version.current first, so only a genuinely external change gets here.
+  useEffect(() => {
+    if (doc.version <= version.current) return;
+    version.current = doc.version;
+    base.current = doc.content;
+    dirty.current = false;
+    setTitle(doc.title);
+    setBlocks(doc.content.length ? doc.content : [EMPTY]);
+    live.current = { title: doc.title, blocks: doc.content };
+    setFocused(null);
+    setNote("Restored an earlier version.");
+  }, [doc.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The note is news, not a state to sit in.
   useEffect(() => {
@@ -190,15 +239,97 @@ export function DocEditor({
   };
 
   /** Open a line for editing, showing the Markdown behind it. */
-  const openLine = (index: number) => {
-    setDraft(serializeBlock(blocks[index]));
-    setFocused(index);
+  const openLine = (index: number) =>
+    openWith(serializeBlock(blocks[index]), index);
+
+  /**
+   * Typing into the open line. A line break means Return was pressed: the
+   * words before it stay here, the line is put away, and a new one opens
+   * below — of the same kind for a list, plain otherwise. Code and maths
+   * keep their line breaks, since those are part of the text.
+   */
+  const changeDraft = (text: string) => {
+    // The first keystroke takes over from the placed caret.
+    setCaret(undefined);
+    if (focused === null) return setDraft(text);
+    const kind = blocks[focused].type;
+    const br = text.indexOf("\n");
+    if (br < 0 || MULTILINE.has(kind)) return setDraft(text);
+    const head = text.slice(0, br);
+    const tail = text.slice(br + 1);
+    const parsed = parseDoc(head);
+    const current = parsed[0] ?? EMPTY;
+    const next = blocks.slice();
+    // Return on an empty list item leaves the list rather than adding one.
+    if (
+      LISTS.has(current.type) &&
+      !("text" in current && current.text.trim())
+    ) {
+      next.splice(focused, 1, EMPTY);
+      setDraft("");
+      update(next);
+      return;
+    }
+    const fresh: DocBlock = LISTS.has(current.type)
+      ? blockToType(EMPTY, current.type)
+      : EMPTY;
+    next.splice(focused, 1, ...(parsed.length ? parsed : [EMPTY]), fresh);
+    const at = focused + Math.max(parsed.length, 1);
+    update(next);
+    openWith(serializeBlock(fresh) + tail, at);
+  };
+
+  /** The open line as another kind of block, keeping its words. */
+  const turnInto = (kind: (typeof BLOCK_KINDS)[number]) => {
+    if (focused === null) return;
+    const current = parseDoc(draft)[0] ?? EMPTY;
+    const text = serializeBlock(blockToType(current, kind.type, kind.level));
+    setDraft(text);
+    setCaret({ start: text.length, end: text.length });
+  };
+
+  const moveLine = (by: -1 | 1) => {
+    if (focused === null) return;
+    const to = focused + by;
+    if (to < 0 || to >= blocks.length) return;
+    const next = blocks.slice();
+    next[focused] = parseDoc(draft)[0] ?? EMPTY;
+    [next[focused], next[to]] = [next[to], next[focused]];
+    update(next);
+    setFocused(to);
+  };
+
+  const deleteLine = () => {
+    if (focused === null) return;
+    const next = blocks.slice();
+    if (next.length > 1) next.splice(focused, 1);
+    else next.splice(focused, 1, EMPTY);
+    setFocused(null);
+    update(next);
+  };
+
+  /**
+   * Keep what has been typed without closing the line. Nothing is removed
+   * here: an emptied line stays as a blank line until Done, Return or
+   * Delete says otherwise.
+   */
+  const syncDraft = () => {
+    if (focused === null) return;
+    const parsed = parseDoc(draft);
+    const next = blocks.slice();
+    next.splice(focused, 1, ...(parsed.length ? parsed : [EMPTY]));
+    if (parsed.length > 1) setFocused(focused + parsed.length - 1);
+    update(next);
   };
 
   /** Put an edited line back. Several lines of text become several blocks. */
   const commit = () => {
     if (focused === null) return;
-    const parsed = parseDoc(draft);
+    let parsed = parseDoc(draft);
+    // A bare "- " or "- [ ] " is an empty line that happens to have a
+    // marker; putting it away should not leave a blank bullet on the page.
+    if (parsed.length === 1 && "text" in parsed[0] && !parsed[0].text.trim())
+      parsed = [];
     const next = blocks.slice();
     // An emptied line is removed, unless it is the only one left.
     if (!parsed.length) {
@@ -212,8 +343,7 @@ export function DocEditor({
   const addLine = () => {
     const next = [...blocks, EMPTY];
     setBlocks(next);
-    setDraft("");
-    setFocused(next.length - 1);
+    openWith("", next.length - 1);
   };
 
   const toggle = (index: number) => {
@@ -254,17 +384,70 @@ export function DocEditor({
         content={blocks}
         editing={focused}
         draft={draft}
-        onDraftChange={setDraft}
+        onDraftChange={changeDraft}
         onCommit={commit}
+        onBlurLine={syncDraft}
+        selection={caret}
         onEditBlock={openLine}
         onToggleTodo={toggle}
       />
 
-      <SmallAction label="Add a line" disabled={false} onPress={addLine} />
+      {focused !== null ? (
+        <View style={styles.tools}>
+          <ChipRow label="Kind of line">
+            {BLOCK_KINDS.map((kind) => {
+              const key = kindKey(kind);
+              const current = parseDoc(draft)[0] ?? EMPTY;
+              const selected =
+                (current.type === "heading"
+                  ? `heading-${current.level}`
+                  : current.type) === key;
+              return (
+                <Chip
+                  key={key}
+                  label={SHORT[key]}
+                  selected={selected}
+                  onPress={() => turnInto(kind)}
+                  accessibilityLabel={kind.label}
+                  accessibilityHint={kind.hint}
+                />
+              );
+            })}
+          </ChipRow>
+          <View style={styles.toolRow}>
+            <SmallAction
+              label="Move up"
+              disabled={focused === 0}
+              onPress={() => moveLine(-1)}
+            />
+            <SmallAction
+              label="Move down"
+              disabled={focused >= blocks.length - 1}
+              onPress={() => moveLine(1)}
+            />
+            <SmallAction
+              label="Delete line"
+              destructive
+              disabled={false}
+              onPress={deleteLine}
+            />
+            <View style={styles.spacer} />
+            <SmallAction label="Done" disabled={false} onPress={commit} />
+          </View>
+        </View>
+      ) : (
+        <Pressable
+          onPress={addLine}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
+        >
+          <Text style={styles.addText}>+ Add a block</Text>
+        </Pressable>
+      )}
 
       <Text style={styles.hint}>
-        Tap a line to edit it. Start with # for a heading, - for a bullet, - [ ]
-        for a checkbox, or put a formula between $ signs. Formulas read as
+        Tap a line to edit it. Return starts a new line; on an empty list item
+        it ends the list. The toolbar changes what a line is. Formulas read as
         symbols here and are typeset on the desktop.
       </Text>
     </View>
@@ -298,5 +481,27 @@ const styles = themed(() =>
       flexShrink: 1,
     },
     hint: { color: colors.faint, fontSize: 12, lineHeight: 18 },
+    tools: {
+      gap: 8,
+      padding: 10,
+      borderRadius: radii.card,
+      backgroundColor: colors.surfaceMuted,
+    },
+    toolRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
+    spacer: { flex: 1 },
+    add: {
+      minHeight: 36,
+      justifyContent: "center",
+      paddingHorizontal: 6,
+      marginHorizontal: -6,
+      borderRadius: radii.input,
+    },
+    addPressed: { backgroundColor: colors.surfaceMuted },
+    addText: { color: colors.muted, fontSize: 14, fontFamily: fonts.semibold },
   }),
 );

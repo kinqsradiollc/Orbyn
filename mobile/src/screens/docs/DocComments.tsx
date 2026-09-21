@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { DocComment } from "@orbyn/core";
+import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -157,8 +158,8 @@ export function DocComments({
             onChangeText={setDraft}
             accessibilityLabel="New comment"
           />
-          <SmallAction
-            label="Comment"
+          <Button
+            title="Comment"
             disabled={busy || !draft.trim()}
             onPress={add}
           />
