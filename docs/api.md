@@ -453,6 +453,25 @@ the database as HTML.
 
 A search only ever returns what the searcher can already see.
 
+### Finding a page by meaning
+
+Off by default, and impossible at all on a Postgres without `pgvector` — which the stock
+`postgres:17-alpine` image is. Migration 041 asks for the extension, notices when it is not there, and
+creates nothing; the word search above carries on alone, which is how the workspace already worked.
+Swapping the image to `pgvector/pgvector:pg17` and re-running migrations creates the tables; nothing
+else changes.
+
+Turning it on is `PUT /ai/settings` with `semantic_search: true`, and `GET /ai/settings` reports both
+`semantic_search` (whether it is wanted) and `semantic_possible` (whether this database could).
+It stays off until asked for because measuring a page means **sending its words to whichever AI
+provider is configured**, which is a decision for whoever runs the workspace rather than a default.
+
+Once on, editing a page queues it; the worker measures its lines a minute at a time, and only the
+lines whose words actually changed. Meaning is then **added to** the word search, never used instead
+of it: a page the words already found is lifted a little, and a page only meaning found joins the end
+rather than displacing a plain match. If the provider is unreachable the search still returns its word
+results — losing meaning is not losing the search.
+
 ### `PUT /docs/:id/comments/:commentId` (auth)
 
 `{ "resolved": true }` stamps the time it was resolved; `false` brings it back.

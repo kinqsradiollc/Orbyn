@@ -12,6 +12,7 @@ import {
 } from "@orbyn/core";
 import { query, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
+import { hasVectors } from "../search/semantic.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret, maskSecret } from "../../lib/secrets.js";
@@ -42,8 +43,9 @@ async function currentSettings(): Promise<AiSettings> {
       model: string;
       updated_at: Date | null;
       enabled: boolean | null;
+      semantic_search: boolean;
     }>(
-      `SELECT s.provider_id, s.model, s.updated_at, p.enabled
+      `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled
        FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id WHERE s.id`,
     )
   ).rows[0];
@@ -52,6 +54,9 @@ async function currentSettings(): Promise<AiSettings> {
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
     source: fromDatabase ? "database" : "none",
+    semantic_search: !!row?.semantic_search,
+    /** Whether this database could do it at all, so the console can say so. */
+    semantic_possible: await hasVectors(),
     updated_at: row?.updated_at ? iso(row.updated_at) : null,
   };
 }
@@ -299,8 +304,15 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     }
     await transaction(async (db) => {
       await db.query(
-        "UPDATE ai_settings SET provider_id=$1, model=$2, updated_by=$3, updated_at=now() WHERE id",
-        [d.provider_id, d.provider_id ? d.model : "", actor.id],
+        `UPDATE ai_settings SET provider_id=$1, model=$2, updated_by=$3,
+           semantic_search = coalesce($4, semantic_search), updated_at=now()
+         WHERE id`,
+        [
+          d.provider_id,
+          d.provider_id ? d.model : "",
+          actor.id,
+          d.semantic_search ?? null,
+        ],
       );
       await audit(
         {

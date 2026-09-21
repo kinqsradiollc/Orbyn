@@ -3,6 +3,7 @@ import { searchQuery, type SearchHit } from "@orbyn/core";
 import { reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { nearest } from "./semantic.js";
 
 /**
  * One search across pages and tasks.
@@ -119,8 +120,51 @@ export async function searchRoutes(app: FastifyInstance) {
       : [];
 
     // Both lists are ranked on the same scale, so they interleave honestly.
-    return [...docs, ...items]
-      .sort((a, b) => Number(b.rank) - Number(a.rank))
-      .slice(0, q.limit);
+    const found = [...docs, ...items].sort(
+      (a, b) => Number(b.rank) - Number(a.rank),
+    );
+
+    /**
+     * Meaning is added to the words, never used instead of them: a page the
+     * words already found is lifted a little, and a page only meaning found
+     * joins the end rather than displacing a plain match. That way turning
+     * semantic search on can improve an order but not overturn it, and
+     * turning it off changes nothing anyone was relying on.
+     */
+    if (wantsDocs) {
+      const near = await nearest(u.id, q.q, q.limit);
+      if (near.length) {
+        const byId = new Map(found.map((h) => [h.id, h]));
+        for (const hit of near) {
+          const already = byId.get(hit.id);
+          if (already) {
+            already.rank = Number(already.rank) + hit.nearness * 0.25;
+            continue;
+          }
+          const page = (
+            await db.query<SearchHit>(
+              `SELECT d.id, 'doc' AS type, d.title, d.kind, d.team_id,
+                      d.project_id, p.name AS project_name, d.updated_at
+                 FROM docs d LEFT JOIN projects p ON p.id = d.project_id
+                WHERE d.id = $1
+                  AND ($2::text IS NULL OR d.kind = $2)`,
+              [hit.id, q.kind ?? null],
+            )
+          ).rows[0];
+          if (!page) continue;
+          found.push({
+            ...page,
+            snippet: hit.quote,
+            block_id: hit.block_id,
+            // Below every word match, because it matched no words.
+            rank: hit.nearness * 0.2,
+          });
+          byId.set(page.id, page);
+        }
+        found.sort((a, b) => Number(b.rank) - Number(a.rank));
+      }
+    }
+
+    return found.slice(0, q.limit);
   });
 }
