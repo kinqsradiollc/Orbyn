@@ -167,25 +167,35 @@ export function usePlanner() {
   }, [token]);
 
   useEffect(() => {
-    loadSession()
-      .then(async (t) => {
-        setToken(t);
-        // Offline-first: show the last data we saved while the network loads
-        // (or in its place, when there's no connection).
-        if (t) {
-          const cached = await loadCache();
-          if (cached && tokenRef.current === t) {
-            setItems(cached.items);
-            if (cached.user) setUser(cached.user);
-            setNotices(cached.notices);
-            setTeams(cached.teams);
-            setLists(cached.lists);
-            setTags(cached.tags);
-          }
+    let alive = true;
+    (async () => {
+      const t = await loadSession();
+      // Offline-first: show the last data we saved while the network loads
+      // (or in its place, when there's no connection).
+      //
+      // The cache goes in *before* the token, because setting the token is
+      // what starts the first refresh. Applied after, a cache that resolved
+      // late would overwrite the fresher data that refresh had already put
+      // on screen — which on a fast connection is every time, and leaves the
+      // app looking empty while the server has just answered.
+      if (t) {
+        const cached = await loadCache();
+        if (cached && alive) {
+          setItems(cached.items);
+          if (cached.user) setUser(cached.user);
+          setNotices(cached.notices);
+          setTeams(cached.teams);
+          setLists(cached.lists);
+          setTags(cached.tags);
         }
-      })
-      .catch(() => setError("Unable to restore your session"))
-      .finally(() => setReady(true));
+      }
+      if (alive) setToken(t);
+    })()
+      .catch(() => alive && setError("Unable to restore your session"))
+      .finally(() => alive && setReady(true));
+    return () => {
+      alive = false;
+    };
   }, []);
 
   // Quick capture: a Siri Shortcut, home-screen shortcut or share sheet can
