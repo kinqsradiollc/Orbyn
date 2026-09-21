@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Check,
   Copy,
+  MessageSquarePlus,
   Trash2,
   type LucideIcon,
   Heading1,
@@ -56,6 +57,7 @@ export function DocBlockMenu({
   onTurnInto,
   onMove,
   onDuplicate,
+  onComment,
   onDelete,
   onClose,
 }: {
@@ -66,6 +68,7 @@ export function DocBlockMenu({
   onTurnInto: (kind: (typeof BLOCK_KINDS)[number]) => void;
   onMove: (by: -1 | 1) => void;
   onDuplicate: () => void;
+  onComment: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -137,6 +140,15 @@ export function DocBlockMenu({
             }}
           >
             <Copy size={15} aria-hidden="true" /> Duplicate
+          </button>
+          <button
+            className="doc-menu-item"
+            onClick={() => {
+              onComment();
+              onClose();
+            }}
+          >
+            <MessageSquarePlus size={15} aria-hidden="true" /> Comment
           </button>
           <button
             className="doc-menu-item is-danger"

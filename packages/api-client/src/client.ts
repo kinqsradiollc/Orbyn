@@ -649,10 +649,15 @@ export class OrbynClient {
   listDocComments(docId: string) {
     return this.request<DocComment[]>(`/docs/${docId}/comments`);
   }
-  addDocComment(docId: string, body: string) {
+  /** `anchor` ties the remark to one block; without it, to the page. */
+  addDocComment(
+    docId: string,
+    body: string,
+    anchor?: { block_id: string; quote: string },
+  ) {
     return this.request<DocComment>(`/docs/${docId}/comments`, {
       method: "POST",
-      body: { body },
+      body: { body, ...anchor },
     });
   }
   resolveDocComment(docId: string, commentId: string, resolved: boolean) {

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   Check,
@@ -15,7 +22,10 @@ import {
 import {
   BLOCK_KINDS,
   blockToType,
+  blockText,
+  carryBlockIds,
   mergeDocs,
+  newBlockId,
   parseDoc,
   serializeBlock,
   serializeDoc,
@@ -94,6 +104,19 @@ export function DocEditor({
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  /** A line chosen for a comment, before anything has been written. */
+  const [pending, setPending] = useState<{
+    blockId: string;
+    quote: string;
+  } | null>(null);
+  /** The line whose comment card is singled out, from either side. */
+  const [activeComment, setActiveComment] = useState<string | null>(null);
+  /** Lines that carry remarks, so they can be marked in the page. */
+  const [commented, setCommented] = useState<string[]>([]);
+  /** Where each named line sits, measured from the top of the page. */
+  const [tops, setTops] = useState<Record<string, number>>({});
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const blockEls = useRef(new Map<string, HTMLElement>());
   /** A line that starts with "/", waiting for a kind to be picked. */
   const [slash, setSlash] = useState<{
     index: number;
@@ -267,8 +290,30 @@ export function DocEditor({
 
   const editBlock = (index: number, source: string) => {
     const next = blocks.slice();
-    next.splice(index, 1, ...blocksFromSource(source));
+    // Re-reading the Markdown makes fresh blocks; the old line's name goes
+    // back on the first of them, or its comments and its task lose it.
+    next.splice(
+      index,
+      1,
+      ...carryBlockIds(blocks[index], blocksFromSource(source)),
+    );
     update(next);
+  };
+
+  /**
+   * Choose a line to comment on. A line needs a name before anything can
+   * point at it, so one is given here and saved with the page.
+   */
+  const commentOn = (index: number) => {
+    const block = blocks[index];
+    const blockId = block.id ?? newBlockId();
+    if (!block.id) {
+      const next = blocks.slice();
+      next[index] = { ...block, id: blockId };
+      update(next);
+    }
+    setPending({ blockId, quote: blockText(block).slice(0, 400) });
+    setActiveComment(blockId);
   };
 
   const insertAfter = (index: number) => {
@@ -399,6 +444,37 @@ export function DocEditor({
     el.setSelectionRange(el.value.length, el.value.length);
   }, [focused]);
 
+  /**
+   * Where each named line sits, so the margin can put its card level with
+   * it. Measured against the page rather than read from offsetTop, because
+   * the rows are positioned and offsetTop would be relative to them.
+   */
+  const measure = useCallback(() => {
+    const page = pageRef.current;
+    if (!page) return;
+    const from = page.getBoundingClientRect().top;
+    const next: Record<string, number> = {};
+    for (const [id, el] of blockEls.current)
+      if (el.isConnected) next[id] = el.getBoundingClientRect().top - from;
+    setTops((prev) => {
+      const same =
+        Object.keys(prev).length === Object.keys(next).length &&
+        Object.entries(next).every(([k, v]) => prev[k] === v);
+      return same ? prev : next;
+    });
+  }, []);
+
+  useLayoutEffect(measure, [blocks, focused, showHistory, measure]);
+
+  // The page reflows as it is typed into and as the window changes shape.
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(page);
+    return () => observer.disconnect();
+  }, [measure]);
+
   const markdown = useMemo(() => serializeDoc(blocks), [blocks]);
 
   const download = () => {
@@ -527,8 +603,12 @@ export function DocEditor({
         </span>
       </div>
 
-      <div className={"doc-layout" + (showHistory ? " has-history" : "")}>
-        <div className="doc-page">
+      <div
+        className={
+          "doc-layout" + (showHistory ? " has-history" : " has-comments")
+        }
+      >
+        <div className="doc-page" ref={pageRef}>
           <input
             id="doc-title"
             className="doc-title"
@@ -569,7 +649,26 @@ export function DocEditor({
                   onBlur={() => setFocused((f) => (f === index ? null : f))}
                 />
               ) : (
-                <div key={index} className="doc-block-row">
+                <div
+                  key={index}
+                  className={
+                    "doc-block-row" +
+                    (block.id && commented.includes(block.id)
+                      ? " has-comment"
+                      : "") +
+                    (block.id && block.id === activeComment ? " is-active" : "")
+                  }
+                  ref={(el) => {
+                    if (!block.id) return;
+                    if (el) blockEls.current.set(block.id, el);
+                    else blockEls.current.delete(block.id);
+                  }}
+                  onClick={() =>
+                    block.id &&
+                    commented.includes(block.id) &&
+                    setActiveComment(block.id)
+                  }
+                >
                   <button
                     className="doc-handle"
                     aria-label="Block options"
@@ -619,6 +718,7 @@ export function DocEditor({
                 onTurnInto={(kind) => turnInto(menu.index, kind)}
                 onMove={(by) => moveBlock(menu.index, by)}
                 onDuplicate={() => duplicate(menu.index)}
+                onComment={() => commentOn(menu.index)}
                 onDelete={() => removeAt(menu.index)}
                 onClose={() => setMenu(null)}
               />
@@ -640,9 +740,21 @@ export function DocEditor({
             <code>$$</code> for a formula. Inline maths goes between single{" "}
             <code>$</code> signs.
           </p>
-
-          <DocComments docId={doc.id} userId={userId} report={report} />
         </div>
+        {!showHistory && (
+          <DocComments
+            docId={doc.id}
+            blocks={blocks}
+            tops={tops}
+            userId={userId}
+            pending={pending}
+            onPendingChange={setPending}
+            active={activeComment}
+            onActiveChange={setActiveComment}
+            onAnchors={setCommented}
+            report={report}
+          />
+        )}
         {showHistory && (
           <DocHistory
             doc={doc}

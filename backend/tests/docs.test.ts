@@ -372,6 +372,54 @@ test("the live stream keeps the CORS headers Fastify set", async () => {
   await closeLive();
 });
 
+test("a comment can be written about one line, and survives that line going", async () => {
+  const made = await call("POST", "/docs", {
+    title: "Anchored",
+    content: [
+      { type: "paragraph", text: "First line.", id: "b-one" },
+      { type: "paragraph", text: "Second line.", id: "b-two" },
+    ],
+  });
+  const id = made.json().id as string;
+
+  const onLine = await call("POST", `/docs/${id}/comments`, {
+    body: "Is this still true?",
+    block_id: "b-two",
+    quote: "Second line.",
+  });
+  assert.equal(onLine.statusCode, 201);
+  assert.equal(onLine.json().block_id, "b-two");
+  assert.equal(onLine.json().quote, "Second line.");
+
+  // A remark about the page as a whole carries no anchor.
+  const onPage = await call("POST", `/docs/${id}/comments`, {
+    body: "Good start.",
+  });
+  assert.equal(onPage.json().block_id, null);
+
+  const listed = (await call("GET", `/docs/${id}/comments`)).json() as {
+    block_id: string | null;
+    quote: string | null;
+  }[];
+  assert.deepEqual(
+    listed.map((c) => c.block_id),
+    ["b-two", null],
+  );
+
+  // The line it was written about is deleted; the comment is kept, with the
+  // words it was about, so it can be shown apart rather than vanishing.
+  await call("PUT", `/docs/${id}`, {
+    version: 1,
+    content: [{ type: "paragraph", text: "First line.", id: "b-one" }],
+  });
+  const after = (await call("GET", `/docs/${id}/comments`)).json() as {
+    block_id: string | null;
+    quote: string | null;
+  }[];
+  assert.equal(after.length, 2);
+  assert.equal(after[0].quote, "Second line.");
+});
+
 test("saving keeps the state it replaced, and a restore brings it back", async () => {
   const made = await call("POST", "/docs", {
     title: "Draft",

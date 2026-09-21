@@ -657,8 +657,14 @@ h4.doc-heading {
 .doc-layout.has-history {
   grid-template-columns: minmax(0, 820px) minmax(280px, 380px);
 }
+.doc-layout.has-comments {
+  grid-template-columns: minmax(0, 820px) minmax(0, 300px);
+}
+/* No room for a margin: the cards fall in below the page, each still
+   carrying the line it was written about. */
 @media (max-width: 1100px) {
-  .doc-layout.has-history {
+  .doc-layout.has-history,
+  .doc-layout.has-comments {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -754,4 +760,141 @@ h4.doc-heading {
 }
 .doc-history-body .doc-block.is-static:hover {
   background: none;
+}
+
+/* ---- comments in the margin ---- */
+
+/* The cards are placed by measurement, level with the lines they are about,
+   so the column itself is a positioned canvas rather than a stack. */
+.doc-margin {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.doc-margin-anchored {
+  position: relative;
+}
+.doc-margin-loose h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+.doc-margin-resolved {
+  justify-self: start;
+}
+
+.doc-card {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.doc-card.is-anchored {
+  position: absolute;
+  left: 0;
+  right: 0;
+  cursor: pointer;
+  transition: top 140ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-card.is-anchored {
+    transition: none;
+  }
+}
+/* Below the margin breakpoint the cards are an ordinary list again. */
+@media (max-width: 1100px) {
+  .doc-card.is-anchored {
+    position: static;
+    margin-bottom: 10px;
+  }
+}
+.doc-card.is-anchored.is-active {
+  border-color: var(--color-focus);
+  box-shadow: 0 2px 10px var(--color-backdrop);
+}
+/* The words the remark was written about. */
+.doc-card-quote {
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.doc-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.doc-card textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.86rem;
+  resize: vertical;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-sunken);
+  color: var(--color-text);
+  padding: 8px 10px;
+}
+.doc-card textarea:focus {
+  outline: none;
+  border-color: var(--color-focus);
+}
+
+.doc-remark {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.doc-remark + .doc-remark {
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+.doc-remark header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.doc-remark header strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.doc-remark header small {
+  color: var(--color-muted);
+  font-size: 0.74rem;
+  margin-right: auto;
+}
+.doc-remark p {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.doc-remark.is-resolved {
+  opacity: 0.6;
+}
+
+/* A commented line is tinted the way a highlighter would mark it, and the
+   one whose card is open is tinted more strongly. */
+.doc-block-row.has-comment > .doc-block {
+  background: var(--color-warn-soft);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.doc-block-row.has-comment.is-active > .doc-block {
+  background: var(--color-selected);
 }
