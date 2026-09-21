@@ -16,6 +16,7 @@ import {
   hasSystemPermission,
   hasTeamPermission,
   itemBody,
+  type Doc,
   type Item,
   type Notice,
   type Plan,
@@ -80,6 +81,7 @@ type SheetName =
   | "habits"
   | "docs"
   | "agenda"
+  | "note"
   | "projects";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
@@ -129,6 +131,8 @@ export function RootScreen() {
   const [sheet, setSheet] = useState<SheetName | null>(null);
   /** The task shown in the detail sheet. */
   const [task, setTask] = useState<Item | null>(null);
+  /** The meeting note being read, opened from its event. */
+  const [note, setNote] = useState<Doc | null>(null);
   /** The task in focus mode. */
   const [focus, setFocus] = useState<Item | null>(null);
   /** A plan to open the Plan my day sheet on (unfinished work moved forward). */
@@ -731,6 +735,15 @@ export function RootScreen() {
           }}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
+          onOpenNote={(event: Item) =>
+            void client
+              .itemNote(event.id)
+              .then((made) => {
+                setNote(made);
+                setSheet("note");
+              })
+              .catch((e: Error) => setError(e.message))
+          }
           onEdit={editItem}
           onFocus={openFocus}
           onChanged={planChanged}
@@ -773,6 +786,14 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "docs"}
+          userId={user?.id}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onItemsChanged={() => void refresh()}
+        />
+        <DocsSheet
+          visible={sheet === "note"}
+          initialDoc={note}
           userId={user?.id}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}

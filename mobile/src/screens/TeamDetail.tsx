@@ -381,6 +381,7 @@ export function TeamDetailPage({
             members={detail.members}
             userId={user?.id}
             canWrite={canWrite}
+            canManage={canManage}
             onOpenItem={onOpenItem}
             onCreated={() =>
               void load(true)

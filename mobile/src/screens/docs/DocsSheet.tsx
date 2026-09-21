@@ -29,6 +29,7 @@ const when = (iso: string) => {
 export function DocsSheet({
   visible,
   agenda,
+  initialDoc,
   userId,
   onClose,
   onDismiss,
@@ -37,6 +38,8 @@ export function DocsSheet({
   visible: boolean;
   /** Opens straight onto today's agenda instead of the list. */
   agenda?: boolean;
+  /** Opens straight onto one page — a meeting note, say — not the list. */
+  initialDoc?: Doc | null;
   /** Whose comments offer a remove button. */
   userId?: string;
   onClose: () => void;
@@ -50,13 +53,14 @@ export function DocsSheet({
 
   useEffect(() => {
     if (!visible) return;
+    if (initialDoc) return setOpen(initialDoc);
     if (agenda) {
       // Today's page is written on the server the first time it is asked for.
       client.agendaToday().then(setOpen, () => setOpen(null));
       return;
     }
     client.listDocs().then(setDocs, () => setDocs([]));
-  }, [visible, agenda]);
+  }, [visible, agenda, initialDoc]);
 
   /** Start a page here rather than having to reach for a desktop. */
   const create = () =>
@@ -76,7 +80,8 @@ export function DocsSheet({
   };
 
   // Leaving a sheet that opened on the agenda should close it, not show a list.
-  const back = agenda ? undefined : open ? backToList : undefined;
+  // A page opened on its own has no list behind it to go back to.
+  const back = agenda || initialDoc ? undefined : open ? backToList : undefined;
 
   /** The editor hands back whatever went wrong; show it where they are. */
   const report = (e: unknown) => setError((e as Error).message || "Not saved");

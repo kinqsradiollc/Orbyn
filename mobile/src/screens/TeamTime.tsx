@@ -10,6 +10,7 @@ import {
   type MeetingSlot,
   type MemberAvailability,
   type MemberWorkload,
+  type TeamAnalytics,
   type TeamMember,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
@@ -75,6 +76,7 @@ export function TeamTime({
   members,
   userId,
   canWrite,
+  canManage = false,
   onCreated,
   onOpenItem,
 }: {
@@ -83,6 +85,8 @@ export function TeamTime({
   userId?: string;
   /** Whether you can add team events (Find a time → book). */
   canWrite: boolean;
+  /** Only a manager sees how the team's time was set aside. */
+  canManage?: boolean;
   /** After a team event is created. */
   onCreated: () => void;
   /** Open the item editor, e.g. with a meeting time filled in. */
@@ -122,6 +126,21 @@ export function TeamTime({
       .then((prefs) => setPinned(prefs.pinned_user_ids))
       .catch(() => {});
   }, []);
+
+  /** Set-aside time over the last 30 days, for managers. */
+  const [analytics, setAnalytics] = useState<TeamAnalytics | null>(null);
+  useEffect(() => {
+    if (!canManage) return setAnalytics(null);
+    let alive = true;
+    client
+      .teamAnalytics(teamId, 30)
+      .then((a) => alive && setAnalytics(a))
+      // The week's own numbers are the point here; this is an extra.
+      .catch(() => alive && setAnalytics(null));
+    return () => {
+      alive = false;
+    };
+  }, [teamId, canManage]);
 
   useEffect(() => {
     let alive = true;
@@ -403,6 +422,29 @@ export function TeamTime({
         </>
       )}
 
+      {analytics && analytics.total_planned_minutes > 0 && (
+        <>
+          <Text style={[shared.eyebrow, s.eyebrow]}>
+            SET-ASIDE TIME · LAST 30 DAYS
+          </Text>
+          <View style={shared.card}>
+            {analytics.members
+              .filter((m) => m.planned_minutes > 0 || m.completed > 0)
+              .map((m) => (
+                <View key={m.user_id} style={s.analyticsRow}>
+                  <Text style={s.analyticsName} numberOfLines={1}>
+                    {m.name}
+                  </Text>
+                  <Text style={s.analyticsHours}>
+                    {Math.round(m.planned_minutes / 60)} h
+                  </Text>
+                  <Text style={s.analyticsDone}>{m.completed} done</Text>
+                </View>
+              ))}
+          </View>
+        </>
+      )}
+
       <Text style={[shared.eyebrow, s.eyebrow]}>FIND A TIME</Text>
       <View style={shared.card}>
         <Text style={shared.label}>Who</Text>
@@ -535,6 +577,25 @@ export function TeamTime({
 const s = themed(() =>
   StyleSheet.create({
     eyebrow: { marginTop: 8 },
+    analyticsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+    },
+    analyticsName: { flex: 1, color: colors.text, fontSize: 14 },
+    analyticsHours: {
+      color: colors.text,
+      fontSize: 14,
+      fontFamily: fonts.semibold,
+      fontVariant: ["tabular-nums"],
+    },
+    analyticsDone: {
+      color: colors.muted,
+      fontSize: 12,
+      minWidth: 58,
+      textAlign: "right",
+    },
     gap: { marginBottom: 12 },
     top: { marginTop: 6 },
     labelTop: { marginTop: 14 },
