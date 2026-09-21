@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import type { Doc, DocSummary } from "@orbyn/core";
+import type { Doc, DocKind, DocSummary } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -8,6 +8,7 @@ import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
 import { Button } from "../../components/Button";
+import { Chip, ChipRow } from "../../components/Chip";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
@@ -52,6 +53,8 @@ export function DocsSheet({
 }) {
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  /** null = every kind; "note" = only notes; "doc" = only plain pages. */
+  const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   const { busy, error, setError, run } = useRun();
 
   useEffect(() => {
@@ -66,10 +69,11 @@ export function DocsSheet({
   }, [visible, agenda, initialDoc]);
 
   /** Start a page here rather than having to reach for a desktop. */
-  const create = () =>
+  const create = (kind: DocKind = "doc") =>
     void run(async () => {
       const made = await client.createDoc({
         title: "",
+        kind,
         content: [{ type: "paragraph", text: "" }],
       });
       setDocs(null);
@@ -85,6 +89,11 @@ export function DocsSheet({
   // Leaving a sheet that opened on the agenda should close it, not show a list.
   // A page opened on its own has no list behind it to go back to.
   const back = agenda || initialDoc ? undefined : open ? backToList : undefined;
+
+  /** Notes and pages share a list; this narrows it to one or the other. */
+  const shown = (docs ?? []).filter(
+    (d) => kindFilter === null || d.kind === kindFilter,
+  );
 
   /** The editor hands back whatever went wrong; show it where they are. */
   const report = (e: unknown) => setError((e as Error).message || "Not saved");
@@ -125,18 +134,43 @@ export function DocsSheet({
                 title="New document"
                 secondary
                 disabled={busy}
-                onPress={create}
+                onPress={() => create("doc")}
               />
             </View>
           ) : (
             <View style={styles.list}>
-              <Button
-                title="New document"
-                secondary
-                disabled={busy}
-                onPress={create}
-              />
-              {docs.map((doc) => (
+              {/* Notes and pages live together; this says which you want. */}
+              <ChipRow label="Show">
+                {(["all", "doc", "note"] as const).map((k) => (
+                  <Chip
+                    key={k}
+                    label={
+                      k === "all"
+                        ? "Everything"
+                        : k === "doc"
+                          ? "Pages"
+                          : "Notes"
+                    }
+                    selected={kindFilter === (k === "all" ? null : k)}
+                    onPress={() => setKindFilter(k === "all" ? null : k)}
+                  />
+                ))}
+              </ChipRow>
+              <View style={styles.newRow}>
+                <Button
+                  title="New document"
+                  secondary
+                  disabled={busy}
+                  onPress={() => create("doc")}
+                />
+                <Button
+                  title="New note"
+                  secondary
+                  disabled={busy}
+                  onPress={() => create("note")}
+                />
+              </View>
+              {shown.map((doc) => (
                 <Pressable
                   key={doc.id}
                   style={({ pressed }) => [
@@ -213,6 +247,7 @@ function OpenDoc({
 
 const styles = themed(() =>
   StyleSheet.create({
+    newRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
     list: { gap: 8 },
     row: {
       flexDirection: "row",

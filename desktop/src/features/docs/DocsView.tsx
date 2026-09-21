@@ -4,6 +4,7 @@ import {
   favouriteKey,
   favouriteSet,
   type Doc,
+  type DocKind,
   type DocSummary,
   type Favourite,
   type Folder,
@@ -47,6 +48,8 @@ export function DocsView({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** null = everything; a folder id = that folder; "none" = unfiled. */
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  /** null = every kind; "note" = only notes; "doc" = only plain pages. */
+  const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -92,11 +95,12 @@ export function DocsView({
     onInitialDocShown?.();
   }, [initialDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const create = () => {
+  const create = (kind: DocKind = "doc") => {
     setBusy(true);
     client
       .createDoc({
         title: "",
+        kind,
         content: [{ type: "paragraph", text: "" }],
         folder_id: folderFilter === "none" ? null : folderFilter,
       })
@@ -143,13 +147,17 @@ export function DocsView({
     );
 
   const starred = favouriteSet(stars);
-  const shown = (docs ?? []).filter((d) =>
-    folderFilter === null
-      ? true
-      : folderFilter === "none"
-        ? !d.folder_id
-        : d.folder_id === folderFilter,
-  );
+  const noteCount = (docs ?? []).filter((d) => d.kind === "note").length;
+
+  const shown = (docs ?? [])
+    .filter((d) => kindFilter === null || d.kind === kindFilter)
+    .filter((d) =>
+      folderFilter === null
+        ? true
+        : folderFilter === "none"
+          ? !d.folder_id
+          : d.folder_id === folderFilter,
+    );
   // Starred documents come first, so the ones you keep returning to are on top.
   const ordered = [
     ...shown.filter((d) => starred.has(favouriteKey("doc", d.id))),
@@ -166,8 +174,41 @@ export function DocsView({
               ? "1 document"
               : `${ordered.length} documents`}
         </span>
-        <button className="primary" onClick={create} disabled={busy}>
+        <button
+          className="text-button"
+          onClick={() => create("note")}
+          disabled={busy}
+        >
+          <Plus size={15} /> New note
+        </button>
+        <button
+          className="primary"
+          onClick={() => create("doc")}
+          disabled={busy}
+        >
           <Plus size={15} /> New document
+        </button>
+      </div>
+
+      {/* Notes and pages live together; this says which you want to see. */}
+      <div className="folder-bar">
+        <button
+          className={"folder-chip" + (kindFilter === null ? " is-on" : "")}
+          onClick={() => setKindFilter(null)}
+        >
+          Everything
+        </button>
+        <button
+          className={"folder-chip" + (kindFilter === "doc" ? " is-on" : "")}
+          onClick={() => setKindFilter("doc")}
+        >
+          Pages
+        </button>
+        <button
+          className={"folder-chip" + (kindFilter === "note" ? " is-on" : "")}
+          onClick={() => setKindFilter("note")}
+        >
+          Notes <span className="folder-n">{noteCount}</span>
         </button>
       </div>
 
@@ -208,8 +249,12 @@ export function DocsView({
           }
           body="Keep meeting notes, a project brief or a page of working out — all in the same place as your tasks."
         >
-          <button className="primary" onClick={create} disabled={busy}>
-            <Plus size={15} /> New document
+          <button
+            className="primary"
+            onClick={() => create(kindFilter ?? "doc")}
+            disabled={busy}
+          >
+            <Plus size={15} /> New {kindFilter === "note" ? "note" : "document"}
           </button>
         </EmptyState>
       ) : (

@@ -7,6 +7,7 @@ import {
   docCommentInput,
   docCommentUpdate,
   docInput,
+  docListQuery,
   itemData,
   docPreview,
   docSuggestionInput,
@@ -48,7 +49,16 @@ import { announceDocChange, closeLive, streamDocChanges } from "./live.js";
  */
 
 const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
-  d.item_id, d.folder_id, d.version, d.created_at, d.updated_at`;
+  d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
+  d.created_at, d.updated_at,
+  coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
+                                              'color', tg.color) ORDER BY tg.name)
+              FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
+             WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
+
+/** Joined wherever `COLUMNS` is selected, for the project a note hangs off. */
+const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
+  LEFT JOIN projects p ON p.id = d.project_id`;
 
 /**
  * A comment as the clients read it: its anchor, its thread, and the people
@@ -214,6 +224,30 @@ async function followSuggestions(
     );
 }
 
+/**
+ * Put a page's tags where the caller asked, from the vocabulary they can
+ * already use: their own tags, or their team's. A tag id that is neither is
+ * quietly left out rather than failing the save — the page is what matters.
+ */
+async function setTags(
+  db: Db,
+  docId: string,
+  u: UserRow,
+  teamId: string | null,
+  tagIds: string[],
+): Promise<void> {
+  await db.query("DELETE FROM doc_tags WHERE doc_id = $1", [docId]);
+  if (!tagIds.length) return;
+  await db.query(
+    `INSERT INTO doc_tags (doc_id, tag_id)
+       SELECT $1, id FROM tags
+        WHERE id = ANY($2::uuid[])
+          AND (user_id = $3 OR (team_id IS NOT NULL AND team_id = $4))
+     ON CONFLICT DO NOTHING`,
+    [docId, [...new Set(tagIds)], u.id, teamId],
+  );
+}
+
 /** A checklist line as the fields `mutate` needs to create a task. */
 function itemFromLine(text: string, teamId: string | null) {
   return itemData.parse({
@@ -227,14 +261,19 @@ export async function docRoutes(app: FastifyInstance) {
   /** The documents someone can see, newest edit first. */
   app.get("/docs", async (r) => {
     const u = await authenticate(r);
+    const q = docListQuery.parse(r.query ?? {});
     const rows = (
       await reader(r.headers).query<DocSummary & { content: DocBlock[] }>(
-        `SELECT ${COLUMNS}, d.content FROM docs d
-           LEFT JOIN teams t ON t.id = d.team_id
+        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE ${VISIBLE}
+            AND ($2::text IS NULL OR d.kind = $2)
+            AND ($3::uuid IS NULL OR d.project_id = $3)
+            AND ($4::uuid IS NULL OR EXISTS (
+                  SELECT 1 FROM doc_tags dt
+                   WHERE dt.doc_id = d.id AND dt.tag_id = $4))
           ORDER BY d.updated_at DESC
           LIMIT 200`,
-        [u.id],
+        [u.id, q.kind ?? null, q.project ?? null, q.tag ?? null],
       )
     ).rows;
     // The preview is derived here so the list stays light on the wire.
@@ -251,8 +290,9 @@ export async function docRoutes(app: FastifyInstance) {
     const doc = await transaction(async (db) => {
       const id = (
         await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id, folder_id)
-             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,
+          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
+             folder_id, project_id)
+             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING id`,
           [
             u.id,
             data.team_id,
@@ -261,13 +301,15 @@ export async function docRoutes(app: FastifyInstance) {
             JSON.stringify(data.content),
             data.item_id,
             data.folder_id,
+            data.project_id,
           ],
         )
       ).rows[0].id;
+      await setTags(db, id, u, data.team_id, data.tags);
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [id],
         )
       ).rows[0];
@@ -282,8 +324,7 @@ export async function docRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const doc = (
       await db.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d
-           LEFT JOIN teams t ON t.id = d.team_id
+        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
@@ -341,6 +382,7 @@ export async function docRoutes(app: FastifyInstance) {
            title = coalesce($2, title),
            content = coalesce($3::jsonb, content),
            folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
+           project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
            version = version + 1,
            updated_at = now()
          WHERE id = $1`,
@@ -350,12 +392,15 @@ export async function docRoutes(app: FastifyInstance) {
           body.content === undefined ? null : JSON.stringify(body.content),
           body.folder_id !== undefined,
           body.folder_id ?? null,
+          body.project_id !== undefined,
+          body.project_id ?? null,
         ],
       );
+      if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [id],
         )
       ).rows[0];
@@ -502,7 +547,7 @@ export async function docRoutes(app: FastifyInstance) {
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [id],
         )
       ).rows[0];
@@ -549,7 +594,7 @@ export async function docRoutes(app: FastifyInstance) {
 
     const existing = (
       await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d LEFT JOIN teams t ON t.id = d.team_id
+        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.title = $2
           ORDER BY d.created_at DESC LIMIT 1`,
         [u.id, title],
@@ -577,7 +622,7 @@ export async function docRoutes(app: FastifyInstance) {
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [id],
         )
       ).rows[0];
@@ -610,7 +655,7 @@ export async function docRoutes(app: FastifyInstance) {
 
     const existing = (
       await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d LEFT JOIN teams t ON t.id = d.team_id
+        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE d.item_id = $1 AND d.kind = 'meeting'
             AND (d.team_id IS NOT NULL OR d.user_id = $2)
           ORDER BY d.created_at LIMIT 1`,
@@ -637,7 +682,7 @@ export async function docRoutes(app: FastifyInstance) {
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [newId],
         )
       ).rows[0];
@@ -711,7 +756,7 @@ export async function docRoutes(app: FastifyInstance) {
     const updated = (
       await pool.query<Doc>(
         `SELECT ${COLUMNS}, d.content FROM docs d
-           LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+           ${JOINS} WHERE d.id = $1`,
         [id],
       )
     ).rows[0];
@@ -1063,7 +1108,7 @@ export async function docRoutes(app: FastifyInstance) {
       return (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d
-             LEFT JOIN teams t ON t.id = d.team_id WHERE d.id = $1`,
+             ${JOINS} WHERE d.id = $1`,
           [id],
         )
       ).rows[0];

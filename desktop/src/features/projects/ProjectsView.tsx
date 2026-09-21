@@ -21,11 +21,14 @@ export function ProjectsView({
   report,
   onRefresh,
   onOpenItem,
+  onOpenNote,
 }: {
   items: Item[];
   report: (e: unknown) => void;
   onRefresh: () => void;
   onOpenItem: (item: Item) => void;
+  /** Opens one of a project's notes in the documents view. */
+  onOpenNote?: (docId: string) => void;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
@@ -62,6 +65,7 @@ export function ProjectsView({
         items={items}
         report={report}
         onOpenItem={onOpenItem}
+        onOpenNote={onOpenNote}
         onBack={() => {
           setOpen(null);
           void load();

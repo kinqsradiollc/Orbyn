@@ -1,4 +1,5 @@
 import { Select } from "../../components/Select";
+import { ProjectNotes } from "./ProjectNotes";
 import { useConfirm } from "../../components/Confirm";
 import { useMemo, useState } from "react";
 import {
@@ -43,6 +44,7 @@ export function ProjectDetail({
   onDeleted,
   onItemsChanged,
   onOpenItem,
+  onOpenNote,
 }: {
   project: Project;
   items: Item[];
@@ -52,6 +54,8 @@ export function ProjectDetail({
   onDeleted: () => void;
   onItemsChanged: () => void;
   onOpenItem: (item: Item) => void;
+  /** Opens a note of this project's in the documents view. */
+  onOpenNote?: (docId: string) => void;
 }) {
   const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -454,6 +458,16 @@ export function ProjectDetail({
             <Plus size={14} /> Add a stage
           </button>
         </div>
+      )}
+
+      {!!onOpenNote && (
+        <ProjectNotes
+          projectId={project.id}
+          teamId={project.team_id}
+          canWrite={!busy}
+          report={report}
+          onOpen={onOpenNote}
+        />
       )}
     </div>
   );

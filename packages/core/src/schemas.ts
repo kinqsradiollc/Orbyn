@@ -295,6 +295,10 @@ export const docInput = z
     item_id: z.uuid().nullable().default(null),
     content: docContent.default([]),
     folder_id: z.uuid().nullable().default(null),
+    /** The project a note belongs to. */
+    project_id: z.uuid().nullable().default(null),
+    /** Tags, by id, from the vocabulary this person or team already has. */
+    tags: z.array(z.uuid()).max(20).default([]),
   })
   .strict();
 
@@ -304,6 +308,8 @@ export const docUpdate = z
     title: z.string().trim().max(200).optional(),
     content: docContent.optional(),
     folder_id: z.uuid().nullable().optional(),
+    project_id: z.uuid().nullable().optional(),
+    tags: z.array(z.uuid()).max(20).optional(),
     version: z.number().int().positive(),
   })
   .strict();
@@ -395,6 +401,15 @@ export const docCommentInput = z
       (c.range_start === undefined || c.range_end! > c.range_start),
     { message: "A range needs a start before its end" },
   );
+
+/** How a list of pages may be narrowed. */
+export const docListQuery = z
+  .object({
+    kind: z.enum(DOC_KINDS).optional(),
+    project: z.uuid().optional(),
+    tag: z.uuid().optional(),
+  })
+  .strict();
 
 export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
 
