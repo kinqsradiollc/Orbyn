@@ -23,6 +23,7 @@ import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
 import { markRanges } from "./marks";
 import { AskSheet } from "./AskSheet";
+import { DocAsk } from "./DocAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
@@ -879,6 +880,15 @@ export function DocEditor({
         it ends the list. The toolbar changes what a line is. Formulas read as
         symbols here and are typeset on the desktop.
       </Text>
+
+      {/* Asking about a page was on the desktop only. It follows the page
+          there and it follows the page here. Opening the line the answer
+          leant on is the whole point of it, so a source opens that line's
+          remarks — as close as a phone gets to scrolling the margin to it. */}
+      <DocAsk
+        docId={doc.id}
+        onGoToBlock={(blockId) => setOpenThread(blockId)}
+      />
 
       {/* Five ways to take the page away used to sit in one wrapped row with
           "Delete page" as the sixth chip, so the way to lose the page for
