@@ -25,6 +25,7 @@ import {
   type DocAiAction,
   type DocSuggestion,
 } from "@orbyn/core";
+import { Icon, type IconName } from "../../components/Icon";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
@@ -34,17 +35,12 @@ import { DocAsk } from "./DocAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
-import {
-  downloadDoc,
-  downloadLabel,
-  formatsHere,
-  takeAwayLabel,
-} from "../../lib/download";
+import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { confirmAction } from "../../lib/confirm";
-import { colors, fonts, radii, themed } from "../../theme";
+import { controls, colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
 const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
@@ -141,6 +137,8 @@ export function DocEditor({
   const [saving, setSaving] = useState(false);
   /** Whether the shapes the page can be taken away in are showing. */
   const [formats, setFormats] = useState(false);
+  /** Whether the conversation about this page is open. */
+  const [talking, setTalking] = useState(false);
   const [note, setNote] = useState("");
   /** The line whose remarks are open, and one waiting to be written on. */
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -756,6 +754,33 @@ export function DocEditor({
         <Text style={styles.meta}>
           {reading ? "" : saving ? "Saving…" : "Saved"}
         </Text>
+      </View>
+
+      {/* What a page can have done to it, as the icons the desktop's toolbar
+          already uses. Three outlined text buttons stacked down the body read
+          as a pile of unrelated offers; the same three on one row read as the
+          page's own tools. Their own row, because a flex spacer only pushes
+          on a row that has not wrapped. */}
+      <View style={styles.pageTools}>
+        <DocTool
+          icon="sparkles"
+          label="Talk about this page"
+          on={talking}
+          onPress={() => setTalking(true)}
+        />
+        <DocTool
+          icon="share"
+          label="Take this page away"
+          on={formats}
+          onPress={() => setFormats((v) => !v)}
+        />
+        <DocTool
+          icon="trash"
+          label="Delete this page"
+          destructive
+          onPress={removePage}
+        />
+
         {!!note && (
           <Text style={styles.note} onPress={() => setNote("")}>
             {note}
@@ -946,37 +971,6 @@ export function DocEditor({
         </Text>
       )}
 
-      {/* Five ways to take the page away used to sit in one wrapped row with
-          "Delete page" as the sixth chip, so the way to lose the page for
-          good was a thumb's width from the way to keep a copy of it. The
-          shapes now live behind one control, and deleting stands alone. */}
-      <View style={styles.pageActions}>
-        {/* Asking about a page was on the desktop only. Opening the line the
-            answer leant on is the whole point of it, so a source opens that
-            line's remarks — as close as a phone gets to scrolling the margin
-            to it. It sits beside the page's other actions rather than on a
-            line of its own. */}
-        <DocAsk
-          docId={doc.id}
-          blocks={blocks}
-          canWrite={canWrite || suggesting}
-          onGoToBlock={(blockId) => setOpenThread(blockId)}
-          onNameBlock={nameBlockAt}
-          onSuggested={(made) => setSuggestions((list) => [...list, made])}
-        />
-        <SmallAction
-          label={takeAwayLabel()}
-          disabled={saving}
-          onPress={() => setFormats((v) => !v)}
-        />
-        {openTodos > 0 && (
-          <SmallAction
-            label={`Add ${openTodos} to my tasks`}
-            disabled={false}
-            onPress={makeTasks}
-          />
-        )}
-      </View>
       {formats && (
         <View style={styles.pageActions}>
           {formatsHere().map((format) => (
@@ -990,15 +984,63 @@ export function DocEditor({
         </View>
       )}
 
-      <View style={styles.danger}>
-        <SmallAction
-          label="Delete page"
-          destructive
-          disabled={false}
-          onPress={removePage}
-        />
-      </View>
+      {openTodos > 0 && (
+        <View style={styles.pageActions}>
+          <SmallAction
+            label={`Add ${openTodos} to my tasks`}
+            disabled={false}
+            onPress={makeTasks}
+          />
+        </View>
+      )}
+
+      <DocAsk
+        visible={talking}
+        docId={doc.id}
+        blocks={blocks}
+        canWrite={canWrite || suggesting}
+        onClose={() => setTalking(false)}
+        onGoToBlock={(blockId) => setOpenThread(blockId)}
+        onNameBlock={nameBlockAt}
+        onSuggested={(made) => setSuggestions((list) => [...list, made])}
+      />
     </View>
+  );
+}
+
+/** One of a page's own tools: an icon, a thumb's worth of room, a name. */
+function DocTool({
+  icon,
+  label,
+  on = false,
+  destructive = false,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  /** Whether what it opens is open. */
+  on?: boolean;
+  destructive?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ expanded: on }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.tool,
+        on && styles.toolOn,
+        pressed && styles.toolPressed,
+      ]}
+    >
+      <Icon
+        name={icon}
+        size={17}
+        color={destructive ? colors.danger : colors.muted}
+      />
+    </Pressable>
   );
 }
 
@@ -1056,6 +1098,21 @@ const styles = themed(() =>
       gap: 8,
       marginTop: 4,
     },
+    pageTools: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      gap: 4,
+      marginTop: -2,
+    },
+    tool: {
+      width: controls.tap,
+      height: controls.tap,
+      borderRadius: controls.tap / 2,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    toolOn: { backgroundColor: colors.accentSoft },
+    toolPressed: { backgroundColor: colors.surfaceMuted },
     danger: {
       flexDirection: "row",
       marginTop: 6,

@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text } from "react-native";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { controls, colors, fonts, radii, themed } from "../theme";
 
 /** Compact outlined action for list rows (Make admin, Load models, Delete…). */
 export function SmallAction({
@@ -43,7 +43,7 @@ export function SmallAction({
 const s = themed(() =>
   StyleSheet.create({
     action: {
-      minHeight: 44,
+      minHeight: controls.tap,
       maxWidth: "100%",
       paddingVertical: 8,
       paddingHorizontal: 12,

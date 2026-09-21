@@ -46,7 +46,7 @@ import {
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii, spacing, themed } from "../theme";
+import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 
 /** A saved item being edited, or the draft of a new one. */
@@ -1186,7 +1186,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      minHeight: 48,
+      minHeight: controls.tap,
       paddingVertical: 6,
     },
     linkDivider: {
@@ -1205,10 +1205,10 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    tagInput: { flex: 1, minHeight: 44, paddingVertical: 10 },
+    tagInput: { flex: 1, minHeight: controls.tap, paddingVertical: 10 },
     tagAdd: {
       width: 44,
-      height: 44,
+      height: controls.tap,
       borderRadius: radii.input,
       backgroundColor: colors.accent,
       alignItems: "center",

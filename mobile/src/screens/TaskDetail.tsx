@@ -55,7 +55,15 @@ import {
   PressableScale,
   useReducedMotion,
 } from "../motion";
-import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
+import {
+  controls,
+  colors,
+  fonts,
+  radii,
+  spacing,
+  themed,
+  statusTones,
+} from "../theme";
 import { shared } from "../styles";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
@@ -1348,7 +1356,7 @@ const s = themed(() =>
     segments: { flexDirection: "row", gap: 6 },
     segment: {
       flex: 1,
-      minHeight: 40,
+      minHeight: controls.tap,
       borderRadius: 10,
       borderWidth: 1.5,
       borderColor: colors.border,

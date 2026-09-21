@@ -17,7 +17,7 @@ import {
 } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { controls, colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const PICK_DAYS = 7;
@@ -272,7 +272,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      minHeight: 48,
+      minHeight: controls.tap,
     },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,

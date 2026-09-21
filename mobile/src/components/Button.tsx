@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 import { Icon, type IconName } from "./Icon";
 import { PressableScale } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { controls, colors, fonts, radii, themed } from "../theme";
 
 export function Button({
   title,
@@ -51,7 +51,7 @@ export function Button({
 const s = themed(() =>
   StyleSheet.create({
     button: {
-      minHeight: 48,
+      minHeight: controls.tap,
       flexDirection: "row",
       gap: 8,
       paddingHorizontal: 18,
