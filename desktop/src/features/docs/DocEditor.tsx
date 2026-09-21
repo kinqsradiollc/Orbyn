@@ -46,7 +46,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
-import { DocAskPanel } from "./DocAskPanel";
+import { DocChat } from "./DocChat";
 import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
@@ -203,6 +203,8 @@ export function DocEditor({
   const [askMenu, setAskMenu] = useState(false);
   /** Whether the list of shapes to download the page in is showing. */
   const [downloadMenu, setDownloadMenu] = useState(false);
+  /** Whether the conversation about this page is open. */
+  const [chat, setChat] = useState(false);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
@@ -416,14 +418,20 @@ export function DocEditor({
    * Choose a line to comment on. A line needs a name before anything can
    * point at it, so one is given here and saved with the page.
    */
+  /** Give a line a name, so a remark or a proposal can point at it. */
+  const nameBlock = (index: number): string => {
+    const block = blocks[index];
+    if (block.id) return block.id;
+    const blockId = newBlockId();
+    const next = blocks.slice();
+    next[index] = { ...block, id: blockId };
+    update(next);
+    return blockId;
+  };
+
   const commentOn = (index: number) => {
     const block = blocks[index];
-    const blockId = block.id ?? newBlockId();
-    if (!block.id) {
-      const next = blocks.slice();
-      next[index] = { ...block, id: blockId };
-      update(next);
-    }
+    const blockId = nameBlock(index);
     setPending({ blockId, quote: blockText(block).slice(0, 400) });
     setActiveComment(blockId);
   };
@@ -928,6 +936,17 @@ export function DocEditor({
               <ListPlus size={15} /> Add {openTodos} to my tasks
             </button>
           )}
+          {/* A conversation about the page sits beside the page's own tools,
+              not in the margin: the margin is where the remarks live. */}
+          <button
+            className={"icon-button" + (chat ? " is-on" : "")}
+            onClick={() => setChat((v) => !v)}
+            aria-label="Talk about this page"
+            aria-pressed={chat}
+            title="Talk about this page"
+          >
+            <Sparkles size={15} />
+          </button>
           <button
             className={"icon-button" + (showHistory ? " is-on" : "")}
             onClick={() => setShowHistory((v) => !v)}
@@ -1223,9 +1242,6 @@ export function DocEditor({
             </p>
           </div>
           {!showHistory && (
-            <DocAskPanel docId={doc.id} onGoToBlock={goToBlock} />
-          )}
-          {!showHistory && (
             <DocSuggestions
               suggestions={suggestions}
               canDecide={canWrite}
@@ -1275,6 +1291,18 @@ export function DocEditor({
           />
         )}
       </div>
+
+      {chat && (
+        <DocChat
+          docId={doc.id}
+          blocks={blocks}
+          canWrite={canWrite || suggesting}
+          onGoToBlock={goToBlock}
+          onNameBlock={nameBlock}
+          onSuggested={(made) => setSuggestions((list) => [...list, made])}
+          onClose={() => setChat(false)}
+        />
+      )}
     </div>
   );
 }

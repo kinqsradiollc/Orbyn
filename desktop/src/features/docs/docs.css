@@ -1228,102 +1228,6 @@ h4.doc-heading {
 }
 
 /* Asking about the page as a whole. */
-.doc-ask-open {
-  justify-self: start;
-}
-.doc-ask {
-  display: grid;
-  gap: 8px;
-  /* Without this a grid item refuses to shrink below its content, and a
-     citation set on one line has no natural width to stop at — the rail
-     grew past the window and the whole page scrolled sideways. */
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-}
-.doc-ask-head {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.doc-ask-head h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-  font-size: 0.74rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-.doc-ask textarea {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  font: inherit;
-  font-size: 0.86rem;
-  resize: vertical;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-sunken);
-  color: var(--color-text);
-  padding: 8px 10px;
-}
-.doc-ask textarea:focus {
-  outline: none;
-  border-color: var(--color-focus);
-}
-.doc-ask-answer {
-  min-width: 0;
-}
-.doc-ask-answer p {
-  overflow-wrap: anywhere;
-  margin: 0 0 6px;
-  font-size: 0.88rem;
-  line-height: 1.55;
-}
-.doc-ask-problem {
-  margin: 0;
-  color: var(--color-danger);
-  font-size: 0.8rem;
-}
-.doc-ask-sources {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.doc-ask-sources li {
-  min-width: 0;
-}
-.doc-ask-source {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 5px 8px;
-  border: none;
-  border-left: 2px solid var(--color-accent);
-  border-radius: 0 7px 7px 0;
-  background: var(--color-sunken);
-  color: var(--color-muted);
-  font: inherit;
-  font-size: 0.78rem;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.doc-ask-source:hover {
-  color: var(--color-text);
-}
 
 /* Taking the page away. The shapes it can come in are a short list, so they
    are all offered rather than hidden behind a dialogue. */
@@ -1406,5 +1310,156 @@ h4.doc-heading {
   .doc-bar-actions > .icon-button {
     min-width: 44px;
     min-height: 44px;
+  }
+}
+
+/* ---- talking about a page ---- */
+
+/* A panel that floats over the page rather than taking room from it: the
+   margin belongs to the remarks, and the page itself should not reflow
+   because a conversation was opened. */
+.doc-chat {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  width: min(380px, calc(100vw - 40px));
+  max-height: min(560px, calc(100vh - 40px));
+  padding: 12px 14px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+  box-shadow: 0 10px 40px var(--color-backdrop);
+}
+.doc-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.doc-chat-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  margin-right: auto;
+  font-size: 0.92rem;
+}
+.doc-chat-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.doc-chat-target label {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.doc-chat-target select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.82rem;
+}
+.doc-chat-thread {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  overflow-y: auto;
+  min-height: 90px;
+}
+.doc-chat-empty {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.doc-chat-turn {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--color-sunken);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.doc-chat-turn p {
+  margin: 0;
+}
+.doc-chat-turn.is-you {
+  justify-self: end;
+  background: var(--color-accent);
+  color: var(--color-onAccent);
+}
+.doc-chat-proposed {
+  padding-left: 8px;
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-muted);
+}
+.doc-chat-source {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-chat-source:hover {
+  color: var(--color-text);
+}
+.doc-chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.doc-chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.doc-chat-composer textarea {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.86rem;
+  resize: none;
+}
+.doc-chat-send {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-onAccent);
+  cursor: pointer;
+}
+.doc-chat-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* On a phone-width window it takes the foot of the screen instead. */
+@media (max-width: 560px) {
+  .doc-chat {
+    right: 10px;
+    left: 10px;
+    bottom: 10px;
+    width: auto;
   }
 }
