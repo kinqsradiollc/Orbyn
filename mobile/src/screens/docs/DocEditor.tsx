@@ -15,11 +15,13 @@ import {
   type Doc,
   type DocBlock,
   type DocMode,
+  type DocAiAction,
   type DocSuggestion,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
+import { AskSheet } from "./AskSheet";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
@@ -123,6 +125,13 @@ export function DocEditor({
     quote: string;
     range_start?: number;
     range_end?: number;
+  } | null>(null);
+  /** Words chosen, waiting for what to ask the assistant for. */
+  const [asking, setAsking] = useState<{
+    blockId: string;
+    start: number;
+    end: number;
+    quote: string;
   } | null>(null);
   /** A line whose words are being chosen, and the source to choose from. */
   const [picking, setPicking] = useState<{
@@ -468,6 +477,33 @@ export function DocEditor({
     }
   };
 
+  /**
+   * Ask the assistant for words in place of the chosen ones. What comes back
+   * is a proposal like any other, so the page does not change until someone
+   * takes it.
+   */
+  const assist = async (action: DocAiAction, instruction: string) => {
+    const words = asking;
+    if (!words) return;
+    setAsking(null);
+    setDeciding(true);
+    try {
+      const made = await client.assistDoc(doc.id, {
+        block_id: words.blockId,
+        range_start: words.start,
+        range_end: words.end,
+        action,
+        instruction,
+      });
+      setSuggestions((list) => [...list, made]);
+      setNote("Suggested. Take it or leave it.");
+    } catch (e) {
+      report(e);
+    } finally {
+      setDeciding(false);
+    }
+  };
+
   const loadSuggestions = useCallback(() => {
     client
       .listDocSuggestions(doc.id)
@@ -657,6 +693,10 @@ export function DocEditor({
               <WordPicker
                 source={picking.source}
                 onCancel={() => setPicking(null)}
+                onAsk={(range) => {
+                  setPicking(null);
+                  setAsking({ blockId, ...range });
+                }}
                 onPick={(range) => {
                   setPicking(null);
                   setPending({
@@ -667,6 +707,17 @@ export function DocEditor({
                   });
                   setOpenThread(blockId);
                 }}
+              />
+            );
+          if (asking?.blockId === blockId)
+            return (
+              <AskSheet
+                quote={asking.quote}
+                busy={deciding}
+                onCancel={() => setAsking(null)}
+                onAsk={(action, instruction) =>
+                  void assist(action, instruction)
+                }
               />
             );
           if (openThread !== blockId && !waiting) return null;

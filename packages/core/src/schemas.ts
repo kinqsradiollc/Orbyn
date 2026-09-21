@@ -402,6 +402,45 @@ export const docCommentInput = z
     { message: "A range needs a start before its end" },
   );
 
+/**
+ * What the assistant should do to a stretch of a page. Each one is a way of
+ * asking for the same thing — words to put in place of these words — so they
+ * all come back as proposals rather than as edits.
+ */
+export const DOC_AI_ACTIONS = [
+  "improve",
+  "shorten",
+  "expand",
+  "fix",
+  "formal",
+  "friendly",
+  "direct",
+  "summarise",
+  "checklist",
+  "continue",
+  "custom",
+] as const;
+export type DocAiAction = (typeof DOC_AI_ACTIONS)[number];
+
+export const docAssistRequest = z
+  .object({
+    block_id: z.string().trim().min(1).max(64),
+    range_start: z.number().int().min(0).max(100_000),
+    range_end: z.number().int().min(0).max(100_000),
+    action: z.enum(DOC_AI_ACTIONS),
+    /** Used when the action is "custom": what they actually asked for. */
+    instruction: z.string().trim().max(500).default(""),
+  })
+  .strict()
+  .refine((d) => d.range_end >= d.range_start, {
+    message: "A range needs a start before its end",
+  });
+
+/** A question about one page, answered from that page alone. */
+export const docAskRequest = z
+  .object({ question: z.string().trim().min(1).max(1000) })
+  .strict();
+
 /** What to look for, and how to narrow it. */
 export const searchQuery = z
   .object({

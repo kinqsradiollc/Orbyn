@@ -29,10 +29,13 @@ function words(source: string): Word[] {
 export function WordPicker({
   source,
   onPick,
+  onAsk,
   onCancel,
 }: {
   source: string;
   onPick: (range: { start: number; end: number; quote: string }) => void;
+  /** Offered when the assistant is available: ask it for these words. */
+  onAsk?: (range: { start: number; end: number; quote: string }) => void;
   onCancel: () => void;
 }) {
   const list = useMemo(() => words(source), [source]);
@@ -89,6 +92,13 @@ export function WordPicker({
       </View>
       <View style={s.actions}>
         <SmallAction label="Cancel" disabled={false} onPress={onCancel} />
+        {!!onAsk && (
+          <SmallAction
+            label="Ask AI"
+            disabled={!chosen}
+            onPress={() => chosen && onAsk(chosen)}
+          />
+        )}
         <Button
           title={chosen ? "Comment on these words" : "Comment"}
           disabled={!chosen}

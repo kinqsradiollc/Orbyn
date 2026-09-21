@@ -988,3 +988,31 @@ export function snippetRuns(snippet: string): { text: string; hit: boolean }[] {
   if (at < snippet.length) runs.push({ text: snippet.slice(at), hit: false });
   return runs.length ? runs : [{ text: snippet, hit: false }];
 }
+
+/** What each in-page AI action is called, and what it asks for. */
+export const DOC_AI_LABELS: Record<string, { name: string; asks: string }> = {
+  improve: { name: "Improve writing", asks: "Rewrite it more clearly." },
+  shorten: { name: "Shorten", asks: "Say the same thing in fewer words." },
+  expand: { name: "Expand", asks: "Say more, in the same voice." },
+  fix: {
+    name: "Fix spelling and grammar",
+    asks: "Correct it, changing nothing else.",
+  },
+  formal: { name: "More formal", asks: "Rewrite it in a formal register." },
+  friendly: { name: "Friendlier", asks: "Rewrite it in a warmer register." },
+  direct: { name: "More direct", asks: "Rewrite it plainly and directly." },
+  summarise: { name: "Summarise", asks: "Replace it with a one-line summary." },
+  checklist: {
+    name: "Turn into a checklist",
+    asks: "Rewrite it as Markdown checklist lines.",
+  },
+  continue: { name: "Continue writing", asks: "Carry on from where it stops." },
+  custom: { name: "Ask for something else", asks: "" },
+};
+
+/** An answer about one page, with the lines it was taken from. */
+export type DocAnswer = {
+  answer: string;
+  /** Lines of the page the answer leans on, so it can be checked. */
+  sources: { block_id: string; quote: string }[];
+};
