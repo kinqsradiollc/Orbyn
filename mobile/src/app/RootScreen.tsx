@@ -838,6 +838,7 @@ export function RootScreen() {
               setSheet("note");
             })
           }
+          onItemsChanged={() => void refresh()}
         />
         <TagsSheet
           visible={sheet === "tags"}
