@@ -75,6 +75,25 @@ function blocksFromSource(source: string): DocBlock[] {
   return parsed.length ? parsed : [{ type: "paragraph", text: "" }];
 }
 
+/** How much room the button over a selection needs above the words. */
+const BAR_HEIGHT = 44;
+
+/**
+ * Where to hang the button that acts on a selection.
+ *
+ * Above the words normally, so it does not cover what was just selected.
+ * But the space above the first line of a page belongs to the title, and a
+ * button floating over the title is worse than one below the words — so
+ * when there is no room inside the page above the selection, it goes below.
+ */
+function barPlace(at: DOMRect, ceiling: number) {
+  const above = at.top - BAR_HEIGHT;
+  return {
+    top: above < ceiling ? at.bottom + 8 : above,
+    left: at.left + at.width / 2,
+  };
+}
+
 /** Where each page's chosen mode is remembered, between visits. */
 const MODE_KEY = "orbyn-doc-mode";
 
@@ -180,6 +199,8 @@ export function DocEditor({
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
+  /** The lines themselves: the button over a selection stays inside them. */
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const blockEls = useRef(new Map<string, HTMLElement>());
   /** A line that starts with "/", waiting for a kind to be picked. */
   const [slash, setSlash] = useState<{
@@ -871,10 +892,10 @@ export function DocEditor({
       {picked && !pending && (
         <div
           className="doc-selection-bar"
-          style={{
-            top: picked.at.top - 44,
-            left: picked.at.left + picked.at.width / 2,
-          }}
+          style={barPlace(
+            picked.at,
+            bodyRef.current?.getBoundingClientRect().top ?? 0,
+          )}
           role="toolbar"
           aria-label="Selected words"
         >
@@ -945,7 +966,7 @@ export function DocEditor({
             />
           )}
 
-          <div className="doc-body">
+          <div className="doc-body" ref={bodyRef}>
             {blocks.map((block, index) =>
               focused === index && (!reading || suggesting) ? (
                 <textarea

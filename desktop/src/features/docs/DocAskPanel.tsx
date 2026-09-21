@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
-import type { DocAnswer } from "@orbyn/core";
+import { plainText, type DocAnswer } from "@orbyn/core";
 import { client } from "../../lib/api";
 
 /**
@@ -92,7 +92,7 @@ export function DocAskPanel({
                     className="doc-ask-source"
                     onClick={() => onGoToBlock(s.block_id)}
                   >
-                    “{s.quote}”
+                    “{plainText(s.quote)}”
                   </button>
                 </li>
               ))}

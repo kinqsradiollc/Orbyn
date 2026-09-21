@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
 import {
   anchorComments,
+  plainText,
   threadComments,
   type DocBlock,
   type DocComment,
@@ -305,7 +306,7 @@ export function DocComments({
               : undefined
           }
         >
-          “{t.comment.quote}”
+          “{plainText(t.comment.quote)}”
         </p>
       )}
       {remark(t.comment)}
@@ -428,7 +429,7 @@ export function DocComments({
               {threadComments(list).map(thread)}
               {isPending && (
                 <div className="doc-thread">
-                  <p className="doc-card-quote">“{pending.quote}”</p>
+                  <p className="doc-card-quote">“{plainText(pending.quote)}”</p>
                   <div className="is-composer">
                     <MentionBox
                       id="doc-comment-draft"

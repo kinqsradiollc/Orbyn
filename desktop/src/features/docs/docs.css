@@ -931,6 +931,7 @@ h4.doc-heading {
   position: fixed;
   z-index: 40;
   transform: translateX(-50%);
+  max-width: min(92vw, 420px);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1211,6 +1212,10 @@ h4.doc-heading {
 .doc-ask {
   display: grid;
   gap: 8px;
+  /* Without this a grid item refuses to shrink below its content, and a
+     citation set on one line has no natural width to stop at — the rail
+     grew past the window and the whole page scrolled sideways. */
+  min-width: 0;
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 12px;
@@ -1218,6 +1223,7 @@ h4.doc-heading {
 }
 .doc-ask-head {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -1235,6 +1241,8 @@ h4.doc-heading {
 }
 .doc-ask textarea {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   font: inherit;
   font-size: 0.86rem;
   resize: vertical;
@@ -1248,7 +1256,11 @@ h4.doc-heading {
   outline: none;
   border-color: var(--color-focus);
 }
+.doc-ask-answer {
+  min-width: 0;
+}
 .doc-ask-answer p {
+  overflow-wrap: anywhere;
   margin: 0 0 6px;
   font-size: 0.88rem;
   line-height: 1.55;
@@ -1264,9 +1276,15 @@ h4.doc-heading {
   padding: 0;
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+.doc-ask-sources li {
+  min-width: 0;
 }
 .doc-ask-source {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 5px 8px;
   border: none;
   border-left: 2px solid var(--color-accent);
