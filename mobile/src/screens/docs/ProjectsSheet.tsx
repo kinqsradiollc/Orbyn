@@ -200,6 +200,10 @@ export function ProjectsSheet({
                       draft === null ? setDraft(open.name) : rename()
                     }
                   />
+                  {/* Losing the project sat a thumb's width from renaming
+                      it. The desktop keeps its bin off on its own in the
+                      toolbar; here it goes to the far end of the row. */}
+                  <View style={styles.spacer} />
                   <SmallAction
                     label="Delete project"
                     destructive
@@ -489,7 +493,8 @@ const styles = themed(() =>
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
     page: { gap: 10 },
-    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    actions: { flexDirection: "row", alignItems: "center", gap: 8 },
+    spacer: { flex: 1 },
     newRow: { gap: 8 },
     nameInput: {
       color: colors.text,

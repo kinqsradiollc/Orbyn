@@ -7,7 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { mathToText, type DocBlock } from "@orbyn/core";
+import { blockText, mathToText, type DocBlock } from "@orbyn/core";
 import { Inline } from "./Inline";
 import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -108,7 +108,16 @@ export function DocBody({
       onEditBlock ? (
         <Pressable
           onPress={() => onEditBlock(index)}
-          style={({ pressed }) => [styles.line, pressed && styles.linePressed]}
+          style={({ pressed }) => [
+            styles.line,
+            // An empty line draws nothing, so it came out 4pt tall and no
+            // thumb could find it: a new note was a blank wall with a
+            // "+ Add a block" under it, though it already had a line to
+            // write on. Only empty lines get the room; the rest keep their
+            // rhythm.
+            !blockText(content[index]).trim() && styles.emptyLine,
+            pressed && styles.linePressed,
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Edit this line"
         >
@@ -252,6 +261,7 @@ const styles = themed(() =>
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
+    emptyLine: { minHeight: 44, justifyContent: "center" },
     linePressed: { backgroundColor: colors.surfaceMuted },
     /* A line with remarks is marked the way a highlighter would mark it. */
     commented: {
