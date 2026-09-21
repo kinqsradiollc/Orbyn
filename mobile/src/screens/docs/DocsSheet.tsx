@@ -11,6 +11,7 @@ import { Button } from "../../components/Button";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
+import { useDocComments } from "./useDocComments";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -96,16 +97,13 @@ export function DocsSheet({
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
           {open ? (
-            <>
-              <DocEditor
-                doc={open}
-                onChanged={setOpen}
-                onItemsChanged={onItemsChanged}
-                report={report}
-              />
-              <DocComments docId={open.id} userId={userId} report={report} />
-              <DocHistory doc={open} onRestored={setOpen} report={report} />
-            </>
+            <OpenDoc
+              doc={open}
+              userId={userId}
+              onChanged={setOpen}
+              onItemsChanged={onItemsChanged}
+              report={report}
+            />
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : docs.length === 0 ? (
@@ -156,6 +154,44 @@ export function DocsSheet({
         </View>
       </ScrollView>
     </Sheet>
+  );
+}
+
+/**
+ * One open document. The comments are fetched here rather than inside the
+ * editor, because a line's remarks are shown under that line and the page's
+ * own remarks below the page — two places, one set of comments.
+ */
+function OpenDoc({
+  doc,
+  userId,
+  onChanged,
+  onItemsChanged,
+  report,
+}: {
+  doc: Doc;
+  userId?: string;
+  onChanged: (doc: Doc) => void;
+  onItemsChanged?: () => void;
+  report: (e: unknown) => void;
+}) {
+  // The lines as the editor has them, which runs ahead of the saved copy.
+  const [blocks, setBlocks] = useState(doc.content);
+  const comments = useDocComments(doc.id, blocks, report);
+  return (
+    <>
+      <DocEditor
+        doc={doc}
+        comments={comments}
+        userId={userId}
+        onBlocksChange={setBlocks}
+        onChanged={onChanged}
+        onItemsChanged={onItemsChanged}
+        report={report}
+      />
+      <DocComments state={comments} userId={userId} />
+      <DocHistory doc={doc} onRestored={onChanged} report={report} />
+    </>
   );
 }
 
