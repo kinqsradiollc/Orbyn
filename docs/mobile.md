@@ -12,6 +12,11 @@ Docs, Agenda and the other workspace tools.
 
 - Assistant replies use the content column's full width. The composer has a full-width text
   field and a separate action row, and stays above the software keyboard.
+- Documents opens on a collection, with Browse library revealing Pages, Notes, Favorites and
+  expandable folders. Folder children open directly; View folder narrows the collection.
+  New documents and notes inherit the selected folder. Sort switches between last edited
+  and title A–Z; search looks across all pages and notes. The web client keeps this library
+  beside the editor and collapses it behind Browse library on narrow screens.
 - Document cards expose Open, Star and Folder separately to accessibility services. Document
   titles grow as they wrap, including while editing.
 - Projects opens on Tasks, with Notes and Timeline in separate views.
@@ -30,6 +35,11 @@ and saving, chat composition and replies, and calendar view/date navigation. The
 keyboard was checked with the assistant composer. Light appearance and a constrained
 320-point-wide dark layout were inspected. Fixtures verify client behavior, not backend
 persistence or live AI-provider responses.
+
+The library follow-up was checked with isolated fixtures: web folder expansion, filing a page,
+A–Z sorting and opening the editor beside the sidebar; native library navigation, selecting a
+folder, creating a page in it and sorting at a constrained 320-point width in dark appearance.
+The web production build also passed. Folders remain one level deep, with pages as children.
 
 The mobile TypeScript check and iOS/Android bundle exports are the build gates. Android
 device behavior, physical-device keyboards and push delivery need their own device checks;

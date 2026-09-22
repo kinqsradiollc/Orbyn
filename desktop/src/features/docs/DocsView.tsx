@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { FileText, FolderPlus, Plus, Star } from "lucide-react";
+import {
+  FileText,
+  Folder as FolderIcon,
+  FolderPlus,
+  Plus,
+  Star,
+  PanelLeft,
+  ChevronRight,
+} from "lucide-react";
 import {
   favouriteKey,
   favouriteSet,
@@ -51,15 +59,26 @@ export function DocsView({
   /** null = every kind; "note" = only notes; "doc" = only plain pages. */
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("recent");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = () => {
     void client.listFolders().then(setFolders, () => setFolders([]));
     void client.listFavourites().then(setStars, () => setStars([]));
-    return client.listDocs().then(setDocs, (e) => {
-      setDocs([]);
-      report(e);
-    });
+    return client.listDocs().then(
+      (rows) => {
+        setDocs(rows);
+        setFailed(false);
+      },
+      (e) => {
+        setFailed(true);
+        report(e);
+      },
+    );
   };
 
   const newFolder = () => {
@@ -70,6 +89,10 @@ export function DocsView({
       .then((f) => {
         setFolders((all) => [...all, f]);
         setFolderFilter(f.id);
+        setKindFilter(null);
+        setFavoritesOnly(false);
+        setOpen(null);
+        setNavigationOpen(false);
       })
       .catch(report);
   };
@@ -81,7 +104,10 @@ export function DocsView({
         ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
         : all.filter((f) => !(f.kind === "doc" && f.target_id === doc.id)),
     );
-    client.setFavourite("doc", doc.id, starred).catch(report);
+    client.setFavourite("doc", doc.id, starred).catch((e) => {
+      report(e);
+      void client.listFavourites().then(setStars, report);
+    });
   };
 
   useEffect(() => {
@@ -112,45 +138,49 @@ export function DocsView({
       .finally(() => setBusy(false));
   };
 
-  if (open)
-    return (
-      <DocEditor
-        key={open.id}
-        doc={open}
-        report={report}
-        userId={userId}
-        canWrite={canWriteDoc ? canWriteDoc(open.team_id) : true}
-        teamName={
-          open.team_name ?? (teamNameFor ? teamNameFor(open.team_id) : null)
-        }
-        onItemsChanged={onItemsChanged}
-        onBack={() => {
-          setOpen(null);
-          void load();
-        }}
-        onChanged={(saved) => {
-          setOpen((current) => (current?.id === saved.id ? saved : current));
-          setDocs(
-            (current) =>
-              current?.map((d) =>
-                d.id === saved.id
-                  ? { ...d, title: saved.title, updated_at: saved.updated_at }
-                  : d,
-              ) ?? current,
-          );
-        }}
-        onDeleted={(id) => {
-          setOpen(null);
-          setDocs((current) => current?.filter((d) => d.id !== id) ?? current);
-          void load();
-        }}
-      />
-    );
+  const editor = open ? (
+    <DocEditor
+      key={open.id}
+      doc={open}
+      report={report}
+      userId={userId}
+      canWrite={canWriteDoc ? canWriteDoc(open.team_id) : true}
+      teamName={
+        open.team_name ?? (teamNameFor ? teamNameFor(open.team_id) : null)
+      }
+      onItemsChanged={onItemsChanged}
+      onBack={() => {
+        setOpen(null);
+        void load();
+      }}
+      onChanged={(saved) => {
+        setOpen((current) => (current?.id === saved.id ? saved : current));
+        setDocs(
+          (current) =>
+            current?.map((d) =>
+              d.id === saved.id
+                ? { ...d, title: saved.title, updated_at: saved.updated_at }
+                : d,
+            ) ?? current,
+        );
+      }}
+      onDeleted={(id) => {
+        setOpen(null);
+        setDocs((current) => current?.filter((d) => d.id !== id) ?? current);
+        void load();
+      }}
+    />
+  ) : null;
 
   const starred = favouriteSet(stars);
-  const noteCount = (docs ?? []).filter((d) => d.kind === "note").length;
 
   const shown = (docs ?? [])
+    .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
+    .filter((d) =>
+      `${d.title} ${d.preview}`
+        .toLocaleLowerCase()
+        .includes(query.trim().toLocaleLowerCase()),
+    )
     .filter((d) => kindFilter === null || d.kind === kindFilter)
     .filter((d) =>
       folderFilter === null
@@ -159,157 +189,325 @@ export function DocsView({
           ? !d.folder_id
           : d.folder_id === folderFilter,
     );
-  // Starred documents come first, so the ones you keep returning to are on top.
-  const ordered = [
-    ...shown.filter((d) => starred.has(favouriteKey("doc", d.id))),
-    ...shown.filter((d) => !starred.has(favouriteKey("doc", d.id))),
-  ];
+  const ordered = [...shown].sort((a, b) =>
+    sort === "title"
+      ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
+        a.id.localeCompare(b.id)
+      : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
+  );
+  const location = favoritesOnly
+    ? "Favorites"
+    : folderFilter === "none"
+      ? "Unfiled"
+      : folderFilter
+        ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+        : kindFilter === "doc"
+          ? "Pages"
+          : kindFilter === "note"
+            ? "Notes"
+            : "All documents";
+  const select = (
+    folder: string | null,
+    kind: DocKind | null = null,
+    favorites = false,
+  ) => {
+    setFolderFilter(folder);
+    setKindFilter(kind);
+    setFavoritesOnly(favorites);
+    setQuery("");
+    setOpen(null);
+    setNavigationOpen(false);
+  };
+  const openPage = (id: string) => {
+    setBusy(true);
+    client
+      .getDoc(id)
+      .then((doc) => {
+        setOpen(doc);
+        setNavigationOpen(false);
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
+  const fileIn = async (doc: DocSummary, folderId: string) => {
+    setBusy(true);
+    try {
+      const full = await client.getDoc(doc.id);
+      const saved = await client.updateDoc(doc.id, {
+        version: full.version,
+        folder_id: folderId || null,
+      });
+      setDocs(
+        (all) =>
+          all?.map((d) =>
+            d.id === doc.id
+              ? {
+                  ...d,
+                  folder_id: saved.folder_id,
+                  updated_at: saved.updated_at,
+                }
+              : d,
+          ) ?? all,
+      );
+    } catch (e) {
+      report(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pageLink = (doc: DocSummary) => (
+    <button
+      key={doc.id}
+      className="docs-nav-page"
+      aria-current={open?.id === doc.id ? "page" : undefined}
+      disabled={busy}
+      onClick={() => openPage(doc.id)}
+    >
+      <FileText size={14} />
+      <span>{doc.title || "Untitled"}</span>
+    </button>
+  );
 
   return (
-    <div className="docs-view">
-      {/* The count on one side and the two ways to start on the other. They
-          were three children of a space-between row, so on a wide window
-          "New note" floated alone in the middle of it. */}
-      <div className="docs-head">
-        <span className="muted docs-count">
-          {docs === null
-            ? ""
-            : ordered.length === 1
-              ? "1 document"
-              : `${ordered.length} documents`}
-        </span>
-        <div className="docs-head-actions">
-          <button
-            className="text-button"
-            onClick={() => create("note")}
-            disabled={busy}
-          >
-            <Plus size={15} /> New note
-          </button>
-          <button
-            className="primary"
-            onClick={() => create("doc")}
-            disabled={busy}
-          >
-            <Plus size={15} /> New document
-          </button>
-        </div>
-      </div>
-
-      {/* Two different questions — which kind, and which folder — were two
-          rows of the same pill, which read as one pill soup. Choosing one of
-          three is a segmented control, the way the page's own modes are. */}
-      <div className="doc-mode docs-kinds" role="radiogroup" aria-label="Show">
+    <div className="docs-workspace">
+      <button
+        className="text-button docs-nav-toggle"
+        aria-expanded={navigationOpen}
+        aria-controls="docs-navigation"
+        onClick={() => setNavigationOpen(!navigationOpen)}
+      >
+        <PanelLeft size={18} />{" "}
+        {navigationOpen ? "Close library" : "Browse library"}
+      </button>
+      <nav
+        id="docs-navigation"
+        aria-label="Document library"
+        className={"docs-navigation" + (navigationOpen ? " is-open" : "")}
+      >
+        <h2>Library</h2>
         {(
           [
-            [null, "Everything", null],
-            ["doc", "Pages", null],
-            ["note", "Notes", noteCount],
+            [null, "All documents"],
+            ["doc", "Pages"],
+            ["note", "Notes"],
           ] as const
-        ).map(([kind, label, count]) => (
+        ).map(([kind, label]) => (
           <button
             key={label}
-            role="radio"
-            aria-checked={kindFilter === kind}
-            className={kindFilter === kind ? "is-on" : undefined}
-            onClick={() => setKindFilter(kind)}
+            aria-current={
+              !open &&
+              !favoritesOnly &&
+              folderFilter === null &&
+              kindFilter === kind
+                ? "page"
+                : undefined
+            }
+            onClick={() => select(null, kind)}
           >
-            {label}
-            {count !== null && <span className="folder-n">{count}</span>}
-          </button>
-        ))}
-      </div>
-
-      <div className="folder-bar">
-        <button
-          className={"folder-chip" + (folderFilter === null ? " is-on" : "")}
-          onClick={() => setFolderFilter(null)}
-        >
-          All
-        </button>
-        {folders.map((f) => (
-          <button
-            key={f.id}
-            className={"folder-chip" + (folderFilter === f.id ? " is-on" : "")}
-            onClick={() => setFolderFilter(f.id)}
-          >
-            {f.name} <span className="folder-n">{f.doc_count}</span>
+            <FileText size={16} />
+            <span>{label}</span>
           </button>
         ))}
         <button
-          className={"folder-chip" + (folderFilter === "none" ? " is-on" : "")}
-          onClick={() => setFolderFilter("none")}
+          aria-current={!open && favoritesOnly ? "page" : undefined}
+          onClick={() => select(null, null, true)}
         >
-          Unfiled
+          <Star size={16} />
+          <span>Favorites</span>
         </button>
-        <button className="folder-chip is-add" onClick={newFolder}>
-          <FolderPlus size={13} /> New folder
-        </button>
-      </div>
-
-      {docs === null ? (
-        <p className="muted">Loading…</p>
-      ) : ordered.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title={
-            folderFilter === null ? "No documents yet" : "Nothing in here yet"
-          }
-          body="Keep meeting notes, a project brief or a page of working out — all in the same place as your tasks."
-        >
-          <button
-            className="primary"
-            onClick={() => create(kindFilter ?? "doc")}
-            disabled={busy}
-          >
-            <Plus size={15} /> New {kindFilter === "note" ? "note" : "document"}
+        <div className="docs-nav-children">
+          {(docs ?? [])
+            .filter((d) => starred.has(favouriteKey("doc", d.id)))
+            .map(pageLink)}
+        </div>
+        <div className="docs-nav-heading">
+          <span>Folders</span>
+          <button aria-label="New folder" onClick={newFolder}>
+            <FolderPlus size={16} />
           </button>
-        </EmptyState>
-      ) : (
-        <ul className="docs-list">
-          {ordered.map((doc) => (
-            <li key={doc.id}>
-              <button
-                className="doc-row"
-                onClick={() =>
-                  client.getDoc(doc.id).then(setOpen).catch(report)
-                }
-              >
-                <FileText size={16} aria-hidden="true" />
-                <span className="doc-row-main">
-                  <strong>{doc.title || "Untitled"}</strong>
-                  <small>{doc.preview || "Empty document"}</small>
-                </span>
-                <span className="doc-row-when">{when(doc.updated_at)}</span>
-              </button>
-              <button
-                className={
-                  "doc-star" +
-                  (starred.has(favouriteKey("doc", doc.id)) ? " is-on" : "")
-                }
-                aria-label={
-                  starred.has(favouriteKey("doc", doc.id))
-                    ? `Unstar ${doc.title || "Untitled"}`
-                    : `Star ${doc.title || "Untitled"}`
-                }
-                aria-pressed={starred.has(favouriteKey("doc", doc.id))}
-                onClick={() =>
-                  toggleStar(doc, !starred.has(favouriteKey("doc", doc.id)))
-                }
-              >
-                <Star
-                  size={14}
-                  fill={
-                    starred.has(favouriteKey("doc", doc.id))
-                      ? "currentColor"
-                      : "none"
+        </div>
+        {[...folders]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((folder) => (
+            <details key={folder.id} className="docs-nav-folder">
+              <summary>
+                <ChevronRight size={14} />
+                <FolderIcon size={16} />
+                <span>{folder.name}</span>
+              </summary>
+              <div className="docs-nav-children">
+                <button
+                  aria-current={
+                    !open && folderFilter === folder.id ? "page" : undefined
                   }
-                />
-              </button>
-            </li>
+                  onClick={() => select(folder.id)}
+                >
+                  View folder{" "}
+                  <span className="folder-n">
+                    {
+                      (docs ?? []).filter((d) => d.folder_id === folder.id)
+                        .length
+                    }
+                  </span>
+                </button>
+                {(docs ?? [])
+                  .filter((d) => d.folder_id === folder.id)
+                  .sort((a, b) => a.title.localeCompare(b.title))
+                  .map(pageLink)}
+              </div>
+            </details>
           ))}
-        </ul>
-      )}
+        <details className="docs-nav-folder">
+          <summary>
+            <ChevronRight size={14} />
+            <FolderIcon size={16} />
+            <span>Unfiled</span>
+          </summary>
+          <div className="docs-nav-children">
+            <button
+              aria-current={
+                !open && folderFilter === "none" ? "page" : undefined
+              }
+              onClick={() => select("none")}
+            >
+              View unfiled
+            </button>
+            {(docs ?? []).filter((d) => !d.folder_id).map(pageLink)}
+          </div>
+        </details>
+      </nav>
+      <section className="docs-workspace-content" aria-label="Documents">
+        {editor ?? (
+          <div className="docs-view">
+            <div className="docs-head">
+              <h2 className="docs-count">{location}</h2>
+              <div className="docs-head-actions">
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => create("note")}
+                >
+                  <Plus size={15} /> New note
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => create("doc")}
+                >
+                  <Plus size={15} /> New page
+                </button>
+              </div>
+            </div>
+            <div className="docs-library-tools">
+              <input
+                aria-label="Search document titles and previews"
+                placeholder="Search this collection…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <select
+                aria-label="Sort documents"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="recent">Last edited</option>
+                <option value="title">Title A–Z</option>
+              </select>
+            </div>
+            {failed ? (
+              <div>
+                <p className="muted">Could not load your documents.</p>
+                <button className="text-button" onClick={() => void load()}>
+                  Try again
+                </button>
+              </div>
+            ) : docs === null ? (
+              <p className="muted">Loading…</p>
+            ) : ordered.length === 0 ? (
+              <EmptyState
+                icon={FileText}
+                title={query ? "No matching documents" : "Nothing in here yet"}
+                body="Keep meeting notes, a project brief or a page of working out — all in the same place as your tasks."
+              >
+                <button
+                  className="primary"
+                  onClick={() => create(kindFilter ?? "doc")}
+                  disabled={busy}
+                >
+                  <Plus size={15} /> New{" "}
+                  {kindFilter === "note" ? "note" : "document"}
+                </button>
+              </EmptyState>
+            ) : (
+              <ul className="docs-list">
+                {ordered.map((doc) => (
+                  <li key={doc.id}>
+                    <button
+                      className="doc-row"
+                      disabled={busy}
+                      onClick={() => openPage(doc.id)}
+                    >
+                      <FileText size={16} aria-hidden="true" />
+                      <span className="doc-row-main">
+                        <strong>{doc.title || "Untitled"}</strong>
+                        <small>{doc.preview || "Empty document"}</small>
+                      </span>
+                      <span className="doc-row-when">
+                        {when(doc.updated_at)}
+                      </span>
+                    </button>
+                    {(!canWriteDoc || canWriteDoc(doc.team_id)) && (
+                      <select
+                        className="doc-file-select"
+                        aria-label={`Folder for ${doc.title || "Untitled"}`}
+                        value={doc.folder_id ?? ""}
+                        disabled={busy}
+                        onChange={(e) => void fileIn(doc, e.target.value)}
+                      >
+                        <option value="">Unfiled</option>
+                        {folders.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      className={
+                        "doc-star" +
+                        (starred.has(favouriteKey("doc", doc.id))
+                          ? " is-on"
+                          : "")
+                      }
+                      aria-label={
+                        starred.has(favouriteKey("doc", doc.id))
+                          ? `Unstar ${doc.title || "Untitled"}`
+                          : `Star ${doc.title || "Untitled"}`
+                      }
+                      aria-pressed={starred.has(favouriteKey("doc", doc.id))}
+                      onClick={() =>
+                        toggleStar(
+                          doc,
+                          !starred.has(favouriteKey("doc", doc.id)),
+                        )
+                      }
+                    >
+                      <Star
+                        size={14}
+                        fill={
+                          starred.has(favouriteKey("doc", doc.id))
+                            ? "currentColor"
+                            : "none"
+                        }
+                      />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

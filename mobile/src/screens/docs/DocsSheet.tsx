@@ -18,7 +18,6 @@ import {
   type Folder,
   type SearchHit,
 } from "@orbyn/core";
-import { ScreenIntro } from "../../components/ScreenIntro";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -70,6 +69,10 @@ export function DocsSheet({
   /** Called when ticking a line changed a task in the planner. */
   onItemsChanged?: () => void;
 }) {
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [sort, setSort] = useState<"recent" | "title">("recent");
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
   /** null = every kind; "note" = only notes; "doc" = only plain pages. */
@@ -135,7 +138,10 @@ export function DocsSheet({
         ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
         : all.filter((f) => !(f.kind === "doc" && f.target_id === doc.id)),
     );
-    client.setFavourite("doc", doc.id, starred).catch(report);
+    client.setFavourite("doc", doc.id, starred).catch((e) => {
+      report(e);
+      void client.listFavourites().then(setStars, report);
+    });
   };
 
   /** Put a page in a folder, or take it out of one. */
@@ -164,7 +170,7 @@ export function DocsSheet({
       setFolders((all) => [...all, made]);
       setFolderName("");
       setNaming(false);
-      setFolderFilter(made.id);
+      selectCollection(made.id);
     });
 
   /** Start a page here rather than having to reach for a desktop. */
@@ -174,6 +180,7 @@ export function DocsSheet({
         title: "",
         kind,
         content: [{ type: "paragraph", text: "" }],
+        folder_id: folderFilter === "none" ? null : folderFilter,
       });
       setDocs(null);
       setOpen(made);
@@ -187,7 +194,13 @@ export function DocsSheet({
 
   // Leaving a sheet that opened on the agenda should close it, not show a list.
   // A page opened on its own has no list behind it to go back to.
-  const back = agenda || initialDoc ? undefined : open ? backToList : undefined;
+  const back = navigationOpen
+    ? () => setNavigationOpen(false)
+    : agenda || initialDoc
+      ? undefined
+      : open
+        ? backToList
+        : undefined;
 
   // Searching is a round trip, so it waits for a pause in the typing.
   useEffect(() => {
@@ -200,7 +213,6 @@ export function DocsSheet({
       client
         .search(query.trim(), {
           type: "doc",
-          kind: kindFilter ?? undefined,
           limit: 20,
         })
         .then(
@@ -219,7 +231,7 @@ export function DocsSheet({
       active = false;
       clearTimeout(timer);
     };
-  }, [query, kindFilter]);
+  }, [query]);
 
   /**
    * What the list shows: what was searched for, when something was, and
@@ -249,6 +261,7 @@ export function DocsSheet({
         kind: h.kind,
       }))
     : (docs ?? [])
+        .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
         .filter((d) => kindFilter === null || d.kind === kindFilter)
         // A search looks everywhere; a folder only narrows the plain list.
         .filter((d) =>
@@ -259,13 +272,63 @@ export function DocsSheet({
               : d.folder_id === folderFilter,
         );
 
-  /** Starred pages first, then the rest, each keeping its own order. */
-  const shown: Row[] = [
-    ...narrowed.filter((d) => starred.has(favouriteKey("doc", d.id))),
-    ...narrowed.filter((d) => !starred.has(favouriteKey("doc", d.id))),
-  ];
+  const shown: Row[] = [...narrowed].sort((a, b) =>
+    sort === "title"
+      ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
+        a.id.localeCompare(b.id)
+      : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
+  );
+  const location = favoritesOnly
+    ? "Favorites"
+    : folderFilter === "none"
+      ? "Unfiled"
+      : folderFilter
+        ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+        : kindFilter === "doc"
+          ? "Pages"
+          : kindFilter === "note"
+            ? "Notes"
+            : "All documents";
+  const selectCollection = (
+    folder: string | null,
+    kind: DocKind | null = null,
+    favorites = false,
+  ) => {
+    setFolderFilter(folder);
+    setKindFilter(kind);
+    setFavoritesOnly(favorites);
+    setQuery("");
+    setHits(null);
+    setNavigationOpen(false);
+    setFiling(null);
+  };
+  const navRow = (
+    label: string,
+    action: () => void,
+    selected = false,
+    icon: "fileText" | "folder" | "star" = "fileText",
+    count?: number,
+  ) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected, disabled: busy }}
+      disabled={busy}
+      onPress={action}
+      style={[styles.navRow, selected && styles.rowPressed]}
+    >
+      <Icon
+        name={icon}
+        size={18}
+        color={selected ? colors.accent : colors.muted}
+      />
+      <Text style={styles.navTitle} numberOfLines={2}>
+        {label}
+      </Text>
+      {count !== undefined && <Text style={styles.found}>{count}</Text>}
+    </Pressable>
+  );
 
-  /** How many pages sit in each folder, for the chips to say. */
+  /** How many pages sit in each folder, for the library to show. */
   const countIn = (id: string | null) =>
     (docs ?? []).filter((d) =>
       id === null ? !d.folder_id : d.folder_id === id,
@@ -273,7 +336,10 @@ export function DocsSheet({
 
   /** Open a page from the list, which for a search hit means fetching it. */
   const openHit = (id: string) =>
-    void run(async () => setOpen(await client.getDoc(id)));
+    void run(async () => {
+      setOpen(await client.getDoc(id));
+      setNavigationOpen(false);
+    });
 
   /** The editor hands back whatever went wrong; show it where they are. */
   const report = (e: unknown) => setError((e as Error).message || "Not saved");
@@ -281,7 +347,15 @@ export function DocsSheet({
   return (
     <Sheet
       visible={visible}
-      title={open ? open.title || "Untitled" : agenda ? "Agenda" : "Documents"}
+      title={
+        navigationOpen
+          ? "Library"
+          : open
+            ? open.title || "Untitled"
+            : agenda
+              ? "Agenda"
+              : "Documents"
+      }
       onClose={onClose}
       onBack={back}
       onDismiss={onDismiss}
@@ -292,16 +366,115 @@ export function DocsSheet({
         keyboardDismissMode="interactive"
       >
         <View style={sheetStyles.column}>
-          {!open && (
-            <ScreenIntro
-              icon="fileText"
-              title={agenda ? "Your daily agenda" : "Room for your ideas"}
-              detail="Notes, plans and knowledge, always close at hand."
-            />
-          )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
-          {open ? (
+          {navigationOpen ? (
+            <View style={styles.list}>
+              <Text style={styles.navHeading}>WORKSPACE</Text>
+              {navRow(
+                "All documents",
+                () => selectCollection(null),
+                !favoritesOnly && !folderFilter && !kindFilter,
+                "fileText",
+                docs?.length,
+              )}
+              {navRow(
+                "Pages",
+                () => selectCollection(null, "doc"),
+                !favoritesOnly && !folderFilter && kindFilter === "doc",
+              )}
+              {navRow(
+                "Notes",
+                () => selectCollection(null, "note"),
+                !favoritesOnly && !folderFilter && kindFilter === "note",
+              )}
+              {navRow(
+                "Favorites",
+                () => selectCollection(null, null, true),
+                favoritesOnly,
+                "star",
+              )}
+              <View style={styles.navChildren}>
+                {(docs ?? [])
+                  .filter((d) => starred.has(favouriteKey("doc", d.id)))
+                  .map((d) => (
+                    <View key={d.id}>
+                      {navRow(d.title || "Untitled", () => openHit(d.id))}
+                    </View>
+                  ))}
+              </View>
+              <Text style={styles.navHeading}>FOLDERS</Text>
+              {[
+                ...folders
+                  .map((f) => ({ id: f.id, name: f.name }))
+                  .sort((a, b) => a.name.localeCompare(b.name)),
+                { id: "none", name: "Unfiled" },
+              ].map((f) => (
+                <View key={f.id}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: expandedFolder === f.id }}
+                    style={styles.navRow}
+                    onPress={() =>
+                      setExpandedFolder(expandedFolder === f.id ? null : f.id)
+                    }
+                  >
+                    <Icon name="folder" size={18} color={colors.muted} />
+                    <Text style={styles.navTitle} numberOfLines={2}>
+                      {f.name}
+                    </Text>
+                    <Text style={styles.found}>
+                      {countIn(f.id === "none" ? null : f.id)}{" "}
+                      {expandedFolder === f.id ? "−" : "+"}
+                    </Text>
+                  </Pressable>
+                  {expandedFolder === f.id && (
+                    <View style={styles.navChildren}>
+                      {navRow(
+                        "View folder",
+                        () => selectCollection(f.id),
+                        folderFilter === f.id,
+                      )}
+                      {(docs ?? [])
+                        .filter((d) =>
+                          f.id === "none" ? !d.folder_id : d.folder_id === f.id,
+                        )
+                        .sort((a, b) => a.title.localeCompare(b.title))
+                        .map((d) => (
+                          <View key={d.id}>
+                            {navRow(d.title || "Untitled", () => openHit(d.id))}
+                          </View>
+                        ))}
+                    </View>
+                  )}
+                </View>
+              ))}
+              <Button
+                title="New folder"
+                secondary
+                onPress={() => setNaming(!naming)}
+              />
+              {naming && (
+                <View style={styles.newFolder}>
+                  <TextInput
+                    style={[styles.search, { flex: 1, minWidth: 0 }]}
+                    value={folderName}
+                    placeholder="Folder name"
+                    placeholderTextColor={colors.faint}
+                    maxLength={60}
+                    onChangeText={setFolderName}
+                    onSubmitEditing={newFolder}
+                    accessibilityLabel="New folder name"
+                  />
+                  <Button
+                    title="Add"
+                    disabled={busy || !folderName.trim()}
+                    onPress={newFolder}
+                  />
+                </View>
+              )}
+            </View>
+          ) : open ? (
             <OpenDoc
               key={open.id}
               doc={open}
@@ -342,24 +515,29 @@ export function DocsSheet({
             </View>
           ) : docs === null ? (
             <Text style={styles.empty}>Loading…</Text>
-          ) : docs.length === 0 ? (
-            <View style={styles.list}>
-              <Text style={styles.empty}>
-                No documents yet. Start one and it is on every device.
-              </Text>
-              <Button
-                title="New document"
-                secondary
-                disabled={busy}
-                onPress={() => create("doc")}
-              />
-            </View>
           ) : (
             <View style={styles.list}>
+              <View style={styles.libraryToolbar}>
+                <Button
+                  title="Browse library"
+                  secondary
+                  onPress={() => setNavigationOpen(true)}
+                />
+                <SmallAction
+                  label={
+                    sort === "recent" ? "Sort: last edited" : "Sort: title A–Z"
+                  }
+                  disabled={false}
+                  onPress={() =>
+                    setSort(sort === "recent" ? "title" : "recent")
+                  }
+                />
+              </View>
+              <Text style={styles.collectionTitle}>{location}</Text>
               <TextInput
                 style={styles.search}
                 value={query}
-                placeholder="Search pages and notes…"
+                placeholder="Search all pages and notes…"
                 placeholderTextColor={colors.faint}
                 autoCorrect={false}
                 returnKeyType="search"
@@ -372,89 +550,6 @@ export function DocsSheet({
                     ? "Nothing found."
                     : `${hits.length} found`}
                 </Text>
-              )}
-              {/* Two rows of full-height pills stood between the search box
-                  and the first page — a hundred points of chrome before any
-                  of the pages. They are the compact chip now, and each rides
-                  one line that scrolls rather than wrapping. */}
-              <ScrollView
-                horizontal
-                keyboardShouldPersistTaps="handled"
-                showsHorizontalScrollIndicator={false}
-              >
-                <ChipRow label="Show">
-                  {(["all", "doc", "note"] as const).map((k) => (
-                    <Chip
-                      key={k}
-                      compact
-                      label={
-                        k === "all"
-                          ? "Everything"
-                          : k === "doc"
-                            ? "Pages"
-                            : "Notes"
-                      }
-                      selected={kindFilter === (k === "all" ? null : k)}
-                      onPress={() => setKindFilter(k === "all" ? null : k)}
-                    />
-                  ))}
-                </ChipRow>
-              </ScrollView>
-              {/* Where a page is filed. A search looks past this. */}
-              <ScrollView
-                horizontal
-                keyboardShouldPersistTaps="handled"
-                showsHorizontalScrollIndicator={false}
-              >
-                <ChipRow label="Folder">
-                  <Chip
-                    compact
-                    label="All"
-                    selected={folderFilter === null}
-                    onPress={() => setFolderFilter(null)}
-                  />
-                  {folders.map((f) => (
-                    <Chip
-                      key={f.id}
-                      compact
-                      label={`${f.name} ${countIn(f.id)}`}
-                      selected={folderFilter === f.id}
-                      onPress={() => setFolderFilter(f.id)}
-                    />
-                  ))}
-                  <Chip
-                    compact
-                    label={`Unfiled ${countIn(null)}`}
-                    selected={folderFilter === "none"}
-                    onPress={() => setFolderFilter("none")}
-                  />
-                  <Chip
-                    compact
-                    label="+ Folder"
-                    selected={naming}
-                    onPress={() => setNaming((v) => !v)}
-                  />
-                </ChipRow>
-              </ScrollView>
-              {naming && (
-                <View style={styles.newFolder}>
-                  <TextInput
-                    style={[styles.search, { flex: 1, minWidth: 0 }]}
-                    value={folderName}
-                    placeholder="Name the folder"
-                    placeholderTextColor={colors.faint}
-                    autoFocus
-                    maxLength={60}
-                    onChangeText={setFolderName}
-                    onSubmitEditing={newFolder}
-                    accessibilityLabel="New folder name"
-                  />
-                  <Button
-                    title="Add"
-                    disabled={busy || !folderName.trim()}
-                    onPress={newFolder}
-                  />
-                </View>
               )}
               <View style={styles.newRow}>
                 <Button
@@ -507,6 +602,7 @@ export function DocsSheet({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                    disabled={busy}
                     style={({ pressed }) => [
                       styles.rowOpen,
                       pressed && styles.rowPressed,
@@ -644,6 +740,45 @@ function OpenDoc({
 
 const styles = themed(() =>
   StyleSheet.create({
+    libraryToolbar: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    collectionTitle: {
+      fontSize: 24,
+      fontFamily: fonts.display,
+      color: colors.text,
+    },
+    navHeading: {
+      color: colors.muted,
+      fontSize: 12,
+      fontFamily: fonts.semibold,
+      marginTop: 16,
+      letterSpacing: 1,
+    },
+    navRow: {
+      flexDirection: "row",
+      gap: 12,
+      alignItems: "center",
+      padding: 10,
+      minHeight: 48,
+      borderRadius: 8,
+    },
+    navTitle: {
+      flex: 1,
+      color: colors.text,
+      fontSize: 16,
+      fontFamily: fonts.medium,
+    },
+    navChildren: {
+      marginLeft: 18,
+      paddingLeft: 10,
+      borderLeftWidth: 1,
+      borderLeftColor: colors.border,
+    },
     newRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
     search: {
       color: colors.text,
