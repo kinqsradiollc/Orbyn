@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   FileText,
+  FolderInput,
+  Check,
   Folder as FolderIcon,
   FolderPlus,
   Plus,
@@ -19,6 +21,8 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
+import { Select } from "../../components/Select";
+import { Popover } from "../../components/Popover";
 import { DocEditor } from "./DocEditor";
 import "./docs.css";
 
@@ -59,6 +63,12 @@ export function DocsView({
   /** null = every kind; "note" = only notes; "doc" = only plain pages. */
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  const [filing, setFiling] = useState<{
+    doc: DocSummary;
+    anchor: DOMRect;
+  } | null>(null);
+  const [naming, setNaming] = useState(false);
+  const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -82,19 +92,23 @@ export function DocsView({
   };
 
   const newFolder = () => {
-    const name = prompt("Name the new folder")?.trim();
+    const name = folderName.trim();
     if (!name) return;
+    setBusy(true);
     client
       .createFolder({ name })
       .then((f) => {
         setFolders((all) => [...all, f]);
+        setNaming(false);
+        setFolderName("");
         setFolderFilter(f.id);
         setKindFilter(null);
         setFavoritesOnly(false);
         setOpen(null);
         setNavigationOpen(false);
       })
-      .catch(report);
+      .catch(report)
+      .finally(() => setBusy(false));
   };
 
   const toggleStar = (doc: DocSummary, starred: boolean) => {
@@ -237,6 +251,7 @@ export function DocsView({
         version: full.version,
         folder_id: folderId || null,
       });
+      setFiling(null);
       setDocs(
         (all) =>
           all?.map((d) =>
@@ -322,10 +337,40 @@ export function DocsView({
         </div>
         <div className="docs-nav-heading">
           <span>Folders</span>
-          <button aria-label="New folder" onClick={newFolder}>
+          <button
+            aria-label="New folder"
+            aria-expanded={naming}
+            onClick={() => setNaming(!naming)}
+          >
             <FolderPlus size={16} />
           </button>
         </div>
+        {naming && (
+          <form
+            className="docs-folder-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              newFolder();
+            }}
+          >
+            <input
+              aria-label="Folder name"
+              placeholder="Folder name"
+              value={folderName}
+              maxLength={60}
+              autoFocus
+              onChange={(e) => setFolderName(e.target.value)}
+            />
+            <div>
+              <button type="submit" disabled={busy || !folderName.trim()}>
+                Create
+              </button>
+              <button type="button" onClick={() => setNaming(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
         {[...folders]
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((folder) => (
@@ -405,14 +450,15 @@ export function DocsView({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <select
+              <Select
+                className="docs-sort"
                 aria-label="Sort documents"
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
               >
                 <option value="recent">Last edited</option>
                 <option value="title">Title A–Z</option>
-              </select>
+              </Select>
             </div>
             {failed ? (
               <div>
@@ -451,26 +497,38 @@ export function DocsView({
                       <span className="doc-row-main">
                         <strong>{doc.title || "Untitled"}</strong>
                         <small>{doc.preview || "Empty document"}</small>
+                        <span className="doc-row-location">
+                          {doc.kind === "note"
+                            ? "Note"
+                            : doc.kind === "agenda"
+                              ? "Agenda"
+                              : "Page"}{" "}
+                          ·{" "}
+                          {folders.find((f) => f.id === doc.folder_id)?.name ||
+                            "Unfiled"}
+                        </span>
                       </span>
                       <span className="doc-row-when">
                         {when(doc.updated_at)}
                       </span>
                     </button>
                     {(!canWriteDoc || canWriteDoc(doc.team_id)) && (
-                      <select
-                        className="doc-file-select"
-                        aria-label={`Folder for ${doc.title || "Untitled"}`}
-                        value={doc.folder_id ?? ""}
+                      <button
+                        className="doc-star"
+                        aria-label={`Move ${doc.title || "Untitled"} to folder`}
+                        title="Move to folder"
                         disabled={busy}
-                        onChange={(e) => void fileIn(doc, e.target.value)}
+                        aria-haspopup="dialog"
+                        aria-expanded={filing?.doc.id === doc.id}
+                        onClick={(e) =>
+                          setFiling({
+                            doc,
+                            anchor: e.currentTarget.getBoundingClientRect(),
+                          })
+                        }
                       >
-                        <option value="">Unfiled</option>
-                        {folders.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name}
-                          </option>
-                        ))}
-                      </select>
+                        <FolderInput size={17} />
+                      </button>
                     )}
                     <button
                       className={
@@ -508,6 +566,31 @@ export function DocsView({
           </div>
         )}
       </section>
+      {filing && (
+        <Popover
+          label="Move to folder"
+          anchor={filing.anchor}
+          onClose={() => setFiling(null)}
+          width={280}
+        >
+          <div className="docs-move-menu">
+            <strong>Move to folder</strong>
+            <p>{filing.doc.title || "Untitled"}</p>
+            {[{ id: "", name: "Unfiled" }, ...folders].map((f) => (
+              <button
+                key={f.id}
+                className="doc-menu-item"
+                disabled={busy}
+                onClick={() => void fileIn(filing.doc, f.id)}
+              >
+                <FolderIcon size={16} />
+                <span>{f.name}</span>
+                {(filing.doc.folder_id ?? "") === f.id && <Check size={16} />}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      )}
     </div>
   );
 }
