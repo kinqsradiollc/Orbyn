@@ -706,18 +706,33 @@ export function DocEditor({
           {title || "Untitled"}
         </Text>
       ) : (
-        <TextInput
-          style={styles.title}
-          value={title}
-          placeholder="Untitled"
-          placeholderTextColor={colors.faint}
-          maxLength={200}
-          accessibilityLabel="Document title"
-          onChangeText={(text) => {
-            setTitle(text);
-            queueSave(text, blocks);
-          }}
-        />
+        // A hidden text mirror supplies the full wrapping height. Native
+        // multiline inputs can retain a one-line height after editing.
+        <View style={styles.titleEditor}>
+          <Text
+            style={[styles.title, { opacity: 0 }]}
+            accessible={false}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {(title || "Untitled") + "\u200b"}
+          </Text>
+          <TextInput
+            style={[styles.title, StyleSheet.absoluteFill]}
+            scrollEnabled={false}
+            multiline
+            textAlignVertical="top"
+            value={title}
+            placeholder="Untitled"
+            placeholderTextColor={colors.faint}
+            maxLength={200}
+            accessibilityLabel="Document title"
+            onChangeText={(text) => {
+              setTitle(text);
+              queueSave(text, blocks);
+            }}
+          />
+        </View>
       )}
 
       <DocSuggestions
@@ -1046,10 +1061,12 @@ function DocTool({
 
 const styles = themed(() =>
   StyleSheet.create({
-    page: { gap: 10 },
+    page: { gap: 16 },
+    titleEditor: { minHeight: 44 },
     title: {
       color: colors.text,
-      fontSize: 22,
+      fontSize: 28,
+      lineHeight: 36,
       fontFamily: fonts.display,
       padding: 0,
     },
@@ -1100,7 +1117,10 @@ const styles = themed(() =>
     },
     pageTools: {
       flexDirection: "row",
-      justifyContent: "flex-end",
+      justifyContent: "flex-start",
+      flexWrap: "wrap",
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.input,
       gap: 4,
       marginTop: -2,
     },

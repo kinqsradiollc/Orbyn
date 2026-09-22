@@ -45,7 +45,9 @@ export function MonthView({
 }) {
   const today = new Date();
   // Bar text scales with the user's text size; so must the rows that hold it.
-  const scale = Math.min(MAX_SCALE, useWindowDimensions().fontScale);
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width < 600;
+  const scale = Math.min(MAX_SCALE, fontScale);
   const lane = Math.round(LANE_HEIGHT * scale);
   const dateRow = Math.round(DATE_HEIGHT * scale);
   const moreRow = Math.round(MORE_HEIGHT * scale);
@@ -65,7 +67,11 @@ export function MonthView({
             key={w}
             style={[
               s.week,
-              { height: dateRow + LANES * lane + moreRow + 2 },
+              {
+                height: compact
+                  ? Math.round(54 * scale)
+                  : dateRow + LANES * lane + moreRow + 2,
+              },
               w > 0 && s.weekDivider,
             ]}
           >
@@ -88,17 +94,24 @@ export function MonthView({
                     pressed && s.pressed,
                   ]}
                 >
-                  <View style={s.cellHead}>
+                  <View style={[s.cellHead, compact && s.compactHead]}>
                     <View
                       style={[
                         s.date,
+                        compact && {
+                          width: 30 * scale,
+                          height: 30 * scale,
+                          borderRadius: 15 * scale,
+                        },
                         isToday && !active && s.dateToday,
                         active && s.dateActive,
                       ]}
                     >
                       <Text
+                        maxFontSizeMultiplier={MAX_SCALE}
                         style={[
                           s.dateText,
+                          compact && s.compactDate,
                           day.getMonth() !== month.getMonth() && s.otherMonth,
                           isToday && s.todayText,
                           active && s.activeText,
@@ -116,80 +129,89 @@ export function MonthView({
                       ))}
                     </View>
                   </View>
+                  {compact && count > 0 && (
+                    <View style={s.activityDots}>
+                      {Array.from({ length: Math.min(count, 3) }, (_, n) => (
+                        <View key={n} style={s.activityDot} />
+                      ))}
+                    </View>
+                  )}
                 </Pressable>
               );
             })}
-            {bars.map((b) => {
-              const t = b.thing;
-              return (
-                <View
-                  key={`${t.key}-${w}`}
-                  pointerEvents="none"
-                  style={[
-                    s.barWrap,
-                    {
-                      top: dateRow + b.lane * lane,
-                      height: lane,
-                      left: `${(b.startCol / 7) * 100}%`,
-                      width: `${((b.endCol - b.startCol + 1) / 7) * 100}%`,
-                    },
-                  ]}
-                >
+            {!compact &&
+              bars.map((b) => {
+                const t = b.thing;
+                return (
                   <View
+                    key={`${t.key}-${w}`}
+                    pointerEvents="none"
                     style={[
-                      s.bar,
-                      t.look === "block" || t.look === "ghost"
-                        ? {
-                            borderColor: t.color,
-                            backgroundColor:
-                              t.look === "ghost"
-                                ? tint(t.color, 0.1)
-                                : colors.surface,
-                          }
-                        : {
-                            backgroundColor: tint(t.color, 0.18),
-                            borderLeftColor: t.color,
-                          },
-                      (t.look === "block" || t.look === "ghost") && s.dashed,
-                      t.look === "external" && s.external,
-                      b.continuesBefore && s.flatLeft,
-                      b.continuesAfter && s.flatRight,
+                      s.barWrap,
+                      {
+                        top: dateRow + b.lane * lane,
+                        height: lane,
+                        left: `${(b.startCol / 7) * 100}%`,
+                        width: `${((b.endCol - b.startCol + 1) / 7) * 100}%`,
+                      },
                     ]}
                   >
-                    <Text
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={MAX_SCALE}
-                      style={[s.barText, t.look === "done" && s.doneText]}
+                    <View
+                      style={[
+                        s.bar,
+                        t.look === "block" || t.look === "ghost"
+                          ? {
+                              borderColor: t.color,
+                              backgroundColor:
+                                t.look === "ghost"
+                                  ? tint(t.color, 0.1)
+                                  : colors.surface,
+                            }
+                          : {
+                              backgroundColor: tint(t.color, 0.18),
+                              borderLeftColor: t.color,
+                            },
+                        (t.look === "block" || t.look === "ghost") && s.dashed,
+                        t.look === "external" && s.external,
+                        b.continuesBefore && s.flatLeft,
+                        b.continuesAfter && s.flatRight,
+                      ]}
                     >
-                      {t.title}
-                    </Text>
+                      <Text
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={MAX_SCALE}
+                        style={[s.barText, t.look === "done" && s.doneText]}
+                      >
+                        {t.title}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-            {hidden.map((n, c) =>
-              n > 0 ? (
-                <Pressable
-                  key={`more-${c}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${n} more on ${week[c].toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}. Opens that day`}
-                  hitSlop={4}
-                  onPress={() => onMore(week[c])}
-                  style={[
-                    s.more,
-                    {
-                      top: dateRow + LANES * lane,
-                      height: moreRow,
-                      left: `${(c / 7) * 100}%`,
-                    },
-                  ]}
-                >
-                  <Text style={s.moreText} maxFontSizeMultiplier={MAX_SCALE}>
-                    +{n}
-                  </Text>
-                </Pressable>
-              ) : null,
-            )}
+                );
+              })}
+            {!compact &&
+              hidden.map((n, c) =>
+                n > 0 ? (
+                  <Pressable
+                    key={`more-${c}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${n} more on ${week[c].toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}. Opens that day`}
+                    hitSlop={4}
+                    onPress={() => onMore(week[c])}
+                    style={[
+                      s.more,
+                      {
+                        top: dateRow + LANES * lane,
+                        height: moreRow,
+                        left: `${(c / 7) * 100}%`,
+                      },
+                    ]}
+                  >
+                    <Text style={s.moreText} maxFontSizeMultiplier={MAX_SCALE}>
+                      +{n}
+                    </Text>
+                  </Pressable>
+                ) : null,
+              )}
           </View>
         );
       })}
@@ -199,6 +221,20 @@ export function MonthView({
 
 const s = themed(() =>
   StyleSheet.create({
+    compactHead: { justifyContent: "center", paddingLeft: 0 },
+    compactDate: { fontSize: 15 },
+    activityDots: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 3,
+      marginTop: 3,
+    },
+    activityDot: {
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.accent,
+    },
     header: { flexDirection: "row" },
     weekday: {
       flex: 1,

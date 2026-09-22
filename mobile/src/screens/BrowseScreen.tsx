@@ -8,6 +8,7 @@ import { colors, fonts, themed } from "../theme";
 
 /** Every destination the tab bar has no room for. */
 export type Destination =
+  | "planning"
   | "agenda"
   | "projects"
   | "docs"
@@ -32,8 +33,14 @@ type Row = {
  */
 const GROUPS: { label: string; rows: Row[] }[] = [
   {
-    label: "TODAY",
+    label: "PLAN YOUR DAY",
     rows: [
+      {
+        to: "planning",
+        icon: "calendar",
+        title: "Planning",
+        detail: "Working hours, focus time and routines",
+      },
       {
         to: "agenda",
         icon: "sun",
@@ -129,7 +136,7 @@ export function BrowseScreen({
                     onPress={() => onOpen(row.to)}
                     style={({ pressed }) => [s.row, pressed && s.pressed]}
                   >
-                    <Icon name={row.icon} size={18} color={colors.muted} />
+                    <Icon name={row.icon} size={22} color={colors.accent} />
                     <View style={s.text}>
                       <Text style={s.title}>{row.title}</Text>
                       <Text style={s.detail}>{row.detail}</Text>
@@ -154,12 +161,12 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      minHeight: 52,
+      minHeight: 68,
       paddingVertical: 8,
     },
     pressed: { opacity: 0.6 },
     text: { flex: 1, gap: 2 },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
-    detail: { color: colors.muted, fontSize: 12 },
+    detail: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   }),
 );

@@ -21,7 +21,7 @@ export const fonts = {
 
 export const spacing = {
   /** Horizontal page padding, added on top of safe-area insets. */
-  page: 20,
+  page: 16,
   /** Content column width cap for tablets and landscape. */
   maxContent: 720,
 } as const;
@@ -40,6 +40,6 @@ export const controls = {
 
 export const radii = {
   input: 12,
-  card: 16,
+  card: 20,
   pill: 999,
 } as const;

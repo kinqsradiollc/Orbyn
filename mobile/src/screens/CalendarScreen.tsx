@@ -220,8 +220,20 @@ export function CalendarScreen({
   const { listById } = usePlanning();
   const [mode, setModeState] = useState<Mode>(() => {
     const saved = readLocal(MODE_KEY);
-    return MODES.find((m) => m === saved) ?? "week";
+    return MODES.find((m) => m === saved) ?? "day";
   });
+  const navigation = useRef<View>(null);
+  const scrollPage = useRef(onScrollTo);
+  scrollPage.current = onScrollTo;
+  // A month or week selection starts at its date picker, not halfway down
+  // the day's timeline. Only the dedicated Day view jumps to the current hour.
+  useEffect(() => {
+    if (mode === "day") return;
+    const frame = requestAnimationFrame(() =>
+      scrollPage.current?.(navigation.current, 0),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [mode]);
   const [selected, setSelected] = useState(() => new Date());
   const [month, setMonth] = useState(() => new Date());
   const [view, setView] = useState<{
@@ -1093,11 +1105,11 @@ export function CalendarScreen({
         live && !handlers.busy && keepFree.length < 20 ? keepRange : undefined
       }
       scrollKey={
-        first
+        first && mode === "day"
           ? `${mode}-${multi ? "grid" : "day"}-${selected.toDateString()}`
           : undefined
       }
-      onScrollTo={first ? onScrollTo : undefined}
+      onScrollTo={first && mode === "day" ? onScrollTo : undefined}
       hours={gridHours}
       bare={multi && !first}
       grid={multi}
@@ -1118,6 +1130,13 @@ export function CalendarScreen({
   /** Date navigation and the view switch: in the page's sticky header when it has one. */
   const controls = (
     <>
+      <Text
+        style={[shared.sectionTitle, s.headingText]}
+        accessibilityRole="header"
+        numberOfLines={2}
+      >
+        {heading}
+      </Text>
       <View style={s.heading}>
         <PressableScale
           accessibilityRole="button"
@@ -1127,13 +1146,7 @@ export function CalendarScreen({
         >
           <Icon name="chevronLeft" size={20} />
         </PressableScale>
-        <Text
-          style={[shared.sectionTitle, s.headingText]}
-          accessibilityRole="header"
-          numberOfLines={2}
-        >
-          {heading}
-        </Text>
+
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={`Next ${unit}`}
@@ -1325,7 +1338,11 @@ export function CalendarScreen({
           onPreviewChange(plan);
         }}
       />
-      <View style={[shared.card, s.calendar]}>
+      <View
+        ref={navigation}
+        collapsable={false}
+        style={[shared.card, s.calendar]}
+      >
         {!controlsSlot && controls}
         <View style={s.tools}>
           <SmallAction
@@ -1745,11 +1762,12 @@ const s = themed(() =>
     joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     joinButton: { marginBottom: 0, minHeight: 44 },
     heading: {
+      justifyContent: "space-between",
       flexDirection: "row",
       alignItems: "center",
       marginBottom: 10,
     },
-    headingText: { flex: 1, textAlign: "center", fontSize: 16 },
+    headingText: { fontSize: 22, lineHeight: 30, marginBottom: 8 },
     tools: {
       flexDirection: "row",
       flexWrap: "wrap",

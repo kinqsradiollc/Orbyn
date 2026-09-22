@@ -1,5 +1,11 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { controls, colors, fonts, radii, themed } from "../theme";
 
 /**
@@ -27,9 +33,16 @@ export function Segmented<T extends string>({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const [width, setWidth] = useState(0);
+  const { fontScale } = useWindowDimensions();
+  const flowing =
+    wrap ||
+    (width > 0 && (width - 6) / options.length < controls.tap) ||
+    (fontScale > 1.35 && options.length > 3);
   return (
     <View
-      style={[s.segmented, wrap && s.wrap, disabled && s.disabled]}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      style={[s.segmented, flowing && s.wrap, disabled && s.disabled]}
       accessibilityRole="radiogroup"
       accessibilityLabel={accessibilityLabel}
     >
@@ -47,12 +60,9 @@ export function Segmented<T extends string>({
             }
             disabled={disabled}
             onPress={() => onChange(option)}
-            style={[s.segment, wrap && s.chip, active && s.segmentActive]}
+            style={[s.segment, flowing && s.chip, active && s.segmentActive]}
           >
             <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
               style={[
                 s.segmentText,
                 !label && s.capitalize,
@@ -85,14 +95,15 @@ const s = themed(() =>
     disabled: { opacity: 0.6 },
     segment: {
       flex: 1,
-      minWidth: 0,
+      minWidth: controls.tap,
       minHeight: controls.tap,
       flexDirection: "row",
       gap: 6,
       borderRadius: radii.input - 3,
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 10,
     },
     chip: {
       // Reset the segment's `flex: 1`: in Yoga it forces a zero flex basis, so
@@ -101,6 +112,7 @@ const s = themed(() =>
       flexGrow: 1,
       flexShrink: 0,
       flexBasis: "auto",
+      maxWidth: "100%",
       paddingHorizontal: 14,
     },
     segmentActive: {
@@ -113,6 +125,7 @@ const s = themed(() =>
     },
     segmentText: {
       flexShrink: 1,
+      textAlign: "center",
       fontFamily: fonts.medium,
       fontSize: 14,
       color: colors.muted,

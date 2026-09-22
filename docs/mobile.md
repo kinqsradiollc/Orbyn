@@ -4,6 +4,37 @@ The mobile app lives in `mobile/` and is the `@orbyn/mobile` workspace of the mo
 types, validation, and the API client with the web app through `@orbyn/core` and
 `@orbyn/api-client`.
 
+## Mobile navigation and layout
+
+The bottom bar contains Today, Tasks, Calendar, Assistant and Workspace. Notifications are
+available from the bell in the header. Workspace provides direct access to Planning, Projects,
+Docs, Agenda and the other workspace tools.
+
+- Assistant replies use the content column's full width. The composer has a full-width text
+  field and a separate action row, and stays above the software keyboard.
+- Document cards expose Open, Star and Folder separately to accessibility services. Document
+  titles grow as they wrap, including while editing.
+- Projects opens on Tasks, with Notes and Timeline in separate views.
+- Planning groups settings into collapsible sections and keeps Save at the bottom. Collapsing
+  a section preserves its draft values.
+- Calendar starts in Day unless a view was saved. Phone month grids use activity dots;
+  wider layouts retain event bars. Switching to Week or Month keeps the date picker visible.
+- Choice controls wrap when their available width cannot provide 44-point targets.
+
+### Redesign verification (22 September 2026)
+
+Native checks used Expo Go on the iPhone 17 simulator. Edit/save checks used an isolated copy
+with in-memory API fixtures, not the deployed account: document title editing and returning
+to the list, independent starring, project section switching, planning working-day changes
+and saving, chat composition and replies, and calendar view/date navigation. The software
+keyboard was checked with the assistant composer. Light appearance and a constrained
+320-point-wide dark layout were inspected. Fixtures verify client behavior, not backend
+persistence or live AI-provider responses.
+
+The mobile TypeScript check and iOS/Android bundle exports are the build gates. Android
+device behavior, physical-device keyboards and push delivery need their own device checks;
+an export is not a substitute for those checks.
+
 ## Run in development
 
 From the repository root:

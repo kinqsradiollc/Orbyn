@@ -502,20 +502,39 @@ export function RootScreen() {
         <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
           <View style={s.headerRow}>
             <Brand size={24} />
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="New item"
-              hitSlop={8}
-              onPress={openNew}
-              style={({ pressed }) => [s.add, pressed && s.addPressed]}
-            >
-              <Icon
-                name="plus"
-                size={20}
-                color={colors.white}
-                strokeWidth={2.2}
-              />
-            </PressableScale>
+            <View style={s.headerActions}>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={
+                  notices.some((n) => !n.read)
+                    ? "Notifications, unread updates"
+                    : "Notifications"
+                }
+                onPress={() => setTab("Inbox")}
+                style={s.notification}
+              >
+                <Icon
+                  name="bell"
+                  size={20}
+                  color={tab === "Inbox" ? colors.accent : colors.textSoft}
+                />
+                {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
+              </PressableScale>
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="New item"
+                hitSlop={8}
+                onPress={openNew}
+                style={({ pressed }) => [s.add, pressed && s.addPressed]}
+              >
+                <Icon
+                  name="plus"
+                  size={20}
+                  color={colors.white}
+                  strokeWidth={2.2}
+                />
+              </PressableScale>
+            </View>
           </View>
         </View>
         <View style={sidePadding}>
@@ -550,21 +569,19 @@ export function RootScreen() {
             }
           >
             <View style={s.column}>
-              <Text style={shared.eyebrow}>
-                {today
-                  .toLocaleDateString([], {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })
-                  .toUpperCase()}
-              </Text>
-              {/* Keyed by tab: replays on navigation only, never on refresh.
-                  A conversation under way takes the heading's place, the way
-                  the desktop drops its greeting on the first message: on a
-                  812pt screen the headline and its line were holding a third
-                  of the room the chat itself wanted. */}
-              {!(tab === "AI" && messages > 0) && (
+              {tab !== "AI" && tab !== "Calendar" && (
+                <Text style={shared.eyebrow}>
+                  {today
+                    .toLocaleDateString([], {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })
+                    .toUpperCase()}
+                </Text>
+              )}
+              {/* Chat and Calendar provide their own compact page headings. */}
+              {tab !== "AI" && tab !== "Calendar" && (
                 <FadeIn key={`head-${tab}`} duration={motion.slow}>
                   <Text style={shared.title}>{tabTitle(tab, user)}</Text>
                   <Text style={[shared.subtitle, s.subtitle]}>
@@ -716,7 +733,6 @@ export function RootScreen() {
         </View>
         <TabBar
           tab={tab}
-          unread={notices.some((n) => !n.read)}
           onChange={(t) => {
             setTab(t);
             setSearch("");
@@ -931,6 +947,24 @@ export function RootScreen() {
 const s = themed(() =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: colors.background },
+    headerActions: { flexDirection: "row", gap: 10, alignItems: "center" },
+    notification: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    unreadDot: {
+      position: "absolute",
+      top: 9,
+      right: 10,
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.highText,
+    },
     header: {
       backgroundColor: colors.background,
       paddingBottom: 12,

@@ -18,6 +18,7 @@ import {
   type Folder,
   type SearchHit,
 } from "@orbyn/core";
+import { ScreenIntro } from "../../components/ScreenIntro";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -288,8 +289,16 @@ export function DocsSheet({
       <ScrollView
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <View style={sheetStyles.column}>
+          {!open && (
+            <ScreenIntro
+              icon="fileText"
+              title={agenda ? "Your daily agenda" : "Room for your ideas"}
+              detail="Notes, plans and knowledge, always close at hand."
+            />
+          )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
           {open ? (
@@ -430,7 +439,7 @@ export function DocsSheet({
               {naming && (
                 <View style={styles.newFolder}>
                   <TextInput
-                    style={styles.search}
+                    style={[styles.search, { flex: 1, minWidth: 0 }]}
                     value={folderName}
                     placeholder="Name the folder"
                     placeholderTextColor={colors.faint}
@@ -488,19 +497,43 @@ export function DocsSheet({
                   />
                 </View>
               )}
+              {shown.length === 0 && (
+                <Text style={styles.empty}>
+                  No documents here. Try another folder or search.
+                </Text>
+              )}
               {shown.map((doc) => (
-                <Pressable
-                  key={doc.id}
-                  style={({ pressed }) => [
-                    styles.row,
-                    pressed && styles.rowPressed,
-                  ]}
-                  onPress={() => openHit(doc.id)}
-                >
-                  <View style={styles.rowTop}>
-                    <Icon name="fileText" size={16} color={colors.muted} />
-                    <Text style={styles.rowTitle} numberOfLines={1}>
-                      {doc.title || "Untitled"}
+                <View key={doc.id} style={styles.row}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                    style={({ pressed }) => [
+                      styles.rowOpen,
+                      pressed && styles.rowPressed,
+                    ]}
+                    onPress={() => openHit(doc.id)}
+                  >
+                    <View style={styles.rowTop}>
+                      <Icon name="fileText" size={16} color={colors.muted} />
+                      <Text style={styles.rowTitle} numberOfLines={2}>
+                        {doc.title || "Untitled"}
+                      </Text>
+                    </View>
+                    {/* The time leads the preview rather than sitting up on
+                      the title's line, where it cost the title the 20pt that
+                      turned "Monday 21 September" into "Monday 21 Septe…". */}
+                    <Text style={styles.rowPreview} numberOfLines={2}>
+                      <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
+                      {"  ·  " + (doc.preview || "Empty document")}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.rowActions}>
+                    <Text style={styles.rowKind}>
+                      {doc.kind === "note"
+                        ? "Note"
+                        : doc.kind === "agenda"
+                          ? "Agenda"
+                          : "Document"}
                     </Text>
                     {/* The star and the folder sit outside the row's own press,
                         or tapping either would open the page instead. */}
@@ -550,14 +583,7 @@ export function DocsSheet({
                       </Pressable>
                     )}
                   </View>
-                  {/* The time leads the preview rather than sitting up on
-                      the title's line, where it cost the title the 20pt that
-                      turned "Monday 21 September" into "Monday 21 Septe…". */}
-                  <Text style={styles.rowPreview} numberOfLines={2}>
-                    <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
-                    {"  ·  " + (doc.preview || "Empty document")}
-                  </Text>
-                </Pressable>
+                </View>
               ))}
             </View>
           )}
@@ -651,7 +677,7 @@ const styles = themed(() =>
       fontSize: 14,
       fontFamily: fonts.semibold,
     },
-    list: { gap: 8 },
+    list: { gap: 12 },
     // Title, time and the two controls share the first line; the preview gets
     // the whole width underneath. Laid out side by side on a 375pt phone the
     // preview was down to 125pt — "We ship the conne…" — which told nobody
@@ -664,12 +690,21 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
+    rowOpen: { gap: 10, minHeight: 64, borderRadius: 8 },
     rowPressed: { backgroundColor: colors.surfaceMuted },
+    rowActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+    rowKind: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.accent,
+    },
     rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
     rowTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 15,
+      fontSize: 17,
+      lineHeight: 24,
       fontFamily: fonts.semibold,
     },
     rowPreview: { color: colors.muted, fontSize: 13, lineHeight: 18 },

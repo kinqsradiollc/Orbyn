@@ -55,6 +55,7 @@ const s = themed(() =>
       flexDirection: "row",
       gap: 8,
       paddingHorizontal: 18,
+      paddingVertical: 10,
       backgroundColor: colors.accent,
       borderRadius: radii.input,
       alignItems: "center",

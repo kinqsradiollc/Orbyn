@@ -31,6 +31,8 @@ import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ClockField, Field, NumberInput } from "../components/Field";
 import { Icon } from "../components/Icon";
+import { Disclosure } from "../components/Disclosure";
+import { ScreenIntro } from "../components/ScreenIntro";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
@@ -359,585 +361,637 @@ function Body({ teams }: { teams: Team[] }) {
   const reloadPlaces = async () => setPlaces(await client.listPlaces());
 
   return (
-    <ScrollView
-      contentContainerStyle={sheetStyles.body}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
-    >
-      <View style={sheetStyles.column}>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          Plan my day, buffers and travel time all follow these settings.
-        </Text>
-        {!form ? (
-          <Text style={shared.small}>
-            {busy ? "Loading your settings…" : "Settings aren’t available."}
-          </Text>
-        ) : (
-          <>
-            <Text style={[shared.eyebrow, s.eyebrow]}>WORKING TIME</Text>
-            <View style={shared.card}>
-              <Field label="Time zone">
-                <Text style={s.value}>{form.timezone}</Text>
-                {form.timezone !== device && (
-                  <Button
-                    secondary
-                    title={`Use this device’s (${device})`}
-                    style={s.inline}
-                    onPress={() => patch({ timezone: device })}
-                  />
-                )}
-              </Field>
-              <Field label="Working days">
-                <ChipRow label="Working days" multi>
-                  {WEEK_ORDER.map((d) => {
-                    const on = form.work_days.includes(d);
-                    return (
-                      <Chip
-                        key={d}
-                        multi
-                        label={WEEKDAYS[d]}
-                        selected={on}
+    <>
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
+        <View style={sheetStyles.column}>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+          <ScreenIntro
+            icon="calendar"
+            title="Make time for what matters"
+            detail="Shape your working day. Orbyn plans around your rhythm."
+          />
+          {!form ? (
+            <Text style={shared.small}>
+              {busy ? "Loading your settings…" : "Settings aren’t available."}
+            </Text>
+          ) : (
+            <>
+              <Disclosure
+                title="Your working day"
+                detail="Hours, days and your time zone"
+                initiallyOpen
+              >
+                <View style={s.preferenceCard}>
+                  <Field label="Time zone">
+                    <Text style={s.value}>{form.timezone}</Text>
+                    {form.timezone !== device && (
+                      <Button
+                        secondary
+                        title={`Use this device’s (${device})`}
+                        style={s.inline}
+                        onPress={() => patch({ timezone: device })}
+                      />
+                    )}
+                  </Field>
+                  <Field label="Working days">
+                    <ChipRow label="Working days" multi>
+                      {WEEK_ORDER.map((d) => {
+                        const on = form.work_days.includes(d);
+                        return (
+                          <Chip
+                            key={d}
+                            multi
+                            label={WEEKDAYS[d]}
+                            selected={on}
+                            onPress={() => {
+                              const days = on
+                                ? form.work_days.filter((x) => x !== d)
+                                : [...form.work_days, d].sort((a, b) => a - b);
+                              if (days.length) patch({ work_days: days });
+                            }}
+                          />
+                        );
+                      })}
+                    </ChipRow>
+                  </Field>
+                  <View style={s.pair}>
+                    <Field label="Start" style={s.half}>
+                      <ClockField
+                        label="Work starts"
+                        value={form.work_start}
+                        onChange={(work_start) => patch({ work_start })}
+                      />
+                    </Field>
+                    <Field label="End" style={s.half}>
+                      <ClockField
+                        label="Work ends"
+                        value={form.work_end}
+                        onChange={(work_end) => patch({ work_end })}
+                      />
+                    </Field>
+                  </View>
+                </View>
+              </Disclosure>
+              <Disclosure
+                title="Time zones"
+                detail="Keep other locations in view"
+              >
+                <View style={s.preferenceCard}>
+                  <Text style={[shared.small, s.zoneHint]}>
+                    Shown beside the hours on the calendar, up to {MAX_ZONES}.
+                  </Text>
+                  {form.zones.map((zone, n) => (
+                    <View key={n} style={[s.pair, s.zoneRow]}>
+                      <View style={{ flex: 1 }}>
+                        <TimeZonePicker
+                          value={zone}
+                          onChange={(next) =>
+                            patch({
+                              zones: form.zones.map((z, i) =>
+                                i === n ? next : z,
+                              ),
+                            })
+                          }
+                        />
+                      </View>
+                      <SmallAction
+                        destructive
+                        label="Remove"
+                        disabled={busy}
                         onPress={() => {
-                          const days = on
-                            ? form.work_days.filter((x) => x !== d)
-                            : [...form.work_days, d].sort((a, b) => a - b);
-                          if (days.length) patch({ work_days: days });
+                          animateLayout();
+                          patch({
+                            zones: form.zones.filter((_, i) => i !== n),
+                          });
                         }}
                       />
-                    );
-                  })}
-                </ChipRow>
-              </Field>
-              <View style={s.pair}>
-                <Field label="Start" style={s.half}>
-                  <ClockField
-                    label="Work starts"
-                    value={form.work_start}
-                    onChange={(work_start) => patch({ work_start })}
-                  />
-                </Field>
-                <Field label="End" style={s.half}>
-                  <ClockField
-                    label="Work ends"
-                    value={form.work_end}
-                    onChange={(work_end) => patch({ work_end })}
-                  />
-                </Field>
-              </View>
-            </View>
-
-            <Text style={[shared.eyebrow, s.eyebrow]}>EXTRA TIME ZONES</Text>
-            <View style={shared.card}>
-              <Text style={[shared.small, s.zoneHint]}>
-                Shown beside the hours on the calendar, up to {MAX_ZONES}.
-              </Text>
-              {form.zones.map((zone, n) => (
-                <View key={n} style={[s.pair, s.zoneRow]}>
-                  <View style={{ flex: 1 }}>
-                    <TimeZonePicker
-                      value={zone}
-                      onChange={(next) =>
-                        patch({
-                          zones: form.zones.map((z, i) => (i === n ? next : z)),
-                        })
+                    </View>
+                  ))}
+                  {form.zones.length < MAX_ZONES ? (
+                    <Button
+                      secondary
+                      title="Add a time zone"
+                      icon="plus"
+                      style={s.inline}
+                      onPress={() => {
+                        animateLayout();
+                        patch({ zones: [...form.zones, ""] });
+                      }}
+                    />
+                  ) : (
+                    <Text style={shared.small}>
+                      That’s the most zones shown.
+                    </Text>
+                  )}
+                </View>
+              </Disclosure>
+              <Disclosure
+                title="Scheduling"
+                detail="Focus blocks, breaks and planning horizon"
+              >
+                <View style={s.preferenceCard}>
+                  <Field
+                    label="Days to plan"
+                    hint="How many days Plan my day covers unless you pick another number."
+                  >
+                    <Segmented
+                      wrap
+                      accessibilityLabel="Days to plan by default"
+                      options={HORIZONS}
+                      value={form.horizon}
+                      onChange={(horizon) => patch({ horizon })}
+                    />
+                  </Field>
+                  <Field
+                    label="Pad estimates by"
+                    hint="Extra time for the unexpected."
+                  >
+                    <NumberInput
+                      value={form.pad}
+                      onChangeText={(pad) => patch({ pad })}
+                      suffix="%"
+                      accessibilityLabel="Pad estimates by percent"
+                    />
+                  </Field>
+                  <Field
+                    label="Split tasks longer than"
+                    hint="Long tasks become several sessions."
+                  >
+                    <NumberInput
+                      value={form.split}
+                      onChangeText={(split) => patch({ split })}
+                      suffix="minutes"
+                      accessibilityLabel="Split tasks longer than, in minutes"
+                    />
+                  </Field>
+                  <Field label="Shortest block">
+                    <NumberInput
+                      value={form.minBlock}
+                      onChangeText={(minBlock) => patch({ minBlock })}
+                      suffix="minutes"
+                      accessibilityLabel="Shortest block, in minutes"
+                    />
+                  </Field>
+                  <Field label="Breaks between blocks" style={s.last}>
+                    <Segmented
+                      accessibilityLabel="Breaks between blocks"
+                      options={BREAK_LEVELS}
+                      labels={BREAK_LABELS}
+                      value={form.break_level}
+                      onChange={(break_level) => patch({ break_level })}
+                    />
+                  </Field>
+                </View>
+              </Disclosure>
+              <Disclosure
+                title="Buffers & travel"
+                detail="Leave room between commitments"
+              >
+                <View style={s.preferenceCard}>
+                  <View style={s.pair}>
+                    <Field label="Before events" style={s.half}>
+                      <NumberInput
+                        value={form.before}
+                        onChangeText={(before) => patch({ before })}
+                        suffix="min"
+                        accessibilityLabel="Buffer before events, in minutes"
+                      />
+                    </Field>
+                    <Field label="After events" style={s.half}>
+                      <NumberInput
+                        value={form.after}
+                        onChangeText={(after) => patch({ after })}
+                        suffix="min"
+                        accessibilityLabel="Buffer after events, in minutes"
+                      />
+                    </Field>
+                  </View>
+                  <View style={s.switchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.switchTitle}>Adaptive buffers</Text>
+                      <Text style={shared.small}>
+                        Longer events get a little more room around them.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={form.adaptive}
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel="Adaptive buffers"
+                      onValueChange={(adaptive) => patch({ adaptive })}
+                    />
+                  </View>
+                  <Text style={[shared.label, s.subhead]}>
+                    Which events get buffers
+                  </Text>
+                  <View style={s.switchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.switchTitle}>Personal events</Text>
+                      <Text style={shared.small}>
+                        Events not shared with a team.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={form.scope.personal}
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel="Buffers around personal events"
+                      onValueChange={(personal) =>
+                        patch({ scope: { ...form.scope, personal } })
                       }
                     />
                   </View>
-                  <SmallAction
-                    destructive
-                    label="Remove"
-                    disabled={busy}
+                  {teams.length > 0 && (
+                    <Field
+                      label="Team events"
+                      hint="None chosen: no team events get buffers."
+                    >
+                      <ChipRow label="Teams whose events get buffers" multi>
+                        {teams.map((t) => {
+                          const all = teams.map((x) => x.id);
+                          const ids = form.scope.team_ids ?? all;
+                          return (
+                            <Chip
+                              key={t.id}
+                              multi
+                              label={t.name}
+                              selected={ids.includes(t.id)}
+                              onPress={() => {
+                                const next = toggleId(ids, t.id);
+                                patch({
+                                  scope: {
+                                    ...form.scope,
+                                    // Every team: null, so new teams count too.
+                                    team_ids: all.every((id) =>
+                                      next.includes(id),
+                                    )
+                                      ? null
+                                      : next,
+                                  },
+                                });
+                              }}
+                            />
+                          );
+                        })}
+                      </ChipRow>
+                    </Field>
+                  )}
+                  {lists.length > 0 && (
+                    <Field
+                      label="Only events in these lists"
+                      hint="None chosen: events in any list."
+                    >
+                      <ChipRow label="Lists whose events get buffers" multi>
+                        {lists.map((l) => (
+                          <Chip
+                            key={l.id}
+                            multi
+                            color={l.color}
+                            label={l.name}
+                            selected={form.scope.list_ids.includes(l.id)}
+                            onPress={() =>
+                              patch({
+                                scope: {
+                                  ...form.scope,
+                                  list_ids: toggleId(form.scope.list_ids, l.id),
+                                },
+                              })
+                            }
+                          />
+                        ))}
+                      </ChipRow>
+                    </Field>
+                  )}
+                  <Field
+                    label="Shortest event"
+                    hint="Shorter events get no buffer. 0 for every length."
+                  >
+                    <NumberInput
+                      value={form.scope.min}
+                      onChangeText={(min) =>
+                        patch({ scope: { ...form.scope, min } })
+                      }
+                      suffix="minutes"
+                      accessibilityLabel="Shortest event that gets buffers, in minutes"
+                    />
+                  </Field>
+                  <View style={s.switchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.switchTitle}>
+                        Only meetings with others
+                      </Text>
+                      <Text style={shared.small}>
+                        Events with people invited, a meeting link, or a team.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={form.scope.only_with_others}
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel="Buffers only around meetings with others"
+                      onValueChange={(only_with_others) =>
+                        patch({ scope: { ...form.scope, only_with_others } })
+                      }
+                    />
+                  </View>
+                  <Field
+                    label="Default travel time"
+                    hint="For events with a location that doesn’t match one of your places."
+                  >
+                    <NumberInput
+                      value={form.travel}
+                      onChangeText={(travel) => patch({ travel })}
+                      suffix="minutes"
+                      accessibilityLabel="Default travel time, in minutes"
+                    />
+                  </Field>
+                  <Field
+                    label="Travel padding"
+                    hint={`Extra minutes added to every trip, 0 to ${MAX_TRAVEL_PAD}.`}
+                    style={s.last}
+                  >
+                    <NumberInput
+                      value={form.travelPad}
+                      onChangeText={(travelPad) => patch({ travelPad })}
+                      suffix="minutes"
+                      accessibilityLabel={`Travel padding, 0 to ${MAX_TRAVEL_PAD} minutes`}
+                    />
+                  </Field>
+                </View>
+              </Disclosure>
+              <Disclosure
+                title="Learn from your pace"
+                detail="Use past work to improve estimates"
+              >
+                <Text style={[shared.small, s.sectionHint]}>
+                  {estimates && estimates.overall.samples >= 3
+                    ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
+                    : "The planner learns how long tasks really take once you finish a few with an estimate and logged time."}
+                </Text>
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.switchTitle}>
+                      Adjust estimates from history
+                    </Text>
+                    <Text style={shared.small}>
+                      Scales planned time; your estimates aren’t changed.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={form.learn_estimates}
+                    accessibilityLabel="Adjust estimates from history"
+                    onValueChange={(learn_estimates) =>
+                      patch({ learn_estimates })
+                    }
+                  />
+                </View>
+              </Disclosure>
+              <Disclosure
+                title="Daily digest"
+                detail="Your morning agenda and evening review"
+              >
+                <Text style={[shared.small, s.sectionHint]}>
+                  A short email with your day, sent from the workspace’s own
+                  mail server. Off until you turn it on.
+                </Text>
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.switchTitle}>Morning agenda</Text>
+                  </View>
+                  <Switch
+                    value={form.digest.morning}
+                    accessibilityLabel="Morning agenda email"
+                    onValueChange={(morning) =>
+                      patch({ digest: { ...form.digest, morning } })
+                    }
+                  />
+                </View>
+                <Field label="Morning time">
+                  <ClockField
+                    label="Morning digest time"
+                    value={form.digest.morning_time}
+                    onChange={(morning_time) =>
+                      patch({ digest: { ...form.digest, morning_time } })
+                    }
+                  />
+                </Field>
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.switchTitle}>Evening review</Text>
+                  </View>
+                  <Switch
+                    value={form.digest.evening}
+                    accessibilityLabel="Evening review email"
+                    onValueChange={(evening) =>
+                      patch({ digest: { ...form.digest, evening } })
+                    }
+                  />
+                </View>
+                <Field label="Evening time" style={s.last}>
+                  <ClockField
+                    label="Evening digest time"
+                    value={form.digest.evening_time}
+                    onChange={(evening_time) =>
+                      patch({ digest: { ...form.digest, evening_time } })
+                    }
+                  />
+                </Field>
+                <SmallAction
+                  label="Email me a preview"
+                  disabled={busy}
+                  onPress={() =>
+                    void run(async () => {
+                      await client.sendTestDigest("morning");
+                    })
+                  }
+                />
+              </Disclosure>
+            </>
+          )}
+
+          <Disclosure
+            title="Focus frames"
+            detail="Reserve time for the right kind of work"
+          >
+            <Text style={[shared.small, s.sectionHint]}>
+              Time kept for a kind of work, like high-priority tasks on weekday
+              mornings. The planner puts matching tasks there first.
+            </Text>
+            <View style={s.card}>
+              {frames.map((f, n) =>
+                editingFrame !== "new" && editingFrame?.id === f.id ? (
+                  <FrameForm
+                    key={f.id}
+                    frame={f}
+                    teams={teams}
+                    onUnskip={(date) =>
+                      void run(async () => {
+                        await client.unskipFrame(f.id, date);
+                        await reloadFrames();
+                      })
+                    }
+                    busy={busy}
+                    first={n === 0}
+                    onCancel={() => setEditingFrame(null)}
+                    onSave={(input) =>
+                      run(async () => {
+                        await client.updateFrame(f.id, input);
+                        await reloadFrames();
+                        setEditingFrame(null);
+                      })
+                    }
+                    onDelete={() =>
+                      Alert.alert(
+                        `Delete ${f.name}?`,
+                        "Tasks aren’t affected.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () =>
+                              void run(async () => {
+                                await client.deleteFrame(f.id);
+                                await reloadFrames();
+                                setEditingFrame(null);
+                              }),
+                          },
+                        ],
+                      )
+                    }
+                  />
+                ) : (
+                  <Row
+                    key={f.id}
+                    first={n === 0}
+                    title={f.name}
+                    detail={frameDetail(f)}
+                    color={f.color}
                     onPress={() => {
                       animateLayout();
-                      patch({ zones: form.zones.filter((_, i) => i !== n) });
+                      setEditingFrame(f);
                     }}
                   />
-                </View>
-              ))}
-              {form.zones.length < MAX_ZONES ? (
-                <Button
-                  secondary
-                  title="Add a time zone"
-                  icon="plus"
-                  style={s.inline}
-                  onPress={() => {
-                    animateLayout();
-                    patch({ zones: [...form.zones, ""] });
-                  }}
+                ),
+              )}
+              {editingFrame === "new" ? (
+                <FrameForm
+                  teams={teams}
+                  busy={busy}
+                  first={!frames.length}
+                  onCancel={() => setEditingFrame(null)}
+                  onSave={(input) =>
+                    run(async () => {
+                      await client.createFrame(input);
+                      await reloadFrames();
+                      setEditingFrame(null);
+                    })
+                  }
                 />
               ) : (
-                <Text style={shared.small}>That’s the most zones shown.</Text>
+                <AddRow
+                  first={!frames.length}
+                  label="Add a frame"
+                  onPress={() => {
+                    animateLayout();
+                    setEditingFrame("new");
+                  }}
+                />
               )}
             </View>
-
-            <Text style={[shared.eyebrow, s.eyebrow]}>THE PLANNER</Text>
-            <View style={shared.card}>
-              <Field
-                label="Days to plan"
-                hint="How many days Plan my day covers unless you pick another number."
-              >
-                <Segmented
-                  wrap
-                  accessibilityLabel="Days to plan by default"
-                  options={HORIZONS}
-                  value={form.horizon}
-                  onChange={(horizon) => patch({ horizon })}
-                />
-              </Field>
-              <Field
-                label="Pad estimates by"
-                hint="Extra time for the unexpected."
-              >
-                <NumberInput
-                  value={form.pad}
-                  onChangeText={(pad) => patch({ pad })}
-                  suffix="%"
-                  accessibilityLabel="Pad estimates by percent"
-                />
-              </Field>
-              <Field
-                label="Split tasks longer than"
-                hint="Long tasks become several sessions."
-              >
-                <NumberInput
-                  value={form.split}
-                  onChangeText={(split) => patch({ split })}
-                  suffix="minutes"
-                  accessibilityLabel="Split tasks longer than, in minutes"
-                />
-              </Field>
-              <Field label="Shortest block">
-                <NumberInput
-                  value={form.minBlock}
-                  onChangeText={(minBlock) => patch({ minBlock })}
-                  suffix="minutes"
-                  accessibilityLabel="Shortest block, in minutes"
-                />
-              </Field>
-              <Field label="Breaks between blocks" style={s.last}>
-                <Segmented
-                  accessibilityLabel="Breaks between blocks"
-                  options={BREAK_LEVELS}
-                  labels={BREAK_LABELS}
-                  value={form.break_level}
-                  onChange={(break_level) => patch({ break_level })}
-                />
-              </Field>
-            </View>
-
-            <Text style={[shared.eyebrow, s.eyebrow]}>BUFFERS AND TRAVEL</Text>
-            <View style={shared.card}>
-              <View style={s.pair}>
-                <Field label="Before events" style={s.half}>
-                  <NumberInput
-                    value={form.before}
-                    onChangeText={(before) => patch({ before })}
-                    suffix="min"
-                    accessibilityLabel="Buffer before events, in minutes"
-                  />
-                </Field>
-                <Field label="After events" style={s.half}>
-                  <NumberInput
-                    value={form.after}
-                    onChangeText={(after) => patch({ after })}
-                    suffix="min"
-                    accessibilityLabel="Buffer after events, in minutes"
-                  />
-                </Field>
-              </View>
-              <View style={s.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.switchTitle}>Adaptive buffers</Text>
-                  <Text style={shared.small}>
-                    Longer events get a little more room around them.
-                  </Text>
-                </View>
-                <Switch
-                  value={form.adaptive}
-                  trackColor={{ true: colors.accent }}
-                  accessibilityLabel="Adaptive buffers"
-                  onValueChange={(adaptive) => patch({ adaptive })}
-                />
-              </View>
-              <Text style={[shared.label, s.subhead]}>
-                Which events get buffers
-              </Text>
-              <View style={s.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.switchTitle}>Personal events</Text>
-                  <Text style={shared.small}>
-                    Events not shared with a team.
-                  </Text>
-                </View>
-                <Switch
-                  value={form.scope.personal}
-                  trackColor={{ true: colors.accent }}
-                  accessibilityLabel="Buffers around personal events"
-                  onValueChange={(personal) =>
-                    patch({ scope: { ...form.scope, personal } })
-                  }
-                />
-              </View>
-              {teams.length > 0 && (
-                <Field
-                  label="Team events"
-                  hint="None chosen: no team events get buffers."
-                >
-                  <ChipRow label="Teams whose events get buffers" multi>
-                    {teams.map((t) => {
-                      const all = teams.map((x) => x.id);
-                      const ids = form.scope.team_ids ?? all;
-                      return (
-                        <Chip
-                          key={t.id}
-                          multi
-                          label={t.name}
-                          selected={ids.includes(t.id)}
-                          onPress={() => {
-                            const next = toggleId(ids, t.id);
-                            patch({
-                              scope: {
-                                ...form.scope,
-                                // Every team: null, so new teams count too.
-                                team_ids: all.every((id) => next.includes(id))
-                                  ? null
-                                  : next,
-                              },
-                            });
-                          }}
-                        />
-                      );
-                    })}
-                  </ChipRow>
-                </Field>
-              )}
-              {lists.length > 0 && (
-                <Field
-                  label="Only events in these lists"
-                  hint="None chosen: events in any list."
-                >
-                  <ChipRow label="Lists whose events get buffers" multi>
-                    {lists.map((l) => (
-                      <Chip
-                        key={l.id}
-                        multi
-                        color={l.color}
-                        label={l.name}
-                        selected={form.scope.list_ids.includes(l.id)}
-                        onPress={() =>
-                          patch({
-                            scope: {
-                              ...form.scope,
-                              list_ids: toggleId(form.scope.list_ids, l.id),
-                            },
-                          })
-                        }
-                      />
-                    ))}
-                  </ChipRow>
-                </Field>
-              )}
-              <Field
-                label="Shortest event"
-                hint="Shorter events get no buffer. 0 for every length."
-              >
-                <NumberInput
-                  value={form.scope.min}
-                  onChangeText={(min) =>
-                    patch({ scope: { ...form.scope, min } })
-                  }
-                  suffix="minutes"
-                  accessibilityLabel="Shortest event that gets buffers, in minutes"
-                />
-              </Field>
-              <View style={s.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.switchTitle}>Only meetings with others</Text>
-                  <Text style={shared.small}>
-                    Events with people invited, a meeting link, or a team.
-                  </Text>
-                </View>
-                <Switch
-                  value={form.scope.only_with_others}
-                  trackColor={{ true: colors.accent }}
-                  accessibilityLabel="Buffers only around meetings with others"
-                  onValueChange={(only_with_others) =>
-                    patch({ scope: { ...form.scope, only_with_others } })
-                  }
-                />
-              </View>
-              <Field
-                label="Default travel time"
-                hint="For events with a location that doesn’t match one of your places."
-              >
-                <NumberInput
-                  value={form.travel}
-                  onChangeText={(travel) => patch({ travel })}
-                  suffix="minutes"
-                  accessibilityLabel="Default travel time, in minutes"
-                />
-              </Field>
-              <Field
-                label="Travel padding"
-                hint={`Extra minutes added to every trip, 0 to ${MAX_TRAVEL_PAD}.`}
-                style={s.last}
-              >
-                <NumberInput
-                  value={form.travelPad}
-                  onChangeText={(travelPad) => patch({ travelPad })}
-                  suffix="minutes"
-                  accessibilityLabel={`Travel padding, 0 to ${MAX_TRAVEL_PAD} minutes`}
-                />
-              </Field>
-            </View>
-
-            <Text style={[shared.eyebrow, s.eyebrow]}>LEARNING</Text>
+          </Disclosure>
+          <Disclosure
+            title="Places"
+            detail="Travel time for the places you visit"
+          >
             <Text style={[shared.small, s.sectionHint]}>
-              {estimates && estimates.overall.samples >= 3
-                ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
-                : "The planner learns how long tasks really take once you finish a few with an estimate and logged time."}
+              How long it takes to get somewhere. Events whose location contains
+              the match text get that travel time before and after.
             </Text>
-            <View style={s.switchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.switchTitle}>Adjust estimates from history</Text>
-                <Text style={shared.small}>
-                  Scales planned time; your estimates aren’t changed.
-                </Text>
-              </View>
-              <Switch
-                value={form.learn_estimates}
-                accessibilityLabel="Adjust estimates from history"
-                onValueChange={(learn_estimates) => patch({ learn_estimates })}
-              />
+            <View style={s.card}>
+              {places.map((p, n) =>
+                editingPlace !== "new" && editingPlace?.id === p.id ? (
+                  <PlaceForm
+                    key={p.id}
+                    place={p}
+                    busy={busy}
+                    first={n === 0}
+                    onCancel={() => setEditingPlace(null)}
+                    onSave={(input) =>
+                      run(async () => {
+                        await client.updatePlace(p.id, input);
+                        await reloadPlaces();
+                        setEditingPlace(null);
+                      })
+                    }
+                    onDelete={() =>
+                      void run(async () => {
+                        await client.deletePlace(p.id);
+                        await reloadPlaces();
+                        setEditingPlace(null);
+                      })
+                    }
+                  />
+                ) : (
+                  <Row
+                    key={p.id}
+                    first={n === 0}
+                    title={p.label}
+                    detail={[
+                      `“${p.match}”`,
+                      `${p.travel_minutes} min travel${p.peak_minutes != null ? ` (${p.peak_minutes} at rush hour)` : ""}`,
+                      p.mode ? MODE_LABELS[p.mode] : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    onPress={() => {
+                      animateLayout();
+                      setEditingPlace(p);
+                    }}
+                  />
+                ),
+              )}
+              {editingPlace === "new" ? (
+                <PlaceForm
+                  busy={busy}
+                  first={!places.length}
+                  onCancel={() => setEditingPlace(null)}
+                  onSave={(input) =>
+                    run(async () => {
+                      await client.createPlace(input);
+                      await reloadPlaces();
+                      setEditingPlace(null);
+                    })
+                  }
+                />
+              ) : (
+                <AddRow
+                  first={!places.length}
+                  label="Add a place"
+                  onPress={() => {
+                    animateLayout();
+                    setEditingPlace("new");
+                  }}
+                />
+              )}
             </View>
-
-            <Text style={[shared.eyebrow, s.eyebrow]}>DAILY DIGEST</Text>
-            <Text style={[shared.small, s.sectionHint]}>
-              A short email with your day, sent from the workspace’s own mail
-              server. Off until you turn it on.
-            </Text>
-            <View style={s.switchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.switchTitle}>Morning agenda</Text>
-              </View>
-              <Switch
-                value={form.digest.morning}
-                accessibilityLabel="Morning agenda email"
-                onValueChange={(morning) =>
-                  patch({ digest: { ...form.digest, morning } })
-                }
-              />
-            </View>
-            <Field label="Morning time">
-              <ClockField
-                label="Morning digest time"
-                value={form.digest.morning_time}
-                onChange={(morning_time) =>
-                  patch({ digest: { ...form.digest, morning_time } })
-                }
-              />
-            </Field>
-            <View style={s.switchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.switchTitle}>Evening review</Text>
-              </View>
-              <Switch
-                value={form.digest.evening}
-                accessibilityLabel="Evening review email"
-                onValueChange={(evening) =>
-                  patch({ digest: { ...form.digest, evening } })
-                }
-              />
-            </View>
-            <Field label="Evening time" style={s.last}>
-              <ClockField
-                label="Evening digest time"
-                value={form.digest.evening_time}
-                onChange={(evening_time) =>
-                  patch({ digest: { ...form.digest, evening_time } })
-                }
-              />
-            </Field>
-            <SmallAction
-              label="Email me a preview"
-              disabled={busy}
-              onPress={() =>
-                void run(async () => {
-                  await client.sendTestDigest("morning");
-                })
-              }
-            />
-            <Button
-              title={
-                busy ? "Saving…" : saved ? "Saved" : "Save planning settings"
-              }
-              icon="check"
-              disabled={busy}
-              onPress={() => void save()}
-            />
-          </>
-        )}
-
-        <Text style={[shared.eyebrow, s.eyebrow]}>FRAMES</Text>
-        <Text style={[shared.small, s.sectionHint]}>
-          Time kept for a kind of work, like high-priority tasks on weekday
-          mornings. The planner puts matching tasks there first.
-        </Text>
-        <View style={s.card}>
-          {frames.map((f, n) =>
-            editingFrame !== "new" && editingFrame?.id === f.id ? (
-              <FrameForm
-                key={f.id}
-                frame={f}
-                teams={teams}
-                onUnskip={(date) =>
-                  void run(async () => {
-                    await client.unskipFrame(f.id, date);
-                    await reloadFrames();
-                  })
-                }
-                busy={busy}
-                first={n === 0}
-                onCancel={() => setEditingFrame(null)}
-                onSave={(input) =>
-                  run(async () => {
-                    await client.updateFrame(f.id, input);
-                    await reloadFrames();
-                    setEditingFrame(null);
-                  })
-                }
-                onDelete={() =>
-                  Alert.alert(`Delete ${f.name}?`, "Tasks aren’t affected.", [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: "Delete",
-                      style: "destructive",
-                      onPress: () =>
-                        void run(async () => {
-                          await client.deleteFrame(f.id);
-                          await reloadFrames();
-                          setEditingFrame(null);
-                        }),
-                    },
-                  ])
-                }
-              />
-            ) : (
-              <Row
-                key={f.id}
-                first={n === 0}
-                title={f.name}
-                detail={frameDetail(f)}
-                color={f.color}
-                onPress={() => {
-                  animateLayout();
-                  setEditingFrame(f);
-                }}
-              />
-            ),
-          )}
-          {editingFrame === "new" ? (
-            <FrameForm
-              teams={teams}
-              busy={busy}
-              first={!frames.length}
-              onCancel={() => setEditingFrame(null)}
-              onSave={(input) =>
-                run(async () => {
-                  await client.createFrame(input);
-                  await reloadFrames();
-                  setEditingFrame(null);
-                })
-              }
-            />
-          ) : (
-            <AddRow
-              first={!frames.length}
-              label="Add a frame"
-              onPress={() => {
-                animateLayout();
-                setEditingFrame("new");
-              }}
-            />
-          )}
+          </Disclosure>
         </View>
-
-        <Text style={[shared.eyebrow, s.eyebrow]}>PLACES</Text>
-        <Text style={[shared.small, s.sectionHint]}>
-          How long it takes to get somewhere. Events whose location contains the
-          match text get that travel time before and after.
-        </Text>
-        <View style={s.card}>
-          {places.map((p, n) =>
-            editingPlace !== "new" && editingPlace?.id === p.id ? (
-              <PlaceForm
-                key={p.id}
-                place={p}
-                busy={busy}
-                first={n === 0}
-                onCancel={() => setEditingPlace(null)}
-                onSave={(input) =>
-                  run(async () => {
-                    await client.updatePlace(p.id, input);
-                    await reloadPlaces();
-                    setEditingPlace(null);
-                  })
-                }
-                onDelete={() =>
-                  void run(async () => {
-                    await client.deletePlace(p.id);
-                    await reloadPlaces();
-                    setEditingPlace(null);
-                  })
-                }
-              />
-            ) : (
-              <Row
-                key={p.id}
-                first={n === 0}
-                title={p.label}
-                detail={[
-                  `“${p.match}”`,
-                  `${p.travel_minutes} min travel${p.peak_minutes != null ? ` (${p.peak_minutes} at rush hour)` : ""}`,
-                  p.mode ? MODE_LABELS[p.mode] : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-                onPress={() => {
-                  animateLayout();
-                  setEditingPlace(p);
-                }}
-              />
-            ),
-          )}
-          {editingPlace === "new" ? (
-            <PlaceForm
-              busy={busy}
-              first={!places.length}
-              onCancel={() => setEditingPlace(null)}
-              onSave={(input) =>
-                run(async () => {
-                  await client.createPlace(input);
-                  await reloadPlaces();
-                  setEditingPlace(null);
-                })
-              }
-            />
-          ) : (
-            <AddRow
-              first={!places.length}
-              label="Add a place"
-              onPress={() => {
-                animateLayout();
-                setEditingPlace("new");
-              }}
-            />
-          )}
+      </ScrollView>
+      {form && (
+        <View style={s.saveFooter}>
+          <Button
+            title={
+              busy ? "Saving…" : saved ? "Saved" : "Save planning settings"
+            }
+            icon="check"
+            disabled={busy}
+            onPress={() => void save()}
+          />
         </View>
-      </View>
-    </ScrollView>
+      )}
+    </>
   );
 }
 
@@ -1501,17 +1555,25 @@ function PlaceForm({
 
 const s = themed(() =>
   StyleSheet.create({
+    saveFooter: {
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      backgroundColor: colors.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    preferenceCard: { paddingBottom: 4 },
     intro: { marginTop: 0, marginBottom: 18 },
     eyebrow: { marginTop: 8 },
-    sectionHint: { marginTop: -2, marginBottom: 10 },
+    sectionHint: { marginTop: 0, marginBottom: 12 },
     value: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     inline: { marginTop: 10, marginBottom: 0 },
-    pair: { flexDirection: "row", gap: 12 },
+    pair: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     zoneHint: { marginBottom: 12 },
     subhead: { marginTop: 4, marginBottom: 12 },
     problem: { color: colors.danger, marginBottom: 12 },
     zoneRow: { alignItems: "center", marginBottom: 10 },
-    half: { flex: 1 },
+    half: { flex: 1, minWidth: 110 },
     last: { marginBottom: 0 },
     switchRow: {
       flexDirection: "row",

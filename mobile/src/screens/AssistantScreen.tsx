@@ -56,13 +56,13 @@ export function AssistantScreen({
   return (
     <>
       {turns.length === 0 ? (
-        <FadeIn style={shared.softCard}>
+        <FadeIn style={s.welcome}>
           <View style={s.badge}>
             <Icon name="sparkles" size={18} color={colors.accent} />
           </View>
-          <Text style={shared.sectionTitle}>What’s on your mind?</Text>
+          <Text style={s.welcomeTitle}>A little clarity for your day.</Text>
           <Text style={[shared.subtitle, s.intro]}>
-            Ask for a summary, plan your day, or change items in plain language.
+            Plan your time, find an answer, or turn an idea into a next step.
             You’ll review every change before it’s saved.
           </Text>
           <View style={s.chips}>
@@ -79,6 +79,7 @@ export function AssistantScreen({
                 ]}
               >
                 <Text style={s.chipText}>{text}</Text>
+                <Icon name="arrowRight" size={18} color={colors.accent} />
               </PressableScale>
             ))}
           </View>
@@ -109,7 +110,9 @@ export function AssistantScreen({
           turn.role === "user" ? (
             <FadeIn key={turn.id} from="right" style={s.userRow}>
               <View style={s.userBubble}>
-                <Text style={s.userText}>{turn.text}</Text>
+                <Text selectable style={s.userText}>
+                  {turn.text}
+                </Text>
               </View>
             </FadeIn>
           ) : (
@@ -184,9 +187,6 @@ export function AssistantComposer({
       <TextInput
         style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
         multiline
-        // The longer line wrapped in the 209pt the two buttons leave it, so
-        // an empty composer stood two lines tall. The invitation is already
-        // on the card above; this is the same placeholder the desktop uses.
         placeholder="Ask Orbyn…"
         placeholderTextColor={colors.faint}
         value={message}
@@ -195,44 +195,47 @@ export function AssistantComposer({
         textAlignVertical="top"
         accessibilityLabel="Message your assistant"
       />
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel="Draft a project"
-        accessibilityState={{ disabled: !canSend }}
-        disabled={!canSend}
-        onPress={() => draftProject()}
-        style={({ pressed }) => [
-          s.project,
-          pressed && { opacity: 0.6 },
-          !canSend && { opacity: 0.4 },
-        ]}
-      >
-        <Icon
-          name="sparkles"
-          size={18}
-          color={colors.accent}
-          strokeWidth={2.2}
-        />
-      </PressableScale>
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={thinking ? "Thinking" : "Send"}
-        accessibilityState={{ disabled: !canSend }}
-        disabled={!canSend}
-        onPress={() => ask()}
-        style={({ pressed }) => [
-          s.send,
-          pressed && { backgroundColor: colors.accentPressed },
-          !canSend && { opacity: 0.4 },
-        ]}
-      >
-        <Icon
-          name="arrowRight"
-          size={18}
-          color={colors.white}
-          strokeWidth={2.2}
-        />
-      </PressableScale>
+      <View style={s.composerActions}>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Draft a project"
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          onPress={() => draftProject()}
+          style={({ pressed }) => [
+            s.project,
+            pressed && { opacity: 0.6 },
+            !canSend && { opacity: 0.4 },
+          ]}
+        >
+          <Icon
+            name="sparkles"
+            size={18}
+            color={colors.accent}
+            strokeWidth={2.2}
+          />
+          <Text style={s.projectLabel}>Draft project</Text>
+        </PressableScale>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={thinking ? "Thinking" : "Send"}
+          accessibilityState={{ disabled: !canSend }}
+          disabled={!canSend}
+          onPress={() => ask()}
+          style={({ pressed }) => [
+            s.send,
+            pressed && { backgroundColor: colors.accentPressed },
+            !canSend && { opacity: 0.4 },
+          ]}
+        >
+          <Icon
+            name="arrowRight"
+            size={18}
+            color={colors.white}
+            strokeWidth={2.2}
+          />
+        </PressableScale>
+      </View>
     </View>
   );
 }
@@ -333,34 +336,46 @@ const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
+    welcome: { paddingVertical: 12, marginBottom: 20 },
+    welcomeTitle: {
+      fontFamily: fonts.display,
+      fontSize: 30,
+      lineHeight: 38,
+      letterSpacing: -0.8,
+      color: colors.text,
+    },
     badge: {
-      width: 36,
-      height: 36,
+      width: 52,
+      height: 52,
       borderRadius: 18,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 14,
     },
     intro: { marginBottom: 16 },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    chips: { gap: 10 },
     chip: {
-      maxWidth: "100%",
+      width: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
       // A finger's worth of height, like every other control on the phone.
       minHeight: 44,
       justifyContent: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.softBorder,
-      borderRadius: radii.pill,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 15,
     },
     chipPressed: { backgroundColor: colors.accentSoft },
     chipText: {
-      flexShrink: 1,
+      flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 13,
+      fontSize: 15,
+      lineHeight: 22,
       color: colors.accent,
     },
     threadHead: {
@@ -402,7 +417,7 @@ const s = themed(() =>
       lineHeight: 21,
       color: colors.white,
     },
-    botRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    botRow: { gap: 8 },
     avatar: {
       width: 28,
       height: 28,
@@ -413,7 +428,8 @@ const s = themed(() =>
       marginTop: 2,
     },
     botBubble: {
-      flex: 1,
+      minWidth: 0,
+      width: "100%",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
@@ -422,7 +438,8 @@ const s = themed(() =>
       padding: 14,
     },
     typing: {
-      flex: 0,
+      width: "auto",
+      alignSelf: "flex-start",
       flexDirection: "row",
       gap: 5,
       paddingVertical: 16,
@@ -435,8 +452,6 @@ const s = themed(() =>
       backgroundColor: colors.dot,
     },
     composer: {
-      flexDirection: "row",
-      alignItems: "flex-end",
       gap: 8,
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -446,7 +461,7 @@ const s = themed(() =>
       paddingLeft: 14,
     },
     input: {
-      flex: 1,
+      width: "100%",
       minHeight: 44,
       fontFamily: fonts.regular,
       fontSize: 15,
@@ -463,9 +478,23 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
+    composerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    projectLabel: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+      flexShrink: 1,
+    },
     project: {
-      width: 44,
-      height: 44,
+      flexDirection: "row",
+      gap: 6,
+      paddingHorizontal: 8,
+      minHeight: 44,
       borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",

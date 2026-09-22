@@ -13,6 +13,8 @@ import {
   type Item,
   type Project,
 } from "@orbyn/core";
+import { Segmented } from "../../components/Segmented";
+import { ScreenIntro } from "../../components/ScreenIntro";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { DateField } from "../../components/Field";
@@ -61,6 +63,9 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  const [section, setSection] = useState<"tasks" | "notes" | "timeline">(
+    "tasks",
+  );
   /** A name being typed, for a new project or a rename. */
   const [draft, setDraft] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
@@ -167,6 +172,7 @@ export function ProjectsSheet({
       setDraft(null);
       await reload();
       setOpen(made);
+      setSection("tasks");
     });
   };
 
@@ -223,8 +229,19 @@ export function ProjectsSheet({
       onBack={open ? () => setOpen(null) : undefined}
       onDismiss={onDismiss}
     >
-      <ScrollView contentContainerStyle={sheet.body}>
+      <ScrollView
+        contentContainerStyle={sheet.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <View style={sheet.column}>
+          {!open && (
+            <ScreenIntro
+              icon="boxes"
+              title="Move the bigger picture forward"
+              detail="See what’s progressing, what’s next and what needs your attention."
+            />
+          )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
           {open ? (
@@ -308,12 +325,24 @@ export function ProjectsSheet({
                 />
               )}
 
-              <ProjectTimeline
-                project={open}
-                tasks={items.filter((i) => i.project_id === open.id)}
+              <Segmented
+                accessibilityLabel="Project section"
+                options={
+                  onOpenNote
+                    ? (["tasks", "notes", "timeline"] as const)
+                    : (["tasks", "timeline"] as const)
+                }
+                value={section}
+                onChange={setSection}
               />
+              {section === "timeline" && (
+                <ProjectTimeline
+                  project={open}
+                  tasks={items.filter((i) => i.project_id === open.id)}
+                />
+              )}
 
-              {!!onOpenNote && (
+              {section === "notes" && !!onOpenNote && (
                 <ProjectNotes
                   projectId={open.id}
                   teamId={open.team_id}
@@ -324,32 +353,37 @@ export function ProjectsSheet({
                 />
               )}
 
-              {[...open.stages, { id: null, name: "No stage" }].map((stage) => {
-                const rows = tasksIn(open, stage.id as string | null);
-                return (
-                  <View key={stage.id ?? "none"} style={styles.stage}>
-                    {stageDraft?.id && stageDraft.id === stage.id ? (
-                      <TextInput
-                        style={styles.nameInput}
-                        value={stageDraft.name}
-                        autoFocus
-                        maxLength={80}
-                        placeholder="Stage name"
-                        placeholderTextColor={colors.faint}
-                        accessibilityLabel="Stage name"
-                        onChangeText={(name) =>
-                          setStageDraft({ id: stage.id, name })
-                        }
-                        onSubmitEditing={saveStage}
-                        onBlur={saveStage}
-                      />
-                    ) : (
-                      <View style={styles.stageHead}>
-                        <Text style={styles.stageName}>{stage.name}</Text>
-                        <Text style={styles.stageCount}>{rows.length}</Text>
-                      </View>
-                    )}
-                    {/* Everything you can do to a stage, on one row under
+              {section === "tasks" && (
+                <>
+                  {[...open.stages, { id: null, name: "No stage" }].map(
+                    (stage) => {
+                      const rows = tasksIn(open, stage.id as string | null);
+                      return (
+                        <View key={stage.id ?? "none"} style={styles.stage}>
+                          {stageDraft?.id && stageDraft.id === stage.id ? (
+                            <TextInput
+                              style={styles.nameInput}
+                              value={stageDraft.name}
+                              autoFocus
+                              maxLength={80}
+                              placeholder="Stage name"
+                              placeholderTextColor={colors.faint}
+                              accessibilityLabel="Stage name"
+                              onChangeText={(name) =>
+                                setStageDraft({ id: stage.id, name })
+                              }
+                              onSubmitEditing={saveStage}
+                              onBlur={saveStage}
+                            />
+                          ) : (
+                            <View style={styles.stageHead}>
+                              <Text style={styles.stageName}>{stage.name}</Text>
+                              <Text style={styles.stageCount}>
+                                {rows.length}
+                              </Text>
+                            </View>
+                          )}
+                          {/* Everything you can do to a stage, on one row under
                         its name: putting them beside the name wrapped "In
                         progress" onto two lines. Naming a stage and getting
                         rid of one were on the desktop only, as was filling a
@@ -357,173 +391,183 @@ export function ProjectsSheet({
                         it the only way onto a phone's board was to make a
                         task and then move it. "No stage" is not a stage, so
                         it can only be filled. */}
-                    {canWriteIn(open.team_id) && (
-                      <View style={styles.stageActions}>
-                        <SmallAction
-                          label={
-                            filling === stage.id ? "Never mind" : "Add a task"
-                          }
-                          disabled={busy}
-                          onPress={() =>
-                            setFilling(
-                              filling === stage.id ? undefined : stage.id,
-                            )
-                          }
-                        />
-                        {stage.id !== null && (
-                          <>
-                            <SmallAction
-                              label="Rename"
-                              disabled={busy}
-                              onPress={() =>
-                                setStageDraft({
-                                  id: stage.id as string,
-                                  name: stage.name,
-                                })
-                              }
-                            />
-                            <View style={styles.spacer} />
-                            <SmallAction
-                              label="Remove"
-                              destructive
-                              disabled={busy}
-                              onPress={() =>
-                                removeStage({
-                                  id: stage.id as string,
-                                  name: stage.name,
-                                })
-                              }
-                            />
-                          </>
-                        )}
-                      </View>
-                    )}
-                    {filling === stage.id &&
-                      (unfiled.length === 0 ? (
-                        <Text style={styles.empty}>
-                          Every task is already in a project.
-                        </Text>
-                      ) : (
-                        <ChipRow label="Tasks with no project">
-                          {unfiled.slice(0, 20).map((task) => (
-                            <Chip
-                              key={task.id}
-                              label={task.title}
-                              selected={false}
-                              onPress={() => {
-                                setFilling(undefined);
-                                moveTo(task, stage.id as string | null);
-                              }}
-                            />
-                          ))}
-                        </ChipRow>
-                      ))}
-                    {rows.length === 0 ? (
-                      <Text style={styles.empty}>Nothing here yet.</Text>
-                    ) : (
-                      rows.map((item) => (
-                        <View key={item.id}>
-                          <Pressable
-                            style={({ pressed }) => [
-                              styles.task,
-                              pressed && styles.rowPressed,
-                            ]}
-                            onPress={() => onOpenItem?.(item)}
-                          >
-                            <View
-                              style={[
-                                styles.dot,
-                                item.status === "done" && styles.dotDone,
-                              ]}
-                            />
-                            <Text
-                              style={[
-                                styles.taskText,
-                                item.status === "done" && styles.taskDone,
-                              ]}
-                              numberOfLines={2}
-                            >
-                              {item.title}
-                            </Text>
-                            {/* Outside the row's own press, or moving a task
-                                would open it instead. */}
-                            {canWriteIn(open.team_id) && (
-                              <Pressable
-                                onPress={(event) => {
-                                  event.stopPropagation();
-                                  setMoving((m) =>
-                                    m === item.id ? null : item.id,
-                                  );
-                                }}
-                                hitSlop={8}
-                                accessibilityRole="button"
-                                accessibilityLabel={`Move ${item.title}`}
-                                style={styles.moveButton}
-                              >
-                                <Icon
-                                  name={
-                                    moving === item.id
-                                      ? "chevronUp"
-                                      : "chevronDown"
-                                  }
-                                  size={15}
-                                  color={colors.faint}
-                                />
-                              </Pressable>
-                            )}
-                          </Pressable>
-                          {moving === item.id && (
-                            <ChipRow label="Move to">
-                              {[
-                                ...open.stages,
-                                { id: null as string | null, name: "No stage" },
-                              ].map((to) => (
-                                <Chip
-                                  key={to.id ?? "none"}
-                                  label={to.name}
-                                  selected={to.id === stage.id}
-                                  onPress={() => moveTo(item, to.id)}
-                                />
-                              ))}
-                              {/* The desktop can take a task out of the
-                                  project from here; so can the phone. */}
-                              <Chip
-                                label="Out of this project"
-                                selected={false}
-                                onPress={() => unfile(item)}
+                          {canWriteIn(open.team_id) && (
+                            <View style={styles.stageActions}>
+                              <SmallAction
+                                label={
+                                  filling === stage.id
+                                    ? "Never mind"
+                                    : "Add a task"
+                                }
+                                disabled={busy}
+                                onPress={() =>
+                                  setFilling(
+                                    filling === stage.id ? undefined : stage.id,
+                                  )
+                                }
                               />
-                            </ChipRow>
+                              {stage.id !== null && (
+                                <>
+                                  <SmallAction
+                                    label="Rename"
+                                    disabled={busy}
+                                    onPress={() =>
+                                      setStageDraft({
+                                        id: stage.id as string,
+                                        name: stage.name,
+                                      })
+                                    }
+                                  />
+                                  <View style={styles.spacer} />
+                                  <SmallAction
+                                    label="Remove"
+                                    destructive
+                                    disabled={busy}
+                                    onPress={() =>
+                                      removeStage({
+                                        id: stage.id as string,
+                                        name: stage.name,
+                                      })
+                                    }
+                                  />
+                                </>
+                              )}
+                            </View>
+                          )}
+                          {filling === stage.id &&
+                            (unfiled.length === 0 ? (
+                              <Text style={styles.empty}>
+                                Every task is already in a project.
+                              </Text>
+                            ) : (
+                              <ChipRow label="Tasks with no project">
+                                {unfiled.slice(0, 20).map((task) => (
+                                  <Chip
+                                    key={task.id}
+                                    label={task.title}
+                                    selected={false}
+                                    onPress={() => {
+                                      setFilling(undefined);
+                                      moveTo(task, stage.id as string | null);
+                                    }}
+                                  />
+                                ))}
+                              </ChipRow>
+                            ))}
+                          {rows.length === 0 ? (
+                            <Text style={styles.empty}>Nothing here yet.</Text>
+                          ) : (
+                            rows.map((item) => (
+                              <View key={item.id}>
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.task,
+                                    pressed && styles.rowPressed,
+                                  ]}
+                                  onPress={() => onOpenItem?.(item)}
+                                >
+                                  <View
+                                    style={[
+                                      styles.dot,
+                                      item.status === "done" && styles.dotDone,
+                                    ]}
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.taskText,
+                                      item.status === "done" && styles.taskDone,
+                                    ]}
+                                    numberOfLines={2}
+                                  >
+                                    {item.title}
+                                  </Text>
+                                  {/* Outside the row's own press, or moving a task
+                                would open it instead. */}
+                                  {canWriteIn(open.team_id) && (
+                                    <Pressable
+                                      onPress={(event) => {
+                                        event.stopPropagation();
+                                        setMoving((m) =>
+                                          m === item.id ? null : item.id,
+                                        );
+                                      }}
+                                      hitSlop={8}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Move ${item.title}`}
+                                      style={styles.moveButton}
+                                    >
+                                      <Icon
+                                        name={
+                                          moving === item.id
+                                            ? "chevronUp"
+                                            : "chevronDown"
+                                        }
+                                        size={15}
+                                        color={colors.faint}
+                                      />
+                                    </Pressable>
+                                  )}
+                                </Pressable>
+                                {moving === item.id && (
+                                  <ChipRow label="Move to">
+                                    {[
+                                      ...open.stages,
+                                      {
+                                        id: null as string | null,
+                                        name: "No stage",
+                                      },
+                                    ].map((to) => (
+                                      <Chip
+                                        key={to.id ?? "none"}
+                                        label={to.name}
+                                        selected={to.id === stage.id}
+                                        onPress={() => moveTo(item, to.id)}
+                                      />
+                                    ))}
+                                    {/* The desktop can take a task out of the
+                                  project from here; so can the phone. */}
+                                    <Chip
+                                      label="Out of this project"
+                                      selected={false}
+                                      onPress={() => unfile(item)}
+                                    />
+                                  </ChipRow>
+                                )}
+                              </View>
+                            ))
                           )}
                         </View>
-                      ))
-                    )}
-                  </View>
-                );
-              })}
+                      );
+                    },
+                  )}
 
-              {canWriteIn(open.team_id) &&
-                (stageDraft && stageDraft.id === null ? (
-                  <TextInput
-                    style={styles.nameInput}
-                    value={stageDraft.name}
-                    autoFocus
-                    maxLength={80}
-                    placeholder="Name the new stage"
-                    placeholderTextColor={colors.faint}
-                    accessibilityLabel="New stage name"
-                    onChangeText={(name) => setStageDraft({ id: null, name })}
-                    onSubmitEditing={saveStage}
-                    onBlur={saveStage}
-                  />
-                ) : (
-                  <View style={styles.stageAdd}>
-                    <SmallAction
-                      label="Add a stage"
-                      disabled={busy}
-                      onPress={() => setStageDraft({ id: null, name: "" })}
-                    />
-                  </View>
-                ))}
+                  {canWriteIn(open.team_id) &&
+                    (stageDraft && stageDraft.id === null ? (
+                      <TextInput
+                        style={styles.nameInput}
+                        value={stageDraft.name}
+                        autoFocus
+                        maxLength={80}
+                        placeholder="Name the new stage"
+                        placeholderTextColor={colors.faint}
+                        accessibilityLabel="New stage name"
+                        onChangeText={(name) =>
+                          setStageDraft({ id: null, name })
+                        }
+                        onSubmitEditing={saveStage}
+                        onBlur={saveStage}
+                      />
+                    ) : (
+                      <View style={styles.stageAdd}>
+                        <SmallAction
+                          label="Add a stage"
+                          disabled={busy}
+                          onPress={() => setStageDraft({ id: null, name: "" })}
+                        />
+                      </View>
+                    ))}
+                </>
+              )}
             </View>
           ) : failed ? (
             <View style={styles.list}>
@@ -612,19 +656,22 @@ export function ProjectsSheet({
               {projects.map((p) => (
                 <Pressable
                   key={p.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open project ${p.name}`}
                   style={({ pressed }) => [
                     styles.card,
                     pressed && styles.rowPressed,
                   ]}
                   onPress={() =>
-                    void run(async () => setOpen(await client.getProject(p.id)))
+                    void run(async () => {
+                      setOpen(await client.getProject(p.id));
+                      setSection("tasks");
+                    })
                   }
                 >
                   <View style={styles.cardTop}>
                     <Icon name="boxes" size={16} color={colors.muted} />
-                    <Text style={styles.cardName} numberOfLines={1}>
-                      {p.name}
-                    </Text>
+                    <Text style={styles.cardName}>{p.name}</Text>
                     {projectAtRisk(p) && (
                       <Text style={styles.chip}>At risk</Text>
                     )}
@@ -656,19 +703,25 @@ const styles = themed(() =>
     list: { gap: 10 },
     card: {
       gap: 8,
-      padding: 14,
+      padding: 18,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    moveButton: { padding: 4 },
+    moveButton: {
+      minWidth: 44,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     rowPressed: { backgroundColor: colors.surfaceMuted },
     cardTop: { flexDirection: "row", alignItems: "center", gap: 8 },
     cardName: {
       flex: 1,
       color: colors.text,
-      fontSize: 15,
+      fontSize: 18,
+      lineHeight: 25,
       fontFamily: fonts.semibold,
     },
     chip: {
@@ -690,7 +743,12 @@ const styles = themed(() =>
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
     page: { gap: 10 },
-    actions: { flexDirection: "row", alignItems: "center", gap: 8 },
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     spacer: { flex: 1 },
     newRow: { gap: 8 },
     nameInput: {
@@ -745,7 +803,8 @@ const styles = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      paddingVertical: 4,
+      paddingVertical: 10,
+      minHeight: 48,
     },
     dot: {
       width: 8,

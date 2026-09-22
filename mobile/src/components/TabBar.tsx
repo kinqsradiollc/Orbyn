@@ -4,23 +4,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "@orbyn/core";
 import { TABS, type Tab } from "../app/tabs";
 import { Icon, type IconName } from "./Icon";
-import {
-  easeOut,
-  isReducedMotion,
-  pop,
-  usePressScale,
-  useReducedMotion,
-} from "../motion";
+import { easeOut, pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, spacing, themed } from "../theme";
 
 /** Bottom navigation. Extends under the home indicator and pads for it. */
 export function TabBar({
   tab,
-  unread,
   onChange,
 }: {
   tab: Tab;
-  unread: boolean;
   onChange: (tab: Tab) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -43,7 +35,6 @@ export function TabBar({
             label={label}
             icon={icon}
             active={tab === name}
-            unread={name === "Inbox" && unread}
             onPress={() => onChange(name)}
           />
         ))}
@@ -60,13 +51,11 @@ function TabButton({
   label,
   icon,
   active,
-  unread,
   onPress,
 }: {
   label: string;
   icon: IconName;
   active: boolean;
-  unread: boolean;
   onPress: () => void;
 }) {
   const reduced = useReducedMotion();
@@ -117,7 +106,6 @@ function TabButton({
             strokeWidth={active ? 2 : 1.8}
           />
         </Animated.View>
-        {unread && <UnreadDot />}
       </Animated.View>
       <Text
         numberOfLines={1}
@@ -129,15 +117,6 @@ function TabButton({
       </Text>
     </Pressable>
   );
-}
-
-/** Inbox badge; pops in (0 → 1.12 → 1) when unread reminders arrive. */
-function UnreadDot() {
-  const scale = useRef(new Animated.Value(isReducedMotion() ? 1 : 0)).current;
-  useEffect(() => {
-    if (!isReducedMotion()) pop(scale).start();
-  }, [scale]);
-  return <Animated.View style={[s.dot, { transform: [{ scale }] }]} />;
 }
 
 const s = themed(() =>
@@ -154,10 +133,10 @@ const s = themed(() =>
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
-    tab: { flex: 1, minHeight: 44, alignItems: "center", gap: 3 },
+    tab: { flex: 1, minHeight: 54, alignItems: "center", gap: 3 },
     iconWrap: {
-      width: 48,
-      height: 30,
+      width: 52,
+      height: 32,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -170,18 +149,7 @@ const s = themed(() =>
       borderRadius: 15,
       backgroundColor: colors.accentSoft,
     },
-    dot: {
-      position: "absolute",
-      top: 5,
-      right: 13,
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: colors.highText,
-      borderWidth: 1,
-      borderColor: colors.surface,
-    },
-    label: { fontFamily: fonts.medium, fontSize: 10, color: colors.muted },
+    label: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
     labelActive: { fontFamily: fonts.semibold, color: colors.accent },
   }),
 );
