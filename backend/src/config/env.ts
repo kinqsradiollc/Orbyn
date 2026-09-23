@@ -87,6 +87,27 @@ const schema = z.object({
    */
   MAIL_INBOUND_SECRET: z.string().default(""),
   MAIL_INBOUND_DOMAIN: z.string().default(""),
+  /**
+   * Importing files into Docs. FILES_SECRET signs upload links and the
+   * converter's requests to the file store (api, files and converter share
+   * it); blank turns importing off. FILES_MASTER_KEY (files only) encrypts
+   * each stored file's own key: 32 bytes, base64. FILES_DIR is where the
+   * file store keeps uploads, which never outlive a day.
+   */
+  FILES_SECRET: z.string().default(""),
+  FILES_MASTER_KEY: z.string().default(""),
+  FILES_URL: z.string().default("http://localhost:8000"),
+  FILES_DIR: z.string().default(""),
+  /**
+   * The OCR service (Compose profile `ocr`) for scanned pages and photos.
+   * Blank: Word files and PDFs with real text still import; scanned pages
+   * are refused with a clear message.
+   */
+  OCR_URL: z.string().default(""),
+  /** Scanned pages read at once; one per OCR worker (`--scale ocr=N`). */
+  OCR_WORKERS: z.coerce.number().int().min(1).max(16).default(1),
+  /** How long one page may take on CPU before it's given up on. */
+  OCR_TIMEOUT_MS: z.coerce.number().int().min(10_000).default(600_000),
 });
 
 export type Env = z.infer<typeof schema>;

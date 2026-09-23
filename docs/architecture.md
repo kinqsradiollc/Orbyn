@@ -8,6 +8,7 @@ database or to AI providers directly; everything goes through the gateway.
                  ├─► load balancer ─► gateway ──┼─► ai ──────┼─► PgBouncer ─► Postgres primary
  mobile (Expo) ──┘    (production)  └─► status ──┘                  │        └─► read replicas
                                        notifier ─► SMTP, Expo Push ┘
+                                       files ◄─ converter ─► ocr (profile, CPU)
 ```
 
 ## Services
@@ -15,15 +16,18 @@ database or to AI providers directly; everything goes through the gateway.
 One backend image runs each service with a different command. They scale independently and can
 live on different machines; see [scalability.md](scalability.md).
 
-| Service    | Entry point            | Owns                                                                           |
-| ---------- | ---------------------- | ------------------------------------------------------------------------------ |
-| `api`      | `services/api.ts`      | Auth, profile, items, steps and updates, teams, admin console, devices         |
-| `ai`       | `services/ai.ts`       | Assistant chat, proposals, AI provider settings (`/ai/*`)                      |
-| `realtime` | `services/realtime.ts` | Long-lived streams: live news (`/events`) and live documents                   |
-| `status`   | `services/status.ts`   | Probes every service every 30 s and serves the public `GET /status` report     |
-| `notifier` | `services/notifier.ts` | Reminder scheduling and delivery; heartbeat for the status page                |
-| `migrate`  | `migrate.ts`           | Applies `migrations/*.sql` in order under an advisory lock, then exits         |
-| gateway    | `gateway/` (nginx)     | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, rest to api |
+| Service     | Entry point             | Owns                                                                                                  |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                |
+| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                             |
+| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                          |
+| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                            |
+| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                       |
+| `files`     | `services/files.ts`     | File store for imports: signed one-time uploads, encrypted, deleted within 24 h                       |
+| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                           |
+| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                        |
+| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                |
+| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/u/*` to files, rest to api |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
@@ -40,6 +44,46 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
 | `worker/`         | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
 | `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
+
+### Importing files into Docs
+
+The API creates an `imports` row and signs an upload link (HMAC with `FILES_SECRET`: import, owner,
+expiry, size limit and type). The app sends the file to the **file store** (`files`), which works
+like this:
+
+- It checks the link and reserves the import, so the link works once. It streams the body to disk
+  under a random id, encrypted with AES-256-GCM using a key of its own. That key is wrapped with
+  `FILES_MASTER_KEY` and stored next to the file.
+- It refuses a file whose first bytes don't match its type.
+- Only a request carrying the service key (derived from the same secret) can read a file back or
+  delete it. The gateway exposes only the upload route.
+- A sweep every 10 minutes deletes files whose import has ended or vanished, uploads that stalled,
+  and anything older than 24 hours.
+
+The **converter** has one reading lane and one OCR lane per OCR worker (`OCR_WORKERS`):
+
+- The reading lane claims queued imports with `SKIP LOCKED`. It reads Word files with its own zip
+  and XML reader (`modules/imports/docx.ts`), and PDF pages with pdf.js.
+- A PDF page with real text becomes Markdown at once. Size decides headings, bullet characters
+  become lists, and wrapped lines are joined.
+- A page with no real text, garbled text or mostly maths gets an `import_pages` row for OCR.
+- The OCR lanes take waiting pages in page order across every import, so one long scan doesn't hold
+  up everyone else. Each lane cuts the page out (pdf-lib) and posts it to the OCR service.
+- The OCR output has region markers. The converter uses them to drop headers, footers and page
+  numbers and to note figures, then turns tables into bullets
+  (`ocrPageToMarkdown` in `@orbyn/core`).
+- When the last page is in, `assembleImport` builds the page: its title, headings stepped down so
+  there's one section per slide, a source line, and the editor's limits. The converter then creates
+  the page in Uploads, sends an in-app notice and deletes the file.
+- Work a crashed converter held is taken up again after 15 minutes (reading) or the OCR timeout
+  (pages).
+
+The **OCR service** (`ocr/`) is a small Python HTTP server built on the CPU stack of
+say4n/unlimited-ocr-container. It loads `baidu/Unlimited-OCR` once, in float32 on CPU, and reads
+one page at a time. You scale it by running more containers. It runs only where the Compose profile
+`ocr` is on and `OCR_URL` points at it. Without it, Word files and text PDFs still import, and
+scanned pages are refused with a clear message. For development, `scripts/ocr-standin.mjs` answers
+like it without the model.
 
 Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
 while delivery uses `FOR UPDATE SKIP LOCKED` so instances never process the same notification

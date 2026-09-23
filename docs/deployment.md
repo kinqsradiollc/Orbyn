@@ -36,6 +36,7 @@ Two images are built from the repository root:
 | `backend/Dockerfile`   | Every backend service and migrations (one image) | `node backend/dist/services/api.js`, `.../services/ai.js`, `.../services/status.js`, `.../services/notifier.js`, `node backend/dist/migrate.js`; `server.js` runs all in one |
 | `desktop/Dockerfile`   | Static web app behind unprivileged nginx         | nginx                                                                                                                                                                        |
 | `pgbouncer/Dockerfile` | Connection pooler (Alpine's PgBouncer)           | Configured from environment at start                                                                                                                                         |
+| `ocr/Dockerfile`       | OCR for imported scans (CPU, Python)             | Built only with the `ocr` Compose profile; see [Importing files](#importing-pdf-and-word-files-into-docs)                                                                    |
 
 The gateway uses the stock `nginxinc/nginx-unprivileged` image with `gateway/` mounted.
 
@@ -399,11 +400,13 @@ the repository folder, next to `compose.yaml`.
 First, tell Compose which optional services this machine uses, once, in `.env`:
 
 ```bash
-COMPOSE_PROFILES=tunnel,mail
+COMPOSE_PROFILES=tunnel,mail,ocr
 ```
 
-Every command below then includes the tunnel and your own mail server. Without that line, add
-`--profile tunnel --profile mail` to each one, or they are silently left out.
+Every command below then includes the tunnel, your own mail server and the OCR service for
+imported scans. Without that line, add `--profile tunnel --profile mail --profile ocr` to each
+one, or they are silently left out. Leave `ocr` out on a machine without about 16 GB of RAM to
+spare; see [Importing files](#importing-pdf-and-word-files-into-docs).
 
 ### Install or update everything
 
@@ -438,19 +441,19 @@ docker compose up -d --build --wait
 
 ### Everyday commands
 
-| Task                                | Command                                                             |
-| ----------------------------------- | ------------------------------------------------------------------- |
-| What is running                     | `docker compose ps`                                                 |
-| Follow one service's log            | `docker compose logs -f api` (or `mail`, `cloudflared`, `notifier`) |
-| Restart a service                   | `docker compose restart api`                                        |
-| Rebuild just one service            | `docker compose up -d --build --no-deps api`                        |
-| Apply migrations only               | `docker compose run --rm migrate`                                   |
-| Run more copies of a service        | `docker compose up -d --scale api=3 api`                            |
-| Stop everything, keep the data      | `docker compose stop`                                               |
-| Stop and remove the containers      | `docker compose down`                                               |
-| A database shell                    | `docker compose exec postgres psql -U orbyn -d orbyn`               |
-| Is the API healthy, and which build | `curl http://127.0.0.1:8008/health` and `.../version`               |
-| Reclaim disk after builds           | `docker image prune -f`                                             |
+| Task                                | Command                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------- |
+| What is running                     | `docker compose ps`                                                                     |
+| Follow one service's log            | `docker compose logs -f api` (or `mail`, `cloudflared`, `notifier`, `converter`, `ocr`) |
+| Restart a service                   | `docker compose restart api`                                                            |
+| Rebuild just one service            | `docker compose up -d --build --no-deps api`                                            |
+| Apply migrations only               | `docker compose run --rm migrate`                                                       |
+| Run more copies of a service        | `docker compose up -d --scale api=3 api`                                                |
+| Stop everything, keep the data      | `docker compose stop`                                                                   |
+| Stop and remove the containers      | `docker compose down`                                                                   |
+| A database shell                    | `docker compose exec postgres psql -U orbyn -d orbyn`                                   |
+| Is the API healthy, and which build | `curl http://127.0.0.1:8008/health` and `.../version`                                   |
+| Reclaim disk after builds           | `docker image prune -f`                                                                 |
 
 Never run `docker compose down --volumes` on a server: it deletes the database and the mail
 server's signing key along with the containers.
@@ -517,6 +520,75 @@ docker compose logs -f cloudflared
 A healthy tunnel logs `Registered tunnel connection` four times, and Cloudflare's dashboard shows
 it as healthy. Its configuration lives in Cloudflare, not here: the public hostname points at
 `http://gateway:8081`.
+
+## Importing PDF and Word files into Docs
+
+People can import a lecture PDF, a Word document or a photo of notes. It becomes a page in
+Docs → Uploads, and the file is deleted. Three services do the work:
+
+- **`files`** is the file store. It holds uploads encrypted, only until they're read, and never
+  longer than 24 hours, in the `import_files` volume.
+- **`converter`** reads Word files and PDF pages with real text, in seconds.
+- **`ocr`** reads scanned pages and photos with Unlimited-OCR, on CPU. It's optional.
+
+`files` and `converter` always run. Importing stays off until the secrets are set. In `.env`:
+
+```bash
+# Signs upload links; shared by api, files and converter. Blank turns importing off.
+FILES_SECRET=<openssl rand -base64 32>
+# Encrypts each stored file's key (files only). 32 bytes, base64.
+FILES_MASTER_KEY=<openssl rand -base64 32>
+```
+
+**Reading scanned pages (the `ocr` profile).** OCR runs on CPU in float32, with no GPU. It needs
+about 12 GB of RAM for the model, and Compose caps it at 16 GB (`OCR_MEMORY`) and 8 CPUs
+(`OCR_CPUS`). A dense page takes minutes. To turn it on, add to `.env`:
+
+```bash
+COMPOSE_PROFILES=tunnel,mail,ocr
+OCR_URL=http://ocr:8000
+```
+
+Then:
+
+```bash
+docker compose up -d --build --wait
+```
+
+The first start downloads the model into the `ocr_models` volume, which can take a while.
+`docker compose logs -f ocr` shows `model loaded` when it's ready. Until then scanned pages wait in
+the queue. Once it has loaded, you can set `OCR_OFFLINE=1` so it never reaches the internet again,
+and set `OCR_MODEL_REVISION` to the commit you reviewed so a rebuild can't pull different model
+code.
+
+To read more pages at once, run another worker and tell the converter:
+
+```bash
+docker compose up -d --scale ocr=2 ocr
+```
+
+and set `OCR_WORKERS=2`. Each worker takes about 12 GB.
+
+Without the profile, Word files and PDFs with real text still import. Scanned pages and photos are
+refused with a message saying OCR isn't turned on. Never build the OCR image on a development
+machine; `scripts/ocr-standin.mjs` stands in for it there.
+
+| Setting              | Default               | What it does                                             |
+| -------------------- | --------------------- | -------------------------------------------------------- |
+| `FILES_SECRET`       | (blank: off)          | Signs upload links and the converter's requests          |
+| `FILES_MASTER_KEY`   | derived (dev only)    | Wraps each file's own encryption key                     |
+| `OCR_URL`            | (blank: no OCR)       | `http://ocr:8000` with the `ocr` profile                 |
+| `OCR_WORKERS`        | `1`                   | OCR pages read at once (one per `ocr` container)         |
+| `OCR_TIMEOUT_MS`     | `600000`              | Longest one page may take                                |
+| `OCR_MEMORY`         | `16g`                 | Memory cap for each `ocr` container                      |
+| `OCR_CPUS`           | `8`                   | CPU cap for each `ocr` container                         |
+| `OCR_THREADS`        | `0` (PyTorch default) | CPU threads PyTorch uses                                 |
+| `OCR_IMAGE_MODE`     | `gundam`              | `gundam` crops (better on dense pages); `base` is faster |
+| `OCR_MODEL_REVISION` | `main`                | Pin the model and its code to a reviewed commit          |
+| `OCR_OFFLINE`        | `0`                   | `1` after the first download: no internet access         |
+
+The status page lists **Document import**, which is the converter's heartbeat.
+`docker compose logs -f converter` shows each file it reads.
 
 ## Email to task
 

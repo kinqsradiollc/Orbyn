@@ -15,7 +15,8 @@ import { versionInfo } from "../lib/version.js";
 import { idempotency } from "../lib/idempotency.js";
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
-export type ServiceName = "api" | "ai" | "status" | "realtime" | "all";
+export type ServiceName =
+  "api" | "ai" | "status" | "realtime" | "files" | "all";
 
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);

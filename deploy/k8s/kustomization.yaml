@@ -24,6 +24,7 @@ resources:
   - realtime.yaml
   - status.yaml
   - notifier.yaml
+  - imports.yaml
   - web.yaml
   - autoscaling.yaml
   - ingress.yaml

@@ -51,6 +51,10 @@ data:
       server status.orbyn.svc.cluster.local:8000;
       keepalive 8;
     }
+    upstream orbyn_files {
+      server files.orbyn.svc.cluster.local:8000;
+      keepalive 4;
+    }
 
     server {
       listen 8080;
@@ -95,6 +99,14 @@ data:
       }
       location = /api/status {
         proxy_pass http://orbyn_status/status;
+      }
+      # Uploads for importing into Docs: streamed to the file store, 50 MB.
+      location /api/files/u/ {
+        client_max_body_size 52m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_pass http://orbyn_files/files/u/;
       }
       location /api/ {
         proxy_pass http://orbyn_api/;

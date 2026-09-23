@@ -586,7 +586,7 @@ function MakeCardsFromAnyPage({
  * added until "Add" — then the ticked cards are written into the page under
  * its Cards heading, where they can be edited like any line.
  */
-function MakeCardsDialog({
+export function MakeCardsDialog({
   docId,
   title,
   report,

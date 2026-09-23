@@ -93,6 +93,14 @@ ${UPSTREAM_REALTIME}
 ${UPSTREAM_STATUS}
     keepalive 16;
   }
+  # The file store: uploads for importing into Docs. Only its upload route
+  # is exposed here; reading a file back is for the converter alone.
+  upstream files {
+    zone files 64k;
+    least_conn;
+${UPSTREAM_FILES}
+    keepalive 16;
+  }
 
   # The scheme the browser used: kept from a TLS proxy in front, else our own.
   map $http_x_forwarded_proto $fwd_proto {
@@ -161,6 +169,19 @@ ${UPSTREAM_STATUS}
       proxy_pass http://status;
     }
 
+    # Uploads for importing into Docs go straight to the file store,
+    # streamed (not buffered here) and up to 50 MB. The link in the path is
+    # signed by the API and works once.
+    location /files/u/ {
+      limit_req zone=per_client burst=10 nodelay;
+      client_max_body_size 52m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_next_upstream off;
+      proxy_pass http://files;
+    }
+
     # Everything else: the planner API.
     location / {
       limit_req zone=per_client burst=100 nodelay;
@@ -207,6 +228,20 @@ ${UPSTREAM_STATUS}
       # Links the API builds (the calendar feed) need the /api it sits under.
       proxy_set_header X-Forwarded-Prefix /api;
       proxy_pass http://127.0.0.1:8080/;
+    }
+
+    # Uploads for importing, through this gateway's own entry point above.
+    location /api/files/u/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      client_max_body_size 52m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_pass http://127.0.0.1:8080/files/u/;
     }
 
     # CalDAV, served by the API at its own /dav path (no /api strip), so Apple

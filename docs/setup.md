@@ -122,18 +122,21 @@ docker compose down -v                  # stop and delete the database volume
 
 `docker compose up -d --build` starts the backend as separate services behind a gateway:
 
-| Service            | Reached at                                          | Notes                                                                   |
-| ------------------ | --------------------------------------------------- | ----------------------------------------------------------------------- |
-| `desktop`          | <http://localhost:8080>                             | Web app; `/api` goes to the gateway                                     |
-| `gateway`          | <http://localhost:8080> and <http://localhost:8008> | The only service with host ports: the web app (with `/api`) and the API |
-| `api`              | internal `api:8000`                                 | Planner API                                                             |
-| `ai`               | internal `ai:8000`                                  | Assistant and AI provider settings                                      |
-| `status`           | internal `status:8000`                              | Status probes; public report at `/status`                               |
-| `notifier`         | no port                                             | Reminder delivery                                                       |
-| `postgres`         | `localhost:5433`                                    | Database                                                                |
-| `pgbouncer`        | internal `pgbouncer:6432`                           | Connection pooler every service connects through                        |
-| `postgres-replica` | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                    |
-| `mailpit`          | <http://localhost:8025>                             | Local email inbox                                                       |
+| Service            | Reached at                                          | Notes                                                                    |
+| ------------------ | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| `desktop`          | <http://localhost:8080>                             | Web app; `/api` goes to the gateway                                      |
+| `gateway`          | <http://localhost:8080> and <http://localhost:8008> | The only service with host ports: the web app (with `/api`) and the API  |
+| `api`              | internal `api:8000`                                 | Planner API                                                              |
+| `ai`               | internal `ai:8000`                                  | Assistant and AI provider settings                                       |
+| `status`           | internal `status:8000`                              | Status probes; public report at `/status`                                |
+| `notifier`         | no port                                             | Reminder delivery                                                        |
+| `files`            | internal `files:8000`                               | File store for imports; uploads arrive through the gateway's `/files/u/` |
+| `converter`        | no port                                             | Turns imported PDFs, Word files and photos into pages                    |
+| `ocr`              | internal `ocr:8000`                                 | OCR for scanned pages (`ocr` profile; production server only)            |
+| `postgres`         | `localhost:5433`                                    | Database                                                                 |
+| `pgbouncer`        | internal `pgbouncer:6432`                           | Connection pooler every service connects through                         |
+| `postgres-replica` | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                     |
+| `mailpit`          | <http://localhost:8025>                             | Local email inbox                                                        |
 
 To spread services across machines, add a read replica, or run on Kubernetes, see
 [scalability.md](scalability.md) and [deploy/k8s](../deploy/k8s/README.md).
@@ -181,6 +184,25 @@ Run the worker:
 ```bash
 npm run build -w backend
 npm run worker -w backend
+```
+
+Importing PDF and Word files into Docs needs `FILES_SECRET` in `.env` (any long string locally).
+In single-process mode the file store is part of `dev:api`, so set `FILES_URL` to that API's
+address (for example `http://localhost:8008`). Then run the converter:
+
+```bash
+npm run dev:converter -w backend
+```
+
+Never build the OCR image on a development machine. To try scanned pages, run the stand-in, which
+answers like the OCR service without the model, and point the converter at it:
+
+```bash
+node scripts/ocr-standin.mjs
+```
+
+```bash
+OCR_URL=http://127.0.0.1:8098 npm run dev:converter -w backend
 ```
 
 ### Electron desktop shell

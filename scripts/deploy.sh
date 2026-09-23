@@ -64,6 +64,9 @@ mail_config=$(setting MAIL_CONFIG maddy.conf)
 mail_domain=$(setting MAIL_DOMAIN)
 app_url=$(setting APP_URL)
 cors=$(setting CORS_ORIGINS)
+profiles=$(setting COMPOSE_PROFILES)
+ocr_on=0
+case ",$profiles," in *,ocr,*) ocr_on=1 ;; esac
 problems=0
 
 preflight() {
@@ -77,6 +80,18 @@ preflight() {
     case "$cors" in
       ""|*localhost*) warn "The tunnel is on but CORS_ORIGINS is '${cors:-unset}': set the public address too." ;;
     esac
+  fi
+  if [ -z "$(setting FILES_SECRET)" ]; then
+    warn "FILES_SECRET is unset: importing PDFs and Word files into Docs stays off."
+  elif [ -z "$(setting FILES_MASTER_KEY)" ]; then
+    warn "FILES_MASTER_KEY is unset: set one (openssl rand -base64 32) so stored uploads use their own key."
+  fi
+  if [ "$ocr_on" = 1 ] && [ -z "$(setting OCR_URL)" ]; then
+    warn "The ocr profile is on but OCR_URL is unset: set OCR_URL=http://ocr:8000 or scanned pages are refused."
+  fi
+  if [ "$ocr_on" = 0 ] && [ -n "$(setting OCR_URL)" ]; then
+    echo "OCR_URL is set but the ocr profile is off: add ocr to COMPOSE_PROFILES, or clear OCR_URL." >&2
+    problems=1
   fi
   if [ "$smtp_host" = mail ]; then
     for v in MAIL_HOSTNAME MAIL_DOMAIN; do
@@ -103,7 +118,8 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- apply migrations, then roll out api, ai, status, notifier and the web app"
+  echo "- apply migrations, then roll out api, ai, status, notifier, files, converter and the web app"
+  [ "$ocr_on" = 1 ] && echo "- start or replace the OCR service ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no OCR service (the ocr profile is off)"
   echo "- replace the gateway only if it changed; prune leftover images; check /version"
   echo
   echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}"
@@ -244,6 +260,17 @@ rollout ai "$(setting AI_REPLICAS 2)"
 rollout realtime "$(setting REALTIME_REPLICAS 2)"
 rollout status "$(setting STATUS_REPLICAS 1)"
 rollout notifier "$(setting NOTIFIER_REPLICAS 1)"
+# Importing into Docs: the file store (uploads in flight get 30 s to finish
+# as an old copy stops) and the converter, which picks up where it left off.
+rollout files "$(setting FILES_REPLICAS 1)"
+rollout converter "$(setting CONVERTER_REPLICAS 1)"
+# The OCR service loads a large model, so it's replaced in place rather than
+# rolled: scanned pages wait in the queue while it starts, and nothing is lost.
+if [ "$ocr_on" = 1 ]; then
+  log "Starting the OCR service"
+  compose up -d --no-deps --scale "ocr=$(setting OCR_WORKERS 1)" ocr
+  echo "The model loads in the background; 'docker compose logs -f ocr' shows 'model loaded'."
+fi
 rollout desktop "$(setting WEB_REPLICAS 2)"
 
 # Why the gateway's running container differs from compose.yaml, or nothing

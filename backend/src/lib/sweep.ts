@@ -144,6 +144,17 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 90,
   },
   {
+    key: "imports",
+    label: "Imported files",
+    detail:
+      "The record of each file imported into Docs (its name and outcome). The files themselves are deleted within a day.",
+    table: "imports",
+    where: `${olderThan("created_at")} AND status IN ('ready', 'failed', 'cancelled')`,
+    days: 30,
+    configurable: true,
+    min: 1,
+  },
+  {
     key: "doc_versions",
     label: "Page history",
     detail: "Earlier versions of pages. Kept forever unless you choose.",

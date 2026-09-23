@@ -95,6 +95,12 @@ export function components(): Component[] {
       probe: heartbeat("notifier"),
     },
     {
+      id: "converter",
+      name: "Document import",
+      description: "Turning uploaded PDFs, Word files and photos into pages.",
+      probe: heartbeat("converter"),
+    },
+    {
       id: "database",
       name: "Data storage",
       description: "Where your plans are kept.",

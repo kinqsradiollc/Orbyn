@@ -1918,3 +1918,157 @@ h4.doc-heading {
 .docs-nav-year > summary {
   font-size: 13px;
 }
+
+/* Uploads: files being imported into Docs, and imported pages to file. */
+.uploads {
+  display: grid;
+  gap: 14px;
+}
+.uploads-intro {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 13px;
+}
+.uploads-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 36px 24px;
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  text-align: center;
+  color: var(--color-muted);
+}
+.uploads-empty strong {
+  color: var(--color-text);
+  font-size: 14px;
+}
+.uploads-empty p {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+.uploads-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.upload-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.upload-kind {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 42px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accentSoft);
+  color: var(--color-accentText);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+.upload-kind.is-pdf {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.upload-kind.is-png,
+.upload-kind.is-jpeg {
+  background: var(--color-infoSoft);
+  color: var(--color-info);
+}
+.upload-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.upload-main strong {
+  font-size: 14px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-main small {
+  font-size: 12.5px;
+  color: var(--color-muted);
+}
+.upload-row.is-failed .upload-main small {
+  color: var(--color-danger);
+}
+.upload-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.upload-open:hover strong {
+  text-decoration: underline;
+}
+.upload-bar {
+  display: block;
+  height: 5px;
+  margin-top: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-track);
+  overflow: hidden;
+}
+.upload-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width var(--motion-fast) var(--ease-out);
+}
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.upload-actions .primary,
+.upload-actions .secondary {
+  padding: 8px 13px;
+}
+.docs-workspace {
+  position: relative;
+}
+.docs-drop {
+  position: absolute;
+  inset: 8px;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-accentSoft) 88%, transparent);
+  color: var(--color-accentText);
+  pointer-events: none;
+  text-align: center;
+}
+.docs-drop strong {
+  font-size: 16px;
+}
+.docs-drop span {
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .upload-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .upload-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
