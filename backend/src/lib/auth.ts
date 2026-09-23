@@ -125,8 +125,11 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   if (u.disabled) fail(403, DISABLED_MESSAGE);
   requireVerified(r, u);
   // Recorded at most once a minute, so it doesn't write on every request.
+  // Using the app keeps you signed in: a session expires after 30 days
+  // without use, not 30 days after signing in.
   await pool.query(
-    "UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'",
+    `UPDATE sessions SET last_seen_at=now(), expires_at=greatest(expires_at, now() + interval '30 days')
+      WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'`,
     [digest(token)],
   );
   requestUser.set(r, u.id);
