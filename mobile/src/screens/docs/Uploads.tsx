@@ -76,6 +76,7 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
         continue;
       }
       setUploading((n) => n + 1);
+      let startedId: string | null = null;
       try {
         // On the web the picker hands over the File itself; on a phone, a
         // local copy that fetch can read as a Blob.
@@ -83,11 +84,12 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
           Platform.OS === "web" && asset.file
             ? asset.file
             : await (await fetch(asset.uri)).blob();
-        const { upload_path } = await client.createImport({
+        const { upload_path, import: started } = await client.createImport({
           file_name: asset.name,
           bytes: asset.size ?? body.size,
           mime: asset.mimeType ?? undefined,
         });
+        startedId = started.id;
         await refresh();
         await client.uploadImportFile(
           upload_path,
@@ -96,6 +98,8 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
         );
       } catch (e) {
         onError((e as Error).message);
+        // The upload didn't arrive: don't leave the import waiting for it.
+        if (startedId) await client.removeImport(startedId).catch(() => {});
       } finally {
         setUploading((n) => n - 1);
         void refresh();

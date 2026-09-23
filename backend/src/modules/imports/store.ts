@@ -196,6 +196,19 @@ async function diskFull(): Promise<boolean> {
  * anything older than a day, and uploads that stopped halfway.
  */
 export async function sweepFiles(now = Date.now()) {
+  // Uploads that never arrived: the link lasts ten minutes, so after half
+  // an hour nothing more is coming.
+  const abandoned = (
+    await pool.query<{ user_id: string }>(
+      `UPDATE imports SET status = 'failed', finished_at = now(),
+         error = 'The upload didn''t finish. Please upload the file again.'
+        WHERE status = 'waiting' AND object_id IS NULL
+          AND created_at < now() - interval '30 minutes'
+        RETURNING user_id`,
+    )
+  ).rows;
+  for (const user_id of new Set(abandoned.map((r) => r.user_id)))
+    await announceTo(pool, { user_id }, "changed").catch(() => {});
   let names: string[] = [];
   try {
     names = await readdir(filesDir());
