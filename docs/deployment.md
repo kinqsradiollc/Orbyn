@@ -349,23 +349,25 @@ In order, it:
 2. makes sure the database and pooler are running, without ever recreating them;
 3. dumps the database to `backups/` (keeping `BACKUP_KEEP`, default 7), so a migration can be
    undone — see [Backups](#backups);
-4. starts or updates the Cloudflare tunnel when `CLOUDFLARE_TUNNEL_TOKEN` is set, and the mail
-   server (`DOCKER_SMTP_HOST=mail`) or the test inbox (`mailpit`), printing the mail server's DKIM
-   record and whether DNS has it;
+4. starts or updates the mail server (`DOCKER_SMTP_HOST=mail`) or the test inbox (`mailpit`),
+   printing the mail server's DKIM record and whether DNS has it;
 5. applies database migrations before any new code serves traffic;
 6. for each backend service, starts new copies beside the old ones, waits until they pass their
    health checks and the gateway has picked them up (it re-resolves every 10 seconds), then stops
    the old copies gracefully so in-flight requests finish;
 7. replaces the gateway only when its configuration or image changed (nginx starts in about a
    second), and says why;
-8. removes image layers no container uses any more, and confirms the version that is serving.
+8. starts or updates the Cloudflare tunnel when `CLOUDFLARE_TUNNEL_TOKEN` is set, on its own
+   (starting it with its dependencies would replace every service behind the gateway at once);
+9. removes image layers no container uses any more, and confirms the version that is serving.
 
 Before doing any of that it checks `.env`: leftover `TODO` values, a tunnel with `APP_URL` or
 `CORS_ORIGINS` still on localhost (emailed links would point at your laptop), and a mail server
 missing its relay credentials. Problems stop it before anything changes.
 
-Plain `docker compose up -d` replaces every changed container at once, so a service is down
-while its replacement starts; the script avoids that.
+Plain `docker compose up -d --build` replaces every changed container at once. All backend services
+share one image, so every copy of every service restarts together and the site answers "Orbyn is
+briefly unavailable" until they are up. The script avoids that.
 
 The gateway is the only container with host ports: it serves the API port (`API_PORT`) and the web
 port (`WEB_PORT`). The web app runs behind it like every other service, so it rolls over without

@@ -11,17 +11,21 @@
 # The same command does a first install: whatever isn't running is started.
 #
 # In order: pull the code, build images stamped with the commit, make sure the
-# database and pooler run, dump the database to backups/, start the Cloudflare
-# tunnel (when CLOUDFLARE_TUNNEL_TOKEN is set) and the mail server or catcher
-# .env selects, apply migrations, then replace each service by starting new
-# copies beside the old ones, waiting for their health checks, and retiring the
-# old ones. Finally replace the gateway only if it changed, remove leftover
-# image layers, and confirm the version that is serving.
+# database and pooler run, dump the database to backups/, start the mail
+# server or catcher .env selects, apply migrations, then replace each service
+# by starting new copies beside the old ones, waiting for their health checks,
+# and retiring the old ones. Then replace the gateway only if it changed, start
+# or update the Cloudflare tunnel (when CLOUDFLARE_TUNNEL_TOKEN is set), remove
+# leftover image layers, and confirm the version that is serving.
+#
+# Don't update with `docker compose up -d --build`: every backend service
+# shares one image, so compose replaces all copies of all of them at once and
+# the site is down until they start.
 #
 # Copies per service come from .env: API_REPLICAS (default 2), AI_REPLICAS (2),
 # REALTIME_REPLICAS (2), WEB_REPLICAS (2), STATUS_REPLICAS (1),
-# NOTIFIER_REPLICAS (1). Settings that live
-# in the app (Admin -> System) need no deploy at all.
+# NOTIFIER_REPLICAS (1), FILES_REPLICAS (1), CONVERTER_REPLICAS (1). Settings
+# that live in the app (Admin -> System) need no deploy at all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -121,17 +125,18 @@ if [ "$CHECK" = 1 ]; then
   echo "- build images"
   echo "- make sure postgres and pgbouncer run (never recreated here)"
   [ "$BACKUP" = 1 ] && echo "- dump the database to backups/ (keep $(setting BACKUP_KEEP 7))" || echo "- no database dump"
-  [ -n "$tunnel_token" ] && echo "- start or update the Cloudflare tunnel" || echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN unset)"
   case "$smtp_host" in
     mail) echo "- start the outbound mail server ($mail_config for $mail_domain)" ;;
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- apply migrations, then roll out api, ai, status, notifier, files, converter and the web app"
+  echo "- apply migrations, then roll out api, ai, realtime, status, notifier, files, converter and the web app"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
   [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
-  echo "- replace the gateway only if it changed; prune leftover images; check /version"
+  echo "- replace the gateway only if it changed"
+  [ -n "$tunnel_token" ] && echo "- start or update the Cloudflare tunnel" || echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN unset)"
+  echo "- prune leftover images; check /version"
   echo
   echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}"
   compose --env-file "$ENV_FILE" config --quiet && echo "compose.yaml + $ENV_FILE: valid"
@@ -168,14 +173,6 @@ if [ "$BACKUP" = 1 ]; then
   echo "Saved $file ($(du -h "$file" | cut -f1))"
   keep=$(setting BACKUP_KEEP 7)
   ls -1t backups/*.dump 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; done
-fi
-
-# Public access: Cloudflare connects to this container, so no port is opened.
-# Its image follows a tag (latest by default), so pull picks up new releases.
-if [ -n "$tunnel_token" ]; then
-  log "Starting the Cloudflare tunnel"
-  compose pull -q cloudflared || warn "couldn't pull the cloudflared image; using the one already here"
-  compose up -d --wait cloudflared
 fi
 
 # Bring up the selected mail backend before restarting its clients.
@@ -310,6 +307,17 @@ if [ -n "$reason" ]; then
   echo "Gateway replaced: $reason (about a second of reconnects)."
 else
   echo "Gateway unchanged."
+fi
+
+# Public access: Cloudflare connects to this container, so no port is opened.
+# Its image follows a tag (latest by default), so pull picks up new releases.
+# Started last and with --no-deps: it depends on the gateway, and a plain
+# `up cloudflared` would replace everything behind the gateway (api, ai,
+# realtime, status, files) at once with the new images, a full outage.
+if [ -n "$tunnel_token" ]; then
+  log "Starting the Cloudflare tunnel"
+  compose pull -q cloudflared || warn "couldn't pull the cloudflared image; using the one already here"
+  compose up -d --wait --no-deps cloudflared
 fi
 
 # Each build leaves the previous images' layers behind; only unreferenced
