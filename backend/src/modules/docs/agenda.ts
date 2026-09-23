@@ -22,6 +22,7 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
 import { announceDocChange } from "./live.js";
+import { studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
 
 /**
@@ -42,7 +43,36 @@ type Day = {
   freeMinutes: number;
   freeStretches: { start_at: string; end_at: string }[];
   priorities: string[];
+  study: {
+    due: number;
+    newCards: number;
+    exams: { title: string; days_left: number; readiness: number | null }[];
+  } | null;
 };
+
+/** Cards to review today and the next exams, or null for someone with no cards. */
+async function studyFor(userId: string) {
+  // Anyone with cards, or pages with card lines not yet read.
+  const has = await pool.query(
+    `SELECT 1 FROM study_cards WHERE user_id = $1
+     UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND d.content::text LIKE '% :: %'
+     LIMIT 1`,
+    [userId],
+  );
+  if (!has.rowCount) return null;
+  const s = await studyOverview(userId);
+  return {
+    due: s.due_today,
+    newCards: s.new_cards,
+    exams: s.exams
+      .filter((e) => e.days_left <= 14)
+      .map((e) => ({
+        title: e.title,
+        days_left: e.days_left,
+        readiness: e.readiness,
+      })),
+  };
+}
 
 async function readDay(userId: string, now: Date): Promise<Day> {
   const prefs = await loadPrefs(pool, userId);
@@ -104,6 +134,7 @@ async function readDay(userId: string, now: Date): Promise<Day> {
         start_at: new Date(f.start).toISOString(),
         end_at: new Date(f.end).toISOString(),
       })),
+    study: await studyFor(userId),
     // The app's own order (the same score the assistant ranks by).
     priorities: open.rows
       .map((i) => ({ title: i.title, score: priorityScore(i, now) }))
@@ -148,6 +179,17 @@ function factsOf(day: Day, now: Date) {
     })),
     due_today: due.slice(0, 10).map((i) => i.title.slice(0, 100)),
     top_priorities: day.priorities.map((t) => t.slice(0, 100)),
+    ...(day.study
+      ? {
+          study: {
+            cards_to_review: day.study.due + day.study.newCards,
+            exams: day.study.exams.map((e) => ({
+              title: e.title.slice(0, 100),
+              days_left: e.days_left,
+            })),
+          },
+        }
+      : {}),
     slipped: slipped.length,
     set_aside: day.setAside.slice(0, 8).map((b) => ({
       when: `${clock(b.start_at, day.tz)}–${clock(b.end_at, day.tz)}`,
@@ -207,6 +249,7 @@ async function contentFor(userId: string, now: Date, withBrief: boolean) {
       freeMinutes: day.freeMinutes,
       freeStretches: day.freeStretches,
       priorities: day.priorities,
+      study: day.study,
       brief,
     }),
   };

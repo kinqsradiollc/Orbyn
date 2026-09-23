@@ -39,6 +39,8 @@ import {
 } from "./modules/realtime/routes.js";
 import { presenceRoutes } from "./modules/presence/routes.js";
 import { legalRoutes } from "./modules/legal/routes.js";
+import { studyRoutes } from "./modules/study/routes.js";
+import { aiStudyRoutes } from "./modules/ai/study.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -54,6 +56,7 @@ export const serviceModules: Record<
     authRoutes,
     userRoutes,
     legalRoutes,
+    studyRoutes,
     inboundRoutes,
     mcpRoutes,
     davRoutes,
@@ -87,7 +90,7 @@ export const serviceModules: Record<
     legacyDocStreamRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
-  ai: [aiRoutes, aiAdminRoutes],
+  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes],
   /** The public status report. */
   status: [statusRoutes],
   /**

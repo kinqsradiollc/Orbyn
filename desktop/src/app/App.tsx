@@ -37,6 +37,7 @@ import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
+import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
 import { AuthPage } from "../features/auth/AuthPage";
@@ -699,6 +700,16 @@ export function App() {
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
                   onInitialDocShown={() => setNoteDoc(null)}
+                />
+              )}
+              {view === "Study" && (
+                <StudyView
+                  report={report}
+                  onOpenPage={(doc) => {
+                    setNoteDoc(doc);
+                    setView("Docs");
+                  }}
+                  onPlanned={() => void refresh()}
                 />
               )}
               {view === "Projects" && (

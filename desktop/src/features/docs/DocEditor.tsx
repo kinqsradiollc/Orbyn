@@ -161,7 +161,10 @@ export function DocEditor({
    * the first save is worse than not being offered one.
    */
   const [mode, setMode] = useState<DocMode>(() =>
-    canWrite ? (rememberedMode(doc.id) ?? "edit") : "read",
+    canWrite
+      ? // The agenda is read more than written, so it opens for reading.
+        (rememberedMode(doc.id) ?? (doc.kind === "agenda" ? "read" : "edit"))
+      : "read",
   );
   const suggesting = mode === "suggest";
   /** Nothing typed changes the page itself in these modes. */

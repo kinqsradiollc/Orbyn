@@ -48,6 +48,7 @@ import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { VerifyGateScreen } from "../screens/VerifyGateScreen";
 import { ConsentGateScreen } from "../screens/ConsentGateScreen";
+import { StudySheet } from "../screens/StudySheet";
 import { BookingSheet } from "../screens/BookingSheet";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ConnectionsSheet } from "../screens/ConnectionsSheet";
@@ -92,6 +93,7 @@ type SheetName =
   | "tags"
   | "habits"
   | "docs"
+  | "study"
   | "agenda"
   | "note"
   | "projects"
@@ -955,6 +957,16 @@ export function RootScreen() {
           outbox={planner.outbox}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
+        />
+        <StudySheet
+          visible={sheet === "study"}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onOpenPage={(doc) => {
+            setNote(doc);
+            present({ sheet: "note" });
+          }}
+          onPlanned={() => void refresh()}
         />
         <DocsSheet
           visible={sheet === "docs"}

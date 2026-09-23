@@ -113,7 +113,9 @@ export function DocEditor({
    */
   const [mode, setMode] = useState<DocMode>(() =>
     canWrite
-      ? readLocal(MODE_KEY + doc.id) === "read"
+      ? // The agenda is read more than written, so it opens for reading.
+        (readLocal(MODE_KEY + doc.id) ??
+          (doc.kind === "agenda" ? "read" : "edit")) === "read"
         ? "read"
         : "edit"
       : "read",

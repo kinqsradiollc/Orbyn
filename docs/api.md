@@ -249,6 +249,41 @@ nobody is deleted) and team items move to an owner, as with the admin delete.
 body goes back to the starting text, and `publish: ["terms"|"privacy"]` gives those documents a new
 version newer than the current agreement (today's date, `.2`, `.3`… on the same day). Audited.
 
+## Study
+
+Flashcards from the person's own pages, reviewed with spaced repetition, and revision planned around
+exams (`packages/core/src/study.ts`, `backend/src/modules/study/`). Everything is free, and cards
+come only from Orbyn pages: nothing is imported from other apps.
+
+A **card** is any paragraph, bullet or numbered line written `Question :: Answer`. Each person keeps
+their own review state for the cards on the pages they can see (a team page's cards are studied by
+each member separately). A named line keeps its card and history when its wording changes; a line
+without a name is matched by its question. Removing the line removes the card. Scheduling is FSRS
+v4.5 with the standard parameters, aiming for 90% recall: Again brings a card back in 10 minutes,
+and the others in days. At most 20 new cards are introduced a day.
+
+| Method and path                           | Body / result                                                                                                  |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `GET /study`                              | `{ due_today, new_cards, reviewed_today, streak, decks[], exams[], weak[] }`                                   |
+| `GET /study/queue`                        | `?doc_id=&limit=&ahead=true` → cards to review now (due, then today's new ones), each with `next` per rating   |
+| `POST /study/cards/:id/review`            | `{ "rating": "again" \| "hard" \| "good" \| "easy" }` → the card, rescheduled                                  |
+| `PUT /study/exams`                        | `{ key, title, starts_at, doc_ids }`: the pages you're revising for an exam → the overview                     |
+| `POST /study/revision/plan`               | `{ key, minutes?, timezone }` → proposed sessions in free working time before the exam (nothing saved)         |
+| `POST /study/revision/apply`              | `{ key, sessions[] }` → `201`: a "Revise for …" task due at the exam, with the sessions as time blocks         |
+| `POST /ai/study/pages/:id/cards` (10/min) | → `{ cards: [{ question, answer, source }] }` suggested from the page alone; the apps add only the ticked ones |
+| `POST /ai/study/grade` (10/min)           | `{ card_id, answer }` → `{ verdict, feedback, suggested_rating }`, judged against the card and its page        |
+| `POST /ai/study/cards/:id/explain`        | → `{ explanation, beyond_notes }`; `beyond_notes` is true when it needed more than the page                    |
+
+**Exams** are upcoming events (60 days) from a subscribed calendar of the Exams kind, or events named
+like one (exam, midterm, final, test, quiz). Each has a `key` built from its source and start.
+`readiness` is the share of the attached pages' cards known well (stable for a week or more).
+
+The AI routes answer `503` without a provider. Reviewing never calls the AI. The agenda gets a
+**Study** section (cards to review, exams within two weeks), the morning digest counts cards due,
+the evening digest counts cards reviewed, the assistant gets a `study` summary in its overview and a
+read-only `get_study` tool, and the sweeper keeps review history for 400 days (configurable) and
+exam attachments for 30 days after the exam.
+
 ## Profile
 
 ### `GET /me` (auth)

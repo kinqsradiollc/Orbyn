@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -12,8 +12,10 @@ import {
   overviewItems,
   type Item,
   type Plan,
+  type StudyOverview,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { client } from "../lib/api";
 import { Icon } from "../components/Icon";
 import { ProgressBar } from "../components/ProgressBar";
 import { QuickAdd } from "../components/QuickAdd";
@@ -63,10 +65,15 @@ export function TodayScreen({
   /** Opens the Plan my day sheet, optionally on a plan to review. */
   onOpenPlanner: (seed: Plan | null) => void;
   /** Opens the agenda, documents or projects sheet. */
-  onOpenWorkspace: (what: "agenda" | "docs" | "projects") => void;
+  onOpenWorkspace: (what: "agenda" | "docs" | "projects" | "study") => void;
 }) {
   const now = new Date();
   const wide = useWindowDimensions().width >= WIDE;
+  // Cards due and the next exam, for people who study in Orbyn.
+  const [study, setStudy] = useState<StudyOverview | null>(null);
+  useEffect(() => {
+    client.study().then(setStudy, () => setStudy(null));
+  }, [items.length]);
   const {
     pending: open,
     attention,
@@ -211,6 +218,28 @@ export function TodayScreen({
             </Text>
           </FadeIn>
         </>
+      )}
+
+      {study && study.decks.length > 0 && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onOpenWorkspace("study")}
+          style={({ pressed }) => [
+            s.assistantLink,
+            pressed && s.workspacePressed,
+          ]}
+        >
+          <Icon name="graduationCap" size={18} color={colors.accent} />
+          <Text style={s.assistantLinkText}>
+            {study.due_today + study.new_cards
+              ? `${study.due_today + study.new_cards} card${study.due_today + study.new_cards === 1 ? "" : "s"} to review`
+              : "Study: all caught up"}
+            {study.exams[0]
+              ? ` · ${study.exams[0].title} in ${study.exams[0].days_left}d`
+              : ""}
+          </Text>
+          <Icon name="arrowRight" size={16} color={colors.accent} />
+        </Pressable>
       )}
 
       <Text style={[shared.eyebrow, s.quickHeading]}>QUICK LINKS</Text>
