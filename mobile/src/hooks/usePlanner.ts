@@ -353,6 +353,16 @@ export function usePlanner() {
       resetSession();
     });
 
+  // Tell the server which zone this phone is in, once per sign-in, so what
+  // it writes (agendas, digests, reminders) and working hours are in your
+  // time rather than UTC. Ignored when you've picked a zone in settings.
+  useEffect(() => {
+    if (!token) return;
+    client.reportTimeZone(deviceTimeZone()).catch(() => {
+      // The next start tries again.
+    });
+  }, [token]);
+
   /** Forget this sign-in on the phone only: the account is already gone. */
   const forgetSession = () =>
     act(async () => {

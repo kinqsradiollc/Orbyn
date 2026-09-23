@@ -1078,3 +1078,102 @@ export type DraftNote = {
   /** Why the assistant thought this was worth writing down. */
   note: string;
 };
+
+// ---------------------------------------------------------------- agendas ---
+
+export type AgendaWeek = {
+  /** The week's Monday, "2026-09-21". */
+  key: string;
+  /** "This week", "Last week" or "Week of 7 September". */
+  label: string;
+  docs: DocSummary[];
+};
+export type AgendaMonth = {
+  /** "2026-09", for filtering. */
+  key: string;
+  /** "September". */
+  label: string;
+  weeks: AgendaWeek[];
+  docs: DocSummary[];
+};
+export type AgendaYear = { year: number; months: AgendaMonth[] };
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/** "2026-09" for a moment, in the reader's own zone. */
+export const agendaMonthKey = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+};
+
+/** The Monday of the week a moment falls in, in the reader's own zone. */
+const mondayOf = (d: Date) => {
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return monday;
+};
+
+/** "This week", "Last week", or "Week of 7 September". */
+export function agendaWeekLabel(monday: Date, now = new Date()) {
+  const thisWeek = dayKey(mondayOf(now));
+  const last = mondayOf(now);
+  last.setDate(last.getDate() - 7);
+  const key = dayKey(monday);
+  if (key === thisWeek) return "This week";
+  if (key === dayKey(last)) return "Last week";
+  return `Week of ${monday.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+  })}`;
+}
+
+/**
+ * Daily agendas filed like a diary — year, month, then week (Monday first),
+ * newest first — so a page a day never floods the rest of the library.
+ */
+export function agendaGroups(
+  docs: DocSummary[],
+  now = new Date(),
+): AgendaYear[] {
+  const agendas = docs
+    .filter((d) => d.kind === "agenda")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const years: AgendaYear[] = [];
+  for (const doc of agendas) {
+    const at = new Date(doc.created_at);
+    const key = agendaMonthKey(doc.created_at);
+    let year = years.find((y) => y.year === at.getFullYear());
+    if (!year) years.push((year = { year: at.getFullYear(), months: [] }));
+    let month = year.months.find((m) => m.key === key);
+    if (!month)
+      year.months.push(
+        (month = {
+          key,
+          label: at.toLocaleDateString("en-GB", { month: "long" }),
+          weeks: [],
+          docs: [],
+        }),
+      );
+    month.docs.push(doc);
+    const monday = mondayOf(at);
+    let week = month.weeks.find((w) => w.key === dayKey(monday));
+    if (!week)
+      month.weeks.push(
+        (week = {
+          key: dayKey(monday),
+          label: agendaWeekLabel(monday, now),
+          docs: [],
+        }),
+      );
+    week.docs.push(doc);
+  }
+  return years;
+}
+
+/** The week an agenda falls in: its Monday's key and "This week"-style label. */
+export function agendaWeekOf(iso: string, now = new Date()) {
+  const monday = mondayOf(new Date(iso));
+  return { key: dayKey(monday), label: agendaWeekLabel(monday, now) };
+}

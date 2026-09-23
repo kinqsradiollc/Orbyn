@@ -1893,3 +1893,28 @@ h4.doc-heading {
   align-items: center;
   gap: 6px;
 }
+
+/* Agendas, filed under the month they were written. */
+.docs-group + .docs-group {
+  margin-top: 18px;
+}
+.docs-group-month {
+  margin: 8px 0 10px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-text);
+}
+.docs-group + .docs-group > .docs-group-month {
+  margin-top: 14px;
+}
+.docs-group-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.docs-nav-year > summary {
+  font-size: 13px;
+}

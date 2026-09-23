@@ -8,6 +8,9 @@ import {
   View,
 } from "react-native";
 import {
+  agendaGroups,
+  agendaMonthKey,
+  agendaWeekOf,
   favouriteKey,
   favouriteSet,
   snippetRuns,
@@ -23,6 +26,7 @@ import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { confirmAction } from "../../lib/confirm";
+import { deviceTimeZone } from "../../lib/planning";
 import { shared } from "../../styles";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -87,8 +91,13 @@ export function DocsSheet({
   const [sort, setSort] = useState<"recent" | "title">("recent");
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
-  /** null = every kind; "note" = only notes; "doc" = only plain pages. */
+  /**
+   * null = every kind but agendas; "note" = only notes; "doc" = only plain
+   * pages; "agenda" = the daily agendas, which have their own section.
+   */
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
+  /** Within agendas: one month ("2026-09"), or null for all of them. */
+  const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -112,7 +121,7 @@ export function DocsSheet({
     if (initialDoc) return setOpen(initialDoc);
     if (agenda) {
       // Today's page is written on the server the first time it is asked for.
-      client.agendaToday().then(setOpen, () => setOpen(null));
+      client.agendaToday(deviceTimeZone()).then(setOpen, () => setOpen(null));
       return;
     }
     void loadList();
@@ -257,6 +266,7 @@ export function DocsSheet({
     preview: string;
     kind: string;
     updated_at: string;
+    created_at?: string;
     folder_id?: string | null;
   };
 
@@ -275,7 +285,19 @@ export function DocsSheet({
     : (docs ?? [])
         .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
         .filter((d) => !fadingOnly || fading.has(d.id))
-        .filter((d) => kindFilter === null || d.kind === kindFilter)
+        // A page a day would flood everything else, so agendas live in
+        // their own section (a starred one still shows under Favorites).
+        .filter((d) =>
+          kindFilter === null
+            ? d.kind !== "agenda" || favoritesOnly
+            : d.kind === kindFilter,
+        )
+        .filter(
+          (d) =>
+            kindFilter !== "agenda" ||
+            !agendaMonth ||
+            agendaMonthKey(d.created_at) === agendaMonth,
+        )
         // A search looks everywhere; a folder only narrows the plain list.
         .filter((d) =>
           folderFilter === null
@@ -284,12 +306,15 @@ export function DocsSheet({
               ? !d.folder_id
               : d.folder_id === folderFilter,
         );
+  const agendas = agendaGroups(docs ?? []);
 
   const shown: Row[] = [...narrowed].sort((a, b) =>
-    sort === "title"
-      ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
-        a.id.localeCompare(b.id)
-      : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
+    kindFilter === "agenda" && a.created_at && b.created_at
+      ? b.created_at.localeCompare(a.created_at)
+      : sort === "title"
+        ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
+          a.id.localeCompare(b.id)
+        : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
   const location = favoritesOnly
     ? "Favorites"
@@ -297,18 +322,22 @@ export function DocsSheet({
       ? "Unfiled"
       : folderFilter
         ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-        : kindFilter === "doc"
-          ? "Pages"
-          : kindFilter === "note"
-            ? "Notes"
-            : "All documents";
+        : kindFilter === "agenda"
+          ? "Agendas"
+          : kindFilter === "doc"
+            ? "Pages"
+            : kindFilter === "note"
+              ? "Notes"
+              : "All documents";
   const selectCollection = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
+    month: string | null = null,
   ) => {
     setFolderFilter(folder);
     setKindFilter(kind);
+    setAgendaMonth(month);
     setFavoritesOnly(favorites);
     setQuery("");
     setHits(null);
@@ -344,7 +373,7 @@ export function DocsSheet({
   /** How many pages sit in each folder, for the library to show. */
   const countIn = (id: string | null) =>
     (docs ?? []).filter((d) =>
-      id === null ? !d.folder_id : d.folder_id === id,
+      id === null ? !d.folder_id && d.kind !== "agenda" : d.folder_id === id,
     ).length;
 
   /** Open a page from the list, which for a search hit means fetching it. */
@@ -389,7 +418,7 @@ export function DocsSheet({
                 () => selectCollection(null),
                 !favoritesOnly && !folderFilter && !kindFilter,
                 "fileText",
-                docs?.length,
+                docs?.filter((d) => d.kind !== "agenda").length,
               )}
               {navRow(
                 "Pages",
@@ -406,6 +435,29 @@ export function DocsSheet({
                 () => selectCollection(null, null, true),
                 favoritesOnly,
                 "star",
+              )}
+              {agendas.length > 0 && (
+                <>
+                  {navRow(
+                    "Agendas",
+                    () => selectCollection(null, "agenda"),
+                    !favoritesOnly && kindFilter === "agenda" && !agendaMonth,
+                  )}
+                  <View style={styles.navChildren}>
+                    {agendas.flatMap((y) =>
+                      y.months.map((m) => (
+                        <View key={m.key}>
+                          {navRow(
+                            `${m.label} ${y.year}`,
+                            () =>
+                              selectCollection(null, "agenda", false, m.key),
+                            kindFilter === "agenda" && agendaMonth === m.key,
+                          )}
+                        </View>
+                      )),
+                    )}
+                  </View>
+                </>
               )}
               <View style={styles.navChildren}>
                 {(docs ?? [])
@@ -450,7 +502,9 @@ export function DocsSheet({
                       )}
                       {(docs ?? [])
                         .filter((d) =>
-                          f.id === "none" ? !d.folder_id : d.folder_id === f.id,
+                          f.id === "none"
+                            ? !d.folder_id && d.kind !== "agenda"
+                            : d.folder_id === f.id,
                         )
                         .sort((a, b) => a.title.localeCompare(b.title))
                         .map((d) => (
@@ -558,6 +612,9 @@ export function DocsSheet({
                     ["All", null, null, false],
                     ["Pages", null, "doc", false],
                     ["Notes", null, "note", false],
+                    ...(agendas.length
+                      ? [["Agendas", null, "agenda", false]]
+                      : []),
                     ["Favorites", null, null, true],
                     ...folders.map((folder) => [
                       folder.name,
@@ -688,87 +745,112 @@ export function DocsSheet({
                     Nothing here yet. Try another collection or search.
                   </Text>
                 ))}
-              {shown.map((doc) => (
-                <View key={doc.id} style={styles.row}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${doc.title || "Untitled"}`}
-                    disabled={busy}
-                    style={({ pressed }) => [
-                      styles.rowOpen,
-                      pressed && styles.rowPressed,
-                    ]}
-                    onPress={() => openHit(doc.id)}
-                  >
-                    <View style={styles.rowTop}>
-                      <Icon name="fileText" size={16} color={colors.muted} />
-                      <Text style={styles.rowTitle} numberOfLines={2}>
-                        {doc.title || "Untitled"}
-                      </Text>
-                    </View>
-                    {/* The time leads the preview rather than sitting up on
+              {shown.map((doc, n) => (
+                <View key={doc.id}>
+                  {kindFilter === "agenda" && !hits && doc.created_at && (
+                    <>
+                      {(n === 0 ||
+                        agendaMonthKey(doc.created_at) !==
+                          agendaMonthKey(shown[n - 1].created_at ?? "")) && (
+                        <Text style={styles.monthHeading}>
+                          {new Date(doc.created_at).toLocaleDateString(
+                            "en-GB",
+                            { month: "long", year: "numeric" },
+                          )}
+                        </Text>
+                      )}
+                      {(n === 0 ||
+                        agendaWeekOf(doc.created_at).key !==
+                          agendaWeekOf(shown[n - 1].created_at ?? "").key) && (
+                        <Text style={styles.weekHeading}>
+                          {agendaWeekOf(doc.created_at).label}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                  <View style={styles.row}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                      disabled={busy}
+                      style={({ pressed }) => [
+                        styles.rowOpen,
+                        pressed && styles.rowPressed,
+                      ]}
+                      onPress={() => openHit(doc.id)}
+                    >
+                      <View style={styles.rowTop}>
+                        <Icon name="fileText" size={16} color={colors.muted} />
+                        <Text style={styles.rowTitle} numberOfLines={2}>
+                          {doc.title || "Untitled"}
+                        </Text>
+                      </View>
+                      {/* The time leads the preview rather than sitting up on
                       the title's line, where it cost the title the 20pt that
                       turned "Monday 21 September" into "Monday 21 Septe…". */}
-                    <Text style={styles.rowPreview} numberOfLines={2}>
-                      <Text style={styles.rowWhen}>{when(doc.updated_at)}</Text>
-                      {"  ·  " + (doc.preview || "Empty document")}
-                    </Text>
-                  </Pressable>
-                  <View style={styles.rowActions}>
-                    <Text style={styles.rowKind}>
-                      {doc.kind === "note"
-                        ? "Note"
-                        : doc.kind === "agenda"
-                          ? "Agenda"
-                          : "Document"}
-                    </Text>
-                    {/* The star and the folder sit outside the row's own press,
-                        or tapping either would open the page instead. */}
-                    <Pressable
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        toggleStar(
-                          doc as DocSummary,
-                          !starred.has(favouriteKey("doc", doc.id)),
-                        );
-                      }}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        starred.has(favouriteKey("doc", doc.id))
-                          ? `Unstar ${doc.title || "Untitled"}`
-                          : `Star ${doc.title || "Untitled"}`
-                      }
-                      style={styles.rowIcon}
-                    >
-                      <Icon
-                        name={
-                          starred.has(favouriteKey("doc", doc.id))
-                            ? "starFilled"
-                            : "star"
-                        }
-                        size={16}
-                        color={
-                          starred.has(favouriteKey("doc", doc.id))
-                            ? colors.accent
-                            : colors.faint
-                        }
-                      />
+                      <Text style={styles.rowPreview} numberOfLines={2}>
+                        <Text style={styles.rowWhen}>
+                          {when(doc.updated_at)}
+                        </Text>
+                        {"  ·  " + (doc.preview || "Empty document")}
+                      </Text>
                     </Pressable>
-                    {!hits && (
+                    <View style={styles.rowActions}>
+                      <Text style={styles.rowKind}>
+                        {doc.kind === "note"
+                          ? "Note"
+                          : doc.kind === "agenda"
+                            ? "Agenda"
+                            : "Document"}
+                      </Text>
+                      {/* The star and the folder sit outside the row's own press,
+                        or tapping either would open the page instead. */}
                       <Pressable
                         onPress={(event) => {
                           event.stopPropagation();
-                          setFiling(doc as DocSummary);
+                          toggleStar(
+                            doc as DocSummary,
+                            !starred.has(favouriteKey("doc", doc.id)),
+                          );
                         }}
                         hitSlop={8}
                         accessibilityRole="button"
-                        accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                        accessibilityLabel={
+                          starred.has(favouriteKey("doc", doc.id))
+                            ? `Unstar ${doc.title || "Untitled"}`
+                            : `Star ${doc.title || "Untitled"}`
+                        }
                         style={styles.rowIcon}
                       >
-                        <Icon name="folder" size={16} color={colors.faint} />
+                        <Icon
+                          name={
+                            starred.has(favouriteKey("doc", doc.id))
+                              ? "starFilled"
+                              : "star"
+                          }
+                          size={16}
+                          color={
+                            starred.has(favouriteKey("doc", doc.id))
+                              ? colors.accent
+                              : colors.faint
+                          }
+                        />
                       </Pressable>
-                    )}
+                      {!hits && (
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            setFiling(doc as DocSummary);
+                          }}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                          style={styles.rowIcon}
+                        >
+                          <Icon name="folder" size={16} color={colors.faint} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
                 </View>
               ))}
@@ -815,7 +897,7 @@ function OpenDoc({
       () => {
         setRewriting(true);
         setRewritten("");
-        client.rewriteAgenda().then(
+        client.rewriteAgenda(deviceTimeZone()).then(
           (next) => {
             setRewriting(false);
             setRewritten(
@@ -871,6 +953,22 @@ function OpenDoc({
 
 const styles = themed(() =>
   StyleSheet.create({
+    monthHeading: {
+      fontFamily: fonts.display,
+      fontSize: 16,
+      color: colors.text,
+      marginTop: 18,
+      marginBottom: 4,
+    },
+    weekHeading: {
+      fontFamily: fonts.semibold,
+      fontSize: 12,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      color: colors.muted,
+      marginTop: 10,
+      marginBottom: 6,
+    },
     agendaBar: {
       flexDirection: "row",
       alignItems: "center",

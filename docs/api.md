@@ -269,17 +269,31 @@ it also opens with a few sentences the assistant writes about the day.
 
 ### `GET /agenda/today` (auth)
 
-Today's agenda, in the person's planner time zone, written from the calendar as it actually is
-(`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`): your events with repeats on
-the day they fall and the calendars you subscribe to ("Your day"), time set aside for tasks and
-habits, what's due today, what slipped, exams and all-day events in the coming week, and how much
-working time is still free. Written the first time it's asked for each day, never waiting on the AI
+Today's agenda, in the person's planner time zone, written from the calendar as it actually is. Its
+sections: a summary line (the assistant's, when connected), Top priorities, Schedule (Morning,
+Afternoon, Evening; all-day first; no calendar names), Focus time (time set aside and free
+stretches), Due today, Carried over, Coming up, Notes and End of day. It reads
+(`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`) your events with repeats on
+the day they fall and the calendars you subscribe to, time set aside for tasks and habits, what's
+due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day, never waiting on the AI
 provider, and returned unchanged after that, so edits are never overwritten. → a document with
 `kind` `agenda`, titled like "Sunday 20 September".
 
 The worker writes each active person's page between 5 and 11 in their own zone (at most 25 per
 15-minute pass, five at a time), opening with the assistant's summary of the day when a provider is
 connected.
+
+### `POST /me/timezone` (auth)
+
+`{ "timezone": "Australia/Melbourne" }` → `{ adopted, timezone }`. Both apps send the device's zone
+when they start. It becomes the planner zone unless the person picked one in Planning settings
+(`planner_prefs.timezone_chosen`); before this, anyone who never did was treated as UTC for
+everything the server writes. On a change, subscribed calendars are read again and today's agenda,
+if untouched, is written again. `GET /agenda/today?timezone=` and `POST /ai/agenda/today`
+`{ timezone }` do the same first.
+
+In the library, agendas have their own **Agendas** section, filed by year, month and week (Monday
+first), and are left out of "All documents" and "Unfiled".
 
 ### `POST /ai/agenda/today` (auth, 10/min)
 

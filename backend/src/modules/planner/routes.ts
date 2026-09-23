@@ -61,6 +61,7 @@ import {
   PLACE_COLUMNS,
   timeBlocks,
 } from "./calendar.js";
+import { adoptDeviceZone } from "./timezone.js";
 import {
   daysForRule,
   FRAME_COLUMNS,
@@ -165,6 +166,19 @@ export async function plannerRoutes(app: FastifyInstance) {
     return loadPrefs(reader(r.headers), u.id);
   });
 
+  /**
+   * The apps say which zone the device is in, each time they start. It's
+   * adopted unless you picked a zone yourself (see timezone.ts).
+   */
+  app.post("/me/timezone", async (r) => {
+    const u = await authenticate(r);
+    const { timezone } = z
+      .object({ timezone: z.string().trim().min(1).max(64) })
+      .parse(r.body ?? {});
+    const result = await adoptDeviceZone(u.id, timezone);
+    return { ...result, timezone: (await loadPrefs(pool, u.id)).timezone };
+  });
+
   app.put("/planner/prefs", async (r) => {
     const u = await authenticate(r);
     const d = plannerPrefsInput.parse(r.body);
@@ -246,6 +260,13 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.learn_estimates ?? false,
         ],
       );
+      // Picking a zone here is a choice: the apps stop adopting the
+      // device's zone from now on.
+      if (d.timezone !== undefined)
+        await db.query(
+          "UPDATE planner_prefs SET timezone_chosen = true WHERE user_id = $1",
+          [u.id],
+        );
       // Subscribed calendars are read in your zone (whole days, times with
       // no zone), so a new zone means reading them again from scratch.
       if (next.timezone !== current.timezone)
