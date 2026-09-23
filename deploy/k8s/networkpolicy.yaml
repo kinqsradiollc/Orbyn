@@ -299,7 +299,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/component
                 operator: In
-                values: [converter, web, status]
+                values: [converter, web, status, api]
       ports:
         - protocol: TCP
           port: 8000
@@ -333,9 +333,12 @@ kind: NetworkPolicy
 metadata:
   name: allow-web-to-files
 spec:
+  # The web pods forward uploads; the API reads the store for Admin → Storage.
   podSelector:
-    matchLabels:
-      app.kubernetes.io/component: web
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [web, api]
   policyTypes: [Egress]
   egress:
     - to:

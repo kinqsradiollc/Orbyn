@@ -3,6 +3,7 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   dateLabel,
+  describeRrule,
   parseRichText,
   type Action,
   type DocSource,
@@ -181,6 +182,12 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   compare("Due", dateLabel(current.due_at), dateLabel(data.due_at));
   if (current.end_at || data.end_at)
     compare("Ends", dateLabel(current.end_at), dateLabel(data.end_at));
+  if (data.rrule !== undefined)
+    compare(
+      "Repeats",
+      describeRrule(current.rrule) || "Doesn't repeat",
+      describeRrule(data.rrule) || "Doesn't repeat",
+    );
   compare("Priority", current.priority, data.priority);
   compare("Status", current.status, data.status);
   compare("Type", current.kind, data.kind);
@@ -246,6 +253,7 @@ function Details({
         {dateLabel(data.due_at) +
           (data.end_at ? ` → ${dateLabel(data.end_at)}` : "")}
       </Chip>
+      {!!data.rrule && <Chip>{describeRrule(data.rrule)}</Chip>}
       <Chip
         high={data.priority === "high"}
       >{`${capitalize(data.priority)} priority`}</Chip>

@@ -255,12 +255,9 @@ export function UploadsList({
   onImport: () => void;
 }) {
   const waiting = docs.filter((d) => d.in_uploads);
-  const shownJobs = jobs.filter(
-    (j) =>
-      j.status !== "ready" ||
-      !j.doc_id ||
-      !waiting.some((d) => d.id === j.doc_id),
-  );
+  // A finished import is shown as its page (below) while it waits to be
+  // filed; once filed or deleted, it's gone from Uploads.
+  const shownJobs = jobs.filter((j) => j.status !== "ready");
   return (
     <View style={s.list}>
       <Text style={s.intro}>

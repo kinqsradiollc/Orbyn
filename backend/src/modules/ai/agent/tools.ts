@@ -155,7 +155,7 @@ const draftProperties: Record<string, JsonSchema> = {
   rrule: {
     type: "string",
     description:
-      'How it repeats, e.g. "FREQ=DAILY", "FREQ=WEEKLY;BYDAY=MO,WE", "FREQ=MONTHLY;COUNT=6". Needs due_at.',
+      'How it repeats, e.g. "FREQ=DAILY", "FREQ=WEEKLY;BYDAY=MO,WE", every weekday "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", "FREQ=MONTHLY;COUNT=6". List every day it repeats on in BYDAY. Needs due_at.',
   },
 };
 
@@ -503,7 +503,6 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
   const results = [];
   for (const [index, d] of a.items.entries()) {
     try {
-      if (full(ctx)) throw new Error(TOO_MANY);
       const data = itemData.parse(normalize(d, ctx.timezone));
       if (data.team_id && !(await canWriteTeam(ctx, data.team_id)))
         throw new Error(
@@ -514,8 +513,21 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
         x.data!.title.toLowerCase() === data.title.toLowerCase() &&
         x.data!.kind === data.kind &&
         x.data!.due_at === data.due_at;
-      if (ctx.actions.some(same))
-        throw new Error("Already proposed in this reply.");
+      // Proposing the same item again in one reply is a correction (a
+      // different repeat, a fixed time): it replaces the earlier draft.
+      const earlier = ctx.actions.findIndex(same);
+      if (earlier >= 0) {
+        ctx.actions[earlier] = { operation: "create", data };
+        results.push({
+          index,
+          ok: true,
+          replaced_earlier_draft: true,
+          title: data.title,
+          due_at: localIso(data.due_at, ctx.timezone),
+        });
+        continue;
+      }
+      if (full(ctx)) throw new Error(TOO_MANY);
       const existing = (
         await pool.query<{ id: string }>(
           `SELECT i.id FROM items i WHERE ${VISIBLE_ITEMS} AND lower(i.title) = lower($2)
