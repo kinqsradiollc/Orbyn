@@ -100,6 +100,9 @@ test("members cannot reach any admin route", async () => {
     "/admin/users",
     "/admin/teams",
     "/admin/audit",
+    "/admin/database/tables",
+    "/admin/database/tables/users",
+    "/admin/database/tables/users/rows",
   ])
     assert.equal((await call(member, "GET", url)).statusCode, 403, url);
   assert.equal(
@@ -113,6 +116,44 @@ test("members cannot reach any admin route", async () => {
   assert.equal(
     (await call(member, "DELETE", `/admin/users/${outsider.id}`)).statusCode,
     403,
+  );
+});
+
+test("database explorer exposes structure but masks private values", async () => {
+  const anonymous = await app.inject({
+    method: "GET",
+    url: "/admin/database/tables",
+  });
+  assert.equal(anonymous.statusCode, 401);
+  const tables = await call(admin, "GET", "/admin/database/tables");
+  assert.equal(tables.statusCode, 200, tables.body);
+  assert.ok(tables.json().some((t: { name: string }) => t.name === "users"));
+
+  const detail = await call(admin, "GET", "/admin/database/tables/users");
+  assert.equal(detail.statusCode, 200, detail.body);
+  assert.ok(
+    detail
+      .json()
+      .columns.some((c: { name: string }) => c.name === "password_hash"),
+  );
+  assert.ok(detail.json().indexes.length > 0);
+
+  const rows = await call(admin, "GET", "/admin/database/tables/users/rows");
+  assert.equal(rows.statusCode, 200, rows.body);
+  assert.ok(rows.json().rows.length > 0);
+  for (const row of rows.json().rows) assert.equal(row.password_hash, "••••");
+  assert.equal(rows.json().limit, 25);
+  const items = await call(admin, "GET", "/admin/database/tables/items/rows");
+  assert.equal(items.statusCode, 200, items.body);
+  for (const row of items.json().rows) assert.equal(row.title, "••••");
+  assert.equal(
+    (await call(admin, "GET", "/admin/database/tables/not_a_table")).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(admin, "GET", "/admin/database/tables/users/rows?offset=-1"))
+      .statusCode,
+    422,
   );
 });
 

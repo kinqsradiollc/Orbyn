@@ -254,6 +254,41 @@ export type AdminOverview = {
   notifications_failed: number;
 };
 
+export type AdminDatabaseTable = {
+  name: string;
+  estimated_rows: number;
+  total_bytes: number;
+  size: string;
+  description: string | null;
+};
+
+export type AdminDatabaseColumn = {
+  name: string;
+  type: string;
+  nullable: boolean;
+  default_value: string | null;
+  primary_key: boolean;
+  description: string | null;
+};
+
+export type AdminDatabaseIndex = {
+  name: string;
+  definition: string;
+};
+
+export type AdminDatabaseTableDetail = {
+  table: AdminDatabaseTable;
+  columns: AdminDatabaseColumn[];
+  indexes: AdminDatabaseIndex[];
+};
+
+export type AdminDatabaseRows = {
+  rows: Record<string, unknown>[];
+  limit: number;
+  offset: number;
+  has_more: boolean;
+};
+
 export type AuditEntry = {
   id: string;
   actor_id: string | null;

@@ -278,6 +278,7 @@ function NumberField(props: {
 }
 
 function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
+  const { ask } = useConfirm();
   const [view, setView] = useState<SystemSettingsView | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [testTo, setTestTo] = useState("");
@@ -301,7 +302,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
     save.setOutcome(null);
   };
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft || !view) return;
     const body = changes(draft, view.settings);
@@ -313,6 +314,17 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
       save.setOutcome({ ok: true, text: "Nothing to save." });
       return;
     }
+    const labels = Object.keys(body).map(
+      (key) => LABELS[key as SystemSettingKey],
+    );
+    if (
+      !(await ask({
+        title: `Save ${labels.join(", ")} for the whole workspace?`,
+        body: APPLY_NOTE,
+        confirmLabel: "Save settings",
+      }))
+    )
+      return;
     void save.run(async () => {
       const next = await client.updateSystemSettings(body);
       setView(next);
@@ -322,7 +334,14 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
   };
 
   /** Resets one setting and refreshes only its fields, keeping other edits. */
-  const reset = (key: SystemSettingKey) =>
+  const reset = async (key: SystemSettingKey) => {
+    if (
+      !(await ask({
+        title: `Reset ${LABELS[key]} to its .env value for the whole workspace?`,
+        confirmLabel: "Reset setting",
+      }))
+    )
+      return;
     void save.run(async () => {
       const next = await client.updateSystemSettings({ reset: [key] });
       setView(next);
@@ -333,9 +352,17 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
       setDraft((d) => (d ? { ...d, ...picked } : fresh));
       return `${LABELS[key]} now uses the .env value. ${APPLY_NOTE}`;
     });
+  };
 
-  const sendTest = (e: FormEvent) => {
+  const sendTest = async (e: FormEvent) => {
     e.preventDefault();
+    if (
+      !(await ask({
+        title: `Send a test email to ${testTo.trim() || user?.email || "the configured address"}?`,
+        confirmLabel: "Send test",
+      }))
+    )
+      return;
     void test.run(async () => {
       const result = await client.sendTestEmail(testTo.trim() || undefined);
       return `Test email sent to ${result.to}.`;
@@ -628,7 +655,16 @@ function MaintenanceCard({
   );
   useEffect(load, [load]);
 
-  const apply = (enabled: boolean) =>
+  const apply = async (enabled: boolean) => {
+    if (
+      !(await ask({
+        title: enabled
+          ? "Apply maintenance mode settings? Members will be unable to make changes while it is on."
+          : "Turn off maintenance mode? Members will be able to make changes again.",
+        confirmLabel: "Apply change",
+      }))
+    )
+      return;
     void action.run(async () => {
       const next = await client.setMaintenance({
         enabled,
@@ -640,18 +676,9 @@ function MaintenanceCard({
       if (!enabled) return "Maintenance mode is off.";
       return state?.enabled ? "Saved." : "Maintenance mode is on.";
     });
-
-  const toggle = async (enabled: boolean) => {
-    if (
-      enabled &&
-      !(await ask({
-        title:
-          "Turn on maintenance mode? Members can still view everything, but they can't change anything until you turn it off. Admins can still work.",
-      }))
-    )
-      return;
-    apply(enabled);
   };
+
+  const toggle = (enabled: boolean) => void apply(enabled);
 
   const on = !!state?.enabled;
 

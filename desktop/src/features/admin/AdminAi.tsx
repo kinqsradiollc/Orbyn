@@ -88,7 +88,16 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       : (AI_PROVIDERS[p.kind]?.suggestedModels[0] ?? ""));
 
   /** Run a mutation, then reload the list. */
-  const mutate = (fn: () => Promise<unknown>) =>
+  const mutate = async (
+    fn: () => Promise<unknown>,
+    warning = "Apply this AI configuration change? It affects the assistant for everyone.",
+    confirmed = false,
+  ) => {
+    if (
+      !confirmed &&
+      !(await ask({ title: warning, confirmLabel: "Apply change" }))
+    )
+      return;
     void act(async () => {
       try {
         await fn();
@@ -96,6 +105,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         await load();
       }
     });
+  };
 
   const loadModels = (p: AiProvider) =>
     void act(async () => {
@@ -124,10 +134,14 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       }))
     )
       return;
-    mutate(async () => {
-      await client.deleteAiProvider(p.id);
-      if (editing !== "new" && editing?.id === p.id) setEditing(null);
-    });
+    void mutate(
+      async () => {
+        await client.deleteAiProvider(p.id);
+        if (editing !== "new" && editing?.id === p.id) setEditing(null);
+      },
+      "",
+      true,
+    );
   };
 
   const turnOff = async () => {
@@ -140,7 +154,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       }))
     )
       return;
-    mutate(() => client.updateAiSettings({ provider_id: null }));
+    void mutate(() => client.updateAiSettings({ provider_id: null }), "", true);
   };
 
   return (
@@ -192,10 +206,15 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           busy={busy}
           onCancel={() => setEditing(null)}
           onSave={(save) =>
-            mutate(async () => {
-              await save();
-              setEditing(null);
-            })
+            void mutate(
+              async () => {
+                await save();
+                setEditing(null);
+              },
+              editing === "new"
+                ? "Add this AI provider for the workspace?"
+                : `Save changes to ${editing?.name}?`,
+            )
           }
           onRemoveKey={async (p) => {
             if (
@@ -206,7 +225,11 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               }))
             )
               return;
-            mutate(() => client.updateAiProvider(p.id, { api_key: "" }));
+            void mutate(
+              () => client.updateAiProvider(p.id, { api_key: "" }),
+              "",
+              true,
+            );
           }}
         />
       )}
@@ -280,8 +303,9 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                         disabled={busy}
                         onChange={(e) => {
                           const enabled = e.target.checked;
-                          mutate(() =>
-                            client.updateAiProvider(p.id, { enabled }),
+                          void mutate(
+                            () => client.updateAiProvider(p.id, { enabled }),
+                            `${enabled ? "Enable" : "Disable"} ${p.name} for the workspace?`,
                           );
                         }}
                       />
@@ -388,11 +412,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                               : undefined
                         }
                         onClick={() =>
-                          mutate(() =>
-                            client.updateAiSettings({
-                              provider_id: p.id,
-                              model: model.trim(),
-                            }),
+                          void mutate(
+                            () =>
+                              client.updateAiSettings({
+                                provider_id: p.id,
+                                model: model.trim(),
+                              }),
+                            `Use ${p.name} with ${model.trim()} for the assistant?`,
                           )
                         }
                       >
@@ -485,7 +511,6 @@ function ProviderForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const key = apiKey;
-    setApiKey("");
     const opts = Object.fromEntries(
       def.options.map((o) => [o.key, options[o.key]?.trim() ?? ""]),
     ) as { apiVersion?: string };

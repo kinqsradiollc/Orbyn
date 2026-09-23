@@ -834,17 +834,26 @@ A team must always keep an owner (`409`). System admins can manage any team as a
 All routes require a system admin (`403` otherwise). Admins see accounts, teams, membership, and
 counts, but never the contents of personal or team items.
 
-| Method and path           | Body / result                                                                                                                                                |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /admin/overview`     | Counts of users, admins, disabled users, teams, items, open items, reminders                                                                                 |
-| `GET /admin/users`        | `?search=&limit=&offset=` → `{ rows: AdminUser[], total }`                                                                                                   |
-| `PUT /admin/users/:id`    | `{ "role"?: "admin" \| "member", "disabled"?: boolean, "email_verified"?: boolean }`; disabling signs them out; `email_verified` confirms an address by hand |
-| `DELETE /admin/users/:id` | `204`; their sole-owned teams pass to the next most senior member                                                                                            |
-| `GET /admin/teams`        | Every team with counts                                                                                                                                       |
-| `GET /admin/audit`        | `?limit=&offset=` → `{ rows: AuditEntry[], total }`, newest first                                                                                            |
+| Method and path                         | Body / result                                                                                                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /admin/overview`                   | Counts of users, admins, disabled users, teams, items, open items, reminders                                                                                 |
+| `GET /admin/users`                      | `?search=&limit=&offset=` → `{ rows: AdminUser[], total }`                                                                                                   |
+| `PUT /admin/users/:id`                  | `{ "role"?: "admin" \| "member", "disabled"?: boolean, "email_verified"?: boolean }`; disabling signs them out; `email_verified` confirms an address by hand |
+| `DELETE /admin/users/:id`               | `204`; their sole-owned teams pass to the next most senior member                                                                                            |
+| `GET /admin/teams`                      | Every team with counts                                                                                                                                       |
+| `GET /admin/audit`                      | `?limit=&offset=` → `{ rows: AuditEntry[], total }`, newest first                                                                                            |
+| `GET /admin/database/tables`            | Public-schema table names, approximate row counts, sizes and comments; requires `system:manage`                                                              |
+| `GET /admin/database/tables/:name`      | Columns, types, defaults, primary keys and indexes for one table; requires `system:manage`                                                                   |
+| `GET /admin/database/tables/:name/rows` | Read-only, redacted 25-row preview; `?offset=0..10000`; requires `system:manage`                                                                             |
 
 The last active admin cannot be demoted, disabled, or deleted (`409`), and admins cannot delete
 their own account here.
+
+The database explorer does not accept SQL or mutations. It masks private content,
+password hashes, tokens and other secrets in row previews; only operational
+identifiers, states and timestamps plus fields already visible in the admin
+console are shown. Table structure and indexes remain visible to help diagnose
+schema and migration issues.
 
 ### Task progress
 

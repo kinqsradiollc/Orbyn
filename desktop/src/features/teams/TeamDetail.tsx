@@ -50,7 +50,11 @@ export type TeamActions = {
   onToggle: (item: Item) => void;
 };
 
-type Props = TeamActions & { teamId: string; onClose: () => void };
+type Props = TeamActions & {
+  teamId: string;
+  onClose: () => void;
+  warnOnChanges?: boolean;
+};
 
 /**
  * One team: settings, members and shared items. Controls follow the actor's
@@ -69,6 +73,7 @@ export function TeamDetail({
   onOpenItem,
   onNewTeamItem,
   onToggle,
+  warnOnChanges = false,
 }: Props) {
   const { ask, tell } = useConfirm();
   const [team, setTeam] = useState<TeamDetailData | null>(null);
@@ -124,9 +129,12 @@ export function TeamDetail({
 
   const changeRole = async (m: TeamMember, role: TeamRole) => {
     if (
-      m.user_id === user?.id &&
+      (warnOnChanges || m.user_id === user?.id) &&
       !(await ask({
-        title: `Change your own role to ${TEAM_ROLE_LABELS[role]}? You may lose access to some controls.`,
+        title:
+          m.user_id === user?.id
+            ? `Change your own role to ${TEAM_ROLE_LABELS[role]}? You may lose access to some controls.`
+            : `Change ${m.name}'s role in ${team.name} to ${TEAM_ROLE_LABELS[role]}?`,
       }))
     )
       return;
@@ -214,12 +222,20 @@ export function TeamDetail({
             <form
               key={team.name}
               className="inline-form"
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 const name = String(
                   new FormData(e.currentTarget).get("name"),
                 ).trim();
                 if (!name || name === team.name) return;
+                if (
+                  warnOnChanges &&
+                  !(await ask({
+                    title: `Rename ${team.name} to ${name} for everyone?`,
+                    confirmLabel: "Rename",
+                  }))
+                )
+                  return;
                 mutate(() => client.updateTeam(team.id, { name }));
               }}
             >
@@ -332,14 +348,24 @@ export function TeamDetail({
       {canManage && (
         <form
           className="inline-form add-member"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             const form = e.currentTarget;
             const d = new FormData(form);
+            const email = String(d.get("email")).trim();
+            const role = d.get("role") as TeamRole;
+            if (
+              warnOnChanges &&
+              !(await ask({
+                title: `Add ${email} to ${team.name} as ${TEAM_ROLE_LABELS[role]}?`,
+                confirmLabel: "Add member",
+              }))
+            )
+              return;
             void act(async () => {
               await client.addTeamMember(team.id, {
-                email: String(d.get("email")).trim(),
-                role: d.get("role") as TeamRole,
+                email,
+                role,
               });
               form.reset();
               await refresh();

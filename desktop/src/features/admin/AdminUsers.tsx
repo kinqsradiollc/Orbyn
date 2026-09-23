@@ -46,41 +46,35 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
     return () => clearTimeout(t);
   }, [search, fetchPage]);
 
-  const update = (
+  const update = async (
     target: AdminUser,
     input: { role?: SystemRole; disabled?: boolean; email_verified?: boolean },
-  ) =>
+  ) => {
+    const title = input.role
+      ? `Change ${target.email}'s system role from ${target.role} to ${input.role}?${target.id === user?.id && input.role !== "admin" ? " You'll lose access to this console." : ""}`
+      : input.disabled !== undefined
+        ? `${input.disabled ? "Disable" : "Enable"} ${target.email}? ${input.disabled ? "They will be signed out and unable to sign in." : "They will be able to sign in again."}`
+        : `Mark ${target.email} as verified? This bypasses email confirmation.`;
+    if (
+      !(await ask({
+        title,
+        confirmLabel: "Apply change",
+        destructive: input.disabled === true,
+      }))
+    )
+      return;
     void act(async () => {
       const next = await client.adminUpdateUser(target.id, input);
       setRows((rs) => rs.map((r) => (r.id === next.id ? next : r)));
       await refresh();
     });
-
-  const changeRole = async (target: AdminUser, role: SystemRole) => {
-    if (
-      target.id === user?.id &&
-      role !== "admin" &&
-      !(await ask({
-        title:
-          "Remove your own admin access? You'll lose access to this console.",
-        confirmLabel: "Remove",
-        destructive: true,
-      }))
-    )
-      return;
-    update(target, { role });
   };
 
-  const toggleDisabled = async (target: AdminUser) => {
-    if (
-      !target.disabled &&
-      !(await ask({
-        title: `Disable ${target.email}? They won't be able to sign in until you enable them again.`,
-      }))
-    )
-      return;
-    update(target, { disabled: !target.disabled });
-  };
+  const changeRole = (target: AdminUser, role: SystemRole) =>
+    void update(target, { role });
+
+  const toggleDisabled = (target: AdminUser) =>
+    void update(target, { disabled: !target.disabled });
 
   const remove = async (target: AdminUser) => {
     if (
@@ -155,7 +149,9 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
                         <button
                           className="link-button"
                           disabled={busy}
-                          onClick={() => update(u, { email_verified: true })}
+                          onClick={() =>
+                            void update(u, { email_verified: true })
+                          }
                         >
                           Verify
                         </button>

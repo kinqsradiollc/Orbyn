@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BellRing,
   CircleDashed,
+  Database,
   LayoutDashboard,
   ListTodo,
   Network,
@@ -28,15 +29,18 @@ import { AdminUsers } from "./AdminUsers";
 import { AdminAudit } from "./AdminAudit";
 import { AdminAi } from "./AdminAi";
 import { AdminSystem } from "./AdminSystem";
+import { AdminDatabase } from "./AdminDatabase";
 import { stagger } from "../../lib/motion";
 
-type Tab = "Overview" | "Users" | "Teams" | "Audit log" | "AI" | "System";
+type Tab =
+  "Overview" | "Users" | "Teams" | "Audit log" | "Database" | "AI" | "System";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Overview", icon: LayoutDashboard },
   { label: "Users", icon: Users },
   { label: "Teams", icon: Network },
   { label: "Audit log", icon: ScrollText },
+  { label: "Database", icon: Database },
   { label: "AI", icon: Sparkles },
   { label: "System", icon: ServerCog },
 ];
@@ -75,6 +79,7 @@ export function AdminView({
   const tabs = TABS.filter(
     (t) =>
       (t.label !== "AI" || canManageAi) &&
+      (t.label !== "Database" || canManageSystem) &&
       (t.label !== "System" || canManageSystem),
   );
 
@@ -97,7 +102,12 @@ export function AdminView({
         ))}
       </div>
       {tab === "Overview" && (
-        <OverviewPanel revision={props.revision} report={props.report} />
+        <OverviewPanel
+          revision={props.revision}
+          report={props.report}
+          canManageSystem={canManageSystem}
+          onNavigate={setTab}
+        />
       )}
       {tab === "Users" && <AdminUsers {...props} />}
       {tab === "Teams" &&
@@ -109,6 +119,7 @@ export function AdminView({
             <TeamDetail
               key={teamId}
               teamId={teamId}
+              warnOnChanges
               onClose={() => setTeamId(null)}
               {...props}
             />
@@ -121,6 +132,9 @@ export function AdminView({
           />
         ))}
       {tab === "Audit log" && <AdminAudit report={props.report} />}
+      {tab === "Database" && canManageSystem && (
+        <AdminDatabase report={props.report} />
+      )}
       {tab === "AI" && canManageAi && <AdminAi {...props} />}
       {tab === "System" && canManageSystem && (
         <AdminSystem
@@ -136,23 +150,81 @@ export function AdminView({
 function OverviewPanel({
   revision,
   report,
-}: Pick<TeamActions, "revision" | "report">) {
+  canManageSystem,
+  onNavigate,
+}: Pick<TeamActions, "revision" | "report"> & {
+  canManageSystem: boolean;
+  onNavigate: (tab: Tab) => void;
+}) {
   const data = useRemote(() => client.adminOverview(), [revision], report);
+  const activity = useRemote(
+    () => client.adminListAudit({ limit: 6 }),
+    [revision],
+    report,
+  );
   return (
-    <div className="stat-grid">
-      {STATS.map(({ key, label, icon: Icon }, n) => (
-        <div
-          className="card stat-card fade-up stagger"
-          style={stagger(n)}
-          key={key}
-        >
-          <span>
-            <Icon size={15} /> {label}
-          </span>
-          <strong>{data ? data[key] : "–"}</strong>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="stat-grid">
+        {STATS.map(({ key, label, icon: Icon }, n) => (
+          <div
+            className="card stat-card fade-up stagger"
+            style={stagger(n)}
+            key={key}
+          >
+            <span>
+              <Icon size={15} /> {label}
+            </span>
+            <strong>{data ? data[key] : "–"}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="admin-overview-lower">
+        <section className="card admin-recent">
+          <div className="section-heading">
+            <h2>Recent changes</h2>
+            <button
+              className="link-button"
+              onClick={() => onNavigate("Audit log")}
+            >
+              View audit log
+            </button>
+          </div>
+          {activity?.rows.length ? (
+            <div className="admin-recent-list">
+              {activity.rows.map((entry) => (
+                <div key={entry.id}>
+                  <span>
+                    <strong>{entry.action.replaceAll(".", " · ")}</strong>
+                    <small>{entry.actor_email ?? "System"}</small>
+                  </span>
+                  <time dateTime={entry.created_at}>
+                    {new Date(entry.created_at).toLocaleString()}
+                  </time>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted admin-recent-empty">No changes recorded yet.</p>
+          )}
+        </section>
+        <section className="card admin-safety">
+          <ShieldCheck size={20} />
+          <h2>Changes stay deliberate</h2>
+          <p>
+            Admin actions show a warning before they apply. The audit log
+            records changes, and database previews mask private content.
+          </p>
+          {canManageSystem && (
+            <button
+              className="secondary"
+              onClick={() => onNavigate("Database")}
+            >
+              <Database size={14} /> Explore database
+            </button>
+          )}
+        </section>
+      </div>
+    </>
   );
 }
 

@@ -1,6 +1,9 @@
 import {
   HttpError,
   type AdminOverview,
+  type AdminDatabaseTable,
+  type AdminDatabaseTableDetail,
+  type AdminDatabaseRows,
   type Doc,
   type DocBlock,
   type DocKind,
@@ -1779,6 +1782,19 @@ export class OrbynClient {
   // ---- admin (system admins only) ----
   adminOverview() {
     return this.request<AdminOverview>("/admin/overview");
+  }
+  adminDatabaseTables() {
+    return this.request<AdminDatabaseTable[]>("/admin/database/tables");
+  }
+  adminDatabaseTable(name: string) {
+    return this.request<AdminDatabaseTableDetail>(
+      `/admin/database/tables/${encodeURIComponent(name)}`,
+    );
+  }
+  adminDatabaseRows(name: string, offset = 0) {
+    return this.request<AdminDatabaseRows>(
+      `/admin/database/tables/${encodeURIComponent(name)}/rows?offset=${offset}`,
+    );
   }
   adminListUsers(
     params: { search?: string; limit?: number; offset?: number } = {},
