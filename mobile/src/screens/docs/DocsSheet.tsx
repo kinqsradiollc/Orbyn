@@ -22,6 +22,8 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
+import { confirmAction } from "../../lib/confirm";
+import { shared } from "../../styles";
 import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
 import { Button } from "../../components/Button";
@@ -803,8 +805,48 @@ function OpenDoc({
   // The lines as the editor has them, which runs ahead of the saved copy.
   const [blocks, setBlocks] = useState(doc.content);
   const comments = useDocComments(doc.id, blocks, report);
+  const [rewriting, setRewriting] = useState(false);
+  const [rewritten, setRewritten] = useState("");
+  const rewrite = () =>
+    confirmAction(
+      "Rewrite today's agenda?",
+      "It's written again from your calendar as it is now. Anything you've typed on the page is replaced.",
+      "Rewrite",
+      () => {
+        setRewriting(true);
+        setRewritten("");
+        client.rewriteAgenda().then(
+          (next) => {
+            setRewriting(false);
+            setRewritten(
+              next.brief
+                ? "Rewritten from your calendar, with the assistant's summary."
+                : "Rewritten from your calendar.",
+            );
+            onChanged(next);
+          },
+          (e) => {
+            setRewriting(false);
+            report(e);
+          },
+        );
+      },
+    );
   return (
     <>
+      {doc.kind === "agenda" && (
+        <View style={styles.agendaBar}>
+          <Text style={[shared.small, { flex: 1 }]}>
+            {rewritten ||
+              "Written from your calendar, including the calendars you subscribe to."}
+          </Text>
+          <SmallAction
+            label={rewriting ? "Rewriting…" : "Rewrite"}
+            disabled={rewriting}
+            onPress={rewrite}
+          />
+        </View>
+      )}
       <DocEditor
         doc={doc}
         comments={comments}
@@ -829,6 +871,12 @@ function OpenDoc({
 
 const styles = themed(() =>
   StyleSheet.create({
+    agendaBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 12,
+    },
     fadingBar: {
       flexDirection: "row",
       alignItems: "center",

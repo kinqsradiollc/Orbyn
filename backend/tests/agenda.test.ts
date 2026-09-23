@@ -105,7 +105,7 @@ test("the agenda splits today, what slipped and what's coming", () => {
   );
   assert.ok(text.includes("Write the brief"));
   assert.ok(text.includes("Chase the invoice"));
-  assert.ok(text.some((t) => /2026-09-24 — Book the venue/.test(t)));
+  assert.ok(text.some((t) => /Thu 24 Sept? — Book the venue/.test(t)));
   assert.ok(!text.some((t) => /Next month|Already done/.test(t)));
 });
 

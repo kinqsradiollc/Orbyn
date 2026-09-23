@@ -27,7 +27,14 @@ import { ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { complete } from "./providers/adapters.js";
 import { runAgent } from "./agent/loop.js";
-import { overview, related, type AgentContext } from "./agent/tools.js";
+import {
+  overview,
+  related,
+  requestWords,
+  type AgentContext,
+} from "./agent/tools.js";
+import { calendarMatches } from "./agent/workspace.js";
+import { rewriteAgenda } from "../docs/agenda.js";
 import { requireTeam } from "../../lib/teams.js";
 
 /**
@@ -80,6 +87,8 @@ async function answer(
       {
         ...(await overview(ctx)),
         matching_request: await related(ctx, d.message),
+        // Timetable, shift or exam events the request names, further ahead.
+        matching_calendar: await calendarMatches(ctx, requestWords(d.message)),
       },
       log,
     );
@@ -232,6 +241,16 @@ function runJob(
 export async function aiRoutes(app: FastifyInstance) {
   // Draft a project from a prompt: a set of subtasks with estimates and due
   // dates, returned as a proposal to review — nothing is saved until applied.
+  /**
+   * Write today's agenda again from the calendar as it is now, opening with
+   * the assistant's summary of the day when a provider is connected. It
+   * replaces the page's content, so the apps ask first.
+   */
+  app.post("/ai/agenda/today", strictRateLimit, async (r) => {
+    const u = await authenticate(r);
+    return rewriteAgenda(u.id, { withBrief: true });
+  });
+
   app.post("/ai/project", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const d = projectRequest.parse(r.body);

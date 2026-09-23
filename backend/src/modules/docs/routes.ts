@@ -2,8 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
-  agendaTitle,
-  buildAgenda,
   docCommentInput,
   docCommentUpdate,
   docInput,
@@ -46,6 +44,7 @@ import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
+import { todaysAgenda } from "./agenda.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
 
@@ -56,7 +55,7 @@ import { docToPdf } from "./pdf.js";
  * against, so two open tabs can't silently overwrite each other.
  */
 
-const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
+export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
@@ -65,7 +64,7 @@ const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kin
              WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
 
 /** Joined wherever `COLUMNS` is selected, for the project a note hangs off. */
-const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
+export const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
   LEFT JOIN projects p ON p.id = d.project_id`;
 
 /**
@@ -655,52 +654,15 @@ export async function docRoutes(app: FastifyInstance) {
   // service (modules/realtime), which holds the long-lived connections.
 
   /**
-   * Today's agenda. Generated once per day from the planner and then kept as
-   * an ordinary document, so edits survive; asking again the same day returns
-   * the same page rather than overwriting what you wrote.
+   * Today's agenda. Written once per day from the calendar (see agenda.ts)
+   * and then kept as an ordinary document, so edits survive; asking again
+   * the same day returns the same page rather than overwriting what you
+   * wrote. It never waits on the AI provider: the worker writes the morning's
+   * page with the assistant's summary, and "Rewrite" asks for one.
    */
   app.get("/agenda/today", async (r) => {
     const u = await authenticate(r);
-    const prefs = await loadPrefs(pool, u.id);
-    const tz = prefs.timezone || "UTC";
-    const now = new Date();
-    const title = agendaTitle(now, tz);
-
-    const existing = (
-      await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
-          WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.title = $2
-          ORDER BY d.created_at DESC LIMIT 1`,
-        [u.id, title],
-      )
-    ).rows[0];
-    if (existing) return existing;
-
-    const items = (
-      await pool.query<Item>(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
-           AND i.due_at IS NOT NULL
-         ORDER BY i.due_at LIMIT 500`,
-        [u.id],
-      )
-    ).rows;
-    const content = buildAgenda(items, { now, timeZone: tz });
-    return transaction(async (db) => {
-      const id = (
-        await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, title, kind, content)
-             VALUES ($1,$2,'agenda',$3::jsonb) RETURNING id`,
-          [u.id, title, JSON.stringify(content)],
-        )
-      ).rows[0].id;
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [id],
-        )
-      ).rows[0];
-    });
+    return todaysAgenda(u.id);
   });
 
   /**

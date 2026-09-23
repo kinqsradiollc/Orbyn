@@ -10,7 +10,9 @@ import {
   agendaEntries,
   busyIntervals,
   loadPrefs,
+  timeBlocks,
 } from "../../planner/calendar.js";
+import { externalEntries } from "../../planner/subscriptions.js";
 import {
   freeSpans,
   largestFreeMinutes,
@@ -454,4 +456,127 @@ export async function followThrough(ctx: AgentContext) {
       ? `${Math.round((reality.rate ?? 0) * 100)}% of time set aside for tasks went into them over the last ${reality.window_days} days`
       : "Not enough planned time yet to say how plans hold up.",
   };
+}
+
+/** One calendar entry as the assistant sees it: when, what, and whose. */
+function calendarLine(
+  e: Awaited<ReturnType<typeof agendaEntries>>[number],
+  timezone: string,
+) {
+  const start = new Date(e.start_at);
+  return {
+    when: e.all_day
+      ? `${new Intl.DateTimeFormat("en-GB", {
+          timeZone: timezone,
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        }).format(start)} (all day)`
+      : whenLabel(start, new Date(e.end_at), timezone),
+    title: clean(e.title, 120),
+    ...(e.location ? { location: clean(e.location, 80) } : {}),
+    calendar:
+      e.source === "subscription"
+        ? `${e.calendar}${e.calendar_kind ? ` (${e.calendar_kind})` : ""}`
+        : "yours",
+    ...(e.busy ? {} : { free: true }),
+    ...(e.source === "subscription" ? { read_only: true } : {}),
+  };
+}
+
+/**
+ * What the next few days actually look like, for the assistant's overview:
+ * every event on the calendar (your own, repeating ones expanded, and the
+ * calendars you subscribe to — classes, shifts, exams), the time set aside
+ * for tasks, and how much free working time is left today. Providers that
+ * don't use tools answer from this alone, so it has to be the real day.
+ */
+export async function calendarGlance(ctx: AgentContext, days = 3) {
+  const now = new Date();
+  const start = Date.parse(
+    toInstant(localDate(now, ctx.timezone), ctx.timezone),
+  );
+  const from = new Date(start);
+  const to = new Date(start + days * 86_400_000);
+  const endOfToday = new Date(start + 86_400_000);
+  const [entries, blocks, prefs, busy] = await Promise.all([
+    agendaEntries(pool, ctx.user.id, from, to),
+    timeBlocks(pool, ctx.user.id, from, to),
+    loadPrefs(pool, ctx.user.id),
+    busyIntervals(pool, ctx.user.id, now, endOfToday, {
+      blocks: true,
+      derived: true,
+    }),
+  ]);
+  const free =
+    now < endOfToday
+      ? freeSpans(workingSpans(prefs, now, endOfToday), busy).filter(
+          (s) => s.end - s.start >= 15 * 60_000,
+        )
+      : [];
+  return {
+    calendar: entries.slice(0, 40).map((e) => calendarLine(e, ctx.timezone)),
+    ...(entries.length > 40 ? { calendar_more: entries.length - 40 } : {}),
+    set_aside: blocks
+      .sort((a, b) => a.start_at.localeCompare(b.start_at))
+      .slice(0, 12)
+      .map((b) => ({
+        when: whenLabel(new Date(b.start_at), new Date(b.end_at), ctx.timezone),
+        title: clean(b.title, 120),
+      })),
+    free_today: {
+      minutes: Math.round(
+        free.reduce((n, s) => n + (s.end - s.start), 0) / 60_000,
+      ),
+      stretches: free
+        .slice(0, 5)
+        .map((s) =>
+          whenLabel(new Date(s.start), new Date(s.end), ctx.timezone),
+        ),
+    },
+  };
+}
+
+/**
+ * Events on subscribed calendars whose titles share words with a request, in
+ * the next two months, so "when is my Research Methods lecture?" is answered
+ * from the timetable without a tool call.
+ */
+export async function calendarMatches(ctx: AgentContext, words: string[]) {
+  if (!words.length) return [];
+  const now = new Date();
+  const to = new Date(now.getTime() + 60 * 86_400_000);
+  const seen = new Set<string>();
+  const found: Awaited<ReturnType<typeof externalEntries>> = [];
+  for (const word of words.slice(0, 6))
+    for (const e of await externalEntries(pool, ctx.user.id, now, to, {
+      visible: true,
+      words: [`%${word.replace(/[\\%_]/g, "\\$&")}%`],
+    })) {
+      const key = `${e.subscription_id}|${e.start_at}|${e.title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(e);
+    }
+  // The soonest ones: the next lecture, not all thirteen weeks of it.
+  return found
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
+    .slice(0, 10)
+    .map((e) =>
+      calendarLine(
+        {
+          source: "subscription",
+          item_id: null,
+          title: e.title,
+          start_at: e.start_at,
+          end_at: e.end_at,
+          all_day: e.all_day,
+          location: e.location,
+          busy: e.busy,
+          calendar: e.name,
+          calendar_kind: e.calendar_kind ?? null,
+        },
+        ctx.timezone,
+      ),
+    );
 }

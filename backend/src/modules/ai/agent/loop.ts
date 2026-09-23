@@ -1,3 +1,4 @@
+import { fitData } from "./format.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { Action, ChatTurn, DocSource, DraftNote } from "@orbyn/core";
 import {
@@ -105,8 +106,16 @@ export async function runAgent(
   // Providers that are weak at multi-step tool use get the fixed graph.
   if (ai.structuredOutput)
     return runGraph(ai, ctx, message, history, overview, log);
+  // A provider with a per-message limit gets the overview cut to fit beside
+  // the rules, rather than the prompt clipped at the end.
+  const fitted = ai.limits
+    ? fitData(
+        overview,
+        ai.limits.maxMessageChars - agentPrompt(ctx.timezone, {}).length - 200,
+      )
+    : overview;
   const messages: AgentMessage[] = [
-    { role: "system", content: agentPrompt(ctx.timezone, overview) },
+    { role: "system", content: agentPrompt(ctx.timezone, fitted) },
     ...history.slice(-12).map((t) => ({
       role: t.role,
       content:

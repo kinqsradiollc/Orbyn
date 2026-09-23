@@ -276,8 +276,9 @@ export function AssistantView({
       </div>
 
       <small className="ai-note">
-        Your request and up to 100 recent items are shared with your configured
-        AI provider.
+        Your request, recent items and the next few days of your calendar
+        (subscribed calendars included) are shared with your configured AI
+        provider.
       </small>
 
       {quickMenu && (

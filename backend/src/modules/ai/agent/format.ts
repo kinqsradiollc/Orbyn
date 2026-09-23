@@ -63,3 +63,40 @@ export function toInstant(
   }
   return v;
 }
+
+/**
+ * How short each list in the assistant's data may get, in the order they're
+ * shortened: least useful first. The calendar and today's items go last.
+ */
+const SHRINK: [string, number][] = [
+  ["without_a_date", 0],
+  ["next_7_days", 3],
+  ["suggested_order", 2],
+  ["matching_calendar", 3],
+  ["set_aside", 2],
+  ["matching_request", 5],
+  ["calendar", 12],
+  ["overdue", 2],
+  ["due_today", 4],
+  ["calendar", 4],
+];
+
+/**
+ * The assistant's data cut down to `maxChars` of JSON by shortening its lists
+ * (see SHRINK), so a provider with a per-message limit (Matilda: 16,000
+ * characters) gets whole data and the whole request, never text clipped off
+ * the end. Anything it drops is still a tool call away.
+ */
+export function fitData<T>(data: T, maxChars: number): T {
+  if (!data || typeof data !== "object") return data;
+  const out = { ...(data as Record<string, unknown>) };
+  const size = () => JSON.stringify(out).length;
+  for (const [key, floor] of SHRINK) {
+    const list = out[key];
+    if (!Array.isArray(list)) continue;
+    let n = list.length;
+    while (n > floor && size() > maxChars) out[key] = list.slice(0, --n);
+    if (size() <= maxChars) break;
+  }
+  return out as T;
+}
