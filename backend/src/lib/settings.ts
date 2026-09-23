@@ -1,4 +1,6 @@
 import {
+  DEFAULT_LEGAL_VERSION,
+  compareLegalVersions,
   defaultLegalSettings,
   type Announcement,
   type LegalSettings,
@@ -107,6 +109,18 @@ async function load(): Promise<LiveSettings> {
         terms: { ...d.terms, ...l.terms },
         privacy: { ...d.privacy, ...l.privacy },
       };
+      // A document still on Orbyn's starting text is at least the version
+      // that text ships as, so an update to it asks everyone again.
+      for (const doc of ["terms", "privacy"] as const)
+        if (
+          !next.legal[doc].body &&
+          compareLegalVersions(next.legal[doc].version, DEFAULT_LEGAL_VERSION) <
+            0
+        )
+          next.legal[doc] = {
+            ...next.legal[doc],
+            version: DEFAULT_LEGAL_VERSION,
+          };
       continue;
     }
     if (row.key === "maintenance") {

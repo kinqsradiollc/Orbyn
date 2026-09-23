@@ -5,6 +5,7 @@ import {
   ListChecks,
   ListTodo,
   FileText,
+  GraduationCap,
   Boxes,
   Newspaper,
   ShieldCheck,
@@ -16,7 +17,7 @@ import {
 import { screens, screenTitle, type ScreenName } from "@orbyn/core";
 
 export type View =
-  ScreenName | "Lists" | "Agenda" | "Docs" | "Projects" | "Booking";
+  ScreenName | "Lists" | "Agenda" | "Docs" | "Study" | "Projects" | "Booking";
 
 type Screen = { title: string; subtitle: string; eyebrow: string };
 
@@ -43,6 +44,12 @@ export const SCREENS: Record<View, Screen> = {
     title: "Documents",
     subtitle:
       "Notes, briefs and working pages — with formulas that render as you type.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Study: {
+    title: "Study",
+    subtitle:
+      "Flashcards from your own pages, reviewed at the right time and planned around your exams.",
     eyebrow: "YOUR PERSONAL ORBIT",
   },
   Booking: {
@@ -80,6 +87,7 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
     items: [
       { label: "Projects", icon: Boxes },
       { label: "Docs", icon: FileText },
+      { label: "Study", icon: GraduationCap },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
     ],
@@ -102,6 +110,7 @@ export const NAV: NavEntry[] = NAV_GROUPS.flatMap((g) => g.items);
 export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Settings",
   "Docs",
+  "Study",
   "Agenda",
   "Projects",
   "AI assistant",

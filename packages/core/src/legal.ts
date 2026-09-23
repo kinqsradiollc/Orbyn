@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-09-23";
+export const DEFAULT_LEGAL_VERSION = "2026-09-23.2";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -256,7 +256,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 ## What we collect
 
 - **Your account:** your name, email address, password (stored only as a one-way hash), passkeys, two-step settings and preferences.
-- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them.
+- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them, and the flashcards in your pages with how your reviews went.
 - **Sign-ins:** the device and browser you signed in from and when each session was last used, so you can see and end them.
 - **Requests to our servers:** the address requested, when, how long it took, the result, and which account made it. We use this to run, secure and debug Orbyn.
 - **Usage analytics:** per day, how many requests, changes and assistant requests your account made. This never includes what you wrote. You can turn it off.
@@ -271,7 +271,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 
 ## The assistant
 
-When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
+When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
 
 ## Who we share it with
 
@@ -289,7 +289,7 @@ Orbyn stores only what it needs in your browser: your sign-in, and settings such
 
 - Your account and content: until you delete them or your account.
 - Deleted items: 90 days, so you can restore them.
-- Request logs: 7 days. Daily usage counts: about 13 months.
+- Request logs: 7 days. Daily usage counts and study review history: about 13 months.
 - Security audit records: 2 years.
 - Expired sign-ins and email links: removed automatically.
 

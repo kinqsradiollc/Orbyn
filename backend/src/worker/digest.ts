@@ -101,6 +101,14 @@ export async function buildMorning(
     lines.push("Heads up — at risk of being late:");
     lines.push(...review.at_risk.slice(0, 3).map((t) => bullet(t.title)));
   }
+  const study = await pool.query<{ due: number }>(
+    "SELECT count(*) FILTER (WHERE reps > 0 AND due_at < $2)::int AS due FROM study_cards WHERE user_id = $1",
+    [userId, dayEnd],
+  );
+  if (study.rows[0].due)
+    lines.push(
+      `Study: ${study.rows[0].due} card${study.rows[0].due === 1 ? "" : "s"} to review today.`,
+    );
   lines.push(`Open your day: ${appLink("/app")}`);
   return { subject: "Your day ahead", lines };
 }
@@ -150,6 +158,16 @@ export async function buildEvening(
     lines.push(...tomorrowEvents.slice(0, 12).map((e) => agendaLine(e, tz)));
     lines.push(...tomorrowTasks.slice(0, 8).map((t) => bullet(t.title)));
   } else lines.push("Nothing on the calendar for tomorrow yet.");
+  const reviewed = (
+    await pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM study_reviews WHERE user_id = $1 AND at >= $2",
+      [userId, dayTime(today, 0, tz).toISOString()],
+    )
+  ).rows[0].n;
+  if (reviewed)
+    lines.push(
+      `You reviewed ${reviewed} card${reviewed === 1 ? "" : "s"} today.`,
+    );
   lines.push(`Plan tomorrow: ${appLink("/app")}`);
   return { subject: "Today’s wrap-up", lines };
 }

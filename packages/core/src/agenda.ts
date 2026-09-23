@@ -52,6 +52,12 @@ export type AgendaOptions = {
   priorities?: string[];
   /** A short summary of the day written by the assistant, when there is one. */
   brief?: string | null;
+  /** Flashcards to review today and exams coming up, for people who study. */
+  study?: {
+    due: number;
+    newCards: number;
+    exams: { title: string; days_left: number; readiness: number | null }[];
+  } | null;
 };
 
 const hours = (minutes: number) => {
@@ -221,6 +227,28 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
     if (stretches.length)
       line(
         `Free: ${stretches.map((f) => span(f.start_at, f.end_at)).join(", ")}.`,
+      );
+  }
+
+  const study = opts.study;
+  if (study && (study.due || study.newCards || study.exams.length)) {
+    head("Study");
+    if (study.due || study.newCards)
+      bullet(
+        [
+          study.due ? plural(study.due, "card") + " to review" : "",
+          study.newCards ? `${study.newCards} new` : "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    for (const e of study.exams.slice(0, 3))
+      bullet(
+        `${e.title} in ${plural(e.days_left, "day")}${
+          e.readiness == null
+            ? ""
+            : ` · ${Math.round(e.readiness * 100)}% known well`
+        }`,
       );
   }
 

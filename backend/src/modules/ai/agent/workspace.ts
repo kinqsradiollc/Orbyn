@@ -14,6 +14,11 @@ import {
 } from "../../planner/calendar.js";
 import { externalEntries } from "../../planner/subscriptions.js";
 import {
+  studyOverview,
+  syncCards,
+  upcomingExams,
+} from "../../study/service.js";
+import {
   freeSpans,
   largestFreeMinutes,
   workingSpans,
@@ -579,4 +584,74 @@ export async function calendarMatches(ctx: AgentContext, words: string[]) {
         ctx.timezone,
       ),
     );
+}
+
+/**
+ * Study at a glance for the overview: cards due, and the next exam with how
+ * ready the attached pages are. Null when the person has no cards, so the
+ * overview stays small for everyone else.
+ */
+export async function studyGlance(ctx: AgentContext) {
+  await syncCards(pool, ctx.user.id);
+  const counts = (
+    await pool.query<{ cards: number; due: number }>(
+      `SELECT count(*)::int AS cards,
+              count(*) FILTER (WHERE due_at <= now() + interval '12 hours')::int AS due
+         FROM study_cards WHERE user_id = $1`,
+      [ctx.user.id],
+    )
+  ).rows[0];
+  if (!counts.cards) return null;
+  const exams = await upcomingExams(pool, ctx.user.id);
+  return {
+    cards: counts.cards,
+    due_soon: counts.due,
+    next_exams: exams.slice(0, 3).map((e) => ({
+      title: clean(e.title, 120),
+      when: e.all_day
+        ? localDate(new Date(e.starts_at), ctx.timezone)
+        : whenLabel(new Date(e.starts_at), null, ctx.timezone),
+      days_left: e.days_left,
+    })),
+  };
+}
+
+/**
+ * Study in full, read only: each page with cards and how many are due, new
+ * and known; upcoming exams with the pages attached and how ready they are;
+ * and the cards forgotten most. For "what should I revise", "am I ready for
+ * my exam". Planning revision and adding cards happen in Study, approved there.
+ */
+export async function getStudy(ctx: AgentContext) {
+  const s = await studyOverview(ctx.user.id);
+  return {
+    due_today: s.due_today,
+    new_cards_today: s.new_cards,
+    reviewed_today: s.reviewed_today,
+    streak_days: s.streak,
+    pages_with_cards: s.decks.slice(0, 20).map((d) => ({
+      title: clean(d.title, 120),
+      cards: d.cards,
+      due: d.due,
+      new: d.new,
+      known_well: d.known,
+    })),
+    exams: s.exams.slice(0, 8).map((e) => ({
+      title: clean(e.title, 120),
+      when: e.all_day
+        ? localDate(new Date(e.starts_at), ctx.timezone)
+        : whenLabel(new Date(e.starts_at), null, ctx.timezone),
+      days_left: e.days_left,
+      pages_attached: e.doc_ids.length,
+      readiness:
+        e.readiness == null
+          ? "no pages attached"
+          : `${Math.round(e.readiness * 100)}% known well`,
+    })),
+    forgotten_most: s.weak.map((w) => ({
+      question: clean(w.question, 160),
+      page: clean(w.doc_title, 120),
+      times_forgotten: w.lapses,
+    })),
+  };
 }

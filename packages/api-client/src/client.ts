@@ -5,6 +5,11 @@ import {
   type AdminUserDetail,
   type Announcement,
   type LegalAdminView,
+  type Rating,
+  type RevisionPlan,
+  type StudyCard,
+  type StudyOverview,
+  type SuggestedCard,
   type LegalDoc,
   type LegalDocument,
   type LegalSettingsUpdate,
@@ -2009,6 +2014,82 @@ export class OrbynClient {
   }
   adminExportUser(id: string) {
     return this.request<unknown>(`/admin/users/${id}/export`);
+  }
+  // ---- study ----
+  /** Cards due, pages with cards, exams, streak and weak spots. */
+  study() {
+    return this.request<StudyOverview>("/study");
+  }
+  /** Cards to review now (due, then today's new ones); one page with `docId`. */
+  studyQueue(
+    options: { docId?: string; limit?: number; ahead?: boolean } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (options.docId) q.set("doc_id", options.docId);
+    if (options.limit) q.set("limit", String(options.limit));
+    if (options.ahead) q.set("ahead", "true");
+    const s = q.toString();
+    return this.request<StudyCard[]>(`/study/queue${s ? `?${s}` : ""}`);
+  }
+  reviewCard(cardId: string, rating: Rating) {
+    return this.request<StudyCard>(`/study/cards/${cardId}/review`, {
+      method: "POST",
+      body: { rating },
+    });
+  }
+  /** Which pages you're revising for an exam. */
+  setExamDecks(input: {
+    key: string;
+    title: string;
+    starts_at: string;
+    doc_ids: string[];
+  }) {
+    return this.request<StudyOverview>("/study/exams", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Revision sessions before an exam, proposed into free time (nothing saved). */
+  planRevision(input: { key: string; minutes?: number; timezone: string }) {
+    return this.request<RevisionPlan>("/study/revision/plan", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Apply the approved sessions: a "Revise for …" task with them set aside. */
+  applyRevision(input: {
+    key: string;
+    sessions: { start_at: string; end_at: string }[];
+  }) {
+    return this.request<{
+      item_id: string;
+      block_ids: string[];
+      minutes: number;
+    }>("/study/revision/apply", { method: "POST", body: input });
+  }
+  /** The assistant's suggested cards from a page — a proposal to tick. */
+  suggestCards(docId: string) {
+    return this.request<{ cards: SuggestedCard[] }>(
+      `/ai/study/pages/${docId}/cards`,
+      { method: "POST", body: {} },
+    );
+  }
+  /** Grade a typed answer against the card and its page. */
+  gradeAnswer(cardId: string, answer: string) {
+    return this.request<{
+      verdict: "correct" | "partly" | "wrong";
+      feedback: string;
+      suggested_rating: Rating;
+    }>("/ai/study/grade", {
+      method: "POST",
+      body: { card_id: cardId, answer },
+    });
+  }
+  explainCard(cardId: string) {
+    return this.request<{ explanation: string; beyond_notes: boolean }>(
+      `/ai/study/cards/${cardId}/explain`,
+      { method: "POST", body: {} },
+    );
   }
   // ---- terms, privacy and consent ----
   /** Who runs the service and the current Terms and Privacy versions. */

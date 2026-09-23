@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Boxes, FileText } from "lucide-react";
+import { ArrowUpRight, Boxes, FileText, GraduationCap } from "lucide-react";
 import {
   projectAtRisk,
   projectProgress,
   type Doc,
   type DocSummary,
   type Project,
+  type StudyOverview,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 
@@ -26,10 +27,11 @@ export function WorkspaceStrip({
   onNavigate,
 }: {
   onOpenDoc: (doc: Doc) => void;
-  onNavigate: (view: "Projects" | "Docs") => void;
+  onNavigate: (view: "Projects" | "Docs" | "Study") => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [docs, setDocs] = useState<DocSummary[]>([]);
+  const [study, setStudy] = useState<StudyOverview | null>(null);
 
   useEffect(() => {
     void client.listProjects().then(
@@ -38,12 +40,14 @@ export function WorkspaceStrip({
       () => setProjects([]),
     );
     void client.listDocs().then(
-      (all) => setDocs(all.slice(0, 4)),
+      (all) => setDocs(all.filter((d) => d.kind !== "agenda").slice(0, 4)),
       () => setDocs([]),
     );
+    void client.study().then(setStudy, () => setStudy(null));
   }, []);
 
-  if (!projects.length && !docs.length) return null;
+  const studying = !!study?.decks.length;
+  if (!projects.length && !docs.length && !studying) return null;
 
   return (
     <div className="workspace-strip">
@@ -76,6 +80,56 @@ export function WorkspaceStrip({
                   )}
                   <span className="project-bar strip-bar" aria-hidden="true">
                     <i style={{ width: `${projectProgress(p)}%` }} />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {studying && study && (
+        <section className="card">
+          <h2>
+            <GraduationCap size={17} aria-hidden="true" /> Study
+            <button
+              className="text-button strip-more"
+              onClick={() => onNavigate("Study")}
+            >
+              Open Study <ArrowUpRight size={13} />
+            </button>
+          </h2>
+          <ul className="strip-list">
+            <li>
+              <button className="strip-row" onClick={() => onNavigate("Study")}>
+                <span className="strip-main">
+                  <strong>
+                    {study.due_today + study.new_cards
+                      ? `${study.due_today + study.new_cards} card${study.due_today + study.new_cards === 1 ? "" : "s"} to review`
+                      : "All caught up"}
+                  </strong>
+                  <small>
+                    {study.streak
+                      ? `${study.streak}-day streak`
+                      : "Review a few today to start a streak"}
+                  </small>
+                </span>
+              </button>
+            </li>
+            {study.exams.slice(0, 2).map((e) => (
+              <li key={e.key}>
+                <button
+                  className="strip-row"
+                  onClick={() => onNavigate("Study")}
+                >
+                  <span className="strip-main">
+                    <strong>{e.title}</strong>
+                    <small>
+                      in {e.days_left} day{e.days_left === 1 ? "" : "s"}
+                      {e.readiness != null
+                        ? ` · ${Math.round(e.readiness * 100)}% known well`
+                        : ""}
+                    </small>
                   </span>
                 </button>
               </li>

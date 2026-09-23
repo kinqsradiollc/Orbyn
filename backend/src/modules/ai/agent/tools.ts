@@ -28,6 +28,8 @@ import {
   calendarMatches,
   findFreeTime,
   getCalendar,
+  getStudy,
+  studyGlance,
   followThrough,
   getProject,
   listProjects,
@@ -248,6 +250,8 @@ export async function overview(ctx: AgentContext) {
     // The real calendar for today and the next two days: events (repeating
     // ones included), subscribed calendars, time set aside, and free time.
     ...(await calendarGlance(ctx)),
+    // Cards due and the next exams, only for people who study in Orbyn.
+    ...(await studyGlance(ctx).then((study) => (study ? { study } : {}))),
     note: 'Only some items are listed here; use search_items for the rest and rank_tasks for what to do first. "calendar" is everything on the calendar for today and the next two days, including calendars the user subscribes to (read_only: they can\'t be changed from Orbyn); use get_calendar for other days.',
   };
 }
@@ -1181,6 +1185,16 @@ export const TOOLS: Tool[] = [
       })
       .strict(),
     getCalendar,
+  ),
+  tool(
+    {
+      name: "get_study",
+      description:
+        "The user's studying: pages with flashcards (cards due, new, known well), upcoming exams with the pages attached and how ready they are, and the cards forgotten most. Use for 'what should I revise', 'am I ready for my exam', 'how is my studying going'. Read only: cards are written in pages as 'Question :: Answer' lines, and revision is planned in Study.",
+      parameters: NO_ARGS,
+    },
+    z.object({}).strict(),
+    getStudy,
   ),
   tool(
     {

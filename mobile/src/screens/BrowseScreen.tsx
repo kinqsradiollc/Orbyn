@@ -12,6 +12,7 @@ export type Destination =
   | "agenda"
   | "projects"
   | "docs"
+  | "study"
   | "lists"
   | "progress"
   | "teams"
@@ -45,6 +46,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         icon: "fileText",
         title: "Docs",
         detail: "Notes, briefs and meeting notes",
+      },
+      {
+        to: "study",
+        icon: "graduationCap",
+        title: "Study",
+        detail: "Flashcards from your pages, planned around exams",
       },
       {
         to: "lists",
