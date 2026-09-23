@@ -322,16 +322,18 @@ export function ProjectsSheet({
         placeholder="Due (optional)"
         onChange={setNewDue}
       />
-      <View style={styles.actions}>
-        <SmallAction
-          label="Cancel"
+      <View style={styles.createMore}>
+        <Button
+          title="Cancel"
+          secondary
           disabled={busy}
+          style={styles.createHalf}
           onPress={() => setDraft(null)}
         />
         <Button
           title="Create project"
           disabled={busy || !(draft ?? "").trim()}
-          style={styles.createButton}
+          style={styles.createHalf}
           onPress={create}
         />
       </View>
@@ -420,6 +422,37 @@ export function ProjectsSheet({
           : i.stage_id === stageId),
     );
 
+  // One full-width way in, and the two quicker starts side by side: the
+  // same on an empty list as above a full one.
+  const createButtons = (
+    <View style={styles.createActions}>
+      <Button
+        title="New project"
+        icon="plus"
+        disabled={busy}
+        style={styles.createButtonFull}
+        onPress={() => setDraft("")}
+      />
+      <View style={styles.createMore}>
+        <Button
+          title="Draft with AI"
+          secondary
+          icon="sparkles"
+          disabled={busy}
+          style={styles.createHalf}
+          onPress={startAiDraft}
+        />
+        <Button
+          title="Template"
+          secondary
+          icon="layoutGrid"
+          disabled={busy}
+          style={styles.createHalf}
+          onPress={() => setTemplatesOpen(true)}
+        />
+      </View>
+    </View>
+  );
   return (
     <Sheet
       visible={visible}
@@ -976,63 +1009,14 @@ export function ProjectsSheet({
                 what’s moving forward.
               </Text>
               {draft === null ? (
-                <View style={styles.createActions}>
-                  <Button
-                    title="New project"
-                    disabled={busy}
-                    onPress={() => setDraft("")}
-                  />
-                  <Button
-                    title="Draft with AI"
-                    secondary
-                    icon="sparkles"
-                    disabled={busy}
-                    onPress={startAiDraft}
-                  />
-                  <Button
-                    title="From a template"
-                    secondary
-                    icon="layoutGrid"
-                    disabled={busy}
-                    onPress={() => setTemplatesOpen(true)}
-                  />
-                </View>
+                <View style={styles.emptyActions}>{createButtons}</View>
               ) : (
-                newProjectForm
+                <View style={styles.emptyActions}>{newProjectForm}</View>
               )}
             </View>
           ) : (
             <View style={styles.list}>
-              {draft === null ? (
-                <View style={styles.createActions}>
-                  <Button
-                    title="New project"
-                    icon="plus"
-                    disabled={busy}
-                    onPress={() => setDraft("")}
-                  />
-                  <View style={styles.createMore}>
-                    <Button
-                      title="Draft with AI"
-                      secondary
-                      icon="sparkles"
-                      disabled={busy}
-                      style={styles.createHalf}
-                      onPress={startAiDraft}
-                    />
-                    <Button
-                      title="Template"
-                      secondary
-                      icon="layoutGrid"
-                      disabled={busy}
-                      style={styles.createHalf}
-                      onPress={() => setTemplatesOpen(true)}
-                    />
-                  </View>
-                </View>
-              ) : (
-                newProjectForm
-              )}
+              {draft === null ? createButtons : newProjectForm}
               {projects.map((p) => (
                 <Pressable
                   key={p.id}
@@ -1084,9 +1068,11 @@ const styles = themed(() =>
     createActions: { gap: 8 },
     newForm: { gap: 12 },
     summaryInput: { minHeight: 76, paddingTop: 12, textAlignVertical: "top" },
-    createButton: { marginBottom: 0, flex: 1 },
     createMore: { flexDirection: "row", gap: 8 },
-    createHalf: { flex: 1, minWidth: 0 },
+    // The container's gap spaces these; the button's own margin would double it.
+    createButtonFull: { marginBottom: 0 },
+    createHalf: { flex: 1, minWidth: 0, marginBottom: 0 },
+    emptyActions: { alignSelf: "stretch", marginTop: 8 },
     aiDraft: { gap: 16 },
     aiHeading: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
     aiHeadingText: { flex: 1, gap: 4 },
@@ -1120,8 +1106,9 @@ const styles = themed(() =>
     emptyProject: {
       alignItems: "center",
       gap: 12,
-      paddingHorizontal: 22,
-      paddingVertical: 36,
+      paddingHorizontal: 20,
+      paddingTop: 32,
+      paddingBottom: 20,
       borderRadius: radii.card,
       borderWidth: 1,
       borderColor: colors.border,
@@ -1148,7 +1135,6 @@ const styles = themed(() =>
       lineHeight: 21,
       textAlign: "center",
       color: colors.muted,
-      marginBottom: 8,
     },
     card: {
       gap: 8,
