@@ -39,6 +39,7 @@ import { ProjectRecords } from "./ProjectRecords";
 import { ProjectTimeMachine } from "./ProjectTimeMachine";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
+import { errorText } from "../../lib/errors";
 
 const dueLabel = (iso: string | null) =>
   iso
@@ -128,7 +129,7 @@ export function ProjectsSheet({
         });
       })
       .catch((e: Error) => {
-        if (active) setError(e.message || "Could not load project history.");
+        if (active) setError(errorText(e));
       });
     return () => {
       active = false;
@@ -249,7 +250,7 @@ export function ProjectsSheet({
       (e: Error) => {
         setProjects(null);
         setFailed(true);
-        setError(e.message || "Could not reach your projects.");
+        setError(errorText(e));
       },
     );
 
@@ -767,7 +768,7 @@ export function ProjectsSheet({
                   teamId={open.team_id}
                   canWrite={canWriteIn(open.team_id)}
                   busy={busy}
-                  report={(e) => setError((e as Error).message)}
+                  report={(e) => setError(errorText(e))}
                   onOpen={onOpenNote}
                 />
               )}

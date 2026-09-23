@@ -240,13 +240,8 @@ export async function copyText(text: string) {
   }
 }
 
-/** A readable message for a failed request. */
-export const errorText = (e: unknown) => {
-  const err = e as Error;
-  if (err?.name === "TypeError" || err?.name === "TimeoutError")
-    return "Couldn't reach the server. Try again.";
-  return err?.message || "Something went wrong. Try again.";
-};
+/** A readable message for a failed request (see lib/errors.ts). */
+export { errorText } from "./errors";
 
 /** Colours offered for lists, tags and frames (all readable on white). */
 export const SWATCHES = [

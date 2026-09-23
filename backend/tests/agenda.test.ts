@@ -111,6 +111,51 @@ test("the agenda splits today, what slipped and what's coming", () => {
   assert.ok(!text.some((t) => /Next month|Already done/.test(t)));
 });
 
+test("coming up sorts rows whose times are Date objects, not only strings", () => {
+  // Database rows hand back Date objects; sorting them as strings threw
+  // "localeCompare is not a function" and GET /agenda/today answered 500.
+  const blocks = buildAgenda(
+    [
+      item({
+        title: "Later",
+        due_at: new Date("2026-09-25T03:00:00.000Z") as unknown as string,
+      }),
+      item({
+        title: "Sooner",
+        due_at: new Date("2026-09-23T03:00:00.000Z") as unknown as string,
+      }),
+    ],
+    {
+      now: NOW,
+      timeZone: TZ,
+      comingEvents: [
+        {
+          source: "event",
+          item_id: "e1",
+          title: "Retro",
+          start_at: new Date("2026-09-24T03:00:00.000Z") as unknown as string,
+          end_at: "2026-09-24T04:00:00.000Z",
+          all_day: false,
+          location: "",
+          busy: true,
+        } as never,
+      ],
+    },
+  );
+  const text = blocks.map((b) => (b.type === "divider" ? "" : b.text));
+  const order = ["Sooner", "Retro", "Later"].map((t) =>
+    text.findIndex((line) => line.includes(t)),
+  );
+  assert.ok(
+    order.every((i) => i >= 0),
+    JSON.stringify(text),
+  );
+  assert.deepEqual(
+    [...order].sort((x, y) => x - y),
+    order,
+  );
+});
+
 test("an empty day says so instead of showing empty headings", () => {
   const blocks = buildAgenda([], { now: NOW, timeZone: TZ });
   const headings = blocks.filter((b) => b.type === "heading");

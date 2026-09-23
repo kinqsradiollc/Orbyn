@@ -87,6 +87,13 @@ For the iOS simulator, `EXPO_PUBLIC_API_URL=http://localhost:8008` reaches Docke
 For an Android emulator, use `http://10.0.2.2:8008` or run `adb reverse tcp:8008 tcp:8008`
 to use localhost. On a physical phone, localhost refers to the phone itself.
 
+### Errors on screen
+
+People see plain messages ("Couldn't reach Orbyn…"); the details of a failed request (the call,
+status, what the server said, its request id) go to the Metro console or the device log.
+Development builds also show them on screen. For a test build that should too, set
+`EXPO_PUBLIC_DEBUG_ERRORS=true` in `mobile/.env` before building.
+
 ### Physical device
 
 1. Find your computer's LAN address, for example `192.168.1.20`.

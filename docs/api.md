@@ -6,7 +6,12 @@ under a path sends `X-Forwarded-Prefix` (and keeps `X-Forwarded-Proto`), so link
 such as the calendar feed, point at that path.
 
 All request and response bodies are JSON. Authenticated routes need
-`Authorization: Bearer <token>`. Errors have the shape `{ "message": "..." }`.
+`Authorization: Bearer <token>`. Errors have the shape `{ "message": "...", "request_id": "..." }`.
+The `message` is written for people: a rejected field says which one and what to do ("Title is
+too long: 200 characters at most."), a server error says to try again, and an address nothing
+answers is a `404` with "That isn't here any more." `request_id` finds the request in the server
+log. With `DEBUG_ERRORS=true` (development and test servers only) a `detail` field adds what went
+wrong technically: the raw validation issues, or a server error's own message.
 
 | Status | Meaning                                                                       |
 | ------ | ----------------------------------------------------------------------------- |

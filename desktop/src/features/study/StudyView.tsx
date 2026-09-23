@@ -32,6 +32,7 @@ import { Select } from "../../components/Select";
 import { ReviewSession } from "./ReviewSession";
 import { ImportButton, useImports } from "../docs/Uploads";
 import "./study.css";
+import { errorText } from "../../lib/errors";
 
 type Props = {
   report: (e: unknown) => void;
@@ -926,7 +927,7 @@ export function MakeCardsDialog({
   useEffect(() => {
     client.suggestCards(docId).then(
       (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
-      (e: Error) => setError(e.message),
+      (e: Error) => setError(errorText(e)),
     );
   }, [docId]);
   const update = (
@@ -1070,7 +1071,7 @@ function RevisionDialog({
     setPlan(null);
     client
       .planRevision({ key: exam.key, minutes, timezone: deviceTimeZone() })
-      .then(setPlan, (e: Error) => setError(e.message));
+      .then(setPlan, (e: Error) => setError(errorText(e)));
   }, [exam.key, minutes]);
   const chosen = (plan?.sessions ?? []).filter((s) => !off.has(s.start_at));
   const apply = async () => {

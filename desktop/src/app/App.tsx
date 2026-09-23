@@ -363,6 +363,8 @@ export function App() {
   };
 
   const navigate = (v: View) => {
+    // A failure belongs to the view it happened in.
+    if (v !== view) planner.setError("");
     setView(v);
     setMobileNav(false);
     setQuery("");

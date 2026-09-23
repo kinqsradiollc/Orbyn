@@ -39,6 +39,7 @@ import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
 import { useDocComments } from "./useDocComments";
 import { PressableScale } from "../../motion";
+import { errorText } from "../../lib/errors";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -164,7 +165,7 @@ export function DocsSheet({
       (e: Error) => {
         setDocs(null);
         setFailed(true);
-        setError(e.message || "Could not reach your documents.");
+        setError(errorText(e));
       },
     );
 
@@ -174,7 +175,7 @@ export function DocsSheet({
   );
   const importFile = () => {
     selectCollection(null, null, false, null, true);
-    void imports.pickAndImport().catch((e: Error) => setError(e.message));
+    void imports.pickAndImport().catch((e: Error) => setError(errorText(e)));
   };
 
   /** Star a page, or take the star off. Starred pages come first. */
@@ -270,7 +271,7 @@ export function DocsSheet({
           (e) => {
             if (active) {
               setHits([]);
-              setError((e as Error).message);
+              setError(errorText(e));
             }
           },
         );
@@ -420,7 +421,7 @@ export function DocsSheet({
     });
 
   /** The editor hands back whatever went wrong; show it where they are. */
-  const report = (e: unknown) => setError((e as Error).message || "Not saved");
+  const report = (e: unknown) => setError(errorText(e));
 
   return (
     <Sheet
@@ -804,7 +805,7 @@ export function DocsSheet({
                   onScan={() =>
                     void imports
                       .scanNotes()
-                      .catch((e: Error) => setError(e.message))
+                      .catch((e: Error) => setError(errorText(e)))
                   }
                   onMakeCards={onMakeCards}
                   caps={imports.caps}

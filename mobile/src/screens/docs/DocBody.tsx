@@ -1,14 +1,8 @@
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { blockText, mathToText, type DocBlock } from "@orbyn/core";
 import { Inline } from "./Inline";
+import { Icon } from "../../components/Icon";
 import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -187,15 +181,28 @@ export function DocBody({
             return decorate(
               index,
               <View style={[styles.row, styles.line]}>
-                <Switch
-                  value={block.done}
-                  onValueChange={() => onToggleTodo?.(index)}
+                {/* A checkbox, as on task rows and on the web: a switch reads
+                    as a setting, and is twice the size of a line. */}
+                <Pressable
+                  onPress={() => onToggleTodo?.(index)}
                   disabled={!onToggleTodo}
-                  trackColor={{ true: colors.accent, false: colors.softBorder }}
-                  thumbColor={colors.white}
-                  style={styles.check}
+                  hitSlop={12}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{
+                    checked: block.done,
+                    disabled: !onToggleTodo,
+                  }}
                   accessibilityLabel={block.text || "Checklist item"}
-                />
+                  style={[
+                    styles.check,
+                    block.done && styles.checkDone,
+                    !onToggleTodo && styles.checkLocked,
+                  ]}
+                >
+                  {block.done && (
+                    <Icon name="check" size={14} color={colors.white} />
+                  )}
+                </Pressable>
                 {/* The tag sits beside the label, not inside it, so a done
                     line does not strike through the tag as well. */}
                 <Pressable
@@ -330,7 +337,19 @@ const styles = themed(() =>
     tag: { color: colors.muted, fontSize: 12, fontFamily: fonts.semibold },
     row: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
     marker: { color: colors.muted, fontSize: 15, lineHeight: 22, width: 16 },
-    check: { transform: [{ scale: 0.8 }], marginTop: -2 },
+    check: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.checkBorder,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 1,
+    },
+    checkDone: { backgroundColor: colors.accent, borderColor: colors.accent },
+    checkLocked: { opacity: 0.5 },
     quote: {
       borderLeftWidth: 2,
       borderLeftColor: colors.softBorder,

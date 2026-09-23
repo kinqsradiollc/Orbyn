@@ -123,19 +123,21 @@ export function SettingsView({
         {tab === "account" && (
           <SettingsSection className="card settings-card">
             <h2>Stay in the loop</h2>
-            <label className="preference">
-              <span>
-                <strong>Email reminders</strong>
-                <small>
-                  Receive a reminder before your tasks and events are due.
-                </small>
-              </span>
+            <label className="switch-line settings-field">
               <input
                 type="checkbox"
+                role="switch"
+                className="ai-switch"
                 checked={user?.email_reminders || false}
                 disabled={busy}
                 onChange={(e) => onEmailReminders(e.target.checked)}
               />
+              <span>
+                Email reminders
+                <small>
+                  Receive a reminder before your tasks and events are due.
+                </small>
+              </span>
             </label>
             <p className="muted">
               Mobile push notifications can be enabled in the Orbyn mobile app.

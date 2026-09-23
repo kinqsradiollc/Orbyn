@@ -62,7 +62,7 @@ import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
 import { TagsSheet } from "../screens/TagsSheet";
-import { Sheet } from "../components/Sheet";
+import { Sheet, sheetStyles } from "../components/Sheet";
 import { BrowseScreen } from "../screens/BrowseScreen";
 import { DocsSheet } from "../screens/docs/DocsSheet";
 import { sendLocalFile, takeSharedFiles } from "../screens/docs/Uploads";
@@ -80,6 +80,7 @@ import { AnnouncementBanner } from "../screens/AdminInsights";
 import { usePresence } from "../hooks/usePresence";
 import { colors, spacing, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 type SheetName =
   | "teams"
@@ -244,9 +245,7 @@ export function RootScreen() {
       const files = await takeSharedFiles();
       if (!files.length) return;
       for (const file of files)
-        await sendLocalFile(file).catch((e: Error) =>
-          setError(e.message || "The shared file couldn't be imported."),
-        );
+        await sendLocalFile(file).catch((e: Error) => setError(errorText(e)));
       setDocsInUploads(true);
       present({ sheet: "docs" });
     };
@@ -927,7 +926,7 @@ export function RootScreen() {
                 setNote(made);
                 setSheet("note");
               })
-              .catch((e: Error) => setError(e.message))
+              .catch((e: Error) => setError(errorText(e)))
           }
           onEdit={editItem}
           onFocus={openFocus}
@@ -976,27 +975,37 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         >
-          <SettingsScreen
-            user={user}
-            busy={busy}
-            act={act}
-            onUser={setUser}
-            onSignOut={() => {
-              setPreview(null);
-              signOut();
-            }}
-            onOpenStatus={() => setSheet("status")}
-            onOpenPlanning={() => setSheet("planning")}
-            onOpenConnections={() => setSheet("connections")}
-            onOpenTags={() => setSheet("tags")}
-            onOpenHabits={() => setSheet("habits")}
-            onOpenSync={() => setSheet("sync")}
-            onAccountDeleted={() => {
-              setSheet(null);
-              setPreview(null);
-              void forgetSession();
-            }}
-          />
+          {/* Scrolls, with the page's padding, like every other sheet. */}
+          <ScrollView
+            contentContainerStyle={sheetStyles.body}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+          >
+            <View style={sheetStyles.column}>
+              <SettingsScreen
+                user={user}
+                busy={busy}
+                act={act}
+                onUser={setUser}
+                onSignOut={() => {
+                  setPreview(null);
+                  signOut();
+                }}
+                onOpenStatus={() => setSheet("status")}
+                onOpenPlanning={() => setSheet("planning")}
+                onOpenConnections={() => setSheet("connections")}
+                onOpenTags={() => setSheet("tags")}
+                onOpenHabits={() => setSheet("habits")}
+                onOpenSync={() => setSheet("sync")}
+                onAccountDeleted={() => {
+                  setSheet(null);
+                  setPreview(null);
+                  void forgetSession();
+                }}
+              />
+            </View>
+          </ScrollView>
         </Sheet>
         <ProgressSheet
           visible={sheet === "progress"}

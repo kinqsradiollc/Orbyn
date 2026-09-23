@@ -18,6 +18,7 @@ import { useConfirm } from "../../components/Confirm";
 import type { TeamActions } from "../teams/TeamDetail";
 import "./database.css";
 import { Select } from "../../components/Select";
+import { errorText } from "../../lib/errors";
 
 type Panel = "Rows" | "Columns" | "Indexes";
 type RowDraft =
@@ -72,7 +73,7 @@ export function AdminDatabase({
         setError("");
       },
       (e: Error) => {
-        if (active) setError(e.message);
+        if (active) setError(errorText(e));
         report(e);
       },
     );
@@ -101,7 +102,7 @@ export function AdminDatabase({
       },
       (e: Error) => {
         if (!active || request !== rowRequest.current) return;
-        setError(e.message);
+        setError(errorText(e));
         setLoading(false);
         report(e);
       },
@@ -125,7 +126,7 @@ export function AdminDatabase({
       },
       (e: Error) => {
         if (request !== rowRequest.current) return;
-        setError(e.message);
+        setError(errorText(e));
         setLoading(false);
         report(e);
       },
@@ -216,7 +217,7 @@ export function AdminDatabase({
         setError("");
         void refreshPlanner().catch(report);
       } catch (e) {
-        setError((e as Error).message);
+        setError(errorText(e));
         report(e);
       } finally {
         setSaving(false);
@@ -246,7 +247,7 @@ export function AdminDatabase({
         setError("");
         void refreshPlanner().catch(report);
       } catch (e) {
-        setError((e as Error).message);
+        setError(errorText(e));
         report(e);
       } finally {
         setSaving(false);

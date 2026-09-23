@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { errorText } from "../lib/errors";
 
 /**
  * Busy and error state for a sheet or card that talks to the server on its
@@ -22,7 +23,7 @@ export function useRun() {
       try {
         return await fn();
       } catch (e) {
-        if (alive.current) setError((e as Error).message);
+        if (alive.current) setError(errorText(e));
         return undefined;
       } finally {
         if (alive.current) setBusy(false);

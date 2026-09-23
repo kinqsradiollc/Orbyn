@@ -657,6 +657,14 @@ export function CalendarView({
         : mode === "agenda"
           ? rangeTitle([agendaDays[0], agendaDays[AGENDA_DAYS - 1]])
           : rangeTitle([date]);
+  const shortTitle =
+    mode === "day"
+      ? date.toLocaleDateString([], {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        })
+      : null;
   const unit =
     mode === "month"
       ? "month"
@@ -717,7 +725,18 @@ export function CalendarView({
             >
               <ChevronRight size={19} />
             </button>
-            <h2 aria-live="polite">{title}</h2>
+            <h2 aria-live="polite">
+              {/* A phone gets the short form of a long day title; screen
+                  readers always hear the full one. */}
+              <span className={shortTitle ? "cal-title-long" : undefined}>
+                {title}
+              </span>
+              {shortTitle && (
+                <span className="cal-title-short" aria-hidden="true">
+                  {shortTitle}
+                </span>
+              )}
+            </h2>
           </div>
           <div className="calendar-tools">
             <label className="set-picker">

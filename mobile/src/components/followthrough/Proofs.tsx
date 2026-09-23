@@ -14,6 +14,7 @@ import { client } from "../../lib/api";
 import { animateLayout } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 const hostOf = (url: string) => {
   try {
@@ -57,7 +58,7 @@ export function ProofSection({
       setAdding(false);
       load();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     }
   };
   return (
@@ -106,7 +107,7 @@ export function ProofSection({
               onPress={() =>
                 void client
                   .deleteProof(itemId, p.id)
-                  .then(load, (e: Error) => setError(e.message))
+                  .then(load, (e: Error) => setError(errorText(e)))
               }
             >
               <Icon name="x" size={15} color={colors.muted} />

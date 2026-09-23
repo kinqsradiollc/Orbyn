@@ -4,6 +4,7 @@ import type { LegalDoc, LegalDocument } from "@orbyn/core";
 import { client } from "../lib/api";
 import { colors, fonts, themed } from "../theme";
 import { Sheet, sheetStyles } from "./Sheet";
+import { errorText } from "../lib/errors";
 
 /** `**bold**` inside a line. */
 function Inline({ text }: { text: string }) {
@@ -86,9 +87,7 @@ export function LegalSheet({
     client
       .legalDocument(doc)
       .then((d) => alive && setDocument(d))
-      .catch(
-        (e: Error) => alive && setError(e.message || "This couldn't load."),
-      );
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

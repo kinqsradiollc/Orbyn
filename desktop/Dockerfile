@@ -15,6 +15,10 @@ COPY desktop desktop
 # The web app knows its version, so it can offer a reload after a deploy.
 ARG GIT_SHA=dev
 ENV VITE_APP_VERSION=$GIT_SHA
+# DEBUG_ERRORS=true shows the technical detail of failed requests on screen,
+# for a test server; otherwise it's only in the browser console.
+ARG DEBUG_ERRORS=false
+ENV VITE_DEBUG_ERRORS=$DEBUG_ERRORS
 RUN npm run build -w @orbyn/core && npm run build -w @orbyn/api-client && npm run build -w @orbyn/desktop
 
 FROM nginxinc/nginx-unprivileged:1.28-alpine

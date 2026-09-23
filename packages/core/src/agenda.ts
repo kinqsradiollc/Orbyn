@@ -271,7 +271,8 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
         at: e.start_at,
         text: `${e.title}${e.all_day ? "" : ` at ${time(e.start_at, tz)}`}`,
       })),
-    ].sort((a, b) => a.at.localeCompare(b.at));
+      // Rows can bring Date objects rather than ISO strings; compare instants.
+    ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
     for (const c of coming) bullet(`${dayLabel(c.at, tz)} · ${c.text}`);
   }
 

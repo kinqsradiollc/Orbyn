@@ -11,6 +11,7 @@ import { client } from "../../lib/api";
 import { AuthShell } from "../auth/AccountFlows";
 import { LegalText } from "./LegalText";
 import "./legal.css";
+import { errorText } from "../../lib/errors";
 
 /**
  * Held before the app when you haven't accepted the current Terms: the first
@@ -41,7 +42,7 @@ export function ConsentGate({
     try {
       setReading(await client.legalDocument(doc));
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     }
   };
 
@@ -54,7 +55,7 @@ export function ConsentGate({
         await client.setPrivacy({ analytics_opt_out: !analytics });
       onAccepted();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

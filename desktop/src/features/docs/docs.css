@@ -193,7 +193,7 @@
 .doc-input {
   font: inherit;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 0.9rem;
+  font-size: max(0.9rem, var(--control-fs));
   line-height: 1.6;
   color: var(--color-text);
   background: var(--color-sunken);
@@ -479,7 +479,7 @@ h4.doc-heading {
 }
 .doc-comment-new textarea {
   font: inherit;
-  font-size: 0.92rem;
+  font-size: var(--control-fs);
   line-height: 1.6;
   width: 100%;
   color: var(--color-text);
@@ -887,7 +887,7 @@ h4.doc-heading {
 .doc-card textarea {
   width: 100%;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: var(--control-fs);
   resize: vertical;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1027,7 +1027,7 @@ h4.doc-heading {
 .doc-mention-box textarea {
   width: 100%;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: var(--control-fs);
   resize: vertical;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1456,7 +1456,7 @@ h4.doc-heading {
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: var(--control-fs);
   resize: none;
 }
 .doc-chat-send {
@@ -1618,7 +1618,7 @@ h4.doc-heading {
   flex-wrap: wrap;
 }
 .docs-library-tools input {
-  min-height: 44px;
+  min-height: var(--control-h);
   padding: 8px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -1686,7 +1686,7 @@ h4.doc-heading {
   flex-shrink: 0;
 }
 .docs-sort .select-control {
-  min-height: 44px;
+  min-height: var(--control-h);
 }
 .docs-workspace .docs-list {
   gap: 0;

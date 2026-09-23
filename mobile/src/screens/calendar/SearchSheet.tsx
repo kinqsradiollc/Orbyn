@@ -15,6 +15,7 @@ import { client } from "../../lib/api";
 import { clockLabel, shortDay } from "../../lib/planning";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 /** Wait this long after typing before searching. */
 const DEBOUNCE_MS = 300;
@@ -63,7 +64,7 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
           setResults(found.results);
           setError("");
         })
-        .catch((e: Error) => alive && setError(e.message))
+        .catch((e: Error) => alive && setError(errorText(e)))
         .finally(() => alive && setLoading(false));
     }, DEBOUNCE_MS);
     return () => {

@@ -5,6 +5,7 @@ import { client } from "../../lib/api";
 import { LegalText } from "./LegalText";
 import "../status/status.css";
 import "./legal.css";
+import { errorText } from "../../lib/errors";
 
 type Props = {
   doc: LegalDoc;
@@ -25,10 +26,7 @@ export function LegalPage({ doc, signedIn, onNavigate, onHome }: Props) {
     client
       .legalDocument(doc)
       .then((d) => alive && setDocument(d))
-      .catch(
-        (e: Error) =>
-          alive && setError(e.message || "This page couldn't load."),
-      );
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

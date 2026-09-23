@@ -20,6 +20,7 @@ import { onLive } from "../lib/live";
 import * as outbox from "../lib/outbox";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 type Outbox = ReturnType<typeof outbox.outboxState>;
 
@@ -200,7 +201,7 @@ function Body({ state }: { state: Outbox }) {
                   void client
                     .updatePresenceSettings({ share_presence: on })
                     .then(setSettings, (e: Error) =>
-                      Alert.alert("Not saved", e.message),
+                      Alert.alert("Not saved", errorText(e)),
                     )
                 }
               />

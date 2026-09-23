@@ -25,6 +25,7 @@ import { client } from "../lib/api";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 const REFRESH_MS = 30_000;
 const HISTORY_DAYS = 30;
@@ -112,7 +113,7 @@ export function StatusSheet({
       setReport(next);
       setError("");
     } catch (e) {
-      if (mine === seq.current) setError((e as Error).message);
+      if (mine === seq.current) setError(errorText(e));
     } finally {
       if (mine === seq.current) setNow(Date.now());
     }

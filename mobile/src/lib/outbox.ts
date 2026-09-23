@@ -10,6 +10,7 @@ import {
   type OutboxOp,
 } from "@orbyn/core";
 import { client } from "./api";
+import { errorText } from "./errors";
 
 /**
  * Changes made on this phone, kept in order until the server has them.
@@ -233,7 +234,7 @@ export function flush(): Promise<void> {
           }
           bump(entry, {
             state: "failed",
-            error: (e as Error).message || "The server refused this change.",
+            error: errorText(e),
           });
           break;
         }
@@ -292,7 +293,7 @@ async function settle(entry: OutboxEntry): Promise<boolean> {
   } catch (e) {
     bump(entry, {
       state: "failed",
-      error: (e as Error).message || "The server refused this change.",
+      error: errorText(e),
     });
     return false;
   }

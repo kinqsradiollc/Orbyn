@@ -29,6 +29,7 @@ import { deviceTimeZone } from "../lib/planning";
 import { deviceId } from "../lib/device";
 import { clearGlance, publishGlance } from "../lib/widget";
 import { animateLayout } from "../motion";
+import { errorText } from "../lib/errors";
 
 export type SignInInput = {
   email: string;
@@ -112,7 +113,7 @@ export function usePlanner() {
       setError(
         isOfflineError(e)
           ? "You're offline, and this needs a connection. Your other changes are kept on this phone."
-          : (e as Error).message,
+          : errorText(e),
       );
       if (status === 503) void checkMaintenance();
       if (status === 401) {
@@ -129,8 +130,6 @@ export function usePlanner() {
    * (e.g. after ticking a checkbox) animate into their new places.
    */
   const lastData = useRef("");
-  /** The message from the last failed background refresh, if showing. */
-  const backgroundError = useRef("");
   const refresh = useCallback(
     async (options?: { animate?: boolean; silent?: boolean }) => {
       if (!token) return;
@@ -260,11 +259,6 @@ export function usePlanner() {
       try {
         await refresh({ silent: true });
         noteOnline();
-        if (backgroundError.current) {
-          const stale = backgroundError.current;
-          backgroundError.current = "";
-          setError((current) => (current === stale ? "" : current));
-        }
       } catch (e) {
         if ((e as { status?: number }).status === 401) {
           await clearSession();
@@ -277,8 +271,9 @@ export function usePlanner() {
           noteOffline();
           return;
         }
-        backgroundError.current = (e as Error).message;
-        setError(backgroundError.current);
+        // A background refresh failing (a blip, a deploy) goes to the log;
+        // the last data stays on screen and the next refresh tries again.
+        errorText(e, "Refreshing the planner");
       }
     };
     whenSent(() => void refresh({ silent: true }).catch(() => {}));

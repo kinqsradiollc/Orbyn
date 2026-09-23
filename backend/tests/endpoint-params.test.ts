@@ -154,7 +154,25 @@ test("validation errors name the field to fix", async () => {
     durations: [30],
   });
   assert.equal(bad.status, 422);
-  assert.match(bad.body.message, /^slug: /);
+  // Plain words that still name the field, and the request id for the logs.
+  assert.match(bad.body.message, /^Slug: Use lowercase letters/);
+  assert.ok(bad.body.request_id);
+});
+
+test("validation errors are plain sentences, with the detail kept out of sight", async () => {
+  const me = await newUser();
+  const missing = await call(me.token, "POST", "/items", { kind: "task" });
+  assert.equal(missing.status, 422);
+  assert.equal(missing.body.message, "Title is missing.");
+  const long = await call(me.token, "POST", "/items", {
+    title: "x".repeat(300),
+  });
+  assert.equal(long.body.message, "Title is too long: 200 characters at most.");
+  // The raw issues only go out with DEBUG_ERRORS on (off in tests).
+  assert.equal(long.body.detail, undefined);
+  const nowhere = await call(me.token, "GET", "/no-such-route");
+  assert.equal(nowhere.status, 404);
+  assert.equal(nowhere.body.message, "That isn't here any more.");
 });
 
 test("a frame with a repeat rule takes its weekdays from the rule", async () => {

@@ -29,6 +29,7 @@ import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 const LENGTHS = [15, 30, 45, 60, 90, 120];
 const DAY_MINUTES = 1440;
@@ -161,7 +162,7 @@ export function TeamTime({
         setAvailability(a);
         setWorkload(w);
       })
-      .catch((e: Error) => alive && setError(e.message));
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

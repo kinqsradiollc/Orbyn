@@ -5,6 +5,7 @@ import { Disclosure } from "../../components/Disclosure";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, themed } from "../../theme";
+import { errorText } from "../../lib/errors";
 
 /** Open workspace promises on a phone, without opening each project. */
 export function PromiseTracker({
@@ -23,7 +24,7 @@ export function PromiseTracker({
   const load = () =>
     client.listWorkRecords({ kind: "promise", limit: 200 }).then(setRows);
   useEffect(() => {
-    void load().catch((error: Error) => onError(error.message));
+    void load().catch((error: Error) => onError(errorText(error)));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const active =
     rows?.filter((row) => row.status === "open" || row.status === "proposed") ??
@@ -45,7 +46,7 @@ export function PromiseTracker({
       await action();
       await load();
     } catch (error) {
-      onError((error as Error).message || "Could not update promise.");
+      onError(errorText(error));
     } finally {
       setBusy(false);
     }

@@ -18,6 +18,7 @@ import {
   slotLabel,
 } from "../../lib/planning";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 /** Anything with times that can move: a time block, or an event occurrence. */
 export type MoveTarget = Pick<
@@ -107,7 +108,7 @@ function Body({
     try {
       await onSave(start, end);
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

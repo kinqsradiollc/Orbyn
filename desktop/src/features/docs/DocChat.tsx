@@ -13,6 +13,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Select } from "../../components/Select";
+import { errorText } from "../../lib/errors";
 
 /** The actions worth one click; "custom" is whatever gets typed instead. */
 const QUICK = DOC_AI_ACTIONS.filter((a) => a !== "custom");
@@ -88,7 +89,7 @@ export function DocChat({
   const fail = (e: unknown) =>
     say({
       role: "orbyn",
-      text: (e as Error).message || "That did not come back.",
+      text: errorText(e),
     });
 
   /** Ask something of the page, answered from the page alone. */

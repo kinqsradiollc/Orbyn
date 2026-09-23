@@ -3,6 +3,7 @@ import type { BusyInterval, Team } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { LIST_COLORS } from "../../lib/planning";
+import { errorText } from "../../lib/errors";
 
 /** Up to this many teammates on the calendar at once. */
 export const MAX_MATES = 5;
@@ -91,7 +92,7 @@ export function useTeammates(
           ),
         );
       })
-      .catch((e: Error) => alive && setError(e.message));
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };
@@ -120,7 +121,7 @@ export function useTeammates(
         setNames(named);
         setError("");
       })
-      .catch((e: Error) => alive && setError(e.message));
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

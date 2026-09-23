@@ -53,6 +53,7 @@ import { BlockDialog } from "../calendar/BlockDialog";
 import { minutesLabel, spanLabel } from "../../lib/planning";
 import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
+import { errorText } from "../../lib/errors";
 
 /** How far ahead "Booked time" looks. */
 const BOOKED_DAYS = 30;
@@ -163,7 +164,7 @@ export function TaskDetail({
       (d) => alive && setDetail(d),
       (e) => {
         if (!alive) return;
-        setError((e as Error).message);
+        setError(errorText(e));
         latest.current.onError(e);
       },
     );
@@ -229,7 +230,7 @@ export function TaskDetail({
       setBookedTick((n) => n + 1);
       await onChanged();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       if ((e as HttpError).status === 401) onError(e);
     } finally {
       setBlockPending(false);
@@ -317,7 +318,7 @@ export function TaskDetail({
       await onChanged();
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       if ((e as HttpError).status === 401) onError(e);
       // A 409 means the server state moved on (e.g. steps were added): reload.
       if ((e as HttpError).status === 409)

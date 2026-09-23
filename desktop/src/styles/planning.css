@@ -92,7 +92,7 @@ a.drawer-fact {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--control-fs);
   text-transform: none;
   letter-spacing: 0;
   font-weight: 450;
@@ -184,7 +184,7 @@ a.drawer-fact {
   padding: 9px 10px;
   border: 1px solid #dfe5dc;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--control-fs);
 }
 .list-edit .button-row {
   margin-top: 0;
@@ -588,7 +588,7 @@ kbd {
   min-width: 0;
   border: 0;
   background: none;
-  font-size: 15px;
+  font-size: max(15px, var(--control-fs));
   color: var(--color-text);
 }
 .command-input input:focus,

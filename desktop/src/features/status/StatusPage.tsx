@@ -28,6 +28,7 @@ import { client } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
 import { stagger } from "../../lib/motion";
 import "./status.css";
+import { errorText } from "../../lib/errors";
 
 /** How often the page asks for fresh results (the server caches for 15s). */
 const POLL_MS = 30_000;
@@ -126,8 +127,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
       setReport(next);
       setError("");
     } catch (e) {
-      if (mine === seq.current)
-        setError((e as Error).message || "The status service didn't respond.");
+      if (mine === seq.current) setError(errorText(e));
     } finally {
       if (mine === seq.current) {
         setLoading(false);

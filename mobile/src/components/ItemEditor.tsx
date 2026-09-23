@@ -51,6 +51,7 @@ import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
 import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 /** A saved item being edited, or the draft of a new one. */
 export type Editing = Item | ItemInput;
@@ -332,7 +333,7 @@ function Form({
       onChange({ tag_ids: [...tagIds, tag.id] });
       setNewTag("");
     } catch (e) {
-      setTagError((e as Error).message);
+      setTagError(errorText(e));
     } finally {
       setTagBusy(false);
     }
