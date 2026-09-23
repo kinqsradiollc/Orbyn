@@ -47,6 +47,7 @@ export function AssistantScreen({
   onKeptNote?: (docId: string) => void;
 }) {
   const { turns, thinking, ask, apply, discard, reset } = assistant;
+  const { height } = useWindowDimensions();
   const locked = busy || thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
@@ -56,7 +57,7 @@ export function AssistantScreen({
   return (
     <>
       {turns.length === 0 ? (
-        <FadeIn style={s.welcome}>
+        <FadeIn style={[s.welcome, { minHeight: Math.max(400, height - 480) }]}>
           <View style={s.badge}>
             <Icon name="sparkles" size={18} color={colors.accent} />
           </View>
@@ -336,7 +337,11 @@ const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
-    welcome: { paddingVertical: 12, marginBottom: 20 },
+    welcome: {
+      justifyContent: "center",
+      paddingVertical: 24,
+      marginBottom: 20,
+    },
     welcomeTitle: {
       fontFamily: fonts.display,
       fontSize: 30,

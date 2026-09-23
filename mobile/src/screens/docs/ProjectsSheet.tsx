@@ -235,7 +235,7 @@ export function ProjectsSheet({
         keyboardDismissMode="interactive"
       >
         <View style={sheet.column}>
-          {!open && (
+          {!open && !!projects?.length && (
             <ScreenIntro
               icon="boxes"
               title="Move the bigger picture forward"
@@ -584,15 +584,20 @@ export function ProjectsSheet({
           ) : projects === null ? (
             <Text style={styles.empty}>Loading…</Text>
           ) : projects.length === 0 ? (
-            <View style={styles.list}>
-              <Text style={styles.empty}>
-                No projects yet. Group related tasks into stages and see a piece
-                of work end to end.
+            <View style={styles.emptyProject}>
+              <View style={styles.emptyIcon}>
+                <Icon name="boxes" size={24} color={colors.accent} />
+              </View>
+              <Text style={styles.emptyTitle}>
+                Make room for the bigger picture.
+              </Text>
+              <Text style={styles.emptyDescription}>
+                Bring related tasks together, follow their stages, and see
+                what’s moving forward.
               </Text>
               {draft === null ? (
                 <Button
                   title="New project"
-                  secondary
                   disabled={busy}
                   onPress={() => setDraft("")}
                 />
@@ -701,6 +706,39 @@ export function ProjectsSheet({
 const styles = themed(() =>
   StyleSheet.create({
     list: { gap: 10 },
+    emptyProject: {
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 22,
+      paddingVertical: 36,
+      borderRadius: radii.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    emptyIcon: {
+      width: 56,
+      height: 56,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 18,
+      backgroundColor: colors.accentSoft,
+    },
+    emptyTitle: {
+      fontFamily: fonts.display,
+      fontSize: 21,
+      lineHeight: 29,
+      textAlign: "center",
+      color: colors.text,
+    },
+    emptyDescription: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 21,
+      textAlign: "center",
+      color: colors.muted,
+      marginBottom: 8,
+    },
     card: {
       gap: 8,
       padding: 18,

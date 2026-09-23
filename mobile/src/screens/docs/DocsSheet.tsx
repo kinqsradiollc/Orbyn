@@ -519,7 +519,7 @@ export function DocsSheet({
             <View style={styles.list}>
               <View style={styles.libraryToolbar}>
                 <Button
-                  title="Browse library"
+                  title="All folders"
                   secondary
                   onPress={() => setNavigationOpen(true)}
                 />
@@ -534,6 +534,55 @@ export function DocsSheet({
                 />
               </View>
               <Text style={styles.collectionTitle}>{location}</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.collections}
+                accessibilityLabel="Document collections"
+              >
+                {(
+                  [
+                    ["All", null, null, false],
+                    ["Pages", null, "doc", false],
+                    ["Notes", null, "note", false],
+                    ["Favorites", null, null, true],
+                    ...folders.map((folder) => [
+                      folder.name,
+                      folder.id,
+                      null,
+                      false,
+                    ]),
+                    ["Unfiled", "none", null, false],
+                  ] as [string, string | null, DocKind | null, boolean][]
+                ).map(([label, folder, kind, favorites]) => {
+                  const selected =
+                    favoritesOnly === favorites &&
+                    folderFilter === folder &&
+                    kindFilter === kind;
+                  return (
+                    <Pressable
+                      key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => selectCollection(folder, kind, favorites)}
+                      style={[
+                        styles.collectionChip,
+                        selected && styles.collectionChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.collectionChipText,
+                          selected && styles.collectionChipTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
               <TextInput
                 style={styles.search}
                 value={query}
@@ -592,11 +641,25 @@ export function DocsSheet({
                   />
                 </View>
               )}
-              {shown.length === 0 && (
-                <Text style={styles.empty}>
-                  No documents here. Try another folder or search.
-                </Text>
-              )}
+              {shown.length === 0 &&
+                (docs.length === 0 && !query ? (
+                  <View style={styles.emptyLibrary}>
+                    <View style={styles.emptyLibraryIcon}>
+                      <Icon name="fileText" size={22} color={colors.accent} />
+                    </View>
+                    <Text style={styles.emptyLibraryTitle}>
+                      A home for every idea.
+                    </Text>
+                    <Text style={styles.emptyLibraryBody}>
+                      Create a page or a quick note. Folders will keep them easy
+                      to find as your library grows.
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.empty}>
+                    Nothing here yet. Try another collection or search.
+                  </Text>
+                ))}
               {shown.map((doc) => (
                 <View key={doc.id} style={styles.row}>
                   <Pressable
@@ -752,6 +815,30 @@ const styles = themed(() =>
       fontFamily: fonts.display,
       color: colors.text,
     },
+    collections: { gap: 8, paddingVertical: 2 },
+    collectionChip: {
+      minHeight: 40,
+      maxWidth: 160,
+      paddingHorizontal: 14,
+      justifyContent: "center",
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    collectionChipActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
+    },
+    collectionChipText: {
+      color: colors.textSoft,
+      fontSize: 13,
+      fontFamily: fonts.medium,
+    },
+    collectionChipTextActive: {
+      color: colors.accent,
+      fontFamily: fonts.semibold,
+    },
     navHeading: {
       color: colors.muted,
       fontSize: 12,
@@ -856,5 +943,36 @@ const styles = themed(() =>
       paddingTop: 10,
     },
     empty: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    emptyLibrary: {
+      alignItems: "center",
+      gap: 10,
+      paddingHorizontal: 22,
+      paddingVertical: 30,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    emptyLibraryIcon: {
+      width: 52,
+      height: 52,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 16,
+      backgroundColor: colors.accentSoft,
+    },
+    emptyLibraryTitle: {
+      color: colors.text,
+      fontFamily: fonts.display,
+      fontSize: 19,
+      textAlign: "center",
+    },
+    emptyLibraryBody: {
+      color: colors.muted,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: "center",
+    },
   }),
 );

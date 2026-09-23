@@ -213,63 +213,42 @@ export function TodayScreen({
         </>
       )}
 
-      {/* The rest of the workspace: today's page, documents and projects. */}
-      <View style={shared.card}>
-        <Text style={shared.sectionTitle}>Your workspace</Text>
-        <View style={s.workspaceRows}>
-          {(
-            [
-              [
-                "agenda",
-                "sun",
-                "Today's agenda",
-                "Written for you each morning",
-              ],
-              [
-                "docs",
-                "fileText",
-                "Documents",
-                "Notes, briefs and meeting notes",
-              ],
-              ["projects", "boxes", "Projects", "Work grouped into stages"],
-            ] as const
-          ).map(([what, icon, title, detail]) => (
-            <Pressable
-              key={what}
-              accessibilityRole="button"
-              accessibilityLabel={title}
-              style={({ pressed }) => [
-                s.workspaceRow,
-                pressed && s.workspacePressed,
-              ]}
-              onPress={() => onOpenWorkspace(what)}
-            >
-              <Icon name={icon} size={17} color={colors.muted} />
-              <View style={s.workspaceText}>
-                <Text style={s.workspaceTitle}>{title}</Text>
-                <Text style={s.workspaceDetail}>{detail}</Text>
-              </View>
-              <Icon name="chevronRight" size={16} color={colors.faint} />
-            </Pressable>
-          ))}
-        </View>
+      <Text style={[shared.eyebrow, s.quickHeading]}>QUICK LINKS</Text>
+      <View style={s.quickLinks}>
+        {(
+          [
+            ["agenda", "sun", "Agenda"],
+            ["docs", "fileText", "Docs"],
+            ["projects", "boxes", "Projects"],
+          ] as const
+        ).map(([what, icon, title]) => (
+          <Pressable
+            key={what}
+            accessibilityRole="button"
+            accessibilityLabel={title}
+            style={({ pressed }) => [
+              s.quickLink,
+              pressed && s.workspacePressed,
+            ]}
+            onPress={() => onOpenWorkspace(what)}
+          >
+            <Icon name={icon} size={18} color={colors.accent} />
+            <Text style={s.quickText}>{title}</Text>
+          </Pressable>
+        ))}
       </View>
-
-      <View style={shared.softCard}>
-        <View style={s.badge}>
-          <Icon name="sparkles" size={18} color={colors.accent} />
-        </View>
-        <Text style={shared.eyebrow}>A MIND BESIDE YOURS</Text>
-        <Text style={shared.title}>Find your next clear step.</Text>
-        <Text style={[shared.subtitle, s.text]}>
-          Let’s turn a busy mind into a plan that feels possible.
-        </Text>
-        <Button
-          icon="arrowRight"
-          title="Talk it through with the assistant"
-          onPress={onPlanDay}
-        />
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPlanDay}
+        style={({ pressed }) => [
+          s.assistantLink,
+          pressed && s.workspacePressed,
+        ]}
+      >
+        <Icon name="sparkles" size={18} color={colors.accent} />
+        <Text style={s.assistantLinkText}>Need a hand planning? Ask Orbyn</Text>
+        <Icon name="arrowRight" size={16} color={colors.accent} />
+      </Pressable>
     </>
   );
 }
@@ -367,33 +346,39 @@ const s = themed(() =>
       color: colors.text,
     },
     momentumHint: { marginTop: 10 },
-    badge: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.surface,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 14,
-    },
-    text: { marginBottom: 18 },
     plan: { flexDirection: "row", alignItems: "center", gap: 14 },
     planText: { flex: 1, gap: 3 },
     planButton: { marginBottom: 0 },
-    workspaceRows: { marginTop: 6 },
-    workspaceRow: {
+    quickHeading: { marginTop: 6 },
+    quickLinks: { flexDirection: "row", gap: 8, marginBottom: 10 },
+    quickLink: {
+      flex: 1,
+      minHeight: 72,
+      padding: 10,
+      gap: 7,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      justifyContent: "center",
+    },
+    quickText: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
+    assistantLink: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingVertical: 11,
+      gap: 10,
+      minHeight: 48,
+      paddingHorizontal: 14,
+      marginBottom: 12,
+      borderRadius: radii.input,
+      backgroundColor: colors.accentSoft,
     },
     workspacePressed: { opacity: 0.6 },
-    workspaceText: { flex: 1, gap: 2 },
-    workspaceTitle: {
-      color: colors.text,
-      fontSize: 15,
+    assistantLinkText: {
+      flex: 1,
+      color: colors.accent,
+      fontSize: 13,
       fontFamily: fonts.semibold,
     },
-    workspaceDetail: { color: colors.muted, fontSize: 12 },
   }),
 );

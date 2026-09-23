@@ -569,7 +569,7 @@ export function RootScreen() {
             }
           >
             <View style={s.column}>
-              {tab !== "AI" && tab !== "Calendar" && (
+              {tab === "Today" && (
                 <Text style={shared.eyebrow}>
                   {today
                     .toLocaleDateString([], {
@@ -584,9 +584,11 @@ export function RootScreen() {
               {tab !== "AI" && tab !== "Calendar" && (
                 <FadeIn key={`head-${tab}`} duration={motion.slow}>
                   <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-                  <Text style={[shared.subtitle, s.subtitle]}>
-                    {tabSubtitle(tab)}
-                  </Text>
+                  {tab === "Today" && (
+                    <Text style={[shared.subtitle, s.subtitle]}>
+                      {tabSubtitle(tab)}
+                    </Text>
+                  )}
                 </FadeIn>
               )}
               <ErrorBanner error={error} onDismiss={() => setError("")} />
@@ -999,7 +1001,7 @@ const s = themed(() =>
       paddingTop: 8,
       paddingBottom: 8,
     },
-    content: { paddingTop: 22, paddingBottom: 32 },
+    content: { paddingTop: 18, paddingBottom: 32 },
     column: {
       width: "100%",
       maxWidth: spacing.maxContent,

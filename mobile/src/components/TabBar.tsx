@@ -92,7 +92,7 @@ function TabButton({
       onPress={onPress}
       onPressIn={press.onPressIn}
       onPressOut={press.onPressOut}
-      style={s.tab}
+      style={[s.tab, active && s.tabActive]}
     >
       <Animated.View style={[s.iconWrap, press.style]}>
         <Animated.View
@@ -133,21 +133,30 @@ const s = themed(() =>
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
-    tab: { flex: 1, minHeight: 54, alignItems: "center", gap: 3 },
+    tab: {
+      flex: 1,
+      minHeight: 58,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+      marginHorizontal: 2,
+      borderRadius: 15,
+    },
+    tabActive: { backgroundColor: colors.accentSoft },
     iconWrap: {
       width: 52,
-      height: 32,
+      height: 28,
       alignItems: "center",
       justifyContent: "center",
     },
     pill: {
       position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      borderRadius: 15,
-      backgroundColor: colors.accentSoft,
+      top: -3,
+      left: 18,
+      right: 18,
+      height: 3,
+      borderRadius: 2,
+      backgroundColor: colors.accent,
     },
     label: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
     labelActive: { fontFamily: fonts.semibold, color: colors.accent },

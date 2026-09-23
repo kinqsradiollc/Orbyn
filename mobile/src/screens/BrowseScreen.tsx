@@ -27,28 +27,9 @@ type Row = {
 };
 
 /**
- * The same three groups, in the same order, with the same words as the
- * desktop sidebar — minus the five sections that have a tab of their own.
- * Anything the desktop can reach in one click is one tap from here.
+ * The main workspaces lead on a phone; planning and settings follow below.
  */
 const GROUPS: { label: string; rows: Row[] }[] = [
-  {
-    label: "PLAN YOUR DAY",
-    rows: [
-      {
-        to: "planning",
-        icon: "calendar",
-        title: "Planning",
-        detail: "Working hours, focus time and routines",
-      },
-      {
-        to: "agenda",
-        icon: "sun",
-        title: "Agenda",
-        detail: "Written for you each morning",
-      },
-    ],
-  },
   {
     label: "YOUR WORK",
     rows: [
@@ -69,6 +50,23 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         icon: "list",
         title: "Lists",
         detail: "Somewhere for each kind of task",
+      },
+    ],
+  },
+  {
+    label: "PLAN YOUR DAY",
+    rows: [
+      {
+        to: "planning",
+        icon: "calendar",
+        title: "Planning",
+        detail: "Working hours, focus time and routines",
+      },
+      {
+        to: "agenda",
+        icon: "sun",
+        title: "Agenda",
+        detail: "Written for you each morning",
       },
     ],
   },
@@ -127,16 +125,22 @@ export function BrowseScreen({
             <View style={shared.card}>
               <Text style={shared.eyebrow}>{group.label}</Text>
               <View style={s.rows}>
-                {rows.map((row) => (
+                {rows.map((row, index) => (
                   <Pressable
                     key={row.to}
                     accessibilityRole="button"
                     accessibilityLabel={row.title}
                     accessibilityHint={row.detail}
                     onPress={() => onOpen(row.to)}
-                    style={({ pressed }) => [s.row, pressed && s.pressed]}
+                    style={({ pressed }) => [
+                      s.row,
+                      index > 0 && s.rowDivider,
+                      pressed && s.pressed,
+                    ]}
                   >
-                    <Icon name={row.icon} size={22} color={colors.accent} />
+                    <View style={s.iconTile}>
+                      <Icon name={row.icon} size={19} color={colors.accent} />
+                    </View>
                     <View style={s.text}>
                       <Text style={s.title}>{row.title}</Text>
                       <Text style={s.detail}>{row.detail}</Text>
@@ -155,14 +159,26 @@ export function BrowseScreen({
 
 const s = themed(() =>
   StyleSheet.create({
-    rows: { marginTop: 6 },
+    rows: { marginTop: 4 },
     // A row is a destination, so it is a target a thumb can find.
     row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      minHeight: 68,
-      paddingVertical: 8,
+      minHeight: 66,
+      paddingVertical: 10,
+    },
+    rowDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    iconTile: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 12,
+      backgroundColor: colors.accentSoft,
     },
     pressed: { opacity: 0.6 },
     text: { flex: 1, gap: 2 },

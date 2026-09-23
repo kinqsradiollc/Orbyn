@@ -13,7 +13,6 @@ import {
   addMonths,
   byDueDate,
   dateLabel,
-  dayHeading,
   describeRrule,
   emptyDay,
   itemBody,
@@ -1182,6 +1181,30 @@ export function CalendarScreen({
         value={mode}
         onChange={changeMode}
       />
+      <View style={s.tools}>
+        <SmallAction
+          label="Plan"
+          disabled={handlers.busy}
+          onPress={() => setPlanning({ seed: null })}
+        />
+        <SmallAction
+          label="Tasks to place"
+          disabled={false}
+          onPress={() => setPanel("tasks")}
+        />
+        {teams.length > 0 && (
+          <SmallAction
+            label={mates.length ? `Teammates (${mates.length})` : "Teammates"}
+            disabled={false}
+            onPress={() => setPanel("mates")}
+          />
+        )}
+        <SmallAction
+          label={sets.length ? "Edit sets" : "Calendar sets"}
+          disabled={!prefs}
+          onPress={() => setPanel("sets")}
+        />
+      </View>
     </>
   );
 
@@ -1344,30 +1367,6 @@ export function CalendarScreen({
         style={[shared.card, s.calendar]}
       >
         {!controlsSlot && controls}
-        <View style={s.tools}>
-          <SmallAction
-            label="Plan"
-            disabled={handlers.busy}
-            onPress={() => setPlanning({ seed: null })}
-          />
-          <SmallAction
-            label="Tasks to place"
-            disabled={false}
-            onPress={() => setPanel("tasks")}
-          />
-          {teams.length > 0 && (
-            <SmallAction
-              label={mates.length ? `Teammates (${mates.length})` : "Teammates"}
-              disabled={false}
-              onPress={() => setPanel("mates")}
-            />
-          )}
-          <SmallAction
-            label={sets.length ? "Edit sets" : "Calendar sets"}
-            disabled={!prefs}
-            onPress={() => setPanel("sets")}
-          />
-        </View>
         {mates.length > 0 && (
           <View
             style={s.legend}
@@ -1471,11 +1470,12 @@ export function CalendarScreen({
       ) : (
         // Keyed by day so the timeline and agenda fade in on a new selection.
         <FadeIn key={selected.toDateString()}>
-          <SectionHeading
-            title={multi ? heading : dayHeading(selected)}
-            count={columns.reduce((n, c) => n + c.dayEntries.length, 0)}
-            hint={`${sameDay(selected, new Date()) ? "Today, hour by hour" : "Hour by hour"}. Hold an event, block or frame for options; hold a block, then drag it up, down or sideways to move it.`}
-          />
+          {multi && (
+            <SectionHeading
+              title={heading}
+              count={columns.reduce((n, c) => n + c.dayEntries.length, 0)}
+            />
+          )}
           {multi ? (
             <>
               <View style={s.grid}>

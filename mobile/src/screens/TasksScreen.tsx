@@ -256,6 +256,7 @@ export function TasksScreen({
     group: savedGroup(),
   }));
   const [open, setOpen] = useState<Key | "pins" | "sort" | null>(null);
+  const [showTools, setShowTools] = useState(false);
   const [pins, setPins] = useState<Pin[]>(savedPins);
   const [sort, setSort] = useState<ItemSort>(savedSort);
   const [layout, setLayout] = useState<Layout>(savedLayout);
@@ -518,189 +519,228 @@ export function TasksScreen({
         })}
       </ScrollView>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={s.filterScroll}
-        contentContainerStyle={s.chips}
-        accessibilityLabel="Filters"
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={`Filters and view${active.length ? `, ${active.length} active` : ""}`}
+        accessibilityState={{ expanded: showTools }}
+        onPress={() => {
+          setShowTools((shown) => !shown);
+          setOpen(null);
+        }}
+        style={s.toolsToggle}
       >
-        {keys.map((key) => {
-          const on = filters[key] !== "any" && filters[key] !== "none";
-          const isGroup = key === "group";
-          const shown = isGroup
-            ? filters.group !== "none"
-            : on || filters[key] === "none";
-          return (
+        <Icon name="filter" size={16} color={colors.accent} />
+        <Text style={s.toolsLabel}>
+          Filters & view{active.length ? ` · ${active.length} active` : ""}
+        </Text>
+        <Text style={s.toolsSummary}>
+          {LAYOUT_LABELS[layout]} · {SORT_LABELS[sort]}
+        </Text>
+        <Icon
+          name={showTools ? "chevronUp" : "chevronDown"}
+          size={16}
+          color={colors.muted}
+        />
+      </PressableScale>
+      {showTools && (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.filterScroll}
+            contentContainerStyle={s.chips}
+            accessibilityLabel="Filters"
+          >
+            {keys.map((key) => {
+              const on = filters[key] !== "any" && filters[key] !== "none";
+              const isGroup = key === "group";
+              const shown = isGroup
+                ? filters.group !== "none"
+                : on || filters[key] === "none";
+              return (
+                <PressableScale
+                  key={key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${KEY_LABELS[key]}: ${current(key)}`}
+                  accessibilityHint="Shows the choices below"
+                  accessibilityState={{ expanded: open === key }}
+                  onPress={() => {
+                    animateLayout();
+                    setOpen(open === key ? null : key);
+                  }}
+                  style={[
+                    s.filter,
+                    shown && s.filterOn,
+                    open === key && s.filterOpen,
+                  ]}
+                >
+                  {key === "group" ? (
+                    <Icon
+                      name="list"
+                      size={13}
+                      color={shown ? colors.accent : colors.muted}
+                    />
+                  ) : (
+                    key === "due" && (
+                      <Icon
+                        name="filter"
+                        size={12}
+                        color={shown ? colors.accent : colors.muted}
+                      />
+                    )
+                  )}
+                  <Text style={[s.filterText, shown && s.filterTextOn]}>
+                    {shown
+                      ? `${KEY_LABELS[key]}: ${current(key)}`
+                      : KEY_LABELS[key]}
+                  </Text>
+                </PressableScale>
+              );
+            })}
             <PressableScale
-              key={key}
               accessibilityRole="button"
-              accessibilityLabel={`${KEY_LABELS[key]}: ${current(key)}`}
+              accessibilityLabel={`Pinned sections: ${pins.length ? pins.map((p) => PIN_LABELS[p]).join(", ") : "overdue only"}`}
               accessibilityHint="Shows the choices below"
-              accessibilityState={{ expanded: open === key }}
+              accessibilityState={{ expanded: open === "pins" }}
               onPress={() => {
                 animateLayout();
-                setOpen(open === key ? null : key);
+                setOpen(open === "pins" ? null : "pins");
               }}
               style={[
                 s.filter,
-                shown && s.filterOn,
-                open === key && s.filterOpen,
+                pins.length > 0 && s.filterOn,
+                open === "pins" && s.filterOpen,
               ]}
             >
-              {key === "group" ? (
-                <Icon
-                  name="list"
-                  size={13}
-                  color={shown ? colors.accent : colors.muted}
-                />
-              ) : (
-                key === "due" && (
-                  <Icon
-                    name="filter"
-                    size={12}
-                    color={shown ? colors.accent : colors.muted}
-                  />
-                )
-              )}
-              <Text style={[s.filterText, shown && s.filterTextOn]}>
-                {shown
-                  ? `${KEY_LABELS[key]}: ${current(key)}`
-                  : KEY_LABELS[key]}
+              <Icon
+                name="pin"
+                size={12}
+                color={pins.length ? colors.accent : colors.muted}
+              />
+              <Text style={[s.filterText, pins.length > 0 && s.filterTextOn]}>
+                Pinned
               </Text>
             </PressableScale>
-          );
-        })}
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={`Pinned sections: ${pins.length ? pins.map((p) => PIN_LABELS[p]).join(", ") : "overdue only"}`}
-          accessibilityHint="Shows the choices below"
-          accessibilityState={{ expanded: open === "pins" }}
-          onPress={() => {
-            animateLayout();
-            setOpen(open === "pins" ? null : "pins");
-          }}
-          style={[
-            s.filter,
-            pins.length > 0 && s.filterOn,
-            open === "pins" && s.filterOpen,
-          ]}
-        >
-          <Icon
-            name="pin"
-            size={12}
-            color={pins.length ? colors.accent : colors.muted}
-          />
-          <Text style={[s.filterText, pins.length > 0 && s.filterTextOn]}>
-            Pinned
-          </Text>
-        </PressableScale>
-        {active.length > 0 && (
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Clear filters"
-            onPress={() => {
-              animateLayout();
-              setFilters((f) => ({ ...DEFAULTS, group: f.group }));
-              setOpen(null);
-            }}
-            style={s.filter}
-          >
-            <Icon name="x" size={12} color={colors.danger} />
-            <Text style={[s.filterText, { color: colors.danger }]}>Clear</Text>
-          </PressableScale>
-        )}
-      </ScrollView>
-      {open && open !== "pins" && open !== "sort" && (
-        <View style={s.panel}>
-          <ChipRow label={KEY_LABELS[open]}>
-            {options[open].map((o) => (
-              <Chip
-                key={o.value}
-                label={o.label}
-                color={o.color}
-                selected={filters[open] === o.value}
-                onPress={() => set(open, o.value)}
+            {active.length > 0 && (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Clear filters"
+                onPress={() => {
+                  animateLayout();
+                  setFilters((f) => ({ ...DEFAULTS, group: f.group }));
+                  setOpen(null);
+                }}
+                style={s.filter}
+              >
+                <Icon name="x" size={12} color={colors.danger} />
+                <Text style={[s.filterText, { color: colors.danger }]}>
+                  Clear
+                </Text>
+              </PressableScale>
+            )}
+          </ScrollView>
+          {open && open !== "pins" && open !== "sort" && (
+            <View style={s.panel}>
+              <ChipRow label={KEY_LABELS[open]}>
+                {options[open].map((o) => (
+                  <Chip
+                    key={o.value}
+                    label={o.label}
+                    color={o.color}
+                    selected={filters[open] === o.value}
+                    onPress={() => set(open, o.value)}
+                  />
+                ))}
+              </ChipRow>
+              {(open === "list" || open === "tag") &&
+                options[open].length <= 2 && (
+                  <Text style={[shared.small, s.panelHint]}>
+                    {open === "list" ? "No lists yet." : "No tags yet."}
+                  </Text>
+                )}
+            </View>
+          )}
+          {open === "pins" && (
+            <View style={s.panel}>
+              <ChipRow label="Pinned sections" multi>
+                {PINS.map((p) => (
+                  <Chip
+                    key={p}
+                    multi
+                    label={PIN_LABELS[p]}
+                    selected={pins.includes(p)}
+                    onPress={() => togglePin(p)}
+                  />
+                ))}
+              </ChipRow>
+              <Text style={[shared.small, s.panelHint]}>
+                Pinned sections sit at the top of the list. Overdue tasks always
+                do.
+              </Text>
+            </View>
+          )}
+          <View style={s.layout}>
+            <Segmented
+              accessibilityLabel="Layout"
+              options={LAYOUTS}
+              labels={LAYOUT_LABELS}
+              value={layout}
+              onChange={chooseLayout}
+            />
+          </View>
+          <View style={s.toolbar}>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`Sort by ${SORT_LABELS[sort]}`}
+              accessibilityHint="Shows the choices below"
+              accessibilityState={{ expanded: open === "sort" }}
+              onPress={() => {
+                animateLayout();
+                setOpen(open === "sort" ? null : "sort");
+              }}
+              style={[s.filter, open === "sort" && s.filterOpen]}
+            >
+              <Icon name="list" size={13} color={colors.muted} />
+              <Text style={s.filterText}>Sort: {SORT_LABELS[sort]}</Text>
+            </PressableScale>
+            <View style={s.toolbarActions}>
+              <SmallAction
+                label="Tags"
+                disabled={false}
+                onPress={onManageTags}
               />
-            ))}
-          </ChipRow>
-          {(open === "list" || open === "tag") && options[open].length <= 2 && (
-            <Text style={[shared.small, s.panelHint]}>
-              {open === "list" ? "No lists yet." : "No tags yet."}
+              <SmallAction
+                label="Lists"
+                disabled={false}
+                onPress={onManageLists}
+              />
+            </View>
+          </View>
+          {open === "sort" && (
+            <View style={s.panel}>
+              <ChipRow label="Sort by">
+                {ITEM_SORTS.map((value) => (
+                  <Chip
+                    key={value}
+                    label={SORT_LABELS[value]}
+                    selected={sort === value}
+                    onPress={() => chooseSort(value)}
+                  />
+                ))}
+              </ChipRow>
+              <Text style={[shared.small, s.panelHint]}>
+                Finished and cancelled items always come last.
+              </Text>
+            </View>
+          )}
+          {manual && layout === "list" && visible.length > 1 && (
+            <Text style={[shared.small, s.manualHint]}>
+              Long-press a task and drag it to reorder, or hold it for Move up
+              and Move down. Tasks move among others in the same list, or under
+              the same task.
             </Text>
           )}
-        </View>
-      )}
-      {open === "pins" && (
-        <View style={s.panel}>
-          <ChipRow label="Pinned sections" multi>
-            {PINS.map((p) => (
-              <Chip
-                key={p}
-                multi
-                label={PIN_LABELS[p]}
-                selected={pins.includes(p)}
-                onPress={() => togglePin(p)}
-              />
-            ))}
-          </ChipRow>
-          <Text style={[shared.small, s.panelHint]}>
-            Pinned sections sit at the top of the list. Overdue tasks always do.
-          </Text>
-        </View>
-      )}
-      <View style={s.layout}>
-        <Segmented
-          accessibilityLabel="Layout"
-          options={LAYOUTS}
-          labels={LAYOUT_LABELS}
-          value={layout}
-          onChange={chooseLayout}
-        />
-      </View>
-      <View style={s.toolbar}>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={`Sort by ${SORT_LABELS[sort]}`}
-          accessibilityHint="Shows the choices below"
-          accessibilityState={{ expanded: open === "sort" }}
-          onPress={() => {
-            animateLayout();
-            setOpen(open === "sort" ? null : "sort");
-          }}
-          style={[s.filter, open === "sort" && s.filterOpen]}
-        >
-          <Icon name="list" size={13} color={colors.muted} />
-          <Text style={s.filterText}>Sort: {SORT_LABELS[sort]}</Text>
-        </PressableScale>
-        <View style={s.toolbarActions}>
-          <SmallAction label="Tags" disabled={false} onPress={onManageTags} />
-          <SmallAction label="Lists" disabled={false} onPress={onManageLists} />
-        </View>
-      </View>
-      {open === "sort" && (
-        <View style={s.panel}>
-          <ChipRow label="Sort by">
-            {ITEM_SORTS.map((value) => (
-              <Chip
-                key={value}
-                label={SORT_LABELS[value]}
-                selected={sort === value}
-                onPress={() => chooseSort(value)}
-              />
-            ))}
-          </ChipRow>
-          <Text style={[shared.small, s.panelHint]}>
-            Finished and cancelled items always come last.
-          </Text>
-        </View>
-      )}
-      {manual && layout === "list" && visible.length > 1 && (
-        <Text style={[shared.small, s.manualHint]}>
-          Long-press a task and drag it to reorder, or hold it for Move up and
-          Move down. Tasks move among others in the same list, or under the same
-          task.
-        </Text>
+        </>
       )}
 
       {visible.length === 0 ? (
@@ -844,6 +884,30 @@ const s = themed(() =>
     input: { paddingLeft: 42 },
     chipScroll: { marginHorizontal: -spacing.page, marginBottom: 10 },
     filterScroll: { marginHorizontal: -spacing.page, marginBottom: 12 },
+    toolsToggle: {
+      minHeight: 48,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 14,
+      marginBottom: 14,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    toolsLabel: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    toolsSummary: {
+      flex: 1,
+      textAlign: "right",
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      color: colors.muted,
+    },
     chips: { gap: 8, paddingHorizontal: spacing.page },
     chip: {
       flexDirection: "row",
