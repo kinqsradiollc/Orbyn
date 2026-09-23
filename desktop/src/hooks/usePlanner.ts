@@ -12,7 +12,7 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { client } from "../lib/api";
 import { deviceId } from "../lib/device";
 import { celebrate } from "../lib/celebrate";
-import { session } from "../lib/session";
+import { onSessionChange, session } from "../lib/session";
 
 export type AuthMode = "register" | "login";
 
@@ -48,6 +48,17 @@ export function usePlanner() {
     setTeams([]);
     setMaintenance(null);
   }, []);
+
+  // Another tab signed in or out: follow it, so every tab shows the same account.
+  useEffect(
+    () =>
+      onSessionChange((next) => {
+        if (next === tokenRef.current) return;
+        if (next) setToken(next);
+        else clearSession();
+      }),
+    [clearSession],
+  );
 
   const lastMaintenance = useRef("");
   /** Apply a maintenance state, re-rendering only when it changed. */

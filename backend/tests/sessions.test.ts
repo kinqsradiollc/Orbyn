@@ -110,3 +110,28 @@ test("sign out everywhere else keeps only the current session", async () => {
   assert.equal(list.length, 1);
   assert.equal(list[0].current, true);
 });
+
+test("using the app keeps a session alive; an idle one still expires", async () => {
+  const token = await signIn("Busy");
+  const { createHash } = await import("node:crypto");
+  const hash = createHash("sha256").update(token).digest("hex");
+  // Signed in 29 days ago and last seen a while back: about to expire.
+  await pool.query(
+    `UPDATE sessions SET expires_at = now() + interval '1 day',
+            last_seen_at = now() - interval '1 hour' WHERE token_hash = $1`,
+    [hash],
+  );
+  assert.equal((await get("/me", token)).statusCode, 200);
+  const { rows } = await pool.query<{ days: number }>(
+    "SELECT extract(epoch FROM expires_at - now()) / 86400 AS days FROM sessions WHERE token_hash = $1",
+    [hash],
+  );
+  assert.ok(rows[0].days > 29, `expected ~30 days left, got ${rows[0].days}`);
+
+  // Past its expiry, using it doesn't bring it back.
+  await pool.query(
+    "UPDATE sessions SET expires_at = now() - interval '1 minute' WHERE token_hash = $1",
+    [hash],
+  );
+  assert.equal((await get("/me", token)).statusCode, 401);
+});

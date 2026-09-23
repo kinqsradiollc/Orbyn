@@ -442,7 +442,7 @@ A single-page React app built with Vite. `src/features/<view>/` holds one folder
 (overview, tasks, calendar, assistant, notifications, settings, auth), `src/components/` the
 shared UI (item row, editor modal, proposal review, sidebar, topbar), `src/hooks/usePlanner.ts` the
 data layer (session, polling every 30 seconds while visible, optimistic-lock aware mutations), and
-`src/lib/api.ts` the configured `OrbynClient`. Session tokens live in `sessionStorage`.
+`src/lib/api.ts` the configured `OrbynClient`. Session tokens live in `localStorage`, so a sign-in survives closing the tab and is shared by every tab; signing out in one tab signs them all out. A session expires after 30 days without use (each request slides it forward).
 
 The same bundle runs three ways:
 
