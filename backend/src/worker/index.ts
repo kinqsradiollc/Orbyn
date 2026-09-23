@@ -1,6 +1,7 @@
 import { runDueTemplates } from "../modules/templates/routes.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
+import { runSweep } from "../lib/sweep.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
@@ -39,6 +40,8 @@ async function heartbeat() {
  */
 /** How often pages waiting to be measured are looked at. */
 const MEASURE_MS = 60_000;
+/** How often the sweeper clears expired and outdated records (lib/sweep.ts). */
+const SWEEP_MS = 3_600_000;
 
 export async function runWorker() {
   let stopping = false;
@@ -50,6 +53,7 @@ export async function runWorker() {
   let lastPlanning = 0;
   let lastNotices = 0;
   let lastMeasured = 0;
+  let lastSwept = 0;
   while (!stopping) {
     let backlog = false;
     try {
@@ -81,6 +85,14 @@ export async function runWorker() {
             // Measuring is a bonus; failing it must not stall reminders.
           }
           lastMeasured = Date.now();
+        }
+        if (Date.now() - lastSwept >= SWEEP_MS) {
+          try {
+            await runSweep();
+          } catch {
+            // Housekeeping: a failed sweep waits for the next hour.
+          }
+          lastSwept = Date.now();
         }
         // Subscribed calendars: new ones within a cycle, the rest hourly.
         await refreshDueSubscriptions();

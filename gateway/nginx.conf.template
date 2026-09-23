@@ -110,6 +110,7 @@ ${UPSTREAM_STATUS}
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $fwd_proto;
+    proxy_set_header X-Request-Id $request_id;
     # Internal connections take milliseconds; a short connect timeout means a
     # copy that just stopped costs about a second before the next one is tried.
     proxy_connect_timeout 1s;
@@ -184,6 +185,7 @@ ${UPSTREAM_STATUS}
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $fwd_proto;
+    proxy_set_header X-Request-Id $request_id;
     proxy_connect_timeout 1s;
     proxy_read_timeout 125s;
     proxy_next_upstream error timeout http_502 http_503;
@@ -201,6 +203,7 @@ ${UPSTREAM_STATUS}
       proxy_set_header Host $host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
       # Links the API builds (the calendar feed) need the /api it sits under.
       proxy_set_header X-Forwarded-Prefix /api;
       proxy_pass http://127.0.0.1:8080/;
@@ -213,11 +216,13 @@ ${UPSTREAM_STATUS}
       proxy_set_header Host $host;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
     location = /.well-known/caldav {
       proxy_set_header Host $host;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
 

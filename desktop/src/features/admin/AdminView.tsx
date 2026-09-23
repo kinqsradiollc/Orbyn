@@ -3,6 +3,8 @@ import {
   ArrowLeft,
   BellRing,
   CircleDashed,
+  Activity,
+  BarChart3,
   Database,
   LayoutDashboard,
   ListTodo,
@@ -30,13 +32,27 @@ import { AdminAudit } from "./AdminAudit";
 import { AdminAi } from "./AdminAi";
 import { AdminSystem } from "./AdminSystem";
 import { AdminDatabase } from "./AdminDatabase";
+import { AdminRequests } from "./AdminRequests";
+import { AdminAnalytics } from "./AdminAnalytics";
+import { AdminUserDetail } from "./AdminUserDetail";
 import { stagger } from "../../lib/motion";
+import "./insights.css";
 
 type Tab =
-  "Overview" | "Users" | "Teams" | "Audit log" | "Database" | "AI" | "System";
+  | "Overview"
+  | "Analytics"
+  | "Requests"
+  | "Users"
+  | "Teams"
+  | "Audit log"
+  | "Database"
+  | "AI"
+  | "System";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Overview", icon: LayoutDashboard },
+  { label: "Analytics", icon: BarChart3 },
+  { label: "Requests", icon: Activity },
   { label: "Users", icon: Users },
   { label: "Teams", icon: Network },
   { label: "Audit log", icon: ScrollText },
@@ -71,6 +87,12 @@ export function AdminView({
 }: TeamActions & { onMaintenanceChange?: (m: Maintenance) => void }) {
   const [tab, setTab] = useState<Tab>("Overview");
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const canSeeRequests = hasSystemPermission(props.user?.role, "requests:read");
+  const canSeeAnalytics = hasSystemPermission(
+    props.user?.role,
+    "analytics:read",
+  );
   const canManageAi = hasSystemPermission(props.user?.role, "ai:manage");
   const canManageSystem = hasSystemPermission(
     props.user?.role,
@@ -79,6 +101,8 @@ export function AdminView({
   const tabs = TABS.filter(
     (t) =>
       (t.label !== "AI" || canManageAi) &&
+      (t.label !== "Requests" || canSeeRequests) &&
+      (t.label !== "Analytics" || canSeeAnalytics) &&
       (t.label !== "Database" || canManageSystem) &&
       (t.label !== "System" || canManageSystem),
   );
@@ -95,6 +119,7 @@ export function AdminView({
             onClick={() => {
               setTab(label);
               setTeamId(null);
+              setUserId(null);
             }}
           >
             <Icon size={15} /> {label}
@@ -109,7 +134,24 @@ export function AdminView({
           onNavigate={setTab}
         />
       )}
-      {tab === "Users" && <AdminUsers {...props} />}
+      {tab === "Analytics" && canSeeAnalytics && (
+        <AdminAnalytics report={props.report} />
+      )}
+      {tab === "Requests" && canSeeRequests && (
+        <AdminRequests report={props.report} />
+      )}
+      {tab === "Users" &&
+        (userId ? (
+          <AdminUserDetail
+            key={userId}
+            userId={userId}
+            selfId={props.user?.id}
+            report={props.report}
+            onBack={() => setUserId(null)}
+          />
+        ) : (
+          <AdminUsers {...props} onOpen={setUserId} />
+        ))}
       {tab === "Teams" &&
         (teamId ? (
           <>

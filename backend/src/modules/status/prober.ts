@@ -1,5 +1,5 @@
 import { cachedSettings } from "../../lib/settings.js";
-import { pool, transaction } from "../../db/pool.js";
+import { transaction } from "../../db/pool.js";
 import { components } from "./components.js";
 
 type Row = {
@@ -12,7 +12,6 @@ type Row = {
 /** Results that could not be saved (database down) wait here, capped. */
 const pending: Row[] = [];
 const MAX_PENDING = 10_000;
-const PRUNE_EVERY_ROUNDS = 120;
 
 /** Probe every component once and save the results with their check times. */
 export async function probeOnce() {
@@ -50,15 +49,11 @@ export async function probeOnce() {
 /** Probe on an interval until the returned stop function is called. */
 export function startProber() {
   let stopped = false;
-  let rounds = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const tick = async () => {
     try {
+      // Old checks are cleared by the sweeper (lib/sweep.ts), which admins tune.
       await probeOnce();
-      if (++rounds % PRUNE_EVERY_ROUNDS === 0)
-        await pool.query(
-          "DELETE FROM status_checks WHERE checked_at < now() - interval '90 days'",
-        );
     } catch (error) {
       console.error(
         JSON.stringify({

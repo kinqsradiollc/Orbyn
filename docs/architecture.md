@@ -170,8 +170,14 @@ loop (`backend/src/modules/ai/agent/`):
    user's items whose titles share words with the request. It adds them to the overview as
    `matching_request`, with their ids, so a change like "move buy groceries to Thursday" usually
    needs no search round trip. This keeps weaker tool users such as Matilda steady.
-   - **Read tools:** `get_overview`, `search_items` (words, status, type, priority, team, due-date
-     range), `get_item` (notes, checklist, recent updates) and `list_teams`. Every query is scoped on
+   - **Read tools:** `get_overview` (with a suggested order and the tasks that have no date),
+     `search_items` (words, status, type, priority, team, project, list, due-date range, or no due
+     date), `get_item` (notes, checklist, recent updates), `list_teams`, `rank_tasks` (open tasks in
+     the app's own priority-score order, each with why), `list_projects` and `get_project` (progress,
+     risk, stages, and decisions no task delivers), `find_free_time` (free stretches in working
+     hours) and `get_follow_through` (asks, promises, undelivered decisions, how plans held).
+     Asking what to do first ("help me prioritise") is advice: the guard allows no proposals for it
+     unless the message also names a change. Every query is scoped on
      the server, using the session's user id, to the user's own personal items and their teams'
      items. Ids from anywhere else look like missing items, and nothing the model sends can widen
      the scope.
@@ -436,7 +442,7 @@ A single-page React app built with Vite. `src/features/<view>/` holds one folder
 (overview, tasks, calendar, assistant, notifications, settings, auth), `src/components/` the
 shared UI (item row, editor modal, proposal review, sidebar, topbar), `src/hooks/usePlanner.ts` the
 data layer (session, polling every 30 seconds while visible, optimistic-lock aware mutations), and
-`src/lib/api.ts` the configured `OrbynClient`. Session tokens live in `sessionStorage`.
+`src/lib/api.ts` the configured `OrbynClient`. Session tokens live in `localStorage`, so a sign-in survives closing the tab and is shared by every tab; signing out in one tab signs them all out. A session expires after 30 days without use (each request slides it forward).
 
 The same bundle runs three ways:
 

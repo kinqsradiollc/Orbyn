@@ -19,7 +19,8 @@
 # image layers, and confirm the version that is serving.
 #
 # Copies per service come from .env: API_REPLICAS (default 2), AI_REPLICAS (2),
-# WEB_REPLICAS (2), STATUS_REPLICAS (1), NOTIFIER_REPLICAS (1). Settings that live
+# REALTIME_REPLICAS (2), WEB_REPLICAS (2), STATUS_REPLICAS (1),
+# NOTIFIER_REPLICAS (1). Settings that live
 # in the app (Admin -> System) need no deploy at all.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -238,6 +239,9 @@ rollout() {
 
 rollout api "$(setting API_REPLICAS 2)"
 rollout ai "$(setting AI_REPLICAS 2)"
+# Open streams on the old copies close as they stop; clients reconnect to the
+# new ones on their own (EventSource retries), so a rollout loses no updates.
+rollout realtime "$(setting REALTIME_REPLICAS 2)"
 rollout status "$(setting STATUS_REPLICAS 1)"
 rollout notifier "$(setting NOTIFIER_REPLICAS 1)"
 rollout desktop "$(setting WEB_REPLICAS 2)"

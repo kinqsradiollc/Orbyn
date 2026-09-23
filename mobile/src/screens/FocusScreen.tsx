@@ -214,7 +214,17 @@ function Body({
     return ok;
   };
 
+  // Leaving while a session runs is stepping away, not stopping: it keeps
+  // going and "Back to focus" on Today returns to it. End session stops it.
+  const keepsRunning = focus.running && !!focus.state.ends_at;
   const close = async () => {
+    if (keepsRunning) {
+      if (await stop()) onClose();
+      return;
+    }
+    if (await settle()) onClose();
+  };
+  const endSession = async () => {
     if (await settle()) onClose();
   };
   leaveRef.current = () => void close();
@@ -393,6 +403,13 @@ function Body({
                     strokeWidth={2}
                   />
                 </PressableScale>
+                {keepsRunning && (
+                  <SmallAction
+                    label="End session"
+                    disabled={busy}
+                    onPress={() => void endSession()}
+                  />
+                )}
                 {focus.state.phase !== "work" && (
                   <SmallAction
                     label="Skip break"

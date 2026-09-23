@@ -15,6 +15,9 @@ import { authorize } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { TEAM_COLUMNS } from "../teams/routes.js";
 import { adminDatabaseRoutes } from "./database.js";
+import { adminInsightRoutes } from "./insights.js";
+import { adminUserPowerRoutes } from "./users.js";
+import { adminSweepRoutes } from "./sweep.js";
 
 const USER_COLUMNS = `u.id, u.email, u.name, u.email_reminders, u.role, u.disabled, u.email_verified, u.created_at,
   (SELECT count(*)::int FROM team_members m WHERE m.user_id=u.id) AS team_count,
@@ -52,6 +55,9 @@ async function otherActiveAdmins(userId: string, db: Db) {
  */
 export async function adminRoutes(app: FastifyInstance) {
   adminDatabaseRoutes(app);
+  await adminInsightRoutes(app);
+  await adminUserPowerRoutes(app);
+  await adminSweepRoutes(app);
   app.get("/admin/overview", async (r): Promise<AdminOverview> => {
     await authorize(r, "admin:access");
     return (

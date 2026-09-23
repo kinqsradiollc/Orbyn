@@ -19,6 +19,9 @@ export const SYSTEM_PERMISSIONS = [
   "teams:read_all",
   "teams:manage_all",
   "audit:read",
+  /** Request tracing across the services, and usage analytics. */
+  "requests:read",
+  "analytics:read",
   "ai:manage",
   "system:manage",
 ] as const;

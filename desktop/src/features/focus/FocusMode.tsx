@@ -157,7 +157,15 @@ export function FocusMode({
   };
 
   const { finish } = focus;
+  // Leaving while the timer runs is stepping away, not stopping: the session
+  // keeps going and "Back to focus" in the app returns to it. Leaving a timer
+  // that isn't running, or ending the session, stops it.
+  const keepsRunning = focus.running && !!focus.state.ends_at;
   const close = useCallback(() => {
+    if (keepsRunning) void flush().finally(onClose);
+    else void Promise.all([flush(), finish()]).finally(onClose);
+  }, [flush, finish, onClose, keepsRunning]);
+  const endSession = useCallback(() => {
     void Promise.all([flush(), finish()]).finally(onClose);
   }, [flush, finish, onClose]);
 
@@ -252,7 +260,11 @@ export function FocusMode({
         <span className="eyebrow">FOCUS MODE</span>
         <button
           className="icon-button"
-          aria-label="Leave focus mode"
+          aria-label={
+            keepsRunning
+              ? "Step away (the session keeps running)"
+              : "Leave focus mode"
+          }
           onClick={close}
         >
           <X size={22} />
@@ -449,6 +461,11 @@ export function FocusMode({
                     </>
                   )}
                 </button>
+                {keepsRunning && (
+                  <button className="secondary" onClick={endSession}>
+                    End session
+                  </button>
+                )}
                 {focus.state.phase !== "work" && (
                   <button className="secondary" onClick={focus.skip}>
                     <SkipForward size={17} /> Skip break

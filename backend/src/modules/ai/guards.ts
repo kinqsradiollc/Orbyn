@@ -49,6 +49,22 @@ const QUESTION =
 const READ_REQUEST = /^\s*(show|list|summari[sz]e|tell|give me|find)\b/i;
 
 /**
+ * Asking for advice about order — "help me prioritise", "what should I do
+ * first?", "which task should I complete first" — is a question, even though
+ * "prioritise" and "complete" are change words. The assistant ranks and
+ * explains; it proposes changes only when the message also names one
+ * ("…and move the rest to next week", "set the report to high priority").
+ */
+const ADVICE =
+  /\b(?:help me (?:to )?prioriti[sz]e|how (?:should|do) i prioriti[sz]e|what (?:should|do) i (?:do|work on|tackle|start|focus on|complete|finish)(?: first| next)?|which (?:task|one|thing)s? (?:should|do) i (?:do|work on|tackle|start|focus on|complete|finish)|what(?:'s| is) (?:most )?(?:important|urgent|pressing)|what needs my attention|where (?:should|do) i start)\b/i;
+const EXPLICIT_CHANGE =
+  /\b(add|create|move|reschedule|change|update|edit|rename|set|mark|delete|remove|cancel|schedule|book|assign|give (?:them|it|those)|put)\b/i;
+
+/** Whether a message asks what to do rather than asking for a change. */
+export const wantsAdvice = (message: string) =>
+  ADVICE.test(message) && !EXPLICIT_CHANGE.test(message);
+
+/**
  * Whether a message may ask for a change.
  * - "Can you move my dentist to Friday?": a polite request with a change word.
  * - "What's the launch plan about?", "Is the gym on Friday?": questions, never.
@@ -57,6 +73,7 @@ const READ_REQUEST = /^\s*(show|list|summari[sz]e|tell|give me|find)\b/i;
  *   ("Dinner with Sam Thursday 7pm").
  */
 export function mayChange(message: string) {
+  if (wantsAdvice(message)) return false;
   if (POLITE_REQUEST.test(message)) return wantsChanges(message);
   if (QUESTION.test(message)) return false;
   if (READ_REQUEST.test(message)) return wantsChanges(message);
@@ -91,7 +108,11 @@ export function pruneActions(
   items: SnapshotItem[],
   message?: string,
 ): Action[] {
-  if (message !== undefined && !CHANGE_INTENT.test(message)) return [];
+  if (
+    message !== undefined &&
+    (!CHANGE_INTENT.test(message) || wantsAdvice(message))
+  )
+    return [];
   const mayDelete = message === undefined || DELETE_INTENT.test(message);
   const byId = new Map(items.map((item) => [String(item.id), item]));
   return actions.filter((action) => {

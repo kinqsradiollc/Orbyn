@@ -13,6 +13,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ProjectDetail } from "./ProjectDetail";
 import { PromiseTracker } from "./PromiseTracker";
 import { TemplatesDialog } from "./TemplatesDialog";
+import { NewProjectDialog } from "./NewProjectDialog";
 import "./projects.css";
 
 const dueLabel = (iso: string | null) =>
@@ -48,7 +49,6 @@ export function ProjectsView({
   const [open, setOpen] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
   const [templates, setTemplates] = useState(!!openTemplate);
   const [initialTemplate] = useState(openTemplate);
   useEffect(() => {
@@ -66,22 +66,6 @@ export function ProjectsView({
   useEffect(() => {
     void load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const create = () => {
-    const name = newName.trim();
-    if (!name) return;
-    setBusy(true);
-    client
-      .createProject({ name })
-      .then((p) => {
-        setOpen(p);
-        setCreating(false);
-        setNewName("");
-        void load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
 
   if (open)
     return (
@@ -142,36 +126,24 @@ export function ProjectsView({
         </span>
       </div>
       {creating && (
-        <form
-          className="project-create-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            create();
+        <NewProjectDialog
+          teams={teams}
+          items={items}
+          report={report}
+          onClose={() => setCreating(false)}
+          onTemplates={() => {
+            setCreating(false);
+            setTemplates(true);
           }}
-        >
-          <input
-            autoFocus
-            aria-label="Project name"
-            placeholder="Project name"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            maxLength={120}
-            required
-          />
-          <button className="primary" disabled={busy || !newName.trim()}>
-            Create project
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => {
+          onCreated={(project) => {
+            void load();
+            onRefresh();
+            if (project) {
               setCreating(false);
-              setNewName("");
-            }}
-          >
-            Cancel
-          </button>
-        </form>
+              setOpen(project);
+            }
+          }}
+        />
       )}
       {templates && (
         <TemplatesDialog

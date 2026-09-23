@@ -308,9 +308,43 @@
   color: var(--muted);
   font-size: 12px;
 }
+/* The rows scroll inside their own window, both ways, with the header row
+   and the first column held in place — a wide table's sideways scrollbar is
+   always on screen instead of under the last row. */
 .db-grid-scroll {
   max-width: 100%;
-  overflow-x: auto;
+  max-height: min(62vh, 640px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong, var(--border)) transparent;
+}
+.db-grid-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.db-grid-scroll::-webkit-scrollbar-thumb {
+  border: 2px solid var(--color-surface);
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong, var(--border));
+}
+.db-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.db-grid th:first-child,
+.db-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.db-grid thead th:first-child {
+  z-index: 3;
 }
 .db-grid {
   width: max-content;

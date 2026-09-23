@@ -1655,18 +1655,10 @@ footer svg {
 .nowrap {
   white-space: nowrap;
 }
-.role-select {
-  padding: 6px 8px;
-  border: 1px solid #dfe5dc;
-  border-radius: var(--radius-sm);
-  background: #fff;
-  color: #3f5038;
+/* The picker draws its own box; this only makes it compact for a table row. */
+.role-select .select-control {
+  padding: 5px 8px;
   font-size: 11px;
-}
-.role-select:disabled {
-  background: #f8f9f6;
-  color: #8b938e;
-  cursor: not-allowed;
 }
 .row-actions {
   text-align: right;
@@ -2395,6 +2387,20 @@ footer svg {
   border-color: #d7e4d6;
   color: #3c6349;
 }
+.app-banner.is-announcement {
+  background: var(--color-soft);
+  border-color: var(--color-softBorder);
+  color: var(--color-accent);
+}
+.app-banner.is-announcement.is-warning {
+  background: var(--color-warnSoft);
+  border-color: var(--color-warnBorder);
+  color: var(--color-warn);
+}
+.app-banner.is-announcement .muted {
+  color: inherit;
+  opacity: 0.8;
+}
 .app-banner.is-focus {
   background: var(--color-soft);
   border-color: var(--color-softBorder);
@@ -3089,4 +3095,43 @@ input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   appearance: none;
   margin: 0;
+}
+
+/* A field that sits borderless inside its own box (a search bar, a
+   composer) never draws a ring of its own — it would show as a second box
+   inside the first. The box shows focus instead. */
+:is(.db-search, .chat-input, .command-input, .ai-composer, .update-composer)
+  :is(input, textarea):is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+:is(.db-search, .chat-input):focus-within {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 35%, transparent);
+}
+
+/* In a stacked form a picker sits under its label and fills the field, like
+   the inputs beside it. Rows that read as a sentence ("every 2 weeks") keep
+   their pickers inline. */
+:is(.modal, .auth-card, .settings-field, .settings-subform, .field-row)
+  label:not(.repeat-every):not(.check-line)
+  > :is(.select, .date-field) {
+  display: flex;
+  width: 100%;
+  margin-top: 7px;
+}
+:is(.modal, .auth-card, .settings-field, .settings-subform, .field-row)
+  label:not(.repeat-every):not(.check-line)
+  > :is(.select, .date-field)
+  > :is(.select-control, .date-field-control) {
+  min-height: 40px;
+  padding-inline: 12px;
+}
+
+/* Cards clip their corners, which would also cut off a picker's list as it
+   opens past the edge. While one is open, the card lets it show. */
+.card:has(.select[data-open]),
+.stage:has(.select[data-open]),
+.board-card:has(.select[data-open]) {
+  overflow: visible;
 }

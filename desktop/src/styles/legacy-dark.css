@@ -897,15 +897,6 @@
 :root[data-theme="dark"] .data-table tr.is-disabled td {
   color: var(--color-muted);
 }
-:root[data-theme="dark"] .role-select {
-  border: 1px solid var(--color-borderStrong);
-  background: var(--color-surface);
-  color: var(--color-chipText);
-}
-:root[data-theme="dark"] .role-select:disabled {
-  background: var(--color-sunken);
-  color: var(--color-muted);
-}
 :root[data-theme="dark"] .danger-text {
   color: var(--color-danger);
 }
