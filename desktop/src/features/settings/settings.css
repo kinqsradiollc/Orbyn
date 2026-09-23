@@ -21,6 +21,8 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  /* What follows (a list, or "No habits yet") keeps clear of the button. */
+  margin-bottom: 14px;
 }
 .settings-subtitle {
   margin: 24px 0 10px;
@@ -34,6 +36,40 @@
 }
 .settings-grid .wide {
   grid-column: 1 / -1;
+}
+/* Pairs that belong together (a switch and its time) share a row. */
+.settings-grid.settings-pairs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* The divider that opens a subsection isn't needed at the top of a card. */
+.settings-section-body > hr:first-child {
+  display: none;
+}
+.feed-option {
+  margin-top: 16px;
+}
+.devices-more {
+  margin-top: 8px;
+}
+.devices-share {
+  margin-top: 18px;
+}
+/* A picker in a settings field fills it, like the text fields beside it. */
+.settings-field > :is(.select, .date-field),
+.settings-field > label > :is(.select, .date-field) {
+  display: flex;
+  width: 100%;
+  margin-top: 7px;
+}
+.settings-field
+  > :is(.select, .date-field)
+  > :is(.select-control, .date-field-control),
+.settings-field
+  > label
+  > :is(.select, .date-field)
+  > :is(.select-control, .date-field-control) {
+  min-height: var(--control-h);
+  padding-inline: var(--control-pad-x);
 }
 .settings-field {
   min-width: 0;
@@ -60,7 +96,7 @@
   background: #fff;
   color: #3f5038;
   margin-top: 7px;
-  font-size: 12px;
+  font-size: var(--control-fs);
 }
 .settings-field textarea {
   resize: vertical;
@@ -153,10 +189,10 @@
   gap: 10px;
 }
 .tag-edit input {
-  padding: 9px 10px;
+  padding: 8px var(--control-pad-x);
   border: 1px solid #dfe5dc;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--control-fs);
 }
 .tag-edit .button-row {
   margin-top: 0;
@@ -233,7 +269,8 @@
   }
 }
 @media (max-width: 560px) {
-  .settings-grid {
+  .settings-grid,
+  .settings-grid.settings-pairs {
     grid-template-columns: 1fr;
   }
   .settings-card {

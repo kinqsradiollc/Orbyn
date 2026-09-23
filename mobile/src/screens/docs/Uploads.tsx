@@ -18,6 +18,7 @@ import { Icon } from "../../components/Icon";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
+import { errorText } from "../../lib/errors";
 
 type LocalFile = {
   name: string;
@@ -157,7 +158,7 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     try {
       await sendLocalFile(file);
     } catch (e) {
-      onError((e as Error).message);
+      onError(errorText(e));
     } finally {
       setUploading((n) => n - 1);
       void refresh();
@@ -209,7 +210,7 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     try {
       await client.removeImport(job.id);
     } catch (e) {
-      onError((e as Error).message);
+      onError(errorText(e));
     }
     void refresh();
   };

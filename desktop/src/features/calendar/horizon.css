@@ -86,9 +86,10 @@
   white-space: nowrap;
 }
 .horizon-move select {
-  font-size: 11px;
+  font-size: var(--control-fs-sm);
   padding: 3px 6px;
   max-width: 110px;
+  min-height: var(--control-h-sm);
 }
 .horizon-tray h4 {
   display: flex;

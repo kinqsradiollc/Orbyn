@@ -19,6 +19,9 @@ const ago = (iso: string) => {
   return new Date(iso).toLocaleDateString();
 };
 
+/** Offline devices shown before "Show all". */
+const SHOWN_DEVICES = 4;
+
 const ICONS = {
   ios: Smartphone,
   android: Smartphone,
@@ -34,6 +37,7 @@ const ICONS = {
 export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
   const [devices, setDevices] = useState<DevicePresence[] | null>(null);
   const [settings, setSettings] = useState<PresenceSettings | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const action = useAction(report);
 
   const load = useCallback(() => {
@@ -68,6 +72,13 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
     });
 
   const self = deviceId();
+  // Every browser that ever signed in is a device; past a few, the old
+  // offline ones wait behind "Show all".
+  const recent = (devices ?? []).filter(
+    (d, n) => d.online || d.active || d.device_id === self || n < SHOWN_DEVICES,
+  );
+  const shown = showAll ? (devices ?? []) : recent;
+  const hidden = (devices?.length ?? 0) - recent.length;
   return (
     <>
       <hr />
@@ -81,7 +92,7 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
         <p className="muted">No devices yet.</p>
       ) : (
         <ul className="settings-list devices-list">
-          {devices.map((d) => {
+          {shown.map((d) => {
             const Icon = ICONS[d.platform] ?? Monitor;
             const behind = d.failed_changes > 0;
             return (
@@ -127,8 +138,19 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
           })}
         </ul>
       )}
+      {hidden > 0 && (
+        <button
+          type="button"
+          className="text-button devices-more"
+          onClick={() => setShowAll(!showAll)}
+        >
+          {showAll
+            ? "Show fewer devices"
+            : `Show ${hidden} older ${hidden === 1 ? "device" : "devices"}`}
+        </button>
+      )}
       {settings && (
-        <label className="switch-line settings-field">
+        <label className="switch-line settings-field devices-share">
           <input
             type="checkbox"
             role="switch"

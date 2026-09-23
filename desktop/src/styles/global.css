@@ -14,6 +14,25 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+  /*
+   * One size for every field: text boxes, dropdowns, date pickers and text
+   * areas. Compact ones sit in tables and toolbars. Phones and touch screens
+   * get taller fields and 16px text (smaller text makes iOS zoom the page
+   * when a field is focused).
+   */
+  --control-h: 40px;
+  --control-h-sm: 32px;
+  --control-fs: 14px;
+  --control-fs-sm: 12px;
+  --control-pad-x: 12px;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+    --control-h-sm: 36px;
+    --control-fs: 16px;
+    --control-fs-sm: 16px;
+  }
 }
 * {
   box-sizing: border-box;
@@ -26,6 +45,13 @@ input,
 textarea,
 select {
   font: inherit;
+}
+/* Fields take the shared size (the rule above would otherwise hand them
+   whatever size their container has). Feature rules still win. */
+input,
+textarea,
+select {
+  font-size: var(--control-fs);
 }
 button {
   cursor: pointer;
@@ -54,12 +80,14 @@ button {
   textarea,
   select
 ) {
-  padding: 8px 11px;
+  min-height: var(--control-h);
+  padding: 8px var(--control-pad-x);
   border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-chipText);
-  font-size: 12px;
+  font-size: var(--control-fs);
+  line-height: 1.4;
 }
 button:disabled {
   opacity: 0.5;
@@ -830,9 +858,10 @@ footer svg {
   border: 1px solid var(--border);
   background: #f8f9f6;
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
-  font-size: 13px;
-  width: 170px;
+  padding: 8px var(--control-pad-x);
+  font-size: var(--control-fs);
+  width: 220px;
+  max-width: 100%;
 }
 .chat {
   padding: 28px;
@@ -883,7 +912,7 @@ footer svg {
   padding: 8px;
   min-width: 0;
   background: none;
-  font-size: 12px;
+  font-size: var(--control-fs);
 }
 .chat > .muted {
   display: block;
@@ -1048,13 +1077,13 @@ footer svg {
 .auth-card input {
   display: block;
   width: 100%;
-  padding: 11px 12px;
+  padding: 10px var(--control-pad-x);
   border: 1px solid #dfe5dc;
   border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   margin-top: 7px;
-  font-size: 12px;
+  font-size: var(--control-fs);
 }
 .form-grid {
   display: grid;
@@ -1527,12 +1556,12 @@ footer svg {
 }
 .inline-form input,
 .inline-form select {
-  padding: 10px 11px;
+  padding: 9px var(--control-pad-x);
   border: 1px solid #dfe5dc;
   border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
-  font-size: 12px;
+  font-size: var(--control-fs);
   min-width: 0;
 }
 .inline-form input {
@@ -1640,7 +1669,8 @@ footer svg {
 /* The picker draws its own box; this only makes it compact for a table row. */
 .role-select .select-control {
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: var(--control-fs-sm);
+  min-height: var(--control-h-sm);
 }
 .row-actions {
   text-align: right;
@@ -2214,9 +2244,10 @@ footer svg {
   border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: var(--color-textSoft);
-  font-size: 10px;
+  font-size: var(--control-fs-sm);
   font-weight: 500;
   line-height: 13px;
+  min-height: var(--control-h-sm);
 }
 .board-move .select-control > svg {
   width: 12px;
@@ -2665,13 +2696,14 @@ footer svg {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 7px 9px;
+  min-height: var(--control-h);
+  padding: 7px var(--control-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--control-fs);
   text-align: left;
   text-transform: none;
   letter-spacing: normal;
@@ -2745,7 +2777,7 @@ footer svg {
   gap: 10px;
   padding: 7px 9px;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--control-fs);
   color: var(--color-text);
   cursor: pointer;
 }
@@ -2894,15 +2926,16 @@ footer svg {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 10px;
+  padding: 7px var(--control-pad-x);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--control-fs);
   text-align: left;
   white-space: nowrap;
+  min-height: var(--control-h);
 }
 .date-field-control > span {
   overflow: hidden;
@@ -3153,8 +3186,8 @@ input[type="number"]::-webkit-outer-spin-button {
   label:not(.repeat-every):not(.check-line)
   > :is(.select, .date-field)
   > :is(.select-control, .date-field-control) {
-  min-height: 40px;
-  padding-inline: 12px;
+  min-height: var(--control-h);
+  padding-inline: var(--control-pad-x);
 }
 
 /* Cards clip their corners, which would also cut off a picker's list as it
@@ -3218,4 +3251,45 @@ input[type="number"]::-webkit-outer-spin-button {
     :disabled
   ) {
   border-color: var(--color-accent);
+}
+
+/*
+ * Touch screens: every control is comfortable to tap (about 36px or more)
+ * without changing how anything looks with a mouse. Small marks keep their
+ * size and grow an invisible touch area instead.
+ */
+@media (max-width: 640px) {
+  /* A wide table scrolls sideways on a phone; its "nothing here" line starts
+     where the eye is, not in the middle of the scrolled-away width. */
+  .table-wrap .table-empty {
+    text-align: left;
+  }
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .check,
+  .tg-frame-label {
+    position: relative;
+  }
+  .check::after,
+  .tg-frame-label::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
+  }
+  .swatches {
+    gap: 8px;
+  }
+  .swatches button {
+    width: 32px;
+    height: 32px;
+  }
+  .pboard-toggle button,
+  .segmented button,
+  .stage-name {
+    min-height: 36px;
+  }
+  .link-button,
+  .text-button {
+    min-height: 32px;
+  }
 }

@@ -6,6 +6,7 @@ import { deviceTimeZone } from "../../lib/planning";
 import { useConfirm } from "../../components/Confirm";
 import { DocEditor } from "./DocEditor";
 import "./docs.css";
+import { errorText } from "../../lib/errors";
 
 /**
  * Today's agenda. Orbyn writes it each morning (or the first time you open
@@ -32,9 +33,10 @@ export function AgendaView({
   const [edition, setEdition] = useState(0);
 
   useEffect(() => {
+    // The page says it couldn't load; the details go to the console.
     client.agendaToday(deviceTimeZone()).then(setDoc, (e) => {
       setFailed(true);
-      report(e);
+      errorText(e, "Today's agenda");
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

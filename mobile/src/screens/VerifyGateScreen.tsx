@@ -9,6 +9,7 @@ import { client } from "../lib/api";
 import { FadeIn } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 /**
  * Shown to a signed-in user who hasn't confirmed their email. The confirmation
@@ -40,7 +41,7 @@ export function VerifyGateScreen({
         await client.resendVerification();
         setNote("Sent. Check your inbox for the new link.");
       } catch (e) {
-        setError((e as Error).message || "Couldn't send the email. Try again.");
+        setError(errorText(e));
       }
     });
 

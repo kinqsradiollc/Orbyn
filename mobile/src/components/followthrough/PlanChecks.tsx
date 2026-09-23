@@ -17,6 +17,7 @@ import { client } from "../../lib/api";
 import { deviceTimeZone } from "../../lib/planning";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 /** The plan held up against how plans have gone lately, in one line. */
 export function RealityLine({
@@ -123,7 +124,7 @@ export function WhatIfBox({ items }: { items: Item[] }) {
         }),
       );
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

@@ -44,9 +44,8 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
         <p className="muted">Loading…</p>
       ) : !inbox.configured ? (
         <p className="muted">
-          Your admin hasn’t set up inbound mail yet (
-          <code>MAIL_INBOUND_DOMAIN</code> and <code>MAIL_INBOUND_SECRET</code>
-          ).
+          Email to task isn’t turned on for this workspace yet. An admin can set
+          it up (see the deployment guide).
         </p>
       ) : inbox.address ? (
         <>

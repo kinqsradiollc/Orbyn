@@ -63,9 +63,10 @@
   border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
-  font-size: 11px;
+  font-size: var(--control-fs-sm);
   min-width: 0;
   width: 100%;
+  min-height: var(--control-h-sm);
 }
 .ai-test {
   display: flex;
@@ -160,7 +161,7 @@
   background: #fff;
   color: #3f5038;
   margin-top: 7px;
-  font-size: 12px;
+  font-size: var(--control-fs);
 }
 .ai-form input:disabled,
 .ai-form select:disabled {

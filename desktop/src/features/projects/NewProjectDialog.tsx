@@ -13,6 +13,7 @@ import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { TurnState } from "../../hooks/useAssistant";
+import { errorText } from "../../lib/errors";
 
 type Mode = "manual" | "assistant";
 
@@ -81,7 +82,7 @@ export function NewProjectDialog({
       });
       onCreated(project);
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       report(e);
     } finally {
       setBusy(false);
@@ -109,7 +110,7 @@ export function NewProjectDialog({
       );
       setState("pending");
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       report(e);
     } finally {
       setBusy(false);
@@ -124,7 +125,7 @@ export function NewProjectDialog({
       setState("applied");
       onCreated(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       report(e);
     } finally {
       setBusy(false);

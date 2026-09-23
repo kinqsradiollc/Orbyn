@@ -69,6 +69,7 @@ import {
   statusTones,
 } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
 /** Line height of the update box; it grows to five lines before scrolling. */
@@ -206,7 +207,7 @@ function Body({
         animateLayout();
         setDetail(d);
       })
-      .catch((e: Error) => alive && setError(e.message));
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };
@@ -334,7 +335,7 @@ function Body({
       setNewSubtask("");
       onChanged();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -379,7 +380,7 @@ function Body({
       onChanged();
       return true;
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       // The task changed elsewhere (steps added, a newer version): reload it.
       if ((e as { status?: number }).status === 409)
         client.getItem(seed.id).then(setDetail, () => {});

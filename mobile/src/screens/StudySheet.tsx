@@ -35,6 +35,7 @@ import { deviceTimeZone } from "../lib/planning";
 import { animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 type Mode =
   | { kind: "home" }
@@ -91,7 +92,7 @@ export function StudySheet({
   const [note, setNote] = useState("");
 
   const load = useCallback(
-    () => client.study().then(setData, (e: Error) => setError(e.message)),
+    () => client.study().then(setData, (e: Error) => setError(errorText(e))),
     [],
   );
   useEffect(() => {
@@ -112,7 +113,7 @@ export function StudySheet({
   const openPage = (docId: string) =>
     void client
       .getDoc(docId)
-      .then(onOpenPage, (e: Error) => setError(e.message));
+      .then(onOpenPage, (e: Error) => setError(errorText(e)));
 
   const title =
     mode.kind === "review"
@@ -223,7 +224,7 @@ export function StudySheet({
                       },
                     ],
                   })
-                  .then(onOpenPage, (e: Error) => setError(e.message))
+                  .then(onOpenPage, (e: Error) => setError(errorText(e)))
               }
             />
           )}
@@ -272,7 +273,7 @@ function Home({
         starts_at: exam.starts_at,
         doc_ids: ids,
       })
-      .then(onChanged, (e: Error) => onError(e.message));
+      .then(onChanged, (e: Error) => onError(errorText(e)));
 
   const totalCards = data.decks.reduce((n, d) => n + d.cards, 0);
   const forecast = data.forecast ?? [];
@@ -292,7 +293,7 @@ function Home({
           })
           .then(
             () => onError(""),
-            (e: Error) => onError(e.message),
+            (e: Error) => onError(errorText(e)),
           ),
     );
 
@@ -527,7 +528,7 @@ function Home({
                 run: () =>
                   void imports
                     .pickAndImport()
-                    .catch((e: Error) => onError(e.message)),
+                    .catch((e: Error) => onError(errorText(e))),
               },
               {
                 title: "From a page you have",
@@ -744,7 +745,7 @@ function Picker({
             ),
         ),
       (e: Error) => {
-        onError(e.message);
+        onError(errorText(e));
         setPages([]);
       },
     );
@@ -845,7 +846,7 @@ function Review({
     client
       .studyQueue({ docId, limit: quiz ? 15 : 100, ahead })
       .then(setQueue, (e: Error) => {
-        onError(e.message);
+        onError(errorText(e));
         setQueue([]);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -867,7 +868,7 @@ function Review({
       setGrade(null);
       setExplained("");
     } catch (e) {
-      onError((e as Error).message);
+      onError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -988,7 +989,7 @@ function Review({
                 setBusy(true);
                 client
                   .gradeAnswer(card.id, answer)
-                  .then(setGrade, (e: Error) => onError(e.message))
+                  .then(setGrade, (e: Error) => onError(errorText(e)))
                   .finally(() => {
                     setBusy(false);
                     setShown(true);
@@ -1054,7 +1055,7 @@ function Review({
                     r.explanation +
                       (r.beyond_notes ? " (Goes beyond your notes.)" : ""),
                   ),
-                (e: Error) => onError(e.message),
+                (e: Error) => onError(errorText(e)),
               )
             }
           />
@@ -1088,7 +1089,7 @@ function Suggest({
     client.suggestCards(docId).then(
       (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
       (e: Error) => {
-        onError(e.message);
+        onError(errorText(e));
         setCards([]);
       },
     );
@@ -1166,7 +1167,7 @@ function Suggest({
             .then(
               () => onDone(kept.length),
               (e: Error) => {
-                onError(e.message);
+                onError(errorText(e));
                 setSaving(false);
               },
             );
@@ -1193,7 +1194,7 @@ function Plan({
     setPlan(null);
     client
       .planRevision({ key: exam.key, minutes, timezone: deviceTimeZone() })
-      .then(setPlan, (e: Error) => onError(e.message));
+      .then(setPlan, (e: Error) => onError(errorText(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exam.key, minutes]);
   const chosen = (plan?.sessions ?? []).filter((x) => !off.has(x.start_at));
@@ -1274,7 +1275,7 @@ function Plan({
           client.applyRevision({ key: exam.key, sessions: chosen }).then(
             () => onDone(true),
             (e: Error) => {
-              onError(e.message);
+              onError(errorText(e));
               setSaving(false);
             },
           );

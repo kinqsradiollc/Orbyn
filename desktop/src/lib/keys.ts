@@ -3,7 +3,9 @@
  * or a modifier other than Shift held (Shift is needed for "?").
  */
 export const isTyping = (e: KeyboardEvent) => {
-  const el = e.target as HTMLElement | null;
+  // The target can be the document or window (a key pressed with nothing
+  // focused), which have no closest(); only elements can be typed in.
+  const el = e.target instanceof Element ? (e.target as HTMLElement) : null;
   return (
     e.metaKey ||
     e.ctrlKey ||

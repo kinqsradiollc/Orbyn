@@ -16,6 +16,7 @@ import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 const WEEKS = ["this", "last"] as const;
 
@@ -65,7 +66,7 @@ function Body({ teams }: { teams: Team[] }) {
     const to = new Date(from.getTime() + 7 * 86_400_000);
     client
       .progress(from, to, teamId ?? undefined)
-      .then(setReport, (e: Error) => setError(e.message));
+      .then(setReport, (e: Error) => setError(errorText(e)));
   }, [week, teamId]);
   const count = report?.people.reduce((n, p) => n + p.done.length, 0) ?? 0;
   return (

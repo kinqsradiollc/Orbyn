@@ -7,6 +7,7 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { LegalText } from "../legal/LegalText";
 import { SettingsSection } from "./SettingsSection";
 import "../legal/legal.css";
+import { errorText } from "../../lib/errors";
 
 /**
  * Settings → Privacy: what you agreed to and when, the usage-analytics
@@ -82,7 +83,7 @@ export function PrivacySettings({
       await client.deleteAccount({ password });
       onDeleted();
     } catch (e) {
-      setDeleteError((e as Error).message);
+      setDeleteError(errorText(e));
     } finally {
       setDeleting(false);
     }

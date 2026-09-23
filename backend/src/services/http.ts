@@ -7,12 +7,93 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { env } from "../config/env.js";
+import { HttpError } from "@orbyn/core";
 import { createHash, randomUUID } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
 import { apiKeyId, authenticate } from "../lib/auth.js";
 import { cachedSettings, settings } from "../lib/settings.js";
 import { versionInfo } from "../lib/version.js";
 import { idempotency } from "../lib/idempotency.js";
+
+/** The field a validation issue is about, in words ("start time", "title"). */
+const fieldOf = (path: PropertyKey[]) => {
+  const last = [...path].reverse().find((p) => typeof p === "string");
+  return typeof last === "string" ? last.replace(/_/g, " ") : "";
+};
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * A rejected request in a sentence or two people can act on ("Title is too
+ * long: 200 characters at most."), from Zod's issues. Hand-written messages
+ * (refinements) are used as they are.
+ */
+export function validationMessage(
+  issues: {
+    code: string;
+    path: PropertyKey[];
+    message: string;
+    origin?: string;
+    maximum?: number | bigint;
+    minimum?: number | bigint;
+    format?: string;
+    input?: unknown;
+  }[],
+): string {
+  const one = (i: (typeof issues)[number]) => {
+    // A message written in the schema ("Colours look like #376c51") is for
+    // people already, and says which field when it has one; Zod's own
+    // ("Invalid input: …", "Too big: …") aren't.
+    if (
+      !/^(Invalid|Too (big|small)|Expected|Unrecognized|Required)\b/.test(
+        i.message,
+      )
+    ) {
+      const text = /[.!?]$/.test(i.message) ? i.message : `${i.message}.`;
+      const name = fieldOf(i.path);
+      return name ? `${capital(name)}: ${text}` : text;
+    }
+    const field = fieldOf(i.path);
+    const Field = capital(field || "a value");
+    switch (i.code) {
+      case "too_big":
+        return i.origin === "string"
+          ? `${Field} is too long: ${i.maximum} characters at most.`
+          : i.origin === "array" || i.origin === "set"
+            ? `Too many ${field || "items"}: ${i.maximum} at most.`
+            : `${Field} must be ${i.maximum} or less.`;
+      case "too_small":
+        return i.origin === "string"
+          ? Number(i.minimum) <= 1
+            ? `${Field} can't be empty.`
+            : `${Field} is too short: at least ${i.minimum} characters.`
+          : i.origin === "array" || i.origin === "set"
+            ? `Add at least ${i.minimum} ${field || "items"}.`
+            : `${Field} must be at least ${i.minimum}.`;
+      case "invalid_type":
+        return i.input === undefined
+          ? `${Field} is missing.`
+          : `${Field} isn't the right kind of value.`;
+      case "invalid_format":
+        return i.format === "email"
+          ? `${Field} isn't a valid email address.`
+          : i.format === "url"
+            ? `${Field} isn't a valid link.`
+            : i.format === "datetime" || i.format === "date"
+              ? `${Field} isn't a valid date.`
+              : `${Field} isn't in the right format.`;
+      case "invalid_value":
+        return `${Field} isn't one of the choices.`;
+      case "unrecognized_keys":
+        return "Some of what was sent isn't recognised. Refresh and try again.";
+      case "custom":
+        return i.message;
+      default:
+        return `${Field} isn't valid.`;
+    }
+  };
+  const messages = [...new Set(issues.map(one))];
+  return messages.slice(0, 2).join(" ") || "Something in that isn't valid.";
+}
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
 export type ServiceName =
@@ -140,25 +221,78 @@ export async function createService(
       });
     });
 
+  // Every error reply carries a plain message people can act on and the
+  // request id (to find it in the logs). The technical detail goes in
+  // `detail` only with DEBUG_ERRORS on; it's always in the logs.
+  const debugErrors = env.DEBUG_ERRORS === "true";
   app.setErrorHandler((err, request, reply) => {
-    if (err instanceof ZodError)
-      return reply.code(422).send({
-        // Name the field, so a rejected value says which one to fix.
-        message: err.issues
-          .map(
-            (i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message,
-          )
-          .join("; "),
-      });
-    const e = err as Error & { statusCode?: number; code?: string };
+    const body = (message: string, detail?: string) => ({
+      message,
+      request_id: request.id,
+      ...(debugErrors && detail ? { detail } : {}),
+    });
+    if (err instanceof ZodError) {
+      const detail = err.issues
+        .map((i) => (i.path.length ? `${i.path.join(".")}: ` : "") + i.message)
+        .join("; ");
+      request.log.debug({ issues: detail }, "Invalid request");
+      return reply.code(422).send(body(validationMessage(err.issues), detail));
+    }
+    const e = err as Error & {
+      statusCode?: number;
+      code?: string;
+      validation?: unknown;
+    };
     if (e.code === "23505")
-      return reply.code(409).send({ message: "This record already exists." });
+      return reply.code(409).send(body("This already exists.", e.message));
     const code = e.statusCode || 500;
-    if (code >= 500) request.log.error({ err: e }, "Request failed");
-    reply
-      .code(code)
-      .send({ message: code === 500 ? "Unexpected server error" : e.message });
+    // Messages the code wrote itself (fail()) are meant for people, even a
+    // 503 such as "No mail server is set up yet".
+    if (err instanceof HttpError) {
+      if (code >= 500) request.log.error({ err: e }, "Request failed");
+      return reply.code(code).send(body(e.message));
+    }
+    if (code >= 500) {
+      request.log.error({ err: e }, "Request failed");
+      return reply
+        .code(code)
+        .send(
+          body(
+            "Something went wrong on our side. Try again in a moment.",
+            e.message,
+          ),
+        );
+    }
+    // Fastify's own errors (bad JSON, an unknown route, too large, too many
+    // requests) are written for developers; say what they mean instead.
+    if (e.code?.startsWith("FST_") || e.validation) {
+      const plain =
+        code === 404
+          ? "That isn't here any more."
+          : code === 413
+            ? "That's too large to send."
+            : code === 429
+              ? "That's a lot at once. Wait a moment and try again."
+              : code === 415
+                ? "That kind of content can't be sent here."
+                : "That request couldn't be read. Refresh and try again.";
+      return reply.code(code).send(body(plain, e.message));
+    }
+    reply.code(code).send(body(e.message));
   });
+
+  // An address nothing answers: the same shape as every other error.
+  app.setNotFoundHandler((request, reply) =>
+    reply.code(404).send({
+      message: "That isn't here any more.",
+      request_id: request.id,
+      ...(debugErrors
+        ? {
+            detail: `No route for ${request.method} ${request.url.split("?")[0]}`,
+          }
+        : {}),
+    }),
+  );
 
   // Changes sent with an Idempotency-Key happen once (offline replays).
   if (name !== "status") idempotency(app);

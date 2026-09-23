@@ -6,6 +6,7 @@ import { client } from "../../lib/api";
 import { animateLayout } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 /**
  * A page nobody has changed or confirmed in months may not be true any
@@ -48,7 +49,7 @@ export function PageFreshness({
             : "A task to update it is on the list.",
       );
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     }
   };
   return (

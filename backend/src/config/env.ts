@@ -38,6 +38,12 @@ const schema = z.object({
   SECRETS_KEY: z.string().default(""),
   /** "true" when services sit behind the gateway and should trust X-Forwarded-For. */
   TRUST_PROXY: z.enum(["true", "false"]).default("false"),
+  /**
+   * "true" adds what went wrong technically to error replies (`detail`: the
+   * raw validation issues, a server error's own message). Off in production:
+   * people see plain messages and the details stay in the logs.
+   */
+  DEBUG_ERRORS: z.enum(["true", "false"]).default("false"),
   /** How often the status service probes each component. */
   STATUS_INTERVAL_MS: z.coerce.number().int().min(5000).default(30000),
   /** Where the status service reaches each component; empty means this process. */

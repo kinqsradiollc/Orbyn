@@ -228,8 +228,10 @@ type ChatJob =
 function proxyMessage(status: number): string {
   if (status === 504 || status === 524)
     return "That took too long to answer. Try again, or ask for less at once.";
-  if (status >= 500) return `Unable to reach Orbyn (HTTP ${status}).`;
-  return `Orbyn sent an unexpected reply (HTTP ${status}).`;
+  // The status goes to the console with the rest (errorDetail), not here.
+  if (status >= 500)
+    return "Orbyn is briefly unavailable. Try again in a moment.";
+  return "Orbyn sent a reply it couldn't read. Try again.";
 }
 
 export type TokenSource = () =>
@@ -395,8 +397,24 @@ export class OrbynClient {
         .json()
         .catch(() => ({ message: proxyMessage(response.status) }))) as {
         message?: string;
+        detail?: string;
+        request_id?: string;
       };
-      throw new HttpError(response.status, error.message || "Request failed");
+      throw new HttpError(
+        response.status,
+        error.message ||
+          (response.status >= 500
+            ? "Something went wrong on our side. Try again in a moment."
+            : "That didn't work. Try again."),
+        {
+          detail: error.detail,
+          request: {
+            method,
+            path: path.split("?")[0],
+            id: error.request_id ?? response.headers.get("X-Request-Id"),
+          },
+        },
+      );
     }
     if (response.status === 204) return undefined as T;
     const text = await response.text();

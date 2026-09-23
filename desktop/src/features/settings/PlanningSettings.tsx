@@ -504,7 +504,7 @@ export function PlanningSettings({ teams, report }: Props) {
             A short email with your day. Sent from the workspace’s own mail
             server, at the times below in your zone. Off until you turn it on.
           </p>
-          <div className="settings-grid">
+          <div className="settings-grid settings-pairs">
             <label className="switch-line settings-field">
               <input
                 type="checkbox"

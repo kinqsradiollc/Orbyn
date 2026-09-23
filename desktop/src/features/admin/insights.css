@@ -388,7 +388,7 @@
 .admin-user-edit input {
   width: 100%;
   padding: 9px 11px;
-  font-size: 13px;
+  font-size: var(--control-fs);
 }
 .admin-user-edit-actions {
   display: flex;

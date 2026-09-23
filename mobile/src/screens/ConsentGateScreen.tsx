@@ -24,6 +24,7 @@ import { client } from "../lib/api";
 import { FadeIn } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 /**
  * Held before the app when you haven't agreed to the current Terms and
@@ -61,7 +62,7 @@ export function ConsentGateScreen({
           await client.setPrivacy({ analytics_opt_out: !analytics });
         onAccepted();
       } catch (e) {
-        setError((e as Error).message || "That didn't go through. Try again.");
+        setError(errorText(e));
       }
     });
 

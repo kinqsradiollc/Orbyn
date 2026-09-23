@@ -641,6 +641,17 @@ One value is fixed in `desktop/index.html`: the `https://orbyn.dev` in the canon
 image tags, which link previews read without running any script. Hosting Orbyn elsewhere, change
 that domain to yours.
 
+## Errors on screen
+
+People see plain messages: "Couldn't reach Orbyn. Check your connection and try again.", or
+what to fix in a form. What really went wrong (the call, its status, what the server said and the
+request id) goes to the browser console, and the server logs it with the same request id; a
+background refresh that fails only goes to the console. `DEBUG_ERRORS=true` in `.env` also shows
+those details on screen and in API replies, for a development or test server; leave it off (the
+default) for the public. The web app reads it when its image is built, so run
+`./scripts/deploy.sh` after changing it. The phone app has its own switch,
+`EXPO_PUBLIC_DEBUG_ERRORS` (see [mobile](mobile.md)).
+
 ## Settings in the app
 
 Admins change these in **Admin → System**; every instance picks them up within about 10 seconds,

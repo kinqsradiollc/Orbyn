@@ -166,7 +166,7 @@ export function CalendarFeedCard({ report }: Props) {
         <>
           {linkSection(false)}
           {linkSection(true)}
-          <label className="switch-line settings-field">
+          <label className="switch-line settings-field feed-option">
             <input
               type="checkbox"
               role="switch"

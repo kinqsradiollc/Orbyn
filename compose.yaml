@@ -326,6 +326,7 @@ services:
       dockerfile: desktop/Dockerfile
       args:
         GIT_SHA: ${GIT_SHA:-dev}
+        DEBUG_ERRORS: ${DEBUG_ERRORS:-false}
     # nginx finishes in-flight requests on SIGQUIT (SIGTERM drops them).
     stop_signal: SIGQUIT
     # Served through the gateway's web port, so copies roll over without downtime.

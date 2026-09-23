@@ -288,7 +288,7 @@ button.step-title {
   padding: 8px 10px;
   border: 1px solid #d3ddd3;
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: var(--control-fs);
   color: var(--color-text);
   background: var(--color-surface);
 }
@@ -324,7 +324,7 @@ button.step-title {
   border: 0;
   background: transparent;
   resize: vertical;
-  font-size: 14px;
+  font-size: var(--control-fs);
   line-height: 1.5;
   color: var(--color-text);
 }
@@ -346,7 +346,7 @@ button.step-title {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--control-fs);
 }
 .update-composer-row .primary {
   padding: 9px 15px;
@@ -465,6 +465,14 @@ button.step-title {
   }
   .drawer-foot {
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    /* Two to a row, each label on one line, rather than squeezed four
+       across with their words wrapping inside the buttons. */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .drawer-foot > button {
+    justify-content: center;
+    white-space: nowrap;
   }
 }
 

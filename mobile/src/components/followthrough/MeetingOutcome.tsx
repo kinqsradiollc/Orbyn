@@ -5,6 +5,7 @@ import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 /**
  * A meeting's cost — its length times the people in it, time not money —
@@ -60,7 +61,7 @@ export function MeetingOutcome({
       setText("");
       load();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

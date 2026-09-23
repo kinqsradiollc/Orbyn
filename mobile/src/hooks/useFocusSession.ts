@@ -24,6 +24,7 @@ import { client } from "../lib/api";
 import { onLive } from "../lib/live";
 import { deviceId, deviceLabel } from "../lib/device";
 import { readLocal, saveLocal } from "../lib/localPrefs";
+import { errorText } from "../lib/errors";
 
 const RHYTHM_KEY = "orbyn-focus-rhythm";
 
@@ -153,7 +154,7 @@ export function useFocusSession({
         if (kept.item) latest.current.onLogged(kept.item);
         refreshToday();
       } catch (e) {
-        latest.current.onError((e as Error).message);
+        latest.current.onError(errorText(e));
       }
     },
     [refreshToday],

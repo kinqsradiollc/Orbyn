@@ -40,6 +40,7 @@ import {
 } from "../motion";
 import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 /** Runs shorter than this (a stray tap) aren't logged. */
 const MIN_RUN_MS = 5000;
@@ -173,7 +174,7 @@ function Body({
     client
       .getItem(seed.id)
       .then((d) => alive && setDetail(d))
-      .catch((e: Error) => alive && setError(e.message));
+      .catch((e: Error) => alive && setError(errorText(e)));
     return () => {
       alive = false;
     };

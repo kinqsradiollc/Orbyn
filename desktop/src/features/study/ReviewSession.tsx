@@ -3,6 +3,7 @@ import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
 import { RATINGS, type Rating, type StudyCard } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Inline } from "../docs/DocBlocks";
+import { errorText } from "../../lib/errors";
 
 const LABEL: Record<Rating, string> = {
   again: "Again",
@@ -96,7 +97,7 @@ export function ReviewSession({
     try {
       setGrade(await client.gradeAnswer(card.id, answer));
     } catch (e) {
-      setNote((e as Error).message);
+      setNote(errorText(e));
     } finally {
       setGrading(false);
       setShown(true);
@@ -109,7 +110,7 @@ export function ReviewSession({
     try {
       setExplained(await client.explainCard(card.id));
     } catch (e) {
-      setNote((e as Error).message);
+      setNote(errorText(e));
     } finally {
       setExplaining(false);
     }

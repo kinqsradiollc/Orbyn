@@ -25,6 +25,7 @@ import { client } from "../lib/api";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { errorText } from "../lib/errors";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
 
@@ -609,7 +610,7 @@ function VersionCard() {
       setInfo(next);
       setVersion(next.current);
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
       try {
         setVersion(await client.getVersion());
       } catch {

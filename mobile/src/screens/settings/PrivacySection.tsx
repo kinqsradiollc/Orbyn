@@ -9,6 +9,7 @@ import { confirmAction } from "../../lib/confirm";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { SettingsSection } from "./SettingsSection";
+import { errorText } from "../../lib/errors";
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString([], {
@@ -65,7 +66,7 @@ export function PrivacySection({
             await client.deleteAccount({ password });
             onDeleted();
           } catch (e) {
-            setError((e as Error).message || "That didn't work. Try again.");
+            setError(errorText(e));
           }
         }),
     );

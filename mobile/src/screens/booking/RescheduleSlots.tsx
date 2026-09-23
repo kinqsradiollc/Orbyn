@@ -10,6 +10,7 @@ import { colors, themed } from "../../theme";
 import { shared } from "../../styles";
 import { dayKeyLabel, dayKeyOf, lengthOf } from "./helpers";
 import { bookingStyles as bs } from "./ui";
+import { errorText } from "../../lib/errors";
 
 const DAYS = 7;
 
@@ -80,7 +81,7 @@ export function RescheduleSlots({
         animateLayout();
         // The server's own reason; there's no free-entry fallback, since a
         // time that isn't free would be refused anyway.
-        setProblem(e.message);
+        setProblem(errorText(e));
       });
     return () => {
       alive = false;

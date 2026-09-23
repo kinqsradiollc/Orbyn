@@ -10,6 +10,7 @@ import { deviceTimeZone } from "../../lib/planning";
 import { animateLayout } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
+import { errorText } from "../../lib/errors";
 
 type Turn = "mine" | "theirs" | "settled";
 const when = (iso: string | null) => (iso ? dateLabel(iso) : "no set date");
@@ -44,7 +45,7 @@ export function AskCard({
       setMode("idle");
       onChanged();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }

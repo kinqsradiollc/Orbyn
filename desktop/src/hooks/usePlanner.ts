@@ -14,6 +14,7 @@ import { deviceId } from "../lib/device";
 import { celebrate } from "../lib/celebrate";
 import { onSessionChange, session } from "../lib/session";
 import { deviceTimeZone } from "../lib/planning";
+import { errorText } from "../lib/errors";
 
 export type AuthMode = "register" | "login";
 
@@ -94,8 +95,13 @@ export function usePlanner() {
    * maintenance carries the server's message, and the banner is re-checked.
    */
   const report = useCallback(
-    (e: unknown) => {
-      setError((e as Error).message);
+    (e: unknown, options?: { quiet?: boolean }) => {
+      // errorText also writes the details to the console.
+      const text = errorText(e);
+      // Something the person did shows its failure; a background refresh
+      // failing (a blip, a deploy) only goes to the console, and the last
+      // data stays on screen.
+      if (!options?.quiet) setError(text);
       const status = (e as HttpError).status;
       if (status === 401) clearSession();
       if (status === 503) void refreshMaintenance();
@@ -146,7 +152,7 @@ export function usePlanner() {
           await refresh({ silent: true });
         }
       } catch (e) {
-        if (alive) report(e);
+        if (alive) report(e, { quiet: true });
       }
       if (alive) timer = setTimeout(loop, 30000);
     };

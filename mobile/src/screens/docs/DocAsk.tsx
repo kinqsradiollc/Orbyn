@@ -25,6 +25,7 @@ import { Sheet } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { PressableScale } from "../../motion";
 import { controls, colors, fonts, radii, spacing, themed } from "../../theme";
+import { errorText } from "../../lib/errors";
 
 /** The actions worth one tap; "custom" is whatever gets typed instead. */
 const QUICK = DOC_AI_ACTIONS.filter((a) => a !== "custom");
@@ -98,7 +99,7 @@ export function DocAsk({
   const fail = (e: unknown) =>
     say({
       role: "orbyn",
-      text: (e as Error).message || "That did not come back.",
+      text: errorText(e),
     });
 
   const ask = async (question: string) => {
