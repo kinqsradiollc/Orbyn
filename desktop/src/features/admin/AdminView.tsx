@@ -133,7 +133,11 @@ export function AdminView({
         ))}
       {tab === "Audit log" && <AdminAudit report={props.report} />}
       {tab === "Database" && canManageSystem && (
-        <AdminDatabase report={props.report} />
+        <AdminDatabase
+          report={props.report}
+          user={props.user}
+          refresh={props.refresh}
+        />
       )}
       {tab === "AI" && canManageAi && <AdminAi {...props} />}
       {tab === "System" && canManageSystem && (

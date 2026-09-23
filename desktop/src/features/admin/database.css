@@ -73,6 +73,105 @@
   gap: 20px;
   padding: 22px 24px;
 }
+.db-intro-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  flex: none;
+}
+.db-mode {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--color-sunken);
+}
+.db-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.db-mode button.active {
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  box-shadow: 0 1px 3px #00000012;
+}
+.db-mode button.is-edit {
+  color: var(--color-warn);
+}
+.db-intro-actions > button {
+  margin: 0;
+}
+.db-editor {
+  display: grid;
+  gap: 14px;
+  margin: 0 24px 18px;
+  padding: 16px;
+  border: 1px solid var(--color-warnBorder);
+  border-radius: 10px;
+  background: var(--color-warnSoft);
+}
+.db-editor-head {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+.db-editor-head span {
+  color: var(--color-warn);
+  font-size: 12px;
+}
+.db-editor-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px 22px;
+}
+.db-editor-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 150px;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.db-editor-fields input:not([type="checkbox"]),
+.db-editor-fields select {
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+}
+.db-editor-fields .db-check {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  gap: 8px;
+}
+.db-check input {
+  accent-color: var(--color-accent);
+}
+.db-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.db-editor-actions button {
+  margin: 0;
+}
 .db-intro h2,
 .db-main h2 {
   margin: 7px 0 5px;

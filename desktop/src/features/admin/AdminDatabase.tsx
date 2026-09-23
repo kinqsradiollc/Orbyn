@@ -1,15 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, Database, RefreshCw, Search, Table2 } from "lucide-react";
+import {
+  Columns3,
+  Database,
+  Pencil,
+  RefreshCw,
+  Search,
+  Table2,
+} from "lucide-react";
 import type {
   AdminDatabaseRows,
   AdminDatabaseTable,
   AdminDatabaseTableDetail,
+  SystemRole,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { useConfirm } from "../../components/Confirm";
 import type { TeamActions } from "../teams/TeamDetail";
 import "./database.css";
 
 type Panel = "Rows" | "Columns" | "Indexes";
+type RowDraft =
+  | {
+      table: "users";
+      id: string;
+      email: string;
+      role: SystemRole;
+      disabled: boolean;
+      email_verified: boolean;
+    }
+  | { table: "teams"; id: string; name: string };
 
 const display = (value: unknown) => {
   if (value === null || value === undefined) return "NULL";
@@ -17,8 +36,13 @@ const display = (value: unknown) => {
   return String(value);
 };
 
-/** Bounded, read-only database browser. Private values are masked by the API. */
-export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
+/** Bounded database browser. Validated edits use the regular admin APIs. */
+export function AdminDatabase({
+  report,
+  user,
+  refresh: refreshPlanner,
+}: Pick<TeamActions, "report" | "user" | "refresh">) {
+  const { ask } = useConfirm();
   const [tables, setTables] = useState<AdminDatabaseTable[]>([]);
   const [selected, setSelected] = useState("");
   const [detail, setDetail] = useState<AdminDatabaseTableDetail | null>(null);
@@ -28,6 +52,9 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [editMode, setEditMode] = useState(false);
+  const [editing, setEditing] = useState<RowDraft | null>(null);
+  const [saving, setSaving] = useState(false);
   const rowRequest = useRef(0);
 
   useEffect(() => {
@@ -85,6 +112,7 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
 
   const loadRows = (offset: number) => {
     if (!selected) return;
+    setEditing(null);
     const request = ++rowRequest.current;
     setLoading(true);
     client.adminDatabaseRows(selected, offset).then(
@@ -111,6 +139,122 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
     [tables, search],
   );
 
+  const toggleEditMode = async () => {
+    if (editMode) {
+      setEditing(null);
+      setEditMode(false);
+      return;
+    }
+    if (
+      !(await ask({
+        title: "Enable database edit mode?",
+        body: "You can edit validated user account fields and team names. Each save asks for confirmation and is recorded in the audit log. Private data stays masked.",
+        confirmLabel: "Enable editing",
+      }))
+    )
+      return;
+    setEditMode(true);
+  };
+
+  const startEdit = (row: Record<string, unknown>) => {
+    if (!editMode || typeof row.id !== "string") return;
+    if (selected === "users") {
+      setEditing({
+        table: "users",
+        id: row.id,
+        email: typeof row.email === "string" ? row.email : row.id,
+        role: row.role === "admin" ? "admin" : "member",
+        disabled: row.disabled === true,
+        email_verified: row.email_verified === true,
+      });
+    } else if (selected === "teams") {
+      setEditing({ table: "teams", id: row.id, name: String(row.name ?? "") });
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!editing || !data || saving) return;
+    const original = data.rows.find((row) => row.id === editing.id);
+    if (!original) {
+      setError("This row changed. Refresh and try again.");
+      return;
+    }
+    if (editing.table === "users") {
+      const patch: {
+        role?: SystemRole;
+        disabled?: boolean;
+        email_verified?: boolean;
+      } = {};
+      if (editing.role !== original.role) patch.role = editing.role;
+      if (editing.disabled !== original.disabled)
+        patch.disabled = editing.disabled;
+      if (editing.email_verified !== original.email_verified)
+        patch.email_verified = editing.email_verified;
+      const changes = Object.entries(patch).map(
+        ([key, value]) =>
+          `${key.replaceAll("_", " ")}: ${display(original[key])} → ${display(value)}`,
+      );
+      if (!changes.length) {
+        setEditing(null);
+        return;
+      }
+      if (
+        !(await ask({
+          title: `Save changes to ${editing.email}?`,
+          body: `${changes.join(" · ")}${editing.id === user?.id && patch.role === "member" ? " · You will lose admin access." : ""}`,
+          confirmLabel: "Save changes",
+          destructive: patch.disabled === true || patch.role === "member",
+        }))
+      )
+        return;
+      setSaving(true);
+      try {
+        await client.adminUpdateUser(editing.id, patch);
+        setEditing(null);
+        setRefresh((n) => n + 1);
+        setError("");
+        void refreshPlanner().catch(report);
+      } catch (e) {
+        setError((e as Error).message);
+        report(e);
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      const name = editing.name.trim();
+      if (!name) {
+        setError("Enter a team name.");
+        return;
+      }
+      if (name === original.name) {
+        setEditing(null);
+        return;
+      }
+      if (
+        !(await ask({
+          title: `Rename team “${original.name}” to “${name}”?`,
+          confirmLabel: "Save name",
+        }))
+      )
+        return;
+      setSaving(true);
+      try {
+        await client.updateTeam(editing.id, { name });
+        setEditing(null);
+        setRefresh((n) => n + 1);
+        setError("");
+        void refreshPlanner().catch(report);
+      } catch (e) {
+        setError((e as Error).message);
+        report(e);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const editableTable = selected === "users" || selected === "teams";
+
   return (
     <section className="admin-database">
       <div className="card db-intro">
@@ -120,17 +264,44 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
           </span>
           <h2>Database explorer</h2>
           <p>
-            Inspect tables, columns, indexes and small row previews. Private
-            content and secrets are masked.
+            Inspect tables, columns, indexes and redacted row previews. Edit
+            mode supports validated user fields and team names.
           </p>
         </div>
-        <button
-          className="secondary"
-          onClick={() => setRefresh((n) => n + 1)}
-          disabled={loading}
-        >
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="db-intro-actions">
+          <div className="db-mode" role="group" aria-label="Database mode">
+            <button
+              className={!editMode ? "active" : ""}
+              aria-pressed={!editMode}
+              disabled={saving}
+              onClick={() => {
+                if (editMode) void toggleEditMode();
+              }}
+            >
+              View
+            </button>
+            <button
+              className={editMode ? "active is-edit" : ""}
+              aria-pressed={editMode}
+              disabled={saving}
+              onClick={() => {
+                if (!editMode) void toggleEditMode();
+              }}
+            >
+              <Pencil size={13} /> Edit
+            </button>
+          </div>
+          <button
+            className="secondary"
+            onClick={() => {
+              setEditing(null);
+              setRefresh((n) => n + 1);
+            }}
+            disabled={loading || saving}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
       {error && (
         <p className="db-error" role="alert">
@@ -159,6 +330,7 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
                 onClick={() => {
                   setSelected(table.name);
                   setPanel("Rows");
+                  setEditing(null);
                 }}
                 aria-current={selected === table.name ? "true" : undefined}
               >
@@ -209,13 +381,110 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
               {panel === "Rows" && (
                 <>
                   <p className="db-hint">
-                    Read-only preview · 25 rows per page · •••• means a masked
-                    value
+                    {editMode
+                      ? editableTable
+                        ? "Edit mode · Select a row to change validated fields · 25 rows per page"
+                        : "Edit mode · This table has no validated fields to edit"
+                      : "View mode · 25 rows per page · •••• means a masked value"}
                   </p>
+                  {editing && (
+                    <div
+                      className="db-editor"
+                      aria-label={`Edit ${editing.table} row`}
+                    >
+                      <div className="db-editor-head">
+                        <strong>
+                          {editing.table === "users"
+                            ? `Edit ${editing.email}`
+                            : "Edit team"}
+                        </strong>
+                        <span>Changes are reviewed before saving</span>
+                      </div>
+                      {editing.table === "users" ? (
+                        <div className="db-editor-fields">
+                          <label>
+                            System role
+                            <select
+                              value={editing.role}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setEditing({
+                                  ...editing,
+                                  role: e.target.value as SystemRole,
+                                })
+                              }
+                            >
+                              <option value="member">Member</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </label>
+                          <label className="db-check">
+                            <input
+                              type="checkbox"
+                              checked={editing.disabled}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setEditing({
+                                  ...editing,
+                                  disabled: e.target.checked,
+                                })
+                              }
+                            />{" "}
+                            Account disabled
+                          </label>
+                          <label className="db-check">
+                            <input
+                              type="checkbox"
+                              checked={editing.email_verified}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setEditing({
+                                  ...editing,
+                                  email_verified: e.target.checked,
+                                })
+                              }
+                            />{" "}
+                            Email verified
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="db-editor-fields">
+                          <label>
+                            Team name
+                            <input
+                              value={editing.name}
+                              maxLength={80}
+                              disabled={saving}
+                              onChange={(e) =>
+                                setEditing({ ...editing, name: e.target.value })
+                              }
+                            />
+                          </label>
+                        </div>
+                      )}
+                      <div className="db-editor-actions">
+                        <button
+                          className="secondary"
+                          disabled={saving}
+                          onClick={() => setEditing(null)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="primary"
+                          disabled={saving}
+                          onClick={() => void saveEdit()}
+                        >
+                          {saving ? "Saving…" : "Review and save"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="db-grid-scroll">
                     <table className="data-table db-grid">
                       <thead>
                         <tr>
+                          {editMode && editableTable && <th>Action</th>}
                           {detail.columns.map((column) => (
                             <th key={column.name}>{column.name}</th>
                           ))}
@@ -224,6 +493,17 @@ export function AdminDatabase({ report }: Pick<TeamActions, "report">) {
                       <tbody>
                         {data?.rows.map((row, index) => (
                           <tr key={`${data.offset}-${index}`}>
+                            {editMode && editableTable && (
+                              <td>
+                                <button
+                                  className="link-button"
+                                  disabled={saving}
+                                  onClick={() => startEdit(row)}
+                                >
+                                  <Pencil size={12} /> Edit
+                                </button>
+                              </td>
+                            )}
                             {detail.columns.map((column) => (
                               <td
                                 key={column.name}
