@@ -12,6 +12,7 @@ import {
   projectProgress,
   type Item,
   type Project,
+  type Proposal,
 } from "@orbyn/core";
 import { Segmented } from "../../components/Segmented";
 import { ScreenIntro } from "../../components/ScreenIntro";
@@ -22,6 +23,7 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
+import { ProposalReview } from "../../components/ProposalReview";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
@@ -68,6 +70,12 @@ export function ProjectsSheet({
   );
   /** A name being typed, for a new project or a rename. */
   const [draft, setDraft] = useState<string | null>(null);
+  const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [projectPrompt, setProjectPrompt] = useState("");
+  const [projectProposal, setProjectProposal] = useState<Proposal | null>(null);
+  const [proposalState, setProposalState] = useState<"pending" | "applied">(
+    "pending",
+  );
   const { busy, error, setError, run } = useRun();
 
   /** True when the list could not be read, which is not the same as empty. */
@@ -176,6 +184,37 @@ export function ProjectsSheet({
     });
   };
 
+  const startAiDraft = () => {
+    setDraft(null);
+    setProjectPrompt("");
+    setProjectProposal(null);
+    setProposalState("pending");
+    setAiDraftOpen(true);
+  };
+
+  const draftWithAi = () => {
+    const prompt = projectPrompt.trim();
+    if (!prompt || busy) return;
+    void run(async () => {
+      const proposal = await client.draftProject(
+        prompt,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      );
+      setProjectProposal(proposal);
+      setProposalState("pending");
+    });
+  };
+
+  const applyAiDraft = () => {
+    if (!projectProposal || busy) return;
+    void run(async () => {
+      await client.applyProposal(projectProposal.id);
+      setProposalState("applied");
+      await reload();
+      onItemsChanged?.();
+    });
+  };
+
   const rename = () => {
     const name = (draft ?? "").trim();
     if (!open || !canWriteIn(open.team_id) || !name || name === open.name)
@@ -224,9 +263,15 @@ export function ProjectsSheet({
   return (
     <Sheet
       visible={visible}
-      title={open ? open.name : "Projects"}
+      title={open ? open.name : aiDraftOpen ? "Draft a project" : "Projects"}
       onClose={onClose}
-      onBack={open ? () => setOpen(null) : undefined}
+      onBack={
+        open
+          ? () => setOpen(null)
+          : aiDraftOpen
+            ? () => setAiDraftOpen(false)
+            : undefined
+      }
       onDismiss={onDismiss}
     >
       <ScrollView
@@ -235,7 +280,7 @@ export function ProjectsSheet({
         keyboardDismissMode="interactive"
       >
         <View style={sheet.column}>
-          {!open && !!projects?.length && (
+          {!open && !aiDraftOpen && !!projects?.length && (
             <ScreenIntro
               icon="boxes"
               title="Move the bigger picture forward"
@@ -244,7 +289,62 @@ export function ProjectsSheet({
           )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
 
-          {open ? (
+          {aiDraftOpen ? (
+            <View style={styles.aiDraft}>
+              <View style={styles.aiHeading}>
+                <View style={styles.aiIcon}>
+                  <Icon name="sparkles" size={19} color={colors.accent} />
+                </View>
+                <View style={styles.aiHeadingText}>
+                  <Text style={styles.aiTitle}>Shape your project</Text>
+                  <Text style={styles.aiDescription}>
+                    Describe the goal and any deadline. Review the tasks and
+                    schedule before creating it.
+                  </Text>
+                </View>
+              </View>
+              {!projectProposal ? (
+                <>
+                  <TextInput
+                    style={styles.promptInput}
+                    value={projectPrompt}
+                    onChangeText={setProjectPrompt}
+                    multiline
+                    autoFocus
+                    maxLength={4000}
+                    placeholder="What are you working toward?"
+                    placeholderTextColor={colors.faint}
+                    textAlignVertical="top"
+                    accessibilityLabel="Describe your project"
+                  />
+                  <Button
+                    title={busy ? "Drafting…" : "Draft project"}
+                    icon="sparkles"
+                    disabled={busy || !projectPrompt.trim()}
+                    onPress={draftWithAi}
+                  />
+                </>
+              ) : (
+                <>
+                  <ProposalReview
+                    proposal={projectProposal}
+                    items={items}
+                    busy={busy}
+                    state={proposalState}
+                    onApprove={applyAiDraft}
+                    onDiscard={() => setProjectProposal(null)}
+                  />
+                  {proposalState === "applied" && (
+                    <Button
+                      title="Back to projects"
+                      secondary
+                      onPress={() => setAiDraftOpen(false)}
+                    />
+                  )}
+                </>
+              )}
+            </View>
+          ) : open ? (
             <View style={styles.page}>
               {draft === null ? (
                 <View style={styles.titleRow}>
@@ -596,11 +696,20 @@ export function ProjectsSheet({
                 what’s moving forward.
               </Text>
               {draft === null ? (
-                <Button
-                  title="New project"
-                  disabled={busy}
-                  onPress={() => setDraft("")}
-                />
+                <View style={styles.createActions}>
+                  <Button
+                    title="New project"
+                    disabled={busy}
+                    onPress={() => setDraft("")}
+                  />
+                  <Button
+                    title="Draft with AI"
+                    secondary
+                    icon="sparkles"
+                    disabled={busy}
+                    onPress={startAiDraft}
+                  />
+                </View>
               ) : (
                 <View style={styles.newRow}>
                   <TextInput
@@ -625,12 +734,21 @@ export function ProjectsSheet({
           ) : (
             <View style={styles.list}>
               {draft === null ? (
-                <Button
-                  title="New project"
-                  secondary
-                  disabled={busy}
-                  onPress={() => setDraft("")}
-                />
+                <View style={styles.createActions}>
+                  <Button
+                    title="New project"
+                    secondary
+                    disabled={busy}
+                    onPress={() => setDraft("")}
+                  />
+                  <Button
+                    title="Draft with AI"
+                    secondary
+                    icon="sparkles"
+                    disabled={busy}
+                    onPress={startAiDraft}
+                  />
+                </View>
               ) : (
                 <View style={styles.newRow}>
                   <TextInput
@@ -706,6 +824,37 @@ export function ProjectsSheet({
 const styles = themed(() =>
   StyleSheet.create({
     list: { gap: 10 },
+    createActions: { gap: 8 },
+    aiDraft: { gap: 16 },
+    aiHeading: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    aiHeadingText: { flex: 1, gap: 4 },
+    aiIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.accentSoft,
+    },
+    aiTitle: { fontFamily: fonts.display, fontSize: 21, color: colors.text },
+    aiDescription: {
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.muted,
+    },
+    promptInput: {
+      minHeight: 128,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 22,
+    },
     emptyProject: {
       alignItems: "center",
       gap: 12,

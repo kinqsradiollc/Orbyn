@@ -169,7 +169,7 @@ export function AssistantScreen({
 }
 
 /**
- * The message box and Send. It grows with what's typed up to about five
+ * The message box and Send. It grows with what's typed up to about four
  * lines, then scrolls inside itself.
  */
 export function AssistantComposer({
@@ -179,64 +179,42 @@ export function AssistantComposer({
   assistant: Assistant;
   busy: boolean;
 }) {
-  const { message, setMessage, thinking, ask, draftProject } = assistant;
+  const { message, setMessage, thinking, ask } = assistant;
   const canSend = !busy && !thinking && !!message.trim();
-  // Five lines at the user's text size, not five lines of the default size.
+  // Four lines at the user's text size, not four lines of the default size.
   const { fontScale } = useWindowDimensions();
   return (
     <View style={s.composer}>
       <TextInput
-        style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
+        style={[s.input, { maxHeight: LINE * 4 * fontScale + 20 }]}
         multiline
         placeholder="Ask Orbyn…"
         placeholderTextColor={colors.faint}
         value={message}
         onChangeText={setMessage}
         maxLength={4000}
-        textAlignVertical="top"
+        textAlignVertical="center"
         accessibilityLabel="Message your assistant"
       />
-      <View style={s.composerActions}>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="Draft a project"
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={() => draftProject()}
-          style={({ pressed }) => [
-            s.project,
-            pressed && { opacity: 0.6 },
-            !canSend && { opacity: 0.4 },
-          ]}
-        >
-          <Icon
-            name="sparkles"
-            size={18}
-            color={colors.accent}
-            strokeWidth={2.2}
-          />
-          <Text style={s.projectLabel}>Draft project</Text>
-        </PressableScale>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={thinking ? "Thinking" : "Send"}
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={() => ask()}
-          style={({ pressed }) => [
-            s.send,
-            pressed && { backgroundColor: colors.accentPressed },
-            !canSend && { opacity: 0.4 },
-          ]}
-        >
-          <Icon
-            name="arrowRight"
-            size={18}
-            color={colors.white}
-            strokeWidth={2.2}
-          />
-        </PressableScale>
-      </View>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={thinking ? "Thinking" : "Send"}
+        accessibilityState={{ disabled: !canSend }}
+        disabled={!canSend}
+        onPress={() => ask()}
+        style={({ pressed }) => [
+          s.send,
+          pressed && { backgroundColor: colors.accentPressed },
+          !canSend && { opacity: 0.4 },
+        ]}
+      >
+        <Icon
+          name="arrowRight"
+          size={18}
+          color={colors.white}
+          strokeWidth={2.2}
+        />
+      </PressableScale>
     </View>
   );
 }
@@ -457,50 +435,31 @@ const s = themed(() =>
       backgroundColor: colors.dot,
     },
     composer: {
-      gap: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: radii.card,
-      padding: 6,
-      paddingLeft: 14,
+      borderRadius: 27,
+      padding: 5,
+      paddingLeft: 16,
     },
     input: {
-      width: "100%",
+      flex: 1,
       minHeight: 44,
       fontFamily: fonts.regular,
       fontSize: 15,
       lineHeight: LINE,
       color: colors.text,
-      paddingTop: 11,
-      paddingBottom: 11,
+      paddingTop: 10,
+      paddingBottom: 10,
     },
     send: {
       width: 44,
       height: 44,
       borderRadius: 22,
       backgroundColor: colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    composerActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-    },
-    projectLabel: {
-      fontFamily: fonts.medium,
-      fontSize: 13,
-      color: colors.accent,
-      flexShrink: 1,
-    },
-    project: {
-      flexDirection: "row",
-      gap: 6,
-      paddingHorizontal: 8,
-      minHeight: 44,
-      borderRadius: 22,
       alignItems: "center",
       justifyContent: "center",
     },

@@ -136,52 +136,6 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     });
   };
 
-  /** Draft a project (subtasks) from the prompt, as a reviewable proposal. */
-  const draftProject = (text: string = message) => {
-    const trimmed = text.trim();
-    if (!trimmed || sending.current) return Promise.resolve();
-    sending.current = true;
-    const request = generation.current;
-    const userTurn: Turn = {
-      id: nextId(),
-      role: "user",
-      text: `Draft a project: ${trimmed}`,
-    };
-    setTurns((t) => [...t, userTurn]);
-    setMessage("");
-    setThinking(true);
-    return act(async () => {
-      try {
-        const proposal = await client.draftProject(
-          trimmed,
-          Intl.DateTimeFormat().resolvedOptions().timeZone,
-        );
-        if (request !== generation.current) return;
-        setTurns((t) => [
-          ...t,
-          {
-            id: nextId(),
-            role: "assistant",
-            proposal,
-            state: proposal.actions.length ? "pending" : "info",
-            before: [],
-            planApplied: false,
-          },
-        ]);
-      } catch (error) {
-        if (request !== generation.current) return;
-        setTurns((t) => t.filter((x) => x.id !== userTurn.id));
-        setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
-        throw error;
-      } finally {
-        if (request === generation.current) {
-          sending.current = false;
-          setThinking(false);
-        }
-      }
-    });
-  };
-
   const latestPending = () =>
     [...turnsRef.current]
       .reverse()
@@ -247,7 +201,6 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     /** The most recent reply still awaiting approval, if any. */
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,
-    draftProject,
     apply,
     applyPlan,
     discard,
