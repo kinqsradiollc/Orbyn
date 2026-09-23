@@ -16,6 +16,7 @@ import { deliverWebhookOne } from "./webhooks.js";
 import { scanDigests } from "./digest.js";
 import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
+import { scanMorningAgendas } from "./agenda.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -72,6 +73,8 @@ export async function runWorker() {
         if (Date.now() - lastNotices >= NOTICES_MS) {
           await scanPlanningNotices();
           await scanDigests();
+          // Today's agenda, written each morning with the assistant's summary.
+          await scanMorningAgendas();
           // Templates with a rhythm: say when one is ready to start.
           await runDueTemplates();
           lastNotices = Date.now();

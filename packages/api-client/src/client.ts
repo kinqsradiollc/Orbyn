@@ -692,6 +692,16 @@ export class OrbynClient {
   }
 
   // ---- lists and tags ----
+  /**
+   * Write today's agenda again from the calendar as it is now, opening with
+   * the assistant's summary when a provider is connected. Replaces the
+   * page's content. `brief` says whether the assistant wrote one.
+   */
+  rewriteAgenda() {
+    return this.request<Doc & { brief: boolean }>("/ai/agenda/today", {
+      method: "POST",
+    });
+  }
   /** Today's agenda document, generated on first ask each day. */
   agendaToday() {
     return this.request<Doc>("/agenda/today");

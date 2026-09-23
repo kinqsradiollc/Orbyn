@@ -24,6 +24,8 @@ import { mayChange, wantsDeletion } from "../guards.js";
 import { localIso } from "../snapshot.js";
 import type { JsonSchema, ToolCall, ToolSpec } from "./protocol.js";
 import {
+  calendarGlance,
+  calendarMatches,
   findFreeTime,
   getCalendar,
   followThrough,
@@ -243,8 +245,18 @@ export async function overview(ctx: AgentContext) {
       when: t.when,
       why: t.why,
     })),
-    note: "Only some items are listed here; use search_items for the rest and rank_tasks for what to do first.",
+    // The real calendar for today and the next two days: events (repeating
+    // ones included), subscribed calendars, time set aside, and free time.
+    ...(await calendarGlance(ctx)),
+    note: 'Only some items are listed here; use search_items for the rest and rank_tasks for what to do first. "calendar" is everything on the calendar for today and the next two days, including calendars the user subscribes to (read_only: they can\'t be changed from Orbyn); use get_calendar for other days.',
   };
+}
+
+/** The words of a request that could name something (not "move", "today"…). */
+export function requestWords(message: string) {
+  return [...new Set(message.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [])]
+    .filter((w) => !COMMON_WORDS.has(w))
+    .slice(0, 12);
 }
 
 /** Words that say what to do or when, not which item. */
@@ -265,11 +277,7 @@ const COMMON_WORDS = new Set(
  * that are weak at multi-step tool use).
  */
 export async function related(ctx: AgentContext, message: string) {
-  const words = [
-    ...new Set(message.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []),
-  ]
-    .filter((w) => !COMMON_WORDS.has(w))
-    .slice(0, 12);
+  const words = requestWords(message);
   if (!words.length) return [];
   const rows = (
     await pool.query<Row>(

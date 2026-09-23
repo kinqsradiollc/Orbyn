@@ -264,15 +264,29 @@ version newer than the current agreement (today's date, `.2`, `.3`… on the sam
 ## Agenda and meeting notes
 
 Two kinds of document Orbyn writes for you. Both are ordinary documents once created, so they can
-be edited like any other page, and both are built from planner data alone — they read the same
-whether or not an AI provider is connected.
+be edited like any other page. The agenda is built from the calendar; with an AI provider connected
+it also opens with a few sentences the assistant writes about the day.
 
 ### `GET /agenda/today` (auth)
 
-Today's agenda, in the person's planner time zone. Written the first time it's asked for each day
-(sections for the day's events, what's due today, what slipped and what's coming within a week),
-and returned unchanged after that, so edits are never overwritten. → a document with `kind`
-`agenda`, titled like "Sunday 20 September".
+Today's agenda, in the person's planner time zone, written from the calendar as it actually is
+(`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`): your events with repeats on
+the day they fall and the calendars you subscribe to ("Your day"), time set aside for tasks and
+habits, what's due today, what slipped, exams and all-day events in the coming week, and how much
+working time is still free. Written the first time it's asked for each day, never waiting on the AI
+provider, and returned unchanged after that, so edits are never overwritten. → a document with
+`kind` `agenda`, titled like "Sunday 20 September".
+
+The worker writes each active person's page between 5 and 11 in their own zone (at most 25 per
+15-minute pass, five at a time), opening with the assistant's summary of the day when a provider is
+connected.
+
+### `POST /ai/agenda/today` (auth, 10/min)
+
+Writes today's agenda again from the calendar as it is now, replacing the page's content (the apps
+ask first), and opens it with the assistant's summary when a provider is connected. The provider is
+sent the day as facts only (times already in your zone). → the document plus `brief`: whether the
+assistant wrote the summary.
 
 ### `POST /items/:id/note` (auth)
 

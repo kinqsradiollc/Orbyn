@@ -1867,3 +1867,29 @@ h4.doc-heading {
   color: var(--color-textSoft);
   font-size: 11px;
 }
+
+/* Today's agenda: where it came from, and writing it again. */
+.agenda-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+}
+.agenda-bar > span {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agenda-bar strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.agenda-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
