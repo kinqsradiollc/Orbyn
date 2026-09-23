@@ -75,6 +75,11 @@ npm run dev:web
 | `realtime` | Live streams (`/events`, doc presence), fanned out through Postgres LISTEN/NOTIFY |
 | `migrate`  | Applies migrations under advisory lock                                            |
 
+## Operations
+
+- **Request tracing:** every service records requests via `backend/src/lib/request-log.ts` (batched, route patterns, no IPs); the gateway forwards `X-Request-Id`. Admin → Requests and Analytics read it.
+- **The sweeper** (`backend/src/lib/sweep.ts`) clears outdated records hourly from the worker. A new table that grows without bound gets a rule there, not an ad-hoc `DELETE` on a timer.
+
 ## Key References
 
 | Topic                                                             | Location                                                                   |

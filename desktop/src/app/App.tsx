@@ -22,7 +22,11 @@ import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
 import { Sidebar } from "../components/Sidebar";
-import { MaintenanceBanner, UpdateBanner } from "../components/SystemBanners";
+import {
+  AnnouncementBanner,
+  MaintenanceBanner,
+  UpdateBanner,
+} from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
 import { ItemEditor } from "../components/ItemEditor";
 import { CommandBar } from "../components/CommandBar";
@@ -532,6 +536,7 @@ export function App() {
           onSignOut={() => void planner.logout()}
         />
         <div className="shell">
+          <AnnouncementBanner />
           <MaintenanceBanner
             maintenance={planner.maintenance}
             isAdmin={hasSystemPermission(user?.role, "system:manage")}

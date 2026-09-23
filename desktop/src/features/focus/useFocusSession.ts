@@ -210,23 +210,24 @@ export function useFocusSession({
     };
   }, [running, intervals, record, update]);
 
-  // Picking up a session running on another device: the time left carries
-  // over, and from here on only what runs here is logged here.
+  // Picking up a session: from another device the time left carries over and
+  // only what runs here is logged here; from this device (after stepping
+  // away) it simply carries on where it is.
   useEffect(() => {
     let alive = true;
     client.currentFocus().then(
       (c) => {
-        if (
-          !alive ||
-          !c ||
-          c.device_id === deviceId() ||
-          c.state.item_id !== latest.current.item.id
-        )
-          return;
+        if (!alive || !c || c.state.item_id !== latest.current.item.id) return;
         const r = focusRhythm(c.state.rhythm);
         if (!r || !r.work) return;
         chosen.current = true;
         setRhythm(r);
+        // Its own session: the server already holds this state, so only
+        // show it — sharing it again would echo back as news.
+        if (c.device_id === deviceId()) {
+          setState(c.state);
+          return;
+        }
         const at = Date.now();
         update({
           ...c.state,

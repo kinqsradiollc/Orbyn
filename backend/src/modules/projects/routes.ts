@@ -255,7 +255,21 @@ export async function projectRoutes(app: FastifyInstance) {
       else if (item.user_id !== u.id) fail(404, "Item not found");
 
       if (body.project_id) {
-        await requireProject(db, body.project_id, u, "items:write");
+        const project = await requireProject(
+          db,
+          body.project_id,
+          u,
+          "items:write",
+        );
+        // A task goes into a project in its own space: a team's task into
+        // that team's project, a personal task into a personal one.
+        if (project.team_id !== item.team_id)
+          fail(
+            422,
+            project.team_id
+              ? "Only this team's tasks can go into a team project."
+              : "Team tasks can only go into their team's projects.",
+          );
         if (body.stage_id) {
           const ok = (
             await db.query(

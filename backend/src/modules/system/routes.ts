@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   fail,
+  announcementInput,
   maintenanceInput,
   systemSettingsUpdate,
   testEmailInput,
@@ -104,6 +105,36 @@ async function checkUpdates(): Promise<UpdateInfo> {
 export async function systemRoutes(app: FastifyInstance) {
   /** Public, so apps can show a banner before and after sign-in. */
   app.get("/maintenance", async () => (await settings()).maintenance);
+
+  /** The admins' notice to everyone, or null when there is none (or it ended). */
+  app.get("/announcement", async () => {
+    const a = (await settings()).announcement;
+    if (!a.message || (a.until && Date.parse(a.until) < Date.now()))
+      return null;
+    return a;
+  });
+
+  app.put("/admin/announcement", async (r) => {
+    const actor = await authorize(r, "system:manage");
+    const d = announcementInput.parse(r.body ?? {});
+    await transaction(async (db) => {
+      await save(db, "announcement", d, actor.id);
+      await audit(
+        {
+          actorId: actor.id,
+          action: d.message
+            ? "system.announcement_set"
+            : "system.announcement_cleared",
+          targetType: "system",
+          targetId: "announcement",
+          details: { message: d.message, tone: d.tone, until: d.until },
+        },
+        db,
+      );
+    });
+    invalidateSettings();
+    return (await settings()).announcement;
+  });
 
   app.get("/admin/settings", async (r) => {
     await authorize(r, "system:manage");

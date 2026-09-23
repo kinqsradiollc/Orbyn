@@ -2,11 +2,12 @@ import Fastify, {
   type FastifyInstance,
   type FastifyPluginAsync,
 } from "fastify";
+import { recordRequests } from "../lib/request-log.js";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { env } from "../config/env.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
 import { apiKeyId, authenticate } from "../lib/auth.js";
 import { cachedSettings, settings } from "../lib/settings.js";
@@ -40,6 +41,15 @@ export async function createService(
       ],
     },
     bodyLimit: 65536,
+    // The gateway's request id when it sent a sane one, so a request can be
+    // followed from nginx through the service that answered it.
+    requestIdHeader: false,
+    genReqId: (req) => {
+      const given = req.headers["x-request-id"];
+      return typeof given === "string" && /^[\w-]{8,64}$/.test(given)
+        ? given
+        : randomUUID();
+    },
     // While a copy shuts down during a deploy, keep answering requests that
     // arrive on connections the gateway already holds, instead of replying
     // 503; the gateway moves to the new copies as those connections close.
@@ -97,6 +107,9 @@ export async function createService(
       return key ? `key:${key}` : request.ip;
     },
   });
+
+  // Every request is traced for the admin console (batched, off the request path).
+  recordRequests(app, name);
 
   // Public booking, invite, profile and RSVP responses aren't for search engines.
   app.addHook("onRequest", async (request, reply) => {

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { requestUser } from "./request-log.js";
 import type { FastifyRequest } from "fastify";
 import {
   fail,
@@ -111,6 +112,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
     );
     viaApiKey.add(r);
     requireVerified(r, u);
+    requestUser.set(r, u.id);
     return u;
   }
   const u = (
@@ -127,6 +129,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
     "UPDATE sessions SET last_seen_at=now() WHERE token_hash=$1 AND last_seen_at < now() - interval '1 minute'",
     [digest(token)],
   );
+  requestUser.set(r, u.id);
   return u;
 }
 

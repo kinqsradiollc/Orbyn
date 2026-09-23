@@ -9,10 +9,23 @@ import { stagger } from "../../lib/motion";
 
 const PAGE = 50;
 
-type Props = Pick<TeamActions, "user" | "busy" | "act" | "refresh" | "report">;
+type Props = Pick<
+  TeamActions,
+  "user" | "busy" | "act" | "refresh" | "report"
+> & {
+  /** Open one account in full, with everything an admin can do for it. */
+  onOpen?: (id: string) => void;
+};
 
 /** Searchable account table: system role, enable/disable, delete. */
-export function AdminUsers({ user, busy, act, refresh, report }: Props) {
+export function AdminUsers({
+  user,
+  busy,
+  act,
+  refresh,
+  report,
+  onOpen,
+}: Props) {
   const { ask, tell } = useConfirm();
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<AdminUser[]>([]);
@@ -138,7 +151,17 @@ export function AdminUsers({ user, busy, act, refresh, report }: Props) {
                   style={stagger(n % PAGE)}
                 >
                   <td>
-                    <strong>{u.name}</strong>
+                    {onOpen ? (
+                      <button
+                        className="link-button admin-user-link"
+                        title="Open account"
+                        onClick={() => onOpen(u.id)}
+                      >
+                        <strong>{u.name}</strong>
+                      </button>
+                    ) : (
+                      <strong>{u.name}</strong>
+                    )}
                     {self && <span className="you-tag">You</span>}
                   </td>
                   <td>

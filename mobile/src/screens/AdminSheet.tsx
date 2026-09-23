@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -30,14 +30,39 @@ import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AdminAi } from "./AdminAi";
+import { AdminDatabase } from "./AdminDatabase";
+import {
+  AdminAccount,
+  AdminAnalyticsView,
+  AdminRequests,
+  AnnouncementCard,
+  RetentionCard,
+} from "./AdminInsights";
+import { MoreMenu } from "../components/MoreMenu";
+import { confirmAction } from "../lib/confirm";
 import { AdminSystem } from "./AdminSystem";
 import { TeamDetailPage } from "./TeamDetail";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
-type Segment = "overview" | "users" | "teams" | "audit" | "ai" | "system";
+type Segment =
+  | "overview"
+  | "analytics"
+  | "requests"
+  | "users"
+  | "teams"
+  | "audit"
+  | "database"
+  | "ai"
+  | "system";
 
 const SEGMENTS: Segment[] = ["overview", "users", "teams", "audit"];
-const SEGMENT_LABELS = { ai: "AI", system: "System" } as const;
+const SEGMENT_LABELS = {
+  analytics: "Analytics",
+  requests: "Requests",
+  database: "Database",
+  ai: "AI",
+  system: "System",
+} as const;
 const AUDIT_PAGE = 30;
 
 /**
@@ -72,10 +97,19 @@ export function AdminSheet({
 }) {
   const [segment, setSegment] = useState<Segment>("overview");
   const [team, setTeam] = useState<string | null>(null);
+  const [account, setAccount] = useState<string | null>(null);
   const canManageAi = hasSystemPermission(user?.role, "ai:manage");
   const canManageSystem = hasSystemPermission(user?.role, "system:manage");
   const segments: Segment[] = [
     ...SEGMENTS,
+    ...(hasSystemPermission(user?.role, "analytics:read")
+      ? (["analytics"] as const)
+      : []),
+    ...(hasSystemPermission(user?.role, "requests:read")
+      ? (["requests"] as const)
+      : []),
+    // The database is shown to those who run the system, as on the desktop.
+    ...(canManageSystem ? (["database"] as const) : []),
     ...(canManageAi ? (["ai"] as const) : []),
     ...(canManageSystem ? (["system"] as const) : []),
   ];
@@ -126,22 +160,49 @@ export function AdminSheet({
             />
             <View style={s.spacer} />
             {segment === "overview" && <Overview act={act} />}
-            {segment === "users" && (
-              <Users act={act} busy={busy} me={user} onChanged={refresh} />
-            )}
+            {segment === "analytics" && <AdminAnalyticsView act={act} />}
+            {segment === "requests" && <AdminRequests act={act} busy={busy} />}
+            {segment === "users" &&
+              (account ? (
+                <AdminAccount
+                  key={account}
+                  userId={account}
+                  meId={user?.id}
+                  act={act}
+                  busy={busy}
+                  onBack={() => setAccount(null)}
+                />
+              ) : (
+                <Users
+                  act={act}
+                  busy={busy}
+                  me={user}
+                  onChanged={refresh}
+                  onOpen={setAccount}
+                />
+              ))}
             {segment === "teams" && (
               <Teams act={act} onSelect={(t) => setTeam(t.id)} />
             )}
             {segment === "audit" && <Audit act={act} busy={busy} />}
+            {segment === "database" && canManageSystem && (
+              <AdminDatabase act={act} busy={busy} meId={user?.id} />
+            )}
             {segment === "ai" && canManageAi && (
               <AdminAi act={act} busy={busy} />
             )}
             {segment === "system" && canManageSystem && (
-              <AdminSystem
-                act={act}
-                busy={busy}
-                onMaintenance={onMaintenance}
-              />
+              <>
+                <AdminSystem
+                  act={act}
+                  busy={busy}
+                  onMaintenance={onMaintenance}
+                />
+                <View style={s.spacer} />
+                <AnnouncementCard act={act} busy={busy} />
+                <View style={s.spacer} />
+                <RetentionCard act={act} busy={busy} />
+              </>
             )}
           </View>
         </ScrollView>
@@ -184,11 +245,14 @@ function Users({
   busy,
   me,
   onChanged,
+  onOpen,
 }: {
   act: Act;
   busy: boolean;
   me: User | null;
   onChanged: () => Promise<void>;
+  /** Open one account with everything an admin can do for it. */
+  onOpen: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<AdminUser[]>([]);
@@ -213,18 +277,13 @@ function Users({
       await onChanged();
     });
 
+  // confirmAction rather than Alert: Alert does nothing in the web build.
   const remove = (u: AdminUser) =>
-    Alert.alert(
+    confirmAction(
       "Delete this account?",
       `${u.email} and their personal plans are removed permanently.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => run(() => client.adminDeleteUser(u.id)),
-        },
-      ],
+      "Delete",
+      () => void run(() => client.adminDeleteUser(u.id)),
     );
 
   return (
@@ -263,7 +322,12 @@ function Users({
               style={[s.userRow, n > 0 && s.divider]}
             >
               <View style={s.userTop}>
-                <View style={{ flex: 1 }}>
+                <Pressable
+                  style={{ flex: 1 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${u.name}`}
+                  onPress={() => onOpen(u.id)}
+                >
                   <Text style={s.userName} numberOfLines={1}>
                     {u.name}
                     {self ? " (you)" : ""}
@@ -275,7 +339,7 @@ function Users({
                     {u.team_count} team{u.team_count === 1 ? "" : "s"} ·{" "}
                     {u.item_count} plan{u.item_count === 1 ? "" : "s"}
                   </Text>
-                </View>
+                </Pressable>
                 <View style={s.pills}>
                   <Pill
                     label={u.role === "admin" ? "Admin" : "Member"}
@@ -283,37 +347,43 @@ function Users({
                   />
                   {u.disabled && <Pill label="Disabled" tone="danger" />}
                 </View>
+                <MoreMenu
+                  label={`${u.name} options`}
+                  disabled={busy}
+                  actions={[
+                    { label: "Open account", onPress: () => onOpen(u.id) },
+                    ...(self
+                      ? []
+                      : [
+                          {
+                            label:
+                              u.role === "admin" ? "Make member" : "Make admin",
+                            onPress: () =>
+                              void run(() =>
+                                client.adminUpdateUser(u.id, {
+                                  role: u.role === "admin" ? "member" : "admin",
+                                }),
+                              ),
+                          },
+                          {
+                            label: u.disabled ? "Enable" : "Disable",
+                            destructive: !u.disabled,
+                            onPress: () =>
+                              void run(() =>
+                                client.adminUpdateUser(u.id, {
+                                  disabled: !u.disabled,
+                                }),
+                              ),
+                          },
+                          {
+                            label: "Delete account",
+                            destructive: true,
+                            onPress: () => remove(u),
+                          },
+                        ]),
+                  ]}
+                />
               </View>
-              {!self && (
-                <View style={s.actions}>
-                  <SmallAction
-                    label={u.role === "admin" ? "Make member" : "Make admin"}
-                    disabled={busy}
-                    onPress={() =>
-                      run(() =>
-                        client.adminUpdateUser(u.id, {
-                          role: u.role === "admin" ? "member" : "admin",
-                        }),
-                      )
-                    }
-                  />
-                  <SmallAction
-                    label={u.disabled ? "Enable" : "Disable"}
-                    disabled={busy}
-                    onPress={() =>
-                      run(() =>
-                        client.adminUpdateUser(u.id, { disabled: !u.disabled }),
-                      )
-                    }
-                  />
-                  <SmallAction
-                    destructive
-                    label="Delete"
-                    disabled={busy}
-                    onPress={() => remove(u)}
-                  />
-                </View>
-              )}
             </FadeIn>
           );
         })}

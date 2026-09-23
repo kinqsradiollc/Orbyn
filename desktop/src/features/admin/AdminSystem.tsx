@@ -10,7 +10,9 @@ import {
 import {
   CircleCheck,
   CircleX,
+  Eraser,
   ExternalLink,
+  Megaphone,
   RefreshCw,
   RotateCcw,
   Save,
@@ -18,12 +20,14 @@ import {
   Trash2,
 } from "lucide-react";
 import type {
+  Announcement,
   HttpError,
   Maintenance,
   SystemSettingKey,
   SystemSettings,
   SystemSettingsUpdate,
   SystemSettingsView,
+  SweepView,
   UpdateInfo,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -33,6 +37,7 @@ import { humanizeDuration } from "../status/StatusPage";
 import "./ai.css";
 import "./system.css";
 import { DateField } from "../../components/DateField";
+import { Select } from "../../components/Select";
 
 type Report = TeamActions["report"];
 type Source = SystemSettingsView["sources"][SystemSettingKey];
@@ -97,6 +102,8 @@ export function AdminSystem({ user, report, onMaintenanceChange }: Props) {
     <>
       <SettingsCard user={user} report={report} />
       <MaintenanceCard report={report} onChange={onMaintenanceChange} />
+      <AnnouncementCard report={report} />
+      <RetentionCard report={report} />
       <VersionCard report={report} />
     </>
   );
@@ -786,6 +793,313 @@ function MaintenanceCard({
               <OutcomeNote outcome={action.outcome} />
             </div>
           </form>
+        </>
+      )}
+    </section>
+  );
+}
+
+// ---- Announcement ----
+
+/** A notice everyone sees at the top of every app, until removed or it ends. */
+function AnnouncementCard({ report }: { report: Report }) {
+  const { ask } = useConfirm();
+  const [live, setLive] = useState<Announcement | null>(null);
+  const [message, setMessage] = useState("");
+  const [tone, setTone] = useState<"info" | "warning">("info");
+  const [until, setUntil] = useState("");
+  const action = useAction(report);
+  const { run } = action;
+
+  const load = useCallback(
+    () =>
+      void run(async () => {
+        const a = await client.announcement();
+        setLive(a);
+        if (a) {
+          setMessage(a.message);
+          setTone(a.tone);
+          setUntil(toLocalInput(a.until));
+        }
+      }),
+    [run],
+  );
+  useEffect(load, [load]);
+
+  const publish = async (clear: boolean) => {
+    if (
+      !(await ask({
+        title: clear
+          ? "Remove the announcement for everyone?"
+          : "Show this announcement to everyone?",
+        body: clear ? undefined : message.trim(),
+        confirmLabel: clear ? "Remove" : "Publish",
+      }))
+    )
+      return;
+    void action.run(async () => {
+      const saved = await client.setAnnouncement({
+        message: clear ? "" : message.trim(),
+        tone,
+        until: clear ? null : fromLocalInput(until),
+      });
+      setLive(saved.message ? saved : null);
+      if (clear) {
+        setMessage("");
+        setUntil("");
+        return "Removed.";
+      }
+      return "Published. Everyone sees it within a minute.";
+    });
+  };
+
+  return (
+    <section className="card system-card fade-up">
+      <div className="section-heading">
+        <h2>Announcement</h2>
+        <span className={"system-pill " + (live ? "is-ok" : "is-off")}>
+          {live ? "Showing" : "None"}
+        </span>
+      </div>
+      <form
+        className="system-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void publish(false);
+        }}
+      >
+        <label className="system-field system-wide system-label">
+          Message
+          <textarea
+            rows={2}
+            maxLength={300}
+            placeholder="Planned update tonight at 10pm — Orbyn may be slow for a few minutes."
+            value={message}
+            onChange={(e) => {
+              setMessage(e.target.value);
+              action.setOutcome(null);
+            }}
+          />
+          <small className="field-hint">
+            Shown at the top of the web, desktop and mobile apps. People can
+            dismiss it; a new announcement shows again.
+          </small>
+        </label>
+        <label className="system-field system-label">
+          Tone
+          <Select
+            aria-label="Tone"
+            value={tone}
+            onChange={(e) => setTone(e.target.value as "info" | "warning")}
+          >
+            <option value="info">Information</option>
+            <option value="warning">Heads-up</option>
+          </Select>
+        </label>
+        <label className="system-field system-label">
+          Stop showing (optional)
+          <DateField
+            type="datetime-local"
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+          />
+        </label>
+        <div className="system-footer system-wide">
+          <button
+            className="primary"
+            disabled={action.pending || !message.trim()}
+          >
+            <Megaphone size={14} /> {live ? "Update" : "Publish"}
+          </button>
+          {live && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={action.pending}
+              onClick={() => void publish(true)}
+            >
+              Remove
+            </button>
+          )}
+          <OutcomeNote outcome={action.outcome} />
+        </div>
+      </form>
+    </section>
+  );
+}
+
+// ---- Data retention ----
+
+/**
+ * What Orbyn keeps and for how long. The sweeper clears the rest every hour
+ * in small slices; "Sweep now" runs it at once. Records people made
+ * themselves (page history, project timelines) are kept forever by default.
+ */
+function RetentionCard({ report }: { report: Report }) {
+  const { ask } = useConfirm();
+  const [view, setView] = useState<SweepView | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const action = useAction(report);
+  const { run } = action;
+
+  const show = useCallback((v: SweepView) => {
+    setView(v);
+    setDraft(
+      Object.fromEntries(
+        v.rules
+          .filter((r) => r.configurable)
+          .map((r) => [r.key, String(r.days ?? 0)]),
+      ),
+    );
+  }, []);
+  const load = useCallback(
+    () => void run(async () => show(await client.adminSweep())),
+    [run, show],
+  );
+  useEffect(load, [load]);
+
+  const changed = view
+    ? view.rules.filter(
+        (r) => r.configurable && String(r.days ?? 0) !== draft[r.key],
+      )
+    : [];
+
+  const save = async () => {
+    if (!changed.length) return;
+    const shorter = changed.filter((r) => {
+      const next = Number(draft[r.key]);
+      return next > 0 && (r.days === 0 || next < (r.days ?? 0));
+    });
+    if (
+      !(await ask({
+        title: "Save how long records are kept?",
+        body: shorter.length
+          ? `Older ${shorter.map((r) => r.label.toLowerCase()).join(", ")} will be removed at the next sweep, and can't be brought back.`
+          : undefined,
+        confirmLabel: "Save",
+        destructive: shorter.length > 0,
+      }))
+    )
+      return;
+    void action.run(async () => {
+      show(
+        await client.setRetention(
+          Object.fromEntries(changed.map((r) => [r.key, Number(draft[r.key])])),
+        ),
+      );
+      return "Saved.";
+    });
+  };
+
+  const sweep = async () => {
+    if (
+      !(await ask({
+        title: "Sweep now?",
+        body: "Clears everything past its keep time, as the hourly sweep does.",
+        confirmLabel: "Sweep now",
+      }))
+    )
+      return;
+    void action.run(async () => {
+      const v = await client.runSweep();
+      show(v);
+      const n = Object.values(v.last?.removed ?? {}).reduce((a, b) => a + b, 0);
+      return `Swept: ${n.toLocaleString()} record${n === 1 ? "" : "s"} removed.`;
+    });
+  };
+
+  return (
+    <section className="card system-card fade-up">
+      <div className="section-heading">
+        <h2>Data retention</h2>
+        {view?.last && (
+          <span className="system-pill is-ok">
+            Swept {formatDateTime(view.last.at)}
+          </span>
+        )}
+      </div>
+      <p className="muted system-lead">
+        The sweeper clears records past their keep time every hour, a few
+        thousand at a time, so the database doesn&apos;t fill with outdated
+        data. 0 keeps a kind of record forever.
+      </p>
+      {!view ? (
+        <p className="muted system-loading">Loading…</p>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table className="data-table system-retention">
+              <thead>
+                <tr>
+                  <th>Record</th>
+                  <th>Now</th>
+                  <th>Keep for</th>
+                  <th>Last sweep</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.rules.map((r) => (
+                  <tr key={r.key}>
+                    <td>
+                      <strong>{r.label}</strong>
+                      <small className="muted">{r.detail}</small>
+                    </td>
+                    <td>
+                      {r.rows.toLocaleString()} {r.rows === 1 ? "row" : "rows"}
+                      <small className="muted">{r.size}</small>
+                    </td>
+                    <td>
+                      {r.configurable ? (
+                        <label className="system-days">
+                          <input
+                            type="number"
+                            min={0}
+                            max={3650}
+                            aria-label={`Days to keep ${r.label.toLowerCase()}`}
+                            value={draft[r.key] ?? ""}
+                            onChange={(e) =>
+                              setDraft({ ...draft, [r.key]: e.target.value })
+                            }
+                          />
+                          <span>
+                            {Number(draft[r.key]) === 0 ? "forever" : "days"}
+                          </span>
+                        </label>
+                      ) : (
+                        <span className="muted">Until expired</span>
+                      )}
+                    </td>
+                    <td>
+                      {view.last?.errors[r.key] ? (
+                        <span className="danger-text">Failed</span>
+                      ) : view.last?.removed[r.key] !== undefined ? (
+                        `${view.last.removed[r.key].toLocaleString()} removed`
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="system-footer">
+            <button
+              className="primary"
+              disabled={action.pending || !changed.length}
+              onClick={() => void save()}
+            >
+              <Save size={14} /> Save
+            </button>
+            <button
+              className="secondary"
+              disabled={action.pending}
+              onClick={() => void sweep()}
+            >
+              <Eraser size={14} /> Sweep now
+            </button>
+            <OutcomeNote outcome={action.outcome} />
+          </div>
         </>
       )}
     </section>

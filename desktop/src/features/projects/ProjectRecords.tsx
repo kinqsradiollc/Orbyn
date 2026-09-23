@@ -175,6 +175,7 @@ export function ProjectRecords({
       const task = await client.createItem({
         kind: "task",
         title: record.title,
+        team_id: project.team_id,
       });
       await client.setItemProject(task.id, { project_id: project.id });
       await client.updateWorkRecord(record.id, {

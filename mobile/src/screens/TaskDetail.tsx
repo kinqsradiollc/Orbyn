@@ -253,8 +253,16 @@ function Body({
   const [projects, setProjects] = useState<Project[] | null>(null);
   useEffect(() => {
     if (item?.kind !== "task" || readOnly) return;
-    client.listProjects().then(setProjects, () => setProjects([]));
-  }, [item?.kind, readOnly]);
+    // Only projects in the task's own space: a team task files into its
+    // team's projects, a personal task into personal ones.
+    client.listProjects().then(
+      (all) =>
+        setProjects(
+          all.filter((p) => (p.team_id ?? null) === (item?.team_id ?? null)),
+        ),
+      () => setProjects([]),
+    );
+  }, [item?.kind, item?.team_id, readOnly]);
 
   const project = projects?.find((p) => p.id === detail?.project_id) ?? null;
 

@@ -1,4 +1,5 @@
 import type {
+  Announcement,
   Maintenance,
   SystemSettingKey,
   SystemSettingsView,
@@ -34,6 +35,8 @@ export type LiveSettings = {
   status_interval_ms: number;
   smtp: Smtp;
   maintenance: Maintenance;
+  /** A notice admins show everyone, in every app, until cleared or `until`. */
+  announcement: Announcement;
   sources: Record<SystemSettingKey, "database" | "environment">;
   updated_at: string | null;
 };
@@ -59,6 +62,7 @@ function fromEnvironment(): LiveSettings {
       from_env: true,
     },
     maintenance: { enabled: false, message: "", until: null, updated_at: null },
+    announcement: { message: "", tone: "info", until: null, updated_at: null },
     sources: Object.fromEntries(
       SETTING_KEYS.map((k) => [k, "environment"]),
     ) as LiveSettings["sources"],
@@ -79,6 +83,16 @@ async function load(): Promise<LiveSettings> {
   const next = fromEnvironment();
   let latest: Date | null = null;
   for (const row of rows) {
+    if (row.key === "announcement") {
+      const a = row.value as Partial<Announcement>;
+      next.announcement = {
+        message: a.message ?? "",
+        tone: a.tone === "warning" ? "warning" : "info",
+        until: a.until ?? null,
+        updated_at: row.updated_at.toISOString(),
+      };
+      continue;
+    }
     if (row.key === "maintenance") {
       const m = row.value as Partial<Maintenance>;
       next.maintenance = {

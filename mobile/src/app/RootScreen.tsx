@@ -71,6 +71,7 @@ import { ProgressSheet } from "../screens/ProgressSheet";
 import { SyncBar } from "../components/SyncBar";
 import { WelcomeBack } from "../components/followthrough/WelcomeBack";
 import { FocusElsewhere } from "../components/FocusElsewhere";
+import { AnnouncementBanner } from "../screens/AdminInsights";
 import { usePresence } from "../hooks/usePresence";
 import { colors, spacing, themed } from "../theme";
 import { shared } from "../styles";
@@ -616,6 +617,7 @@ export function RootScreen() {
                 outbox={planner.outbox}
                 onOpen={() => present({ sheet: "sync" })}
               />
+              <AnnouncementBanner />
               <FocusElsewhere
                 items={items}
                 hidden={sheet === "focus"}

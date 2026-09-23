@@ -559,6 +559,8 @@ export const chatWebhookInput = z
 export const projectRequest = z.object({
   prompt: z.string().trim().min(1).max(2000),
   timezone: z.string().max(80).default("UTC"),
+  /** Draft it for a team: the project and its tasks become the team's once approved. */
+  team_id: z.uuid().nullable().optional(),
 });
 
 /** Bring planner data in from an Orbyn export or a CSV. */

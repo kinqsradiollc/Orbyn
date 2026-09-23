@@ -4,7 +4,7 @@ import {
   CalendarDays,
   Flag,
   PenLine,
-  Plus,
+  Lightbulb,
   Sparkles,
   SquarePen,
   Sunrise,
@@ -205,7 +205,8 @@ export function AssistantView({
           <button
             type="button"
             className="ai-tool"
-            aria-label="Quick actions"
+            aria-label="Suggestions"
+            title="Suggestions"
             aria-haspopup="dialog"
             aria-expanded={!!quickMenu}
             disabled={locked}
@@ -215,7 +216,9 @@ export function AssistantView({
               )
             }
           >
-            <Plus size={20} />
+            {/* Suggested requests, not attachments: the assistant takes
+                text only, so a "+" would promise files it can't read. */}
+            <Lightbulb size={19} />
           </button>
           <textarea
             ref={inputRef}
@@ -280,7 +283,7 @@ export function AssistantView({
       {quickMenu && (
         <Popover
           anchor={quickMenu}
-          label="Quick actions"
+          label="Suggestions"
           onClose={() => setQuickMenu(null)}
         >
           <div className="popover-actions">

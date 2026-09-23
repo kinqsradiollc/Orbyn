@@ -63,6 +63,11 @@ const schema = z.object({
   /** Where admins start a deploy; defaults to the repo's deploy workflow. */
   DEPLOY_URL: z.string().default(""),
   /** Parallel delivery lanes in the reminder service. */
+  /**
+   * Share of ordinary requests kept in the admin request log (0-1). Errors
+   * and slow requests are always kept; daily counts always include everything.
+   */
+  REQUEST_LOG_SAMPLE: z.coerce.number().min(0).max(1).default(1),
   NOTIFIER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   /**
    * Where people open the web app; used in booking links sent by email.
