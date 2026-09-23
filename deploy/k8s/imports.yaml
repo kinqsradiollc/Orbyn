@@ -1,0 +1,234 @@
+# Importing PDFs, Word files and photos into Docs (docs/architecture.md,
+# "Importing files into Docs"):
+#   files      the file store. Uploads arrive at /files/u/<signed link>, are
+#              kept encrypted on a volume until the converter has read them,
+#              and never longer than 24 hours.
+#   converter  turns them into pages; no port, heartbeat in Postgres
+#              ("Document import" on the status page).
+# Both need FILES_SECRET in orbyn-secrets (files also FILES_MASTER_KEY);
+# without FILES_SECRET importing is off and these idle.
+#
+# OCR for scanned pages is not deployed here: it runs on CPU with about
+# 12 GB of RAM per worker (ocr/, Compose profile `ocr`). Run it where you
+# have the memory and set OCR_URL in orbyn-config to reach it; the converter
+# is its only client. Without OCR_URL, Word files and PDFs with real text
+# still import.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: import-files
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: files
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      # Uploads live a day at most: 50 MB each, two at a time per person.
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: files
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: files
+spec:
+  # One copy on a ReadWriteOnce volume; Recreate so the new pod can mount it.
+  # A restart costs only uploads in flight, which the apps send again.
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: files
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: files
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: files
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/services/files.js"]
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            - name: FILES_DIR
+              value: /data/files
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=384"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              # A file is read back whole (up to 50 MB) when the converter asks.
+              memory: 768Mi
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /live, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: files
+              mountPath: /data/files
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: files
+          persistentVolumeClaim:
+            claimName: import-files
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: files
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: files
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: files
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: converter
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: converter
+spec:
+  # Replicas are safe: files and pages are claimed with SKIP LOCKED.
+  replicas: 1
+  revisionHistoryLimit: 5
+  minReadySeconds: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: converter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orbyn
+        app.kubernetes.io/component: converter
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # A page being read by OCR is picked up again by the next converter.
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: converter
+          image: ghcr.io/your-org/orbyn-backend:TAG
+          imagePullPolicy: IfNotPresent
+          command: ["node", "backend/dist/services/converter.js"]
+          envFrom:
+            - configMapRef:
+                name: orbyn-config
+            - secretRef:
+                name: orbyn-secrets
+          env:
+            - name: FILES_URL
+              value: http://files.orbyn.svc.cluster.local:8000
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=1024"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 384Mi
+            limits:
+              cpu: "2"
+              # pdf.js holds a whole PDF (up to 50 MB) while reading it.
+              memory: 1536Mi
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "kill -0 1"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
+---
+# Uploads: straight to the file store, streamed, up to 50 MB. Its own Ingress
+# so the larger body size applies to this path only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-uploads
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 52m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /files/u
+            pathType: Prefix
+            backend:
+              service:
+                name: files
+                port:
+                  name: http

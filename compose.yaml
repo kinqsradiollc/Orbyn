@@ -177,6 +177,68 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
+  # The file store for importing into Docs: uploads arrive through the
+  # gateway's /files/u/ route and are kept encrypted until the converter has
+  # read them, never longer than a day. Needs FILES_SECRET and
+  # FILES_MASTER_KEY in .env; without FILES_SECRET importing is off.
+  files:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      FILES_DIR: /data/files
+    command: ["node", "backend/dist/services/files.js"]
+    volumes:
+      - import_files:/data/files
+    healthcheck: *http-health
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Turns uploaded files into pages in Docs → Uploads. Word files and PDFs
+  # with real text are read here in seconds; scanned pages and photos go to
+  # the OCR service when the `ocr` profile is on (OCR_URL below).
+  converter:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      FILES_URL: http://files:8000
+      OCR_URL: ${OCR_URL:-}
+      OCR_WORKERS: ${OCR_WORKERS:-1}
+    command: ["node", "backend/dist/services/converter.js"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Reads scanned pages and photos with Unlimited-OCR on CPU (no GPU). Off
+  # unless asked for, like mail: add `ocr` to COMPOSE_PROFILES in .env and
+  # set OCR_URL=http://ocr:8000, then `docker compose up -d --build`. The
+  # model (about 12 GB of RAM in float32) downloads once into ocr_models.
+  # It publishes no port to the machine. After the first start has downloaded
+  # the model, OCR_OFFLINE=1 stops it from reaching the internet at all.
+  # More workers: --scale ocr=2 and OCR_WORKERS=2.
+  ocr:
+    build:
+      context: ./ocr
+    profiles: [ocr]
+    environment:
+      OCR_MODEL: ${OCR_MODEL:-baidu/Unlimited-OCR}
+      OCR_MODEL_REVISION: ${OCR_MODEL_REVISION:-main}
+      OCR_IMAGE_MODE: ${OCR_IMAGE_MODE:-gundam}
+      OCR_THREADS: ${OCR_THREADS:-0}
+      OCR_OFFLINE: ${OCR_OFFLINE:-0}
+    volumes:
+      - ocr_models:/models
+    mem_limit: ${OCR_MEMORY:-16g}
+    cpus: ${OCR_CPUS:-8}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30m
+      retries: 5
+    stop_grace_period: 60s
+    restart: unless-stopped
+
   # Probes every component and serves the public status report.
   status:
     <<: *backend
@@ -209,6 +271,7 @@ services:
       REALTIME_SERVERS: ${GATEWAY_REALTIME_SERVERS:-realtime:8000}
       STATUS_SERVERS: ${GATEWAY_STATUS_SERVERS:-status:8000}
       WEB_SERVERS: ${GATEWAY_WEB_SERVERS:-desktop:8080}
+      FILES_SERVERS: ${GATEWAY_FILES_SERVERS:-files:8000}
       RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
       TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
       RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-127.0.0.1/32 192.168.65.0/24}
@@ -222,7 +285,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    depends_on: [api, ai, realtime, status]
+    depends_on: [api, ai, realtime, status, files]
     restart: unless-stopped
 
   desktop:
@@ -297,5 +360,9 @@ services:
 
 volumes:
   postgres_data:
+  # Files waiting to be imported (encrypted, gone within a day).
+  import_files:
+  # The OCR model's weights, downloaded once.
+  ocr_models:
   postgres_replica_data:
   mail_data:

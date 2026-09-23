@@ -32,6 +32,7 @@ import { useRun } from "../../hooks/useRun";
 import { colors, fonts, radii, themed } from "../../theme";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
+import { UploadsList, useImports } from "./Uploads";
 import { SmallAction } from "../../components/SmallAction";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
@@ -98,6 +99,8 @@ export function DocsSheet({
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   /** Within agendas: one month ("2026-09"), or null for all of them. */
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
+  /** Uploads: files being imported, and imported pages not filed yet. */
+  const [uploadsOnly, setUploadsOnly] = useState(false);
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -152,6 +155,15 @@ export function DocsSheet({
       },
     );
 
+  const imports = useImports(
+    (m) => setError(m),
+    () => void loadList(),
+  );
+  const importFile = () => {
+    selectCollection(null, null, false, null, true);
+    void imports.pickAndImport().catch((e: Error) => setError(e.message));
+  };
+
   /** Star a page, or take the star off. Starred pages come first. */
   const toggleStar = (doc: DocSummary, starred: boolean) => {
     setStars((all) =>
@@ -177,7 +189,9 @@ export function DocsSheet({
       setDocs(
         (all) =>
           all?.map((d) =>
-            d.id === doc.id ? { ...d, folder_id: folderId } : d,
+            d.id === doc.id
+              ? { ...d, folder_id: folderId, in_uploads: false }
+              : d,
           ) ?? all,
       );
     });
@@ -259,6 +273,11 @@ export function DocsSheet({
    * otherwise everything of the chosen kind.
    */
   const starred = favouriteSet(stars);
+  const uploadCount =
+    (docs ?? []).filter((d) => d.in_uploads).length +
+    imports.jobs.filter((j) =>
+      ["waiting", "queued", "reading", "ocr", "failed"].includes(j.status),
+    ).length;
 
   type Row = {
     id: string;
@@ -316,25 +335,29 @@ export function DocsSheet({
           a.id.localeCompare(b.id)
         : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
-  const location = favoritesOnly
-    ? "Favorites"
-    : folderFilter === "none"
-      ? "Unfiled"
-      : folderFilter
-        ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-        : kindFilter === "agenda"
-          ? "Agendas"
-          : kindFilter === "doc"
-            ? "Pages"
-            : kindFilter === "note"
-              ? "Notes"
-              : "All documents";
+  const location = uploadsOnly
+    ? "Uploads"
+    : favoritesOnly
+      ? "Favorites"
+      : folderFilter === "none"
+        ? "Unfiled"
+        : folderFilter
+          ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+          : kindFilter === "agenda"
+            ? "Agendas"
+            : kindFilter === "doc"
+              ? "Pages"
+              : kindFilter === "note"
+                ? "Notes"
+                : "All documents";
   const selectCollection = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
     month: string | null = null,
+    uploads = false,
   ) => {
+    setUploadsOnly(uploads);
     setFolderFilter(folder);
     setKindFilter(kind);
     setAgendaMonth(month);
@@ -416,7 +439,7 @@ export function DocsSheet({
               {navRow(
                 "All documents",
                 () => selectCollection(null),
-                !favoritesOnly && !folderFilter && !kindFilter,
+                !favoritesOnly && !uploadsOnly && !folderFilter && !kindFilter,
                 "fileText",
                 docs?.filter((d) => d.kind !== "agenda").length,
               )}
@@ -435,6 +458,13 @@ export function DocsSheet({
                 () => selectCollection(null, null, true),
                 favoritesOnly,
                 "star",
+              )}
+              {navRow(
+                "Uploads",
+                () => selectCollection(null, null, false, null, true),
+                uploadsOnly,
+                "fileText",
+                uploadCount || undefined,
               )}
               {agendas.length > 0 && (
                 <>
@@ -616,6 +646,7 @@ export function DocsSheet({
                       ? [["Agendas", null, "agenda", false]]
                       : []),
                     ["Favorites", null, null, true],
+                    ["Uploads", null, null, false, true],
                     ...folders.map((folder) => [
                       folder.name,
                       folder.id,
@@ -623,18 +654,27 @@ export function DocsSheet({
                       false,
                     ]),
                     ["Unfiled", "none", null, false],
-                  ] as [string, string | null, DocKind | null, boolean][]
-                ).map(([label, folder, kind, favorites]) => {
+                  ] as [
+                    string,
+                    string | null,
+                    DocKind | null,
+                    boolean,
+                    boolean?,
+                  ][]
+                ).map(([label, folder, kind, favorites, uploads = false]) => {
                   const selected =
+                    uploadsOnly === uploads &&
                     favoritesOnly === favorites &&
                     folderFilter === folder &&
                     kindFilter === kind;
                   return (
                     <Pressable
-                      key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}`}
+                      key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}`}
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
-                      onPress={() => selectCollection(folder, kind, favorites)}
+                      onPress={() =>
+                        selectCollection(folder, kind, favorites, null, uploads)
+                      }
                       style={[
                         styles.collectionChip,
                         selected && styles.collectionChipActive,
@@ -683,6 +723,12 @@ export function DocsSheet({
                   disabled={busy}
                   onPress={() => create("note")}
                 />
+                <Button
+                  title={imports.busy ? "Uploading…" : "Import file"}
+                  secondary
+                  disabled={imports.busy}
+                  onPress={importFile}
+                />
               </View>
               {!!filing && (
                 <View style={styles.filing}>
@@ -726,7 +772,19 @@ export function DocsSheet({
                   </Text>
                 </Pressable>
               )}
-              {shown.length === 0 &&
+              {uploadsOnly && !hits && (
+                <UploadsList
+                  jobs={imports.jobs}
+                  docs={docs}
+                  busy={imports.busy}
+                  onOpen={openHit}
+                  onFile={setFiling}
+                  onRemove={(job) => void imports.remove(job)}
+                  onImport={importFile}
+                />
+              )}
+              {!(uploadsOnly && !hits) &&
+                shown.length === 0 &&
                 (docs.length === 0 && !query ? (
                   <View style={styles.emptyLibrary}>
                     <View style={styles.emptyLibraryIcon}>
@@ -745,115 +803,125 @@ export function DocsSheet({
                     Nothing here yet. Try another collection or search.
                   </Text>
                 ))}
-              {shown.map((doc, n) => (
-                <View key={doc.id}>
-                  {kindFilter === "agenda" && !hits && doc.created_at && (
-                    <>
-                      {(n === 0 ||
-                        agendaMonthKey(doc.created_at) !==
-                          agendaMonthKey(shown[n - 1].created_at ?? "")) && (
-                        <Text style={styles.monthHeading}>
-                          {new Date(doc.created_at).toLocaleDateString(
-                            "en-GB",
-                            { month: "long", year: "numeric" },
-                          )}
-                        </Text>
-                      )}
-                      {(n === 0 ||
-                        agendaWeekOf(doc.created_at).key !==
-                          agendaWeekOf(shown[n - 1].created_at ?? "").key) && (
-                        <Text style={styles.weekHeading}>
-                          {agendaWeekOf(doc.created_at).label}
-                        </Text>
-                      )}
-                    </>
-                  )}
-                  <View style={styles.row}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${doc.title || "Untitled"}`}
-                      disabled={busy}
-                      style={({ pressed }) => [
-                        styles.rowOpen,
-                        pressed && styles.rowPressed,
-                      ]}
-                      onPress={() => openHit(doc.id)}
-                    >
-                      <View style={styles.rowTop}>
-                        <Icon name="fileText" size={16} color={colors.muted} />
-                        <Text style={styles.rowTitle} numberOfLines={2}>
-                          {doc.title || "Untitled"}
-                        </Text>
-                      </View>
-                      {/* The time leads the preview rather than sitting up on
+              {!(uploadsOnly && !hits) &&
+                shown.map((doc, n) => (
+                  <View key={doc.id}>
+                    {kindFilter === "agenda" && !hits && doc.created_at && (
+                      <>
+                        {(n === 0 ||
+                          agendaMonthKey(doc.created_at) !==
+                            agendaMonthKey(shown[n - 1].created_at ?? "")) && (
+                          <Text style={styles.monthHeading}>
+                            {new Date(doc.created_at).toLocaleDateString(
+                              "en-GB",
+                              { month: "long", year: "numeric" },
+                            )}
+                          </Text>
+                        )}
+                        {(n === 0 ||
+                          agendaWeekOf(doc.created_at).key !==
+                            agendaWeekOf(shown[n - 1].created_at ?? "")
+                              .key) && (
+                          <Text style={styles.weekHeading}>
+                            {agendaWeekOf(doc.created_at).label}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                    <View style={styles.row}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          styles.rowOpen,
+                          pressed && styles.rowPressed,
+                        ]}
+                        onPress={() => openHit(doc.id)}
+                      >
+                        <View style={styles.rowTop}>
+                          <Icon
+                            name="fileText"
+                            size={16}
+                            color={colors.muted}
+                          />
+                          <Text style={styles.rowTitle} numberOfLines={2}>
+                            {doc.title || "Untitled"}
+                          </Text>
+                        </View>
+                        {/* The time leads the preview rather than sitting up on
                       the title's line, where it cost the title the 20pt that
                       turned "Monday 21 September" into "Monday 21 Septe…". */}
-                      <Text style={styles.rowPreview} numberOfLines={2}>
-                        <Text style={styles.rowWhen}>
-                          {when(doc.updated_at)}
+                        <Text style={styles.rowPreview} numberOfLines={2}>
+                          <Text style={styles.rowWhen}>
+                            {when(doc.updated_at)}
+                          </Text>
+                          {"  ·  " + (doc.preview || "Empty document")}
                         </Text>
-                        {"  ·  " + (doc.preview || "Empty document")}
-                      </Text>
-                    </Pressable>
-                    <View style={styles.rowActions}>
-                      <Text style={styles.rowKind}>
-                        {doc.kind === "note"
-                          ? "Note"
-                          : doc.kind === "agenda"
-                            ? "Agenda"
-                            : "Document"}
-                      </Text>
-                      {/* The star and the folder sit outside the row's own press,
-                        or tapping either would open the page instead. */}
-                      <Pressable
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          toggleStar(
-                            doc as DocSummary,
-                            !starred.has(favouriteKey("doc", doc.id)),
-                          );
-                        }}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          starred.has(favouriteKey("doc", doc.id))
-                            ? `Unstar ${doc.title || "Untitled"}`
-                            : `Star ${doc.title || "Untitled"}`
-                        }
-                        style={styles.rowIcon}
-                      >
-                        <Icon
-                          name={
-                            starred.has(favouriteKey("doc", doc.id))
-                              ? "starFilled"
-                              : "star"
-                          }
-                          size={16}
-                          color={
-                            starred.has(favouriteKey("doc", doc.id))
-                              ? colors.accent
-                              : colors.faint
-                          }
-                        />
                       </Pressable>
-                      {!hits && (
+                      <View style={styles.rowActions}>
+                        <Text style={styles.rowKind}>
+                          {doc.kind === "note"
+                            ? "Note"
+                            : doc.kind === "agenda"
+                              ? "Agenda"
+                              : "Document"}
+                        </Text>
+                        {/* The star and the folder sit outside the row's own press,
+                        or tapping either would open the page instead. */}
                         <Pressable
                           onPress={(event) => {
                             event.stopPropagation();
-                            setFiling(doc as DocSummary);
+                            toggleStar(
+                              doc as DocSummary,
+                              !starred.has(favouriteKey("doc", doc.id)),
+                            );
                           }}
                           hitSlop={8}
                           accessibilityRole="button"
-                          accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                          accessibilityLabel={
+                            starred.has(favouriteKey("doc", doc.id))
+                              ? `Unstar ${doc.title || "Untitled"}`
+                              : `Star ${doc.title || "Untitled"}`
+                          }
                           style={styles.rowIcon}
                         >
-                          <Icon name="folder" size={16} color={colors.faint} />
+                          <Icon
+                            name={
+                              starred.has(favouriteKey("doc", doc.id))
+                                ? "starFilled"
+                                : "star"
+                            }
+                            size={16}
+                            color={
+                              starred.has(favouriteKey("doc", doc.id))
+                                ? colors.accent
+                                : colors.faint
+                            }
+                          />
                         </Pressable>
-                      )}
+                        {!hits && (
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              setFiling(doc as DocSummary);
+                            }}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                            style={styles.rowIcon}
+                          >
+                            <Icon
+                              name="folder"
+                              size={16}
+                              color={colors.faint}
+                            />
+                          </Pressable>
+                        )}
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                ))}
             </View>
           )}
         </View>

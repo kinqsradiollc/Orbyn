@@ -125,6 +125,19 @@ export type Doc = {
   updated_at: string;
   /** When someone last confirmed it still true without changing it. */
   reviewed_at?: string | null;
+  /** The file this page was imported from, for an imported page. */
+  imported_from?: DocImportSource | null;
+  /** Imported and not filed yet: it shows in Uploads until it's moved. */
+  in_uploads?: boolean;
+};
+
+/** Where an imported page came from. The file itself is not kept. */
+export type DocImportSource = {
+  file_name: string;
+  file_type: string;
+  pages: number;
+  ocr_pages: number;
+  imported_at: string;
 };
 
 export type DocComment = {

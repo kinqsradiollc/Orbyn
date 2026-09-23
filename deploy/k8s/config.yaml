@@ -55,3 +55,9 @@ data:
   SMTP_SECURE: "false" # "true" for implicit TLS on port 465
   SMTP_USER: "reminders@orbyn.example" # placeholder
   SMTP_FROM: "Orbyn <reminders@orbyn.example>"
+
+  # Importing into Docs: where the converter reaches the OCR service for
+  # scanned pages ("" = no OCR; Word files and text PDFs still import), and
+  # how many pages it reads at once (one per OCR worker).
+  OCR_URL: ""
+  OCR_WORKERS: "1"

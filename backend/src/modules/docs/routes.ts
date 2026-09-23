@@ -58,7 +58,7 @@ import { docToPdf } from "./pdf.js";
 
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
-  d.created_at, d.updated_at, d.reviewed_at,
+  d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color) ORDER BY tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
@@ -477,6 +477,9 @@ export async function docRoutes(app: FastifyInstance) {
            content = coalesce($3::jsonb, content),
            folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
            project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
+           -- Filing an imported page anywhere takes it out of Uploads.
+           in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
+                             ELSE in_uploads END,
            version = version + 1,
            updated_at = now()
          WHERE id = $1`,

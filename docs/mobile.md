@@ -20,6 +20,11 @@ message instead.
   and title A–Z; search looks across all pages and notes. The web client keeps this library
   beside the editor and collapses it behind Browse library on narrow screens; on wide screens
   Hide library gives the page the full width, and the web sidebar collapses to an icon rail.
+- Import file (Documents) picks a PDF, Word file or photo of notes with `expo-document-picker`
+  and uploads it. The page lands in the Uploads collection, which also shows files still being
+  read, with progress. Move to folder files a page and takes it out of Uploads. The picker is a
+  native module, so iOS and Android need a new development or EAS build after this change. The
+  web build works as is.
 - Document cards expose Open, Star and Folder separately to accessibility services. Document
   titles grow as they wrap, including while editing.
 - Projects opens on Tasks, with Notes, Timeline, Decisions and History in separate views.

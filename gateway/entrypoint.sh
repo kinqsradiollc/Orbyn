@@ -2,6 +2,7 @@
 # Renders nginx.conf.template from the environment and starts nginx.
 #
 #   API_SERVERS / AI_SERVERS / REALTIME_SERVERS / STATUS_SERVERS / WEB_SERVERS
+#   FILES_SERVERS
 #                      "host:port ..."
 #       Instances of each service; hostnames are re-resolved (DNS load
 #       balancing), IP addresses are used as-is. Defaults: Docker service names.
@@ -15,6 +16,7 @@ AI_SERVERS="${AI_SERVERS:-ai:8000}"
 REALTIME_SERVERS="${REALTIME_SERVERS:-realtime:8000}"
 STATUS_SERVERS="${STATUS_SERVERS:-status:8000}"
 WEB_SERVERS="${WEB_SERVERS:-desktop:8080}"
+FILES_SERVERS="${FILES_SERVERS:-files:8000}"
 RESOLVER="${RESOLVER:-127.0.0.11}"
 TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
 RATE_LIMIT_EXEMPT="${RATE_LIMIT_EXEMPT:-}"
@@ -46,11 +48,12 @@ export UPSTREAM_AI="$(servers "$AI_SERVERS")"
 export UPSTREAM_REALTIME="$(servers "$REALTIME_SERVERS")"
 export UPSTREAM_STATUS="$(servers "$STATUS_SERVERS")"
 export UPSTREAM_WEB="$(servers "$WEB_SERVERS")"
+export UPSTREAM_FILES="$(servers "$FILES_SERVERS")"
 export RESOLVER REAL_IP="$(real_ip)" LIMIT_EXEMPT="$(exempt)"
 
 # tr drops Windows line endings a checkout may have added to the template.
 tr -d '\r' < /etc/orbyn-gateway/nginx.conf.template |
-  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
+  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${UPSTREAM_FILES} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
   > /tmp/nginx.conf
 
 [ "${RENDER_ONLY:-}" = "1" ] && exit 0

@@ -41,13 +41,15 @@ import { presenceRoutes } from "./modules/presence/routes.js";
 import { legalRoutes } from "./modules/legal/routes.js";
 import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
+import { importRoutes } from "./modules/imports/routes.js";
+import { filesRoutes } from "./modules/imports/store.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
  * service that owns it (gateway/nginx.conf); keep the two in step.
  */
 export const serviceModules: Record<
-  "api" | "ai" | "status" | "realtime",
+  "api" | "ai" | "status" | "realtime" | "files",
   FastifyPluginAsync[]
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
@@ -57,6 +59,7 @@ export const serviceModules: Record<
     userRoutes,
     legalRoutes,
     studyRoutes,
+    importRoutes,
     inboundRoutes,
     mcpRoutes,
     davRoutes,
@@ -98,6 +101,12 @@ export const serviceModules: Record<
    * open connections, apart from the API, which scales on requests.
    */
   realtime: [realtimeRoutes, legacyDocStreamRoutes],
+  /**
+   * The file store: uploads for importing into Docs, held encrypted until
+   * the converter has read them, and never longer than a day. It holds
+   * upload streams, so it runs apart from the API.
+   */
+  files: [filesRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);
@@ -106,6 +115,8 @@ export const buildStatusService = () =>
   createService("status", serviceModules.status);
 export const buildRealtimeService = () =>
   createService("realtime", serviceModules.realtime);
+export const buildFilesService = () =>
+  createService("files", serviceModules.files);
 
 /** Every module in one process: tests and quick local development. */
 export const buildApp = () =>
@@ -113,5 +124,6 @@ export const buildApp = () =>
     ...serviceModules.api,
     ...serviceModules.ai,
     ...serviceModules.status,
+    ...serviceModules.files,
     realtimeRoutes,
   ]);

@@ -20,8 +20,8 @@ member, and viewer. Every team member gets the reminders for team items. See
 
 ## Services and status
 
-The backend runs as separate services (API, AI assistant, reminders, status) behind an nginx
-gateway. A public status page shows uptime for each part of Orbyn. Admins connect AI providers
+The backend runs as separate services (API, AI assistant, reminders, status, and a file store
+and converter that turn imported PDFs and Word files into pages) behind an nginx gateway. A public status page shows uptime for each part of Orbyn. Admins connect AI providers
 such as OpenAI, Anthropic, Gemini, Azure OpenAI, OpenRouter, Groq, LM Studio, or Ollama from the
 admin console; keys are stored encrypted. See [architecture](docs/architecture.md#services).
 
@@ -45,6 +45,7 @@ lives in its own top-level folder.
 | `docs/`                |                     | Setup, architecture, API reference, deployment, and mobile guides.                          |
 | `gateway/`             |                     | nginx gateway template, rendered from environment settings at start.                        |
 | `pgbouncer/`           |                     | Connection pooler image with primary and read-replica routes.                               |
+| `ocr/`                 |                     | OCR service for imported scans (Unlimited-OCR on CPU); Compose profile `ocr`.               |
 | `deploy/`              |                     | Kubernetes manifests (`deploy/k8s`) and Postgres replication scripts.                       |
 
 ```

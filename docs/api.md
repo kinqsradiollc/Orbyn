@@ -284,6 +284,57 @@ the evening digest counts cards reviewed, the assistant gets a `study` summary i
 read-only `get_study` tool, and the sweeper keeps review history for 400 days (configurable) and
 exam attachments for 30 days after the exam.
 
+## Importing files into Docs
+
+A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordinary page in the
+**Uploads** section of Docs, and the file itself is deleted
+(`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
+
+1. `POST /imports` gives an upload link for one file.
+2. The app `PUT`s the file's bytes to that link. The link goes to the **file store**, not the API.
+   It works once and for ten minutes.
+3. The file store queues the file for the **converter**. The converter reads Word files and PDF
+   pages with real text directly, in seconds. It sends only scanned pages, photos and pages that are
+   mostly maths to the OCR service.
+4. The finished page is created with `in_uploads: true`, an in-app notice (`kind: "import"`) says
+   it's ready, and the file is deleted.
+
+| Method and path       | Body / result                                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `POST /imports`       | `{ file_name, bytes, mime? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up             |
+| `PUT {upload_path}`   | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`) |
+| `GET /imports`        | Your imports still going, and the last 7 days' → `[ImportJob]`                                                           |
+| `GET /imports/:id`    | → `ImportJob`                                                                                                            |
+| `DELETE /imports/:id` | Cancels an import still going, or clears a finished one → `204`                                                          |
+
+An `ImportJob` has these fields:
+
+- `status`: `waiting`, `queued`, `reading`, `ocr`, `ready`, `failed` or `cancelled`.
+- `pages`, `ocr_pages` and `ocr_done`: the page counts.
+- `queue_ahead` and `estimate_seconds`: set while `ocr`, from measured seconds per page.
+- `doc_id`: set once `ready`.
+- `error`: why it failed, in words for the person.
+- `notes`: what changed on the way in, such as "2 tables kept as lists" or "1 figure left out".
+
+**Pages** carry `imported_from` (`{ file_name, file_type, pages, ocr_pages, imported_at }`) and
+`in_uploads`. Moving a page into a folder (or Unfiled) or a project with `PUT /docs/:id` sets
+`in_uploads` to false, which takes it out of Uploads. Orbyn pages have no table or image blocks
+yet, so each table row becomes one bullet (`Term: CAP · Meaning: …`) and each figure becomes a
+placeholder line.
+
+**Limits:**
+
+- 50 MB and 200 pages per file.
+- Up to 40 pages per file that need OCR, and 60 OCR pages per person per day. Pages read directly
+  don't count.
+- Two files importing at once per person.
+- The upload is refused when its first bytes don't match its type. A password-protected PDF, a
+  `.doc` file, or a scanned PDF on a server without OCR each fails with a message saying what to do.
+
+**Deleting files:** the file store deletes a file when its import ends, whether it's ready, failed
+or cancelled. A sweep every 10 minutes also removes anything older than 24 hours. The sweeper keeps
+the `imports` rows (file name and outcome) for 30 days.
+
 ## Profile
 
 ### `GET /me` (auth)

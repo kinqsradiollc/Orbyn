@@ -4,7 +4,8 @@
 #
 # Model: deny everything in both directions, then allow only these flows.
 #   Ingress (into pods)
-#     ingress controller -> api, ai, realtime, status :8000, web :8080
+#     ingress controller -> api, ai, realtime, status, files :8000, web :8080
+#     converter          -> files :8000                (reading uploads back)
 #     status             -> api, ai, realtime :8000, web :8080   (health probes)
 #     web                -> api, ai, realtime, status :8000 (/api proxy, web.yaml)
 #     backend pods       -> pgbouncer :6432            (only if pgbouncer.yaml is used)
@@ -12,6 +13,7 @@
 #     every pod -> cluster DNS
 #     backend pods -> the database (and pgbouncer)
 #     ai -> HTTPS (AI providers); notifier -> HTTPS (Expo push) and SMTP
+#     converter -> files :8000, and the OCR service (OCR_URL) on :8000
 #
 # Kubelet probes come from the node, which most CNIs always allow. If yours
 # does not, allow the node CIDR to reach 8000/8080.
@@ -50,7 +52,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, ai, realtime, status, web]
+        values: [api, ai, realtime, status, files, web]
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -126,7 +128,17 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/component
                 operator: In
-                values: [api, ai, realtime, status, notifier, migrate]
+                values:
+                  [
+                    api,
+                    ai,
+                    realtime,
+                    status,
+                    notifier,
+                    files,
+                    converter,
+                    migrate,
+                  ]
       ports:
         - protocol: TCP
           port: 6432
@@ -166,7 +178,18 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, ai, realtime, status, notifier, migrate, pgbouncer]
+        values:
+          [
+            api,
+            ai,
+            realtime,
+            status,
+            notifier,
+            files,
+            converter,
+            migrate,
+            pgbouncer,
+          ]
   policyTypes: [Egress]
   egress:
     - to:
@@ -255,3 +278,70 @@ spec:
           port: 587 # SMTP submission (STARTTLS)
         - protocol: TCP
           port: 465 # SMTP over TLS
+---
+# 11. Importing into Docs: the converter reads uploads back from the file
+#     store, and sends scanned pages to the OCR service. OCR runs outside
+#     this namespace (it needs ~12 GB of RAM per worker); the ipBlock below is
+#     a placeholder for wherever OCR_URL points. The web pods also forward
+#     /api/files/u/ uploads to the file store.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-files-from-converter-and-web
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: files
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [converter, web, status]
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-converter-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: converter
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: files
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8 # placeholder: where the OCR service runs
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-to-files
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: web
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: files
+      ports:
+        - protocol: TCP
+          port: 8000

@@ -5,6 +5,8 @@ import {
   type AdminUserDetail,
   type Announcement,
   type LegalAdminView,
+  type ImportCreateInput,
+  type ImportJob,
   type Rating,
   type RevisionPlan,
   type StudyCard,
@@ -2090,6 +2092,55 @@ export class OrbynClient {
       `/ai/study/cards/${cardId}/explain`,
       { method: "POST", body: {} },
     );
+  }
+  // ---- importing files into Docs ----
+  /**
+   * Start importing a file: the import, and where to upload the file (a
+   * path on this API's base URL, good for ten minutes and one upload).
+   */
+  createImport(input: ImportCreateInput) {
+    return this.request<{
+      import: ImportJob;
+      upload_path: string;
+      expires_at: string;
+    }>("/imports", { method: "POST", body: input });
+  }
+  /**
+   * Send the file itself to the upload link from `createImport`. The file
+   * goes to the file store, which queues it for the converter.
+   */
+  async uploadImportFile(
+    uploadPath: string,
+    file: Blob | ArrayBuffer | Uint8Array,
+    contentType: string,
+  ): Promise<void> {
+    const response = await this.fetchImpl(this.baseUrl + uploadPath, {
+      method: "PUT",
+      headers: { "Content-Type": contentType || "application/octet-stream" },
+      body: file as BodyInit,
+      signal: AbortSignal.timeout(10 * 60_000),
+    });
+    if (!response.ok) {
+      const problem = await response
+        .json()
+        .then((body: { message?: string }) => body.message)
+        .catch(() => "");
+      throw new HttpError(
+        response.status,
+        problem || "The file couldn't be uploaded. Please try again.",
+      );
+    }
+  }
+  /** Your imports: everything still going, and the last week's. */
+  listImports() {
+    return this.request<ImportJob[]>("/imports");
+  }
+  getImport(id: string) {
+    return this.request<ImportJob>(`/imports/${id}`);
+  }
+  /** Cancel an import still going, or clear a finished one from the list. */
+  removeImport(id: string) {
+    return this.request<void>(`/imports/${id}`, { method: "DELETE" });
   }
   // ---- terms, privacy and consent ----
   /** Who runs the service and the current Terms and Privacy versions. */

@@ -17,9 +17,12 @@
     "dev:ai": "tsx watch src/services/ai.ts",
     "dev:status": "tsx watch src/services/status.ts",
     "dev:notifier": "tsx watch src/services/notifier.ts",
+    "dev:converter": "tsx watch src/services/converter.ts",
     "start:ai": "node dist/services/ai.js",
     "start:status": "node dist/services/status.js",
     "start:notifier": "node dist/services/notifier.js",
+    "start:files": "node dist/services/files.js",
+    "start:converter": "node dist/services/converter.js",
     "start:all": "node dist/server.js",
     "load": "tsx scripts/load.ts"
   },
@@ -32,6 +35,8 @@
     "dotenv": "^17.3.1",
     "fastify": "^5.12.4",
     "nodemailer": "^10.0.9",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.7.284",
     "pg": "^8.23.0",
     "zod": "^4.3.6"
   },

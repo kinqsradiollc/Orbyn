@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Hourglass,
   CalendarDays,
+  Inbox,
 } from "lucide-react";
 import {
   agendaGroups,
@@ -30,6 +31,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { Select } from "../../components/Select";
 import { Popover } from "../../components/Popover";
 import { DocEditor } from "./DocEditor";
+import { ImportButton, UploadsPanel, useImports } from "./Uploads";
+import { MakeCardsDialog } from "../study/StudyView";
 import "./docs.css";
 
 const when = (iso: string) => {
@@ -73,6 +76,10 @@ export function DocsView({
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
   /** Within agendas: one month ("2026-09"), or null for all of them. */
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
+  /** Uploads: files being imported, and imported pages not filed yet. */
+  const [uploadsOnly, setUploadsOnly] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [making, setMaking] = useState<DocSummary | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
   const [filing, setFiling] = useState<{
     doc: DocSummary;
@@ -125,6 +132,12 @@ export function DocsView({
         report(e);
       },
     );
+  };
+
+  const imports = useImports(report, () => void load());
+  const importFiles = (files: File[]) => {
+    select(null, null, false, null, true);
+    void imports.importFiles(files);
   };
 
   const newFolder = () => {
@@ -223,6 +236,11 @@ export function DocsView({
   ) : null;
 
   const starred = favouriteSet(stars);
+  const uploadCount =
+    (docs ?? []).filter((d) => d.in_uploads).length +
+    imports.jobs.filter((j) =>
+      ["waiting", "queued", "reading", "ocr", "failed"].includes(j.status),
+    ).length;
 
   const shown = (docs ?? [])
     .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
@@ -275,35 +293,39 @@ export function DocsView({
           ),
         )
       : [{ key: "all", month: "", label: "", docs: ordered }];
-  const location = fadingOnly
-    ? "Might be out of date"
-    : favoritesOnly
-      ? "Favorites"
-      : folderFilter === "none"
-        ? "Unfiled"
-        : folderFilter
-          ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-          : kindFilter === "agenda"
-            ? agendaMonth
-              ? `Agendas · ${
-                  agendas
-                    .flatMap((y) =>
-                      y.months.map((m) => ({ ...m, year: y.year })),
-                    )
-                    .find((m) => m.key === agendaMonth)?.label ?? ""
-                } ${agendaMonth.slice(0, 4)}`
-              : "Agendas"
-            : kindFilter === "doc"
-              ? "Pages"
-              : kindFilter === "note"
-                ? "Notes"
-                : "All documents";
+  const location = uploadsOnly
+    ? "Uploads"
+    : fadingOnly
+      ? "Might be out of date"
+      : favoritesOnly
+        ? "Favorites"
+        : folderFilter === "none"
+          ? "Unfiled"
+          : folderFilter
+            ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+            : kindFilter === "agenda"
+              ? agendaMonth
+                ? `Agendas · ${
+                    agendas
+                      .flatMap((y) =>
+                        y.months.map((m) => ({ ...m, year: y.year })),
+                      )
+                      .find((m) => m.key === agendaMonth)?.label ?? ""
+                  } ${agendaMonth.slice(0, 4)}`
+                : "Agendas"
+              : kindFilter === "doc"
+                ? "Pages"
+                : kindFilter === "note"
+                  ? "Notes"
+                  : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
     month: string | null = null,
+    uploads = false,
   ) => {
+    setUploadsOnly(uploads);
     setFolderFilter(folder);
     setKindFilter(kind);
     setAgendaMonth(month);
@@ -340,6 +362,7 @@ export function DocsView({
               ? {
                   ...d,
                   folder_id: saved.folder_id,
+                  in_uploads: false,
                   updated_at: saved.updated_at,
                 }
               : d,
@@ -366,8 +389,34 @@ export function DocsView({
 
   return (
     <div
-      className={"docs-workspace" + (libraryHidden ? " is-library-hidden" : "")}
+      className={
+        "docs-workspace" +
+        (libraryHidden ? " is-library-hidden" : "") +
+        (dropping ? " is-dropping" : "")
+      }
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!dropping) setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDropping(false);
+        importFiles([...e.dataTransfer.files]);
+      }}
     >
+      {dropping && (
+        <div className="docs-drop" aria-hidden="true">
+          <strong>Drop to import</strong>
+          <span>PDF, Word or a photo of notes becomes a page in Uploads.</span>
+        </div>
+      )}
       <button
         className="text-button docs-nav-toggle"
         aria-expanded={navigationOpen}
@@ -405,6 +454,7 @@ export function DocsView({
             aria-current={
               !open &&
               !favoritesOnly &&
+              !uploadsOnly &&
               folderFilter === null &&
               kindFilter === kind
                 ? "page"
@@ -422,6 +472,17 @@ export function DocsView({
         >
           <Star size={16} />
           <span>Favorites</span>
+        </button>
+        <button
+          aria-current={!open && uploadsOnly ? "page" : undefined}
+          title="Imported PDFs, Word files and photos not filed yet"
+          onClick={() => select(null, null, false, null, true)}
+        >
+          <Inbox size={16} />
+          <span>Uploads</span>
+          {uploadCount > 0 && (
+            <small className="docs-nav-count">{uploadCount}</small>
+          )}
         </button>
         {agendas.length > 0 && (
           <details className="docs-nav-folder">
@@ -594,6 +655,7 @@ export function DocsView({
             <div className="docs-head">
               <h2 className="docs-count">{location}</h2>
               <div className="docs-head-actions">
+                <ImportButton onFiles={importFiles} busy={imports.busy} />
                 <button
                   className="text-button"
                   disabled={busy}
@@ -610,24 +672,37 @@ export function DocsView({
                 </button>
               </div>
             </div>
-            <div className="docs-library-tools">
-              <input
-                aria-label="Search document titles and previews"
-                placeholder="Search this collection…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+            {!uploadsOnly && (
+              <div className="docs-library-tools">
+                <input
+                  aria-label="Search document titles and previews"
+                  placeholder="Search this collection…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <Select
+                  className="docs-sort"
+                  aria-label="Sort documents"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="recent">Last edited</option>
+                  <option value="title">Title A–Z</option>
+                </Select>
+              </div>
+            )}
+            {uploadsOnly ? (
+              <UploadsPanel
+                jobs={imports.jobs}
+                docs={docs ?? []}
+                busy={imports.busy}
+                onOpen={openPage}
+                onMove={(doc, anchor) => setFiling({ doc, anchor })}
+                onRemove={(job) => void imports.remove(job)}
+                onMakeCards={setMaking}
+                onFiles={importFiles}
               />
-              <Select
-                className="docs-sort"
-                aria-label="Sort documents"
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-              >
-                <option value="recent">Last edited</option>
-                <option value="title">Title A–Z</option>
-              </Select>
-            </div>
-            {failed ? (
+            ) : failed ? (
               <div>
                 <p className="muted">Could not load your documents.</p>
                 <button className="text-button" onClick={() => void load()}>
@@ -777,6 +852,14 @@ export function DocsView({
             ))}
           </div>
         </Popover>
+      )}
+      {making && (
+        <MakeCardsDialog
+          docId={making.id}
+          title={making.title || "Untitled"}
+          report={report}
+          onClose={() => setMaking(null)}
+        />
       )}
     </div>
   );

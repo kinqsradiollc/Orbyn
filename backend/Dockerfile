@@ -5,6 +5,8 @@
 #   node backend/dist/services/ai.js        AI assistant
 #   node backend/dist/services/status.js    status probes and public report
 #   node backend/dist/services/notifier.js  reminder delivery
+#   node backend/dist/services/files.js     file store for imports
+#   node backend/dist/services/converter.js turns imported files into pages
 #   node backend/dist/migrate.js            apply SQL migrations
 #   node backend/dist/server.js             everything in one process
 
@@ -46,6 +48,8 @@ COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
 COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations
 # Served at GET /openapi.yaml.
 COPY --chown=node:node docs/openapi.yaml ./docs/openapi.yaml
+# The file store's volume mounts here; owned by node so it can write.
+RUN mkdir -p /data/files && chown node:node /data/files && chmod 700 /data/files
 USER node
 EXPOSE 8000
 CMD ["node", "backend/dist/services/api.js"]
