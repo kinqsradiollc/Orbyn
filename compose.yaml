@@ -31,6 +31,9 @@ x-backend-env: &backend-env
   DB_POOL_MAX: ${DB_POOL_MAX:-20}
   RATE_LIMIT_PER_MINUTE: ${SERVICE_RATE_LIMIT_PER_MINUTE:-1200}
   SMTP_HOST: ${DOCKER_SMTP_HOST:-mailpit}
+  # The file store, for every service that talks to it (the converter reads
+  # uploads; Admin → Storage on the API lists and deletes them).
+  FILES_URL: http://files:8000
   PORT: 8000
   TRUST_PROXY: "true"
 
@@ -208,7 +211,6 @@ services:
     <<: *backend
     environment:
       <<: *backend-env
-      FILES_URL: http://files:8000
       # Scanned pages and photos are read with the built-in Tesseract; set
       # OCR_URL only to use the heavy `ocr` model instead.
       OCR_URL: ${OCR_URL:-}

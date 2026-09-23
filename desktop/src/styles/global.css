@@ -2730,6 +2730,14 @@ footer svg {
   top: auto;
   bottom: calc(100% + 4px);
 }
+/* Drawn on top of the page (a portal) at the control's place, so no card,
+   table or dialog can clip it. */
+.select-list.is-floating {
+  position: fixed;
+  bottom: auto;
+  z-index: 1000;
+  max-width: min(480px, calc(100vw - 16px));
+}
 .select-option {
   display: flex;
   align-items: center;

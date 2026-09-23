@@ -247,9 +247,12 @@
     opacity: 1;
   }
 }
+/* Paragraphs read in the reply's colour, like its lists (the global p rule
+   is for quiet captions). */
 .ai-summary p {
   font-size: inherit;
   line-height: inherit;
+  color: inherit;
   margin: 0 0 16px;
 }
 .ai-summary p:last-child,

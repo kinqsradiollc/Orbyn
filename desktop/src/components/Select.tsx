@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import {
   Children,
   isValidElement,
@@ -103,6 +104,13 @@ export function Select({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [above, setAbove] = useState(false);
+  /** Where the list sits: it's drawn on top of the page (a portal), so a
+   * card, table or dialog that clips its contents can't cut it off. */
+  const [place, setPlace] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -117,17 +125,43 @@ export function Select({
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Near the bottom of the window the list goes above the control instead.
+  // It follows the control while the page scrolls or resizes.
   useLayoutEffect(() => {
     if (!open || !wrap.current) return;
-    const box = wrap.current.getBoundingClientRect();
-    const height = list.current?.offsetHeight ?? 0;
-    setAbove(box.bottom + height + 8 > window.innerHeight && box.top > height);
+    const measure = () => {
+      if (!wrap.current) return;
+      const box = wrap.current.getBoundingClientRect();
+      const height = list.current?.offsetHeight ?? 0;
+      const up =
+        box.bottom + height + 8 > window.innerHeight && box.top > height + 8;
+      setAbove(up);
+      setPlace({
+        left: Math.min(
+          box.left,
+          Math.max(8, window.innerWidth - 16 - box.width),
+        ),
+        top: up ? box.top - height - 4 : box.bottom + 4,
+        width: box.width,
+      });
+    };
+    measure();
+    // A second pass once the list has its real height.
+    const frame = requestAnimationFrame(measure);
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!wrap.current?.contains(target) && !list.current?.contains(target))
+        setOpen(false);
     };
     document.addEventListener("mousedown", away);
     return () => document.removeEventListener("mousedown", away);
@@ -229,37 +263,44 @@ export function Select({
       {/* The value still travels with a surrounding form. */}
       {name && <input type="hidden" name={name} value={current} />}
 
-      {open && (
-        <div
-          ref={list}
-          id={listId}
-          className={"select-list" + (above ? " is-above" : "")}
-          role="listbox"
-          aria-label={ariaLabel}
-          tabIndex={-1}
-        >
-          {options.map((o, i) => (
-            <div
-              key={o.value + i}
-              role="option"
-              aria-selected={o.value === current}
-              aria-disabled={o.disabled}
-              data-active={i === active || undefined}
-              className={
-                "select-option" +
-                (i === active ? " is-active" : "") +
-                (o.disabled ? " is-disabled" : "")
-              }
-              onMouseEnter={() => !o.disabled && setActive(i)}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => choose(o)}
-            >
-              <span>{o.label}</span>
-              {o.value === current && <Check size={14} aria-hidden="true" />}
-            </div>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={list}
+            id={listId}
+            className={"select-list is-floating" + (above ? " is-above" : "")}
+            role="listbox"
+            aria-label={ariaLabel}
+            tabIndex={-1}
+            style={
+              place
+                ? { left: place.left, top: place.top, minWidth: place.width }
+                : { visibility: "hidden" }
+            }
+          >
+            {options.map((o, i) => (
+              <div
+                key={o.value + i}
+                role="option"
+                aria-selected={o.value === current}
+                aria-disabled={o.disabled}
+                data-active={i === active || undefined}
+                className={
+                  "select-option" +
+                  (i === active ? " is-active" : "") +
+                  (o.disabled ? " is-disabled" : "")
+                }
+                onMouseEnter={() => !o.disabled && setActive(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => choose(o)}
+              >
+                <span>{o.label}</span>
+                {o.value === current && <Check size={14} aria-hidden="true" />}
+              </div>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

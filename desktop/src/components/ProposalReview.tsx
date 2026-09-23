@@ -1,8 +1,18 @@
 import { ProjectDraftReview } from "./ProjectDraftReview";
 import { alertLabel } from "./EventFields";
 import { Fragment, type ReactNode } from "react";
-import { Bell, Calendar, Check, Clock, Flag, Users, X } from "lucide-react";
 import {
+  Bell,
+  Calendar,
+  Check,
+  Clock,
+  Flag,
+  Repeat,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  describeRrule,
   dateLabel,
   type Action,
   type Item,
@@ -167,6 +177,12 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   compare("Due", dateLabel(current.due_at), dateLabel(data.due_at));
   if (current.end_at || data.end_at)
     compare("Ends", dateLabel(current.end_at), dateLabel(data.end_at));
+  if (data.rrule !== undefined)
+    compare(
+      "Repeats",
+      describeRrule(current.rrule) || "Doesn't repeat",
+      describeRrule(data.rrule) || "Doesn't repeat",
+    );
   compare("Priority", current.priority, data.priority);
   compare("Status", current.status, data.status);
   compare("Type", current.kind, data.kind);
@@ -220,6 +236,12 @@ function Details({
         {dateLabel(data.due_at)}
         {data.end_at && ` → ${dateLabel(data.end_at)}`}
       </span>
+      {data.rrule && (
+        <span className="ai-repeat" title={data.rrule}>
+          <Repeat size={12} />
+          {describeRrule(data.rrule)}
+        </span>
+      )}
       <span className={`ai-priority ai-priority-${data.priority}`}>
         <Flag size={12} />
         {data.priority}

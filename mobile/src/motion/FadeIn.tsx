@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Animated, type StyleProp, type ViewStyle } from "react-native";
 import { motion, staggerDelay } from "@orbyn/core";
 import { easeOut } from "./easing";
@@ -43,6 +43,10 @@ export function FadeIn({
   const skip = useRef(isReducedMotion()).current;
   const reduced = useReducedMotion();
   const progress = useRef(new Animated.Value(skip ? 1 : 0)).current;
+  // Once in place, the view drops its animated opacity: a layout animation
+  // running as it mounted (animateLayout) otherwise writes the starting
+  // opacity 0 back over the native-driven 1 on iOS, leaving a blank space.
+  const [done, setDone] = useState(skip);
 
   useEffect(() => {
     if (skip) return;
@@ -53,7 +57,7 @@ export function FadeIn({
       easing: easeOut,
       useNativeDriver: true,
     });
-    animation.start();
+    animation.start(({ finished }) => finished && setDone(true));
     return () => animation.stop();
     // Mount only: later prop changes must not replay the entrance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,10 +68,12 @@ export function FadeIn({
     if (reduced) {
       progress.stopAnimation();
       progress.setValue(1);
+      setDone(true);
     }
   }, [reduced, progress]);
 
-  if (skip) return <Animated.View style={style}>{children}</Animated.View>;
+  // The same Animated.View either way, so children never remount.
+  if (done) return <Animated.View style={style}>{children}</Animated.View>;
 
   const { axis, sign } = START[from];
   const offset = progress.interpolate({

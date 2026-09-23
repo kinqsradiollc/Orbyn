@@ -183,7 +183,8 @@ test("several items in one request become one proposal, each checked", async () 
               { title: "Buy milk" },
               { title: "Gym", kind: "event", due_at: "2026-09-18T07:00" },
               { title: "Standup", kind: "event" },
-              { title: "Buy milk" },
+              // Proposed again in the same reply: a correction.
+              { title: "Buy milk", priority: "high" },
             ],
           },
         },
@@ -199,11 +200,13 @@ test("several items in one request become one proposal, each checked", async () 
   const [result] = toolResults(requests[1]);
   assert.deepEqual(
     result.results.map((r: { ok: boolean }) => r.ok),
-    [true, true, false, false],
+    [true, true, false, true],
   );
   assert.match(result.results[2].error, /Events require a start time/);
-  assert.match(result.results[3].error, /Already proposed/);
+  assert.equal(result.results[3].replaced_earlier_draft, true);
+  // The correction replaces the first draft rather than adding a copy.
   assert.equal(reply.actions.length, 2);
+  assert.equal(reply.actions[0].data!.priority, "high");
   // A bare local time gets the user's offset for that date.
   assert.equal(reply.actions[1].data!.due_at, "2026-09-18T07:00:00+10:00");
   assert.match(reply.summary, /Buy milk/);

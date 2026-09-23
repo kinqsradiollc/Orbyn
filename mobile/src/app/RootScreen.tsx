@@ -649,6 +649,10 @@ export function RootScreen() {
           style={[s.body, { paddingBottom: keyboard.inset }]}
         >
           <ScrollView
+            // Sticky headers can't be switched on and off on a mounted
+            // ScrollView: on iOS the calendar came back blank from another
+            // tab until the app reloaded. The calendar gets its own.
+            key={tab === "Calendar" ? "calendar" : "page"}
             ref={scroller}
             style={s.scroll}
             scrollEnabled={!dragging}

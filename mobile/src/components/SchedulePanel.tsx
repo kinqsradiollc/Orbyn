@@ -66,7 +66,8 @@ export function SchedulePanel({
 
   const find = () =>
     run(async () => {
-      animateLayout();
+      // The card fades itself in (FadeIn); a layout animation on the same
+      // commit would leave it invisible on iOS.
       setOpen(true);
       const [plan] = await Promise.all([
         client.previewPlan({
