@@ -35,6 +35,7 @@ import {
 } from "./agent/tools.js";
 import { calendarMatches } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
+import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 
 /**
@@ -248,6 +249,9 @@ export async function aiRoutes(app: FastifyInstance) {
    */
   app.post("/ai/agenda/today", strictRateLimit, async (r) => {
     const u = await authenticate(r);
+    const zone = (r.body as { timezone?: unknown } | null)?.timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
     return rewriteAgenda(u.id, { withBrief: true });
   });
 

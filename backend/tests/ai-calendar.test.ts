@@ -280,18 +280,25 @@ test("today's agenda is written from the calendar, without waiting on the AI", a
   const r = await call(me.token, "GET", "/agenda/today");
   assert.equal(r.status, 200, r.raw.body);
   const lines = texts(r.body);
-  assert.ok(lines.includes("Your day"));
+  assert.ok(lines.includes("Schedule"));
+  assert.ok(lines.includes("Afternoon"), "grouped by part of the day");
+  const lecture = lines.find((l) => /Algorithms lecture/.test(l));
+  assert.ok(lecture, lines.join(" | "));
+  assert.match(lecture!, /^14:00–16:00 · Algorithms lecture — Theatre 1$/);
   assert.ok(
-    lines.some((l) => /Algorithms lecture/.test(l) && /Uni timetable/.test(l)),
-    lines.join(" | "),
+    !lines.some((l) => /Uni timetable/.test(l)),
+    "calendar names stay out of the page",
   );
   assert.ok(
     lines.some((l) => /Team standup/.test(l)),
     "today's repeat",
   );
-  assert.ok(lines.includes("Time set aside"));
+  assert.ok(lines.includes("Focus time"));
   assert.ok(lines.some((l) => /Write the essay/.test(l)));
-  assert.ok(lines.some((l) => /Final exam/.test(l) && /Exams/.test(l)));
+  assert.ok(lines.some((l) => /Final exam/.test(l)));
+  assert.ok(lines.includes("Top priorities"));
+  assert.ok(lines.includes("Notes"));
+  assert.ok(lines.includes("End of day"));
   assert.equal(sent.length, 0, "opening the agenda asks no provider");
   // Asking again the same day keeps the same page.
   const again = await call(me.token, "GET", "/agenda/today");
@@ -314,7 +321,7 @@ test("rewriting the agenda opens with the assistant's summary of the day", async
   // The provider was given the day as facts, subscribed calendars included.
   const facts = lastUser(sent[0]);
   assert.match(facts, /Algorithms lecture/);
-  assert.match(facts, /Uni timetable/);
+  assert.doesNotMatch(facts, /Uni timetable/, "calendar names stay out");
   assert.match(facts, /Final exam/);
   assert.match(sent[0].body.messages[0].content, /never invent/i);
 });
@@ -326,7 +333,7 @@ test("without a provider, rewriting still works, without a summary", async () =>
   const r = await call(me.token, "POST", "/ai/agenda/today");
   assert.equal(r.status, 200, r.raw.body);
   assert.equal(r.body.brief, false);
-  assert.match(texts(r.body)[0], /things? on today/);
+  assert.match(texts(r.body)[0], /^Today: /);
   assert.equal(sent.length, 0);
 });
 

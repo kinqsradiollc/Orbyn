@@ -697,14 +697,29 @@ export class OrbynClient {
    * the assistant's summary when a provider is connected. Replaces the
    * page's content. `brief` says whether the assistant wrote one.
    */
-  rewriteAgenda() {
+  rewriteAgenda(timezone?: string) {
     return this.request<Doc & { brief: boolean }>("/ai/agenda/today", {
       method: "POST",
+      body: timezone ? { timezone } : {},
     });
   }
-  /** Today's agenda document, generated on first ask each day. */
-  agendaToday() {
-    return this.request<Doc>("/agenda/today");
+  /**
+   * Today's agenda document, generated on first ask each day. `timezone` is
+   * the device's, adopted when you haven't picked one in settings.
+   */
+  agendaToday(timezone?: string) {
+    return this.request<Doc>(
+      timezone
+        ? `/agenda/today?timezone=${encodeURIComponent(timezone)}`
+        : "/agenda/today",
+    );
+  }
+  /** Tell the server the device's zone; adopted unless you picked one. */
+  reportTimeZone(timezone: string) {
+    return this.request<{ adopted: boolean; timezone: string }>(
+      "/me/timezone",
+      { method: "POST", body: { timezone } },
+    );
   }
   /** The note for an event, created from a template the first time. */
   itemNote(itemId: string) {

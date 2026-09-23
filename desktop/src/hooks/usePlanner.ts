@@ -13,6 +13,7 @@ import { client } from "../lib/api";
 import { deviceId } from "../lib/device";
 import { celebrate } from "../lib/celebrate";
 import { onSessionChange, session } from "../lib/session";
+import { deviceTimeZone } from "../lib/planning";
 
 export type AuthMode = "register" | "login";
 
@@ -59,6 +60,16 @@ export function usePlanner() {
       }),
     [clearSession],
   );
+
+  // Tell the server which zone this device is in, once per sign-in, so what
+  // it writes (agendas, digests, reminders) and working hours are in your
+  // time rather than UTC. Ignored when you've picked a zone in settings.
+  useEffect(() => {
+    if (!token) return;
+    client.reportTimeZone(deviceTimeZone()).catch(() => {
+      // The next start tries again.
+    });
+  }, [token]);
 
   const lastMaintenance = useRef("");
   /** Apply a maintenance state, re-rendering only when it changed. */

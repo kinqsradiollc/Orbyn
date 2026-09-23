@@ -3156,3 +3156,58 @@ input[type="number"]::-webkit-outer-spin-button {
 .board-card:has(.select[data-open]) {
   overflow: visible;
 }
+
+/* The footer line sits at the bottom of the window on short pages and after
+ * the content on long ones — never partway up the screen. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.shell > .content {
+  flex: 1 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.shell > .content > * {
+  min-width: 0;
+}
+.shell > .content > footer {
+  margin-top: auto;
+  padding-top: 25px;
+}
+
+/* Checkboxes and radios inside dialogs and sign-in cards keep their own
+ * look: the text-field rule for `.modal input` (padding, full width, white
+ * fill) outranks the zero-specificity :where() styles, and turned them into
+ * large empty squares. */
+:is(.modal, .auth-card)
+  input:is([type="checkbox"]:not([role="switch"]), [type="radio"]) {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1.5px solid var(--color-borderStrong);
+  background: var(--color-surface);
+}
+:is(.modal, .auth-card) input[type="checkbox"]:not([role="switch"]) {
+  border-radius: var(--radius-xs);
+}
+:is(.modal, .auth-card)
+  input:is(
+    [type="checkbox"]:not([role="switch"]):checked,
+    [type="checkbox"]:not([role="switch"]):indeterminate,
+    [type="radio"]:checked
+  ) {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+:is(.modal, .auth-card)
+  input:is([type="checkbox"]:not([role="switch"]), [type="radio"]):hover:not(
+    :disabled
+  ) {
+  border-color: var(--color-accent);
+}

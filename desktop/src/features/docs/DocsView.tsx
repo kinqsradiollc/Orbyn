@@ -12,8 +12,11 @@ import {
   PanelLeftOpen,
   ChevronRight,
   Hourglass,
+  CalendarDays,
 } from "lucide-react";
 import {
+  agendaGroups,
+  agendaMonthKey,
   favouriteKey,
   favouriteSet,
   type Doc,
@@ -63,8 +66,13 @@ export function DocsView({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** null = everything; a folder id = that folder; "none" = unfiled. */
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
-  /** null = every kind; "note" = only notes; "doc" = only plain pages. */
+  /**
+   * null = every kind but agendas; "note" = only notes; "doc" = only plain
+   * pages; "agenda" = the daily agendas, which have their own section.
+   */
   const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
+  /** Within agendas: one month ("2026-09"), or null for all of them. */
+  const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
   const [filing, setFiling] = useState<{
     doc: DocSummary;
@@ -224,7 +232,19 @@ export function DocsView({
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase()),
     )
-    .filter((d) => kindFilter === null || d.kind === kindFilter)
+    // A page a day would flood everything else, so agendas live in their
+    // own section (a starred one still shows under Favorites).
+    .filter((d) =>
+      kindFilter === null
+        ? d.kind !== "agenda" || favoritesOnly
+        : d.kind === kindFilter,
+    )
+    .filter(
+      (d) =>
+        kindFilter !== "agenda" ||
+        !agendaMonth ||
+        agendaMonthKey(d.created_at) === agendaMonth,
+    )
     .filter((d) =>
       folderFilter === null
         ? true
@@ -232,12 +252,29 @@ export function DocsView({
           ? !d.folder_id
           : d.folder_id === folderFilter,
     );
+  const agendas = agendaGroups(docs ?? []);
   const ordered = [...shown].sort((a, b) =>
-    sort === "title"
-      ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
-        a.id.localeCompare(b.id)
-      : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
+    kindFilter === "agenda"
+      ? b.created_at.localeCompare(a.created_at)
+      : sort === "title"
+        ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
+          a.id.localeCompare(b.id)
+        : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
+  // Agendas read as a diary: a heading for each month, then each week.
+  const groups =
+    kindFilter === "agenda"
+      ? agendaGroups(ordered).flatMap((y) =>
+          y.months.flatMap((m) =>
+            m.weeks.map((w, n) => ({
+              key: w.key,
+              month: n === 0 ? `${m.label} ${y.year}` : "",
+              label: w.label,
+              docs: w.docs,
+            })),
+          ),
+        )
+      : [{ key: "all", month: "", label: "", docs: ordered }];
   const location = fadingOnly
     ? "Might be out of date"
     : favoritesOnly
@@ -246,18 +283,30 @@ export function DocsView({
         ? "Unfiled"
         : folderFilter
           ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-          : kindFilter === "doc"
-            ? "Pages"
-            : kindFilter === "note"
-              ? "Notes"
-              : "All documents";
+          : kindFilter === "agenda"
+            ? agendaMonth
+              ? `Agendas · ${
+                  agendas
+                    .flatMap((y) =>
+                      y.months.map((m) => ({ ...m, year: y.year })),
+                    )
+                    .find((m) => m.key === agendaMonth)?.label ?? ""
+                } ${agendaMonth.slice(0, 4)}`
+              : "Agendas"
+            : kindFilter === "doc"
+              ? "Pages"
+              : kindFilter === "note"
+                ? "Notes"
+                : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
+    month: string | null = null,
   ) => {
     setFolderFilter(folder);
     setKindFilter(kind);
+    setAgendaMonth(month);
     setFavoritesOnly(favorites);
     setFadingOnly(false);
     setQuery("");
@@ -374,6 +423,56 @@ export function DocsView({
           <Star size={16} />
           <span>Favorites</span>
         </button>
+        {agendas.length > 0 && (
+          <details className="docs-nav-folder">
+            <summary>
+              <ChevronRight size={14} />
+              <CalendarDays size={16} />
+              <span>Agendas</span>
+            </summary>
+            <div className="docs-nav-children">
+              <button
+                aria-current={
+                  !open && kindFilter === "agenda" && !agendaMonth
+                    ? "page"
+                    : undefined
+                }
+                onClick={() => select(null, "agenda")}
+              >
+                All agendas
+              </button>
+              {agendas.map((y) => (
+                <details
+                  key={y.year}
+                  className="docs-nav-folder docs-nav-year"
+                  open={y.year === agendas[0].year}
+                >
+                  <summary>
+                    <ChevronRight size={14} />
+                    <span>{y.year}</span>
+                  </summary>
+                  <div className="docs-nav-children">
+                    {y.months.map((m) => (
+                      <button
+                        key={m.key}
+                        aria-current={
+                          !open &&
+                          kindFilter === "agenda" &&
+                          agendaMonth === m.key
+                            ? "page"
+                            : undefined
+                        }
+                        onClick={() => select(null, "agenda", false, m.key)}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </details>
+        )}
         {fading.size > 0 && (
           <button
             aria-current={!open && fadingOnly ? "page" : undefined}
@@ -475,7 +574,9 @@ export function DocsView({
             >
               View unfiled
             </button>
-            {(docs ?? []).filter((d) => !d.folder_id).map(pageLink)}
+            {(docs ?? [])
+              .filter((d) => !d.folder_id && d.kind !== "agenda")
+              .map(pageLink)}
           </div>
         </details>
       </nav>
@@ -551,83 +652,103 @@ export function DocsView({
                 </button>
               </EmptyState>
             ) : (
-              <ul className="docs-list">
-                {ordered.map((doc) => (
-                  <li key={doc.id}>
-                    <button
-                      className="doc-row"
-                      disabled={busy}
-                      onClick={() => openPage(doc.id)}
-                    >
-                      <FileText size={16} aria-hidden="true" />
-                      <span className="doc-row-main">
-                        <strong>{doc.title || "Untitled"}</strong>
-                        <small>{doc.preview || "Empty document"}</small>
-                        <span className="doc-row-location">
-                          {doc.kind === "note"
-                            ? "Note"
-                            : doc.kind === "agenda"
-                              ? "Agenda"
-                              : "Page"}{" "}
-                          ·{" "}
-                          {folders.find((f) => f.id === doc.folder_id)?.name ||
-                            "Unfiled"}
-                        </span>
-                      </span>
-                      <span className="doc-row-when">
-                        {when(doc.updated_at)}
-                      </span>
-                    </button>
-                    {(!canWriteDoc || canWriteDoc(doc.team_id)) && (
-                      <button
-                        className="doc-star"
-                        aria-label={`Move ${doc.title || "Untitled"} to folder`}
-                        title="Move to folder"
-                        disabled={busy}
-                        aria-haspopup="dialog"
-                        aria-expanded={filing?.doc.id === doc.id}
-                        onClick={(e) =>
-                          setFiling({
-                            doc,
-                            anchor: e.currentTarget.getBoundingClientRect(),
-                          })
-                        }
-                      >
-                        <FolderInput size={17} />
-                      </button>
+              <>
+                {groups.map((group) => (
+                  <div key={group.key} className="docs-group">
+                    {group.month && (
+                      <h3 className="docs-group-month">{group.month}</h3>
                     )}
-                    <button
-                      className={
-                        "doc-star" +
-                        (starred.has(favouriteKey("doc", doc.id))
-                          ? " is-on"
-                          : "")
-                      }
-                      aria-label={
-                        starred.has(favouriteKey("doc", doc.id))
-                          ? `Unstar ${doc.title || "Untitled"}`
-                          : `Star ${doc.title || "Untitled"}`
-                      }
-                      aria-pressed={starred.has(favouriteKey("doc", doc.id))}
-                      onClick={() =>
-                        toggleStar(
-                          doc,
-                          !starred.has(favouriteKey("doc", doc.id)),
-                        )
-                      }
-                    >
-                      <Star
-                        size={14}
-                        fill={
-                          starred.has(favouriteKey("doc", doc.id))
-                            ? "currentColor"
-                            : "none"
-                        }
-                      />
-                    </button>
-                  </li>
+                    {group.label && (
+                      <h4 className="docs-group-title">{group.label}</h4>
+                    )}
+                    <ul className="docs-list">
+                      {group.docs.map((doc) => (
+                        <li key={doc.id}>
+                          <button
+                            className="doc-row"
+                            disabled={busy}
+                            onClick={() => openPage(doc.id)}
+                          >
+                            <FileText size={16} aria-hidden="true" />
+                            <span className="doc-row-main">
+                              <strong>{doc.title || "Untitled"}</strong>
+                              <small>{doc.preview || "Empty document"}</small>
+                              <span className="doc-row-location">
+                                {doc.kind === "note"
+                                  ? "Note"
+                                  : doc.kind === "agenda"
+                                    ? "Agenda"
+                                    : "Page"}
+                                {/* An agenda lives in Agendas unless filed. */}
+                                {doc.kind === "agenda" && !doc.folder_id
+                                  ? ""
+                                  : ` · ${
+                                      folders.find(
+                                        (f) => f.id === doc.folder_id,
+                                      )?.name || "Unfiled"
+                                    }`}
+                              </span>
+                            </span>
+                            <span className="doc-row-when">
+                              {when(doc.updated_at)}
+                            </span>
+                          </button>
+                          {(!canWriteDoc || canWriteDoc(doc.team_id)) && (
+                            <button
+                              className="doc-star"
+                              aria-label={`Move ${doc.title || "Untitled"} to folder`}
+                              title="Move to folder"
+                              disabled={busy}
+                              aria-haspopup="dialog"
+                              aria-expanded={filing?.doc.id === doc.id}
+                              onClick={(e) =>
+                                setFiling({
+                                  doc,
+                                  anchor:
+                                    e.currentTarget.getBoundingClientRect(),
+                                })
+                              }
+                            >
+                              <FolderInput size={17} />
+                            </button>
+                          )}
+                          <button
+                            className={
+                              "doc-star" +
+                              (starred.has(favouriteKey("doc", doc.id))
+                                ? " is-on"
+                                : "")
+                            }
+                            aria-label={
+                              starred.has(favouriteKey("doc", doc.id))
+                                ? `Unstar ${doc.title || "Untitled"}`
+                                : `Star ${doc.title || "Untitled"}`
+                            }
+                            aria-pressed={starred.has(
+                              favouriteKey("doc", doc.id),
+                            )}
+                            onClick={() =>
+                              toggleStar(
+                                doc,
+                                !starred.has(favouriteKey("doc", doc.id)),
+                              )
+                            }
+                          >
+                            <Star
+                              size={14}
+                              fill={
+                                starred.has(favouriteKey("doc", doc.id))
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </>
             )}
           </div>
         )}

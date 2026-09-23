@@ -45,6 +45,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { todaysAgenda } from "./agenda.js";
+import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
 
@@ -662,6 +663,11 @@ export async function docRoutes(app: FastifyInstance) {
    */
   app.get("/agenda/today", async (r) => {
     const u = await authenticate(r);
+    // The device's zone, so the first agenda of someone who never set one
+    // isn't written in UTC (see planner/timezone.ts).
+    const zone = (r.query as { timezone?: unknown }).timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
     return todaysAgenda(u.id);
   });
 

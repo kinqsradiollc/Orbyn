@@ -92,27 +92,33 @@ test("the agenda splits today, what slipped and what's coming", () => {
     .map((b) => (b.type === "heading" ? b.text : ""));
 
   assert.deepEqual(headings, [
-    "Your day",
-    "To do today",
-    "Slipped",
+    "Schedule",
+    "Morning",
+    "Due today",
+    "Carried over",
     "Coming up",
     "Notes",
+    "End of day",
   ]);
-  assert.match(text[0], /2 things on today, and 1 that slipped/);
+  assert.match(text[0], /Today: 1 event, 1 task due, 1 carried over\./);
   assert.ok(
     text.some((t) => /Design sync/.test(t) && /Zoom/.test(t)),
     "the event carries its time and place",
   );
   assert.ok(text.includes("Write the brief"));
   assert.ok(text.includes("Chase the invoice"));
-  assert.ok(text.some((t) => /Thu 24 Sept? — Book the venue/.test(t)));
+  assert.ok(text.some((t) => /Thu 24 Sept? · Book the venue/.test(t)));
   assert.ok(!text.some((t) => /Next month|Already done/.test(t)));
 });
 
 test("an empty day says so instead of showing empty headings", () => {
   const blocks = buildAgenda([], { now: NOW, timeZone: TZ });
   const headings = blocks.filter((b) => b.type === "heading");
-  assert.equal(headings.length, 1, "only Notes");
+  assert.deepEqual(
+    headings.map((h) => (h.type === "heading" ? h.text : "")),
+    ["Notes", "End of day"],
+    "only the places to write",
+  );
   assert.match(
     blocks[0].type === "paragraph" ? blocks[0].text : "",
     /Nothing scheduled today/,

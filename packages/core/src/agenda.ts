@@ -36,16 +36,20 @@ export type AgendaOptions = {
   aheadDays?: number;
   /**
    * Everything on today's calendar: your events with repeats expanded, and
-   * subscribed calendars (a timetable, shifts, exams). When given, "Your
-   * day" is written from this rather than from the items' own dates.
+   * subscribed calendars (a timetable, shifts, exams). When given, the
+   * schedule is written from this rather than from the items' own dates.
    */
   calendar?: AgendaEntry[];
   /** Time set aside today: task blocks and habit sessions. */
   setAside?: { title: string; start_at: string; end_at: string }[];
+  /** Free stretches left in today's working hours. */
+  freeStretches?: { start_at: string; end_at: string }[];
   /** Notable things in the days ahead: exams, all-day events, deadlines. */
   comingEvents?: AgendaEntry[];
   /** Free working time left today, in minutes. */
   freeMinutes?: number;
+  /** The few tasks that matter most, in the app's own priority order. */
+  priorities?: string[];
   /** A short summary of the day written by the assistant, when there is one. */
   brief?: string | null;
 };
@@ -64,10 +68,26 @@ const dayLabel = (iso: string, timeZone: string) =>
     month: "short",
   });
 
+const localHour = (iso: string, timeZone: string) =>
+  Number(
+    new Date(iso).toLocaleTimeString("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    }),
+  );
+
+const plural = (n: number, word: string, many = `${word}s`) =>
+  `${n} ${n === 1 ? word : many}`;
+
 /**
- * Build today's agenda from the planner: what's on today, what slipped, and
- * what's coming. Sections with nothing in them are left out, so the page never
- * opens on a wall of empty headings.
+ * Today's agenda, as a page to work from: a line on how the day looks (the
+ * assistant's words when there are some), the few things that matter most,
+ * the schedule by part of the day, focus time, what's due and what carried
+ * over, what's coming, then room for notes and a short end-of-day review.
+ * Sections with nothing in them are left out, so the page never opens on a
+ * wall of empty headings. Calendar names stay out of it: a class reads like
+ * any other event.
  */
 export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
   const now = opts.now ?? new Date();
@@ -98,29 +118,57 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
 
   const byTime = (a: Item, b: Item) =>
     new Date(a.due_at!).getTime() - new Date(b.due_at!).getTime();
-  events.sort(byTime);
   todayTasks.sort(byTime);
   overdue.sort(byTime);
   soon.sort(byTime);
 
+  // One schedule, whichever source it comes from.
+  type Slot = {
+    start: string;
+    end: string | null;
+    allDay: boolean;
+    title: string;
+    location: string;
+  };
+  const schedule: Slot[] = opts.calendar
+    ? opts.calendar.map((e) => ({
+        start: e.start_at,
+        end: e.end_at,
+        allDay: e.all_day,
+        title: e.title,
+        location: e.location,
+      }))
+    : events.sort(byTime).map((e) => ({
+        start: e.due_at!,
+        end: e.end_at ?? null,
+        allDay: false,
+        title: e.title,
+        location: e.location ?? "",
+      }));
+  schedule.sort(
+    (a, b) =>
+      Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start),
+  );
+
   const blocks: DocBlock[] = [];
   const line = (text: string) => blocks.push({ type: "paragraph", text });
-  const head = (text: string) =>
-    blocks.push({ type: "heading", level: 2, text });
-
-  // Today's calendar: all-day things first, then by time.
-  const calendar = [...(opts.calendar ?? [])].sort(
-    (a, b) =>
-      Number(b.all_day) - Number(a.all_day) ||
-      a.start_at.localeCompare(b.start_at),
-  );
-  const onToday = opts.calendar ? calendar.length : events.length;
+  const head = (text: string, level: 2 | 3 = 2) =>
+    blocks.push({ type: "heading", level, text });
+  const bullet = (text: string) => blocks.push({ type: "bullet", text });
+  const todo = (text: string) =>
+    blocks.push({ type: "todo", done: false, text });
+  const span = (start: string, end: string | null) =>
+    end ? `${time(start, tz)}–${time(end, tz)}` : time(start, tz);
 
   // How the day looks before any list: the assistant's words when there are
   // some, otherwise one plain sentence.
-  const load = onToday + todayTasks.length;
+  const parts = [
+    schedule.length ? plural(schedule.length, "event") : "",
+    todayTasks.length ? `${plural(todayTasks.length, "task")} due` : "",
+    overdue.length ? `${overdue.length} carried over` : "",
+  ].filter(Boolean);
   const free =
-    opts.freeMinutes == null || !load
+    opts.freeMinutes == null || !parts.length
       ? ""
       : opts.freeMinutes >= 15
         ? ` About ${hours(opts.freeMinutes)} of your working time is still free.`
@@ -128,80 +176,83 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
   line(
     opts.brief?.trim()
       ? opts.brief.trim()
-      : load === 0
-        ? overdue.length
+      : parts.length
+        ? `Today: ${parts.join(", ")}.${free}`
+        : overdue.length
           ? "Nothing is due today — a good moment to clear what slipped."
-          : "Nothing scheduled today. The page is yours."
-        : `${load} thing${load === 1 ? "" : "s"} on today${
-            overdue.length ? `, and ${overdue.length} that slipped` : ""
-          }.${free}`,
+          : "Nothing scheduled today. The page is yours.",
   );
 
-  if (opts.calendar ? calendar.length : events.length) {
-    head("Your day");
-    if (opts.calendar)
-      for (const e of calendar)
-        blocks.push({
-          type: "bullet",
-          text: `${e.all_day ? "All day" : `${time(e.start_at, tz)}–${time(e.end_at, tz)}`} — ${e.title}${
-            e.location ? ` (${e.location})` : ""
-          }${e.calendar ? ` · ${e.calendar}` : ""}`,
-        });
-    else
-      for (const e of events)
-        blocks.push({
-          type: "bullet",
-          text: `${time(e.due_at!, tz)} — ${e.title}${
-            e.location ? ` (${e.location})` : ""
-          }`,
-        });
+  const priorities = (opts.priorities ?? []).slice(0, 3);
+  if (priorities.length) {
+    head("Top priorities");
+    for (const p of priorities) todo(p);
+  }
+
+  if (schedule.length) {
+    head("Schedule");
+    for (const e of schedule.filter((x) => x.allDay))
+      bullet(`All day · ${e.title}${e.location ? ` — ${e.location}` : ""}`);
+    const timed = schedule.filter((x) => !x.allDay);
+    const parts: [string, (h: number) => boolean][] = [
+      ["Morning", (h) => h < 12],
+      ["Afternoon", (h) => h >= 12 && h < 17],
+      ["Evening", (h) => h >= 17],
+    ];
+    for (const [name, test] of parts) {
+      const here = timed.filter((e) => test(localHour(e.start, tz)));
+      if (!here.length) continue;
+      head(name, 3);
+      for (const e of here)
+        bullet(
+          `${span(e.start, e.end)} · ${e.title}${e.location ? ` — ${e.location}` : ""}`,
+        );
+    }
   }
 
   const setAside = [...(opts.setAside ?? [])].sort((a, b) =>
     a.start_at.localeCompare(b.start_at),
   );
-  if (setAside.length) {
-    head("Time set aside");
+  const stretches = (opts.freeStretches ?? []).slice(0, 4);
+  if (setAside.length || stretches.length) {
+    head("Focus time");
     for (const b of setAside)
-      blocks.push({
-        type: "bullet",
-        text: `${time(b.start_at, tz)}–${time(b.end_at, tz)} — ${b.title}`,
-      });
+      bullet(`${span(b.start_at, b.end_at)} · ${b.title}`);
+    if (stretches.length)
+      line(
+        `Free: ${stretches.map((f) => span(f.start_at, f.end_at)).join(", ")}.`,
+      );
   }
 
   if (todayTasks.length) {
-    head("To do today");
-    for (const t of todayTasks)
-      blocks.push({ type: "todo", done: false, text: t.title });
+    head("Due today");
+    for (const t of todayTasks) todo(t.title);
   }
 
   if (overdue.length) {
-    head("Slipped");
-    for (const t of overdue)
-      blocks.push({ type: "todo", done: false, text: t.title });
+    head("Carried over");
+    for (const t of overdue) todo(t.title);
   }
 
   const comingEvents = opts.comingEvents ?? [];
   if (soon.length || comingEvents.length) {
-    head(`Coming up`);
+    head("Coming up");
     const coming = [
       ...soon.map((t) => ({ at: t.due_at!, text: t.title })),
       ...comingEvents.map((e) => ({
         at: e.start_at,
-        text: `${e.title}${e.all_day ? "" : ` at ${time(e.start_at, tz)}`}${
-          e.calendar ? ` · ${e.calendar}` : ""
-        }`,
+        text: `${e.title}${e.all_day ? "" : ` at ${time(e.start_at, tz)}`}`,
       })),
     ].sort((a, b) => a.at.localeCompare(b.at));
-    for (const c of coming)
-      blocks.push({
-        type: "bullet",
-        text: `${dayLabel(c.at, tz)} — ${c.text}`,
-      });
+    for (const c of coming) bullet(`${dayLabel(c.at, tz)} · ${c.text}`);
   }
 
   head("Notes");
-  blocks.push({ type: "paragraph", text: "" });
+  line("");
+
+  head("End of day");
+  bullet("What went well: ");
+  bullet("What to carry into tomorrow: ");
   return blocks;
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Sparkles } from "lucide-react";
 import type { Doc } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { deviceTimeZone } from "../../lib/planning";
 import { useConfirm } from "../../components/Confirm";
 import { DocEditor } from "./DocEditor";
 import "./docs.css";
@@ -31,7 +32,7 @@ export function AgendaView({
   const [edition, setEdition] = useState(0);
 
   useEffect(() => {
-    client.agendaToday().then(setDoc, (e) => {
+    client.agendaToday(deviceTimeZone()).then(setDoc, (e) => {
       setFailed(true);
       report(e);
     });
@@ -49,7 +50,7 @@ export function AgendaView({
     setRewriting(true);
     setNote("");
     try {
-      const next = await client.rewriteAgenda();
+      const next = await client.rewriteAgenda(deviceTimeZone());
       setDoc(next);
       setEdition((n) => n + 1);
       setNote(
