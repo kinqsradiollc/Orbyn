@@ -25,7 +25,12 @@ const ACTIVE_EVENT = (s: string) => s !== "cancelled" && s !== "done";
 /** Summarize a person's items into the widget/Watch glance payload. */
 export function buildGlance(
   items: Item[],
-  opts: { now?: Date; timeZone: string },
+  opts: {
+    now?: Date;
+    timeZone: string;
+    /** Timed events from subscribed calendars (a class, a shift), for "next". */
+    external?: { title: string; start_at: string; all_day: boolean }[];
+  },
 ): Glance {
   const now = opts.now ?? new Date();
   const tz = opts.timeZone;
@@ -51,6 +56,13 @@ export function buildGlance(
       if (ms >= now.getTime() && (!next || ms < next.ms))
         next = { title: it.title, at: it.due_at, ms };
     }
+  }
+
+  for (const e of opts.external ?? []) {
+    if (e.all_day) continue;
+    const ms = new Date(e.start_at).getTime();
+    if (ms >= now.getTime() && (!next || ms < next.ms))
+      next = { title: e.title, at: e.start_at, ms };
   }
 
   return {

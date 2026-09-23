@@ -246,6 +246,15 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.learn_estimates ?? false,
         ],
       );
+      // Subscribed calendars are read in your zone (whole days, times with
+      // no zone), so a new zone means reading them again from scratch.
+      if (next.timezone !== current.timezone)
+        await db.query(
+          `UPDATE calendar_subscriptions SET etag = NULL, last_modified = NULL,
+             content_hash = NULL, last_fetched_at = NULL
+           WHERE user_id = $1`,
+          [u.id],
+        );
       return loadPrefs(db, u.id);
     });
   });
@@ -671,7 +680,7 @@ export async function plannerRoutes(app: FastifyInstance) {
         timeBlocks(db, u.id, from, to),
         loadPlaces(db, u.id),
         loadFrames(db, u.id),
-        externalEntries(db, u.id, from, to),
+        externalEntries(db, u.id, from, to, { visible: true }),
         habitBlocksIn(db, u.id, from, to),
       ]);
     const frames: FrameOccurrence[] = frameRows
@@ -745,9 +754,12 @@ export async function plannerRoutes(app: FastifyInstance) {
           return words.every((w) => text.includes(w));
         })
         .map((e) => ({ source: "item" as const, ...e })),
-      ...(await externalEntries(db, u.id, from, to, false, patterns)).map(
-        (e) => ({ source: "external" as const, ...e }),
-      ),
+      ...(
+        await externalEntries(db, u.id, from, to, {
+          visible: true,
+          words: patterns,
+        })
+      ).map((e) => ({ source: "external" as const, ...e })),
     ];
     return {
       q: q.q,

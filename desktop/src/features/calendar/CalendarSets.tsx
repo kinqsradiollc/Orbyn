@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
-import type { CalendarSet, TaskList, Team } from "@orbyn/core";
+import type {
+  CalendarSet,
+  CalendarSubscription,
+  TaskList,
+  Team,
+} from "@orbyn/core";
+import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
 
 type Props = {
@@ -17,6 +23,7 @@ const newSet = (n: number): CalendarSet => ({
   personal: true,
   team_ids: [],
   list_ids: [],
+  subscription_ids: [],
 });
 
 const toggle = (ids: string[], id: string) =>
@@ -24,7 +31,8 @@ const toggle = (ids: string[], id: string) =>
 
 /**
  * Calendar sets: named views of what the calendar shows (personal items,
- * some teams, some lists). Number keys 1–9 switch between them; 0 shows all.
+ * some teams, some lists, some subscribed calendars). Number keys 1–9
+ * switch between them; 0 shows all.
  */
 export function CalendarSetsDialog({
   sets,
@@ -38,6 +46,13 @@ export function CalendarSetsDialog({
   );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [subs, setSubs] = useState<CalendarSubscription[]>([]);
+  useEffect(() => {
+    client.listCalendarSubscriptions().then(setSubs, () => setSubs([]));
+  }, []);
+  /** A set from before subscriptions could be picked shows all of them. */
+  const subsOf = (s: CalendarSet) =>
+    s.subscription_ids ?? subs.map((x) => x.id);
   const update = (id: string, patch: Partial<CalendarSet>) =>
     setDraft((d) => d.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
@@ -153,6 +168,32 @@ export function CalendarSetsDialog({
                           aria-hidden="true"
                         />
                         {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+              {subs.length > 0 && (
+                <>
+                  <small className="field-hint">Subscribed calendars:</small>
+                  <div className="check-grid">
+                    {subs.map((c) => (
+                      <label key={c.id} className="check-line">
+                        <input
+                          type="checkbox"
+                          checked={subsOf(s).includes(c.id)}
+                          onChange={() =>
+                            update(s.id, {
+                              subscription_ids: toggle(subsOf(s), c.id),
+                            })
+                          }
+                        />
+                        <i
+                          className="list-dot"
+                          style={{ background: c.color }}
+                          aria-hidden="true"
+                        />
+                        {c.name}
                       </label>
                     ))}
                   </div>

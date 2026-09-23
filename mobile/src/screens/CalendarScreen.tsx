@@ -388,7 +388,12 @@ export function CalendarScreen({
   const dayItems = itemsOnDay(shownItems, selected).sort(byDueDate);
   const entries = (cal?.entries ?? []).filter((e) => inSet(activeSet, e));
   const blocks = (cal?.blocks ?? []).filter((b) => inSet(activeSet, b));
-  const external = cal?.external ?? [];
+  // A set picks subscribed calendars too; older sets show all of them.
+  const external = (cal?.external ?? []).filter(
+    (x) =>
+      !activeSet?.subscription_ids ||
+      activeSet.subscription_ids.includes(x.subscription_id),
+  );
   const shownIds = new Set(entries.map((e) => e.item_id));
   const live = !!preview && !preview.applied;
   const allGhosts = live ? preview.blocks : [];

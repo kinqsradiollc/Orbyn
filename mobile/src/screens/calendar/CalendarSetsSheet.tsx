@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -7,7 +7,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type { CalendarSet, PlannerPrefs, Team } from "@orbyn/core";
+import type {
+  CalendarSet,
+  CalendarSubscription,
+  PlannerPrefs,
+  Team,
+} from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { ErrorBanner } from "../../components/ErrorBanner";
@@ -29,6 +34,7 @@ const newSet = (n: number): CalendarSet => ({
   personal: true,
   team_ids: [],
   list_ids: [],
+  subscription_ids: [],
 });
 
 const toggle = (ids: string[], id: string) =>
@@ -84,6 +90,13 @@ function Body({
   );
   const update = (id: string, patch: Partial<CalendarSet>) =>
     setDraft((d) => d.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  const [subs, setSubs] = useState<CalendarSubscription[]>([]);
+  useEffect(() => {
+    client.listCalendarSubscriptions().then(setSubs, () => setSubs([]));
+  }, []);
+  /** A set from before subscriptions could be picked shows all of them. */
+  const subsOf = (set: CalendarSet) =>
+    set.subscription_ids ?? subs.map((x) => x.id);
 
   const save = () =>
     run(async () => {
@@ -185,6 +198,27 @@ function Body({
                 <Text style={[shared.small, s.hint]}>
                   None chosen shows every list.
                 </Text>
+              </>
+            )}
+            {subs.length > 0 && (
+              <>
+                <Text style={shared.label}>Subscribed calendars</Text>
+                <ChipRow label="Subscribed calendars in this set" multi>
+                  {subs.map((c) => (
+                    <Chip
+                      key={c.id}
+                      multi
+                      color={c.color}
+                      label={c.name}
+                      selected={subsOf(set).includes(c.id)}
+                      onPress={() =>
+                        update(set.id, {
+                          subscription_ids: toggle(subsOf(set), c.id),
+                        })
+                      }
+                    />
+                  ))}
+                </ChipRow>
               </>
             )}
           </View>

@@ -164,6 +164,15 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "external_reminders",
+    label: "Sent calendar reminders",
+    detail: "Which subscribed events were already reminded, once they're past.",
+    table: "external_reminders",
+    where: "starts_at < now() - interval '2 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "email_tokens",
     label: "Expired email links",
     detail: "Verification and reset links past their expiry.",

@@ -32,3 +32,4 @@ export * from "./project-time-machine.js";
 export * from "./followthrough.js";
 export * from "./admin-insights.js";
 export * from "./legal.js";
+export * from "./calendar-kinds.js";

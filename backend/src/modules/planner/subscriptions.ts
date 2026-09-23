@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
 import {
+  CALENDAR_KIND_DEFAULTS,
   addDays,
   calendarSubscriptionInput,
   calendarSubscriptionUpdate,
@@ -8,6 +10,7 @@ import {
   localDateKey,
   localDaysBetween,
   occurrencesBetween,
+  type CalendarKind,
   type CalendarSubscription,
   type ExternalEntry,
 } from "@orbyn/core";
@@ -20,14 +23,18 @@ import {
 import { authenticate } from "../../lib/auth.js";
 import { assertPublicUrl } from "../../lib/netguard.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
+import { announceTo } from "../presence/live.js";
 import { parseIcs, type IcsEvent } from "./icsParse.js";
 
 /**
- * Calendars from other apps (timetables, holidays, a work calendar), read by
- * their ICS link. The notifier fetches each one hourly, and soon after it's
- * added; the events are kept read-only and shown on the owner's calendar.
- * They count as busy only when the subscription says so, and then only as
- * busy intervals: their details never reach teammates or booking pages.
+ * Calendars from other apps (timetables, exams, shifts, meetings, holidays),
+ * read by their ICS link. Each is fetched as soon as it's added and hourly
+ * after; an unchanged feed isn't rewritten, and a changed one tells the
+ * owner's open apps. The events are kept read-only. A subscription's kind
+ * sets its defaults (see CALENDAR_KIND_DEFAULTS): whether its events count
+ * as busy, whether all-day ones block the day, reminders, and whether
+ * teammates see the busy time. Only busy intervals ever leave the owner:
+ * titles never reach teammates or booking pages.
  * Links must reach public addresses (checked on save and on every fetch and
  * redirect), so they can't make the server call its own network.
  */
@@ -38,7 +45,8 @@ const TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 3;
 const REFRESH_EVERY = "1 hour";
 
-const COLUMNS = `id, url, name, color, busy, last_fetched_at, last_error, event_count, created_at`;
+const COLUMNS = `id, url, name, color, kind, busy, all_day_busy, visible, sharing,
+  reminder_minutes, last_fetched_at, last_error, event_count, created_at`;
 
 type Fetched =
   | { status: "not_modified" }
@@ -127,6 +135,7 @@ async function storeEvents(
   subscriptionId: string,
   events: IcsEvent[],
   fetched: { etag: string | null; last_modified: string | null },
+  hash: string,
 ) {
   await transaction(async (db) => {
     await db.query(
@@ -151,9 +160,15 @@ async function storeEvents(
       );
     await db.query(
       `UPDATE calendar_subscriptions SET etag = $2, last_modified = $3,
-         last_fetched_at = now(), last_error = NULL, event_count = $4
+         last_fetched_at = now(), last_error = NULL, event_count = $4, content_hash = $5
        WHERE id = $1`,
-      [subscriptionId, fetched.etag, fetched.last_modified, events.length],
+      [
+        subscriptionId,
+        fetched.etag,
+        fetched.last_modified,
+        events.length,
+        hash,
+      ],
     );
   });
 }
@@ -166,12 +181,16 @@ export async function refreshSubscription(id: string) {
   const sub = (
     await pool.query<{
       id: string;
+      user_id: string;
       url: string;
       etag: string | null;
       last_modified: string | null;
+      content_hash: string | null;
+      last_error: string | null;
       zone: string;
     }>(
-      `SELECT s.id, s.url, s.etag, s.last_modified, coalesce(p.timezone, 'UTC') AS zone
+      `SELECT s.id, s.user_id, s.url, s.etag, s.last_modified, s.content_hash, s.last_error,
+              coalesce(p.timezone, 'UTC') AS zone
        FROM calendar_subscriptions s LEFT JOIN planner_prefs p ON p.user_id = s.user_id
        WHERE s.id = $1`,
       [id],
@@ -189,7 +208,32 @@ export async function refreshSubscription(id: string) {
     }
     if (!/BEGIN:VCALENDAR/i.test(got.text))
       throw new Error("That link isn't an iCalendar (.ics) feed.");
-    await storeEvents(id, parseIcs(got.text, sub.zone, MAX_EVENTS), got);
+    // Most feeds (Google's included) send no ETag, and Google stamps every
+    // event with the time it was downloaded (DTSTAMP), so the text differs
+    // each time, and lists them in a different order. Compare the events read
+    // from it instead, in a fixed order: the same events in the same zone
+    // aren't rewritten and no app is told.
+    const events = parseIcs(got.text, sub.zone, MAX_EVENTS);
+    const key = (e: IcsEvent) =>
+      `${e.uid}\u0000${e.recurrence_id ?? ""}\u0000${e.starts_at}`;
+    const hash = createHash("sha256")
+      .update(sub.zone)
+      .update("\n")
+      .update(
+        JSON.stringify([...events].sort((a, b) => (key(a) < key(b) ? -1 : 1))),
+      )
+      .digest("hex");
+    if (hash === sub.content_hash && !sub.last_error) {
+      await pool.query(
+        `UPDATE calendar_subscriptions SET last_fetched_at = now(), last_error = NULL,
+           etag = $2, last_modified = $3 WHERE id = $1`,
+        [id, got.etag, got.last_modified],
+      );
+      return;
+    }
+    await storeEvents(id, events, got, hash);
+    // Open apps re-read their calendar.
+    await announceTo(pool, { user_id: sub.user_id }, "changed").catch(() => {});
   } catch (error) {
     await pool.query(
       "UPDATE calendar_subscriptions SET last_fetched_at = now(), last_error = $2 WHERE id = $1",
@@ -228,9 +272,12 @@ export async function refreshDueSubscriptions(limit = 3) {
 
 type ExternalRow = {
   subscription_id: string;
+  uid: string;
   name: string;
   color: string;
+  kind: CalendarKind;
   sub_busy: boolean;
+  all_day_busy: boolean;
   title: string;
   starts_at: Date;
   ends_at: Date;
@@ -242,37 +289,67 @@ type ExternalRow = {
   transparent: boolean;
 };
 
+export type ExternalOptions = {
+  /** Only events that count as busy. */
+  busy?: boolean;
+  /**
+   * Who is asking: "self" (you, your planner, your booking pages) or
+   * "others" (teammates, your busy feed), who don't see subscriptions whose
+   * sharing is "hidden".
+   */
+  audience?: "self" | "others";
+  /** Only calendars shown on your calendar (not hidden ones). */
+  visible?: boolean;
+  /** Every word must appear in the title or location (search). */
+  words?: string[];
+};
+
+/** An occurrence as the server keeps it: with the event's uid, for reminders. */
+export type ExternalOccurrence = ExternalEntry & { uid: string };
+
 /**
  * The owner's subscribed events overlapping [from, to), one per occurrence.
- * `onlyBusy` keeps the ones that count as busy: timed, not marked free, from
- * a subscription with "busy" on. `words` must all appear in the title or
- * location (search).
+ * An event counts as busy when its calendar is busy, it isn't marked free in
+ * the source, and it's timed, or all-day on a calendar whose all-day events
+ * block the day (exams, leave).
  */
-export async function externalEntries(
+export async function externalOccurrences(
   db: Db,
   userId: string,
   from: Date,
   to: Date,
-  onlyBusy = false,
-  words: string[] = [],
-): Promise<ExternalEntry[]> {
+  options: ExternalOptions = {},
+): Promise<ExternalOccurrence[]> {
   const rows = (
     await db.query<ExternalRow>(
-      `SELECT e.subscription_id, s.name, s.color, s.busy AS sub_busy, e.title, e.starts_at,
-              e.ends_at, e.all_day, e.location, e.rrule, e.exdates, e.timezone, e.transparent
+      `SELECT e.subscription_id, e.uid, s.name, s.color, s.kind, s.busy AS sub_busy,
+              s.all_day_busy, e.title, e.starts_at, e.ends_at, e.all_day, e.location,
+              e.rrule, e.exdates, e.timezone, e.transparent
        FROM external_events e JOIN calendar_subscriptions s ON s.id = e.subscription_id
        WHERE s.user_id = $1 AND e.starts_at < $3 AND (e.rrule IS NOT NULL OR e.ends_at > $2)
-         AND ($4::boolean IS FALSE OR (s.busy AND NOT e.all_day AND NOT e.transparent))
-         AND NOT EXISTS (SELECT 1 FROM unnest($5::text[]) w
+         AND ($4::boolean IS FALSE OR (s.busy AND NOT e.transparent
+                                       AND (NOT e.all_day OR s.all_day_busy)))
+         AND ($5::boolean IS FALSE OR s.sharing = 'busy')
+         AND ($6::boolean IS FALSE OR s.visible)
+         AND NOT EXISTS (SELECT 1 FROM unnest($7::text[]) w
                          WHERE (e.title || ' ' || e.location) NOT ILIKE w)
        ORDER BY e.starts_at LIMIT ${MAX_EVENTS}`,
-      [userId, from, to, onlyBusy, words],
+      [
+        userId,
+        from,
+        to,
+        !!options.busy,
+        options.audience === "others",
+        !!options.visible,
+        options.words ?? [],
+      ],
     )
   ).rows;
-  const out: ExternalEntry[] = [];
+  const out: ExternalOccurrence[] = [];
   for (const r of rows) {
-    const entry = (start: Date, end: Date): ExternalEntry => ({
+    const entry = (start: Date, end: Date): ExternalOccurrence => ({
       subscription_id: r.subscription_id,
+      uid: r.uid,
       name: r.name,
       color: r.color,
       title: r.title,
@@ -280,7 +357,8 @@ export async function externalEntries(
       end_at: end.toISOString(),
       all_day: r.all_day,
       location: r.location,
-      busy: r.sub_busy && !r.all_day && !r.transparent,
+      busy: r.sub_busy && !r.transparent && (!r.all_day || r.all_day_busy),
+      calendar_kind: r.kind,
     });
     if (!r.rrule) {
       out.push(entry(r.starts_at, r.ends_at));
@@ -305,6 +383,20 @@ export async function externalEntries(
     }
   }
   return out.sort((a, b) => a.start_at.localeCompare(b.start_at));
+}
+
+/** The same, as the apps see them (without the source uid). */
+export async function externalEntries(
+  db: Db,
+  userId: string,
+  from: Date,
+  to: Date,
+  options: ExternalOptions = {},
+): Promise<ExternalEntry[]> {
+  return (await externalOccurrences(db, userId, from, to, options)).map(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ({ uid, ...e }) => e,
+  );
 }
 
 async function ownSubscription(db: Db, id: string, userId: string) {
@@ -346,16 +438,37 @@ export async function subscriptionRoutes(app: FastifyInstance) {
           409,
           `You can subscribe to ${MAX_SUBSCRIPTIONS} calendars at most.`,
         );
+      // The kind picks the defaults; anything given explicitly wins.
+      const kind = d.kind ?? "other";
+      const preset = CALENDAR_KIND_DEFAULTS[kind];
       return (
         await db.query<CalendarSubscription>(
-          `INSERT INTO calendar_subscriptions (user_id, url, name, color, busy)
-           VALUES ($1, $2, $3, coalesce($4, '#6b8fb5'), $5) RETURNING ${COLUMNS}`,
-          [u.id, d.url, d.name, d.color ?? null, d.busy],
+          `INSERT INTO calendar_subscriptions (user_id, url, name, color, kind, busy,
+             all_day_busy, visible, sharing, reminder_minutes)
+           VALUES ($1, $2, $3, coalesce($4, '#6b8fb5'), $5, $6, $7, $8, $9, $10)
+           RETURNING ${COLUMNS}`,
+          [
+            u.id,
+            d.url,
+            d.name,
+            d.color ?? null,
+            kind,
+            d.busy ?? preset.busy,
+            d.all_day_busy ?? preset.all_day_busy,
+            d.visible ?? true,
+            d.sharing ?? preset.sharing,
+            d.reminder_minutes === undefined
+              ? preset.reminder_minutes
+              : d.reminder_minutes,
+          ],
         )
       ).rows[0];
     });
+    // Read it straight away, so its events (or what's wrong with the link)
+    // show as soon as it's added rather than at the next hourly refresh.
+    await refreshSubscription(sub.id);
     reply.code(201);
-    return sub;
+    return ownSubscription(pool, sub.id, u.id);
   });
 
   app.put("/me/calendar-subscriptions/:id", async (r) => {
@@ -366,11 +479,13 @@ export async function subscriptionRoutes(app: FastifyInstance) {
       await assertPublicUrl(d.url, "calendar");
     // A new link is fetched again from scratch soon; its old events stay until then.
     const moved = !!d.url && d.url !== current.url;
-    return (
+    const updated = (
       await pool.query<CalendarSubscription>(
         `UPDATE calendar_subscriptions SET url = $3, name = $4, color = $5, busy = $6,
+           kind = $8, all_day_busy = $9, visible = $10, sharing = $11, reminder_minutes = $12,
            etag = CASE WHEN $7 THEN NULL ELSE etag END,
            last_modified = CASE WHEN $7 THEN NULL ELSE last_modified END,
+           content_hash = CASE WHEN $7 THEN NULL ELSE content_hash END,
            last_fetched_at = CASE WHEN $7 THEN NULL ELSE last_fetched_at END
          WHERE id = $1 AND user_id = $2 RETURNING ${COLUMNS}`,
         [
@@ -381,9 +496,23 @@ export async function subscriptionRoutes(app: FastifyInstance) {
           d.color ?? current.color,
           d.busy ?? current.busy,
           moved,
+          d.kind ?? current.kind,
+          d.all_day_busy ?? current.all_day_busy,
+          d.visible ?? current.visible,
+          d.sharing ?? current.sharing,
+          d.reminder_minutes === undefined
+            ? current.reminder_minutes
+            : d.reminder_minutes,
         ],
       )
     ).rows[0];
+    if (moved) {
+      await refreshSubscription(current.id);
+      return ownSubscription(pool, current.id, u.id);
+    }
+    // Busy time and what's shown changed: open apps re-read.
+    await announceTo(pool, { user_id: u.id }, "changed").catch(() => {});
+    return updated;
   });
 
   app.delete("/me/calendar-subscriptions/:id", async (r, reply) => {

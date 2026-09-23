@@ -8,6 +8,7 @@ import { enqueue } from "./scheduler.js";
 import { measureQueued } from "../modules/search/semantic.js";
 import {
   advanceRepeating,
+  remindSubscribed,
   scanConflicts,
   scanPlanningNotices,
 } from "./planning.js";
@@ -94,8 +95,10 @@ export async function runWorker() {
           }
           lastSwept = Date.now();
         }
-        // Subscribed calendars: new ones within a cycle, the rest hourly.
-        await refreshDueSubscriptions();
+        // Subscribed calendars: new ones within a cycle, the rest hourly,
+        // and reminders for the ones that ask for them.
+        await refreshDueSubscriptions(10);
+        await remindSubscribed();
         await enqueue();
         lastSchedule = Date.now();
       }

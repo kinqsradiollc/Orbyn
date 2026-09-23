@@ -8,6 +8,7 @@ import {
   weekdayOf,
   type BufferScope,
   type BusyInterval,
+  type AgendaEntry,
   type CalendarEntry,
   type DefaultAlerts,
   type DerivedBlock,
@@ -624,12 +625,18 @@ export type BusyOptions = {
    * this; the planner never does, since it plans inside frames.
    */
   frames?: boolean;
+  /**
+   * Who the busy time is for. "others" (teammates, the busy feed) leaves
+   * out subscribed calendars you keep to yourself; booking pages and your
+   * own planning ask as "self", so they always work around them.
+   */
+  audience?: "self" | "others";
 };
 
 /**
  * When `userId` is busy in [from, to): timed events, their buffers and
  * travel, blocks already set aside, and events from calendars they subscribe
- * to with "busy" on. Task due times are deadlines, not busy time; free and
+ * to that count as busy (see ExternalOptions). Task due times are deadlines, not busy time; free and
  * all-day events don't count. Only intervals leave this function, never
  * titles.
  */
@@ -691,7 +698,10 @@ export async function busyIntervals(
       })),
     );
   }
-  for (const e of await externalEntries(db, userId, from, to, true))
+  for (const e of await externalEntries(db, userId, from, to, {
+    busy: true,
+    audience: options.audience ?? "self",
+  }))
     busy.push({ start_at: e.start_at, end_at: e.end_at });
   if (options.frames)
     for (const f of await loadFrames(db, userId, true))
@@ -713,4 +723,57 @@ export async function busyIntervals(
       start_at: b.start_at < fromIso ? fromIso : b.start_at,
       end_at: b.end_at > toIso ? toIso : b.end_at,
     }));
+}
+
+/**
+ * Everything on your calendar in [from, to) with its title: your own events
+ * and your subscribed calendars' events, in start order. For things only you
+ * see (digests, clash checks, the assistant, widgets); anything shared with
+ * others reads busyIntervals instead. `hidden` includes calendars you've
+ * hidden from view (they still count as busy, so a clash with one is real).
+ */
+export async function agendaEntries(
+  db: Db,
+  userId: string,
+  from: Date,
+  to: Date,
+  options: { hidden?: boolean } = {},
+): Promise<AgendaEntry[]> {
+  const [own, subscribed] = await Promise.all([
+    calendarEntries(db, userId, from, to),
+    externalEntries(db, userId, from, to, { visible: !options.hidden }),
+  ]);
+  const out: AgendaEntry[] = [
+    ...own
+      .filter((e) => e.kind === "event")
+      .map((e) => ({
+        source: "event" as const,
+        item_id: e.item_id,
+        title: e.title,
+        start_at: e.start_at,
+        end_at:
+          e.end_at ??
+          new Date(
+            Date.parse(e.start_at) + DEFAULT_EVENT_MINUTES * 60000,
+          ).toISOString(),
+        all_day: !!e.all_day,
+        location: e.location,
+        busy: blocksTime(e),
+        calendar: null,
+        calendar_kind: null,
+      })),
+    ...subscribed.map((e) => ({
+      source: "subscription" as const,
+      item_id: null,
+      title: e.title,
+      start_at: e.start_at,
+      end_at: e.end_at,
+      all_day: e.all_day,
+      location: e.location,
+      busy: e.busy,
+      calendar: e.name,
+      calendar_kind: e.calendar_kind ?? null,
+    })),
+  ];
+  return out.sort((a, b) => a.start_at.localeCompare(b.start_at));
 }

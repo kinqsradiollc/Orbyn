@@ -226,7 +226,12 @@ export function CalendarView({
   const blocks = (data?.blocks ?? []).filter((b) => inSet(activeSet, b));
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
   const frames = data?.frames ?? [];
-  const external = data?.external ?? [];
+  // A set picks subscribed calendars too; older sets show all of them.
+  const external = (data?.external ?? []).filter(
+    (e) =>
+      !activeSet?.subscription_ids ||
+      activeSet.subscription_ids.includes(e.subscription_id),
+  );
   const gridMode = mode === "week" || mode === "day";
 
   // ---- teammates' busy times ----

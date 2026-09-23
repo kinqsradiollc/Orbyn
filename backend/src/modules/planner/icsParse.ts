@@ -1,12 +1,19 @@
-import { isTimeZone, isValidRrule, zonedInstant } from "@orbyn/core";
+import {
+  isTimeZone,
+  isValidRrule,
+  occurrencesBetween,
+  zonedInstant,
+} from "@orbyn/core";
 
 /**
  * A small, forgiving iCalendar (RFC 5545) reader for calendars people
  * subscribe to by link. It reads VEVENTs only: folded lines, quoted
  * parameters, TZID times (IANA names, a few Windows names, anything else in
- * the fallback zone), whole-day dates, DTEND or DURATION, RRULEs within
- * Orbyn's subset (other rules keep only the first occurrence), EXDATEs,
- * RECURRENCE-ID changes to one occurrence, cancelled events and free
+ * the calendar's X-WR-TIMEZONE, else the fallback zone), whole-day dates,
+ * DTEND or DURATION, RRULEs within Orbyn's subset (monthly "2nd Tuesday"
+ * rules become BYSETPOS; other rules keep only the first occurrence), RDATEs,
+ * EXDATEs, RECURRENCE-ID changes to one occurrence or, with
+ * RANGE=THISANDFUTURE, to the rest of the series, cancelled events and free
  * (transparent) time. Anything it can't read is skipped, never fatal.
  */
 export type IcsEvent = {
@@ -98,7 +105,16 @@ const unescape = (value: string) =>
 
 type Parsed = { at: Date; date: boolean; zone: string };
 
-function parseDate(p: Prop, fallback: string): Parsed | null {
+/**
+ * A DATE or DATE-TIME. Whole days are placed in `dayZone` (the person's own
+ * zone, so a holiday covers their day); times with no zone, or a zone we
+ * can't name, are read in `fallback` (the calendar's own zone when it says).
+ */
+function parseDate(
+  p: Prop,
+  fallback: string,
+  dayZone = fallback,
+): Parsed | null {
   const m = p.value
     .trim()
     .match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/);
@@ -107,9 +123,9 @@ function parseDate(p: Prop, fallback: string): Parsed | null {
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   if (p.params.VALUE === "DATE" || !m[4])
     return {
-      at: zonedInstant(y, mo, d, 0, 0, fallback),
+      at: zonedInstant(y, mo, d, 0, 0, dayZone),
       date: true,
-      zone: fallback,
+      zone: dayZone,
     };
   const [h, mi, s] = [+m[4], +m[5], +(m[6] ?? 0)];
   if (m[7])
@@ -158,8 +174,28 @@ function supportedRule(raw: string, zone: string): string | null {
         .replace(/[-:]/g, "")
         .replace(/\.\d{3}/, "")}`;
     });
-  const text = parts.join(";");
+  const text = ordinalDays(parts).join(";");
   return text.length <= 200 && isValidRrule(text) ? text : null;
+}
+
+/**
+ * "BYDAY=2TU" (the second Tuesday) and "BYDAY=-1FR" (the last Friday) as
+ * Orbyn writes them: "BYDAY=TU;BYSETPOS=2". Only when every ordinal is on
+ * the same weekday; anything else is left for isValidRrule to refuse.
+ */
+function ordinalDays(parts: string[]): string[] {
+  const at = parts.findIndex((p) => p.startsWith("BYDAY="));
+  if (at < 0 || parts.some((p) => p.startsWith("BYSETPOS="))) return parts;
+  const days = parts[at].slice(6).split(",");
+  const parsed = days.map((d) => d.match(/^([+-]?\d{1,2})?([A-Z]{2})$/));
+  if (parsed.some((m) => !m) || parsed.every((m) => !m![1])) return parts;
+  const weekdays = new Set(parsed.map((m) => m![2]));
+  if (weekdays.size !== 1 || parsed.some((m) => !m![1])) return parts;
+  const positions = parsed.map((m) => String(Number(m![1])));
+  const out = [...parts];
+  out[at] = `BYDAY=${[...weekdays][0]}`;
+  out.push(`BYSETPOS=${positions.join(",")}`);
+  return out;
 }
 
 export function parseIcs(
@@ -174,9 +210,16 @@ export function parseIcs(
   const blocks: Prop[][] = [];
   let current: Prop[] | null = null;
   let depth = 0;
+  // Times with no zone are read in the calendar's own zone when it names one.
+  let timeZone = fallbackZone;
   for (const line of lines) {
     if (!line.trim()) continue;
     const upper = line.trim().toUpperCase();
+    if (!current && upper.startsWith("X-WR-TIMEZONE")) {
+      const prop = parseLine(line.trim());
+      if (prop) timeZone = zoneFor(prop.value, fallbackZone);
+      continue;
+    }
     if (upper === "BEGIN:VEVENT") {
       current = [];
       depth = 0;
@@ -202,14 +245,16 @@ export function parseIcs(
     if (prop) current.push(prop);
   }
 
-  const events: (IcsEvent & { cancelled: boolean })[] = [];
+  const read = (p: Prop) => parseDate(p, timeZone, fallbackZone);
+  const events: (IcsEvent & { cancelled: boolean; future: boolean })[] = [];
+  const extra: IcsEvent[] = [];
   for (const props of blocks) {
     const get = (name: string) => props.find((p) => p.name === name);
     const dtstart = get("DTSTART");
-    const start = dtstart && parseDate(dtstart, fallbackZone);
+    const start = dtstart && read(dtstart);
     if (!start) continue;
     const dtend = get("DTEND");
-    const end = dtend && parseDate(dtend, fallbackZone);
+    const end = dtend && read(dtend);
     const duration = get("DURATION");
     const length = duration ? parseDuration(duration.value) : null;
     let endsAt: Date;
@@ -219,18 +264,20 @@ export function parseIcs(
     else if (start.date) endsAt = new Date(start.at.getTime() + 86_400_000);
     else endsAt = start.at;
     const rid = get("RECURRENCE-ID");
-    const recurrence = rid ? parseDate(rid, fallbackZone) : null;
+    const recurrence = rid ? read(rid) : null;
     const rule = get("RRULE");
     const exdates = props
       .filter((p) => p.name === "EXDATE")
-      .flatMap((p) =>
-        p.value
-          .split(",")
-          .map((v) => parseDate({ ...p, value: v }, fallbackZone)),
-      )
+      .flatMap((p) => p.value.split(",").map((v) => read({ ...p, value: v })))
       .filter((x): x is Parsed => !!x)
       .map((x) => x.at.toISOString());
     const title = unescape(get("SUMMARY")?.value ?? "").trim();
+    const span = endsAt.getTime() - start.at.getTime();
+    // Extra dates (RDATE) are single occurrences of the same event.
+    const rdates = props
+      .filter((p) => p.name === "RDATE" && p.params.VALUE !== "PERIOD")
+      .flatMap((p) => p.value.split(",").map((v) => read({ ...p, value: v })))
+      .filter((x): x is Parsed => !!x);
     events.push({
       uid: (
         get("UID")?.value.trim() || `${start.at.toISOString()} ${title}`
@@ -248,15 +295,71 @@ export function parseIcs(
       timezone: start.zone,
       transparent: get("TRANSP")?.value.trim().toUpperCase() === "TRANSPARENT",
       cancelled: get("STATUS")?.value.trim().toUpperCase() === "CANCELLED",
+      future: rid?.params.RANGE?.toUpperCase() === "THISANDFUTURE",
     });
+    const base = events[events.length - 1];
+    if (!base.cancelled && !base.recurrence_id)
+      for (const r of rdates)
+        if (r.at.getTime() !== start.at.getTime())
+          extra.push({
+            ...base,
+            uid: `${base.uid} ${r.at.toISOString()}`.slice(0, 500),
+            starts_at: r.at.toISOString(),
+            ends_at: new Date(r.at.getTime() + span).toISOString(),
+            rrule: null,
+            exdates: [],
+          });
   }
 
   // An occurrence changed or cancelled on its own replaces the series' one.
   const series = new Map<string, IcsEvent>();
   for (const e of events)
     if (e.rrule && !e.cancelled && !series.has(e.uid)) series.set(e.uid, e);
+  // "This and all following": the series ends before the changed occurrence
+  // and, unless that's cancelled, carries on from it as changed, for however
+  // many occurrences the original had left.
+  const continued: IcsEvent[] = [];
+  for (const e of events) {
+    if (!e.future || !e.recurrence_id) continue;
+    const master = series.get(e.uid);
+    if (!master?.rrule) continue;
+    const rid = new Date(e.recurrence_id);
+    const parts = master.rrule.split(";");
+    const count = Number(
+      parts.find((p) => p.startsWith("COUNT="))?.slice(6) ?? NaN,
+    );
+    const before = occurrencesBetween(
+      new Date(master.starts_at),
+      master.rrule,
+      master.timezone,
+      new Date(master.starts_at),
+      rid,
+      [],
+      1000,
+    ).length;
+    const rest = parts.filter(
+      (p) => !p.startsWith("UNTIL=") && !p.startsWith("COUNT="),
+    );
+    const until = new Date(rid.getTime() - 1000)
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d{3}/, "");
+    master.rrule = [...rest, `UNTIL=${until}`].join(";");
+    if (e.cancelled) continue;
+    const tail = Number.isFinite(count)
+      ? [...rest, `COUNT=${Math.max(1, count - before)}`]
+      : [...parts.filter((p) => !p.startsWith("COUNT="))];
+    continued.push({
+      ...e,
+      uid: `${e.uid} ${e.recurrence_id}`.slice(0, 500),
+      recurrence_id: null,
+      rrule: e.rrule ?? tail.join(";"),
+      exdates: master.exdates.filter((x) => x > e.recurrence_id!),
+    });
+  }
   const out: IcsEvent[] = [];
-  for (const { cancelled, ...e } of events) {
+  for (const { cancelled, future, ...e } of events) {
+    if (future && e.recurrence_id && series.get(e.uid)) continue;
     if (e.recurrence_id) {
       const master = series.get(e.uid);
       if (master && !master.exdates.includes(e.recurrence_id))
@@ -264,6 +367,14 @@ export function parseIcs(
       if (!cancelled) out.push(e);
     } else if (!cancelled) out.push(e);
     if (out.length >= limit) break;
+  }
+  for (const e of continued) {
+    if (out.length >= limit) break;
+    out.push(e);
+  }
+  for (const e of extra) {
+    if (out.length >= limit) break;
+    out.push(e);
   }
   return out;
 }

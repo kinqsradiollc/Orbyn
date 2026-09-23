@@ -175,7 +175,8 @@ loop (`backend/src/modules/ai/agent/`):
      date), `get_item` (notes, checklist, recent updates), `list_teams`, `rank_tasks` (open tasks in
      the app's own priority-score order, each with why), `list_projects` and `get_project` (progress,
      risk, stages, and decisions no task delivers), `find_free_time` (free stretches in working
-     hours) and `get_follow_through` (asks, promises, undelivered decisions, how plans held).
+     hours), `get_calendar` (your events and subscribed calendars' events, with titles; subscribed
+     ones read only) and `get_follow_through` (asks, promises, undelivered decisions, how plans held).
      Asking what to do first ("help me prioritise") is advice: the guard allows no proposals for it
      unless the message also names a change. Every query is scoped on
      the server, using the session's user id, to the user's own personal items and their teams'

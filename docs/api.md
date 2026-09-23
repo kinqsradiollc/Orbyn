@@ -1492,12 +1492,39 @@ Other tools reach Orbyn through these; nothing is synced out of this server.
 | `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
 | `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
 | `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |
-| `GET /me/calendar-subscriptions`              | Calendars you subscribe to by link, with `last_fetched_at`, `last_error`, `event_count`                   |
-| `POST /me/calendar-subscriptions`             | `{ "url", "name", "color"?, "busy"? }` → `201`; `422` for a private address, `409` past 20                |
-| `PUT/DELETE /me/calendar-subscriptions/:id`   | Change `url`, `name`, `color`, `busy`; or remove it and its events                                        |
+| `GET /me/calendar-subscriptions`              | Calendars you subscribe to by link, with their settings, `last_fetched_at`, `last_error`, `event_count`   |
+| `POST /me/calendar-subscriptions`             | `{ "url", "name", "color"?, "kind"?, settings… }` → `201`, read at once; `422` private address, `409` >20 |
+| `PUT/DELETE /me/calendar-subscriptions/:id`   | Change `url`, `name`, `color`, `kind` or any setting; or remove it and its events                         |
 | `POST /me/calendar-subscriptions/:id/refresh` | Fetch it now (10/min) → the subscription                                                                  |
 | `GET /rsvp/:token`                            | Anyone with the link: the invitation (see below)                                                          |
 | `POST /rsvp/:token`                           | Anyone with the link, 10/min: `{ "status": "accepted" \| "declined" \| "tentative" }`                     |
+
+### Subscribed calendars
+
+A subscription has a `kind` — `classes`, `exams`, `work`, `meetings`, `holidays` or `other` — which
+sets its defaults when it's added (`CALENDAR_KIND_DEFAULTS` in `packages/core/src/calendar-kinds.ts`);
+anything sent explicitly wins, and every setting can be changed later:
+
+| Setting            | Meaning                                                                                 | Default                             |
+| ------------------ | --------------------------------------------------------------------------------------- | ----------------------------------- |
+| `busy`             | Its timed events count as busy (planner, booking pages, teammates)                      | on, except `holidays`               |
+| `all_day_busy`     | Its all-day events block the whole day (when `busy`)                                    | on for `exams`                      |
+| `visible`          | Shown on your calendar, in search and in agendas; hidden ones still count as busy       | on                                  |
+| `sharing`          | `busy`: teammates and your busy-only feed see when; `hidden`: they see nothing          | `busy`                              |
+| `reminder_minutes` | A reminder (in the app, push, and email if on) this long before each event; `null` none | 1440 for `exams`, 10 for `meetings` |
+
+A subscription is read as soon as it's added and hourly after. A feed whose text hasn't changed
+isn't rewritten (most feeds, Google's included, send no ETag); a changed one tells your open apps
+(`changed` on `/events`). Changing your time zone reads every subscription again. The reader
+handles the calendar's own `X-WR-TIMEZONE`, monthly "2nd Tuesday" / "last Friday" rules, `RDATE`,
+and `RANGE=THISANDFUTURE` changes.
+
+Subscribed events reach every part of Orbyn that reads your day: busy time (planner, booking
+pages, team availability and capacity, the busy-only feed — times only, never titles), the clash
+review and clash notices, the morning and evening digests, the assistant's `get_calendar` tool,
+MCP `get_agenda`, and the iOS widget and Watch "next event". Calendar sets can include or leave
+out each subscription (`subscription_ids`; missing means all). They are never re-exported in your
+own feed or CalDAV, which would duplicate them in the apps they came from.
 
 API keys act as you, except in the admin console (and count against their own rate limit). Webhook
 events: `item.created`, `item.updated`, `item.completed`, `item.deleted` (once for each subtask

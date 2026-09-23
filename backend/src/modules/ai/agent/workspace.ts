@@ -6,7 +6,11 @@ import {
 } from "@orbyn/core";
 import { pool } from "../../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../../lib/teams.js";
-import { busyIntervals, loadPrefs } from "../../planner/calendar.js";
+import {
+  agendaEntries,
+  busyIntervals,
+  loadPrefs,
+} from "../../planner/calendar.js";
 import {
   freeSpans,
   largestFreeMinutes,
@@ -310,6 +314,44 @@ export async function findFreeTime(
     total_free_minutes: Math.round(
       slots.reduce((n, s) => n + (s.end - s.start), 0) / 60_000,
     ),
+  };
+}
+
+/**
+ * What's on the calendar: the user's own events and their subscribed
+ * calendars' (a class timetable, exams, shifts, meetings, holidays), with
+ * titles, so the assistant can answer "what's on Thursday?" or plan around a
+ * lecture. Read only; subscribed events can't be changed from Orbyn.
+ */
+export async function getCalendar(
+  ctx: AgentContext,
+  a: { start_date?: string; days?: number },
+) {
+  const now = new Date();
+  const start = a.start_date
+    ? Date.parse(toInstant(a.start_date, ctx.timezone))
+    : Date.parse(toInstant(localDate(now, ctx.timezone), ctx.timezone));
+  if (Number.isNaN(start)) throw new Error("start_date must be YYYY-MM-DD.");
+  const from = new Date(start);
+  const to = new Date(start + (a.days ?? 1) * 86_400_000);
+  const entries = await agendaEntries(pool, ctx.user.id, from, to);
+  return {
+    from: localDate(from, ctx.timezone),
+    days: a.days ?? 1,
+    events: entries.slice(0, 80).map((e) => ({
+      title: clean(e.title, 120),
+      when: e.all_day
+        ? `${localDate(new Date(e.start_at), ctx.timezone)} (all day)`
+        : whenLabel(new Date(e.start_at), new Date(e.end_at), ctx.timezone),
+      ...(e.location ? { location: clean(e.location, 80) } : {}),
+      busy: e.busy,
+      from:
+        e.source === "subscription"
+          ? `subscribed calendar "${e.calendar}"${e.calendar_kind ? ` (${e.calendar_kind})` : ""}, read only`
+          : "your calendar",
+      ...(e.item_id ? { item_id: e.item_id } : {}),
+    })),
+    ...(entries.length > 80 ? { more: entries.length - 80 } : {}),
   };
 }
 

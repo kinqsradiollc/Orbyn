@@ -966,13 +966,41 @@ const subscriptionUrl = z
   )
   // webcal:// is https:// for calendar apps.
   .transform((u) => u.replace(/^webcal:\/\//i, "https://"));
+/**
+ * What a subscribed calendar holds. The kind picks sensible defaults when it
+ * is added (see CALENDAR_KIND_DEFAULTS); every setting can be changed after.
+ */
+export const CALENDAR_KINDS = [
+  "classes",
+  "exams",
+  "work",
+  "meetings",
+  "holidays",
+  "other",
+] as const;
+/** Who else sees a subscription's busy time: teammates and your busy feed. */
+export const CALENDAR_SHARING = ["busy", "hidden"] as const;
+
+const subscriptionSettings = {
+  kind: z.enum(CALENDAR_KINDS).optional(),
+  /** Count its timed events as busy (planner, booking pages, teammates). */
+  busy: z.boolean().optional(),
+  /** Count its all-day events as busy for the whole day (exams, leave). */
+  all_day_busy: z.boolean().optional(),
+  /** Show it on the calendar and in agendas. Hidden ones still count as busy. */
+  visible: z.boolean().optional(),
+  /** Whether teammates and your busy feed see its busy time. */
+  sharing: z.enum(CALENDAR_SHARING).optional(),
+  /** Minutes before each event to remind you; null for no reminders. */
+  reminder_minutes: z.number().int().min(0).max(10080).nullable().optional(),
+};
+
 export const calendarSubscriptionInput = z
   .object({
     url: subscriptionUrl,
     name: z.string().trim().min(1).max(80),
     color: color.optional(),
-    /** Count its events as busy (for the planner, booking pages and teammates). */
-    busy: z.boolean().default(false),
+    ...subscriptionSettings,
   })
   .strict();
 export const calendarSubscriptionUpdate = z
@@ -980,7 +1008,7 @@ export const calendarSubscriptionUpdate = z
     url: subscriptionUrl.optional(),
     name: z.string().trim().min(1).max(80).optional(),
     color: color.optional(),
-    busy: z.boolean().optional(),
+    ...subscriptionSettings,
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
@@ -1044,6 +1072,11 @@ export const calendarSetInput = z
     personal: z.boolean().default(true),
     team_ids: z.array(z.uuid()).max(50).default([]),
     list_ids: z.array(z.uuid()).max(100).default([]),
+    /**
+     * Subscribed calendars in the set. Missing means all of them (sets made
+     * before subscriptions could be chosen); empty means none.
+     */
+    subscription_ids: z.array(z.uuid()).max(20).optional(),
   })
   .strict();
 

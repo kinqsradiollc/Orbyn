@@ -8,7 +8,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type { CalendarFeedSettings, CalendarSubscription } from "@orbyn/core";
+import {
+  CALENDAR_KINDS,
+  CALENDAR_KIND_DEFAULTS,
+  CALENDAR_REMINDER_CHOICES,
+  guessCalendarKind,
+  reminderLabel,
+  type CalendarFeedSettings,
+  type CalendarKind,
+  type CalendarSubscription,
+} from "@orbyn/core";
+import { Chip, ChipRow } from "../components/Chip";
+import { confirmAction } from "../lib/confirm";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Field } from "../components/Field";
@@ -193,19 +204,158 @@ function FeedLink({
 /** http, https or webcal, like the server. */
 const isCalendarLink = (url: string) => /^(https?|webcal):\/\/\S+$/i.test(url);
 
+type SubSettings = Pick<
+  CalendarSubscription,
+  "kind" | "busy" | "all_day_busy" | "visible" | "sharing" | "reminder_minutes"
+>;
+
+const presetOf = (kind: CalendarKind): SubSettings => {
+  const d = CALENDAR_KIND_DEFAULTS[kind];
+  return {
+    kind,
+    busy: d.busy,
+    all_day_busy: d.all_day_busy,
+    visible: true,
+    sharing: d.sharing,
+    reminder_minutes: d.reminder_minutes,
+  };
+};
+
+/** "Classes · Busy · Reminds 10 minutes before". */
+const summaryOf = (x: SubSettings) =>
+  [
+    CALENDAR_KIND_DEFAULTS[x.kind].label,
+    x.busy
+      ? x.all_day_busy
+        ? "Busy, all-day blocks the day"
+        : "Busy"
+      : "Not busy",
+    x.reminder_minutes != null
+      ? `Reminds ${reminderLabel(x.reminder_minutes)}`
+      : "",
+    x.sharing === "hidden" ? "Kept from teammates" : "",
+    x.visible ? "" : "Hidden",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
 /**
- * Calendars you subscribe to by link (timetables, public holidays, a work
- * calendar). Their events show on your calendar, read-only; they count as
- * busy only when you say so.
+ * A subscribed calendar's settings, the same as the desktop's: what it
+ * holds (picking one applies its defaults), then each setting on its own.
+ */
+function SettingsFields({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: SubSettings;
+  disabled: boolean;
+  onChange: (next: SubSettings) => void;
+}) {
+  const row = (
+    label: string,
+    hint: string,
+    on: boolean,
+    set: (v: boolean) => void,
+    off = false,
+  ) => (
+    <View style={s.switchRow}>
+      <View style={{ flex: 1 }}>
+        <Text style={s.switchLabel}>{label}</Text>
+        <Text style={shared.small}>{hint}</Text>
+      </View>
+      <Switch
+        value={on}
+        disabled={disabled || off}
+        trackColor={{ true: colors.accent }}
+        accessibilityLabel={label}
+        onValueChange={set}
+      />
+    </View>
+  );
+  return (
+    <View style={s.settings}>
+      <Text style={shared.label}>What&apos;s in it</Text>
+      <ChipRow label="What's in it">
+        {CALENDAR_KINDS.map((k) => (
+          <Chip
+            key={k}
+            label={CALENDAR_KIND_DEFAULTS[k].label}
+            selected={value.kind === k}
+            disabled={disabled}
+            onPress={() => onChange({ ...presetOf(k), visible: value.visible })}
+          />
+        ))}
+      </ChipRow>
+      <Text style={shared.small}>
+        {CALENDAR_KIND_DEFAULTS[value.kind].hint}
+      </Text>
+      {row(
+        "Counts as busy",
+        "The planner, booking pages and teammates work around it.",
+        value.busy,
+        (busy) => onChange({ ...value, busy }),
+      )}
+      {row(
+        "All-day events block the day",
+        "For exam days and leave. Public holidays usually don't.",
+        value.all_day_busy,
+        (all_day_busy) => onChange({ ...value, all_day_busy }),
+        !value.busy,
+      )}
+      {row(
+        "Show on my calendar",
+        "Hidden calendars still count as busy.",
+        value.visible,
+        (visible) => onChange({ ...value, visible }),
+      )}
+      <Text style={shared.label}>Teammates see</Text>
+      <ChipRow label="Teammates see">
+        <Chip
+          label="When I'm busy"
+          selected={value.sharing === "busy"}
+          disabled={disabled}
+          onPress={() => onChange({ ...value, sharing: "busy" })}
+        />
+        <Chip
+          label="Nothing"
+          selected={value.sharing === "hidden"}
+          disabled={disabled}
+          onPress={() => onChange({ ...value, sharing: "hidden" })}
+        />
+      </ChipRow>
+      <Text style={shared.label}>Reminders</Text>
+      <ChipRow label="Reminders">
+        {CALENDAR_REMINDER_CHOICES.map((m) => (
+          <Chip
+            key={String(m)}
+            label={m == null ? "None" : reminderLabel(m).replace(" before", "")}
+            selected={value.reminder_minutes === m}
+            disabled={disabled}
+            onPress={() => onChange({ ...value, reminder_minutes: m })}
+          />
+        ))}
+      </ChipRow>
+    </View>
+  );
+}
+
+/**
+ * Calendars you subscribe to by link: a class timetable, exams, shifts,
+ * meetings, public holidays. Each kind starts with sensible settings; their
+ * events show on your calendar, read-only.
  */
 export function SubscriptionsCard() {
   const { busy, error, setError, run } = useRun();
   const [subs, setSubs] = useState<CalendarSubscription[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [color, setColor] = useState<string>(LIST_COLORS[2]);
-  const [counts, setCounts] = useState(false);
+  const [draft, setDraft] = useState<SubSettings>(presetOf("other"));
+  const [kindPicked, setKindPicked] = useState(false);
+  const [note, setNote] = useState("");
 
   const load = async () => setSubs(await client.listCalendarSubscriptions());
   useEffect(() => {
@@ -217,33 +367,41 @@ export function SubscriptionsCard() {
     setSubs((list) => list?.map((x) => (x.id === next.id ? next : x)) ?? null);
   const create = () =>
     run(async () => {
-      await client.createCalendarSubscription({
+      const made = await client.createCalendarSubscription({
         url: url.trim(),
         name: name.trim(),
         color,
-        busy: counts,
+        ...draft,
       });
       animateLayout();
       setAdding(false);
       setUrl("");
       setName("");
-      setCounts(false);
+      setDraft(presetOf("other"));
+      setKindPicked(false);
+      setNote(
+        made.last_error
+          ? `Added, but it couldn't be read yet: ${made.last_error}`
+          : `Added ${made.name} · ${made.event_count} event${made.event_count === 1 ? "" : "s"}.`,
+      );
       await load();
     });
+  const change = (sub: CalendarSubscription, next: SubSettings) =>
+    run(async () =>
+      replace(await client.updateCalendarSubscription(sub.id, next)),
+    );
   const remove = (sub: CalendarSubscription) =>
-    Alert.alert(`Remove ${sub.name}?`, "Its events leave your calendar.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Remove",
-        style: "destructive",
-        onPress: () =>
-          void run(async () => {
-            await client.deleteCalendarSubscription(sub.id);
-            animateLayout();
-            await load();
-          }),
-      },
-    ]);
+    confirmAction(
+      `Remove ${sub.name}?`,
+      "Its events leave your calendar.",
+      "Remove",
+      () =>
+        void run(async () => {
+          await client.deleteCalendarSubscription(sub.id);
+          animateLayout();
+          await load();
+        }),
+    );
 
   return (
     <>
@@ -251,23 +409,30 @@ export function SubscriptionsCard() {
       <View style={shared.card}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.small, s.gap]}>
-          Add any calendar link (https://, http:// or webcal://) that anyone can
-          reach. Its events show on your calendar, read-only, and refresh every
-          hour.
+          Add calendars from other apps by their link: a class timetable, exams,
+          work shifts, meetings, public holidays. Orbyn reads each one straight
+          away and every hour after. Their events are read-only.
         </Text>
+        {!!note && <Text style={[shared.small, s.gap]}>{note}</Text>}
         {subs === null && (
           <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
         )}
         {subs?.map((sub, n) => (
           <View key={sub.id} style={[s.sub, n > 0 && s.divider]}>
             <View style={s.subTop}>
-              <View style={[s.dot, { backgroundColor: sub.color }]} />
+              <View
+                style={[
+                  s.dot,
+                  { backgroundColor: sub.color },
+                  !sub.visible && s.faded,
+                ]}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={s.title} numberOfLines={1}>
                   {sub.name}
                 </Text>
-                <Text style={shared.small} numberOfLines={1}>
-                  {sub.url}
+                <Text style={shared.small} numberOfLines={2}>
+                  {summaryOf(sub)}
                 </Text>
               </View>
             </View>
@@ -281,25 +446,31 @@ export function SubscriptionsCard() {
                 {sub.last_error}
               </Text>
             )}
-            <View style={s.switchRow}>
-              <Text style={[s.switchLabel, { flex: 1 }]}>Counts as busy</Text>
-              <Switch
-                value={sub.busy}
+            {open === sub.id && (
+              <FadeIn>
+                <SettingsFields
+                  value={sub}
+                  disabled={busy}
+                  onChange={(next) => void change(sub, next)}
+                />
+              </FadeIn>
+            )}
+            <View style={s.subActions}>
+              <SmallAction
+                label={open === sub.id ? "Done" : "Settings"}
+                disabled={false}
+                onPress={() => {
+                  animateLayout();
+                  setOpen(open === sub.id ? null : sub.id);
+                }}
+              />
+              <SmallAction
+                label={sub.visible ? "Hide" : "Show"}
                 disabled={busy}
-                trackColor={{ true: colors.accent }}
-                accessibilityLabel={`${sub.name} counts as busy`}
-                onValueChange={(value) =>
-                  void run(async () =>
-                    replace(
-                      await client.updateCalendarSubscription(sub.id, {
-                        busy: value,
-                      }),
-                    ),
-                  )
+                onPress={() =>
+                  void change(sub, { ...sub, visible: !sub.visible })
                 }
               />
-            </View>
-            <View style={s.subActions}>
               <SmallAction
                 label="Refresh"
                 disabled={busy}
@@ -337,8 +508,16 @@ export function SubscriptionsCard() {
               <TextInput
                 style={shared.input}
                 value={name}
-                onChangeText={setName}
-                placeholder="Public holidays"
+                onChangeText={(next) => {
+                  setName(next);
+                  // Until a kind is picked by hand, the name suggests one.
+                  if (!kindPicked) {
+                    const guess = guessCalendarKind(next);
+                    if (guess !== draft.kind)
+                      setDraft({ ...presetOf(guess), visible: draft.visible });
+                  }
+                }}
+                placeholder="e.g. Uni timetable"
                 placeholderTextColor={colors.faint}
                 maxLength={80}
                 accessibilityLabel="Calendar name"
@@ -372,21 +551,14 @@ export function SubscriptionsCard() {
                 ))}
               </View>
             </Field>
-            <View style={[s.switchRow, s.gap]}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.switchLabel}>Counts as busy</Text>
-                <Text style={shared.small}>
-                  Blocks your planner, booking pages and teammates’ meeting
-                  times. All-day and free events never do.
-                </Text>
-              </View>
-              <Switch
-                value={counts}
-                trackColor={{ true: colors.accent }}
-                accessibilityLabel="Counts as busy"
-                onValueChange={setCounts}
-              />
-            </View>
+            <SettingsFields
+              value={draft}
+              disabled={busy}
+              onChange={(next) => {
+                if (next.kind !== draft.kind) setKindPicked(true);
+                setDraft(next);
+              }}
+            />
             {!!url.trim() && !isCalendarLink(url.trim()) && (
               <Text style={[shared.small, s.problem, s.gap]}>
                 Calendar links start with https://, http:// or webcal://.
@@ -394,7 +566,7 @@ export function SubscriptionsCard() {
             )}
             <View style={s.actions}>
               <Button
-                title="Subscribe"
+                title={busy ? "Reading it…" : "Subscribe"}
                 icon="check"
                 disabled={busy || !isCalendarLink(url.trim()) || !name.trim()}
                 style={s.flex}
@@ -417,6 +589,7 @@ export function SubscriptionsCard() {
             style={[s.last, !!subs?.length && s.addTop]}
             onPress={() => {
               animateLayout();
+              setNote("");
               setAdding(true);
             }}
           />
@@ -475,6 +648,8 @@ const s = themed(() =>
     problem: { color: colors.danger },
     form: {},
     swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    settings: { gap: 12, marginTop: 12, marginBottom: 12 },
+    faded: { opacity: 0.45 },
     swatch: {
       width: 34,
       height: 34,

@@ -25,6 +25,7 @@ import { localIso } from "../snapshot.js";
 import type { JsonSchema, ToolCall, ToolSpec } from "./protocol.js";
 import {
   findFreeTime,
+  getCalendar,
   followThrough,
   getProject,
   listProjects,
@@ -1143,6 +1144,35 @@ export const TOOLS: Tool[] = [
       })
       .strict(),
     findFreeTime,
+  ),
+  tool(
+    {
+      name: "get_calendar",
+      description:
+        "What's on the user's calendar: their own events and the calendars they subscribe to (class timetables, exams, work shifts, meetings, holidays), with titles, times and places. Use for 'what's on today/Thursday', 'when is my next class', before planning a day. Subscribed events are read only. Read only.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          start_date: {
+            type: "string",
+            description:
+              "YYYY-MM-DD in the user's time zone; today when omitted.",
+          },
+          days: { type: "integer", minimum: 1, maximum: 14 },
+        },
+      },
+    },
+    z
+      .object({
+        start_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.")
+          .optional(),
+        days: z.number().int().min(1).max(14).optional(),
+      })
+      .strict(),
+    getCalendar,
   ),
   tool(
     {
