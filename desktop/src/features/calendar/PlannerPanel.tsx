@@ -778,9 +778,22 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
           }}
         >
           {t.estimate_minutes ? minutesLabel(t.estimate_minutes) : "30 min?"}
-          {t.estimate_tuned && " (tuned)"}
+          {t.estimate_tuned
+            ? " (tuned)"
+            : t.estimate_guess
+              ? ` (${guessText(t.estimate_guess.basis)})`
+              : ""}
         </button>
       )}
     </li>
   );
+}
+
+/** Where a learned length for a task without an estimate came from. */
+function guessText(basis: "similar" | "list" | "tag" | "typical") {
+  return basis === "similar"
+    ? "like similar tasks"
+    : basis === "typical"
+      ? "your usual task"
+      : `usual for this ${basis}`;
 }

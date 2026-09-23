@@ -759,6 +759,7 @@ export function RootScreen() {
                       setTab("Tasks");
                       setSearch("");
                     }}
+                    onFocus={openFocus}
                     {...listHandlers}
                   />
                 )}

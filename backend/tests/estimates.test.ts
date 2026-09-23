@@ -56,12 +56,23 @@ test("the ratio needs a few finished tasks before it is trusted", async () => {
   assert.equal(model.overall.samples, 2);
   assert.equal(model.overall.ratio, 1, "held at 1 below the sample floor");
 
-  // A third tips it over the floor.
+  // A third tips it over the floor, though three tasks only move it part of
+  // the way: it's shrunk towards 1 until there's more history.
   await finished(30, 60);
   model = (await call("GET", "/planner/estimates")).json();
   assert.equal(model.overall.samples, 3);
-  assert.equal(model.overall.ratio, 2, "you take about twice as long");
+  assert.ok(
+    model.overall.ratio > 1.3 && model.overall.ratio < 2,
+    `part of the way to 2× (${model.overall.ratio})`,
+  );
   assert.equal(model.applied, false, "not applied until turned on");
+
+  // With more of the same, it settles close to twice as long.
+  for (let i = 0; i < 20; i++) await finished(30, 60);
+  model = (await call("GET", "/planner/estimates")).json();
+  assert.ok(model.overall.ratio >= 1.8, `close to 2× (${model.overall.ratio})`);
+  const [low, high] = model.overall.range;
+  assert.ok(low <= model.overall.ratio && model.overall.ratio <= high);
 });
 
 test("the ratio is clamped so one wild task can't dominate", async () => {
@@ -84,7 +95,8 @@ test("turning it on scales an open task's planned time", async () => {
   });
   token = reg.json().token;
   userId = reg.json().user.id;
-  for (let i = 0; i < 4; i++) await finished(60, 90); // ratio 1.5
+  // Ratio 1.5; a dozen tasks bring the learned ratio to about 1.4.
+  for (let i = 0; i < 12; i++) await finished(60, 90);
 
   const task = (
     await call("POST", "/items", {
@@ -114,7 +126,7 @@ test("turning it on scales an open task's planned time", async () => {
   // Planned time carries the same padding either way, so their ratio is ~1.5×.
   assert.ok(scaled > base, "more time is set aside when learning is on");
   assert.ok(
-    Math.abs(scaled / base - 1.5) < 0.2,
-    `about 1.5× (base ${base}, scaled ${scaled})`,
+    Math.abs(scaled / base - 1.42) < 0.15,
+    `about 1.4× (base ${base}, scaled ${scaled})`,
   );
 });

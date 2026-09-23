@@ -4,7 +4,10 @@ import {
   dayTime,
   isClosed,
   priorityScore,
+  rhythmFit,
+  taskDemand,
   weekdayOf,
+  zonedParts,
   type BreakLevel,
   type BusyInterval,
   type Frame,
@@ -65,6 +68,23 @@ export type SchedulerInput = {
    * are, take their time out of what's free, and count towards their task.
    */
   pinned?: { item_id: string; start_at: string; end_at: string }[];
+  /**
+   * Learned placement. Without it every session takes the earliest time that
+   * fits; with it each session takes the best-scoring time (see `placementCost`).
+   */
+  smart?: SmartPlacement;
+};
+
+/** What the planner has learned about someone, for choosing times. */
+export type SmartPlacement = {
+  /** Per local hour 0–23, -1…1, already scaled by confidence (see learnRhythm). */
+  rhythm?: number[] | null;
+  /** The best two hours, for the plan's summary. */
+  peak?: { start_hour: number; end_hour: number } | null;
+  /** Minutes of task time a day usually gets through; days past it cost more. */
+  dayMinutes?: number | null;
+  /** Put related tasks (same list or a shared tag) next to each other. */
+  batch?: boolean;
 };
 
 export type SchedulerResult = {
@@ -73,6 +93,8 @@ export type SchedulerResult = {
   at_risk: UnplacedTask[];
   capacity_minutes: number;
   planned_minutes: number;
+  /** What the learned placement did, in words, for the plan's summary. */
+  notes?: string[];
 };
 
 /** A task without an estimate is planned as this long. */
@@ -245,6 +267,58 @@ export function sessions(
   return out;
 }
 
+const clock = (hour: number) => `${String(hour % 24).padStart(2, "0")}:00`;
+const hoursText = (minutes: number) => {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+};
+
+/** What learned placement did, in a sentence or two. */
+function smartNotes(
+  blocks: PlannedBlock[],
+  tasks: Map<string, SchedulerTask>,
+  smart: SmartPlacement,
+  local: (ms: number) => { day: string; hour: number; weekday: number },
+): string[] {
+  const notes: string[] = [];
+  const peak = smart.peak;
+  if (peak) {
+    const inPeak = blocks.filter((b) => {
+      const t = tasks.get(b.item_id);
+      if (!t || b.pinned) return false;
+      const minutes = (Date.parse(b.end_at) - Date.parse(b.start_at)) / MINUTE;
+      const h = local(Date.parse(b.start_at)).hour;
+      return (
+        taskDemand({ priority: t.priority, minutes }) >= 0.6 &&
+        h >= peak.start_hour &&
+        h < peak.end_hour
+      );
+    });
+    if (inPeak.length)
+      notes.push(
+        `${list([...new Set(inPeak.map((b) => b.title))])} ${inPeak.length === 1 ? "is" : "are"} in your best hours (${clock(peak.start_hour)}–${clock(peak.end_hour)}).`,
+      );
+  }
+  if (smart.dayMinutes) {
+    const byDay = new Map<string, { minutes: number; weekday: number }>();
+    for (const b of blocks) {
+      const at = local(Date.parse(b.start_at));
+      const d = byDay.get(at.day) ?? { minutes: 0, weekday: at.weekday };
+      d.minutes += (Date.parse(b.end_at) - Date.parse(b.start_at)) / MINUTE;
+      byDay.set(at.day, d);
+    }
+    const heavy = [...byDay.values()]
+      .filter((d) => d.minutes > smart.dayMinutes! * 1.15)
+      .sort((a, b) => b.minutes - a.minutes)[0];
+    if (heavy)
+      notes.push(
+        `${WEEKDAYS[heavy.weekday]} has ${hoursText(heavy.minutes)} of tasks, more than the ${hoursText(smart.dayMinutes)} you usually get through.`,
+      );
+  }
+  return notes;
+}
+
 /** Titles as a sentence: "A", "A and B", "A, B and C". */
 function list(titles: string[]): string {
   const shown = titles.slice(0, 3);
@@ -255,6 +329,42 @@ function list(titles: string[]): string {
       : shown[0];
   return rest > 0 ? `${joined} and ${rest} more` : joined;
 }
+
+const HOUR = 60 * MINUTE;
+/** Later sessions are tried at these steps within a free stretch. */
+const STEP_MINUTES = 30;
+/** Blocks closer than this count as back to back, for batching. */
+const ADJACENT = 20 * MINUTE;
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/**
+ * How pressed for time a task is, 0–1, by its slack: the free time before it's
+ * due minus the time it still needs (least-slack first). A large task due on
+ * Friday can be more pressing than a small one due tomorrow.
+ */
+export function slackUrgency(
+  freeBeforeDueMinutes: number,
+  remainingMinutes: number,
+) {
+  if (remainingMinutes <= 0) return 0;
+  const slack = freeBeforeDueMinutes - remainingMinutes;
+  return Math.min(1, Math.max(0, 1 - slack / (remainingMinutes + 240)));
+}
+
+/** Free minutes in `free` between `from` and `to`. */
+const freeBetween = (free: Segment[], from: number, to: number) =>
+  free.reduce(
+    (n, s) => n + Math.max(0, Math.min(s.end, to) - Math.max(s.start, from)),
+    0,
+  ) / MINUTE;
 
 export function schedule(input: SchedulerInput): SchedulerResult {
   let free = subtract(windows(input), input.busy);
@@ -267,6 +377,31 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   const lastDay = input.days.at(-1)!;
   const horizonEnd = dayTime(addDays(lastDay, 1), 0, input.timezone).getTime();
   const scoreOf = (t: SchedulerTask) => priorityScore(t, input.now, slot);
+  // Local day and clock time of an instant, cached (the planner asks often).
+  const zoneCache = new Map<
+    number,
+    { day: string; hour: number; minute: number; weekday: number }
+  >();
+  const local = (ms: number) => {
+    let hit = zoneCache.get(ms);
+    if (!hit) {
+      const p = zonedParts(new Date(ms), input.timezone);
+      hit = {
+        day: `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`,
+        hour: p.hour,
+        minute: p.minute,
+        weekday: p.weekday,
+      };
+      zoneCache.set(ms, hit);
+    }
+    return hit;
+  };
+  const dayIndex = (day: string) =>
+    Math.round(
+      (Date.parse(`${day}T00:00:00Z`) -
+        Date.parse(`${input.days[0]}T00:00:00Z`)) /
+        86_400_000,
+    );
 
   // Pinned blocks stay put: they take their time out of what's free (not out
   // of the capacity, which they use) and count towards their task.
@@ -292,12 +427,36 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   }
   if (pinned.length) free = subtract(free, pinned);
 
+  const smart = input.smart;
+  // With learned placement, tasks are also ranked by slack, so big work due
+  // later starts before small work due sooner when it has to.
+  const urgencyOf = new Map<string, number>();
+  if (smart)
+    for (const t of input.tasks) {
+      if (!t.due_at || isClosed(t.status)) continue;
+      const need =
+        (remainingOf(t) -
+          t.scheduled_minutes -
+          (pinnedMinutes.get(t.id) ?? 0)) *
+        (1 + input.padPercent / 100);
+      urgencyOf.set(
+        t.id,
+        slackUrgency(
+          freeBetween(free, input.now.getTime(), Date.parse(t.due_at)),
+          need,
+        ),
+      );
+    }
   const rankedByScore = input.tasks
     .filter((t) => !isClosed(t.status))
-    .map((t) => ({ task: t, score: scoreOf(t) }))
+    .map((t) => ({
+      task: t,
+      score: scoreOf(t),
+      rank: scoreOf(t) + 2 * (urgencyOf.get(t.id) ?? 0),
+    }))
     .sort(
       (a, b) =>
-        b.score - a.score ||
+        b.rank - a.rank ||
         (a.task.due_at ?? "9999").localeCompare(b.task.due_at ?? "9999") ||
         a.task.title.localeCompare(b.task.title),
     );
@@ -406,6 +565,131 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     let blockedByFrames = input.useFrames && input.frames.length > 0;
     let lateSession = false;
     let ok = true;
+    // Earliest slot that ends by the due time; otherwise the earliest at all.
+    const earliestPlace = (candidates: Segment[], need: number) => {
+      const onTime = candidates.find(
+        (s) => Math.max(s.start, ready) + need <= due,
+      );
+      const slot = onTime ?? candidates[0];
+      return slot ? { slot, start: Math.max(slot.start, ready) } : null;
+    };
+    // The best-scoring start among the free stretches, on time if possible.
+    const bestPlace = (
+      candidates: Segment[],
+      need: number,
+      minutes: number,
+    ) => {
+      const options: { slot: Segment; start: number }[] = [];
+      for (const slot of candidates) {
+        const first = Math.max(slot.start, ready);
+        const last = slot.end - need;
+        options.push({ slot, start: first });
+        const step = STEP_MINUTES * MINUTE;
+        for (let t = Math.ceil((first + 1) / step) * step; t < last; t += step)
+          options.push({ slot, start: t });
+        if (last > first) options.push({ slot, start: last });
+      }
+      const onTime = options.filter((o) => o.start + need <= due);
+      const pool = onTime.length ? onTime : options;
+      if (!pool.length) return null;
+      // The earliest option on each day: lateness within a day counts from it.
+      const firstOn = new Map<string, number>();
+      for (const o of pool) {
+        const day = local(o.start).day;
+        firstOn.set(day, Math.min(firstOn.get(day) ?? Infinity, o.start));
+      }
+      const earliest = Math.min(...pool.map((o) => o.start));
+      let best = pool[0];
+      let bestCost = Infinity;
+      for (const o of pool) {
+        const c = placementCost(
+          o.slot,
+          o.start,
+          need,
+          minutes,
+          earliest,
+          firstOn.get(local(o.start).day)!,
+        );
+        if (
+          c < bestCost - 1e-9 ||
+          (Math.abs(c - bestCost) < 1e-9 && o.start < best.start)
+        ) {
+          best = o;
+          bestCost = c;
+        }
+      }
+      return best;
+    };
+    const demandOf = (minutes: number) =>
+      taskDemand({ priority: task.priority, minutes });
+    const pressed = 1 + 2 * (urgencyOf.get(task.id) ?? 0);
+    /**
+     * How good a start is; lower is better. Sooner is better (much more so
+     * for pressing tasks; a day later costs 0.8, each hour later in a day
+     * 0.1);
+     * demanding work gains in hours that usually go well and light work
+     * leaves them free; a session next to related work gains (fewer
+     * switches); leaving a gap too short to use costs; and so does going past
+     * the minutes a day usually gets through.
+     */
+    const placementCost = (
+      slot: Segment,
+      start: number,
+      need: number,
+      minutes: number,
+      earliest: number,
+      firstThatDay: number,
+    ) => {
+      const end = start + need;
+      const here = local(start);
+      const firstDay = local(earliest).day;
+      const daysLater = Math.max(0, dayIndex(here.day) - dayIndex(firstDay));
+      let cost =
+        pressed *
+        (0.8 * daysLater + 0.1 * Math.min(8, (start - firstThatDay) / HOUR));
+      if (smart?.rhythm)
+        cost -=
+          1.2 *
+          (demandOf(minutes) - 0.4) *
+          rhythmFit(smart.rhythm, 1, here.hour, here.minute, minutes);
+      const before = start - Math.max(slot.start, ready);
+      const after = slot.end - end - (minutes >= 45 ? pause : 0);
+      const unusable = input.minBlockMinutes * MINUTE;
+      if (before > 0 && before < unusable) cost += 0.2;
+      if (after > 0 && after < unusable) cost += 0.2;
+      if (smart?.batch && (task.list_id || task.tag_ids.length)) {
+        const related = [...blocks, ...placed].some((b) => {
+          if (b.item_id === task.id) return false;
+          const other = byId.get(b.item_id);
+          if (!other) return false;
+          const touches =
+            Math.abs(Date.parse(b.end_at) - start) <= ADJACENT + pause ||
+            Math.abs(Date.parse(b.start_at) - end) <= ADJACENT + pause;
+          return (
+            touches &&
+            ((!!task.list_id && other.list_id === task.list_id) ||
+              other.tag_ids.some((t) => task.tag_ids.includes(t)))
+          );
+        });
+        if (related) cost -= 0.3;
+      }
+      if (smart?.dayMinutes) {
+        const load = [...blocks, ...placed]
+          .filter((b) => local(Date.parse(b.start_at)).day === here.day)
+          .reduce(
+            (n, b) =>
+              n + (Date.parse(b.end_at) - Date.parse(b.start_at)) / MINUTE,
+            0,
+          );
+        const cap = smart.dayMinutes;
+        const over =
+          Math.max(0, load + minutes - cap) - Math.max(0, load - cap);
+        // An hour past the usual day outweighs moving to the next day,
+        // unless the task is pressing.
+        cost += (3 * over) / 60;
+      }
+      return cost;
+    };
     for (const [index, minutes] of parts.entries()) {
       const need = minutes * MINUTE;
       const fits = (s: Segment) => {
@@ -413,18 +697,16 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         blockedByFrames = false;
         return s.end - Math.max(s.start, ready) >= need;
       };
-      // Earliest slot that ends by the due time; otherwise the earliest at all.
       const candidates = free.filter(fits);
-      const onTime = candidates.find(
-        (s) => Math.max(s.start, ready) + need <= due,
-      );
-      const slot = onTime ?? candidates[0];
-      if (!slot) {
+      const choice = smart
+        ? bestPlace(candidates, need, minutes)
+        : earliestPlace(candidates, need);
+      if (!choice) {
         ok = false;
         break;
       }
-      if (!onTime) lateSession = true;
-      const start = Math.max(slot.start, ready);
+      const { slot, start } = choice;
+      if (start + need > due) lateSession = true;
       const end = start + need;
       placed.push({
         item_id: task.id,
@@ -478,8 +760,9 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   }
 
   blocks.sort((a, b) => a.start_at.localeCompare(b.start_at));
-  // Number the sessions of tasks with pinned blocks again, in time order.
-  for (const id of pinnedMinutes.keys()) {
+  // Number each task's sessions in time order: a short later session can
+  // take a gap before a longer one, and pinned blocks count too.
+  for (const id of new Set(blocks.map((b) => b.item_id))) {
     const own = blocks.filter((b) => b.item_id === id);
     own.forEach((b, i) => {
       b.part = i + 1;
@@ -496,5 +779,6 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     at_risk: atRisk,
     capacity_minutes: Math.round(capacity),
     planned_minutes: Math.round(planned),
+    ...(smart ? { notes: smartNotes(blocks, byId, smart, local) } : {}),
   };
 }

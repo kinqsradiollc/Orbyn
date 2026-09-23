@@ -662,6 +662,7 @@ export function App() {
                     navigate("AI assistant");
                     void assistant.ask(planDayPrompt);
                   }}
+                  onFocus={startFocus}
                 />
               )}
               {view === "My tasks" && (

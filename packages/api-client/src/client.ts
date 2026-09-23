@@ -124,6 +124,8 @@ import {
   type RsvpView,
   type UserAvailability,
   type EstimateModel,
+  type PlannerLearning,
+  type UpNext,
   type Frame,
   type FrameInput,
   type FrameUpdate,
@@ -1216,6 +1218,14 @@ export class OrbynClient {
   /** What the planner has learned about how long your tasks really take. */
   getEstimates() {
     return this.request<EstimateModel>("/planner/estimates");
+  }
+  /** Everything the planner has learned from your history. */
+  getLearning() {
+    return this.request<PlannerLearning>("/planner/learning");
+  }
+  /** What to do now: the free time until your next event and tasks for it. */
+  getUpNext() {
+    return this.request<UpNext>("/planner/next");
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {

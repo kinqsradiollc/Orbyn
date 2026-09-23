@@ -22,6 +22,7 @@ import {
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { WorkspaceStrip } from "./WorkspaceStrip";
+import { UpNextCard } from "./UpNextCard";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -40,6 +41,8 @@ type Props = {
   onNewItem: () => void;
   onNavigate: (view: View) => void;
   onPlanDay: () => void;
+  /** Starts focus mode on a task. */
+  onFocus: (item: Item) => void;
 };
 
 export function OverviewView({
@@ -52,6 +55,7 @@ export function OverviewView({
   onNavigate,
   onPlanDay,
   onOpenDoc,
+  onFocus,
 }: Props) {
   const now = new Date();
   const {
@@ -176,6 +180,7 @@ export function OverviewView({
           </OverviewSection>
         </div>
         <div>
+          <UpNextCard items={items} onOpen={onOpen} onFocus={onFocus} />
           <section className="assistant-card">
             <span className="sparkle-box">
               <Sparkles size={23} />

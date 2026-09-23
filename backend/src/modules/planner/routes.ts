@@ -33,6 +33,9 @@ import {
   rollForwardInput,
   type CalendarView,
   type EstimateModel,
+  type PlannerLearning,
+  type UpNext,
+  estimateModelOf,
   type Frame,
   type FrameOccurrence,
   type Habit,
@@ -80,6 +83,8 @@ import { icsFeed } from "./ics.js";
 import { externalEntries } from "./subscriptions.js";
 import { buildEvening, buildMorning } from "../../worker/digest.js";
 import { loadEstimateModel } from "./estimates.js";
+import { loadLearning } from "./learning.js";
+import { upNext } from "./next.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
 import {
   createHabit,
@@ -199,6 +204,8 @@ export async function plannerRoutes(app: FastifyInstance) {
         },
         digest: { ...current.digest!, ...d.digest },
         learn_estimates: d.learn_estimates ?? current.learn_estimates,
+        learn_rhythm: d.learn_rhythm ?? current.learn_rhythm,
+        balance_load: d.balance_load ?? current.balance_load,
       };
       if (next.work_end <= next.work_start)
         fail(422, "Working hours must end after they start.");
@@ -221,9 +228,10 @@ export async function plannerRoutes(app: FastifyInstance) {
            buffer_before_minutes, buffer_after_minutes, adaptive_buffers,
            default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
            deadline_notice_days, planner_notices, default_alerts, count_blocks_as_spent,
-           buffer_scope, travel_padding_minutes, digest, learn_estimates, updated_at)
+           buffer_scope, travel_padding_minutes, digest, learn_estimates,
+           learn_rhythm, balance_load, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-           $21,$22,$23,$24,$25, now())
+           $21,$22,$23,$24,$25,$26,$27, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
@@ -231,7 +239,8 @@ export async function plannerRoutes(app: FastifyInstance) {
            extra_timezones=$15, calendar_sets=$16, pinned_user_ids=$17,
            deadline_notice_days=$18, planner_notices=$19, default_alerts=$20,
            count_blocks_as_spent=$21, buffer_scope=$22, travel_padding_minutes=$23,
-           digest=$24, learn_estimates=$25, updated_at=now()`,
+           digest=$24, learn_estimates=$25, learn_rhythm=$26, balance_load=$27,
+           updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -258,6 +267,8 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.travel_padding_minutes ?? 0,
           JSON.stringify(next.digest),
           next.learn_estimates ?? false,
+          next.learn_rhythm ?? true,
+          next.balance_load ?? true,
         ],
       );
       // Picking a zone here is a choice: the apps stop adopting the
@@ -312,6 +323,27 @@ export async function plannerRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const prefs = await loadPrefs(db, u.id);
     return loadEstimateModel(db, u.id, !!prefs.learn_estimates);
+  });
+
+  // Everything the planner has learned from your history: how long tasks
+  // take, the hours that usually go well, and how much a day usually holds.
+  app.get("/planner/learning", async (r): Promise<PlannerLearning> => {
+    const u = await authenticate(r);
+    const db = reader(r.headers);
+    const prefs = await loadPrefs(db, u.id);
+    const l = await loadLearning(db, u.id, prefs.timezone);
+    return {
+      estimates: estimateModelOf(l.durations, !!prefs.learn_estimates),
+      rhythm: { ...l.rhythm, applied: prefs.learn_rhythm !== false },
+      load: { ...l.load, applied: prefs.balance_load !== false },
+    };
+  });
+
+  // What to do now: the free time until your next event and the tasks worth
+  // starting in it, with the reasons.
+  app.get("/planner/next", async (r): Promise<UpNext> => {
+    const u = await authenticate(r);
+    return upNext(reader(r.headers), u.id);
   });
 
   // Where your set-aside time went: totals, by list and by tag, over a window.

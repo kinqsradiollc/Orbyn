@@ -336,6 +336,57 @@
   font-weight: 600;
 }
 
+/* How each working hour usually goes (Planning → What Orbyn has learned). */
+.hour-strip {
+  margin: 12px 0 0;
+  max-width: 360px;
+}
+.hour-strip-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+}
+.hour-strip-bars span {
+  flex: 1;
+  min-width: 6px;
+  border-radius: 4px 4px 2px 2px;
+}
+.hour-strip .is-good {
+  background: var(--green);
+}
+.hour-strip .is-slipping {
+  background: var(--color-muted);
+}
+.hour-strip .is-even {
+  background: var(--color-track);
+}
+.hour-strip-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.hour-strip-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.hour-strip-legend i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+.hour-strip-legend i + i {
+  margin-left: 8px;
+}
+
 /* Two-step verification setup and recovery codes. */
 .two-factor-on {
   display: flex;

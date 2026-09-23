@@ -3,11 +3,14 @@ import {
   addDays,
   clockMinutes,
   dayTime,
+  guessEstimate,
   hasTeamPermission,
+  learnedRatio,
   itemBody,
   localDateKey,
   weekdayOf,
   type AtRiskTask,
+  type GuessedEstimate,
   type BusyInterval,
   type Frame,
   type Item,
@@ -33,7 +36,7 @@ import {
   timeBlocks,
 } from "./calendar.js";
 import { loadFrames } from "./frames.js";
-import { loadEstimateModel, ratioFor } from "./estimates.js";
+import { loadLearning, smartPlacementOf } from "./learning.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
   remainingOf,
@@ -87,7 +90,7 @@ export const CHILD_COLUMNS = `
  * assigned to you, narrowed by `scope`. Naming tasks (`only`) lets it plan
  * any task you can see; `include` adds tasks you can see to either.
  */
-async function candidateTasks(
+export async function candidateTasks(
   db: Db,
   userId: string,
   options: {
@@ -153,7 +156,7 @@ const hoursLabel = (minutes: number) => {
 };
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** One sentence about a plan, for the preview and the assistant. */
+/** A sentence or three about a plan, for the preview and the assistant. */
 export function describePlan(result: SchedulerResult, days: number) {
   const tasks = new Set(result.blocks.map((b) => b.item_id)).size;
   const notes: string[] = [];
@@ -168,6 +171,7 @@ export function describePlan(result: SchedulerResult, days: number) {
   return [
     `${plural(tasks, "task")} in ${plural(result.blocks.length, "block")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
     ...notes,
+    ...(result.notes ?? []),
   ].join(" ");
 }
 
@@ -317,17 +321,28 @@ export async function computePlan(
   const excluded = new Set(
     state.exclude_item_ids.filter((id) => !include.includes(id)),
   );
-  // How long this person's tasks really take, applied only when they opt in.
-  const model = await loadEstimateModel(db, userId, !!prefs.learn_estimates);
+  // What this person's history says: how long their tasks really take
+  // (applied only when they opt in), the hours that go well and how much a
+  // day usually holds (see learning.ts).
+  const learning = await loadLearning(db, userId, tz, now);
+  const guessed = new Map<string, GuessedEstimate>();
   const tuned = (t: Candidate): SchedulerTask => {
     if (state.estimates[t.id])
       return { ...t, estimate_minutes: state.estimates[t.id] };
-    if (model.applied && t.estimate_minutes != null) {
-      const r = ratioFor(t, model);
+    if (!prefs.learn_estimates) return t;
+    if (t.estimate_minutes != null) {
+      const r = learnedRatio(t, learning.durations);
       if (r !== 1)
         return { ...t, estimate_minutes: Math.round(t.estimate_minutes * r) };
+      return t;
     }
-    return t;
+    // No estimate: plan for what similar finished tasks took, not 30 minutes.
+    // A parent with open subtasks is planned through them instead.
+    if (t.open_children) return t;
+    const guess = guessEstimate(t, learning.durations);
+    if (!guess) return t;
+    guessed.set(t.id, guess);
+    return { ...t, estimate_minutes: guess.minutes };
   };
   const planned = tasks.filter((t) => !excluded.has(t.id)).map(tuned);
   const options: PlanOptions = {
@@ -362,9 +377,20 @@ export async function computePlan(
     minBlockMinutes: prefs.min_block_minutes,
     breakLevel: options.break_level,
     pinned: state.pinned_blocks,
+    smart: smartPlacementOf(learning, prefs),
     now,
   });
-  return { state, inputs, tasks, excluded, options, result, start, days };
+  return {
+    state,
+    inputs,
+    tasks,
+    excluded,
+    options,
+    result,
+    start,
+    days,
+    guessed,
+  };
 }
 
 /**
@@ -378,10 +404,19 @@ export async function makePlan(
   now = new Date(),
   estimatesSaved: string[] = [],
 ): Promise<Plan> {
-  const { state, inputs, tasks, excluded, options, result, start, days } =
-    await computePlan(db, userId, d, now);
+  const {
+    state,
+    inputs,
+    tasks,
+    excluded,
+    options,
+    result,
+    start,
+    days,
+    guessed,
+  } = await computePlan(db, userId, d, now);
   const summary = describePlan(result, days);
-  const checklist = planTasks(tasks, excluded, state, result);
+  const checklist = planTasks(tasks, excluded, state, result, guessed);
   // Tuning makes the same days again, even once tomorrow has become today.
   const stored: PlanState = { ...state, start_date: start };
   const row = (
@@ -429,6 +464,7 @@ function planTasks(
   excluded: Set<string>,
   state: PlanState,
   result: SchedulerResult,
+  guessed: Map<string, GuessedEstimate>,
 ): PlanTask[] {
   return tasks.map((t) => {
     const minutes = result.blocks
@@ -438,7 +474,9 @@ function planTasks(
           sum + (Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000,
         0,
       );
-    const estimate = state.estimates[t.id] ?? t.estimate_minutes;
+    const guess = guessed.get(t.id) ?? null;
+    const estimate =
+      state.estimates[t.id] ?? t.estimate_minutes ?? guess?.minutes ?? null;
     const remaining =
       remainingOf({ ...t, estimate_minutes: estimate }) - t.scheduled_minutes;
     const unplaced = result.unplaced.find((u) => u.item_id === t.id);
@@ -457,6 +495,7 @@ function planTasks(
       list_id: t.list_id,
       estimate_minutes: estimate,
       estimate_tuned: state.estimates[t.id] !== undefined,
+      estimate_guess: guess && { minutes: guess.minutes, basis: guess.basis },
       included,
       planned_minutes: Math.round(minutes),
       reason,
