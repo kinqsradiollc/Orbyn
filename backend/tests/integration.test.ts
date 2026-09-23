@@ -699,5 +699,9 @@ test("an approved project persists its dependencies, its stages and its calendar
   const edgesAfter = await pool.query(
     "SELECT count(*)::int AS n FROM item_dependencies",
   );
-  assert.equal(edgesAfter.rows[0].n, edgeCountBefore + 2, "re-approval is idempotent");
+  assert.equal(
+    edgesAfter.rows[0].n,
+    edgeCountBefore + 2,
+    "re-approval is idempotent",
+  );
 });

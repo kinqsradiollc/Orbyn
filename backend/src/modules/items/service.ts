@@ -429,7 +429,10 @@ async function setPrerequisites(
       [itemId, wanted],
     );
     if (cycle.rowCount)
-      fail(422, "That would make a loop: these tasks would wait on each other.");
+      fail(
+        422,
+        "That would make a loop: these tasks would wait on each other.",
+      );
   }
   await db.query("DELETE FROM item_dependencies WHERE item_id = $1", [itemId]);
   if (wanted.length)
