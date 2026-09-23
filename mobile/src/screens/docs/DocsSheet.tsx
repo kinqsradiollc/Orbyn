@@ -38,6 +38,7 @@ import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
 import { useDocComments } from "./useDocComments";
+import { PressableScale } from "../../motion";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -627,9 +628,9 @@ export function DocsSheet({
           ) : (
             <View style={styles.list}>
               <View style={styles.libraryToolbar}>
-                <Button
-                  title="All folders"
-                  secondary
+                <SmallAction
+                  label="All folders"
+                  disabled={false}
                   onPress={() => setNavigationOpen(true)}
                 />
                 <SmallAction
@@ -722,25 +723,32 @@ export function DocsSheet({
                     : `${hits.length} found`}
                 </Text>
               )}
-              <View style={styles.newRow}>
+              {/* The main way in full width, the other two side by side, as
+              on Projects. */}
+              <View style={styles.newActions}>
                 <Button
                   title="New document"
-                  secondary
+                  icon="plus"
                   disabled={busy}
+                  style={styles.newFull}
                   onPress={() => create("doc")}
                 />
-                <Button
-                  title="New note"
-                  secondary
-                  disabled={busy}
-                  onPress={() => create("note")}
-                />
-                <Button
-                  title={imports.busy ? "Uploading…" : "Import file"}
-                  secondary
-                  disabled={imports.busy}
-                  onPress={importFile}
-                />
+                <View style={styles.newRow}>
+                  <Button
+                    title="New note"
+                    secondary
+                    disabled={busy}
+                    style={styles.newHalf}
+                    onPress={() => create("note")}
+                  />
+                  <Button
+                    title={imports.busy ? "Uploading…" : "Import file"}
+                    secondary
+                    disabled={imports.busy}
+                    style={styles.newHalf}
+                    onPress={importFile}
+                  />
+                </View>
               </View>
               {!!filing && (
                 <View style={styles.filing}>
@@ -847,37 +855,36 @@ export function DocsSheet({
                         )}
                       </>
                     )}
-                    <View style={styles.row}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${doc.title || "Untitled"}`}
-                        disabled={busy}
-                        style={({ pressed }) => [
-                          styles.rowOpen,
-                          pressed && styles.rowPressed,
-                        ]}
-                        onPress={() => openHit(doc.id)}
-                      >
-                        <View style={styles.rowTop}>
-                          <Icon
-                            name="fileText"
-                            size={16}
-                            color={colors.muted}
-                          />
-                          <Text style={styles.rowTitle} numberOfLines={2}>
-                            {doc.title || "Untitled"}
-                          </Text>
-                        </View>
-                        {/* The time leads the preview rather than sitting up on
+                    {/* The whole card opens the page, as project cards do; the
+                    star and the folder are buttons of their own inside it. A
+                    short delay keeps a scroll from flashing the card. */}
+                    <PressableScale
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                      disabled={busy}
+                      unstable_pressDelay={90}
+                      scaleTo={0.985}
+                      style={({ pressed }) => [
+                        styles.row,
+                        pressed && styles.rowPressed,
+                      ]}
+                      onPress={() => openHit(doc.id)}
+                    >
+                      <View style={styles.rowTop}>
+                        <Icon name="fileText" size={16} color={colors.muted} />
+                        <Text style={styles.rowTitle} numberOfLines={2}>
+                          {doc.title || "Untitled"}
+                        </Text>
+                      </View>
+                      {/* The time leads the preview rather than sitting up on
                       the title's line, where it cost the title the 20pt that
                       turned "Monday 21 September" into "Monday 21 Septe…". */}
-                        <Text style={styles.rowPreview} numberOfLines={2}>
-                          <Text style={styles.rowWhen}>
-                            {when(doc.updated_at)}
-                          </Text>
-                          {"  ·  " + (doc.preview || "Empty document")}
+                      <Text style={styles.rowPreview} numberOfLines={2}>
+                        <Text style={styles.rowWhen}>
+                          {when(doc.updated_at)}
                         </Text>
-                      </Pressable>
+                        {"  ·  " + (doc.preview || "Empty document")}
+                      </Text>
                       <View style={styles.rowActions}>
                         <Text style={styles.rowKind}>
                           {doc.kind === "note"
@@ -886,8 +893,6 @@ export function DocsSheet({
                               ? "Agenda"
                               : "Document"}
                         </Text>
-                        {/* The star and the folder sit outside the row's own press,
-                        or tapping either would open the page instead. */}
                         <Pressable
                           onPress={(event) => {
                             event.stopPropagation();
@@ -938,7 +943,7 @@ export function DocsSheet({
                           </Pressable>
                         )}
                       </View>
-                    </View>
+                    </PressableScale>
                   </View>
                 ))}
             </View>
@@ -1142,7 +1147,11 @@ const styles = themed(() =>
       borderLeftWidth: 1,
       borderLeftColor: colors.border,
     },
-    newRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+    newActions: { gap: 8 },
+    newRow: { flexDirection: "row", gap: 8 },
+    // The containers' gaps space these; the button's own margin would double it.
+    newFull: { marginBottom: 0 },
+    newHalf: { flex: 1, minWidth: 0, marginBottom: 0 },
     search: {
       color: colors.text,
       fontSize: 15,
@@ -1181,16 +1190,23 @@ const styles = themed(() =>
     // preview was down to 125pt — "We ship the conne…" — which told nobody
     // anything.
     row: {
-      gap: 4,
-      padding: 12,
+      gap: 8,
+      paddingTop: 16,
+      paddingHorizontal: 16,
+      paddingBottom: 6,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    rowOpen: { gap: 10, minHeight: 64, borderRadius: 8 },
     rowPressed: { backgroundColor: colors.surfaceMuted },
-    rowActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+    // The icons keep 44pt targets; the negative margin stops those targets
+    // from padding the card's edge.
+    rowActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginRight: -12,
+    },
     rowKind: {
       flex: 1,
       fontFamily: fonts.medium,
