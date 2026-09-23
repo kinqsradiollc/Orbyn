@@ -191,7 +191,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           </div>
         </dl>
         {settings?.source === "none" && (
-          <p className="muted pad ai-note">
+          <p className="muted pad ai-providers-note">
             The assistant is off. Add a provider below and choose Use for
             assistant.
           </p>
@@ -248,7 +248,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           </button>
         </div>
         <div className="table-wrap">
-          <table className="data-table ai-table">
+          <table className="data-table ai-providers-table">
             <thead>
               <tr>
                 <th>Provider</th>
@@ -393,7 +393,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                         </p>
                       )}
                     </td>
-                    <td className="row-actions ai-actions">
+                    <td className="row-actions ai-provider-actions">
                       <button
                         className="link-button"
                         disabled={busy}

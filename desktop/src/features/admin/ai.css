@@ -21,16 +21,16 @@
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.ai-note {
+.ai-providers-note {
   margin: -8px 0 0;
   font-size: 12px;
 }
 
-/* Provider table */
-.ai-table {
+/* Provider table (its own class: the chat's Markdown tables are .ai-table) */
+.ai-providers-table {
   min-width: 860px;
 }
-.ai-table td {
+.ai-providers-table td {
   vertical-align: top;
 }
 .ai-kind {
@@ -87,7 +87,7 @@
 .ai-test.fail {
   color: #b0573b;
 }
-.ai-actions {
+.ai-provider-actions {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
