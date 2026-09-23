@@ -42,6 +42,9 @@ export async function createService(
       ],
     },
     bodyLimit: 65536,
+    // Route parameters may be long: a signed upload link for importing into
+    // Docs (/files/u/<link>) is about 250 characters, past the default 100.
+    routerOptions: { maxParamLength: 1024 },
     // The gateway's request id when it sent a sane one, so a request can be
     // followed from nginx through the service that answered it.
     requestIdHeader: false,
