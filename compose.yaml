@@ -43,6 +43,13 @@ x-http-health: &http-health
 services:
   postgres:
     image: postgres:17-alpine
+    # The first-start script is copied in with Windows line endings removed:
+    # a checkout on Windows would otherwise fail with "/bin/sh^M: bad
+    # interpreter" and leave the database half set up.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /etc/orbyn-postgres/primary-replication.sh > /docker-entrypoint-initdb.d/10-replication.sh && exec docker-entrypoint.sh postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-orbyn}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -51,7 +58,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # First start only: allow streaming replicas (see the replica profile).
-      - ./deploy/postgres/primary-replication.sh:/docker-entrypoint-initdb.d/10-replication.sh:ro
+      - ./deploy/postgres/primary-replication.sh:/etc/orbyn-postgres/primary-replication.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -331,7 +338,11 @@ services:
     image: ${MADDY_IMAGE:-foxcpp/maddy:0.9.5}
     profiles: [mail]
     hostname: ${MAIL_HOSTNAME:-mail.localhost}
-    entrypoint: ["/bin/sh", "/data/conf/start.sh"]
+    # Windows line endings are stripped first, as for the gateway.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /data/conf/start.sh > /tmp/mail-start.sh && exec /bin/sh /tmp/mail-start.sh
     environment:
       MAIL_CONFIG: ${MAIL_CONFIG:-maddy.conf}
       MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.localhost}
