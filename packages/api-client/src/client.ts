@@ -4,6 +4,12 @@ import {
   type AdminAnalytics,
   type AdminUserDetail,
   type Announcement,
+  type LegalAdminView,
+  type LegalDoc,
+  type LegalDocument,
+  type LegalSettingsUpdate,
+  type LegalSummary,
+  type PrivacyView,
   type RequestLogRow,
   type RequestSummary,
   type SweepView,
@@ -1978,6 +1984,43 @@ export class OrbynClient {
   }
   adminExportUser(id: string) {
     return this.request<unknown>(`/admin/users/${id}/export`);
+  }
+  // ---- terms, privacy and consent ----
+  /** Who runs the service and the current Terms and Privacy versions. */
+  legal() {
+    return this.request<LegalSummary>("/legal", { anonymous: true });
+  }
+  legalDocument(doc: LegalDoc) {
+    return this.request<LegalDocument>(`/legal/${doc}`, { anonymous: true });
+  }
+  /** Accept the Terms and Privacy Policy at this version. */
+  acceptTerms(termsVersion: string) {
+    return this.request<{ terms_version: string }>("/me/consent", {
+      method: "POST",
+      body: { terms_version: termsVersion },
+    });
+  }
+  privacy() {
+    return this.request<PrivacyView>("/me/privacy");
+  }
+  setPrivacy(input: { analytics_opt_out: boolean }) {
+    return this.request<PrivacyView>("/me/privacy", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Delete your own account for good. */
+  deleteAccount(input: { password?: string; confirm_email?: string }) {
+    return this.request<void>("/me", { method: "DELETE", body: input });
+  }
+  adminLegal() {
+    return this.request<LegalAdminView>("/admin/legal");
+  }
+  updateLegal(input: LegalSettingsUpdate) {
+    return this.request<LegalAdminView>("/admin/legal", {
+      method: "PUT",
+      body: input,
+    });
   }
   /** The notice everyone sees, or null. */
   announcement() {

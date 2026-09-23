@@ -681,6 +681,26 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="/status" className="text-button" onClick={openStatus}>
             Status
           </a>
+          <a
+            href="/privacy"
+            className="text-button"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("/privacy");
+            }}
+          >
+            Privacy Policy
+          </a>
+          <a
+            href="/terms"
+            className="text-button"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("/terms");
+            }}
+          >
+            Terms
+          </a>
           <button
             className="text-button"
             onClick={() => onNavigate(signedIn ? "/app" : "/login")}

@@ -36,6 +36,8 @@ import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
 import { HomePage } from "../features/home/HomePage";
+import { LegalPage } from "../features/legal/LegalPage";
+import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
@@ -47,7 +49,7 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { Doc } from "@orbyn/core";
+import type { Doc, LegalSummary } from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
@@ -110,6 +112,26 @@ export function App() {
     refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
+  /** The current Terms version, to know whether to ask for agreement. */
+  const [legal, setLegal] = useState<LegalSummary | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const check = () =>
+      client
+        .legal()
+        .then((l) => alive && setLegal(l))
+        .catch(() => {
+          // Keep the last known version; the next check tries again.
+        });
+    void check();
+    // A version published mid-session is asked for within the quarter hour.
+    const timer = setInterval(() => void check(), 15 * 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [token]);
   usePresence(token, () => void refresh({ silent: true }));
   const [view, setView] = useState<View>("Overview");
   const [query, setQuery] = useState("");
@@ -181,21 +203,32 @@ export function App() {
             description: `${app} Orbyn plans your day around them, with an AI assistant that asks first. Web, desktop, iOS and Android.`,
             index: true,
           }
-        : path === "/status"
+        : path === "/terms" || path === "/privacy"
           ? {
-              title: "Service status · Orbyn",
-              description: "Whether every part of Orbyn is up right now.",
-              index: false,
+              title:
+                (path === "/terms" ? "Terms of Service" : "Privacy Policy") +
+                " · Orbyn",
+              description:
+                path === "/terms"
+                  ? "The terms for using Orbyn."
+                  : "What Orbyn collects, why, how long it's kept, and your rights.",
+              index: true,
             }
-          : token
-            ? { title: view + " · Orbyn", description: app, index: false }
-            : path === "/login"
-              ? { title: "Sign in · Orbyn", description: app, index: false }
-              : {
-                  title: "Create your space · Orbyn",
-                  description: app,
-                  index: false,
-                },
+          : path === "/status"
+            ? {
+                title: "Service status · Orbyn",
+                description: "Whether every part of Orbyn is up right now.",
+                index: false,
+              }
+            : token
+              ? { title: view + " · Orbyn", description: app, index: false }
+              : path === "/login"
+                ? { title: "Sign in · Orbyn", description: app, index: false }
+                : {
+                    title: "Create your space · Orbyn",
+                    description: app,
+                    index: false,
+                  },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -217,7 +250,12 @@ export function App() {
   // ⌘K / Ctrl+K opens the command bar anywhere in the app. "?" shows the
   // shortcuts and N starts a new item, unless you're typing or a dialog,
   // panel or menu is open.
-  const inShell = !(path === "/status" || (!nativeDesktop && path === "/"));
+  const inShell = !(
+    path === "/status" ||
+    path === "/terms" ||
+    path === "/privacy" ||
+    (!nativeDesktop && path === "/")
+  );
   useEffect(() => {
     if (!token || isPublicBooking || !inShell) return;
     const onKey = (e: KeyboardEvent) => {
@@ -441,6 +479,17 @@ export function App() {
       />
     );
 
+  // Terms and Privacy: public, signed in or not.
+  if (path === "/terms" || path === "/privacy")
+    return (
+      <LegalPage
+        doc={path === "/terms" ? "terms" : "privacy"}
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
   // Public booking pages: no sign-in, no app shell.
   if (isPublicBooking)
     return path.startsWith("/rsvp/") ? (
@@ -494,6 +543,17 @@ export function App() {
       <VerifyGate
         email={user.email}
         onContinue={() => void refreshUser()}
+        onLogout={() => void planner.logout()}
+      />
+    );
+
+  // Signed in but not on the current Terms: ask before the app.
+  if (token && user && legal && user.terms_version !== legal.terms_version)
+    return (
+      <ConsentGate
+        user={user}
+        legal={legal}
+        onAccepted={() => void refreshUser()}
         onLogout={() => void planner.logout()}
       />
     );
@@ -742,6 +802,10 @@ export function App() {
                   report={report}
                   onEmailReminders={planner.setEmailReminders}
                   onOpenStatus={() => navigatePath("/status")}
+                  onAccountDeleted={() => {
+                    planner.clearSession();
+                    navigatePath("/", true);
+                  }}
                 />
               )}
             </div>

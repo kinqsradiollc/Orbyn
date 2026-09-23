@@ -69,13 +69,19 @@ with 0 for none, map 1–3 to `high`, 4–6 and 0 to `medium` and 7–9 to `low`
 {
   "email": "you@example.com",
   "password": "at least 10 characters",
-  "name": "My space"
+  "name": "My space",
+  "accept_terms": "2026-09-23"
 }
 ```
 
-→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders", "email_verified", "role", "handle", "bio" } }`
+→ `201 { "token": "...", "user": { "id", "email", "name", "email_reminders", "email_verified", "role", "handle", "bio", "terms_version", "analytics_opt_out" } }`
 
 The email is trimmed and lowercased; a blank or missing `name` becomes "My space".
+
+`accept_terms` is the agreement version (`GET /legal` → `terms_version`) the person agreed to on the
+sign-up form, having confirmed they are 16 or older. It is recorded only when it matches the current
+version; without it (older apps) the account is made with `terms_version: null` and the apps ask for
+agreement once signed in.
 
 When a mail server is configured, a new member starts with `email_verified: false` and gets a
 confirmation email; until they confirm (or an admin does), every route except `GET /me`,
@@ -201,6 +207,47 @@ Sign-in (no auth):
   same response as register. A bad handle or assertion is `401`.
 
 Challenges are single-use and expire after five minutes.
+
+## Terms, privacy and consent
+
+The Terms of Service and Privacy Policy ship with Orbyn as starting texts (`packages/core/src/legal.ts`)
+with `{{placeholders}}` an admin fills in. People agree to one **agreement version** — the newer of the
+two documents' versions — so publishing either document asks everyone to review it again. Both apps
+hold a signed-in person at a consent screen while `user.terms_version` differs from it. The API does
+not block other routes on it.
+
+### `GET /legal` → `{ company, contact_email, terms_version, privacy_version, minimum_age }`
+
+Public. `terms_version` is the agreement version.
+
+### `GET /legal/:doc` → `{ doc, title, version, body }`
+
+Public. `doc` is `terms` or `privacy`; `body` is Markdown with the placeholders filled. `404` otherwise.
+
+### `POST /me/consent` (auth)
+
+`{ "terms_version": "2026-09-23" }` → `{ terms_version }`. `409` when it isn't the current version.
+Recorded in `consent_log`.
+
+### `GET /me/privacy` (auth) / `PUT /me/privacy` (auth)
+
+→ `{ terms_version, terms_accepted_at, current_terms_version, analytics_opt_out, history }`.
+`PUT` takes `{ "analytics_opt_out": bool }`. Opting out stops counting the account in
+`daily_activity` (requests are still logged in `request_log` for security) and deletes what was
+already counted. Each change is recorded in `consent_log`.
+
+### `DELETE /me` (auth)
+
+Delete your own account: `{ "password": "..." }` → `204`. `401` for a wrong password, `409` for the
+last active admin. Teams you solely own pass to their most senior remaining member (a team left with
+nobody is deleted) and team items move to an owner, as with the admin delete.
+
+### `GET /admin/legal` / `PUT /admin/legal` (`system:manage`)
+
+→ `{ settings, defaults, missing, accepted_current, users, analytics_opted_out }`. `PUT` takes any of
+`{ company, contact_email, jurisdiction, processors, terms_body, privacy_body, publish }`: a `null`
+body goes back to the starting text, and `publish: ["terms"|"privacy"]` gives those documents a new
+version newer than the current agreement (today's date, `.2`, `.3`… on the same day). Audited.
 
 ## Profile
 

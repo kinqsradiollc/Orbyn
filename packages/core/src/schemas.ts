@@ -40,6 +40,12 @@ export const credentials = z.object({
     .max(80)
     .optional()
     .transform((s) => s || "My space"),
+  /**
+   * The Terms version the person agreed to on the sign-up form, having
+   * confirmed they're old enough. Older apps don't send it; they're asked to
+   * accept once signed in.
+   */
+  accept_terms: z.string().trim().min(1).max(40).optional(),
 });
 
 /** Signing in checks the password itself, not the sign-up rules, so a

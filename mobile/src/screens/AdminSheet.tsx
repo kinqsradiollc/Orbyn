@@ -30,6 +30,7 @@ import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AdminAi } from "./AdminAi";
+import { LegalCard } from "./AdminLegal";
 import { AdminDatabase } from "./AdminDatabase";
 import {
   AdminAccount,
@@ -200,6 +201,8 @@ export function AdminSheet({
                 />
                 <View style={s.spacer} />
                 <AnnouncementCard act={act} busy={busy} />
+                <View style={s.spacer} />
+                <LegalCard act={act} busy={busy} />
                 <View style={s.spacer} />
                 <RetentionCard act={act} busy={busy} />
               </>

@@ -37,6 +37,8 @@ export type SignInInput = {
   register: boolean;
   /** A two-step code, when the account has it on. */
   code?: string;
+  /** The Terms version agreed to on the sign-up form. */
+  acceptTerms?: string;
 };
 
 /**
@@ -306,6 +308,7 @@ export function usePlanner() {
     name,
     register,
     code,
+    acceptTerms,
   }: SignInInput): Promise<boolean> => {
     // Clean values: no stray spaces, and a blank name means the default.
     const address = email.trim();
@@ -316,6 +319,7 @@ export function usePlanner() {
             email: address,
             password,
             name: name.trim() || undefined,
+            accept_terms: acceptTerms || undefined,
           })
         : await client.login({
             email: address,
@@ -344,6 +348,15 @@ export function usePlanner() {
       // This phone leaves presence while the session can still say so.
       await client.leavePresence(deviceId()).catch(() => {});
       await client.logout();
+      await clearOutbox();
+      await clearSession();
+      resetSession();
+    });
+
+  /** Forget this sign-in on the phone only: the account is already gone. */
+  const forgetSession = () =>
+    act(async () => {
+      await disablePush().catch(() => {});
       await clearOutbox();
       await clearSession();
       resetSession();
@@ -380,6 +393,7 @@ export function usePlanner() {
     refresh,
     signIn,
     signOut,
+    forgetSession,
     refreshUser,
     twoFactorRequired,
     resetTwoFactor: () => setTwoFactorRequired(false),

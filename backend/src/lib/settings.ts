@@ -1,8 +1,10 @@
-import type {
-  Announcement,
-  Maintenance,
-  SystemSettingKey,
-  SystemSettingsView,
+import {
+  defaultLegalSettings,
+  type Announcement,
+  type LegalSettings,
+  type Maintenance,
+  type SystemSettingKey,
+  type SystemSettingsView,
 } from "@orbyn/core";
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
@@ -37,6 +39,8 @@ export type LiveSettings = {
   maintenance: Maintenance;
   /** A notice admins show everyone, in every app, until cleared or `until`. */
   announcement: Announcement;
+  /** Who runs the service and the current Terms and Privacy Policy. */
+  legal: LegalSettings;
   sources: Record<SystemSettingKey, "database" | "environment">;
   updated_at: string | null;
 };
@@ -63,6 +67,7 @@ function fromEnvironment(): LiveSettings {
     },
     maintenance: { enabled: false, message: "", until: null, updated_at: null },
     announcement: { message: "", tone: "info", until: null, updated_at: null },
+    legal: defaultLegalSettings(),
     sources: Object.fromEntries(
       SETTING_KEYS.map((k) => [k, "environment"]),
     ) as LiveSettings["sources"],
@@ -90,6 +95,17 @@ async function load(): Promise<LiveSettings> {
         tone: a.tone === "warning" ? "warning" : "info",
         until: a.until ?? null,
         updated_at: row.updated_at.toISOString(),
+      };
+      continue;
+    }
+    if (row.key === "legal") {
+      const l = row.value as Partial<LegalSettings>;
+      const d = defaultLegalSettings();
+      next.legal = {
+        ...d,
+        ...l,
+        terms: { ...d.terms, ...l.terms },
+        privacy: { ...d.privacy, ...l.privacy },
       };
       continue;
     }

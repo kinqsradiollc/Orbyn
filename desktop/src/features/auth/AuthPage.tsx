@@ -1,4 +1,7 @@
+import { useEffect, useState, type MouseEvent } from "react";
 import { ArrowRight, KeyRound, Orbit } from "lucide-react";
+import { MINIMUM_AGE } from "@orbyn/core";
+import { client } from "../../lib/api";
 import type { AuthMode } from "../../hooks/usePlanner";
 
 type Props = {
@@ -25,6 +28,36 @@ export function AuthPage({
   onPasskey,
 }: Props) {
   const register = initialMode === "register";
+  /** The Terms version the checkbox agrees to; empty until it loads. */
+  const [termsVersion, setTermsVersion] = useState("");
+  useEffect(() => {
+    if (!register) return;
+    let alive = true;
+    client
+      .legal()
+      .then((l) => alive && setTermsVersion(l.terms_version))
+      .catch(() => {
+        // Without it the account is still made; the app asks once signed in.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [register]);
+  const open = (path: string) => (e: MouseEvent) => {
+    e.preventDefault();
+    onNavigate(path);
+  };
+  const legalLinks = (
+    <>
+      <a href="/terms" onClick={open("/terms")}>
+        Terms of Service
+      </a>{" "}
+      and{" "}
+      <a href="/privacy" onClick={open("/privacy")}>
+        Privacy Policy
+      </a>
+    </>
+  );
   return (
     <div className="auth-page">
       {onHome && (
@@ -135,6 +168,28 @@ export function AuthPage({
                 Forgot your password?
               </button>
             )}
+            {register && (
+              <div className="auth-consent">
+                <label className="check-line">
+                  <input
+                    type="checkbox"
+                    name="accept_terms"
+                    value={termsVersion}
+                    required
+                  />
+                  <span>
+                    I&apos;m {MINIMUM_AGE} or older and I agree to the{" "}
+                    {legalLinks}.
+                  </span>
+                </label>
+                <p>
+                  Orbyn counts which features you use — never what you write —
+                  to keep it running and improve it. You can turn that off in
+                  Settings → Privacy. No ads, no third-party trackers, and your
+                  data is never sold.
+                </p>
+              </div>
+            )}
             {error && (
               <div role="alert" className="error">
                 {error}
@@ -176,6 +231,11 @@ export function AuthPage({
               ? "Already have an account? Sign in"
               : "New here? Create an account"}
           </button>
+          {!register && (
+            <p className="auth-legal">
+              By signing in, you agree to the {legalLinks}.
+            </p>
+          )}
         </div>
       </main>
     </div>

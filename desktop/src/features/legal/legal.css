@@ -1,0 +1,159 @@
+/* Terms and Privacy: the public pages, and the same text in dialogs. */
+.legal-main {
+  max-width: 760px;
+  padding-bottom: 64px;
+}
+.legal-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+.legal-switch a {
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-chip);
+}
+.legal-switch a[aria-current="page"] {
+  color: var(--color-text);
+  background: var(--color-selected);
+}
+.legal-text {
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.65;
+}
+.legal-text h1 {
+  font-family: "Manrope", sans-serif;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  text-wrap: balance;
+}
+.legal-text h1 + p {
+  color: var(--color-muted) !important;
+  font-size: 13px;
+  margin-bottom: 22px;
+}
+.legal-text h2 {
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+  margin: 30px 0 8px;
+}
+.legal-text h3 {
+  font-size: 15px;
+  margin: 20px 0 6px;
+}
+.legal-text p {
+  color: var(--color-text);
+  margin: 0 0 12px;
+  max-width: 68ch;
+}
+.legal-text ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+}
+.legal-error {
+  color: var(--color-danger);
+}
+
+/* The consent gate: read either document in place, then choose. */
+.consent-docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.consent-docs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.consent-docs button[aria-expanded="true"] {
+  background: var(--color-selected);
+}
+.consent-reader {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+}
+.consent-reader .legal-text {
+  font-size: 12.5px;
+}
+.consent-reader .legal-text h1 {
+  font-size: 18px;
+}
+.consent-reader .legal-text h2 {
+  font-size: 14px;
+  margin-top: 16px;
+}
+.auth-card .consent-analytics {
+  margin: 4px 0 14px;
+}
+.auth-card .consent-agree {
+  align-items: flex-start;
+  line-height: 1.5;
+  margin: 0 0 16px !important;
+}
+.auth-card .consent-analytics input[role="switch"] {
+  display: inline-block;
+  padding: 0;
+}
+.auth-card .consent-agree input {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-top: 2px !important;
+}
+
+/* Settings → Privacy. */
+.privacy-history-title {
+  margin: 20px 0 8px;
+  font-size: 13px;
+}
+.privacy-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.privacy-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.privacy-history li:last-child {
+  border-bottom: 0;
+}
+.privacy-history time {
+  color: var(--color-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.privacy-delete {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+}
+.privacy-delete input {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+}

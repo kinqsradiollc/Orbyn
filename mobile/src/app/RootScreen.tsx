@@ -18,6 +18,7 @@ import {
   itemBody,
   type Doc,
   type Item,
+  type LegalSummary,
   type Notice,
   type Plan,
   type Status,
@@ -46,6 +47,7 @@ import { AssistantComposer, AssistantScreen } from "../screens/AssistantScreen";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { VerifyGateScreen } from "../screens/VerifyGateScreen";
+import { ConsentGateScreen } from "../screens/ConsentGateScreen";
 import { BookingSheet } from "../screens/BookingSheet";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ConnectionsSheet } from "../screens/ConnectionsSheet";
@@ -133,12 +135,32 @@ export function RootScreen() {
     refresh,
     signIn,
     signOut,
+    forgetSession,
     refreshUser,
     twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
   usePresence(token, () => void refresh({ silent: true }).catch(() => {}));
   const insets = useSafeAreaInsets();
+  /** The current Terms version, to know whether to ask for agreement. */
+  const [legal, setLegal] = useState<LegalSummary | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    const check = () =>
+      client
+        .legal()
+        .then((l) => alive && setLegal(l))
+        .catch(() => {
+          // Keep the last known version; the next check tries again.
+        });
+    void check();
+    const timer = setInterval(() => void check(), 15 * 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [token]);
   const [tab, setTab] = useState<Tab>("Today");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -243,6 +265,19 @@ export function RootScreen() {
         busy={busy}
         act={act}
         onContinue={() => void refreshUser()}
+        onSignOut={signOut}
+      />
+    );
+
+  // Signed in but not on the current Terms: ask before the app.
+  if (user && legal && user.terms_version !== legal.terms_version)
+    return (
+      <ConsentGateScreen
+        user={user}
+        legal={legal}
+        busy={busy}
+        act={act}
+        onAccepted={() => void refreshUser()}
         onSignOut={signOut}
       />
     );
@@ -902,6 +937,11 @@ export function RootScreen() {
             onOpenTags={() => setSheet("tags")}
             onOpenHabits={() => setSheet("habits")}
             onOpenSync={() => setSheet("sync")}
+            onAccountDeleted={() => {
+              setSheet(null);
+              setPreview(null);
+              void forgetSession();
+            }}
           />
         </Sheet>
         <ProgressSheet

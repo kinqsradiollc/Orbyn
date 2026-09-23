@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -14,9 +14,11 @@ import { client } from "../lib/api";
 import { Brand } from "../components/Brand";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Icon } from "../components/Icon";
+import { LegalSheet } from "../components/LegalSheet";
 import type { SignInInput } from "../hooks/usePlanner";
 import { FadeIn, animateLayout } from "../motion";
-import { motion } from "@orbyn/core";
+import { MINIMUM_AGE, motion, type LegalDoc } from "@orbyn/core";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -42,6 +44,30 @@ export function AuthScreen({
   const [register, setRegister] = useState(true);
   const [notice, setNotice] = useState("");
   const [code, setCode] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [termsVersion, setTermsVersion] = useState("");
+  const [reading, setReading] = useState<LegalDoc | null>(null);
+  useEffect(() => {
+    let alive = true;
+    client
+      .legal()
+      .then((l) => alive && setTermsVersion(l.terms_version))
+      .catch(() => {
+        // The account is still made; the app asks once signed in.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const link = (doc: LegalDoc, label: string) => (
+    <Text
+      style={s.link}
+      accessibilityRole="link"
+      onPress={() => setReading(doc)}
+    >
+      {label}
+    </Text>
+  );
   return (
     <KeyboardAvoidingView
       style={s.screen}
@@ -141,6 +167,34 @@ export function AuthScreen({
             )}
           </FadeIn>
           <FadeIn index={6} duration={motion.slow}>
+            {register && (
+              <View style={s.consent}>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: agreed }}
+                  accessibilityLabel={`I'm ${MINIMUM_AGE} or older and I agree to the Terms of Service and Privacy Policy`}
+                  hitSlop={8}
+                  onPress={() => setAgreed(!agreed)}
+                  style={[s.box, agreed && s.boxOn]}
+                >
+                  {agreed && (
+                    <Icon name="check" size={14} color={colors.white} />
+                  )}
+                </Pressable>
+                <Text style={s.consentText}>
+                  I&apos;m {MINIMUM_AGE} or older and I agree to the{" "}
+                  {link("terms", "Terms of Service")} and{" "}
+                  {link("privacy", "Privacy Policy")}.
+                </Text>
+              </View>
+            )}
+            {register && (
+              <Text style={s.fine}>
+                Orbyn counts which features you use — never what you write — to
+                keep it running and improve it. Turn that off any time in
+                Settings → Privacy. No ads, no trackers, never sold.
+              </Text>
+            )}
             {!!notice && <Text style={s.notice}>{notice}</Text>}
             <ErrorBanner error={error} />
             <Button
@@ -152,7 +206,7 @@ export function AuthScreen({
                     : "Sign in"
               }
               icon={busy ? undefined : "arrowRight"}
-              disabled={busy}
+              disabled={busy || (register && !agreed)}
               onPress={() =>
                 act(async () => {
                   const ok = await signIn({
@@ -161,6 +215,7 @@ export function AuthScreen({
                     name,
                     register,
                     code,
+                    acceptTerms: register && agreed ? termsVersion : undefined,
                   });
                   if (ok) {
                     setPassword("");
@@ -205,9 +260,17 @@ export function AuthScreen({
                 </Text>
               </Text>
             </Pressable>
+            {!register && (
+              <Text style={[s.fine, s.center]}>
+                By signing in, you agree to the{" "}
+                {link("terms", "Terms of Service")} and{" "}
+                {link("privacy", "Privacy Policy")}.
+              </Text>
+            )}
           </FadeIn>
         </View>
       </ScrollView>
+      <LegalSheet doc={reading} onClose={() => setReading(null)} />
     </KeyboardAvoidingView>
   );
 }
@@ -261,5 +324,39 @@ const s = themed(() =>
       color: colors.muted,
     },
     switchLink: { fontFamily: fonts.semibold, color: colors.accent },
+    consent: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 10,
+      marginBottom: 8,
+    },
+    box: {
+      width: 22,
+      height: 22,
+      borderRadius: 7,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 1,
+    },
+    boxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    consentText: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.text,
+    },
+    link: { fontFamily: fonts.semibold, color: colors.accent },
+    fine: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 18,
+      color: colors.muted,
+      marginBottom: 16,
+    },
+    center: { textAlign: "center", marginTop: 4, marginBottom: 0 },
   }),
 );

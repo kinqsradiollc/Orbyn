@@ -6,6 +6,7 @@ import {
   Monitor,
   Moon,
   Plug,
+  ShieldCheck,
   Sun,
   Tags,
   UserRound,
@@ -19,15 +20,18 @@ import { SessionsSettings } from "./SessionsSettings";
 import { DevicesSettings } from "./DevicesSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { PasskeysSettings } from "./PasskeysSettings";
+import { PrivacySettings } from "./PrivacySettings";
 import "./settings.css";
 
-export type SettingsTab = "account" | "planning" | "tags" | "connections";
+export type SettingsTab =
+  "account" | "planning" | "tags" | "connections" | "privacy";
 
 const TABS = [
   { id: "account", label: "Account", icon: UserRound },
   { id: "planning", label: "Planning", icon: CalendarCog },
   { id: "tags", label: "Tags", icon: Tags },
   { id: "connections", label: "Connections", icon: Plug },
+  { id: "privacy", label: "Privacy", icon: ShieldCheck },
 ] as const;
 
 const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
@@ -45,6 +49,8 @@ type Props = {
   onOpenStatus?: () => void;
   report: (e: unknown) => void;
   initialTab?: SettingsTab;
+  /** After deleting your own account. */
+  onAccountDeleted: () => void;
 };
 
 export function SettingsView({
@@ -55,6 +61,7 @@ export function SettingsView({
   onOpenStatus,
   report,
   initialTab = "account",
+  onAccountDeleted,
 }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [theme, setTheme] = useTheme();
@@ -169,6 +176,13 @@ export function SettingsView({
         )}
         {tab === "tags" && <TagSettings teams={teams} report={report} />}
         {tab === "connections" && <ConnectionsSettings report={report} />}
+        {tab === "privacy" && (
+          <PrivacySettings
+            user={user}
+            report={report}
+            onDeleted={onAccountDeleted}
+          />
+        )}
       </div>
     </>
   );

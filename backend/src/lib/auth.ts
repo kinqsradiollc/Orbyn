@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { requestUser } from "./request-log.js";
+import { analyticsOptOut, requestUser } from "./request-log.js";
 import type { FastifyRequest } from "fastify";
 import {
   fail,
@@ -31,6 +31,8 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   role: u.role as SystemRole,
   handle: (u.handle as string | null | undefined) ?? null,
   bio: (u.bio as string | undefined) ?? "",
+  terms_version: (u.terms_version as string | null | undefined) ?? null,
+  analytics_opt_out: !!u.analytics_opt_out,
 });
 
 /** API key ids by key hash, so rate limiting needn't ask the database each time. */
@@ -113,6 +115,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
     viaApiKey.add(r);
     requireVerified(r, u);
     requestUser.set(r, u.id);
+    if (u.analytics_opt_out) analyticsOptOut.add(r);
     return u;
   }
   const u = (
@@ -133,6 +136,7 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
     [digest(token)],
   );
   requestUser.set(r, u.id);
+  if (u.analytics_opt_out) analyticsOptOut.add(r);
   return u;
 }
 

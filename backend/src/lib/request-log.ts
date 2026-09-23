@@ -19,6 +19,12 @@ import { env } from "../config/env.js";
 
 /** Who a request was for, set by authenticate() once it knows. */
 export const requestUser = new WeakMap<FastifyRequest, string>();
+/**
+ * Requests from people who turned usage analytics off. Their requests are
+ * still logged for security and debugging (kept briefly), but never counted
+ * towards anyone's daily activity.
+ */
+export const analyticsOptOut = new WeakSet<FastifyRequest>();
 
 const SKIP =
   /^\/(?:live|ready|version|health|metrics)$|^\/events(?:\/|$)|^\/docs\/[^/]+\/live$/;
@@ -56,7 +62,7 @@ class Recorder {
   timer: ReturnType<typeof setInterval> | null = null;
   flushing: Promise<void> | null = null;
 
-  add(row: Row, sampled: boolean) {
+  add(row: Row, sampled: boolean, counted = true) {
     if (sampled) this.rows.push(row);
     const d = day(row.at);
     const key = `${d}|${row.service}|${row.route}|${row.method}`;
@@ -71,7 +77,7 @@ class Recorder {
     agg.total_ms += row.duration_ms;
     agg.max_ms = Math.max(agg.max_ms, row.duration_ms);
     this.daily.set(key, agg);
-    if (row.user_id) {
+    if (row.user_id && counted) {
       const k = `${d}|${row.user_id}`;
       const a = this.activity.get(k) ?? { requests: 0, writes: 0, ai: 0 };
       a.requests++;
@@ -208,6 +214,7 @@ export function recordRequests(app: FastifyInstance, service: string) {
         at: new Date(),
       },
       kept,
+      !analyticsOptOut.has(request),
     );
   });
 

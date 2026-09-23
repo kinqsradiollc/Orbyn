@@ -21,7 +21,7 @@ type Props = {
 };
 
 /**
- * The sidebar holds three fixed parts: who you are at the top, the
+ * The sidebar holds three fixed parts: the brand at the top, the
  * destinations in the middle, and Settings and your account at the bottom.
  * Only the middle scrolls, so the way out is always where you left it — you
  * never have to scroll a sidebar to sign out.
@@ -45,13 +45,6 @@ export function Sidebar({
           <span className="brand-name">
             orbyn<span>•</span>
           </span>
-        </div>
-        <div className="workspace" title="Personal space">
-          <span className="avatar">{user?.name[0] || "O"}</span>
-          <div>
-            <strong>Personal space</strong>
-            <small>Room for everything</small>
-          </div>
         </div>
       </div>
 
