@@ -5,6 +5,7 @@ import {
   weekdayOf,
   type Habit,
   type HabitBlock,
+  habitInput,
   type HabitPlan,
   type Priority,
 } from "@orbyn/core";
@@ -51,6 +52,37 @@ export async function habitById(
     )
   ).rows[0];
   return r ? toHabit(r) : null;
+}
+
+/** Save a new habit at the end of the user's list. */
+export async function createHabit(
+  db: Db,
+  userId: string,
+  d: ReturnType<typeof habitInput.parse>,
+): Promise<Habit> {
+  const { id } = (
+    await db.query<{ id: string }>(
+      `INSERT INTO habits
+         (user_id, name, cadence, period, duration_minutes, days,
+          window_start, window_end, priority, active, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+         (SELECT coalesce(max(position), -1) + 1 FROM habits WHERE user_id = $1))
+       RETURNING id`,
+      [
+        userId,
+        d.name,
+        d.cadence,
+        d.period,
+        d.duration_minutes,
+        d.days,
+        d.window_start,
+        d.window_end,
+        d.priority,
+        d.active,
+      ],
+    )
+  ).rows[0];
+  return (await habitById(db, id, userId))!;
 }
 
 /** Habit sessions already set aside in [from, to), with their habit's name. */

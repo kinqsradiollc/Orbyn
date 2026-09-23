@@ -21,6 +21,9 @@ import { Pill } from "../components/Pill";
 import { ProgressBar } from "../components/ProgressBar";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
+import { TeamCapacity } from "./TeamCapacity";
+import { TeamAttention } from "../components/followthrough/Attention";
 import { dayStart, minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
@@ -213,7 +216,7 @@ export function TeamTime({
   /** Save the event straight away. */
   const book = (slot: MeetingSlot) =>
     run(async () => {
-      await client.createItem({
+      const made = await outbox.createItem({
         title: meetingTitle(),
         kind: "event",
         due_at: slot.start_at,
@@ -222,7 +225,11 @@ export function TeamTime({
       });
       animateLayout();
       setSlots(null);
-      setBooked(`Added for ${slotLabel(slot.start_at, slot.end_at)}.`);
+      setBooked(
+        made
+          ? `Added for ${slotLabel(slot.start_at, slot.end_at)}.`
+          : `Saved on this phone for ${slotLabel(slot.start_at, slot.end_at)}. It’s sent when you’re back online.`,
+      );
       onCreated();
     });
 
@@ -349,6 +356,25 @@ export function TeamTime({
             </FadeIn>
           );
         })}
+      </View>
+
+      <Text style={[shared.eyebrow, s.eyebrow]}>WHO HAS ROOM</Text>
+      <View style={shared.card}>
+        <TeamCapacity
+          teamId={teamId}
+          weekStart={weekStart}
+          canWrite={canWrite}
+          onOpenItem={onOpenItem}
+        />
+      </View>
+
+      <Text style={[shared.eyebrow, s.eyebrow]}>MEETING BUDGET</Text>
+      <View style={shared.card}>
+        <TeamAttention
+          teamId={teamId}
+          weekStart={weekStart}
+          canManage={canManage}
+        />
       </View>
 
       <Text style={[shared.eyebrow, s.eyebrow]}>WORKLOAD</Text>

@@ -50,6 +50,7 @@ import { SmallAction } from "../components/SmallAction";
 import { useNow } from "../hooks/useNow";
 import { usePlanStale } from "../hooks/usePlanStale";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import {
   canJoin,
@@ -613,9 +614,9 @@ export function CalendarScreen({
     act(async () => {
       const item = await itemFor(itemId);
       assertEditable(item);
-      await client.postItemUpdate(item.id, { status: "done" });
+      const sent = await outbox.postItemUpdate(item, { status: "done" });
       celebrate(title);
-      if (repeats && item.rrule) {
+      if (sent && repeats && item.rrule) {
         const next = await client.getItem(item.id).catch(() => null);
         if (next?.due_at && next.status !== "done")
           showNote(`Done. Next on ${dateLabel(next.due_at)}.`);
@@ -750,13 +751,13 @@ export function CalendarScreen({
                   { start: start_at, end: end_at },
                 )
               : { due_at: start_at, end_at };
-          await client.updateItem(
-            item.id,
+          await outbox.updateItem(
+            item,
             { ...body, ...times },
             { scope, occurrence: entry.occurrence },
           );
         } else
-          await client.updateItem(item.id, {
+          await outbox.updateItem(item, {
             ...body,
             due_at: start_at,
             end_at,
@@ -779,7 +780,7 @@ export function CalendarScreen({
       if (entry.occurrence && item.rrule) {
         const scope = await askScope(item.kind, "delete");
         if (!scope) return;
-        await client.deleteItem(item.id, item.version, {
+        await outbox.deleteItem(item, {
           scope,
           occurrence: entry.occurrence,
         });
@@ -804,7 +805,7 @@ export function CalendarScreen({
           ),
         );
         if (!sure) return;
-        await client.deleteItem(item.id, item.version);
+        await outbox.deleteItem(item);
       }
       reload();
       onChanged();

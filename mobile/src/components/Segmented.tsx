@@ -96,14 +96,15 @@ const s = themed(() =>
     segment: {
       flex: 1,
       minWidth: controls.tap,
-      minHeight: controls.tap,
+      // With the track's 3pt padding either side the control is still 44pt.
+      minHeight: controls.tap - 6,
       flexDirection: "row",
       gap: 6,
       borderRadius: radii.input - 3,
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: 6,
-      paddingVertical: 10,
+      paddingVertical: 7,
     },
     chip: {
       // Reset the segment's `flex: 1`: in Yoga it forces a zero flex basis, so
@@ -127,11 +128,11 @@ const s = themed(() =>
       flexShrink: 1,
       textAlign: "center",
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 13,
       color: colors.muted,
     },
     capitalize: { textTransform: "capitalize" },
-    segmentTextActive: { fontFamily: fonts.semibold, color: colors.accent },
+    segmentTextActive: { color: colors.accent },
     badge: {
       minWidth: 20,
       height: 20,

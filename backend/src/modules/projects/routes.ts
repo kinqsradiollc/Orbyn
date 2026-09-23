@@ -12,6 +12,7 @@ import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
+import { projectTimeMachineRoutes } from "./time-machine.js";
 
 /**
  * Projects group planner tasks into a named piece of work with ordered
@@ -80,6 +81,7 @@ async function loadProject(db: Queryable, id: string): Promise<Project> {
 }
 
 export async function projectRoutes(app: FastifyInstance) {
+  await projectTimeMachineRoutes(app);
   app.get("/projects", async (r) => {
     const u = await authenticate(r);
     const db = reader(r.headers);
@@ -103,6 +105,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const data = projectInput.parse(r.body);
     if (data.team_id) await requireTeam(data.team_id, u, "items:write");
     const project = await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const id = (
         await db.query<{ id: string }>(
           `INSERT INTO projects (user_id, team_id, name, summary, deadline)
@@ -138,11 +141,43 @@ export async function projectRoutes(app: FastifyInstance) {
     return { ...row, stages: stages.get(id) ?? [] };
   });
 
+  /** A readable project timeline; its payload intentionally excludes note bodies. */
+  app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
+    "/projects/:id/activity",
+    async (r) => {
+      const u = await authenticate(r);
+      const id = idParam(r);
+      const requested = Number(r.query.limit ?? 100);
+      if (!Number.isInteger(requested) || requested < 1 || requested > 200)
+        fail(422, "Limit must be between 1 and 200.");
+      const db = reader(r.headers);
+      const visible = (
+        await db.query<{ id: string }>(
+          `SELECT p.id FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
+          [u.id, id],
+        )
+      ).rowCount;
+      if (!visible) fail(404, "Project not found");
+      return (
+        await db.query(
+          `SELECT a.id, a.project_id, a.actor_id, u.name AS actor_name,
+                  a.kind, a.entity_type, a.entity_id, a.event_order, a.summary,
+                  a.before_state, a.after_state, a.created_at
+             FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
+            WHERE a.project_id = $1
+            ORDER BY a.event_order DESC LIMIT $2`,
+          [id, requested],
+        )
+      ).rows;
+    },
+  );
+
   app.put("/projects/:id", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = projectUpdate.parse(r.body);
     return transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireProject(db, id, u, "items:write");
       await db.query(
         `UPDATE projects SET
@@ -194,6 +229,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireProject(db, id, u, "items:write");
       // The tasks outlive the project; they simply become unfiled.
       await db.query("DELETE FROM projects WHERE id = $1", [id]);
@@ -207,6 +243,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = projectAssign.parse(r.body);
     return transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const item = (
         await db.query<{ id: string; user_id: string; team_id: string | null }>(
           "SELECT id, user_id, team_id FROM items WHERE id = $1 FOR UPDATE",

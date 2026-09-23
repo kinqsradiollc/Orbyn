@@ -5,6 +5,7 @@ import {
   dateLabel,
   localDateKey,
   type BreakLevel,
+  type Item,
   type Plan,
   type PlannedBlock,
   type PlanScope,
@@ -47,12 +48,15 @@ import {
   unpinBlock,
 } from "../lib/plans";
 import { usePlanStale } from "../hooks/usePlanStale";
+import { HorizonView } from "../components/HorizonView";
+import { RealityLine, WhatIfBox } from "../components/followthrough/PlanChecks";
+import { PlanExperiments } from "../components/followthrough/PlanExperiments";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
-const DAYS = ["1", "2", "3", "4", "5", "6", "7"] as const;
+const DAYS = ["1", "2", "3", "4", "5", "6", "7", "14"] as const;
 const DAY_LABELS = { "1": "Today" } as const;
 /** Quick picks for padding, in percent; the saved setting joins them. */
 const PADS = [0, 10, 15, 25, 50];
@@ -62,10 +66,11 @@ const BREAK_LABELS: Record<BreakLevel, string> = {
   normal: "Normal",
   intense: "Often",
 };
-const TABS = ["plan", "tasks", "free"] as const;
+const TABS = ["plan", "days", "tasks", "free"] as const;
 type PlanTab = (typeof TABS)[number];
 const TAB_LABELS: Record<PlanTab, string> = {
   plan: "Timeline",
+  days: "Days",
   tasks: "Tasks",
   free: "Keep free",
 };
@@ -82,9 +87,9 @@ const atClock = (day: string, clock: string) => {
   return new Date(y, m - 1, d, h, min);
 };
 const blockKey = (b: PlannedBlock) => `${b.item_id}-${b.start_at}`;
-/** The day option for a number of days (1 to 7). */
+/** The day option for a number of days (1 to 7, or two weeks). */
 const dayOption = (n: number) =>
-  DAYS[Math.min(7, Math.max(1, Math.round(n) || 1)) - 1];
+  n >= 14 ? "14" : DAYS[Math.min(7, Math.max(1, Math.round(n) || 1)) - 1];
 const toggle = (ids: string[], id: string) =>
   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 
@@ -115,12 +120,15 @@ export function PlanSheet({
   seed,
   title,
   teams,
+  items = [],
   onClose,
   onDismiss,
   onApplied,
   onShowOnCalendar,
 }: {
   visible: boolean;
+  /** For what waits on what, when a session moves to another day. */
+  items?: Item[];
   seed: Plan | null;
   /** The sheet's title; "Move work forward" for a seed plan by default. */
   title?: string;
@@ -144,6 +152,7 @@ export function PlanSheet({
         key={seed?.id ?? "new"}
         seed={seed}
         teams={teams}
+        items={items}
         onApplied={onApplied}
         onDone={onClose}
         onShowOnCalendar={onShowOnCalendar}
@@ -155,12 +164,14 @@ export function PlanSheet({
 function Body({
   seed,
   teams,
+  items,
   onApplied,
   onDone,
   onShowOnCalendar,
 }: {
   seed: Plan | null;
   teams: Team[];
+  items: Item[];
   onApplied: () => void;
   onDone: () => void;
   onShowOnCalendar?: (plan: Plan) => void;
@@ -171,6 +182,9 @@ function Body({
   const o = seed?.options;
   /** The planner's saved zone: the server reads start_date as a day there. */
   const [zone, setZone] = useState<string | null>(null);
+  const [workStart, setWorkStart] = useState("09:00");
+  /** A session is being dragged: the page holds still. */
+  const [dragging, setDragging] = useState(false);
   const today = localDateKey(new Date(), zone ?? deviceTimeZone());
   const [days, setDays] = useState<(typeof DAYS)[number]>(
     o ? dayOption(o.days) : "1",
@@ -221,6 +235,7 @@ function Body({
       .then((p) => {
         if (!alive) return;
         setZone(p.timezone);
+        setWorkStart(p.work_start);
         // A seed plan keeps its own options.
         if (seed) return;
         setPad(p.pad_percent);
@@ -389,6 +404,7 @@ function Body({
   return (
     <ScrollView
       contentContainerStyle={sheetStyles.body}
+      scrollEnabled={!dragging}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       automaticallyAdjustKeyboardInsets
@@ -568,13 +584,21 @@ function Body({
           </View>
         )}
 
+        <WhatIfBox items={items} />
+        <PlanExperiments />
+
         {plan && (
           <FadeIn style={shared.card}>
             <Text style={[shared.sectionTitle, s.gapBelow]}>Proposed plan</Text>
             {tunable && (
+              <RealityLine plan={plan} timeZone={zone ?? deviceTimeZone()} />
+            )}
+            {tunable && (
               <Segmented
                 accessibilityLabel="Plan view"
-                options={TABS}
+                options={
+                  plan.days > 1 ? TABS : TABS.filter((t) => t !== "days")
+                }
                 labels={TAB_LABELS}
                 value={tab}
                 onChange={(next) => {
@@ -609,6 +633,44 @@ function Body({
                       : undefined
                   }
                   below={moveForm}
+                />
+              </View>
+            )}
+            {tunable && tab === "days" && plan.days > 1 && (
+              <View style={s.tabBody}>
+                <HorizonView
+                  plan={plan}
+                  items={items}
+                  timeZone={zone ?? deviceTimeZone()}
+                  workStart={workStart}
+                  busy={busy}
+                  onDragging={setDragging}
+                  onPin={(b, start, end) =>
+                    void change((p) => pinBlock(p, b, start, end))
+                  }
+                  onPlace={(itemId, start, end) =>
+                    void change((p) =>
+                      client.tunePlan(p.id, {
+                        include_item_ids: [
+                          ...(p.options?.include_item_ids ?? []).filter(
+                            (x) => x !== itemId,
+                          ),
+                          itemId,
+                        ],
+                        exclude_item_ids: (
+                          p.options?.exclude_item_ids ?? []
+                        ).filter((x) => x !== itemId),
+                        pinned_blocks: [
+                          ...(p.options?.pinned_blocks ?? []),
+                          {
+                            item_id: itemId,
+                            start_at: start.toISOString(),
+                            end_at: end.toISOString(),
+                          },
+                        ],
+                      }),
+                    )
+                  }
                 />
               </View>
             )}

@@ -170,10 +170,12 @@ export async function applyProject(
       409,
       "The calendar or planning settings changed. Draft this project again to review a fresh schedule.",
     );
+  // Started for a team: the project and its tasks are the team's.
+  const teamId = stored.team_id ?? null;
   const projectId = (
     await db.query<{ id: string }>(
-      "INSERT INTO projects(user_id,name) VALUES($1,$2) RETURNING id",
-      [user.id, draft.title],
+      "INSERT INTO projects(user_id,team_id,name) VALUES($1,$2,$3) RETURNING id",
+      [user.id, teamId, draft.title],
     )
   ).rows[0].id;
   let firstStage: string | null = null;
@@ -191,7 +193,7 @@ export async function applyProject(
     user,
     actionSchema.parse({
       operation: "create",
-      data: { title: draft.title, kind: "task" },
+      data: { title: draft.title, kind: "task", team_id: teamId },
     }),
   );
   if (!parent) throw new Error("Project parent was not created");
@@ -207,7 +209,16 @@ export async function applyProject(
           notes: task.notes,
           kind: "task",
           parent_id: parent.id,
+          team_id: teamId,
           estimate_minutes: task.estimate_minutes,
+          // A key result: a number to reach, starting from nothing.
+          ...(stored.measures?.[task.id]
+            ? {
+                target_value: stored.measures[task.id].target_value,
+                current_value: 0,
+                value_unit: stored.measures[task.id].value_unit,
+              }
+            : {}),
           due_at: dayTime(
             addDays(stored.start_date, task.due_in_days + 1),
             0,
@@ -236,6 +247,26 @@ export async function applyProject(
       "INSERT INTO time_blocks(item_id,user_id,start_at,end_at,source) VALUES($1,$2,$3,$4,'planner')",
       [id, user.id, block.start_at, block.end_at],
     );
+  }
+  // The brief a template brings, as the project's page.
+  if (stored.page) {
+    const doc = (
+      await db.query<{ id: string }>(
+        `INSERT INTO docs (user_id, team_id, title, kind, content, project_id)
+         VALUES ($1, $2, $3, 'doc', $4, $5) RETURNING id`,
+        [
+          user.id,
+          teamId,
+          stored.page.title || draft.title,
+          JSON.stringify(stored.page.content),
+          projectId,
+        ],
+      )
+    ).rows[0];
+    await db.query("UPDATE projects SET doc_id = $2 WHERE id = $1", [
+      projectId,
+      doc.id,
+    ]);
   }
   return { project_id: projectId, parent_id: parent.id };
 }

@@ -1,0 +1,278 @@
+/* Welcome back. */
+.welcome-back {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px 21px 16px;
+}
+.welcome-back header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--color-accent);
+}
+.welcome-back header > div {
+  flex: 1;
+  min-width: 0;
+}
+.welcome-back h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-text);
+}
+.welcome-back header p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+.welcome-back-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px 20px;
+}
+.welcome-back h3 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-textSoft);
+}
+.welcome-back ul {
+  list-style: none;
+  /* Rows keep their hover padding but their text lines up with the heading. */
+  margin: 0 -8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.welcome-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  color: var(--color-text);
+}
+.welcome-line:hover:not(:disabled) {
+  background: var(--color-surfaceMuted);
+}
+.welcome-line strong {
+  font-size: 13px;
+}
+.welcome-line small {
+  font-size: 12px;
+  color: var(--color-textSoft);
+}
+
+/* An ask on a task. */
+.ask-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-softBorder);
+  border-radius: var(--radius-md);
+  background: var(--color-soft);
+}
+.ask-card.is-settled {
+  background: var(--color-surfaceMuted);
+  border-color: var(--border);
+}
+.ask-text {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.ask-text svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--color-accent);
+}
+.ask-text small {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-textSoft);
+}
+.ask-actions,
+.ask-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ask-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin: 0;
+}
+.ask-form input:not([type="date"]) {
+  flex: 1 1 200px;
+}
+
+/* Proof on a task. */
+.proof-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.proof-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+}
+.proof-list li > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-accent);
+}
+.proof-list li > span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.proof-list small {
+  color: var(--color-textSoft);
+  font-size: 11px;
+}
+.proof-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.proof-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Asks, on the notifications page. */
+.asks-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px 21px;
+}
+.asks-group h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-textSoft);
+}
+.asks-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.asks-title {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 650;
+  font-size: 14px;
+  color: var(--color-text);
+  text-align: left;
+}
+.asks-title:hover {
+  color: var(--color-accent);
+}
+.asks-item .ask-card {
+  margin-bottom: 0;
+}
+
+.attention-warning {
+  margin: -8px 0 16px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+  font-size: 12px;
+}
+
+/* What got done. */
+.progress-dialog {
+  width: 600px;
+}
+.progress-dialog .section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 22px 22px;
+}
+.progress-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.progress-person h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.progress-person ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.progress-person li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+.progress-person li > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-accent);
+}
+.progress-person li > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.progress-person small {
+  color: var(--color-textSoft);
+  font-size: 12px;
+}
+.progress-proofs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.meeting-outcome {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text);
+}

@@ -13,7 +13,7 @@
   padding: 10px 10px;
   border: 1px solid #dfe5dc;
   border-right: 0;
-  border-radius: 6px 0 0 6px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   background: #f6f8f4;
   color: #6f7b72;
   font-size: 12px;
@@ -22,7 +22,7 @@
   white-space: nowrap;
 }
 .slug-row input {
-  border-radius: 0 6px 6px 0 !important;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important;
   flex: 1 1 120px;
 }
 .cohost-list {
@@ -40,7 +40,7 @@
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .booking-page-row {
   display: flex;
@@ -83,7 +83,7 @@
   background: #f1f4ee;
   color: #3f5038;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   overflow-wrap: anywhere;
 }
 .booking-link a {
@@ -110,7 +110,7 @@
   align-items: center;
   gap: 5px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--tone-bg);
   color: var(--tone-fg);
   font-size: 10px;
@@ -152,7 +152,7 @@
   justify-content: center;
   min-width: 18px;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: #fbf1dc;
   color: #8a6116;
   font-size: 10px;
@@ -277,7 +277,7 @@
 .booking-jump button {
   padding: 5px 11px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: #5f6b62;
   font-size: 11px;
@@ -370,7 +370,7 @@
   margin: 0;
   padding: 7px 9px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   font-size: 12px;
@@ -387,7 +387,7 @@
   gap: 8px 12px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .override-row > .icon-button {
   margin-left: auto;
@@ -405,7 +405,7 @@
   gap: 10px;
   padding: 14px 12px 0 14px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
 }
 .question-card .settings-grid {
   flex: 1;
@@ -447,7 +447,7 @@
   margin: 0;
   padding: 2px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   cursor: pointer;
 }
@@ -508,7 +508,7 @@
 .booking-step {
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: #fafbf8;
 }
 .booking-step label {
@@ -524,7 +524,7 @@
   margin-top: 6px;
   padding: 9px 11px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: var(--color-text);
   font-size: 12px;
@@ -697,7 +697,7 @@
 .public-card {
   padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 .public-message {
@@ -761,7 +761,7 @@
   max-width: 240px;
   padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font-size: 12px;
@@ -787,7 +787,7 @@
   gap: 2px;
   padding: 8px 2px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
 }
 .date-strip button small {
@@ -839,7 +839,7 @@
   margin-top: 6px;
   padding: 11px 12px;
   border: 1px solid #dfe5dc;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   color: var(--color-text);
 }
@@ -854,7 +854,7 @@
   margin-top: 6px;
   padding: 11px 12px;
   border: 1px solid #dfe5dc;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   font-size: 14px;
   color: var(--color-text);
@@ -920,7 +920,7 @@
 .booking-confirmation-message {
   margin: 16px 0 0;
   padding: 12px 14px;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--color-accentSoft);
   font-size: 13px;
   text-align: left;
@@ -981,7 +981,7 @@
   gap: 10px 16px;
   margin-top: 18px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-accentSoft);
   font-size: 13px;
 }

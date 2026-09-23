@@ -190,3 +190,53 @@ spec:
     matchLabels:
       app.kubernetes.io/name: orbyn
       app.kubernetes.io/component: notifier
+---
+# Realtime holds open streams: memory and connections, not CPU, are what
+# fill up. CPU still tracks the fan-out work; raise maxReplicas with users.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: realtime
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: realtime
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      # Scaling down drops the streams on the removed pods (the apps
+      # reconnect), so it waits longer than the other services.
+      stabilizationWindowSeconds: 600
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: realtime
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+spec:
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orbyn
+      app.kubernetes.io/component: realtime

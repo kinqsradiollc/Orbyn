@@ -32,6 +32,7 @@ import type { TeamActions } from "../teams/TeamDetail";
 import { humanizeDuration } from "../status/StatusPage";
 import "./ai.css";
 import "./system.css";
+import { DateField } from "../../components/DateField";
 
 type Report = TeamActions["report"];
 type Source = SystemSettingsView["sources"][SystemSettingKey];
@@ -754,7 +755,7 @@ function MaintenanceCard({
             </label>
             <label className="system-field system-label">
               Expected back (optional)
-              <input
+              <DateField
                 type="datetime-local"
                 value={until}
                 onChange={(e) => {

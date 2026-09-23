@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
-import { Boxes, Plus } from "lucide-react";
+import { Boxes, LayoutTemplate, Plus } from "lucide-react";
 import {
   projectAtRisk,
   projectProgress,
+  hasTeamPermission,
   type Item,
   type Project,
+  type Team,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { ProjectDetail } from "./ProjectDetail";
+import { PromiseTracker } from "./PromiseTracker";
+import { TemplatesDialog } from "./TemplatesDialog";
 import "./projects.css";
 
 const dueLabel = (iso: string | null) =>
@@ -18,21 +22,40 @@ const dueLabel = (iso: string | null) =>
 
 export function ProjectsView({
   items,
+  teams = [],
+  openTemplate = null,
+  onTemplateOpened,
   report,
   onRefresh,
   onOpenItem,
   onOpenNote,
+  userId,
 }: {
   items: Item[];
+  /** For starting a template's project in a team. */
+  teams?: Team[];
+  /** Open Templates on this one (from a "ready to start" notice). */
+  openTemplate?: string | null;
+  onTemplateOpened?: () => void;
   report: (e: unknown) => void;
   onRefresh: () => void;
   onOpenItem: (item: Item) => void;
   /** Opens one of a project's notes in the documents view. */
   onOpenNote?: (docId: string) => void;
+  userId: string;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [templates, setTemplates] = useState(!!openTemplate);
+  const [initialTemplate] = useState(openTemplate);
+  useEffect(() => {
+    if (!openTemplate) return;
+    setTemplates(true);
+    onTemplateOpened?.();
+  }, [openTemplate, onTemplateOpened]);
 
   const load = () =>
     client.listProjects().then(setProjects, (e) => {
@@ -45,13 +68,15 @@ export function ProjectsView({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = () => {
-    const name = prompt("What is this project called?")?.trim();
+    const name = newName.trim();
     if (!name) return;
     setBusy(true);
     client
       .createProject({ name })
       .then((p) => {
         setOpen(p);
+        setCreating(false);
+        setNewName("");
         void load();
       })
       .catch(report)
@@ -62,6 +87,14 @@ export function ProjectsView({
     return (
       <ProjectDetail
         project={open}
+        userId={userId}
+        canWrite={
+          !open.team_id ||
+          hasTeamPermission(
+            teams.find((team) => team.id === open.team_id)?.role,
+            "items:write",
+          )
+        }
         items={items}
         report={report}
         onOpenItem={onOpenItem}
@@ -95,10 +128,71 @@ export function ProjectsView({
               ? "1 project"
               : `${projects.length} projects`}
         </span>
-        <button className="primary" onClick={create} disabled={busy}>
-          <Plus size={15} /> New project
-        </button>
+        <span className="projects-actions">
+          <button className="secondary" onClick={() => setTemplates(true)}>
+            <LayoutTemplate size={15} /> Templates
+          </button>
+          <button
+            className="primary"
+            onClick={() => setCreating(true)}
+            disabled={busy}
+          >
+            <Plus size={15} /> New project
+          </button>
+        </span>
       </div>
+      {creating && (
+        <form
+          className="project-create-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create();
+          }}
+        >
+          <input
+            autoFocus
+            aria-label="Project name"
+            placeholder="Project name"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            maxLength={120}
+            required
+          />
+          <button className="primary" disabled={busy || !newName.trim()}>
+            Create project
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              setCreating(false);
+              setNewName("");
+            }}
+          >
+            Cancel
+          </button>
+        </form>
+      )}
+      {templates && (
+        <TemplatesDialog
+          teams={teams}
+          initialId={openTemplate ?? initialTemplate}
+          onClose={() => setTemplates(false)}
+          onStarted={() => {
+            onRefresh();
+            void load();
+          }}
+        />
+      )}
+
+      <PromiseTracker
+        userId={userId}
+        teams={teams}
+        report={report}
+        onProject={(id) =>
+          void client.getProject(id).then(setOpen).catch(report)
+        }
+      />
 
       {projects === null ? (
         <p className="muted">Loading…</p>
@@ -108,7 +202,11 @@ export function ProjectsView({
           title="No projects yet"
           body="Group related tasks into stages so you can see a piece of work end to end, not just today's list."
         >
-          <button className="primary" onClick={create} disabled={busy}>
+          <button
+            className="primary"
+            onClick={() => setCreating(true)}
+            disabled={busy}
+          >
             <Plus size={15} /> New project
           </button>
         </EmptyState>

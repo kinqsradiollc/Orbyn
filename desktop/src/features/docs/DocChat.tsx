@@ -12,6 +12,7 @@ import {
   type DocSuggestion,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { Select } from "../../components/Select";
 
 /** The actions worth one click; "custom" is whatever gets typed instead. */
 const QUICK = DOC_AI_ACTIONS.filter((a) => a !== "custom");
@@ -154,7 +155,7 @@ export function DocChat({
           a line is something that can be changed. */}
       <div className="doc-chat-target">
         <label htmlFor="doc-chat-about">About</label>
-        <select
+        <Select
           id="doc-chat-about"
           value={target === null ? "" : String(target)}
           onChange={(e) =>
@@ -167,7 +168,7 @@ export function DocChat({
               {plainText(l.text).slice(0, 60)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="doc-chat-thread" ref={threadRef} aria-live="polite">

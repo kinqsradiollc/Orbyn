@@ -1,0 +1,218 @@
+/* Team capacity: people by days, shaded by free working time. The shades
+   are the accent mixed into the surface, so both themes keep them. */
+.capacity-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.capacity-grid th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-textSoft);
+  text-align: center;
+  padding: 2px 4px;
+}
+.capacity-grid th abbr {
+  text-decoration: none;
+}
+.capacity-grid tbody th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--color-text);
+  text-align: left;
+  white-space: nowrap;
+  padding-right: 10px;
+}
+.capacity-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.capacity-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+  font:
+    700 10px "Manrope",
+    sans-serif;
+}
+.presence-dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface);
+  background: var(--color-faint);
+}
+.presence-dot.is-active {
+  background: var(--color-accent);
+}
+.capacity-cell {
+  width: 100%;
+  min-width: 56px;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-text);
+  background: var(--color-surfaceMuted);
+  cursor: pointer;
+}
+.capacity-cell.is-l0,
+.capacity-swatch.is-l0 {
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+}
+.capacity-cell.is-l1,
+.capacity-swatch.is-l1 {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+}
+.capacity-cell.is-l2,
+.capacity-swatch.is-l2 {
+  background: color-mix(in srgb, var(--color-accent) 26%, var(--color-surface));
+}
+.capacity-cell.is-l3,
+.capacity-swatch.is-l3 {
+  background: color-mix(in srgb, var(--color-accent) 44%, var(--color-surface));
+}
+.capacity-cell.is-over,
+.capacity-swatch.is-over {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.capacity-cell.is-off {
+  background: transparent;
+  color: var(--color-faint);
+  font-weight: 500;
+  border: 1px dashed var(--border);
+}
+.capacity-cell.is-picked {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.capacity-cell:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.capacity-unplaced {
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-textSoft);
+}
+.capacity-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-textSoft);
+}
+.capacity-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.capacity-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid transparent;
+}
+.capacity-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.capacity-detail p {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Team attention budget. */
+.attention-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 16px;
+}
+.attention-head p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.attention-budget {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.attention-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.attention-list li {
+  display: grid;
+  grid-template-columns: minmax(90px, 160px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.attention-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attention-bar {
+  position: relative;
+  height: 8px;
+  border-radius: var(--radius-xs);
+  background: var(--color-surfaceMuted);
+}
+.attention-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-xs);
+  background: var(--color-accent);
+}
+.attention-bar.is-over > span {
+  background: var(--color-danger);
+}
+.attention-bar i {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--color-text);
+  opacity: 0.4;
+}
+.attention-over {
+  color: var(--color-danger);
+  font-weight: 600;
+}

@@ -39,6 +39,8 @@ import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import { DocViewers } from "./DocViewers";
+import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { confirmAction } from "../../lib/confirm";
 import { controls, colors, fonts, radii, themed } from "../../theme";
 
@@ -747,6 +749,7 @@ export function DocEditor({
       {/* The mode you are in is the filled chip, as it is on the desktop and
           as every other choice on the phone reads. It used to be the one
           greyed out, with a tick — which said "unavailable", not "here". */}
+      {doc.kind === "doc" && <PageFreshness doc={doc} canWrite={canWrite} />}
       <View style={styles.statusRow}>
         <ChipRow label="How you're working on this page">
           {modesFor(canWrite).map((m) => (
@@ -766,6 +769,7 @@ export function DocEditor({
             />
           ))}
         </ChipRow>
+        <DocViewers docId={doc.id} />
         <Text style={styles.meta}>
           {reading ? "" : saving ? "Saving…" : "Saved"}
         </Text>

@@ -50,7 +50,7 @@
   gap: 16px;
   padding: 22px 24px;
   border: 1px solid;
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   margin-bottom: 24px;
 }
 .status-banner > svg,
@@ -106,7 +106,7 @@
   gap: 14px;
   padding: 18px 22px;
   border: 1px solid #d8e2ef;
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   background: #eef3f9;
   color: #34506f;
   margin-bottom: 16px;
@@ -140,7 +140,7 @@
   flex: none;
   font-size: 10px;
   font-weight: 600;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 4px 9px;
   white-space: nowrap;
 }
@@ -331,7 +331,7 @@
   display: block;
   height: 12px;
   width: 40%;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   margin-bottom: 12px;
   background: linear-gradient(90deg, #eef1ec 25%, #f7f9f5 50%, #eef1ec 75%);
   background-size: 200% 100%;

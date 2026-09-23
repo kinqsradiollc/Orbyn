@@ -39,6 +39,10 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { AskBox } from "../followthrough/AskBox";
+import { ProofSection } from "../followthrough/ProofSection";
+import { MeetingOutcome } from "../followthrough/MeetingOutcome";
+import "../followthrough/followthrough.css";
 import { celebrate } from "../../lib/celebrate";
 import { stagger } from "../../lib/motion";
 import { progressOf, timeAgo } from "../../lib/tasks";
@@ -512,6 +516,10 @@ export function TaskDetail({
             </div>
           )}
 
+          {current.kind === "task" && current.team_id && (
+            <AskBox itemId={current.id} onChanged={() => void onChanged()} />
+          )}
+
           <section className="drawer-section" aria-labelledby="progress-title">
             <div className="drawer-section-head">
               <h3 id="progress-title">Progress</h3>
@@ -601,6 +609,15 @@ export function TaskDetail({
               </ul>
             </section>
           )}
+
+          {current.kind === "task" && (
+            <ProofSection itemId={current.id} canWrite={canWrite} />
+          )}
+
+          {current.kind === "event" &&
+            (!!current.team_id || !!current.attendees?.length) && (
+              <MeetingOutcome item={current} canWrite={canWrite} />
+            )}
 
           {current.kind === "task" &&
             (children.length > 0 || canAddSubtask) && (

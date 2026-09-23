@@ -28,6 +28,7 @@ import {
   type PlanScope,
   type PlanTask,
   type Team,
+  type Item,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { usePlanning } from "../../app/planning";
@@ -39,6 +40,10 @@ import {
   spanLabel,
 } from "../../lib/planning";
 import type { PlanTuning } from "./usePlanTuning";
+import { HorizonLanes } from "./HorizonLanes";
+import { RealityLine, WhatIfBox } from "./PlanChecks";
+import { PlanExperiments } from "./PlanExperiments";
+import { DateField } from "../../components/DateField";
 
 export const BREAK_LABELS: Record<BreakLevel, string> = {
   none: "No breaks",
@@ -49,6 +54,8 @@ export const BREAK_LABELS: Record<BreakLevel, string> = {
 
 type Props = {
   prefs: PlannerPrefs | null;
+  /** For what waits on what, when a session is moved. */
+  items: Item[];
   /** For "Plan for": your teams. */
   teams: Team[];
   plan: Plan | null;
@@ -96,6 +103,7 @@ const rangeLabel = (r: BusyInterval) =>
  */
 export function PlannerPanel({
   prefs,
+  items,
   teams,
   plan,
   tuner,
@@ -332,7 +340,7 @@ export function PlannerPanel({
       <form className="planner-form" onSubmit={submit}>
         <label>
           Start
-          <input
+          <DateField
             type="date"
             required
             value={startDate}
@@ -345,7 +353,7 @@ export function PlannerPanel({
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
           >
-            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+            {[1, 2, 3, 4, 5, 6, 7, 14].map((d) => (
               <option key={d} value={d}>
                 {d === 1 ? "1 day" : `${d} days`}
               </option>
@@ -514,6 +522,17 @@ export function PlannerPanel({
           <PlanCard key={plan.id} plan={plan} onApply={apply} limit={20} />
         </div>
       )}
+      {live && plan && (
+        <RealityLine
+          plan={plan}
+          timeZone={prefs?.timezone ?? plan.options?.timezone ?? "UTC"}
+        />
+      )}
+      {live && plan && plan.days > 1 && (
+        <HorizonLanes plan={plan} prefs={prefs} items={items} tuner={tuner} />
+      )}
+      <WhatIfBox items={items} days={plan?.days ?? days} />
+      <PlanExperiments />
 
       {live && tasks.length > 0 && (
         <div className="plan-tasks">

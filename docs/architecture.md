@@ -15,14 +15,15 @@ database or to AI providers directly; everything goes through the gateway.
 One backend image runs each service with a different command. They scale independently and can
 live on different machines; see [scalability.md](scalability.md).
 
-| Service    | Entry point            | Owns                                                                       |
-| ---------- | ---------------------- | -------------------------------------------------------------------------- |
-| `api`      | `services/api.ts`      | Auth, profile, items, steps and updates, teams, admin console, devices     |
-| `ai`       | `services/ai.ts`       | Assistant chat, proposals, AI provider settings (`/ai/*`)                  |
-| `status`   | `services/status.ts`   | Probes every service every 30 s and serves the public `GET /status` report |
-| `notifier` | `services/notifier.ts` | Reminder scheduling and delivery; heartbeat for the status page            |
-| `migrate`  | `migrate.ts`           | Applies `migrations/*.sql` in order under an advisory lock, then exits     |
-| gateway    | `gateway/` (nginx)     | Routes `/ai/*` to ai, `/status` to status, everything else to api          |
+| Service    | Entry point            | Owns                                                                           |
+| ---------- | ---------------------- | ------------------------------------------------------------------------------ |
+| `api`      | `services/api.ts`      | Auth, profile, items, steps and updates, teams, admin console, devices         |
+| `ai`       | `services/ai.ts`       | Assistant chat, proposals, AI provider settings (`/ai/*`)                      |
+| `realtime` | `services/realtime.ts` | Long-lived streams: live news (`/events`) and live documents                   |
+| `status`   | `services/status.ts`   | Probes every service every 30 s and serves the public `GET /status` report     |
+| `notifier` | `services/notifier.ts` | Reminder scheduling and delivery; heartbeat for the status page                |
+| `migrate`  | `migrate.ts`           | Applies `migrations/*.sql` in order under an advisory lock, then exits         |
+| gateway    | `gateway/` (nginx)     | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, rest to api |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs

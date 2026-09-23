@@ -28,6 +28,7 @@ import {
   whenLabel,
 } from "./bookingUi";
 import { SlotPicker } from "./SlotPicker";
+import { DateField } from "../../components/DateField";
 
 type Props = {
   id: string;
@@ -604,7 +605,7 @@ function HostReschedule({
       />
       <label className="booking-custom-time">
         Or type a time
-        <input
+        <DateField
           type="datetime-local"
           value={custom}
           onChange={(e) => {

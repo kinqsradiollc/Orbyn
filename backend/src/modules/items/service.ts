@@ -6,6 +6,7 @@ import {
   isLocalMidnight,
   itemData,
   localDateKey,
+  measureProgress,
   nextOccurrence,
   type Action,
   type Item,
@@ -15,6 +16,7 @@ import {
 import type { Db } from "../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
+import { openAsk } from "../followthrough/asks.js";
 import {
   isOccurrence,
   loadPrefs,
@@ -106,6 +108,53 @@ export async function requireItemAccess(
 ) {
   if (item.team_id) await requireTeam(item.team_id, actor, permission, db);
   else if (item.user_id !== actor.id) fail(404, "Item not found");
+}
+
+/**
+ * A task's number to reach (a key result). Omitted fields keep what is
+ * saved. While a target is set, progress follows current / target — unless
+ * the task is done, which stays at 100.
+ */
+async function setMeasure(
+  db: Db,
+  id: string,
+  d: {
+    target_value?: number | null;
+    current_value?: number | null;
+    value_unit?: string;
+  },
+) {
+  if (
+    d.target_value === undefined &&
+    d.current_value === undefined &&
+    d.value_unit === undefined
+  )
+    return;
+  const saved = (
+    await db.query<{
+      target_value: number | null;
+      current_value: number | null;
+      value_unit: string;
+      status: string;
+    }>(
+      "SELECT target_value, current_value, value_unit, status FROM items WHERE id = $1",
+      [id],
+    )
+  ).rows[0];
+  const next = {
+    target_value:
+      d.target_value === undefined ? saved.target_value : d.target_value,
+    current_value:
+      d.current_value === undefined ? saved.current_value : d.current_value,
+    value_unit: d.value_unit ?? saved.value_unit,
+  };
+  const pct = measureProgress(next);
+  await db.query(
+    `UPDATE items SET target_value = $2, current_value = $3, value_unit = $4,
+       progress = CASE WHEN $5::int IS NULL OR status = 'done' THEN progress ELSE $5::int END
+     WHERE id = $1`,
+    [id, next.target_value, next.current_value, next.value_unit, pct],
+  );
 }
 
 /** Lock an item row for the rest of the transaction, or 404. */
@@ -526,8 +575,11 @@ export async function mutate(
   db: Db,
   actor: Actor,
   action: Action,
+  /** For a create: the id the device already gave it (made offline). */
+  createId?: string,
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
+  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
   let item: ItemRow | undefined;
   if (operation !== "create") {
     item = await lockItem(db, item_id!);
@@ -576,11 +628,12 @@ export async function mutate(
     );
     const created = (
       await db.query<{ id: string }>(
-        `INSERT INTO items (title, notes, kind, status, priority, due_at, end_at,
+        `INSERT INTO items (id, title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
            assignee_id, location, meeting_url, rrule, timezone, series_start,
            all_day, busy, color, alerts, parent_id, position)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+         VALUES (coalesce($24::uuid, gen_random_uuid()),
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
            $19,$20,$21,$22::integer[],$23,
            (SELECT coalesce(max(x.position), -1) + 1 FROM items x
@@ -610,10 +663,12 @@ export async function mutate(
           d.color ?? null,
           alerts,
           parentId,
+          createId ?? null,
         ],
       )
     ).rows[0];
     await setTags(db, created.id, tagIds);
+    if (d.kind === "task") await setMeasure(db, created.id, d);
     // Only a task waits on anything; an event happens when it happens.
     if (d.prerequisite_ids?.length && d.kind === "task")
       await setPrerequisites(db, actor, created.id, d.prerequisite_ids);
@@ -630,6 +685,8 @@ export async function mutate(
       { user_id: actor.id, team_id: d.team_id },
       result,
     );
+    // Handed to someone else: they're asked, not told.
+    if (d.team_id && d.kind === "task") await openAsk(db, actor.id, result);
     return result;
   }
 
@@ -809,6 +866,12 @@ export async function mutate(
     ],
   );
   await setTags(db, current.id, tagIds);
+  if (d.kind === "task") await setMeasure(db, current.id, d);
+  else
+    await db.query(
+      "UPDATE items SET target_value = NULL, current_value = NULL, value_unit = '' WHERE id = $1",
+      [current.id],
+    );
   // Omitted keeps what is saved, like the other planning fields; a task that
   // stops being a task stops waiting on anything.
   if (d.kind !== "task")
@@ -914,6 +977,14 @@ export async function mutate(
       [current.id],
     );
   const result = await loadItem(db, current.id);
+  // Handed to someone new: they're asked, not told.
+  if (
+    d.team_id &&
+    d.kind === "task" &&
+    assignee &&
+    assignee !== current.assignee_id
+  )
+    await openAsk(db, actor.id, result);
   const audience = { user_id: owner, team_id: d.team_id };
   await queueWebhooks(db, "item.updated", audience, result);
   if (d.status === "done" && current.status !== "done")

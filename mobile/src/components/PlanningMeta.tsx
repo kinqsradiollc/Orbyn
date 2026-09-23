@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { describeRrule, type Item, type Tag } from "@orbyn/core";
+import { describeRrule, measureLabel, type Item, type Tag } from "@orbyn/core";
 import { Icon, type IconName } from "./Icon";
 import { effortLabel } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
@@ -26,7 +26,9 @@ export function PlanningMeta({
   const repeat = describeRrule(item.rrule);
   const effort = effortLabel(item);
   const assignee = item.assignee_name;
-  if (!list && !tags.length && !repeat && !effort && !assignee) return null;
+  const measure = measureLabel(item);
+  if (!list && !tags.length && !repeat && !effort && !assignee && !measure)
+    return null;
   return (
     <View style={s.row}>
       {list && (
@@ -61,6 +63,14 @@ export function PlanningMeta({
           icon="users"
           label={assignee}
           spoken={`Assigned to ${assignee}`}
+        />
+      )}
+      {!!measure && (
+        <Meta
+          large={large}
+          icon="target"
+          label={measure}
+          spoken={`Number to reach: ${measure}`}
         />
       )}
       {!!effort && (

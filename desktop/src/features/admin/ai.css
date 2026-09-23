@@ -60,7 +60,7 @@
 .ai-model input {
   padding: 7px 9px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   font-size: 11px;
@@ -99,7 +99,7 @@
   appearance: none;
   width: 32px;
   height: 18px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: #dfe5dc;
   position: relative;
   cursor: pointer;
@@ -156,7 +156,7 @@
   width: 100%;
   padding: 11px 12px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   margin-top: 7px;

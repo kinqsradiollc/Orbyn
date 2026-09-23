@@ -8,6 +8,12 @@
   --green: var(--color-accent);
   --muted: var(--color-muted);
   --border: var(--color-border);
+  /* One set of corners. Marks and bars, controls, cards, dialogs, pills. */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
 }
 * {
   box-sizing: border-box;
@@ -30,6 +36,30 @@ button {
     box-shadow var(--motion-fast) var(--ease-out),
     opacity var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
+}
+/*
+ * A field nobody styled still looks like the rest of the app: rounded, the
+ * same border and type as inline forms. :where() keeps this at zero
+ * specificity, so every feature rule still wins.
+ */
+:where(
+  input:not(
+    [type="checkbox"],
+    [type="radio"],
+    [type="range"],
+    [type="color"],
+    [type="file"],
+    [type="hidden"]
+  ),
+  textarea,
+  select
+) {
+  padding: 8px 11px;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-chipText);
+  font-size: 12px;
 }
 button:disabled {
   opacity: 0.5;
@@ -145,10 +175,11 @@ small {
   stroke-width: 1.6;
   color: var(--green);
 }
-.brand > span {
+.brand-name > span {
   font-size: 30px;
   color: var(--color-dot);
-  margin-left: -5px;
+  /* The gap the flex row used to give the dot, less its side bearing. */
+  margin-left: 4px;
 }
 .workspace {
   margin: 20px 0 18px;
@@ -157,7 +188,7 @@ small {
   align-items: center;
   background: #f8f9f7;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   padding: 12px 10px;
 }
 .avatar {
@@ -214,7 +245,7 @@ nav button {
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   color: #78817d;
   font-size: 13px;
   text-align: left;
@@ -246,7 +277,7 @@ nav button i,
   border: 0;
   background: none;
   width: 100%;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 9px 14px;
   color: #77817a;
   display: flex;
@@ -269,6 +300,81 @@ nav button i,
   margin-left: 244px;
   flex: 1;
   min-width: 0;
+}
+
+/* The rail: icons only, so the page gets the width back. Labels move into
+   tooltips and the accessible name. Wide windows only; phones keep the
+   slide-in menu. */
+@media (min-width: 801px) {
+  .sidebar,
+  .shell {
+    transition:
+      width var(--motion-base, 200ms) var(--ease-out),
+      margin-left var(--motion-base, 200ms) var(--ease-out),
+      padding var(--motion-base, 200ms) var(--ease-out);
+  }
+  .is-railed .sidebar {
+    width: 72px;
+    padding-inline: 12px;
+  }
+  .is-railed .shell {
+    margin-left: 72px;
+  }
+  .is-railed .brand {
+    justify-content: center;
+    padding-left: 0;
+  }
+  .is-railed .brand-name,
+  .is-railed .nav-label,
+  .is-railed .sidebar nav button > span,
+  .is-railed .settings-link > span,
+  .is-railed .workspace > div,
+  .is-railed .profile > div {
+    display: none;
+  }
+  .is-railed .workspace {
+    justify-content: center;
+    padding: 6px;
+    border-color: transparent;
+    background: none;
+  }
+  .is-railed .nav-group + .nav-group {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-divider);
+  }
+  .is-railed .sidebar nav button,
+  .is-railed .settings-link {
+    position: relative;
+    justify-content: center;
+    padding: 10px 0;
+  }
+  /* The unread dot sits on the bell instead of at the end of a label. */
+  .is-railed .sidebar nav button i {
+    position: absolute;
+    top: 7px;
+    right: 12px;
+    margin: 0;
+  }
+  .is-railed .profile {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .is-railed .profile .icon-button {
+    margin-left: 0;
+  }
+}
+@media (max-width: 800px) {
+  .rail-toggle {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .shell {
+    transition: none;
+  }
 }
 .topbar {
   height: 77px;
@@ -305,7 +411,7 @@ nav button i,
   align-items: center;
   justify-content: center;
   color: #869086;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
 }
 .icon-button:hover {
   background: #eef2eb;
@@ -342,7 +448,7 @@ nav button i,
 }
 .primary,
 .secondary {
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 11px 17px;
   display: inline-flex;
   align-items: center;
@@ -379,7 +485,7 @@ nav button i,
   grid-template-columns: repeat(3, minmax(0, 1fr));
   background: white;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   padding: 23px 0;
   margin-bottom: 27px;
 }
@@ -427,7 +533,7 @@ nav button i,
 .card {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   margin-bottom: 24px;
   overflow: hidden;
 }
@@ -446,7 +552,7 @@ nav button i,
   background: #f1f4ee;
   color: #8a9481;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 .section-heading > svg {
   color: #9aa393;
@@ -462,7 +568,7 @@ nav button i,
   width: 17px;
   height: 17px;
   border: 1.5px solid #d5dcd4;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: white;
   flex-shrink: 0;
   padding: 0;
@@ -505,8 +611,8 @@ nav button i,
   font-size: 10px;
   font-weight: 500;
   white-space: nowrap;
-  border-radius: 4px;
-  padding: 4px 7px;
+  border-radius: var(--radius-pill);
+  padding: 4px 9px;
   text-transform: capitalize;
   background: var(--color-lowBg);
   color: var(--color-lowText);
@@ -567,7 +673,7 @@ nav button i,
   justify-content: center;
   background: #f6f7f2;
   border: 1px solid #eceee6;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   width: 44px;
   height: 49px;
   font-size: 18px;
@@ -600,7 +706,7 @@ nav button i,
 .assistant-card {
   background: #eef1e5;
   border: 1px solid #e5e9d9;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   padding: 22px;
   position: relative;
   overflow: hidden;
@@ -612,7 +718,7 @@ nav button i,
   height: 40px;
   border: 1px solid #dce3d0;
   background: #f8f9f2;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -647,7 +753,7 @@ nav button i,
   color: #5d754f;
   font-size: 10px;
   padding: 10px 13px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   margin-top: 20px;
   position: relative;
   z-index: 1;
@@ -700,7 +806,7 @@ nav button i,
 .progress-track {
   height: 5px;
   background: #eff2e9;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   margin-top: 15px;
   overflow: hidden;
 }
@@ -741,7 +847,7 @@ footer svg {
 .search input {
   border: 1px solid var(--border);
   background: #f8f9f6;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   font-size: 13px;
   width: 170px;
@@ -778,7 +884,7 @@ footer svg {
   border: 1px solid #e3e8dd;
   background: #f8faf5;
   padding: 12px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   color: #728765;
 }
@@ -786,7 +892,7 @@ footer svg {
   display: flex;
   gap: 12px;
   border: 1px solid #dfe6d9;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   padding: 8px;
 }
 .chat-input input {
@@ -806,7 +912,7 @@ footer svg {
 .proposal {
   border: 1px solid #e1e7da;
   background: #f8faf5;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 22px;
   margin-bottom: 24px;
 }
@@ -904,7 +1010,7 @@ footer svg {
   color: #a14937;
   background: #fff0eb;
   border: 1px solid #f1d9d0;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 12px 16px;
   margin-bottom: 20px;
   font-size: 12px;
@@ -916,7 +1022,7 @@ footer svg {
   padding: 7px 12px;
   background: #eaf0e3;
   color: #708064;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 10px;
 }
 .modal-backdrop {
@@ -938,7 +1044,7 @@ footer svg {
   max-height: 90vh;
   max-height: 90dvh;
   overflow: auto;
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   box-shadow: 0 20px 90px #1c312433;
 }
 .modal .section-heading {
@@ -962,7 +1068,7 @@ footer svg {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   margin-top: 7px;
@@ -1277,7 +1383,7 @@ footer svg {
   font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.2px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 3px 7px;
   background: var(--color-lowBg);
   color: #7d8977;
@@ -1315,7 +1421,7 @@ footer svg {
   align-items: center;
   gap: 4px;
   font-size: 9px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 4px 7px;
   background: #edf2e8;
   color: #648153;
@@ -1333,7 +1439,7 @@ footer svg {
   font-size: 9px;
   color: #648153;
   background: #edf2e8;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 2px 6px;
 }
 .rbac-note,
@@ -1343,7 +1449,7 @@ footer svg {
   gap: 8px;
   margin: 0 23px 18px;
   padding: 11px 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-mediumBg);
   color: #8d7d4c;
   font-size: 11px;
@@ -1403,7 +1509,7 @@ footer svg {
 .team-avatar {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1441,7 +1547,7 @@ footer svg {
 .inline-form select {
   padding: 10px 11px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   font-size: 12px;
@@ -1498,7 +1604,7 @@ footer svg {
   background: #f1f4ee;
   color: #8a9481;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 .add-member {
   padding: 16px 23px 22px;
@@ -1552,7 +1658,7 @@ footer svg {
 .role-select {
   padding: 6px 8px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
   font-size: 11px;
@@ -1591,7 +1697,7 @@ footer svg {
 .status-pill {
   display: inline-block;
   font-size: 9px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 3px 7px;
   margin-right: 8px;
 }
@@ -1615,7 +1721,7 @@ footer svg {
   font-size: 10px;
   background: #f1f4ee;
   color: #5d7854;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 3px 6px;
   white-space: nowrap;
 }
@@ -1642,7 +1748,7 @@ footer svg {
   border: 1px solid var(--border);
   background: #fff;
   color: #78817d;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 9px 14px;
   font-size: 12px;
   white-space: nowrap;
@@ -1749,7 +1855,7 @@ footer svg {
   gap: 6px;
   flex-shrink: 0;
   padding: 3px 9px 3px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--tone-bg);
   color: var(--tone-text);
   font-size: 11px;
@@ -1776,7 +1882,7 @@ footer svg {
   flex: 1;
   min-width: 48px;
   height: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: #e9eee7;
   overflow: hidden;
 }
@@ -1816,7 +1922,7 @@ footer svg {
   box-shadow: inset 3px 0 0 var(--tone-fg);
 }
 .item-main {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .item-main:focus-visible {
   outline-offset: 4px;
@@ -1942,7 +2048,7 @@ footer svg {
   padding: 3px;
   gap: 2px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--color-surfaceMuted);
 }
 .segmented button {
@@ -1951,7 +2057,7 @@ footer svg {
   gap: 6px;
   padding: 6px 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: #5f6b62;
   font-size: 12px;
@@ -1981,7 +2087,7 @@ footer svg {
   flex-shrink: 0;
   padding: 7px 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: #5f6b62;
   font-size: 12px;
@@ -1996,7 +2102,7 @@ footer svg {
 .filter-chips button span {
   min-width: 20px;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -2023,7 +2129,7 @@ footer svg {
   gap: 10px;
   min-width: 0;
   padding: 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-surfaceMuted);
 }
 .board-column h3 {
@@ -2043,7 +2149,7 @@ footer svg {
 .board-column h3 span {
   margin-left: auto;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: #5f6b62;
   font:
@@ -2054,14 +2160,14 @@ footer svg {
   margin: 0;
   padding: 16px 8px;
   border: 1px dashed #d5ddd5;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   text-align: center;
   font-size: 12px;
   color: #6f7b72;
 }
 .board-card {
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   transition:
     border-color var(--motion-fast) var(--ease-out),
@@ -2080,7 +2186,7 @@ footer svg {
   width: 100%;
   padding: 12px 12px 8px;
   border: 0;
-  border-radius: 9px 9px 0 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: none;
   text-align: left;
 }
@@ -2106,21 +2212,44 @@ footer svg {
   color: var(--status-blocked-fg);
   font-weight: 600;
 }
+/* The priority chip and the status picker sit on one line as a pair: same
+   height, same pill shape. The picker gives way (ellipsis) before it wraps. */
 .board-card-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   padding: 0 12px 12px;
 }
-.board-move select {
+.board-card-foot > .priority {
+  flex: none;
+  line-height: 13px;
+  /* Matches the picker's border so both come out the same height. */
+  border: 1px solid transparent;
+}
+.board-move {
+  display: flex;
+  min-width: 0;
   max-width: 150px;
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 11px;
+  margin-left: auto;
+}
+.board-move .select-control {
+  gap: 4px;
+  padding: 4px 7px 4px 9px;
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 13px;
+}
+.board-move .select-control > svg {
+  width: 12px;
+  height: 12px;
+}
+.board-move .select-control:hover:not(:disabled) {
+  border-color: var(--border);
 }
 @media (max-width: 1100px) {
   .board {
@@ -2266,6 +2395,11 @@ footer svg {
   border-color: #d7e4d6;
   color: #3c6349;
 }
+.app-banner.is-focus {
+  background: var(--color-soft);
+  border-color: var(--color-softBorder);
+  color: var(--color-accent);
+}
 @media (max-width: 800px) {
   .app-banner {
     padding: 9px 20px;
@@ -2330,7 +2464,7 @@ footer svg {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-chip);
   color: var(--color-chipText);
   white-space: nowrap;
@@ -2391,7 +2525,7 @@ footer svg {
   border: 0;
   padding: 8px;
   margin-inline: -8px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--color-text);
   cursor: pointer;
 }
@@ -2472,7 +2606,7 @@ footer svg {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   padding: 11px 17px;
   font: inherit;
 }
@@ -2494,6 +2628,8 @@ footer svg {
   position: relative;
   display: inline-flex;
   min-width: 0;
+  /* However long an option is, the field stays inside its container. */
+  max-width: 100%;
 }
 .select-control {
   width: 100%;
@@ -2504,7 +2640,7 @@ footer svg {
   gap: 8px;
   padding: 7px 9px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
@@ -2558,7 +2694,7 @@ footer svg {
   overflow-y: auto;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: 0 12px 34px var(--color-backdrop);
 }
@@ -2573,7 +2709,7 @@ footer svg {
   justify-content: space-between;
   gap: 10px;
   padding: 7px 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-text);
   cursor: pointer;
@@ -2607,7 +2743,7 @@ footer svg {
   flex-wrap: wrap;
   padding: 8px;
   margin: -8px;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   border: 1px dashed transparent;
 }
 /* Dropping a file on it is offered, not required. */
@@ -2645,7 +2781,7 @@ footer svg {
   gap: 6px;
   min-width: 0;
   padding: 4px 4px 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-chip);
   font-size: 12px;
 }
@@ -2710,4 +2846,247 @@ footer svg {
   border-top: 1px solid var(--color-border);
   padding-top: 16px;
   margin-top: 0;
+}
+
+/* Date and time fields: a button like the select, and a small calendar. */
+.date-field {
+  display: inline-flex;
+  min-width: 0;
+}
+.date-field-control {
+  width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+.date-field-control > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.date-field-control > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.date-field-control[data-empty] {
+  color: var(--color-muted);
+}
+.date-field-control:hover:not(:disabled) {
+  border-color: var(--color-border-strong, var(--border));
+}
+.date-field-control[aria-expanded="true"] {
+  border-color: var(--color-focus);
+}
+.date-field-panel {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+.date-month {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 6px;
+}
+.date-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.date-month-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.date-month-head .icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+}
+.date-month-head .icon-button:hover {
+  background: var(--color-surfaceMuted);
+  color: var(--color-text);
+}
+.date-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.date-month-weekday {
+  padding: 4px 0;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.date-day {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.date-day:hover:not(:disabled) {
+  background: var(--color-surfaceMuted);
+}
+.date-day.is-outside {
+  color: var(--color-muted);
+}
+.date-day.is-today {
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+.date-day[aria-pressed="true"],
+.date-day[aria-pressed="true"]:hover {
+  background: var(--color-accent);
+  color: var(--color-onAccent);
+}
+.date-day:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.date-month-today {
+  justify-self: start;
+  padding: 4px 0;
+}
+.date-times {
+  flex: 0 0 104px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  max-height: 268px;
+  overflow-y: auto;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-divider);
+}
+.date-field-panel > .date-times:only-child {
+  flex: 1 1 auto;
+  padding-left: 0;
+  border-left: 0;
+}
+.date-time {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font-size: 12px;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.date-time:hover {
+  background: var(--color-surfaceMuted);
+}
+.date-time[aria-selected="true"] {
+  background: var(--color-accent);
+  color: var(--color-onAccent);
+}
+.date-field-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-divider);
+}
+
+/* Checkboxes and radios in Orbyn's own style rather than the browser's.
+   Zero specificity, so switches (role="switch") and any styled control keep
+   their own look. */
+:where(input[type="checkbox"]:not([role="switch"]), input[type="radio"]) {
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid var(--color-borderStrong);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface);
+  vertical-align: -3px;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+:where(input[type="radio"]) {
+  border-radius: 50%;
+}
+:where(input[type="checkbox"]:not([role="switch"]))::before {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border: 2px solid var(--color-onAccent);
+  border-top: 0;
+  border-right: 0;
+  transform: translateY(-1px) rotate(-45deg);
+  opacity: 0;
+}
+:where(input[type="radio"])::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-onAccent);
+  opacity: 0;
+}
+:where(
+    input[type="checkbox"]:not([role="switch"]),
+    input[type="radio"]
+  ):hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+:where(
+  input[type="checkbox"]:not([role="switch"]):checked,
+  input[type="checkbox"]:not([role="switch"]):indeterminate,
+  input[type="radio"]:checked
+) {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+:where(
+  input[type="checkbox"]:not([role="switch"]):checked,
+  input[type="radio"]:checked
+)::before {
+  opacity: 1;
+}
+:where(input[type="checkbox"]:not([role="switch"]):indeterminate)::before {
+  width: 8px;
+  height: 0;
+  border-left: 0;
+  transform: none;
+  opacity: 1;
+}
+:where(input[type="checkbox"], input[type="radio"]):disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Number fields without the browser's spinner arrows; typing and the arrow
+   keys still work. */
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
 }

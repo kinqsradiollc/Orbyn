@@ -32,6 +32,36 @@ export type Project = {
   done_count: number;
 };
 
+/** A compact record of a meaningful change to a project's work. */
+export type ProjectActivity = {
+  id: string;
+  /** PostgreSQL bigint, sent as decimal text to preserve precision. */
+  event_order: string;
+  project_id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  kind:
+    | "project_created"
+    | "project_changed"
+    | "task_added"
+    | "task_changed"
+    | "task_removed"
+    | "note_added"
+    | "note_changed"
+    | "note_removed"
+    | "stage_added"
+    | "stage_changed"
+    | "stage_removed"
+    | "record_added"
+    | "record_changed";
+  entity_type: "project" | "task" | "note" | "stage" | "record";
+  entity_id: string | null;
+  summary: string;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  created_at: string;
+};
+
 /** Progress as a whole percentage; an empty project reads as 0. */
 export const projectProgress = (p: {
   task_count: number;

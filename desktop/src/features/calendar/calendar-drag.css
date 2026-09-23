@@ -16,7 +16,7 @@
   z-index: 2;
   padding: 2px 6px;
   border: 1.5px solid var(--green);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-accentSoft) 70%, transparent);
   color: var(--green);
   font-size: 10px;

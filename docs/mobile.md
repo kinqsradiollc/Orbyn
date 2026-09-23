@@ -8,7 +8,9 @@ types, validation, and the API client with the web app through `@orbyn/core` and
 
 The bottom bar contains Today, Tasks, Calendar, Assistant and Workspace. Notifications are
 available from the bell in the header. Workspace provides direct access to Planning, Projects,
-Docs, Agenda and the other workspace tools.
+Docs, Agenda and the other workspace tools. Tapping the tab you are already on scrolls back
+to its top and refreshes, as in Instagram and Facebook; on Assistant it jumps to the newest
+message instead.
 
 - Assistant replies use the content column's full width. The composer has a full-width text
   field and a separate action row, and stays above the software keyboard.
@@ -16,10 +18,13 @@ Docs, Agenda and the other workspace tools.
   expandable folders. Folder children open directly; View folder narrows the collection.
   New documents and notes inherit the selected folder. Sort switches between last edited
   and title A–Z; search looks across all pages and notes. The web client keeps this library
-  beside the editor and collapses it behind Browse library on narrow screens.
+  beside the editor and collapses it behind Browse library on narrow screens; on wide screens
+  Hide library gives the page the full width, and the web sidebar collapses to an icon rail.
 - Document cards expose Open, Star and Folder separately to accessibility services. Document
   titles grow as they wrap, including while editing.
-- Projects opens on Tasks, with Notes and Timeline in separate views.
+- Projects opens on Tasks, with Notes, Timeline, Decisions and History in separate views.
+  Promises across every project sit in one collapsible row above the list; a decision that
+  no task delivers yet says so and offers Make a task.
 - Planning groups settings into collapsible sections and keeps Save at the bottom. Collapsing
   a section preserves its draft values.
 - Calendar starts in Day unless a view was saved. Phone month grids use activity dots;

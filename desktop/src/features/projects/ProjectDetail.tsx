@@ -1,25 +1,77 @@
 import { Select } from "../../components/Select";
 import { ProjectNotes } from "./ProjectNotes";
+import { ProjectRecords } from "./ProjectRecords";
+import { ProjectTimeMachine } from "./ProjectTimeMachine";
 import { useConfirm } from "../../components/Confirm";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   CalendarRange,
   Columns3,
+  History,
   List,
   Plus,
   Trash2,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   projectAtRisk,
   projectProgress,
   projectTimeline,
+  projectReentry,
   type Item,
+  type ProjectActivity,
   type Project,
   type ProjectStage,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
+import { DateField } from "../../components/DateField";
+
+const HISTORY_FIELDS: Record<string, string> = {
+  name: "Name",
+  summary: "Summary",
+  status: "Status",
+  deadline: "Deadline",
+  title: "Title",
+  due_at: "Due date",
+  progress: "Progress",
+  stage_id: "Stage",
+  version: "Document version",
+  position: "Order",
+};
+
+function historyValue(key: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return "Not set";
+  if (key === "progress") return `${value}%`;
+  if (key === "deadline" || key === "due_at") {
+    const date = new Date(String(value));
+    if (!Number.isNaN(date.getTime()))
+      return date.toLocaleString([], {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+  }
+  if (key === "stage_id") return "Stage changed";
+  return String(value);
+}
+
+function historyDiff(event: ProjectActivity) {
+  const before = event.before_state ?? {};
+  const after = event.after_state ?? {};
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter(
+      (key) =>
+        HISTORY_FIELDS[key] &&
+        !(before[key] == null && after[key] == null) &&
+        before[key] !== after[key],
+    )
+    .map((key) => ({
+      label: HISTORY_FIELDS[key],
+      from: historyValue(key, before[key]),
+      to: historyValue(key, after[key]),
+    }));
+}
 
 /** Tasks that sit in this project, grouped by stage with the unfiled last. */
 function group(items: Item[], project: Project) {
@@ -45,6 +97,8 @@ export function ProjectDetail({
   onItemsChanged,
   onOpenItem,
   onOpenNote,
+  userId,
+  canWrite,
 }: {
   project: Project;
   items: Item[];
@@ -56,16 +110,59 @@ export function ProjectDetail({
   onOpenItem: (item: Item) => void;
   /** Opens a note of this project's in the documents view. */
   onOpenNote?: (docId: string) => void;
+  userId: string;
+  canWrite: boolean;
 }) {
   const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"list" | "board" | "timeline">("list");
+  const [mode, setMode] = useState<"list" | "board" | "timeline" | "history">(
+    "list",
+  );
+  const [activity, setActivity] = useState<ProjectActivity[] | null>(null);
+  const [lastSeen, setLastSeen] = useState<string | null>(null);
+  const [reentry, setReentry] = useState<ReturnType<
+    typeof projectReentry
+  > | null>(null);
   /** The task being dragged across the board, if any. */
   const [dragging, setDragging] = useState<string | null>(null);
   const grouped = useMemo(() => group(items, project), [items, project]);
   const percent = projectProgress(project);
   const risk = projectAtRisk(project);
   const unfiledPool = items.filter((i) => !i.project_id && i.kind === "task");
+
+  useEffect(() => {
+    let active = true;
+    const key = `orbyn.project.reentry.${project.id}`;
+    const previous = localStorage.getItem(key);
+    client
+      .projectActivity(project.id)
+      .then((rows) => {
+        if (!active) return;
+        setReentry(
+          previous
+            ? projectReentry(rows.filter((row) => row.created_at > previous))
+            : null,
+        );
+        localStorage.setItem(key, new Date().toISOString());
+      })
+      .catch(report);
+    return () => {
+      active = false;
+    };
+  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openHistory = () => {
+    const key = `orbyn.project.seen.${project.id}`;
+    setLastSeen(sessionStorage.getItem(key));
+    setMode("history");
+    client
+      .projectActivity(project.id)
+      .then((rows) => {
+        setActivity(rows);
+        sessionStorage.setItem(key, new Date().toISOString());
+      })
+      .catch(report);
+  };
 
   const save = (patch: Parameters<typeof client.updateProject>[1]) => {
     setBusy(true);
@@ -196,7 +293,32 @@ export function ProjectDetail({
           >
             <CalendarRange size={14} /> Timeline
           </button>
+          <button
+            className={mode === "history" ? "is-on" : ""}
+            aria-pressed={mode === "history"}
+            onClick={openHistory}
+          >
+            <History size={14} /> History
+          </button>
         </div>
+        <button
+          className="icon-button"
+          title="Save as template"
+          aria-label="Save as template"
+          onClick={() =>
+            void client
+              .templateFromProject(project.id)
+              .then((t) =>
+                tell({
+                  title: `Saved “${t.name}” as a template.`,
+                  body: "Start a project from it with Templates, on the projects page.",
+                }),
+              )
+              .catch(report)
+          }
+        >
+          <LayoutTemplate size={15} />
+        </button>
         <button
           className="icon-button"
           onClick={remove}
@@ -205,6 +327,29 @@ export function ProjectDetail({
           <Trash2 size={15} />
         </button>
       </div>
+
+      {reentry && reentry.total > 0 && (
+        <section className="project-reentry" aria-label="Since your last visit">
+          <div>
+            <strong>Since your last visit</strong>
+            <p>
+              {reentry.total} change{reentry.total === 1 ? "" : "s"}
+              {reentry.completedTasks > 0 &&
+                ` · ${reentry.completedTasks} task${reentry.completedTasks === 1 ? "" : "s"} completed`}
+              {reentry.changedRecords > 0 &&
+                ` · ${reentry.changedRecords} commitment update${reentry.changedRecords === 1 ? "" : "s"}`}
+            </p>
+            <ul>
+              {reentry.recent.map((summary, index) => (
+                <li key={`${summary}-${index}`}>{summary}</li>
+              ))}
+            </ul>
+          </div>
+          <button className="secondary" onClick={openHistory}>
+            View history
+          </button>
+        </section>
+      )}
 
       <header className="project-header">
         <div className="project-title-row">
@@ -221,7 +366,7 @@ export function ProjectDetail({
           </span>
           <label className="project-deadline">
             Deadline
-            <input
+            <DateField
               id="project-deadline"
               type="date"
               value={deadlineValue}
@@ -238,7 +383,118 @@ export function ProjectDetail({
         </div>
       </header>
 
-      {mode === "timeline" ? (
+      {mode === "history" ? (
+        <section
+          className="project-history"
+          aria-labelledby="project-history-title"
+        >
+          <div className="project-history-heading">
+            <div>
+              <h3 id="project-history-title">Project history</h3>
+              <p className="muted">
+                Changes to the project, its tasks, and its notes in one place.
+              </p>
+            </div>
+            <button
+              className="secondary"
+              onClick={() =>
+                client
+                  .projectActivity(project.id)
+                  .then(setActivity)
+                  .catch(report)
+              }
+            >
+              Refresh
+            </button>
+          </div>
+          <ProjectTimeMachine projectId={project.id} report={report} />
+          {activity === null ? (
+            <p className="muted">Loading project history…</p>
+          ) : activity.length === 0 ? (
+            <p className="project-history-empty muted">
+              Changes will appear here as work on this project evolves.
+            </p>
+          ) : (
+            <>
+              {lastSeen && (
+                <p className="project-catchup" role="status">
+                  <strong>
+                    {
+                      activity.filter((event) => event.created_at > lastSeen)
+                        .length
+                    }
+                  </strong>{" "}
+                  {activity.filter((event) => event.created_at > lastSeen)
+                    .length === 1
+                    ? "change since your last visit"
+                    : "changes since your last visit"}
+                </p>
+              )}
+              <ol className="project-history-list">
+                {activity.map((event) => {
+                  const changes = historyDiff(event);
+                  const relatedItem =
+                    event.entity_type === "task"
+                      ? items.find((item) => item.id === event.entity_id)
+                      : undefined;
+                  return (
+                    <li key={event.id}>
+                      <span
+                        className="project-history-dot"
+                        aria-hidden="true"
+                      />
+                      <div className="project-history-entry">
+                        <div className="project-history-title">
+                          <strong>{event.summary}</strong>
+                          <time dateTime={event.created_at}>
+                            {new Date(event.created_at).toLocaleString([], {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </time>
+                        </div>
+                        <small className="muted">
+                          {event.actor_name ?? "Workspace activity"}
+                        </small>
+                        {!!changes.length && (
+                          <ul className="project-history-diff">
+                            {changes.map((change) => (
+                              <li key={change.label}>
+                                <span>{change.label}</span>
+                                <span>{change.from}</span>
+                                <span aria-hidden="true">→</span>
+                                <strong>{change.to}</strong>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {relatedItem && (
+                          <button
+                            className="text-button"
+                            onClick={() => onOpenItem(relatedItem)}
+                          >
+                            Open task
+                          </button>
+                        )}
+                        {event.entity_type === "note" &&
+                          event.entity_id &&
+                          onOpenNote && (
+                            <button
+                              className="text-button"
+                              onClick={() => onOpenNote(event.entity_id!)}
+                            >
+                              Open note
+                            </button>
+                          )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </>
+          )}
+        </section>
+      ) : mode === "timeline" ? (
         <Timeline project={project} items={items} onOpenItem={onOpenItem} />
       ) : mode === "board" ? (
         <div className="pboard" aria-label="Stages as columns">
@@ -459,6 +715,15 @@ export function ProjectDetail({
           </button>
         </div>
       )}
+
+      <ProjectRecords
+        project={project}
+        items={items}
+        userId={userId}
+        canWrite={canWrite}
+        onOpenNote={onOpenNote}
+        report={report}
+      />
 
       {!!onOpenNote && (
         <ProjectNotes

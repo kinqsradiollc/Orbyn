@@ -1,3 +1,4 @@
+import { announceTo } from "../modules/presence/live.js";
 import type { WebhookEvent } from "@orbyn/core";
 import type { Queryable } from "../db/pool.js";
 
@@ -16,6 +17,9 @@ export async function queueWebhooks(
   data: Record<string, unknown>,
   dedupeKey: string | null = null,
 ) {
+  // Every change worth a webhook is worth telling the open apps about, so
+  // they refresh instead of checking on a timer.
+  await announceTo(db, audience, "changed");
   await db.query(
     `INSERT INTO webhook_deliveries (webhook_id, event, payload, dedupe_key)
      SELECT w.id, $1, $4::jsonb, $5 FROM webhooks w

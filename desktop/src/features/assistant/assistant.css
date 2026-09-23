@@ -63,7 +63,7 @@
   border: 1px solid var(--border);
   background: #fff;
   color: var(--color-textSoft);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 7px 12px;
   font-size: 12px;
   cursor: pointer;
@@ -132,7 +132,7 @@
   padding: 0 16px;
   line-height: 1.4;
   border: 0;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: #fff;
   cursor: pointer;
   transition:
@@ -182,7 +182,7 @@
   animation-name: motion-slide-from-right;
 }
 .ai-bubble {
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 12px 18px;
   line-height: 1.6;
   font-size: 16px;
@@ -284,7 +284,7 @@
   align-items: flex-start;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 12px 14px;
 }
 .ai-action-body {
@@ -300,7 +300,7 @@
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 600;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 3px 9px;
   margin-top: 1px;
 }
@@ -328,7 +328,7 @@
   font-size: 12px;
   color: var(--color-textSoft);
   background: var(--color-surfaceMuted);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 3px 9px;
   text-transform: none;
 }
@@ -600,7 +600,7 @@
 }
 .ai-summary code {
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: #f1f3ef;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.92em;
@@ -613,7 +613,7 @@
   overflow-x: auto;
   margin: 4px 0 8px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: #fff;
 }
 .ai-table-wrap:last-child {
@@ -663,7 +663,7 @@
   border: 1px solid var(--border);
   background: #fff;
   color: var(--green);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 10px 16px;
   font: inherit;
   font-size: 12px;
@@ -741,7 +741,7 @@
   max-width: 220px;
   padding: 3px 8px;
   border: 1px solid var(--color-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-sunken);
   color: var(--color-muted);
   font: inherit;
@@ -773,7 +773,7 @@
   gap: 6px;
   padding: 12px;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
   min-width: 0;
 }

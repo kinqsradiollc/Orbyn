@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   editScopeQuery,
   fail,
+  habitInput,
   isClosed,
   itemData,
   itemPositionInput,
@@ -30,6 +31,7 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
+import { createHabit } from "../planner/habits.js";
 import { largestFreeMinutes } from "../planner/plans.js";
 import {
   deleteOccurrences,
@@ -390,6 +392,15 @@ export async function itemRoutes(app: FastifyInstance) {
       if (!parsed.input.title)
         fail(422, 'Add a title, such as "Lunch with Sam tomorrow 1pm".');
       if (d.preview) return parsed;
+      if (parsed.habit) {
+        const habit = await createHabit(
+          pool,
+          u.id,
+          habitInput.parse(parsed.habit),
+        );
+        reply.code(201);
+        return { item: null, habit, chips: parsed.chips };
+      }
       const item = await transaction((db) =>
         mutate(db, u, {
           operation: "create",
@@ -413,11 +424,27 @@ export async function itemRoutes(app: FastifyInstance) {
     return itemDetail(id, (text, values) => db.query(text, values));
   });
 
+  // A device may name the item itself (made offline): sending it again is
+  // the same item, never a second one.
   app.post("/items", async (r, reply) => {
     const u = await authenticate(r);
-    const data = itemData.parse(r.body);
+    const { id, ...raw } = z
+      .object({ id: z.uuid().optional() })
+      .passthrough()
+      .parse(r.body);
+    const data = itemData.parse(raw);
+    if (id) {
+      const existing = (
+        await pool.query<ItemRow>("SELECT * FROM items WHERE id = $1", [id])
+      ).rows[0];
+      if (existing) {
+        if (existing.user_id !== u.id) fail(409, "That item id is taken.");
+        await requireItemAccess(u, existing, "items:read");
+        return transaction((db) => loadItem(db, id));
+      }
+    }
     const item = await transaction((db) =>
-      mutate(db, u, { operation: "create", data }),
+      mutate(db, u, { operation: "create", data }, id),
     );
     reply.code(201);
     return item;

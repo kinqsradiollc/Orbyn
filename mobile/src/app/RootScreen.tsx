@@ -35,6 +35,7 @@ import { TabBar } from "../components/TabBar";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { PlanningProvider } from "../lib/planningContext";
 import { planIncluding } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
@@ -65,6 +66,12 @@ import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
 import { TeamsSheet } from "../screens/TeamsSheet";
 import { TodayScreen } from "../screens/TodayScreen";
+import { SyncSheet } from "../screens/SyncSheet";
+import { ProgressSheet } from "../screens/ProgressSheet";
+import { SyncBar } from "../components/SyncBar";
+import { WelcomeBack } from "../components/followthrough/WelcomeBack";
+import { FocusElsewhere } from "../components/FocusElsewhere";
+import { usePresence } from "../hooks/usePresence";
 import { colors, spacing, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -85,7 +92,9 @@ type SheetName =
   | "agenda"
   | "note"
   | "projects"
-  | "settings";
+  | "settings"
+  | "sync"
+  | "progress";
 /** What to present next: a sheet or the item editor. */
 type Next = { sheet: SheetName } | { edit: Editing };
 
@@ -127,11 +136,14 @@ export function RootScreen() {
     twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
+  usePresence(token, () => void refresh({ silent: true }).catch(() => {}));
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("Today");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<SheetName | null>(null);
+  /** A template to open for review, from a "ready to start" notice. */
+  const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   /** The task shown in the detail sheet. */
   const [task, setTask] = useState<Item | null>(null);
   /** The meeting note being read, opened from its event. */
@@ -324,17 +336,18 @@ export function RootScreen() {
     onToggle: (i: Item) =>
       act(async () => {
         const status = toggledStatus(i);
-        await client.postItemUpdate(i.id, { status });
+        // Offline, it's kept on the phone and shown as ticked already.
+        const sent = await outbox.postItemUpdate(i, { status });
         if (status === "done") celebrate(i.title);
         // The row may move to another group or leave this list.
-        await refresh({ animate: true });
+        if (sent) await refresh({ animate: true });
       }),
     /** Long-press a row, or "Move to…" on the board. */
     onSetStatus: (i: Item, status: Status) =>
       void act(async () => {
-        await client.postItemUpdate(i.id, { status });
+        const sent = await outbox.postItemUpdate(i, { status });
         if (status === "done") celebrate(i.title);
-        await refresh({ animate: true });
+        if (sent) await refresh({ animate: true });
       }),
   };
   /** "New task here" in a list: the editor with that list and team chosen. */
@@ -407,7 +420,10 @@ export function RootScreen() {
     else if (kind === "at_risk" || kind === "deadline")
       void startPlanIt(itemId);
     else if (kind === "conflict") setTab("Inbox");
-    else if (kind === "booking" && text("ref")) {
+    else if (kind === "template" && text("ref")) {
+      setTemplateToOpen(text("ref"));
+      present({ sheet: "projects" });
+    } else if (kind === "booking" && text("ref")) {
       setBookingId(text("ref"));
       present({ sheet: "booking" });
     } else if (itemId)
@@ -417,7 +433,11 @@ export function RootScreen() {
   const saveEditing = () =>
     act(async () => {
       if (!editing) return;
+      let sent: unknown = true;
       if ("id" in editing) {
+        // What the edit started from: what "changed" is measured against if
+        // it has to wait for a connection.
+        const base = items.find((i) => i.id === editing.id) ?? editing;
         // Progress is owned by the checklist and the task sheet; omitting it
         // keeps the saved value (sending it while steps exist is a 409).
         const { progress: _progress, ...body } = itemBody(editing);
@@ -425,8 +445,8 @@ export function RootScreen() {
         if (repeat) {
           const scope = await askScope(editing.kind, "save");
           if (!scope) return;
-          await client.updateItem(
-            editing.id,
+          sent = await outbox.updateItem(
+            base,
             scope === "all"
               ? {
                   ...body,
@@ -438,12 +458,13 @@ export function RootScreen() {
               : body,
             { scope, occurrence: repeat.occurrence },
           );
-        } else await client.updateItem(editing.id, body);
+        } else sent = await outbox.updateItem(base, body);
         const saved = editing;
         setTask((t) => (t && t.id === saved.id ? { ...t, ...saved } : t));
-      } else await client.createItem(editing);
+      } else sent = await outbox.createItem(editing);
       closeEditor();
-      await refresh();
+      // Kept on the phone: the lists already show it; there's nothing to fetch.
+      if (sent) await refresh();
     });
   const deleteEditing = () =>
     act(async () => {
@@ -451,10 +472,9 @@ export function RootScreen() {
       const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
       const scope = repeat ? await askScope(editing.kind, "delete") : "all";
       if (!scope) return;
-      await client.deleteItem(
-        editing.id,
-        editing.version,
-        repeat ? { scope, occurrence: repeat.occurrence } : {},
+      const sent = await outbox.deleteItem(
+        editing,
+        repeat ? { scope, occurrence: repeat.occurrence } : undefined,
       );
       // Don't return to the detail sheet of an item that's gone.
       if (
@@ -464,7 +484,7 @@ export function RootScreen() {
       )
         back.current.pop();
       closeEditor();
-      await refresh();
+      if (sent !== null) await refresh();
     });
   const sidePadding = {
     paddingLeft: insets.left + spacing.page,
@@ -592,6 +612,15 @@ export function RootScreen() {
                 </FadeIn>
               )}
               <ErrorBanner error={error} onDismiss={() => setError("")} />
+              <SyncBar
+                outbox={planner.outbox}
+                onOpen={() => present({ sheet: "sync" })}
+              />
+              <FocusElsewhere
+                items={items}
+                hidden={sheet === "focus"}
+                onOpen={openFocus}
+              />
             </View>
             {/* Sticky on the Calendar tab: its date navigation and view switch. */}
             <View
@@ -613,6 +642,20 @@ export function RootScreen() {
               style={s.column}
             >
               <FadeIn key={`body-${tab}`} duration={motion.slow}>
+                {tab === "Today" && (
+                  <WelcomeBack
+                    onOpenItem={(id) =>
+                      void act(async () => openTask(await client.getItem(id)))
+                    }
+                    onOpenDoc={(docId) =>
+                      void client.getDoc(docId).then((doc) => {
+                        setNote(doc);
+                        present({ sheet: "note" });
+                      })
+                    }
+                    onOpenAsks={() => setTab("Inbox")}
+                  />
+                )}
                 {tab === "Today" && (
                   <TodayScreen
                     items={items}
@@ -712,6 +755,15 @@ export function RootScreen() {
                         }),
                       )
                     }
+                    onOpenItemById={(id) =>
+                      void act(async () => openTask(await client.getItem(id)))
+                    }
+                    onOpenTemplate={(n) =>
+                      void noticeAction(n, async () => {
+                        setTemplateToOpen(n.ref ?? null);
+                        present({ sheet: "projects" });
+                      })
+                    }
                   />
                 )}
                 {tab === "Browse" && (
@@ -736,6 +788,16 @@ export function RootScreen() {
         <TabBar
           tab={tab}
           onChange={(t) => {
+            // Tapping the tab you're on goes back to its top and refreshes,
+            // the way Instagram and Facebook do. The assistant reads from
+            // the bottom, so there it goes to the newest message instead.
+            if (t === tab) {
+              const animated = !isReducedMotion();
+              if (t === "AI") scroller.current?.scrollToEnd({ animated });
+              else scroller.current?.scrollTo({ y: 0, animated });
+              if (!refreshing) void act(() => refresh());
+              return;
+            }
             setTab(t);
             setSearch("");
           }}
@@ -794,6 +856,7 @@ export function RootScreen() {
           seed={planSeed}
           title={planTitle ?? undefined}
           teams={teams}
+          items={items}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onApplied={() => {
@@ -836,8 +899,21 @@ export function RootScreen() {
             onOpenConnections={() => setSheet("connections")}
             onOpenTags={() => setSheet("tags")}
             onOpenHabits={() => setSheet("habits")}
+            onOpenSync={() => setSheet("sync")}
           />
         </Sheet>
+        <ProgressSheet
+          visible={sheet === "progress"}
+          teams={teams}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        />
+        <SyncSheet
+          visible={sheet === "sync"}
+          outbox={planner.outbox}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        />
         <DocsSheet
           visible={sheet === "docs"}
           userId={user?.id}
@@ -866,9 +942,15 @@ export function RootScreen() {
         />
         <ProjectsSheet
           canWriteIn={canWriteIn}
+          userId={user?.id}
           visible={sheet === "projects"}
           items={items}
-          onClose={closeSheet}
+          teams={teams}
+          openTemplate={templateToOpen}
+          onClose={() => {
+            setTemplateToOpen(null);
+            closeSheet();
+          }}
           onDismiss={onSheetDismissed}
           onOpenItem={openTask}
           onOpenNote={(docId) =>

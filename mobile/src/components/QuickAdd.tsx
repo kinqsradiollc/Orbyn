@@ -6,7 +6,12 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { parseQuickAdd, type Item, type QuickAddChip } from "@orbyn/core";
+import {
+  describeRrule,
+  parseQuickAdd,
+  type Item,
+  type QuickAddChip,
+} from "@orbyn/core";
 import { ErrorBanner } from "./ErrorBanner";
 import { Icon, type IconName } from "./Icon";
 import { SmallAction } from "./SmallAction";
@@ -35,13 +40,19 @@ const CHIP_ICONS: Record<QuickAddChip["kind"], IconName> = {
   list: "list",
   tag: "tag",
   priority: "alert",
+  repeat: "repeat",
+  habit: "repeat",
 };
 
 /** What a recognised part of the text means, in words. */
 function chipText(chip: QuickAddChip) {
   switch (chip.kind) {
     case "kind":
-      return chip.value === "event" ? "Event" : "Task";
+      return chip.value === "event"
+        ? "Event"
+        : chip.value === "habit"
+          ? "Habit"
+          : "Task";
     case "date": {
       const [y, m, d] = chip.value.split("-").map(Number);
       return y && m && d ? shortDay(new Date(y, m - 1, d)) : chip.text;
@@ -58,6 +69,10 @@ function chipText(chip: QuickAddChip) {
       return `${chip.value.charAt(0).toUpperCase()}${chip.value.slice(1)} priority`;
     case "location":
       return chip.value || chip.text;
+    case "repeat":
+      return describeRrule(chip.value);
+    case "habit":
+      return chip.value;
     default:
       return chip.text;
   }
@@ -75,7 +90,8 @@ export function QuickAdd({
   onAsk,
 }: {
   userId?: string;
-  onCreated: (item: Item) => void;
+  /** The item it made, or null when the text made a habit. */
+  onCreated: (item: Item | null) => void;
   /** Hand the text to the assistant. */
   onAsk: (text: string) => void;
 }) {
@@ -108,7 +124,11 @@ export function QuickAdd({
     void run(async () => {
       const created = await client.quickAdd(text.trim(), zone);
       setText("");
-      AccessibilityInfo.announceForAccessibility(`Added ${created.item.title}`);
+      AccessibilityInfo.announceForAccessibility(
+        created.item
+          ? `Added ${created.item.title}`
+          : `Added the habit ${created.habit.name}. Planning finds time for it.`,
+      );
       onCreated(created.item);
     });
   };
@@ -148,7 +168,7 @@ export function QuickAdd({
         <FadeIn style={s.preview}>
           <Text style={shared.small} numberOfLines={2}>
             {title
-              ? `Adds ${parsed.input.kind === "event" ? "an event" : "a task"}: “${title}”`
+              ? `Adds ${parsed.habit ? "a habit" : parsed.input.kind === "event" ? "an event" : "a task"}: “${title}”`
               : "Add a few words for the title."}
           </Text>
           {parsed.chips.length > 0 && (

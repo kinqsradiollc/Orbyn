@@ -80,6 +80,14 @@ ${UPSTREAM_AI}
 ${UPSTREAM_WEB}
     keepalive 32;
   }
+  # Long-lived streams: live news and live documents. Few requests, many
+  # open connections, so its own pool and its own replicas.
+  upstream realtime {
+    zone realtime 64k;
+    least_conn;
+${UPSTREAM_REALTIME}
+    keepalive 32;
+  }
   upstream status {
     zone status 64k;
 ${UPSTREAM_STATUS}
@@ -122,6 +130,24 @@ ${UPSTREAM_STATUS}
     location /ai/ {
       limit_req zone=per_client burst=40 nodelay;
       proxy_pass http://ai;
+    }
+
+    # Realtime service: the apps' event stream and live documents. Streams
+    # stay open (the service closes each after 15 minutes, and the apps
+    # reconnect), so nothing is buffered and the read timeout is long.
+    location /events {
+      limit_conn conn_per_client 20;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 1h;
+      proxy_pass http://realtime;
+    }
+    location ~ ^/docs/[^/]+/live$ {
+      limit_conn conn_per_client 40;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 1h;
+      proxy_pass http://realtime;
     }
 
     # Public status report, cached for 10 seconds.

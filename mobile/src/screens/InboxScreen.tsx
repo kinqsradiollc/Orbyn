@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { Icon, type IconName } from "../components/Icon";
 import { SmallAction } from "../components/SmallAction";
+import { AsksList } from "../components/followthrough/Asks";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -14,6 +15,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   at_risk: "alert",
   deadline: "clock",
   rsvp: "users",
+  template: "layoutGrid",
 };
 
 /**
@@ -31,6 +33,8 @@ export function InboxScreen({
   onRollForward,
   onPlanIt,
   onOpenItem,
+  onOpenTemplate,
+  onOpenItemById,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -45,21 +49,30 @@ export function InboxScreen({
   onPlanIt: (notice: Notice) => void;
   /** Open the event an "rsvp" notice is about (`item_id`). */
   onOpenItem: (notice: Notice) => void;
+  /** Review a template that's ready to start ("template", `ref` = template). */
+  onOpenTemplate?: (notice: Notice) => void;
+  /** Open a task an ask is about. */
+  onOpenItemById?: (itemId: string) => void;
 }) {
+  const asks = onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null;
   if (!notices.length)
     return (
-      <FadeIn style={[shared.card, shared.empty]}>
-        <View style={shared.emptyIcon}>
-          <Icon name="bell" size={24} color={colors.accent} />
-        </View>
-        <Text style={shared.sectionTitle}>You’re all caught up.</Text>
-        <Text style={[shared.subtitle, { textAlign: "center" }]}>
-          Reminders, planner notices and booking updates will appear here.
-        </Text>
-      </FadeIn>
+      <>
+        {asks}
+        <FadeIn style={[shared.card, shared.empty]}>
+          <View style={shared.emptyIcon}>
+            <Icon name="bell" size={24} color={colors.accent} />
+          </View>
+          <Text style={shared.sectionTitle}>You’re all caught up.</Text>
+          <Text style={[shared.subtitle, { textAlign: "center" }]}>
+            Reminders, planner notices and booking updates will appear here.
+          </Text>
+        </FadeIn>
+      </>
     );
   return (
     <View style={s.list}>
+      {asks}
       {notices.map((n, i) => {
         const booking = n.kind === "booking" && !!n.ref;
         const action =
@@ -71,7 +84,9 @@ export function InboxScreen({
                 ? { label: "Plan it", run: onPlanIt }
                 : n.kind === "rsvp" && n.item_id
                   ? { label: "Open event", run: onOpenItem }
-                  : null;
+                  : n.kind === "template" && n.ref && onOpenTemplate
+                    ? { label: "Review", run: onOpenTemplate }
+                    : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable

@@ -1,5 +1,5 @@
-import { Repeat, Timer, UserRound } from "lucide-react";
-import { describeRrule, type Item } from "@orbyn/core";
+import { Repeat, Target, Timer, UserRound } from "lucide-react";
+import { describeRrule, measureLabel, type Item } from "@orbyn/core";
 import { usePlanning } from "../app/planning";
 import { minutesLabel } from "../lib/planning";
 
@@ -28,7 +28,8 @@ export function ItemFacts({ item: i, hideTags, className = "" }: Props) {
     : (i.tag_ids ?? []).map((id) => tagById.get(id)).filter((t) => !!t);
   const time = timeFact(i);
   const repeat = describeRrule(i.rrule);
-  if (!time && !list && !repeat && !i.assignee_name && !tags.length)
+  const measure = measureLabel(i);
+  if (!time && !list && !repeat && !measure && !i.assignee_name && !tags.length)
     return null;
   return (
     <span className={"item-facts " + className}>
@@ -48,6 +49,13 @@ export function ItemFacts({ item: i, hideTags, className = "" }: Props) {
           />
           <span className="sr-only">List: </span>
           {list.name}
+        </span>
+      )}
+      {measure && (
+        <span className="item-fact" title="Number to reach">
+          <Target size={12} aria-hidden="true" />
+          <span className="sr-only">Number to reach: </span>
+          {measure}
         </span>
       )}
       {repeat && (

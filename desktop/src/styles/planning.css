@@ -33,7 +33,7 @@
   gap: 5px;
   padding: 2px 8px;
   border: 1px solid color-mix(in srgb, var(--tag) 30%, white);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--tag) 10%, white);
   color: color-mix(in srgb, var(--tag) 60%, #1c2a22);
   font-size: 11px;
@@ -89,7 +89,7 @@ a.drawer-fact {
   min-width: 128px;
   padding: 7px 9px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font-size: 12px;
@@ -114,7 +114,7 @@ a.drawer-fact {
 }
 .task-group-title span {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: #5f6b62;
   font:
@@ -183,7 +183,7 @@ a.drawer-fact {
 .list-edit input {
   padding: 9px 10px;
   border: 1px solid #dfe5dc;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
 }
 .list-edit .button-row {
@@ -223,7 +223,7 @@ a.drawer-fact {
   min-width: 42px;
   padding: 6px 9px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: #5f6b62;
   font-size: 12px;
@@ -239,11 +239,12 @@ a.drawer-fact {
 /* Repeat and tag pickers inside the item editor. */
 .repeat-picker,
 .tag-picker,
-.waits-on {
+.waits-on,
+.measure-field {
   margin: 0 0 18px;
   padding: 12px 14px 14px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   min-width: 0;
 }
 /* What a task waits on: the list it already waits on, then one way to add. */
@@ -264,7 +265,7 @@ a.drawer-fact {
   gap: 8px;
   min-width: 0;
   padding: 6px 8px 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-sunken);
   font-size: 0.85rem;
 }
@@ -280,7 +281,7 @@ a.drawer-fact {
   place-items: center;
   padding: 2px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--color-muted);
   cursor: pointer;
@@ -288,7 +289,7 @@ a.drawer-fact {
 .waits-on-list button:hover {
   color: var(--color-text);
 }
-.waits-on select {
+.waits-on .select {
   width: 100%;
   min-width: 0;
 }
@@ -353,7 +354,7 @@ a.drawer-fact {
   width: min(300px, calc(100vw - 16px));
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: 0 16px 50px #1c312433;
 }
@@ -388,7 +389,7 @@ a.drawer-fact {
   gap: 9px;
   padding: 8px 9px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: none;
   font-size: 13px;
   text-align: left;
@@ -415,7 +416,7 @@ a.drawer-fact {
   margin: 12px 0 4px;
   padding: 14px 16px;
   border: 1px solid var(--color-softBorder);
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   background: #fbfcf8;
 }
 .plan-card-head {
@@ -532,7 +533,7 @@ a.drawer-fact {
   gap: 8px;
   padding: 7px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: #6f7b72;
   font-size: 12px;
@@ -544,7 +545,7 @@ a.drawer-fact {
 kbd {
   padding: 1px 6px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: var(--color-surfaceMuted);
   font:
     600 10px "DM Sans",
@@ -570,7 +571,7 @@ kbd {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: 0 24px 90px #1c312440;
 }
@@ -610,7 +611,7 @@ kbd {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   cursor: pointer;
 }
@@ -646,7 +647,7 @@ kbd {
 .command-question {
   margin: 10px 0 12px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--color-accentSoft);
   color: #2f5a41;
   font-size: 13px;
@@ -770,7 +771,7 @@ kbd {
   display: block;
   height: 22px;
   min-width: 60px;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: #f4f6f2;
   overflow: hidden;
 }
@@ -799,7 +800,7 @@ kbd {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: #5f6b62;
   font-size: 10px;
@@ -817,7 +818,7 @@ kbd {
   display: inline-block;
   width: 90px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: #e9eee7;
   overflow: hidden;
   vertical-align: middle;
@@ -853,7 +854,7 @@ kbd {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
 }
 .slot-list strong {
   display: block;
@@ -941,7 +942,7 @@ kbd {
   margin: 0 0 14px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 .set-card-head {
   display: flex;
@@ -955,7 +956,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--color-surfaceMuted);
   font-size: 12px;
   font-weight: 700;
@@ -1022,7 +1023,7 @@ kbd {
   align-items: flex-start;
   gap: 9px;
   padding: 8px 9px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   cursor: pointer;
 }
@@ -1142,7 +1143,7 @@ kbd {
 /* A task's priority score, when the list is sorted by it. */
 .item-score {
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-chip);
   color: var(--color-textMuted);
   font-size: 10px;
@@ -1153,4 +1154,24 @@ kbd {
 .popover {
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* A number to reach (a key result). */
+.measure-field legend {
+  font-size: 11px;
+  font-weight: 500;
+  margin-bottom: 7px;
+}
+.measure-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 10px;
+}
+.modal .measure-row label {
+  margin-bottom: 6px;
+}
+@media (max-width: 520px) {
+  .measure-row {
+    grid-template-columns: 1fr 1fr;
+  }
 }

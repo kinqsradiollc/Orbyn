@@ -13,6 +13,7 @@ export type Destination =
   | "projects"
   | "docs"
   | "lists"
+  | "progress"
   | "teams"
   | "booking"
   | "admin"
@@ -50,6 +51,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         icon: "list",
         title: "Lists",
         detail: "Somewhere for each kind of task",
+      },
+      {
+        to: "progress",
+        icon: "check",
+        title: "Done this week",
+        detail: "What got finished, with the proof",
       },
     ],
   },

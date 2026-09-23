@@ -4,8 +4,12 @@ import type { FastifyInstance } from "fastify";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 
-const { buildApiService, buildAiService, buildStatusService } =
-  await import("../src/app.js");
+const {
+  buildApiService,
+  buildAiService,
+  buildStatusService,
+  buildRealtimeService,
+} = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { clearStatusCache } = await import("../src/modules/status/report.js");
@@ -15,20 +19,27 @@ const { lastDays, overallState, stateFromRecent } =
 let api: FastifyInstance;
 let ai: FastifyInstance;
 let status: FastifyInstance;
+let realtime: FastifyInstance;
 
 before(async () => {
   await migrate();
-  [api, ai, status] = await Promise.all([
+  [api, ai, status, realtime] = await Promise.all([
     buildApiService(),
     buildAiService(),
     buildStatusService(),
+    buildRealtimeService(),
   ]);
   await pool.query("DELETE FROM status_checks");
 });
 
 after(async () => {
   await pool.query("DELETE FROM status_checks");
-  await Promise.all([api.close(), ai.close(), status.close()]);
+  await Promise.all([
+    api.close(),
+    ai.close(),
+    status.close(),
+    realtime.close(),
+  ]);
   await pool.end();
 });
 
@@ -37,6 +48,7 @@ test("each service exposes only the routes it owns", async () => {
     [api, "api"],
     [ai, "ai"],
     [status, "status"],
+    [realtime, "realtime"],
   ] as const) {
     const health = await app.inject({ url: "/health" });
     assert.equal(health.statusCode, 200);
@@ -55,6 +67,10 @@ test("each service exposes only the routes it owns", async () => {
   assert.equal((await api.inject(chat)).statusCode, 404);
   assert.equal((await status.inject({ url: "/status" })).statusCode, 200);
   assert.equal((await api.inject({ url: "/status" })).statusCode, 404);
+  // Long-lived streams live on the realtime service, and nothing else does.
+  assert.equal((await realtime.inject({ url: "/events" })).statusCode, 401);
+  assert.equal((await api.inject({ url: "/events" })).statusCode, 404);
+  assert.equal((await realtime.inject({ url: "/items" })).statusCode, 404);
 });
 
 test("the status report computes state, uptime, history, and incidents", async () => {

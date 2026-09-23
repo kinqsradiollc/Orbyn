@@ -17,6 +17,7 @@ import { client } from "../../lib/api";
 import { useConfirm } from "../../components/Confirm";
 import type { TeamActions } from "../teams/TeamDetail";
 import "./database.css";
+import { Select } from "../../components/Select";
 
 type Panel = "Rows" | "Columns" | "Indexes";
 type RowDraft =
@@ -404,7 +405,7 @@ export function AdminDatabase({
                         <div className="db-editor-fields">
                           <label>
                             System role
-                            <select
+                            <Select
                               value={editing.role}
                               disabled={saving}
                               onChange={(e) =>
@@ -416,7 +417,7 @@ export function AdminDatabase({
                             >
                               <option value="member">Member</option>
                               <option value="admin">Admin</option>
-                            </select>
+                            </Select>
                           </label>
                           <label className="db-check">
                             <input

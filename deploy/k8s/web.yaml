@@ -43,6 +43,10 @@ data:
       server ai.orbyn.svc.cluster.local:8000;
       keepalive 16;
     }
+    upstream orbyn_realtime {
+      server realtime.orbyn.svc.cluster.local:8000;
+      keepalive 16;
+    }
     upstream orbyn_status {
       server status.orbyn.svc.cluster.local:8000;
       keepalive 8;
@@ -82,6 +86,12 @@ data:
       # The URI on proxy_pass replaces the matched prefix: /api/ai/chat -> /ai/chat.
       location /api/ai/ {
         proxy_pass http://orbyn_ai/ai/;
+      }
+      # Live streams stay open: nothing buffered, a long read timeout.
+      location /api/events {
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+        proxy_pass http://orbyn_realtime/events;
       }
       location = /api/status {
         proxy_pass http://orbyn_status/status;

@@ -240,7 +240,7 @@ nav button i {
   gap: 8px;
   padding: 10px 16px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface);
   box-shadow: 0 12px 40px #1c312433;
   color: var(--color-text);

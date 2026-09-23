@@ -42,6 +42,7 @@ import {
   questionId,
   readableAccent,
 } from "./bookingUi";
+import { DateField } from "../../components/DateField";
 
 type Range = { start: string; end: string };
 type Weekly = Range & { day: number };
@@ -313,7 +314,7 @@ function Ranges({
     <div className="hours-ranges">
       {ranges.map((r, i) => (
         <span key={i} className="hours-range">
-          <input
+          <DateField
             type="time"
             required
             aria-label={`${label}, from`}
@@ -321,7 +322,7 @@ function Ranges({
             onChange={(e) => edit(i, { start: e.target.value })}
           />
           <span aria-hidden="true">–</span>
-          <input
+          <DateField
             type="time"
             required
             aria-label={`${label}, until`}
@@ -1174,7 +1175,7 @@ export function PageForm({
             <div className="override-list">
               {draft.date_overrides.map((o, i) => (
                 <div key={i} className="override-row">
-                  <input
+                  <DateField
                     type="date"
                     required
                     aria-label="Date"

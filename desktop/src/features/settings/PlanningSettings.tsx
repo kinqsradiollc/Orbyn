@@ -32,6 +32,7 @@ import {
   WEEKDAY_SHORT,
   zoneCity,
 } from "../../lib/planning";
+import { DateField } from "../../components/DateField";
 
 type Props = { teams: Team[]; report: (e: unknown) => void };
 
@@ -232,7 +233,7 @@ export function PlanningSettings({ teams, report }: Props) {
             </div>
             <div className="settings-field">
               <label htmlFor="pref-start">Work starts</label>
-              <input
+              <DateField
                 id="pref-start"
                 type="time"
                 required
@@ -242,7 +243,7 @@ export function PlanningSettings({ teams, report }: Props) {
             </div>
             <div className="settings-field">
               <label htmlFor="pref-end">Work ends</label>
-              <input
+              <DateField
                 id="pref-end"
                 type="time"
                 required
@@ -433,7 +434,7 @@ export function PlanningSettings({ teams, report }: Props) {
             </label>
             <label className="settings-field">
               <span className="settings-label">Morning time</span>
-              <input
+              <DateField
                 type="time"
                 value={digest.morning_time}
                 onChange={(e) => setDigest({ morning_time: e.target.value })}
@@ -454,7 +455,7 @@ export function PlanningSettings({ teams, report }: Props) {
             </label>
             <label className="settings-field">
               <span className="settings-label">Evening time</span>
-              <input
+              <DateField
                 type="time"
                 value={digest.evening_time}
                 onChange={(e) => setDigest({ evening_time: e.target.value })}

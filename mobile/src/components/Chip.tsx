@@ -49,12 +49,13 @@ export function Chip({
       accessibilityHint={accessibilityHint}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
-      hitSlop={compact ? { top: 9, bottom: 9 } : { top: 4, bottom: 4 }}
+      hitSlop={compact ? { top: 9, bottom: 9 } : { top: 5, bottom: 5 }}
       onPress={onPress}
       style={[
         s.chip,
         compact && s.compact,
-        selected && { backgroundColor: tint, borderColor: tint },
+        selected &&
+          (color ? { backgroundColor: tint, borderColor: tint } : s.selected),
         disabled && s.disabled,
       ]}
     >
@@ -66,7 +67,7 @@ export function Chip({
         style={[
           s.text,
           compact && s.compactText,
-          selected && { color: colors.white },
+          selected && (color ? { color: colors.white } : s.selectedText),
         ]}
       >
         {label}
@@ -106,13 +107,12 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      // A chip is a button, and a button wants a finger's worth of height.
-      // Everything else on the phone was raised to this; these were missed,
-      // and they are the controls people tap most — the status filters.
-      minHeight: controls.tap,
+      // Drawn at 34pt so a row of chips reads light, as on the web; the
+      // hitSlop above makes up the rest of a finger's 44pt.
+      minHeight: controls.tap - 10,
       maxWidth: "100%",
-      paddingVertical: 8,
-      paddingHorizontal: 13,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
       borderRadius: radii.pill,
       borderWidth: 1,
       borderColor: colors.border,
@@ -124,11 +124,18 @@ const s = themed(() =>
       paddingHorizontal: 11,
     },
     compactText: { fontSize: 13 },
+    // Chosen reads as a soft tint, not a solid block, so a row of choices
+    // stays quiet; a coloured chip (a list or tag) still fills with its colour.
+    selected: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
+    },
+    selectedText: { color: colors.accent, fontFamily: fonts.semibold },
     disabled: { opacity: 0.45 },
     dot: { width: 8, height: 8, borderRadius: 4 },
     text: {
       flexShrink: 1,
-      fontFamily: fonts.semibold,
+      fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.textSoft,
     },

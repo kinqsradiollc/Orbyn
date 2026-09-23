@@ -10,6 +10,7 @@ import {
   UserCheck,
   Wand2,
   type LucideIcon,
+  LayoutTemplate,
 } from "lucide-react";
 import { dateLabel, type Notice } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
@@ -29,6 +30,8 @@ type Props = {
   onOpenItem: (itemId: string) => void;
   /** Opens the bookings inbox on the booking in a "booking" notice's `ref`. */
   onOpenBooking: (bookingId: string) => void;
+  /** Opens a template that is ready to start, for review ("template" notices). */
+  onOpenTemplate?: (templateId: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -39,6 +42,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   at_risk: AlertTriangle,
   deadline: Hourglass,
   rsvp: UserCheck,
+  template: LayoutTemplate,
 };
 
 export function NotificationsView({
@@ -50,6 +54,7 @@ export function NotificationsView({
   onOpenCalendar,
   onOpenItem,
   onOpenBooking,
+  onOpenTemplate,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -112,6 +117,17 @@ export function NotificationsView({
               >
                 <CalendarClock size={14} />{" "}
                 {pending === n.id ? "Moving…" : "Reschedule"}
+              </button>
+            )}
+            {n.kind === "template" && n.ref && onOpenTemplate && (
+              <button
+                className="secondary notice-action"
+                onClick={() => {
+                  if (!n.read) onRead(n);
+                  onOpenTemplate(n.ref!);
+                }}
+              >
+                <LayoutTemplate size={14} /> Review
               </button>
             )}
             {n.kind === "rollforward" && (

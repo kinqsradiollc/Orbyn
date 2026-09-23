@@ -123,6 +123,8 @@ export type Doc = {
   version: number;
   created_at: string;
   updated_at: string;
+  /** When someone last confirmed it still true without changing it. */
+  reviewed_at?: string | null;
 };
 
 export type DocComment = {

@@ -156,6 +156,18 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
+  # Live news and live documents: every long-lived stream, so the API copies
+  # only serve short requests. Scale it on open connections.
+  realtime:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/realtime.js"]
+    healthcheck: *http-health
+    deploy: { replicas: "${REALTIME_REPLICAS:-2}" }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
   # Schedules and delivers reminders; reports liveness by heartbeat.
   notifier:
     <<: *backend
@@ -173,6 +185,7 @@ services:
       STATUS_GATEWAY_URL: http://gateway:8080
       STATUS_API_URL: http://api:8000
       STATUS_AI_URL: http://ai:8000
+      STATUS_REALTIME_URL: http://realtime:8000
     command: ["node", "backend/dist/services/status.js"]
     healthcheck: *http-health
     depends_on:
@@ -193,6 +206,7 @@ services:
       # to run services elsewhere. See gateway/entrypoint.sh.
       API_SERVERS: ${GATEWAY_API_SERVERS:-api:8000}
       AI_SERVERS: ${GATEWAY_AI_SERVERS:-ai:8000}
+      REALTIME_SERVERS: ${GATEWAY_REALTIME_SERVERS:-realtime:8000}
       STATUS_SERVERS: ${GATEWAY_STATUS_SERVERS:-status:8000}
       WEB_SERVERS: ${GATEWAY_WEB_SERVERS:-desktop:8080}
       RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
@@ -208,7 +222,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    depends_on: [api, ai, status]
+    depends_on: [api, ai, realtime, status]
     restart: unless-stopped
 
   desktop:

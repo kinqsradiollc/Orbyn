@@ -267,14 +267,14 @@ function TagRow({
             value={tag.color}
             onChange={(color) => color !== tag.color && onSave({ color })}
           />
-          <Button
-            destructive
-            title="Delete tag"
-            icon="trash"
-            disabled={busy}
-            style={s.delete}
-            onPress={onDelete}
-          />
+          <View style={s.deleteRow}>
+            <SmallAction
+              label="Delete tag"
+              destructive
+              disabled={busy}
+              onPress={onDelete}
+            />
+          </View>
         </View>
       )}
     </FadeIn>
@@ -317,6 +317,7 @@ const s = themed(() =>
     renameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     rename: { flex: 1, minHeight: 44, paddingVertical: 10 },
     delete: { marginBottom: 0 },
+    deleteRow: { flexDirection: "row", justifyContent: "flex-end" },
     gap: { marginBottom: 12 },
     add: { marginTop: 14, marginBottom: 0 },
   }),

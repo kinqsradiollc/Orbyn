@@ -80,7 +80,13 @@ import { externalEntries } from "./subscriptions.js";
 import { buildEvening, buildMorning } from "../../worker/digest.js";
 import { loadEstimateModel } from "./estimates.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
-import { habitBlocksIn, habitById, loadHabits, placeHabits } from "./habits.js";
+import {
+  createHabit,
+  habitBlocksIn,
+  habitById,
+  loadHabits,
+  placeHabits,
+} from "./habits.js";
 import { settings } from "../../lib/settings.js";
 
 const DAY_MS = 86_400_000;
@@ -457,30 +463,9 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.post("/planner/habits", async (r, reply): Promise<Habit> => {
     const u = await authenticate(r);
     const d = habitInput.parse(r.body);
-    const habit = (
-      await pool.query<{ id: string }>(
-        `INSERT INTO habits
-           (user_id, name, cadence, period, duration_minutes, days,
-            window_start, window_end, priority, active, position)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-           (SELECT coalesce(max(position), -1) + 1 FROM habits WHERE user_id = $1))
-         RETURNING id`,
-        [
-          u.id,
-          d.name,
-          d.cadence,
-          d.period,
-          d.duration_minutes,
-          d.days,
-          d.window_start,
-          d.window_end,
-          d.priority,
-          d.active,
-        ],
-      )
-    ).rows[0];
+    const habit = await createHabit(pool, u.id, d);
     reply.code(201);
-    return (await habitById(pool, habit.id, u.id))!;
+    return habit;
   });
 
   app.put("/planner/habits/:id", async (r): Promise<Habit> => {

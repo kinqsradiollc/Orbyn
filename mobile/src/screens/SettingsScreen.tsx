@@ -101,6 +101,7 @@ export function SettingsScreen({
   onOpenConnections,
   onOpenTags,
   onOpenHabits,
+  onOpenSync,
 }: {
   user: User | null;
   busy: boolean;
@@ -112,6 +113,8 @@ export function SettingsScreen({
   onOpenConnections: () => void;
   onOpenTags: () => void;
   onOpenHabits: () => void;
+  /** Sync and devices: what's waiting on this phone, and where Orbyn is open. */
+  onOpenSync: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const theme = useTheme();
@@ -216,6 +219,13 @@ export function SettingsScreen({
           title="Service status"
           detail={statusHeadline || "Uptime and incidents"}
           onPress={onOpenStatus}
+        />
+        <LinkRow
+          divider
+          icon="refreshCw"
+          title="Sync & devices"
+          detail="What's waiting on this phone, and where Orbyn is open"
+          onPress={onOpenSync}
         />
       </View>
 

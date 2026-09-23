@@ -20,7 +20,7 @@ export function SmallAction({
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={{ top: 6, bottom: 6 }}
+      hitSlop={{ top: 5, bottom: 5 }}
       onPress={onPress}
       style={({ pressed }) => [
         s.action,
@@ -43,9 +43,10 @@ export function SmallAction({
 const s = themed(() =>
   StyleSheet.create({
     action: {
-      minHeight: controls.tap,
+      // 34pt drawn, 44pt to a finger through hitSlop.
+      minHeight: controls.tap - 10,
       maxWidth: "100%",
-      paddingVertical: 8,
+      paddingVertical: 6,
       paddingHorizontal: 12,
       borderRadius: radii.input - 3,
       borderWidth: 1,
@@ -57,7 +58,7 @@ const s = themed(() =>
     actionText: {
       flexShrink: 1,
       textAlign: "center",
-      fontFamily: fonts.semibold,
+      fontFamily: fonts.medium,
       fontSize: 13,
     },
   }),
