@@ -68,16 +68,20 @@ export function useImports(report: (e: unknown) => void, onReady: () => void) {
         continue;
       }
       setStarting((n) => n + 1);
+      let startedId: string | null = null;
       try {
-        const { upload_path } = await client.createImport({
+        const { upload_path, import: started } = await client.createImport({
           file_name: file.name,
           bytes: file.size,
           mime: file.type || undefined,
         });
+        startedId = started.id;
         await refresh();
         await client.uploadImportFile(upload_path, file, file.type);
       } catch (e) {
         report(e);
+        // The upload didn't arrive: don't leave the import waiting for it.
+        if (startedId) await client.removeImport(startedId).catch(() => {});
       } finally {
         setStarting((n) => n - 1);
         void refresh();

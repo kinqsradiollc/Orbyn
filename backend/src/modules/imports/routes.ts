@@ -121,8 +121,10 @@ export async function importRoutes(app: FastifyInstance) {
       (
         await pool.query<{ n: string }>(
           `SELECT count(*) AS n FROM imports
-            WHERE user_id = $1 AND status IN ('waiting','queued','reading','ocr')
-              AND created_at > now() - interval '1 day'`,
+            WHERE user_id = $1 AND created_at > now() - interval '1 day'
+              AND (status IN ('queued','reading','ocr')
+                   OR (status = 'waiting'
+                       AND created_at > now() - interval '15 minutes'))`,
           [u.id],
         )
       ).rows[0].n,
