@@ -21,6 +21,7 @@ resources:
   - config.yaml
   - api.yaml
   - ai.yaml
+  - realtime.yaml
   - status.yaml
   - notifier.yaml
   - web.yaml

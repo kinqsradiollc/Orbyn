@@ -175,6 +175,14 @@ export const itemData = z
     prerequisite_ids: z.array(z.uuid()).max(14).optional(),
     /** Who on the team is doing a team task. */
     assignee_id: z.uuid().nullable().optional(),
+    /**
+     * A number the task moves towards ("signups: 320 of 500"): a key result.
+     * While a target is set, progress follows current / target. Omitted on
+     * edit keeps what is saved; null clears it.
+     */
+    target_value: z.number().min(-1e12).max(1e12).nullable().optional(),
+    current_value: z.number().min(-1e12).max(1e12).nullable().optional(),
+    value_unit: z.string().trim().max(16).optional(),
     location: z.string().trim().max(300).optional(),
     meeting_url: meetingUrl.optional(),
     /** How the item repeats, for example "FREQ=WEEKLY;BYDAY=MO,WE". */
@@ -1303,7 +1311,8 @@ export const planPreviewInput = z
   .object({
     /** First day, in the user's time zone; today when omitted. */
     start_date: dayKey.optional(),
-    days: z.number().int().min(1).max(7).optional(),
+    /** Up to two weeks ahead, for the planner preview's days view. */
+    days: z.number().int().min(1).max(14).optional(),
     pad_percent: z.number().int().min(0).max(100).optional(),
     split: z.boolean().optional(),
     break_level: z.enum(BREAK_LEVELS).optional(),

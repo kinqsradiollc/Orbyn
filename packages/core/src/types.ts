@@ -110,6 +110,10 @@ export type Item = ItemInput & {
   children_done?: number;
   /** Tasks this one waits on, oldest id first. Empty when nothing blocks it. */
   prerequisite_ids?: string[];
+  /** A number to reach (a key result): current of target, in `value_unit`. */
+  target_value?: number | null;
+  current_value?: number | null;
+  value_unit?: string;
 };
 
 export type ItemSort = (typeof ITEM_SORTS)[number];
@@ -323,7 +327,13 @@ export type Notice = {
     | "at_risk"
     | "deadline"
     /** Someone you invited answered (`item_id` = the event, `ref` = the attendee). */
-    | "rsvp";
+    | "rsvp"
+    /** A template with a rhythm is ready to start (`ref` = the template). */
+    | "template"
+    /** Someone asked you to take on a task (`ref` = the ask). */
+    | "ask"
+    /** A promise offered to you, or an answer to one (`ref` = the record). */
+    | "promise";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

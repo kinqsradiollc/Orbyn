@@ -37,4 +37,12 @@ export type ProjectDecomposition = ProjectDraft & {
   at_risk: UnplacedTask[];
   planned_minutes: number;
   capacity_minutes: number;
+  /** Started from a template: its brief page, made with the project. */
+  page?: { title: string; content: import("./docs.js").DocBlock[] } | null;
+  /** A team project, when started for a team. */
+  team_id?: string | null;
+  /** Key results: numbers to reach, by draft task id. */
+  measures?: Record<string, { target_value: number; value_unit: string }>;
+  /** The template it came from. */
+  template_id?: string | null;
 };

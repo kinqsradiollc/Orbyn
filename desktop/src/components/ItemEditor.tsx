@@ -34,6 +34,14 @@ import {
 import { RepeatPicker } from "./RepeatPicker";
 import { TagPicker } from "./TagPicker";
 import { WaitsOnPicker } from "./WaitsOnPicker";
+import { AttentionWarning } from "../features/followthrough/AttentionWarning";
+import "../features/followthrough/followthrough.css";
+import {
+  MeasureField,
+  measureFrom,
+  measureValues,
+  type Measure,
+} from "./MeasureField";
 import { LinksField, type LinkDraft } from "./LinksField";
 import {
   AlertsPicker,
@@ -46,6 +54,7 @@ import {
   type EditOptions,
   type OccurrenceRef,
 } from "./ScopeDialog";
+import { DateField } from "./DateField";
 
 type Props = {
   editing: Item | "new";
@@ -109,6 +118,7 @@ export function ItemEditor({
   const [listId, setListId] = useState<string | null>(base.list_id ?? null);
   const [tagIds, setTagIds] = useState<string[]>(base.tag_ids ?? []);
   const [waitsOn, setWaitsOn] = useState<string[]>(base.prerequisite_ids ?? []);
+  const [measure, setMeasure] = useState<Measure>(() => measureFrom(base));
   const [assigneeId, setAssigneeId] = useState<string | null>(
     base.assignee_id ?? null,
   );
@@ -375,6 +385,7 @@ export function ItemEditor({
               list_id: listId,
               tag_ids: tagIds,
               prerequisite_ids: kind === "task" ? waitsOn : [],
+              ...(kind === "task" ? measureValues(measure) : {}),
               assignee_id: teamId ? assigneeId : null,
               location: location.trim(),
               meeting_url: meetingUrl.trim(),
@@ -518,7 +529,7 @@ export function ItemEditor({
                 <>
                   <label>
                     Starts
-                    <input
+                    <DateField
                       type="date"
                       required
                       value={startDay}
@@ -531,7 +542,7 @@ export function ItemEditor({
                   </label>
                   <label>
                     Last day
-                    <input
+                    <DateField
                       type="date"
                       value={endDay}
                       min={startDay || undefined}
@@ -543,7 +554,7 @@ export function ItemEditor({
                 <>
                   <label>
                     Due / start time
-                    <input
+                    <DateField
                       type="datetime-local"
                       value={dueValue}
                       onChange={(e) => setDueValue(e.target.value)}
@@ -551,12 +562,20 @@ export function ItemEditor({
                   </label>
                   <label>
                     End time (optional)
-                    <input
+                    <DateField
                       type="datetime-local"
                       value={endValue}
                       onChange={(e) => setEndValue(e.target.value)}
                     />
                   </label>
+                  {kind === "event" && (
+                    <AttentionWarning
+                      teamId={teamId}
+                      start={fromDateTimeLocal(dueValue || null)}
+                      end={fromDateTimeLocal(endValue || null)}
+                      itemId={existing?.id}
+                    />
+                  )}
                 </>
               )}
               <label>
@@ -686,6 +705,13 @@ export function ItemEditor({
                 items={items}
                 selected={waitsOn}
                 onChange={setWaitsOn}
+                readOnly={readOnly}
+              />
+            )}
+            {kind === "task" && (
+              <MeasureField
+                value={measure}
+                onChange={setMeasure}
                 readOnly={readOnly}
               />
             )}

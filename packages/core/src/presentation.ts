@@ -208,3 +208,28 @@ export const inProgressEmpty = (count: number) =>
   count > 0
     ? "Your in-progress work is listed under Needs attention because it is past due."
     : "Nothing underway yet. Open a task and set it to In progress when you start.";
+
+/** "320 of 500 signups", "4.5 of 10", or "" when the task has no target. */
+export function measureLabel(i: {
+  target_value?: number | null;
+  current_value?: number | null;
+  value_unit?: string;
+}) {
+  if (i.target_value == null) return "";
+  const n = (v: number) =>
+    Number.isInteger(v)
+      ? v.toLocaleString()
+      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const unit = i.value_unit ? ` ${i.value_unit}` : "";
+  return `${n(i.current_value ?? 0)} of ${n(i.target_value)}${unit}`;
+}
+
+/** How far current is towards target, 0–100; null without a target. */
+export function measureProgress(i: {
+  target_value?: number | null;
+  current_value?: number | null;
+}) {
+  if (i.target_value == null || i.target_value === 0) return null;
+  const pct = ((i.current_value ?? 0) / i.target_value) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}

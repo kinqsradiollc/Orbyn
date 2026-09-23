@@ -83,6 +83,12 @@ export function components(): Component[] {
       probe: () => http((env.STATUS_AI_URL || self()) + "/health"),
     },
     {
+      id: "realtime",
+      name: "Live updates",
+      description: "Changes, presence and focus reaching your other devices.",
+      probe: () => http((env.STATUS_REALTIME_URL || self()) + "/health"),
+    },
+    {
       id: "notifier",
       name: "Reminders",
       description: "In-app, email, and push reminders.",

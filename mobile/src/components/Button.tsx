@@ -42,7 +42,9 @@ export function Button({
         style,
       ]}
     >
-      <Text style={[s.text, { color: tint }]}>{title}</Text>
+      <Text style={[s.text, quiet && s.quietText, { color: tint }]}>
+        {title}
+      </Text>
       {icon && <Icon name={icon} size={16} color={tint} strokeWidth={2} />}
     </PressableScale>
   );
@@ -74,7 +76,8 @@ const s = themed(() =>
       flexShrink: 1,
       textAlign: "center",
       fontFamily: fonts.semibold,
-      fontSize: 15,
+      fontSize: 14,
     },
+    quietText: { fontFamily: fonts.medium },
   }),
 );

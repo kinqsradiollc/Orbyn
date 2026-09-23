@@ -7,19 +7,31 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import type { Item, ItemDetail } from "@orbyn/core";
+import Svg, { Circle } from "react-native-svg";
+import {
+  customRhythmId,
+  FOCUS_RHYTHMS,
+  focusRhythm,
+  newId,
+  type Item,
+  type ItemDetail,
+} from "@orbyn/core";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
+import { Segmented } from "../components/Segmented";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { minutesLabel, nextUp } from "../lib/planning";
 import { useNow } from "../hooks/useNow";
 import { useRun } from "../hooks/useRun";
+import { useFocusSession } from "../hooks/useFocusSession";
 import {
   animateLayout,
   pop,
@@ -136,6 +148,25 @@ function Body({
   const steps = (detail?.steps ?? [])
     .slice()
     .sort((a, b) => a.position - b.position);
+  const focus = useFocusSession({
+    item: seed,
+    canWrite: !readOnly,
+    onLogged: (d) => {
+      setDetail(d);
+      onChanged();
+    },
+    onError: setError,
+  });
+  const rhythmIds = [...FOCUS_RHYTHMS.map((r) => r.id), "custom"] as const;
+  const rhythmKey = focus.rhythm.id.startsWith("custom:")
+    ? "custom"
+    : focus.rhythm.id;
+  const [custom, setCustom] = useState({ work: "30", rest: "5" });
+  const chooseCustom = (work: string, rest: string) => {
+    const w = Math.max(5, Math.min(180, Number(work) || 30));
+    const r = Math.max(1, Math.min(30, Number(rest) || 5));
+    focus.chooseRhythm(focusRhythm(customRhythmId(w, r, r * 3, 4))!);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -154,17 +185,37 @@ function Body({
     const ms = Date.now() - startedAt;
     setStartedAt(null);
     if (ms < MIN_RUN_MS) return true;
-    const minutes = Math.min(1440, Math.max(1, Math.round(ms / 60_000)));
-    const saved = await run(() => client.logTime(seed.id, minutes));
+    const minutes = Math.min(600, Math.max(1, Math.round(ms / 60_000)));
+    const ended = Date.now();
+    const saved = await run(() =>
+      client.saveFocusSession({
+        id: newId(),
+        item_id: seed.id,
+        kind: "work",
+        started_at: new Date(ended - ms).toISOString(),
+        ended_at: new Date(ended).toISOString(),
+        planned_minutes: 0,
+        minutes,
+        completed: true,
+      }),
+    );
     if (!saved) return false;
-    setDetail(saved);
+    if (saved.item) setDetail(saved.item);
     setSession((m) => m + minutes);
+    focus.refreshToday();
     onChanged();
     return true;
   };
 
+  /** Log the open timer, keep the work of a session cut short, stop sharing. */
+  const settle = async () => {
+    const ok = await stop();
+    await focus.finish();
+    return ok;
+  };
+
   const close = async () => {
-    if (await stop()) onClose();
+    if (await settle()) onClose();
   };
   leaveRef.current = () => void close();
 
@@ -180,13 +231,22 @@ function Body({
   }, []);
 
   const markDone = async () => {
-    if (!(await stop())) return;
-    const saved = await run(() =>
-      client.postItemUpdate(seed.id, { status: "done" }),
-    );
-    if (!saved) return;
+    if (!(await settle())) return;
+    let queued = false;
+    const saved = await run(async () => {
+      const answer = await outbox.postItemUpdate(seed, { status: "done" });
+      queued = answer === null;
+      return answer;
+    });
+    if (!saved && !queued) return;
     animateLayout();
-    setDetail(saved);
+    setDetail((d) =>
+      saved
+        ? (saved as ItemDetail)
+        : d
+          ? { ...d, status: "done", progress: 100 }
+          : d,
+    );
     setCelebrating(true);
     onChanged();
   };
@@ -233,6 +293,132 @@ function Body({
           )}
 
           {!done && !readOnly && (
+            <View style={s.rhythm}>
+              <Segmented
+                options={rhythmIds}
+                value={rhythmKey}
+                disabled={focus.running || startedAt !== null}
+                labels={Object.fromEntries([
+                  ...FOCUS_RHYTHMS.map((r) => [r.id, r.label]),
+                  ["custom", "Custom"],
+                ])}
+                accessibilityLabel="Rhythm"
+                onChange={(id) =>
+                  id === "custom"
+                    ? chooseCustom(custom.work, custom.rest)
+                    : focus.chooseRhythm(focusRhythm(id)!)
+                }
+              />
+              {rhythmKey === "custom" && !focus.running && (
+                <View style={s.customRow}>
+                  <Text style={shared.small}>Work</Text>
+                  <TextInput
+                    style={[shared.input, s.customInput]}
+                    keyboardType="number-pad"
+                    value={custom.work}
+                    maxLength={3}
+                    accessibilityLabel="Work minutes"
+                    onChangeText={(work) => setCustom({ ...custom, work })}
+                    onEndEditing={() => chooseCustom(custom.work, custom.rest)}
+                  />
+                  <Text style={shared.small}>min · Break</Text>
+                  <TextInput
+                    style={[shared.input, s.customInput]}
+                    keyboardType="number-pad"
+                    value={custom.rest}
+                    maxLength={2}
+                    accessibilityLabel="Break minutes"
+                    onChangeText={(rest) => setCustom({ ...custom, rest })}
+                    onEndEditing={() => chooseCustom(custom.work, custom.rest)}
+                  />
+                  <Text style={shared.small}>min</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {!done && !readOnly && focus.intervals && (
+            <View style={s.timerCard}>
+              <Ring
+                progress={1 - focus.remaining / Math.max(1, focus.total)}
+                rest={focus.state.phase !== "work"}
+              >
+                <Text
+                  style={s.ringClock}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  accessibilityRole="timer"
+                  accessibilityLabel={`${focus.label}, ${clock(focus.remaining)} left`}
+                >
+                  {clock(focus.remaining)}
+                </Text>
+                <Text style={shared.small}>{focus.label}</Text>
+              </Ring>
+              <Text style={shared.small}>{focus.then}</Text>
+              <View style={s.dots} accessible={false}>
+                {Array.from({ length: focus.rhythm.rounds }, (_, n) => {
+                  const within =
+                    ((focus.state.round - 1) % focus.rhythm.rounds) + 1;
+                  const on =
+                    n + 1 < within ||
+                    (n + 1 === within && focus.state.phase !== "work");
+                  return (
+                    <View
+                      key={n}
+                      style={[
+                        s.dot,
+                        on && s.dotOn,
+                        n + 1 === within && !on && s.dotNow,
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+              <View style={s.intervalButtons}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={focus.running ? "Pause" : "Start"}
+                  onPress={() =>
+                    focus.running ? focus.pause() : focus.start()
+                  }
+                  style={({ pressed }) => [
+                    s.play,
+                    pressed && { backgroundColor: colors.accentPressed },
+                  ]}
+                >
+                  <Icon
+                    name={focus.running ? "pause" : "play"}
+                    size={26}
+                    color={colors.white}
+                    strokeWidth={2}
+                  />
+                </PressableScale>
+                {focus.state.phase !== "work" && (
+                  <SmallAction
+                    label="Skip break"
+                    disabled={busy}
+                    onPress={focus.skip}
+                  />
+                )}
+              </View>
+              <Text style={[shared.small, s.center]}>
+                {focus.today
+                  ? `${minutesLabel(focus.today)} focused today. `
+                  : ""}
+                Work time is logged to this task as each session ends.
+              </Text>
+              {!!focus.movedTo && (
+                <Text
+                  style={[shared.small, s.center]}
+                  accessibilityRole="alert"
+                >
+                  Continued on {focus.movedTo}. The time you ran here is logged.
+                </Text>
+              )}
+            </View>
+          )}
+
+          {!done && !readOnly && !focus.intervals && (
             <View style={s.timerCard}>
               <Text
                 style={s.timer}
@@ -335,7 +521,7 @@ function Body({
                 disabled={busy}
                 style={s.nextButton}
                 onPress={async () => {
-                  if (await stop()) onSwitch(next);
+                  if (await settle()) onSwitch(next);
                 }}
               />
               {upcoming.slice(1).map((other) => (
@@ -350,7 +536,7 @@ function Body({
                     label="Focus"
                     disabled={busy}
                     onPress={async () => {
-                      if (await stop()) onSwitch(other);
+                      if (await settle()) onSwitch(other);
                     }}
                   />
                 </View>
@@ -360,6 +546,50 @@ function Body({
         </View>
       </ScrollView>
     </>
+  );
+}
+
+/** How far through the phase, as a ring; the time sits inside it. */
+function Ring({
+  progress,
+  rest,
+  children,
+}: {
+  progress: number;
+  rest: boolean;
+  children: React.ReactNode;
+}) {
+  const size = 188;
+  const stroke = 10;
+  const r = (size - stroke) / 2;
+  const length = 2 * Math.PI * r;
+  const done = Math.max(0, Math.min(1, progress));
+  return (
+    <View style={{ width: size, height: size }}>
+      <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={colors.surfaceMuted}
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={rest ? colors.dot : colors.accent}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${length} ${length}`}
+          strokeDashoffset={length * (1 - done)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      <View style={s.ringInner}>{children}</View>
+    </View>
   );
 }
 
@@ -433,6 +663,45 @@ const s = themed(() =>
       letterSpacing: -1.5,
       color: colors.text,
       fontVariant: ["tabular-nums"],
+    },
+    rhythm: { marginTop: 18, gap: 10 },
+    customRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    customInput: { width: 64, textAlign: "center" },
+    ringInner: {
+      ...StyleSheet.absoluteFill,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+    },
+    ringClock: {
+      fontFamily: fonts.display,
+      fontSize: 42,
+      letterSpacing: -1,
+      color: colors.text,
+      fontVariant: ["tabular-nums"],
+      maxWidth: 150,
+    },
+    dots: { flexDirection: "row", gap: 6, marginTop: 4 },
+    dot: {
+      width: 22,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.surfaceMuted,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    dotOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    dotNow: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+    intervalButtons: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      marginTop: 8,
     },
     play: {
       marginTop: 12,

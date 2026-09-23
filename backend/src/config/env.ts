@@ -44,6 +44,7 @@ const schema = z.object({
   STATUS_GATEWAY_URL: z.string().default(""),
   STATUS_API_URL: z.string().default(""),
   STATUS_AI_URL: z.string().default(""),
+  STATUS_REALTIME_URL: z.string().default(""),
   /** Database connections each service process keeps (to Postgres or PgBouncer). */
   DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
   /**

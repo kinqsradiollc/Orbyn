@@ -1,5 +1,5 @@
-import React from "react";
-import { View } from "react-native";
+import React, { useEffect } from "react";
+import { Platform, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
@@ -41,6 +41,7 @@ export default function App() {
     DMSans_600SemiBold,
     DMSans_700Bold,
   });
+  useWebFocusRing(theme.scheme);
   return (
     <ThemeContext.Provider value={theme}>
       <SafeAreaProvider>
@@ -51,4 +52,24 @@ export default function App() {
       </SafeAreaProvider>
     </ThemeContext.Provider>
   );
+}
+
+/**
+ * In a browser, focus rings otherwise come in the system's accent colour
+ * (orange on some Macs), which the app has no say in. Draw them in the
+ * app's accent, and let text fields show focus through their own border.
+ * Native builds have no focus ring, so this is web only.
+ */
+function useWebFocusRing(scheme: string) {
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const style = document.createElement("style");
+    style.textContent = `
+      :focus { outline: none; }
+      :focus-visible { outline: 2px solid ${colors.accent}; outline-offset: 2px; }
+      input:focus-visible, textarea:focus-visible { outline: none; border-color: ${colors.accent} !important; }
+    `;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [scheme]);
 }

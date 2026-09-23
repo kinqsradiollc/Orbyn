@@ -55,7 +55,7 @@ export function TodayScreen({
   onShowAll: () => void;
   userId?: string;
   /** After quick add created something, so the planner reloads. */
-  onQuickAdded: (item: Item) => void;
+  onQuickAdded: (item: Item | null) => void;
   /** Hand quick-add text to the assistant instead. */
   onAsk: (text: string) => void;
   /** Jumps to the assistant and asks it to plan the day. */

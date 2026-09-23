@@ -1,9 +1,18 @@
-import { LogOut, Orbit, Settings } from "lucide-react";
+import {
+  LogOut,
+  Orbit,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+} from "lucide-react";
 import { hasSystemPermission, type User } from "@orbyn/core";
 import { NAV_GROUPS, type View } from "../app/views";
 
 type Props = {
   open: boolean;
+  /** Shown as a narrow rail of icons, to give the page more room. */
+  railed: boolean;
+  onToggleRail: () => void;
   view: View;
   user: User | null;
   hasUnread: boolean;
@@ -19,6 +28,8 @@ type Props = {
  */
 export function Sidebar({
   open,
+  railed,
+  onToggleRail,
   view,
   user,
   hasUnread,
@@ -29,10 +40,13 @@ export function Sidebar({
   return (
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="sidebar-head">
-        <div className="brand">
-          <Orbit /> orbyn<span>•</span>
+        <div className="brand" aria-label="orbyn">
+          <Orbit />
+          <span className="brand-name">
+            orbyn<span>•</span>
+          </span>
         </div>
-        <div className="workspace">
+        <div className="workspace" title="Personal space">
           <span className="avatar">{user?.name[0] || "O"}</span>
           <div>
             <strong>Personal space</strong>
@@ -52,6 +66,9 @@ export function Sidebar({
                 <button
                   key={label}
                   className={view === label ? "active" : ""}
+                  aria-current={view === label ? "page" : undefined}
+                  aria-label={railed ? label : undefined}
+                  title={railed ? label : undefined}
                   onClick={() => onNavigate(label)}
                 >
                   <Icon size={17} />
@@ -66,13 +83,27 @@ export function Sidebar({
 
       <div className="sidebar-bottom">
         <button
+          className="settings-link rail-toggle"
+          aria-label={railed ? "Expand sidebar" : "Collapse sidebar"}
+          title={`${railed ? "Expand" : "Collapse"} sidebar (⌘\\)`}
+          aria-expanded={!railed}
+          onClick={onToggleRail}
+        >
+          {railed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}{" "}
+          <span>Collapse</span>
+        </button>
+        <button
           className="settings-link"
+          aria-label={railed ? "Settings" : undefined}
+          title={railed ? "Settings" : undefined}
           onClick={() => onNavigate("Settings")}
         >
-          <Settings size={17} /> Settings
+          <Settings size={17} /> <span>Settings</span>
         </button>
         <div className="profile">
-          <span className="avatar">{user?.name[0] || "O"}</span>
+          <span className="avatar" title={user?.name}>
+            {user?.name[0] || "O"}
+          </span>
           <div>
             <strong>
               {user?.name || "Loading…"}

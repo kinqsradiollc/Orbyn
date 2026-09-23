@@ -267,6 +267,29 @@ Without `stages` a project starts with Planning, In progress, Review and Done. �
 
 → the project with its stages and task counts. `404` when it isn't yours.
 
+### `GET /projects/:id/activity?limit=100` (auth)
+
+→ recent project, task, linked-note and work-record changes, newest first (maximum 200). The timeline contains
+titles and planning fields only; task notes and document bodies are never included. Access follows
+the same personal-project or team membership rules as `GET /projects/:id`.
+
+### `GET /projects/:id/time-machine/checkpoints?before=&limit=100` (auth)
+
+Lists changes newest first with a stable decimal `event_order`, timestamp, summary and actor name.
+Pass the oldest returned `event_order` as `before` to fetch an earlier page. The default page
+contains 100 changes; the maximum is 200. Invalid cursors return `422`. Access follows the
+project's personal ownership or team membership rules.
+For projects created before history logging, the first checkpoint is "Project history starts here";
+earlier activity cannot be reconstructed and is not offered as a snapshot.
+
+### `GET /projects/:id/time-machine/:eventOrder` (auth)
+
+Returns a read-only planning snapshot immediately after that change: project name, summary,
+status and deadline, plus its stages, tasks, linked note titles and work-record titles at that
+point. Task notes and document bodies are omitted. A change outside the visible project returns
+`404`; invalid event orders return `422`. Historical planning state cannot be edited through
+this endpoint.
+
 ### `PUT /projects/:id` (auth)
 
 `name`, `summary`, `status` (`active`, `done`, `archived`), `deadline`, `doc_id` and `stages` are
@@ -286,6 +309,62 @@ the project with no stage.
 
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
 that belongs to a different project is `422`.
+
+### Work records (auth)
+
+Promises, decisions, experiments and meeting outcomes live beside personal or team work.
+`GET /work-records` lists visible records, optionally filtered by `kind`, `project_id`,
+`owner_id` or `source_item_id` (up to 200). `source_item_id` finds what came out of one
+meeting: the event's detail uses it to show the outcomes recorded for that event. `GET /work-records/:id` reads one record. Personal records are visible
+only to their creator; team records follow team membership. Linked projects, notes and tasks
+must belong to the same personal or team space.
+
+`POST /work-records` accepts `kind`, `title`, optional `details`, `team_id`, `project_id`,
+`owner_id`, `due_at`, `review_at`, `source_doc_id`, `source_block_id`, `source_item_id` and
+`linked_item_id`. Meeting outcomes may also include `meeting_minutes` and `participant_count`
+together; their product is the meeting's person-minutes. A promise assigned to another team member starts as `proposed`; other
+records start as `open`. `PUT /work-records/:id` accepts a required optimistic `version`
+and optional title, details, status, dates, linked task and outcome. Stale versions return
+`409`. `POST /work-records/:id/respond` with `{ "decision": "accept" | "decline" }` is
+available to the proposed promise's owner. Acceptance opens the promise; declining it
+keeps the response visible in the record and project history.
+
+Offering a promise to someone else sends them a notification (kind `promise`, `ref` = the
+record's id), in the app and as a push to their devices; their answer sends one back to
+whoever offered it. A notice whose record has since been deleted is dropped before delivery.
+
+A decision with no linked task is shown as "No task delivers this yet" with a **Make a task**
+action. That is two ordinary calls: `POST /items` for the task, then `PUT /items/:id/project`
+and `PUT /work-records/:id` with its `linked_item_id`.
+
+### `GET /work-records/:id/evidence` (auth)
+
+For an experiment: the same numbers for the same span of days before it started and while it
+ran — from `created_at` to its `review_at`, or to today, at least seven days either side.
+
+```json
+{
+  "before": {
+    "from": "…",
+    "to": "…",
+    "kept_rate": 0.72,
+    "focus_minutes_per_week": 240,
+    "tasks_done_per_week": 9
+  },
+  "during": {
+    "from": "…",
+    "to": "…",
+    "kept_rate": 0.81,
+    "focus_minutes_per_week": 410,
+    "tasks_done_per_week": 11
+  }
+}
+```
+
+`kept_rate` is the share of planned blocks that were kept (`null` with no plan in that span).
+The numbers belong to the experiment's owner, or its creator. It is `404` to anyone who can't
+see the record. The verdict stays the person's — the client shows the numbers beside the
+"What did you learn?" field rather than judging the experiment itself.
 
 ## Page history
 
@@ -328,7 +407,10 @@ so other open tabs pick it up.
 
 Editors that have a document open follow it, so two people can work on the same page at once.
 
-### `GET /docs/:id/live` (auth)
+### `GET /events/docs/:id` (auth)
+
+Served by the realtime service. `GET /docs/:id/live` is the same stream at the path older apps
+use.
 
 A server-sent event stream. Each event says only that the document moved on and to which version:
 
@@ -1411,3 +1493,173 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 - Making or renaming calendars (`MKCALENDAR`, `PROPPATCH`) is refused (`403`) — there's one calendar per person.
 
 Tasks and other kinds are read-only over CalDAV; only events accept writes. Real-client interop (Apple Calendar, Thunderbird, DAVx5) is verified by hand.
+
+## Repeats and habits in quick add
+
+`POST /items/quick` also reads repeats: "every weekday at 9am", "every other Friday", "the first
+Tuesday of every month", "until December", "for 6 weeks", "10 times". A repeat with a clock time
+(or on set days of the month) makes a repeating item with an `rrule`. One that says how often but
+not when — "3 times a week", "read 20 minutes every day" — makes a habit instead: the answer is
+`{ "item": null, "habit": {…}, "chips": […] }`, and a `preview` carries `habit`. Email-to-task
+never makes habits.
+
+## Focus sessions
+
+### `POST /focus/sessions` (auth)
+
+One finished (or cut short) phase: `{ id, item_id, kind: "work"|"short_break"|"long_break",
+started_at, ended_at, planned_minutes, minutes, completed }`. `id` is made on the device: sending
+the same session again answers `200` with the first one and logs nothing twice. Work minutes are
+added to the task's time spent (`items:write` on it). → `{ session, item }`.
+
+### `GET /focus/summary?from=&to=` (auth)
+
+Up to three months: work minutes, sessions finished and cut short, breaks taken, minutes by day
+(in your planner's zone) and by task, and the 20 newest sessions.
+
+### `GET` / `PUT` / `DELETE /focus/current` (auth)
+
+The phase running now, so your other devices can show it: `PUT { state, device, device_id }`.
+Only you see it.
+
+## Presence
+
+### `POST /presence/heartbeat` (auth)
+
+About once a minute while an app is open: `{ device_id, platform, label?, active, doc_id?,
+pending_changes, failed_changes, synced_at? }`. `doc_id` must be a page you can see.
+`POST /presence/leave { device_id }` on sign-out.
+
+### `GET /presence/devices` (auth)
+
+Your devices: online, active, changes waiting or needing you, last synced. Only yours.
+`DELETE /presence/devices/:deviceId` forgets one.
+
+### `GET` / `PUT /presence/settings` (auth) → `{ share_presence }`
+
+Off by default. On, your teams see you as `active` or `away` — never a time.
+
+### `GET /teams/:id/presence` (auth, `items:read`)
+
+`[{ user_id, status }]`, `status` one of `active`, `away`, `offline`, or `hidden` for members who
+don't share it.
+
+### `GET /docs/:id/presence` (auth)
+
+Who else has the page open now: `[{ user_id, name }]`.
+
+### `GET /events` (auth)
+
+Served by the realtime service. A server-sent event stream of news for you and your teams:
+`{"kind":"changed"|"focus"|"presence"|"doc_presence", "team"?, "doc"?, "by"?}`. The news only
+says what to re-read; `by` is the device that caused it, so it can skip its own.
+
+## Idempotency keys
+
+Any write can carry `Idempotency-Key` (8–100 letters, digits, `-`, `_`). The first answer is kept
+for a day; the same key again gets it back with `Idempotent-Replay: true`, a repeat that arrives
+while the first is still running gets `409`, and the key used for a different request gets `422`.
+Keys belong to the credentials they came with. `POST /items` also accepts an `id` made on the
+device: sending it again answers `200` with the same item.
+
+## Team capacity
+
+### `GET /teams/:id/capacity?from=&to=` (auth, `items:read`)
+
+Up to a month. For each member and day (in your zone): `level` 0–3 (none, under 2 h, 2–5 h, 5 h+
+free), `off`, `over` (booked past working hours). Owners and admins also get `working_minutes`,
+`free_minutes`, `team_minutes` (planned for this team), `over_minutes`, and each member's
+`unplaced_minutes` of assigned team work not on any day yet; for others these are `null`. Busy
+time is never described.
+
+## Project templates
+
+### `GET /templates` (auth)
+
+Yours, your teams', and the starters (`id` like `starter:retro`), each with `source`, `tasks`,
+`page`, `rrule`, `next_at` and `can_edit`.
+
+### `POST /templates` (auth)
+
+`{ name, description?, team_id?, tasks: [{ id, title, notes?, estimate_minutes, due_in_days,
+depends_on?, target_value?, value_unit? }], page?: { title, content }, rrule? }`. A team's
+templates are made by its owners and admins. The tasks must not wait on each other in a loop.
+`PUT` and `DELETE /templates/:id` for its maker or the team's owners and admins.
+
+### `POST /templates/from-project/:id` (auth)
+
+Save a project as a template: its tasks, their estimates, when each was due counted from the
+first, what waits on what, numbers to reach, and its brief (checked items unchecked).
+
+### `POST /templates/:id/use` (auth) → proposal
+
+`{ title?, team_id? }`. A proposal with a schedule to review, applied with
+`POST /ai/proposals/:id/apply`; nothing is made until then. Applying makes the project, its tasks
+(with their order and numbers to reach), their sessions, and the brief as the project's page.
+
+A template with an `rrule` sends a `template` notice (`ref` = the template) when its next run is
+due; opening it starts a fresh review.
+
+## Numbers to reach
+
+Tasks take `target_value`, `current_value` and `value_unit` (up to 16 characters). While a target
+is set, `progress` follows `current_value / target_value`.
+
+## Follow-through
+
+### `GET /planner/reality` (auth)
+
+How plans went over the last 28 days: for each weekday, minutes planned and minutes kept. A
+session counts in full when its task was finished by the end of that day, otherwise the focus time
+logged on the task that day counts, up to the session's length. `enough` is false (and `rate`
+null) under three hours of planned time; apps say nothing until then. `realityCheck()` in
+`@orbyn/core` holds a plan up against it.
+
+### `POST /planner/what-if` (auth) → `{ before, after, newly_late, relieved, verdict }`
+
+`{ days?, add_tasks?: [{ title, estimate_minutes, due_at?, priority? }], days_off?: [day],
+move_due?: [{ item_id, due_at }], drop_item_ids? }`. Two plans are worked out — as things are, and
+with the change — and compared. Nothing is saved; no plan is stored.
+
+### `GET /me/reentry` (auth) → brief or `null`
+
+After 36 hours or more away (measured from presence check-ins), for three days or until
+dismissed: `assigned`, `changed` (by others, on your tasks), `asks` waiting on you, `mentions`,
+`due` (overdue or within three days) and team `pages` changed, five of each at most.
+`POST /me/reentry/dismiss` puts it away.
+
+### `GET /docs/fading?team_id=` (auth)
+
+Pages (kind `doc`) nobody has changed or confirmed in 90 days, oldest first; `freshness.state` is
+`fading` from 90 days and `stale` from 180. Documents carry `reviewed_at`.
+
+### `POST /docs/:id/review` (auth, `items:write`)
+
+`{ verdict: "still_true" }` confirms it without changing it (the version stays), or
+`{ verdict: "needs_update", note? }` makes a task "Update “title”", assigned to its author on a
+team when they're still on it.
+
+### Asks
+
+A team task created with, or changed to, an assignee other than the person saving is an ask.
+`GET /asks` → `{ to_me, from_me, recent }`; `GET /items/:id/ask`.
+`POST /asks/:id/reply` (the person asked): `{ action: "accept" }`,
+`{ action: "counter", due_at?, estimate_minutes?, message? }` or
+`{ action: "decline", message }` (unassigns the task).
+`POST /asks/:id/settle` (the asker): `agree` (applies the suggestion to the task), `keep` (back
+to them as asked) or `withdraw` (unassigns). Each step sends an `ask` notice to the other person.
+
+### Meeting budget
+
+`GET /teams/:id/attention?week=YYYY-MM-DD` → each member's meeting minutes that week against
+`budget_minutes`. Meetings are timed, busy events that are a team's or have people invited.
+`PUT /teams/:id/attention { meeting_budget_minutes | null }` (owners and admins).
+`POST /teams/:id/attention/check { start_at, end_at, user_ids?, item_id? }` → who a meeting
+would take over the budget.
+
+### Proof of progress
+
+`GET`/`POST /items/:id/proofs` — `{ url?, note? }`, one or both, up to 20 a task (`items:write`
+to add); `DELETE /items/:id/proofs/:proofId`.
+`GET /progress?from=&to=&team_id=` → what got done, by person, with each task's proof, and the
+same as `markdown`. Without `team_id`, your own personal tasks.

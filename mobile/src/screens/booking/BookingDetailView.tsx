@@ -16,6 +16,7 @@ import { Pill } from "../../components/Pill";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import * as outbox from "../../lib/outbox";
 import { deviceTimeZone, minutesLabel, slotLabel } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
 import { animateLayout } from "../../motion";
@@ -70,16 +71,29 @@ export function BookingDetailView({
         .catch(() => {});
   }, [pages, onPages]);
 
-  /** Run a host action; the reply is the updated booking. */
-  const act = (fn: () => Promise<BookingDetail>) =>
+  /**
+   * Run a host action; the reply is the updated booking. Offline it's kept
+   * on the phone (the reply is null) and shown here as `expected` until it
+   * is sent.
+   */
+  const [queued, setQueued] = useState("");
+  const act = (
+    fn: () => Promise<unknown>,
+    expected: Partial<BookingDetail> = {},
+    whenQueued = "Saved on this phone. It’s sent when you’re back online.",
+  ) =>
     run(async () => {
-      const next = await fn();
+      const answer = (await fn()) as BookingDetail | null;
       animateLayout();
-      setBooking(next);
-      setNote(next.host_note);
+      const next = answer ?? (booking ? { ...booking, ...expected } : null);
+      if (next) {
+        setBooking(next);
+        setNote(next.host_note);
+      }
+      setQueued(answer ? "" : whenQueued);
       setPanel(null);
       setReason("");
-      onChanged();
+      if (answer) onChanged();
     });
   const openPanel = (p: Panel) => {
     animateLayout();
@@ -121,6 +135,14 @@ export function BookingDetailView({
     >
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {!!queued && (
+          <Text
+            style={[shared.softCard, shared.small]}
+            accessibilityRole="alert"
+          >
+            {queued}
+          </Text>
+        )}
 
         <View style={shared.card}>
           <View style={s.head}>
@@ -225,7 +247,11 @@ export function BookingDetailView({
               title="Approve"
               icon="check"
               disabled={busy}
-              onPress={() => void act(() => client.approveBooking(b.id))}
+              onPress={() =>
+                void act(() => outbox.approveBooking(b.id, b.name), {
+                  status: "confirmed",
+                })
+              }
             />
             <Button
               secondary
@@ -251,8 +277,14 @@ export function BookingDetailView({
                         text: "Decline",
                         style: "destructive",
                         onPress: () =>
-                          void act(() =>
-                            client.declineBooking(b.id, reason.trim()),
+                          void act(
+                            () =>
+                              outbox.declineBooking(
+                                b.id,
+                                b.name,
+                                reason.trim(),
+                              ),
+                            { status: "declined" },
                           ),
                       },
                     ],
@@ -293,8 +325,11 @@ export function BookingDetailView({
                         booking={b}
                         busy={busy}
                         onPick={(startAt) =>
-                          void act(() =>
-                            client.rescheduleBooking(b.id, startAt),
+                          void act(
+                            () =>
+                              outbox.rescheduleBooking(b.id, b.name, startAt),
+                            {},
+                            "Saved on this phone. It’s sent when you’re back online — if that time has been taken by then, you’ll be asked to pick another.",
                           )
                         }
                       />
@@ -325,11 +360,14 @@ export function BookingDetailView({
                               text: "Cancel booking",
                               style: "destructive",
                               onPress: () =>
-                                void act(() =>
-                                  client.cancelBookingAsHost(
-                                    b.id,
-                                    reason.trim(),
-                                  ),
+                                void act(
+                                  () =>
+                                    outbox.cancelBooking(
+                                      b.id,
+                                      b.name,
+                                      reason.trim(),
+                                    ),
+                                  { status: "cancelled" },
                                 ),
                             },
                           ],
@@ -361,7 +399,10 @@ export function BookingDetailView({
               label="Save note"
               disabled={busy || note.trim() === b.host_note.trim()}
               onPress={() =>
-                void act(() => client.setBookingNote(b.id, note.trim()))
+                void act(
+                  () => outbox.setBookingNote(b.id, b.name, note.trim()),
+                  { host_note: note.trim() },
+                )
               }
             />
           </View>

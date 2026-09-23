@@ -45,7 +45,7 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
-import { announceDocChange, closeLive, streamDocChanges } from "./live.js";
+import { announceDocChange } from "./live.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
 
@@ -58,7 +58,7 @@ import { docToPdf } from "./pdf.js";
 
 const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
-  d.created_at, d.updated_at,
+  d.created_at, d.updated_at, d.reviewed_at,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color) ORDER BY tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
@@ -296,6 +296,7 @@ export async function docRoutes(app: FastifyInstance) {
     const data = docInput.parse(r.body ?? {});
     if (data.team_id) await requireTeam(data.team_id, u, "items:write");
     const doc = await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const id = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
@@ -401,7 +402,6 @@ export async function docRoutes(app: FastifyInstance) {
   });
 
   // Let go of the listening connection when the server stops.
-  app.addHook("onClose", () => closeLive());
 
   /**
    * Which open editor a request came from. Two tabs belonging to the same
@@ -418,6 +418,7 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = docUpdate.parse(r.body);
     const saved = await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const current = await requireDoc(db, id, u, "items:write");
       if (current.version !== body.version)
         fail(
@@ -558,6 +559,7 @@ export async function docRoutes(app: FastifyInstance) {
     const n = Number((r.params as { version: string }).version);
     if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
     const restored = await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireDoc(db, id, u, "items:write");
       const past = (
         await db.query<{ title: string; content: DocBlock[] }>(
@@ -607,29 +609,8 @@ export async function docRoutes(app: FastifyInstance) {
     return restored;
   });
 
-  /**
-   * A document's changes as they happen, for editors that have it open. The
-   * stream carries only the news that the document moved on and to which
-   * version; the editor then re-reads it and merges. That keeps the wire
-   * small and means a reader that misses an event still catches up on the
-   * next one.
-   */
-  app.get("/docs/:id/live", async (r, reply) => {
-    const u = await authenticate(r);
-    const id = idParam(r);
-    const doc = (
-      await reader(r.headers).query<{ id: string }>(
-        `SELECT d.id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
-        [u.id, id],
-      )
-    ).rows[0];
-    if (!doc) fail(404, "Document not found");
-
-    const stop = await streamDocChanges(reply, id, editorOf(r));
-    r.raw.on("close", stop);
-    // Fastify must not also try to answer: the stream owns the response.
-    return reply;
-  });
+  // A document's changes as they happen are streamed by the realtime
+  // service (modules/realtime), which holds the long-lived connections.
 
   /**
    * Today's agenda. Generated once per day from the planner and then kept as
@@ -1191,6 +1172,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     await transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireDoc(db, id, u, "items:write");
       await db.query("DELETE FROM docs WHERE id = $1", [id]);
     });

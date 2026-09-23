@@ -8,7 +8,10 @@ import {
   Plus,
   Star,
   PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
   ChevronRight,
+  Hourglass,
 } from "lucide-react";
 import {
   favouriteKey,
@@ -71,9 +74,34 @@ export function DocsView({
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  // On wide screens the library can be tucked away for a full-width page.
+  const [libraryHidden, setLibraryHidden] = useState(() => {
+    try {
+      return localStorage.getItem("orbyn-docs-library") === "hidden";
+    } catch {
+      return false;
+    }
+  });
+  const showLibrary = (show: boolean) => {
+    setLibraryHidden(!show);
+    try {
+      localStorage.setItem("orbyn-docs-library", show ? "shown" : "hidden");
+    } catch {
+      // Storage can be blocked; the choice lasts this visit.
+    }
+  };
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  /** Pages nobody has changed or confirmed in months. */
+  const [fading, setFading] = useState<Set<string>>(new Set());
+  const [fadingOnly, setFadingOnly] = useState(false);
+  useEffect(() => {
+    client.fadingDocs().then(
+      (list) => setFading(new Set(list.map((d) => d.id))),
+      () => {},
+    );
+  }, []);
   const [busy, setBusy] = useState(false);
 
   const load = () => {
@@ -190,6 +218,7 @@ export function DocsView({
 
   const shown = (docs ?? [])
     .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
+    .filter((d) => !fadingOnly || fading.has(d.id))
     .filter((d) =>
       `${d.title} ${d.preview}`
         .toLocaleLowerCase()
@@ -209,17 +238,19 @@ export function DocsView({
         a.id.localeCompare(b.id)
       : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
-  const location = favoritesOnly
-    ? "Favorites"
-    : folderFilter === "none"
-      ? "Unfiled"
-      : folderFilter
-        ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-        : kindFilter === "doc"
-          ? "Pages"
-          : kindFilter === "note"
-            ? "Notes"
-            : "All documents";
+  const location = fadingOnly
+    ? "Might be out of date"
+    : favoritesOnly
+      ? "Favorites"
+      : folderFilter === "none"
+        ? "Unfiled"
+        : folderFilter
+          ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+          : kindFilter === "doc"
+            ? "Pages"
+            : kindFilter === "note"
+              ? "Notes"
+              : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
@@ -228,6 +259,7 @@ export function DocsView({
     setFolderFilter(folder);
     setKindFilter(kind);
     setFavoritesOnly(favorites);
+    setFadingOnly(false);
     setQuery("");
     setOpen(null);
     setNavigationOpen(false);
@@ -284,7 +316,9 @@ export function DocsView({
   );
 
   return (
-    <div className="docs-workspace">
+    <div
+      className={"docs-workspace" + (libraryHidden ? " is-library-hidden" : "")}
+    >
       <button
         className="text-button docs-nav-toggle"
         aria-expanded={navigationOpen}
@@ -299,7 +333,17 @@ export function DocsView({
         aria-label="Document library"
         className={"docs-navigation" + (navigationOpen ? " is-open" : "")}
       >
-        <h2>Library</h2>
+        <div className="docs-nav-title">
+          <h2>Library</h2>
+          <button
+            className="icon-button docs-library-hide"
+            aria-label="Hide library"
+            title="Hide library"
+            onClick={() => showLibrary(false)}
+          >
+            <PanelLeftClose size={16} />
+          </button>
+        </div>
         {(
           [
             [null, "All documents"],
@@ -330,6 +374,20 @@ export function DocsView({
           <Star size={16} />
           <span>Favorites</span>
         </button>
+        {fading.size > 0 && (
+          <button
+            aria-current={!open && fadingOnly ? "page" : undefined}
+            title="Pages nobody has changed or confirmed in three months or more"
+            onClick={() => {
+              select(null);
+              setFadingOnly(true);
+            }}
+          >
+            <Hourglass size={16} />
+            <span>Might be out of date</span>
+            <small className="docs-nav-count">{fading.size}</small>
+          </button>
+        )}
         <div className="docs-nav-children">
           {(docs ?? [])
             .filter((d) => starred.has(favouriteKey("doc", d.id)))
@@ -422,6 +480,14 @@ export function DocsView({
         </details>
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
+        {libraryHidden && (
+          <button
+            className="text-button docs-library-show"
+            onClick={() => showLibrary(true)}
+          >
+            <PanelLeftOpen size={16} /> Show library
+          </button>
+        )}
         {editor ?? (
           <div className="docs-view">
             <div className="docs-head">

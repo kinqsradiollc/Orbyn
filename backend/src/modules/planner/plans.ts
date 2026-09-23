@@ -252,19 +252,63 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
 }
 
 /**
- * Build a plan, store it for an hour, and return it. Nothing else is saved.
- * `d` is a preview request, or the stored state of a plan being tuned.
+ * A "what if" laid over the real calendar and tasks: tasks that don't exist
+ * yet, whole days off, deadlines moved, tasks dropped. Nothing is saved.
  */
-export async function makePlan(
+export type PlanScenario = {
+  add_tasks?: {
+    id: string;
+    title: string;
+    estimate_minutes: number;
+    due_at: string | null;
+    priority?: "low" | "medium" | "high";
+  }[];
+  days_off?: string[];
+  move_due?: { item_id: string; due_at: string | null }[];
+  drop_item_ids?: string[];
+};
+
+/**
+ * Work out a plan without keeping it: the scheduler's answer, and what went
+ * into it. `scenario` lays a "what if" over the real inputs.
+ */
+export async function computePlan(
   db: Db,
   userId: string,
   d: PreviewInput | PlanState,
   now = new Date(),
-  estimatesSaved: string[] = [],
-): Promise<Plan> {
+  scenario: PlanScenario = {},
+) {
   const state = stateOf(d);
   const inputs = await planInputs(db, userId, state, now);
-  const { prefs, tz, start, days, from, to, tasks, include } = inputs;
+  const { prefs, tz, start, days, from, to, include } = inputs;
+  const moved = new Map(
+    (scenario.move_due ?? []).map((m) => [m.item_id, m.due_at]),
+  );
+  const dropped = new Set(scenario.drop_item_ids ?? []);
+  const tasks: Candidate[] = [
+    ...inputs.tasks
+      .filter((t) => !dropped.has(t.id))
+      .map((t) => (moved.has(t.id) ? { ...t, due_at: moved.get(t.id)! } : t)),
+    ...(scenario.add_tasks ?? []).map((t): Candidate => ({
+      id: t.id,
+      title: t.title,
+      priority: t.priority ?? "medium",
+      status: "todo",
+      due_at: t.due_at,
+      estimate_minutes: t.estimate_minutes,
+      spent_minutes: 0,
+      scheduled_minutes: 0,
+      list_id: null,
+      tag_ids: [],
+      team_id: null,
+      version: 0,
+    })),
+  ];
+  const daysOff = (scenario.days_off ?? []).map((day) => ({
+    start_at: dayTime(day, 0, tz).toISOString(),
+    end_at: dayTime(addDays(day, 1), 0, tz).toISOString(),
+  }));
   for (const p of state.pinned_blocks)
     if (
       Date.parse(p.start_at) < from.getTime() ||
@@ -305,7 +349,7 @@ export async function makePlan(
   };
   const result = schedule({
     tasks: planned,
-    busy: [...inputs.busy, ...state.keep_free],
+    busy: [...inputs.busy, ...state.keep_free, ...daysOff],
     frames: inputs.frames,
     useFrames: options.use_frames,
     days: Array.from({ length: days }, (_, i) => addDays(start, i)),
@@ -321,6 +365,22 @@ export async function makePlan(
     pinned: state.pinned_blocks,
     now,
   });
+  return { state, inputs, tasks, excluded, options, result, start, days };
+}
+
+/**
+ * Build a plan, store it for an hour, and return it. Nothing else is saved.
+ * `d` is a preview request, or the stored state of a plan being tuned.
+ */
+export async function makePlan(
+  db: Db,
+  userId: string,
+  d: PreviewInput | PlanState,
+  now = new Date(),
+  estimatesSaved: string[] = [],
+): Promise<Plan> {
+  const { state, inputs, tasks, excluded, options, result, start, days } =
+    await computePlan(db, userId, d, now);
   const summary = describePlan(result, days);
   const checklist = planTasks(tasks, excluded, state, result);
   // Tuning makes the same days again, even once tomorrow has become today.

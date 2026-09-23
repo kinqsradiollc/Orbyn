@@ -3,13 +3,18 @@ import {
   ArrowRight,
   Check,
   ListChecks,
+  Coffee,
   Pause,
   Play,
   PartyPopper,
+  SkipForward,
   X,
 } from "lucide-react";
 import {
+  customRhythmId,
   dateLabel,
+  FOCUS_RHYTHMS,
+  focusRhythm,
   type HttpError,
   type Item,
   type ItemDetail,
@@ -18,6 +23,7 @@ import {
 import { client } from "../../lib/api";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { errorText, minutesLabel, nextUp } from "../../lib/planning";
+import { useFocusSession } from "./useFocusSession";
 import "./focus.css";
 
 type Props = {
@@ -41,9 +47,10 @@ const clock = (seconds: number) => {
 };
 
 /**
- * One task, full screen: its checklist, a start/pause timer that logs whole
- * minutes to the task, "Mark done" with a small celebration, and what's next.
- * Render it keyed by the task id.
+ * One task, full screen: its checklist, a timer, "Mark done" with a small
+ * celebration, and what's next. The timer runs in a rhythm — work, then the
+ * break it asks for — or open, counting up until paused. Work minutes are
+ * logged to the task either way. Render it keyed by the task id.
  */
 export function FocusMode({
   item,
@@ -72,6 +79,22 @@ export function FocusMode({
   const startButton = useRef<HTMLButtonElement>(null);
   const latest = useRef({ onError });
   latest.current = { onError };
+  const focus = useFocusSession({
+    item,
+    canWrite,
+    onLogged: (d) => {
+      setDetail(d);
+      void onChanged();
+    },
+    onError: (e) => {
+      setError(errorText(e));
+      if ((e as HttpError).status === 401) onError(e);
+    },
+  });
+  const [custom, setCustom] = useState(() => {
+    const r = focus.rhythm.work ? focus.rhythm : focusRhythm("25-5")!;
+    return { work: r.work, rest: r.short_break };
+  });
 
   useEffect(() => {
     let alive = true;
@@ -90,6 +113,7 @@ export function FocusMode({
     return () => clearInterval(id);
   }, [running]);
 
+  const { refreshToday } = focus;
   const runSeconds = () =>
     startedAt.current ? (Date.now() - startedAt.current) / 1000 : 0;
 
@@ -104,16 +128,27 @@ export function FocusMode({
     if (minutes < 1 || !canWrite) return;
     banked.current -= minutes * 60;
     try {
-      const d = await client.logTime(item.id, Math.min(minutes, 1440));
-      setDetail(d);
+      const ended = Date.now();
+      const saved = await client.saveFocusSession({
+        id: crypto.randomUUID(),
+        item_id: item.id,
+        kind: "work",
+        started_at: new Date(ended - minutes * 60_000).toISOString(),
+        ended_at: new Date(ended).toISOString(),
+        planned_minutes: 0,
+        minutes: Math.min(minutes, 600),
+        completed: true,
+      });
+      if (saved.item) setDetail(saved.item);
       setLoggedNow((m) => m + minutes);
+      refreshToday();
       await onChanged();
     } catch (e) {
       banked.current += minutes * 60;
       setError(errorText(e));
       if ((e as HttpError).status === 401) onError(e);
     }
-  }, [canWrite, item.id, onChanged, onError]);
+  }, [canWrite, item.id, onChanged, onError, refreshToday]);
 
   const start = () => {
     startedAt.current = Date.now();
@@ -121,17 +156,18 @@ export function FocusMode({
     setError("");
   };
 
+  const { finish } = focus;
   const close = useCallback(() => {
-    void flush().finally(onClose);
-  }, [flush, onClose]);
+    void Promise.all([flush(), finish()]).finally(onClose);
+  }, [flush, finish, onClose]);
 
   const switchTo = (next: Item) => {
-    void flush().finally(() => onSwitch(next));
+    void Promise.all([flush(), finish()]).finally(() => onSwitch(next));
   };
 
   const markDone = async () => {
     setPending(true);
-    await flush();
+    await Promise.all([flush(), finish()]);
     try {
       setDetail(await client.postItemUpdate(item.id, { status: "done" }));
       setDone(true);
@@ -236,41 +272,248 @@ export function FocusMode({
             </span>
           </p>
 
-          <div className={"focus-timer" + (running ? " is-running" : "")}>
-            <span className="focus-clock" role="timer" aria-live="off">
-              {clock(seconds)}
-            </span>
-            <div className="focus-controls">
-              <button
-                ref={startButton}
-                className="primary focus-start"
-                disabled={done || !canWrite}
-                onClick={() => (running ? void flush() : start())}
-              >
-                {running ? (
-                  <>
-                    <Pause size={17} /> Pause
-                  </>
-                ) : (
-                  <>
-                    <Play size={17} /> {seconds > 0 ? "Resume" : "Start"}
-                  </>
-                )}
-              </button>
-              <button
-                className="secondary"
-                disabled={done || pending || !canWrite}
-                onClick={() => void markDone()}
-              >
-                <Check size={17} /> {done ? "Done" : "Mark done"}
-              </button>
+          {canWrite && !done && (
+            <div className="focus-rhythm">
+              <div className="segmented" role="group" aria-label="Rhythm">
+                {FOCUS_RHYTHMS.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    aria-pressed={focus.rhythm.id === r.id}
+                    className={focus.rhythm.id === r.id ? "active" : ""}
+                    disabled={focus.running || running}
+                    onClick={() => focus.chooseRhythm(r)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-pressed={focus.rhythm.id.startsWith("custom:")}
+                  className={
+                    focus.rhythm.id.startsWith("custom:") ? "active" : ""
+                  }
+                  disabled={focus.running || running}
+                  onClick={() =>
+                    focus.chooseRhythm(
+                      focusRhythm(
+                        customRhythmId(
+                          custom.work,
+                          custom.rest,
+                          custom.rest * 3,
+                          4,
+                        ),
+                      )!,
+                    )
+                  }
+                >
+                  Custom
+                </button>
+              </div>
+              {focus.rhythm.id.startsWith("custom:") && !focus.running && (
+                <div className="focus-custom">
+                  <label>
+                    Work
+                    <input
+                      type="number"
+                      min={5}
+                      max={180}
+                      value={custom.work}
+                      onChange={(e) => {
+                        const work = Math.max(
+                          5,
+                          Math.min(180, Number(e.target.value) || 5),
+                        );
+                        setCustom({ ...custom, work });
+                        focus.chooseRhythm(
+                          focusRhythm(
+                            customRhythmId(
+                              work,
+                              custom.rest,
+                              custom.rest * 3,
+                              4,
+                            ),
+                          )!,
+                        );
+                      }}
+                    />
+                    min
+                  </label>
+                  <label>
+                    Break
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={custom.rest}
+                      onChange={(e) => {
+                        const rest = Math.max(
+                          1,
+                          Math.min(30, Number(e.target.value) || 1),
+                        );
+                        setCustom({ ...custom, rest });
+                        focus.chooseRhythm(
+                          focusRhythm(
+                            customRhythmId(custom.work, rest, rest * 3, 4),
+                          )!,
+                        );
+                      }}
+                    />
+                    min
+                  </label>
+                </div>
+              )}
             </div>
-            <small className="focus-hint">
-              {canWrite
-                ? "Pausing logs whole minutes to this task."
-                : "View only — you can't log time on this task."}
-            </small>
-          </div>
+          )}
+
+          {focus.intervals ? (
+            <div
+              className={
+                "focus-timer focus-interval" +
+                (focus.running ? " is-running" : "") +
+                (focus.state.phase !== "work" ? " is-break" : "")
+              }
+            >
+              <div className="focus-interval-row">
+                <div
+                  className="focus-ring"
+                  style={
+                    {
+                      "--p": `${
+                        Math.round(
+                          (1 - focus.remaining / Math.max(1, focus.total)) *
+                            1000,
+                        ) / 10
+                      }%`,
+                    } as never
+                  }
+                  aria-hidden="true"
+                >
+                  <span>
+                    {focus.state.phase === "work" ? (
+                      <Play size={18} />
+                    ) : (
+                      <Coffee size={18} />
+                    )}
+                  </span>
+                </div>
+                <div className="focus-interval-text">
+                  <strong>{focus.label}</strong>
+                  <span className="focus-clock" role="timer" aria-live="off">
+                    {clock(focus.remaining / 1000)}
+                  </span>
+                  <small>{focus.then}</small>
+                  <span
+                    className="focus-dots"
+                    aria-label={focus.label}
+                    role="img"
+                  >
+                    {Array.from({ length: focus.rhythm.rounds }, (_, n) => {
+                      const within =
+                        ((focus.state.round - 1) % focus.rhythm.rounds) + 1;
+                      const cls =
+                        n + 1 < within ||
+                        (n + 1 === within && focus.state.phase !== "work")
+                          ? "on"
+                          : n + 1 === within
+                            ? "now"
+                            : "";
+                      return <i key={n} className={cls} />;
+                    })}
+                  </span>
+                </div>
+              </div>
+              <div className="focus-controls">
+                <button
+                  ref={startButton}
+                  className="primary focus-start"
+                  disabled={done || !canWrite}
+                  onClick={() =>
+                    focus.running ? focus.pause() : focus.start()
+                  }
+                >
+                  {focus.running ? (
+                    <>
+                      <Pause size={17} /> Pause
+                    </>
+                  ) : (
+                    <>
+                      <Play size={17} />{" "}
+                      {focus.state.phase !== "work"
+                        ? "Resume break"
+                        : focus.state.ran_ms > 0
+                          ? "Resume"
+                          : focus.state.round > 1
+                            ? `Start ${focus.label.toLowerCase()}`
+                            : "Start"}
+                    </>
+                  )}
+                </button>
+                {focus.state.phase !== "work" && (
+                  <button className="secondary" onClick={focus.skip}>
+                    <SkipForward size={17} /> Skip break
+                  </button>
+                )}
+                <button
+                  className="secondary"
+                  disabled={done || pending || !canWrite}
+                  onClick={() => void markDone()}
+                >
+                  <Check size={17} /> {done ? "Done" : "Mark done"}
+                </button>
+              </div>
+              <small className="focus-hint">
+                {focus.today !== null && focus.today > 0
+                  ? `${minutesLabel(focus.today)} focused today. `
+                  : ""}
+                Work time is logged to this task as each session ends.
+              </small>
+              {focus.movedTo && (
+                <small className="focus-hint" role="status">
+                  Continued on {focus.movedTo}. The time you ran here is logged.
+                </small>
+              )}
+            </div>
+          ) : (
+            <div className={"focus-timer" + (running ? " is-running" : "")}>
+              <span className="focus-clock" role="timer" aria-live="off">
+                {clock(seconds)}
+              </span>
+              <div className="focus-controls">
+                <button
+                  ref={startButton}
+                  className="primary focus-start"
+                  disabled={done || !canWrite}
+                  onClick={() => (running ? void flush() : start())}
+                >
+                  {running ? (
+                    <>
+                      <Pause size={17} /> Pause
+                    </>
+                  ) : (
+                    <>
+                      <Play size={17} /> {seconds > 0 ? "Resume" : "Start"}
+                    </>
+                  )}
+                </button>
+                <button
+                  className="secondary"
+                  disabled={done || pending || !canWrite}
+                  onClick={() => void markDone()}
+                >
+                  <Check size={17} /> {done ? "Done" : "Mark done"}
+                </button>
+              </div>
+              <small className="focus-hint">
+                {canWrite
+                  ? "Pausing logs whole minutes to this task."
+                  : "View only — you can't log time on this task."}
+                {canWrite && focus.today !== null && focus.today > 0
+                  ? ` ${minutesLabel(focus.today)} focused today.`
+                  : ""}
+              </small>
+            </div>
+          )}
 
           {error && (
             <div className="error" role="alert">

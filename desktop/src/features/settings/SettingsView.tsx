@@ -16,6 +16,7 @@ import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";
 import { ConnectionsSettings } from "./ConnectionsSettings";
 import { SessionsSettings } from "./SessionsSettings";
+import { DevicesSettings } from "./DevicesSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { PasskeysSettings } from "./PasskeysSettings";
 import "./settings.css";
@@ -140,6 +141,7 @@ export function SettingsView({
             <TwoFactorSettings report={report} />
             <PasskeysSettings report={report} />
             <SessionsSettings report={report} />
+            <DevicesSettings report={report} />
           </SettingsSection>
         )}
         {tab === "account" && (

@@ -76,6 +76,14 @@ spec:
                 name: ai
                 port:
                   name: http
+          # Long-lived streams (/events, /events/docs/:id): the realtime service.
+          - path: /events
+            pathType: Prefix
+            backend:
+              service:
+                name: realtime
+                port:
+                  name: http
           - path: /status
             pathType: Exact
             backend:

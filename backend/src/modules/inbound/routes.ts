@@ -94,7 +94,7 @@ export async function inboundRoutes(app: FastifyInstance) {
       return done("sender not allowed");
 
     const tz = (await loadPrefs(pool, user.id)).timezone;
-    const parsed = parseQuickAdd(subject, { timeZone: tz });
+    const parsed = parseQuickAdd(subject, { timeZone: tz, habits: false });
     const notes = String(body.text ?? "")
       .trim()
       .slice(0, 10000);

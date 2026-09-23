@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Pressable,
   ScrollView,
@@ -10,9 +11,12 @@ import {
 import {
   projectAtRisk,
   projectProgress,
+  projectReentry,
   type Item,
   type Project,
+  type ProjectActivity,
   type Proposal,
+  type Team,
 } from "@orbyn/core";
 import { Segmented } from "../../components/Segmented";
 import { ScreenIntro } from "../../components/ScreenIntro";
@@ -20,6 +24,7 @@ import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
@@ -28,7 +33,11 @@ import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { useRun } from "../../hooks/useRun";
 import { ProjectNotes } from "./ProjectNotes";
+import { TemplatesPanel } from "./TemplatesPanel";
 import { ProjectTimeline } from "./ProjectTimeline";
+import { ProjectRecords } from "./ProjectRecords";
+import { ProjectTimeMachine } from "./ProjectTimeMachine";
+import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const dueLabel = (iso: string | null) =>
@@ -44,7 +53,10 @@ const dueLabel = (iso: string | null) =>
 export function ProjectsSheet({
   visible,
   items,
+  teams = [],
+  openTemplate = null,
   canWriteIn,
+  userId,
   onClose,
   onDismiss,
   onOpenItem,
@@ -53,7 +65,12 @@ export function ProjectsSheet({
 }: {
   visible: boolean;
   items: Item[];
+  /** For starting a template's project in a team. */
+  teams?: Team[];
+  /** Open on this template (from a "ready to start" notice). */
+  openTemplate?: string | null;
   canWriteIn: (teamId: string | null) => boolean;
+  userId?: string;
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
@@ -65,18 +82,79 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
-  const [section, setSection] = useState<"tasks" | "notes" | "timeline">(
-    "tasks",
-  );
+  const [section, setSection] = useState<
+    "tasks" | "notes" | "timeline" | "decisions" | "history"
+  >("tasks");
+  const [activity, setActivity] = useState<ProjectActivity[] | null>(null);
+  const [lastSeen, setLastSeen] = useState<string | null>(null);
+  const [reentry, setReentry] = useState<ReturnType<
+    typeof projectReentry
+  > | null>(null);
   /** A name being typed, for a new project or a rename. */
   const [draft, setDraft] = useState<string | null>(null);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(!!openTemplate);
+  useEffect(() => {
+    if (openTemplate && visible) {
+      setOpen(null);
+      setAiDraftOpen(false);
+      setTemplatesOpen(true);
+    }
+  }, [openTemplate, visible]);
   const [projectPrompt, setProjectPrompt] = useState("");
   const [projectProposal, setProjectProposal] = useState<Proposal | null>(null);
   const [proposalState, setProposalState] = useState<"pending" | "applied">(
     "pending",
   );
   const { busy, error, setError, run } = useRun();
+
+  useEffect(() => {
+    if (!visible || !open || section !== "history") return;
+    let active = true;
+    setActivity(null);
+    setLastSeen(null);
+    const key = `orbyn.project.seen.${open.id}`;
+    void AsyncStorage.getItem(key)
+      .then((previous) => {
+        if (!active) return;
+        setLastSeen(previous);
+        return client.projectActivity(open.id).then(async (rows) => {
+          if (!active) return;
+          setActivity(rows);
+          await AsyncStorage.setItem(key, new Date().toISOString());
+        });
+      })
+      .catch((e: Error) => {
+        if (active) setError(e.message || "Could not load project history.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible, open?.id, section, setError]);
+
+  useEffect(() => {
+    if (!visible || !open) return;
+    let active = true;
+    const key = `orbyn.project.reentry.${open.id}`;
+    void AsyncStorage.getItem(key)
+      .then(async (previous) => {
+        const rows = await client.projectActivity(open.id);
+        if (!active) return;
+        setReentry(
+          previous
+            ? projectReentry(rows.filter((row) => row.created_at > previous))
+            : null,
+        );
+        await AsyncStorage.setItem(key, new Date().toISOString());
+      })
+      .catch((reason: Error) => {
+        if (active)
+          setError(reason.message || "Could not load project changes.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible, open?.id, setError]);
 
   /** True when the list could not be read, which is not the same as empty. */
   const [failed, setFailed] = useState(false);
@@ -263,14 +341,24 @@ export function ProjectsSheet({
   return (
     <Sheet
       visible={visible}
-      title={open ? open.name : aiDraftOpen ? "Draft a project" : "Projects"}
+      title={
+        open
+          ? open.name
+          : aiDraftOpen
+            ? "Draft a project"
+            : templatesOpen
+              ? "Templates"
+              : "Projects"
+      }
       onClose={onClose}
       onBack={
         open
           ? () => setOpen(null)
           : aiDraftOpen
             ? () => setAiDraftOpen(false)
-            : undefined
+            : templatesOpen
+              ? () => setTemplatesOpen(false)
+              : undefined
       }
       onDismiss={onDismiss}
     >
@@ -280,7 +368,7 @@ export function ProjectsSheet({
         keyboardDismissMode="interactive"
       >
         <View style={sheet.column}>
-          {!open && !aiDraftOpen && !!projects?.length && (
+          {!open && !aiDraftOpen && !templatesOpen && !!projects?.length && (
             <ScreenIntro
               icon="boxes"
               title="Move the bigger picture forward"
@@ -288,8 +376,33 @@ export function ProjectsSheet({
             />
           )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {!open && !aiDraftOpen && !templatesOpen && (
+            <PromiseTracker
+              userId={userId}
+              canWriteIn={canWriteIn}
+              onError={setError}
+              onProject={(id) =>
+                void run(async () => {
+                  setOpen(await client.getProject(id));
+                  setSection("tasks");
+                })
+              }
+            />
+          )}
 
-          {aiDraftOpen ? (
+          {templatesOpen ? (
+            <TemplatesPanel
+              teams={teams}
+              items={items}
+              initialId={openTemplate}
+              busy={busy}
+              run={run}
+              onStarted={() => {
+                void reload();
+                onItemsChanged?.();
+              }}
+            />
+          ) : aiDraftOpen ? (
             <View style={styles.aiDraft}>
               <View style={styles.aiHeading}>
                 <View style={styles.aiIcon}>
@@ -352,6 +465,20 @@ export function ProjectsSheet({
                   {projectAtRisk(open) && (
                     <Text style={styles.chip}>At risk</Text>
                   )}
+                  {canWriteIn(open.team_id) && (
+                    <MoreMenu
+                      label="Project options"
+                      disabled={busy}
+                      actions={[
+                        { label: "Rename", onPress: () => setDraft(open.name) },
+                        {
+                          label: "Delete project",
+                          destructive: true,
+                          onPress: remove,
+                        },
+                      ]}
+                    />
+                  )}
                 </View>
               ) : (
                 <TextInput
@@ -364,27 +491,15 @@ export function ProjectsSheet({
                   accessibilityLabel="Project name"
                   onChangeText={setDraft}
                   onSubmitEditing={rename}
-                  onBlur={rename}
                 />
               )}
-              {canWriteIn(open.team_id) && (
+              {draft !== null && (
                 <View style={styles.actions}>
+                  <SmallAction label="Save" disabled={busy} onPress={rename} />
                   <SmallAction
-                    label={draft === null ? "Rename" : "Save"}
+                    label="Cancel"
                     disabled={busy}
-                    onPress={() =>
-                      draft === null ? setDraft(open.name) : rename()
-                    }
-                  />
-                  {/* Losing the project sat a thumb's width from renaming
-                      it. The desktop keeps its bin off on its own in the
-                      toolbar; here it goes to the far end of the row. */}
-                  <View style={styles.spacer} />
-                  <SmallAction
-                    label="Delete project"
-                    destructive
-                    disabled={busy}
-                    onPress={remove}
+                    onPress={() => setDraft(null)}
                   />
                 </View>
               )}
@@ -403,6 +518,30 @@ export function ProjectsSheet({
                 {open.done_count} of {open.task_count} done ·{" "}
                 {dueLabel(open.deadline)}
               </Text>
+              {reentry && reentry.total > 0 && (
+                <View style={styles.reentry}>
+                  <Text style={styles.reentryTitle}>Since your last visit</Text>
+                  <Text style={styles.meta}>
+                    {reentry.total} change{reentry.total === 1 ? "" : "s"}
+                    {reentry.completedTasks > 0
+                      ? ` · ${reentry.completedTasks} completed`
+                      : ""}
+                    {reentry.changedRecords > 0
+                      ? ` · ${reentry.changedRecords} commitment updates`
+                      : ""}
+                  </Text>
+                  {reentry.recent.map((summary, index) => (
+                    <Text key={`${summary}-${index}`} style={styles.meta}>
+                      • {summary}
+                    </Text>
+                  ))}
+                  <SmallAction
+                    label="View history"
+                    disabled={busy}
+                    onPress={() => setSection("history")}
+                  />
+                </View>
+              )}
               {/* The desktop has a date field beside the progress bar; the
                   phone only ever said what the deadline was. */}
               {canWriteIn(open.team_id) && (
@@ -429,9 +568,16 @@ export function ProjectsSheet({
                 accessibilityLabel="Project section"
                 options={
                   onOpenNote
-                    ? (["tasks", "notes", "timeline"] as const)
-                    : (["tasks", "timeline"] as const)
+                    ? ([
+                        "tasks",
+                        "notes",
+                        "timeline",
+                        "decisions",
+                        "history",
+                      ] as const)
+                    : (["tasks", "timeline", "decisions", "history"] as const)
                 }
+                labels={{ history: "History", decisions: "Decisions" }}
                 value={section}
                 onChange={setSection}
               />
@@ -440,6 +586,64 @@ export function ProjectsSheet({
                   project={open}
                   tasks={items.filter((i) => i.project_id === open.id)}
                 />
+              )}
+
+              {section === "decisions" && (
+                <ProjectRecords
+                  project={open}
+                  items={items}
+                  userId={userId}
+                  canWrite={canWriteIn(open.team_id)}
+                  onOpenNote={onOpenNote}
+                />
+              )}
+
+              {section === "history" && (
+                <View style={styles.projectHistory}>
+                  <Text style={styles.historyHeading}>Project history</Text>
+                  <Text style={styles.historyDescription}>
+                    Changes to the project, its tasks, and its notes.
+                  </Text>
+                  <ProjectTimeMachine projectId={open.id} />
+                  {activity === null ? (
+                    <Text style={styles.meta}>Loading project history…</Text>
+                  ) : activity.length === 0 ? (
+                    <Text style={styles.meta}>
+                      Changes will appear here as work on this project evolves.
+                    </Text>
+                  ) : (
+                    <>
+                      {lastSeen && (
+                        <Text style={styles.historyCatchup}>
+                          {
+                            activity.filter(
+                              (event) => event.created_at > lastSeen,
+                            ).length
+                          }{" "}
+                          {activity.filter(
+                            (event) => event.created_at > lastSeen,
+                          ).length === 1
+                            ? "change since your last visit"
+                            : "changes since your last visit"}
+                        </Text>
+                      )}
+                      {activity.map((event) => (
+                        <View key={event.id} style={styles.historyEntry}>
+                          <Text style={styles.historySummary}>
+                            {event.summary}
+                          </Text>
+                          <Text style={styles.historyMeta}>
+                            {event.actor_name ?? "Workspace activity"} ·{" "}
+                            {new Date(event.created_at).toLocaleString([], {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
               )}
 
               {section === "notes" && !!onOpenNote && (
@@ -481,56 +685,50 @@ export function ProjectsSheet({
                               <Text style={styles.stageCount}>
                                 {rows.length}
                               </Text>
-                            </View>
-                          )}
-                          {/* Everything you can do to a stage, on one row under
-                        its name: putting them beside the name wrapped "In
-                        progress" onto two lines. Naming a stage and getting
-                        rid of one were on the desktop only, as was filling a
-                        stage from the tasks that are in no project — without
-                        it the only way onto a phone's board was to make a
-                        task and then move it. "No stage" is not a stage, so
-                        it can only be filled. */}
-                          {canWriteIn(open.team_id) && (
-                            <View style={styles.stageActions}>
-                              <SmallAction
-                                label={
-                                  filling === stage.id
-                                    ? "Never mind"
-                                    : "Add a task"
-                                }
-                                disabled={busy}
-                                onPress={() =>
-                                  setFilling(
-                                    filling === stage.id ? undefined : stage.id,
-                                  )
-                                }
-                              />
-                              {stage.id !== null && (
-                                <>
-                                  <SmallAction
-                                    label="Rename"
-                                    disabled={busy}
-                                    onPress={() =>
-                                      setStageDraft({
-                                        id: stage.id as string,
-                                        name: stage.name,
-                                      })
-                                    }
-                                  />
-                                  <View style={styles.spacer} />
-                                  <SmallAction
-                                    label="Remove"
-                                    destructive
-                                    disabled={busy}
-                                    onPress={() =>
-                                      removeStage({
-                                        id: stage.id as string,
-                                        name: stage.name,
-                                      })
-                                    }
-                                  />
-                                </>
+                              {/* What you can do to a stage lives behind its
+                              ⋯, so the list reads as tasks, not buttons.
+                              "No stage" is not a stage: it can only be
+                              filled. */}
+                              {canWriteIn(open.team_id) && (
+                                <MoreMenu
+                                  label={`${stage.name} options`}
+                                  disabled={busy}
+                                  actions={[
+                                    {
+                                      label:
+                                        filling === stage.id
+                                          ? "Stop adding tasks"
+                                          : "Add a task from your list",
+                                      onPress: () =>
+                                        setFilling(
+                                          filling === stage.id
+                                            ? undefined
+                                            : stage.id,
+                                        ),
+                                    },
+                                    ...(stage.id === null
+                                      ? []
+                                      : [
+                                          {
+                                            label: "Rename stage",
+                                            onPress: () =>
+                                              setStageDraft({
+                                                id: stage.id as string,
+                                                name: stage.name,
+                                              }),
+                                          },
+                                          {
+                                            label: "Remove stage",
+                                            destructive: true,
+                                            onPress: () =>
+                                              removeStage({
+                                                id: stage.id as string,
+                                                name: stage.name,
+                                              }),
+                                          },
+                                        ]),
+                                  ]}
+                                />
                               )}
                             </View>
                           )}
@@ -709,6 +907,13 @@ export function ProjectsSheet({
                     disabled={busy}
                     onPress={startAiDraft}
                   />
+                  <Button
+                    title="From a template"
+                    secondary
+                    icon="layoutGrid"
+                    disabled={busy}
+                    onPress={() => setTemplatesOpen(true)}
+                  />
                 </View>
               ) : (
                 <View style={styles.newRow}>
@@ -737,17 +942,28 @@ export function ProjectsSheet({
                 <View style={styles.createActions}>
                   <Button
                     title="New project"
-                    secondary
+                    icon="plus"
                     disabled={busy}
                     onPress={() => setDraft("")}
                   />
-                  <Button
-                    title="Draft with AI"
-                    secondary
-                    icon="sparkles"
-                    disabled={busy}
-                    onPress={startAiDraft}
-                  />
+                  <View style={styles.createMore}>
+                    <Button
+                      title="Draft with AI"
+                      secondary
+                      icon="sparkles"
+                      disabled={busy}
+                      style={styles.createHalf}
+                      onPress={startAiDraft}
+                    />
+                    <Button
+                      title="Template"
+                      secondary
+                      icon="layoutGrid"
+                      disabled={busy}
+                      style={styles.createHalf}
+                      onPress={() => setTemplatesOpen(true)}
+                    />
+                  </View>
                 </View>
               ) : (
                 <View style={styles.newRow}>
@@ -825,6 +1041,8 @@ const styles = themed(() =>
   StyleSheet.create({
     list: { gap: 10 },
     createActions: { gap: 8 },
+    createMore: { flexDirection: "row", gap: 8 },
+    createHalf: { flex: 1, minWidth: 0 },
     aiDraft: { gap: 16 },
     aiHeading: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
     aiHeadingText: { flex: 1, gap: 4 },
@@ -929,6 +1147,15 @@ const styles = themed(() =>
     },
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
+    reentry: {
+      gap: 7,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    reentryTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
     page: { gap: 10 },
     actions: {
       flexDirection: "row",
@@ -957,6 +1184,37 @@ const styles = themed(() =>
       fontFamily: fonts.display,
     },
     summary: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    projectHistory: {
+      gap: 10,
+      marginTop: 10,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    historyHeading: {
+      color: colors.text,
+      fontSize: 16,
+      fontFamily: fonts.semibold,
+    },
+    historyDescription: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+    historyCatchup: {
+      padding: 10,
+      borderRadius: radii.input,
+      backgroundColor: colors.accentSoft,
+      color: colors.text,
+      fontSize: 13,
+      fontFamily: fonts.medium,
+    },
+    historyEntry: {
+      gap: 4,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    historySummary: { color: colors.text, fontSize: 14, lineHeight: 20 },
+    historyMeta: { color: colors.muted, fontSize: 11, lineHeight: 16 },
     stage: {
       gap: 6,
       marginTop: 6,
@@ -972,12 +1230,6 @@ const styles = themed(() =>
       flexWrap: "wrap",
       gap: 8,
     },
-    stageActions: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 2,
-    },
     stageAdd: { flexDirection: "row", marginTop: 2 },
     stageName: {
       flex: 1,
@@ -986,12 +1238,15 @@ const styles = themed(() =>
       fontFamily: fonts.semibold,
     },
     stageCount: { color: colors.muted, fontSize: 12 },
+    // The move button carries the 44pt target, so the row needs no padding
+    // of its own; rows stay one line apart instead of drifting.
     task: {
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      paddingVertical: 10,
+      paddingVertical: 2,
       minHeight: 48,
+      borderRadius: radii.input,
     },
     dot: {
       width: 8,

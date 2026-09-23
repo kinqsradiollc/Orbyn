@@ -61,7 +61,7 @@
 }
 .rsvp-chip {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-lowBg);
   color: var(--color-lowText);
   font-size: 10px;
@@ -127,7 +127,7 @@
 }
 .quick-chip {
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: var(--color-textSoft);
   font-size: 11px;

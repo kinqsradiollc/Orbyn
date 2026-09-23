@@ -9,12 +9,16 @@ export {
   type ThemePreference,
 } from "./ThemeContext";
 
-/** Font families registered in app/App.tsx: DM Sans for UI, Manrope for display and the logo. */
+/**
+ * Font families registered in app/App.tsx: DM Sans for UI, Manrope for display and the logo.
+ * Weights sit one step lighter than their names, to match the web: on a phone's dense
+ * screen a 600 label reads as bold, so emphasis is 500 and titles are 600.
+ */
 export const fonts = {
   regular: "DMSans_400Regular",
   medium: "DMSans_500Medium",
-  semibold: "DMSans_600SemiBold",
-  bold: "DMSans_700Bold",
+  semibold: "DMSans_500Medium",
+  bold: "DMSans_600SemiBold",
   display: "Manrope_700Bold",
   brand: "Manrope_800ExtraBold",
 } as const;

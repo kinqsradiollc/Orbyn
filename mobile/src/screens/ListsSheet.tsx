@@ -22,6 +22,7 @@ import { Icon } from "../components/Icon";
 import { ItemRows, type ListHandlers } from "../components/PlannerList";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { LIST_COLORS } from "../lib/planning";
@@ -288,6 +289,9 @@ function ListRow({
   onDelete: () => void;
 }) {
   const [name, setName] = useState(list.name);
+  // Renaming and recolouring are occasional, so they open from the ⋯ menu
+  // rather than sitting under every list you look into.
+  const [editing, setEditing] = useState(false);
   return (
     <FadeIn style={!first && s.divider}>
       <Pressable
@@ -313,15 +317,32 @@ function ListRow({
             <Text style={shared.small}>No tasks in this list yet.</Text>
           )}
           {editable && (
-            <Button
-              secondary
-              title="New task here"
-              icon="plus"
-              style={s.delete}
-              onPress={onNewTask}
-            />
+            <View style={s.listActions}>
+              <Button
+                secondary
+                title="New task here"
+                icon="plus"
+                style={[s.delete, s.grow]}
+                onPress={onNewTask}
+              />
+              <MoreMenu
+                label={`${list.name} options`}
+                disabled={busy}
+                actions={[
+                  {
+                    label: editing ? "Done editing" : "Rename or recolour",
+                    onPress: () => setEditing(!editing),
+                  },
+                  {
+                    label: "Delete list",
+                    destructive: true,
+                    onPress: onDelete,
+                  },
+                ]}
+              />
+            </View>
           )}
-          {editable && (
+          {editable && editing && (
             <>
               <View style={s.renameRow}>
                 <TextInput
@@ -340,14 +361,6 @@ function ListRow({
               <Swatches
                 value={list.color}
                 onChange={(color) => color !== list.color && onSave({ color })}
-              />
-              <Button
-                destructive
-                title="Delete list"
-                icon="trash"
-                disabled={busy}
-                style={s.delete}
-                onPress={onDelete}
               />
             </>
           )}
@@ -436,6 +449,8 @@ const s = themed(() =>
     renameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     rename: { flex: 1, minHeight: 44, paddingVertical: 10 },
     delete: { marginBottom: 0 },
+    grow: { flex: 1 },
+    listActions: { flexDirection: "row", alignItems: "center", gap: 8 },
     gap: { marginBottom: 12 },
     add: { marginTop: 14, marginBottom: 0 },
     swatches: { flexDirection: "row", flexWrap: "wrap", gap: 6 },

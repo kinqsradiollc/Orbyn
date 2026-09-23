@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { dependencyConflict } from "@orbyn/core";
 import type {
   BusyInterval,
   HttpError,
+  Item,
   Plan,
   PlannedBlock,
   PlanScope,
@@ -43,6 +45,8 @@ export function usePlanTuning(
   active: boolean,
   stamp: unknown,
   report: (e: unknown) => void,
+  /** For what waits on what: a pin that breaks the order is refused. */
+  items: Item[] = [],
 ) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -105,8 +109,14 @@ export function usePlanTuning(
     sameTime(p.start_at, ghost.start_at);
 
   /** A planned block dragged to a new time stays there. */
-  const pin = (ghost: PlannedBlock, start: Date, end: Date) =>
-    state
+  const pin = (ghost: PlannedBlock, start: Date, end: Date) => {
+    const clash =
+      plan && dependencyConflict(ghost.item_id, start, end, plan, items);
+    if (clash) {
+      setError(clash);
+      return Promise.resolve(false);
+    }
+    return state
       ? tune({
           pinned_blocks: [
             ...state.pinned.filter((p) => !isPin(p, ghost)),
@@ -118,6 +128,7 @@ export function usePlanTuning(
           ],
         })
       : Promise.resolve(false);
+  };
 
   /** × on a planned block: unpin it, or leave its task out. */
   const remove = (ghost: PlannedBlock) =>

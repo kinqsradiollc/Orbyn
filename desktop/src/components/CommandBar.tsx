@@ -16,6 +16,7 @@ import {
   ListChecks,
   ListTodo,
   Plus,
+  Repeat,
   Search,
   Settings,
   Sparkles,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
+  describeRrule,
   parseQuickAdd,
   searchItems,
   type CalendarSearchResult,
@@ -131,6 +133,10 @@ function chipLabel(c: QuickAddChip) {
       return `${c.value} priority`;
     case "location":
       return `At ${c.value}`;
+    case "repeat":
+      return describeRrule(c.value);
+    case "habit":
+      return `Habit · ${c.value}`;
     default:
       return c.text;
   }
@@ -278,10 +284,12 @@ export function CommandBar({
     setBusy(true);
     setNotice("");
     try {
-      const { item } = await client.quickAdd(q, deviceTimeZone());
+      const created = await client.quickAdd(q, deviceTimeZone());
       await onApplied();
       onClose();
-      onOpenItem(item);
+      // A habit has no item to open: the planner finds its time.
+      if (created.item) onOpenItem(created.item);
+      else onNavigate("Settings");
     } catch (e) {
       if ((e as { status?: number }).status === 401) report(e);
       setNotice(errorText(e));
@@ -454,8 +462,12 @@ export function CommandBar({
           text: q,
           label: (
             <>
-              {quick.input.kind === "event" ? "Create event" : "Create task"}:{" "}
-              <em>“{quick.input.title}”</em>
+              {quick.habit
+                ? "Create habit"
+                : quick.input.kind === "event"
+                  ? "Create event"
+                  : "Create task"}
+              : <em>“{quick.input.title}”</em>
               {chips.length > 0 && (
                 <span className="quick-chips">
                   {chips.map((c, n) => (
@@ -467,7 +479,11 @@ export function CommandBar({
               )}
             </>
           ),
-          icon: quick.input.kind === "event" ? CalendarPlus : Plus,
+          icon: quick.habit
+            ? Repeat
+            : quick.input.kind === "event"
+              ? CalendarPlus
+              : Plus,
           run: () => void createQuick(),
         }
       : null;

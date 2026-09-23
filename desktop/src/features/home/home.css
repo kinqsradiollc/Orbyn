@@ -49,7 +49,7 @@
 .home .primary {
   font-size: 12px;
   padding: 13px 20px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
 }
 .home-skip {
   position: absolute;
@@ -165,7 +165,7 @@
   position: relative;
   background: #fff;
   border: 1px solid #e2e8db;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 23px;
   box-shadow: 0 26px 65px #53694512;
   transform: rotate(-3deg);
@@ -207,7 +207,7 @@
 .home-preview-date > span {
   margin-left: auto;
   background: #f2f5ec;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 3px 6px;
   font-size: 8px;
 }
@@ -222,7 +222,7 @@
   width: 14px;
   height: 14px;
   border: 1px solid #ced8c7;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -257,7 +257,7 @@
   z-index: 2;
   background: #edf2e4;
   border: 1px solid #dce6d1;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px 20px;
   display: flex;
   gap: 13px;
@@ -267,7 +267,7 @@
 }
 .home-floating-ai > span {
   background: #f9fbf4;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   width: 34px;
   height: 34px;
   display: flex;
@@ -293,7 +293,7 @@
   z-index: 2;
   background: #fff;
   border: 1px solid #e3e9dc;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 14px 17px;
   display: flex;
   align-items: center;
@@ -352,7 +352,7 @@
 .home-feature {
   background: white;
   border: 1px solid #e5ebde;
-  border-radius: 13px;
+  border-radius: var(--radius-md);
   padding: 30px;
 }
 .home-feature.large {
@@ -363,7 +363,7 @@
   width: 37px;
   height: 37px;
   background: #f2f6ec;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -436,7 +436,7 @@
   justify-content: space-between;
   padding: 15px;
   border: 1px solid #e7eddf;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: #f9fbf5;
   color: #86977a;
   font-size: 11px;
@@ -546,7 +546,7 @@
   align-items: center;
   gap: 7px;
   border: 1px solid #dbe4d0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   color: #819573;
   font-size: 10px;
@@ -562,7 +562,7 @@
   height: 224px;
   background: #fcfdf9;
   border: 7px solid #d4deca;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 22px;
   transform: rotate(-4deg);
   box-shadow: 0 20px 40px #6c825217;
@@ -586,7 +586,7 @@
 .home-device-blocks i {
   height: 36px;
   flex: 1;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
   background: #edf2e5;
   border: 1px solid #e3eadb;
 }
@@ -597,7 +597,7 @@
   right: 0;
   bottom: -5px;
   border: 5px solid #bacdad;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   background: white;
   padding: 23px 13px;
   color: #88a173;
@@ -611,7 +611,7 @@
   top: 7px;
   left: 36px;
   background: #dbe4d2;
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
 }
 .home-final {
   text-align: center;
@@ -1061,7 +1061,7 @@ html.js .reveal.is-visible {
 .home-faq summary:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 .home-faq summary h3 {
   font-size: 16px;

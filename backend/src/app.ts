@@ -20,6 +20,7 @@ import { searchRoutes } from "./modules/search/routes.js";
 import { aiDocRoutes } from "./modules/ai/docs.js";
 import { folderRoutes } from "./modules/organize/folders.js";
 import { projectRoutes } from "./modules/projects/routes.js";
+import { workRecordRoutes } from "./modules/work-records/routes.js";
 import { plannerRoutes } from "./modules/planner/routes.js";
 import { teamPlanningRoutes } from "./modules/teams/planning.js";
 import { accessRoutes } from "./modules/access/routes.js";
@@ -28,13 +29,22 @@ import { inviteRoutes } from "./modules/booking/invites.js";
 import { profileRoutes } from "./modules/booking/profile.js";
 import { rsvpRoutes } from "./modules/items/attendees.js";
 import { subscriptionRoutes } from "./modules/planner/subscriptions.js";
+import { focusRoutes } from "./modules/focus/routes.js";
+import { teamCapacityRoutes } from "./modules/teams/capacity.js";
+import { templateRoutes } from "./modules/templates/routes.js";
+import { followThroughRoutes } from "./modules/followthrough/routes.js";
+import {
+  legacyDocStreamRoutes,
+  realtimeRoutes,
+} from "./modules/realtime/routes.js";
+import { presenceRoutes } from "./modules/presence/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
  * service that owns it (gateway/nginx.conf); keep the two in step.
  */
 export const serviceModules: Record<
-  "api" | "ai" | "status",
+  "api" | "ai" | "status" | "realtime",
   FastifyPluginAsync[]
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
@@ -56,6 +66,7 @@ export const serviceModules: Record<
     aiDocRoutes,
     folderRoutes,
     projectRoutes,
+    workRecordRoutes,
     plannerRoutes,
     teamPlanningRoutes,
     accessRoutes,
@@ -64,17 +75,32 @@ export const serviceModules: Record<
     profileRoutes,
     rsvpRoutes,
     subscriptionRoutes,
+    focusRoutes,
+    presenceRoutes,
+    teamCapacityRoutes,
+    templateRoutes,
+    followThroughRoutes,
+    // Older apps' live-document path, for ingresses that send only /events
+    // to the realtime service.
+    legacyDocStreamRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
   ai: [aiRoutes, aiAdminRoutes],
   /** The public status report. */
   status: [statusRoutes],
+  /**
+   * Long-lived streams: live news for the apps and live documents. Scaled on
+   * open connections, apart from the API, which scales on requests.
+   */
+  realtime: [realtimeRoutes, legacyDocStreamRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);
 export const buildAiService = () => createService("ai", serviceModules.ai);
 export const buildStatusService = () =>
   createService("status", serviceModules.status);
+export const buildRealtimeService = () =>
+  createService("realtime", serviceModules.realtime);
 
 /** Every module in one process: tests and quick local development. */
 export const buildApp = () =>
@@ -82,4 +108,5 @@ export const buildApp = () =>
     ...serviceModules.api,
     ...serviceModules.ai,
     ...serviceModules.status,
+    realtimeRoutes,
   ]);

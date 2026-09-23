@@ -72,6 +72,16 @@ export function DocsSheet({
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  /** Pages nobody has changed or confirmed in months. */
+  const [fading, setFading] = useState<Set<string>>(new Set());
+  const [fadingOnly, setFadingOnly] = useState(false);
+  useEffect(() => {
+    if (!visible) return;
+    client.fadingDocs().then(
+      (list) => setFading(new Set(list.map((d) => d.id))),
+      () => {},
+    );
+  }, [visible]);
   const [sort, setSort] = useState<"recent" | "title">("recent");
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
@@ -262,6 +272,7 @@ export function DocsSheet({
       }))
     : (docs ?? [])
         .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
+        .filter((d) => !fadingOnly || fading.has(d.id))
         .filter((d) => kindFilter === null || d.kind === kindFilter)
         // A search looks everywhere; a folder only narrows the plain list.
         .filter((d) =>
@@ -641,6 +652,21 @@ export function DocsSheet({
                   />
                 </View>
               )}
+              {fading.size > 0 && !hits && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: fadingOnly }}
+                  onPress={() => setFadingOnly(!fadingOnly)}
+                  style={[styles.fadingBar, fadingOnly && styles.fadingBarOn]}
+                >
+                  <Icon name="clock" size={15} color={colors.textSoft} />
+                  <Text style={styles.fadingText}>
+                    {fadingOnly
+                      ? "Showing pages that might be out of date · Show all"
+                      : `${fading.size} ${fading.size === 1 ? "page" : "pages"} might be out of date`}
+                  </Text>
+                </Pressable>
+              )}
               {shown.length === 0 &&
                 (docs.length === 0 && !query ? (
                   <View style={styles.emptyLibrary}>
@@ -803,6 +829,23 @@ function OpenDoc({
 
 const styles = themed(() =>
   StyleSheet.create({
+    fadingBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      minHeight: 40,
+      paddingHorizontal: 12,
+      marginBottom: 8,
+      borderRadius: radii.input,
+      backgroundColor: colors.surfaceMuted,
+    },
+    fadingBarOn: { backgroundColor: colors.soft },
+    fadingText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
     libraryToolbar: {
       flexDirection: "row",
       flexWrap: "wrap",

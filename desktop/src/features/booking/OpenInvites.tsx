@@ -34,6 +34,7 @@ import { copyText, minutesLabel, plural, spanLabel } from "../../lib/planning";
 import { addDays, timeLabel } from "../calendar/dates";
 import { RemindersField } from "./RemindersField";
 import "./booking-w3.css";
+import { DateField } from "../../components/DateField";
 
 const STATUS_TEXT: Record<OpenInviteStatus, string> = {
   open: "Open",
@@ -351,7 +352,7 @@ function InviteForm({
           </div>
           <div className="settings-field">
             <label htmlFor="inv-expires">Link works until (optional)</label>
-            <input
+            <DateField
               id="inv-expires"
               type="datetime-local"
               value={expires}
@@ -647,7 +648,7 @@ function WindowPicker({
       <div className="wp-add" role="group" aria-label="Add a window">
         <label>
           Day
-          <input
+          <DateField
             type="date"
             value={addDay}
             min={dayInput(today)}
@@ -656,7 +657,7 @@ function WindowPicker({
         </label>
         <label>
           From
-          <input
+          <DateField
             type="time"
             value={addFrom}
             onChange={(e) => setAddFrom(e.target.value)}
@@ -664,7 +665,7 @@ function WindowPicker({
         </label>
         <label>
           To
-          <input
+          <DateField
             type="time"
             value={addTo}
             onChange={(e) => setAddTo(e.target.value)}

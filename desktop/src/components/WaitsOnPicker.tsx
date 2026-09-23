@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { Item } from "@orbyn/core";
+import { Select } from "./Select";
 
 /** The most a task may wait on, matching the schema. */
 const MAX = 14;
@@ -64,7 +65,7 @@ export function WaitsOnPicker({
       )}
       {!readOnly &&
         (open.length > 0 ? (
-          <select
+          <Select
             aria-label="Add a task to wait on"
             disabled={full}
             value=""
@@ -80,7 +81,7 @@ export function WaitsOnPicker({
                 {i.title}
               </option>
             ))}
-          </select>
+          </Select>
         ) : (
           <small className="field-hint">
             Nothing else open to wait on yet.

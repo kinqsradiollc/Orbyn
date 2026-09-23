@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { fromDateTimeLocal, toDateTimeLocal } from "@orbyn/core";
+import { DateField } from "../../components/DateField";
 
 type Props = {
   heading: string;
@@ -59,7 +60,7 @@ export function BlockDialog({
           <div className="form-grid">
             <label>
               Starts
-              <input
+              <DateField
                 type="datetime-local"
                 required
                 autoFocus

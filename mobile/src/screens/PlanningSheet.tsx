@@ -739,6 +739,7 @@ function Body({ teams }: { teams: Team[] }) {
                     </Text>
                   </View>
                   <Switch
+                    trackColor={{ true: colors.accent }}
                     value={form.learn_estimates}
                     accessibilityLabel="Adjust estimates from history"
                     onValueChange={(learn_estimates) =>
@@ -760,6 +761,7 @@ function Body({ teams }: { teams: Team[] }) {
                     <Text style={s.switchTitle}>Morning agenda</Text>
                   </View>
                   <Switch
+                    trackColor={{ true: colors.accent }}
                     value={form.digest.morning}
                     accessibilityLabel="Morning agenda email"
                     onValueChange={(morning) =>
@@ -781,6 +783,7 @@ function Body({ teams }: { teams: Team[] }) {
                     <Text style={s.switchTitle}>Evening review</Text>
                   </View>
                   <Switch
+                    trackColor={{ true: colors.accent }}
                     value={form.digest.evening}
                     accessibilityLabel="Evening review email"
                     onValueChange={(evening) =>

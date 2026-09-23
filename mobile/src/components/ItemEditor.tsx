@@ -29,7 +29,10 @@ import {
   type DefaultAlerts,
   type Team,
   type TeamMember,
+  measureLabel,
+  measureProgress,
 } from "@orbyn/core";
+import { AttentionWarning } from "./followthrough/Attention";
 import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
 import { AlertsField, ColorField, InviteesField } from "./EventFields";
@@ -556,6 +559,14 @@ function Form({
                   </View>
                 </Section>
               ))}
+              {editing.kind === "event" && (
+                <AttentionWarning
+                  teamId={editing.team_id}
+                  start={editing.due_at}
+                  end={editing.end_at}
+                  itemId={"id" in editing ? (editing.id as string) : undefined}
+                />
+              )}
               {picker && (
                 <View style={s.pickerCard}>
                   <DateTimePicker
@@ -828,6 +839,72 @@ function Form({
                   Up to {MAX_WAITS_ON} at a time.
                 </Text>
               )}
+            </Section>
+          )}
+          {editing.kind === "task" && (
+            <Section label="Number to reach">
+              <View style={s.measureRow}>
+                <TextInput
+                  style={[shared.input, s.measureInput]}
+                  keyboardType="decimal-pad"
+                  editable={!readOnly && editing.target_value != null}
+                  value={
+                    editing.current_value == null
+                      ? ""
+                      : String(editing.current_value)
+                  }
+                  placeholder="Now"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Where it is now"
+                  onChangeText={(t) => {
+                    const n = Number(t.replace(",", "."));
+                    onChange({
+                      current_value:
+                        t.trim() === "" || !Number.isFinite(n) ? 0 : n,
+                    });
+                  }}
+                />
+                <Text style={shared.small}>of</Text>
+                <TextInput
+                  style={[shared.input, s.measureInput]}
+                  keyboardType="decimal-pad"
+                  editable={!readOnly}
+                  value={
+                    editing.target_value == null
+                      ? ""
+                      : String(editing.target_value)
+                  }
+                  placeholder="Target"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Target"
+                  onChangeText={(t) => {
+                    const n = Number(t.replace(",", "."));
+                    const target =
+                      t.trim() === "" || !Number.isFinite(n) ? null : n;
+                    onChange({
+                      target_value: target,
+                      current_value:
+                        target === null ? null : (editing.current_value ?? 0),
+                      ...(target === null ? { value_unit: "" } : {}),
+                    });
+                  }}
+                />
+                <TextInput
+                  style={[shared.input, s.measureUnit]}
+                  editable={!readOnly && editing.target_value != null}
+                  value={editing.value_unit ?? ""}
+                  maxLength={16}
+                  placeholder="unit"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Unit"
+                  onChangeText={(t) => onChange({ value_unit: t })}
+                />
+              </View>
+              <Text style={[shared.small, s.hint]}>
+                {editing.target_value == null
+                  ? "For a key result: progress follows the number."
+                  : `${measureLabel(editing)} · ${measureProgress(editing) ?? 0}%`}
+              </Text>
             </Section>
           )}
           <Section label="Colour on the calendar">
@@ -1218,6 +1295,9 @@ const s = themed(() =>
     },
     notes: { minHeight: 100 },
     hint: { marginTop: 8 },
+    measureRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    measureInput: { flex: 1, minWidth: 0 },
+    measureUnit: { flex: 1.2, minWidth: 0 },
     viewOnly: {
       flexDirection: "row",
       alignItems: "center",

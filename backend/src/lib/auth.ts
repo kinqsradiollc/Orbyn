@@ -14,6 +14,8 @@ export type UserRow = User & {
   password_hash: string;
   disabled: boolean;
   created_at: string;
+  /** Whether teammates may see when they are active (presence). */
+  share_presence?: boolean;
 };
 
 export const digest = (s: string) =>

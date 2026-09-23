@@ -20,6 +20,12 @@ import {
   type FavouriteKind,
   type Folder,
   type Project,
+  type ProjectActivity,
+  type ProjectCheckpoint,
+  type ProjectSnapshot,
+  type WorkRecord,
+  type WorkRecordInput,
+  type WorkRecordUpdate,
   type ProjectStatus,
   type AiModelList,
   type AiProvider,
@@ -136,7 +142,40 @@ import {
   type WebhookInput,
   type WebhookTestResult,
   type WebhookUpdate,
+  type DevicePresence,
+  type DocViewer,
+  type FocusCurrent,
+  type FocusSession,
+  type FocusState,
+  type FocusSummary,
+  type MemberPresence,
+  type PresenceHeartbeat,
+  type PresenceSettings,
+  type TeamCapacity,
+  type ProjectTemplate,
+  type TemplateInput,
+  type TemplateUpdate,
+  type AttentionCheck,
+  type FadingDoc,
+  type ItemProof,
+  type PlanReality,
+  type ProgressReport,
+  type ReentryBrief,
+  type TaskAsk,
+  type TeamAttention,
+  type WhatIfInput,
+  type WhatIfResult,
+  type ExperimentEvidence,
 } from "@orbyn/core";
+
+/** News from `GET /events`: re-read what it names. */
+export type LiveNews = {
+  kind: "changed" | "focus" | "presence" | "doc_presence";
+  user?: string;
+  team?: string;
+  doc?: string;
+  by?: string;
+};
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
 const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
@@ -197,6 +236,8 @@ export type RequestOptions = {
   anonymous?: boolean;
   /** Resolve with the body text instead of parsing JSON (CSV exports). */
   raw?: boolean;
+  /** Send once: a retry with the same key gets the first answer back. */
+  idempotencyKey?: string;
 };
 
 /**
@@ -216,6 +257,8 @@ export class OrbynClient {
    * change that tab just made.
    */
   readonly editorId = `e${Math.random().toString(36).slice(2, 10)}`;
+  /** The key for the next request, set by `once()`. */
+  private nextKey: string | null = null;
   /** Last body per signed-in path, for 304 Not Modified replies. */
   private readonly cache = new Map<string, { etag: string; text: string }>();
 
@@ -251,7 +294,26 @@ export class OrbynClient {
     return response;
   }
 
+  /**
+   * Make one call with an Idempotency-Key, so sending it again (a replay
+   * after being offline, a retry after a dropped connection) is answered
+   * with the first result instead of doing it twice.
+   *
+   *   await client.once(key, () => client.createItem(input));
+   */
+  once<T>(key: string, call: () => Promise<T>): Promise<T> {
+    this.nextKey = key;
+    try {
+      return call();
+    } finally {
+      this.nextKey = null;
+    }
+  }
+
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+    // Taken before anything awaits, so it belongs to this call alone.
+    const idempotencyKey = options.idempotencyKey ?? this.nextKey;
+    this.nextKey = null;
     const method = options.method ?? "GET";
     const token = options.anonymous ? null : await this.getToken();
     const key = `${token ?? ""} ${path}`;
@@ -273,6 +335,9 @@ export class OrbynClient {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(cached ? { "If-None-Match": cached.etag } : {}),
           ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
+          ...(idempotencyKey && method !== "GET"
+            ? { "Idempotency-Key": idempotencyKey }
+            : {}),
           "X-Orbyn-Editor": this.editorId,
         },
         body:
@@ -281,17 +346,18 @@ export class OrbynClient {
       });
     // A read that meets a copy being replaced during a deploy (502/503/504
     // or a dropped connection) is tried once more; reads never change data.
-    // Writes are never retried, so nothing is saved twice.
+    // Writes are retried only with an Idempotency-Key, which the server
+    // answers once however many times it arrives; without one, never.
+    const retryable = method === "GET" || !!idempotencyKey;
     let response: Response;
     try {
       response = await send();
-      if (method === "GET" && [502, 503, 504].includes(response.status)) {
+      if (retryable && [502, 503, 504].includes(response.status)) {
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
         response = await send();
       }
     } catch (error) {
-      if (method !== "GET" || (error as Error).name === "TimeoutError")
-        throw error;
+      if (!retryable || (error as Error).name === "TimeoutError") throw error;
       await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       response = await send();
     }
@@ -639,6 +705,24 @@ export class OrbynClient {
   getProject(id: string) {
     return this.request<Project>(`/projects/${id}`);
   }
+  /** Recent changes to a project, with private task and note content omitted. */
+  projectActivity(id: string, limit = 100) {
+    return this.request<ProjectActivity[]>(
+      `/projects/${id}/activity?limit=${Math.max(1, Math.min(200, limit))}`,
+    );
+  }
+  /** Checkpoints for the read-only project time machine, newest first. */
+  projectCheckpoints(id: string, before?: string) {
+    const cursor = before ? `?before=${before}` : "";
+    return this.request<ProjectCheckpoint[]>(
+      `/projects/${id}/time-machine/checkpoints${cursor}`,
+    );
+  }
+  projectSnapshot(id: string, eventOrder: string) {
+    return this.request<ProjectSnapshot>(
+      `/projects/${id}/time-machine/${eventOrder}`,
+    );
+  }
   createProject(input: {
     name: string;
     summary?: string;
@@ -675,6 +759,46 @@ export class OrbynClient {
     return this.request<{ ok: true }>(`/items/${itemId}/project`, {
       method: "PUT",
       body: input,
+    });
+  }
+
+  /** Promises, decisions, experiments and meeting outcomes visible to this user. */
+  listWorkRecords(
+    params: {
+      kind?: WorkRecord["kind"];
+      project_id?: string;
+      owner_id?: string;
+      source_item_id?: string;
+      limit?: number;
+    } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (params.source_item_id) q.set("source_item_id", params.source_item_id);
+    if (params.kind) q.set("kind", params.kind);
+    if (params.project_id) q.set("project_id", params.project_id);
+    if (params.owner_id) q.set("owner_id", params.owner_id);
+    if (params.limit) q.set("limit", String(params.limit));
+    return this.request<WorkRecord[]>(`/work-records?${q}`);
+  }
+  getWorkRecord(id: string) {
+    return this.request<WorkRecord>(`/work-records/${id}`);
+  }
+  createWorkRecord(input: WorkRecordInput) {
+    return this.request<WorkRecord>("/work-records", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateWorkRecord(id: string, input: WorkRecordUpdate) {
+    return this.request<WorkRecord>(`/work-records/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  respondWorkRecord(id: string, decision: "accept" | "decline") {
+    return this.request<WorkRecord>(`/work-records/${id}/respond`, {
+      method: "POST",
+      body: { decision },
     });
   }
 
@@ -910,7 +1034,7 @@ export class OrbynClient {
         try {
           const token = await this.getToken();
           const response = await this.streamFetch(
-            `${this.baseUrl}/docs/${id}/live`,
+            `${this.baseUrl}/events/docs/${id}`,
             {
               headers: {
                 accept: "text/event-stream",
@@ -1604,7 +1728,8 @@ export class OrbynClient {
     }
     return all;
   }
-  createItem(input: Partial<ItemInput> & { title: string }) {
+  /** Create an item; `id` names it on the device (made offline). */
+  createItem(input: Partial<ItemInput> & { title: string; id?: string }) {
     return this.request<Item>("/items", { method: "POST", body: input });
   }
   /**
@@ -1882,5 +2007,326 @@ export class OrbynClient {
     if (params.offset !== undefined) q.set("offset", String(params.offset));
     const suffix = q.size ? `?${q}` : "";
     return this.request<Page<AuditEntry>>(`/admin/audit${suffix}`);
+  }
+
+  // ---- live news -----------------------------------------------------------
+
+  /**
+   * Follow the server's news for this person — something changed, a focus
+   * session moved, someone came or went — and call `onNews` for each. It
+   * reconnects with a widening gap; `onOpen` runs on every (re)connection, so
+   * the app can catch up on anything it missed while away.
+   */
+  watchEvents(
+    onNews: (news: LiveNews) => void,
+    onOpen?: () => void,
+  ): () => void {
+    const abort = new AbortController();
+    let stopped = false;
+    const run = async () => {
+      let wait = 1_000;
+      while (!stopped) {
+        try {
+          const token = await this.getToken();
+          if (!token) return;
+          const response = await this.streamFetch(`${this.baseUrl}/events`, {
+            headers: {
+              accept: "text/event-stream",
+              "X-Orbyn-Editor": this.editorId,
+              Authorization: `Bearer ${token}`,
+            },
+            signal: abort.signal,
+          });
+          if (response.status === 401 || response.status === 403) return;
+          if (!response.ok) throw new Error(`stream ${response.status}`);
+          if (!response.body) return;
+          wait = 1_000;
+          onOpen?.();
+          const reader = response.body.getReader();
+          const decode = new TextDecoder();
+          let buffer = "";
+          while (!stopped) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decode.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+            for (const part of parts) {
+              const line = part.split("\n").find((l) => l.startsWith("data:"));
+              if (!line) continue;
+              try {
+                onNews(JSON.parse(line.slice(5)) as LiveNews);
+              } catch {
+                // A half-written event: the next one catches up.
+              }
+            }
+          }
+        } catch {
+          if (stopped) return;
+        }
+        if (stopped) return;
+        await new Promise((r) => setTimeout(r, wait));
+        wait = Math.min(wait * 2, 60_000);
+      }
+    };
+    void run();
+    return () => {
+      stopped = true;
+      abort.abort();
+    };
+  }
+
+  // ---- focus sessions ------------------------------------------------------
+
+  /** Keep a finished (or cut short) phase; work minutes go to the task. */
+  saveFocusSession(input: Omit<FocusSession, "item_title">) {
+    return this.request<{ session: FocusSession; item: ItemDetail | null }>(
+      "/focus/sessions",
+      { method: "POST", body: input },
+    );
+  }
+  focusSummary(from: Date, to: Date) {
+    const q = new URLSearchParams({
+      from: from.toISOString(),
+      to: to.toISOString(),
+    });
+    return this.request<FocusSummary>(`/focus/summary?${q}`);
+  }
+  currentFocus() {
+    return this.request<FocusCurrent | null>("/focus/current");
+  }
+  /** Share the session running here with your other devices. */
+  setCurrentFocus(state: FocusState, device?: string, deviceId?: string) {
+    return this.request<FocusCurrent>("/focus/current", {
+      method: "PUT",
+      body: {
+        state,
+        ...(device ? { device } : {}),
+        ...(deviceId ? { device_id: deviceId } : {}),
+      },
+    });
+  }
+  clearCurrentFocus() {
+    return this.request<void>("/focus/current", { method: "DELETE" });
+  }
+
+  // ---- presence ------------------------------------------------------------
+
+  heartbeat(input: PresenceHeartbeat) {
+    return this.request<{ ok: true }>("/presence/heartbeat", {
+      method: "POST",
+      body: input,
+    });
+  }
+  leavePresence(deviceId: string) {
+    return this.request<{ ok: true }>("/presence/leave", {
+      method: "POST",
+      body: { device_id: deviceId },
+    });
+  }
+  listDevices() {
+    return this.request<DevicePresence[]>("/presence/devices");
+  }
+  forgetDevice(deviceId: string) {
+    return this.request<void>(
+      `/presence/devices/${encodeURIComponent(deviceId)}`,
+      { method: "DELETE" },
+    );
+  }
+  presenceSettings() {
+    return this.request<PresenceSettings>("/presence/settings");
+  }
+  updatePresenceSettings(input: PresenceSettings) {
+    return this.request<PresenceSettings>("/presence/settings", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  teamPresence(teamId: string) {
+    return this.request<MemberPresence[]>(`/teams/${teamId}/presence`);
+  }
+  docViewers(docId: string) {
+    return this.request<DocViewer[]>(`/docs/${docId}/presence`);
+  }
+
+  // ---- team capacity -------------------------------------------------------
+
+  /** Free working time per person per day (a month at most). */
+  teamCapacity(teamId: string, from: Date, to: Date) {
+    const q = new URLSearchParams({
+      from: from.toISOString(),
+      to: to.toISOString(),
+    });
+    return this.request<TeamCapacity>(`/teams/${teamId}/capacity?${q}`);
+  }
+
+  // ---- project templates ---------------------------------------------------
+
+  /** Your templates, your teams', and the starters everyone has. */
+  listTemplates() {
+    return this.request<ProjectTemplate[]>("/templates");
+  }
+  createTemplate(input: TemplateInput) {
+    return this.request<ProjectTemplate>("/templates", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateTemplate(id: string, input: TemplateUpdate) {
+    return this.request<ProjectTemplate>(`/templates/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteTemplate(id: string) {
+    return this.request<void>(`/templates/${id}`, { method: "DELETE" });
+  }
+  /** Save a project as a template: its tasks, their order, and its brief. */
+  templateFromProject(projectId: string) {
+    return this.request<ProjectTemplate>(
+      `/templates/from-project/${projectId}`,
+      { method: "POST" },
+    );
+  }
+  /**
+   * Start a project from a template. Answers with a proposal to review —
+   * approve it with `applyProposal` — never a project yet.
+   */
+  useTemplate(
+    id: string,
+    input: { title?: string; team_id?: string | null } = {},
+  ) {
+    return this.request<Proposal>(`/templates/${encodeURIComponent(id)}/use`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  // ---- follow-through ------------------------------------------------------
+
+  /** How much of what was planned lately got done, by weekday. */
+  planReality() {
+    return this.request<PlanReality>("/planner/reality");
+  }
+  /** What a change would do to the coming days. Nothing is saved. */
+  whatIf(input: WhatIfInput) {
+    return this.request<WhatIfResult>("/planner/what-if", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** After time away: what happened meanwhile, or null. */
+  reentry() {
+    return this.request<ReentryBrief | null>("/me/reentry");
+  }
+  dismissReentry() {
+    return this.request<{ ok: true }>("/me/reentry/dismiss", {
+      method: "POST",
+    });
+  }
+  /** Pages nobody has changed or confirmed in months. */
+  fadingDocs(teamId?: string) {
+    return this.request<FadingDoc[]>(
+      `/docs/fading${teamId ? `?team_id=${teamId}` : ""}`,
+    );
+  }
+  /** Say a page is still true, or that it needs updating (makes a task). */
+  reviewDoc(
+    id: string,
+    input:
+      { verdict: "still_true" } | { verdict: "needs_update"; note?: string },
+  ) {
+    return this.request<{ reviewed_at: string; task: Item | null }>(
+      `/docs/${id}/review`,
+      { method: "POST", body: input },
+    );
+  }
+  listAsks() {
+    return this.request<{
+      to_me: TaskAsk[];
+      from_me: TaskAsk[];
+      recent: TaskAsk[];
+    }>("/asks");
+  }
+  itemAsk(itemId: string) {
+    return this.request<TaskAsk | null>(`/items/${itemId}/ask`);
+  }
+  /** Answer an ask: take it on, suggest another date, or say you can't. */
+  replyToAsk(
+    id: string,
+    input:
+      | { action: "accept"; message?: string }
+      | {
+          action: "counter";
+          due_at?: string | null;
+          estimate_minutes?: number | null;
+          message?: string;
+        }
+      | { action: "decline"; message: string },
+  ) {
+    return this.request<TaskAsk>(`/asks/${id}/reply`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Settle a suggestion: agree, keep the original, or withdraw the ask. */
+  settleAsk(id: string, action: "agree" | "keep" | "withdraw", message = "") {
+    return this.request<TaskAsk>(`/asks/${id}/settle`, {
+      method: "POST",
+      body: { action, message },
+    });
+  }
+  teamAttention(teamId: string, week?: string) {
+    return this.request<TeamAttention>(
+      `/teams/${teamId}/attention${week ? `?week=${week}` : ""}`,
+    );
+  }
+  setMeetingBudget(teamId: string, minutes: number | null) {
+    return this.request<{ meeting_budget_minutes: number | null }>(
+      `/teams/${teamId}/attention`,
+      { method: "PUT", body: { meeting_budget_minutes: minutes } },
+    );
+  }
+  checkAttention(
+    teamId: string,
+    input: {
+      start_at: string;
+      end_at: string;
+      user_ids?: string[];
+      item_id?: string;
+    },
+  ) {
+    return this.request<AttentionCheck>(`/teams/${teamId}/attention/check`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  listProofs(itemId: string) {
+    return this.request<ItemProof[]>(`/items/${itemId}/proofs`);
+  }
+  addProof(itemId: string, input: { url?: string | null; note?: string }) {
+    return this.request<ItemProof>(`/items/${itemId}/proofs`, {
+      method: "POST",
+      body: { url: input.url ?? null, note: input.note ?? "" },
+    });
+  }
+  deleteProof(itemId: string, proofId: string) {
+    return this.request<void>(`/items/${itemId}/proofs/${proofId}`, {
+      method: "DELETE",
+    });
+  }
+  /** What got done between two times, with its proof; a team's, or yours. */
+  progress(from: Date, to: Date, teamId?: string) {
+    const q = new URLSearchParams({
+      from: from.toISOString(),
+      to: to.toISOString(),
+      ...(teamId ? { team_id: teamId } : {}),
+    });
+    return this.request<ProgressReport>(`/progress?${q}`);
+  }
+
+  /** An experiment's before and after, measured. */
+  experimentEvidence(id: string) {
+    return this.request<ExperimentEvidence>(`/work-records/${id}/evidence`);
   }
 }

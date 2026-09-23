@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Linking } from "react-native";
 import * as Notifications from "expo-notifications";
 import type {
@@ -10,12 +10,23 @@ import type {
   Team,
   User,
 } from "@orbyn/core";
-import { parseAddDeepLink } from "@orbyn/core";
+import { applyOutbox, isOfflineError, parseAddDeepLink } from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
+import {
+  clearOutbox,
+  flush,
+  loadOutbox,
+  noteOffline,
+  noteOnline,
+  outboxState,
+  subscribeOutbox,
+  whenSent,
+} from "../lib/outbox";
 import { deviceTimeZone } from "../lib/planning";
+import { deviceId } from "../lib/device";
 import { publishGlance } from "../lib/widget";
 import { animateLayout } from "../motion";
 
@@ -50,6 +61,12 @@ export function usePlanner() {
   tokenRef.current = token;
   const refreshSeq = useRef(0);
   const [maintenance, setMaintenanceState] = useState<Maintenance | null>(null);
+  // Changes made offline and not sent yet, shown as if they had happened.
+  const [outbox, setOutbox] = useState(outboxState);
+  useEffect(() => {
+    void loadOutbox();
+    return subscribeOutbox(setOutbox);
+  }, []);
   const maintenanceSnapshot = useRef("null");
 
   /** Store the maintenance state; unchanged polls don't re-render. */
@@ -90,7 +107,11 @@ export function usePlanner() {
       const status = (e as { status?: number }).status;
       // A 503 during maintenance carries the admin's message; show it as is
       // and bring the banner up without waiting for the next poll.
-      setError((e as Error).message);
+      setError(
+        isOfflineError(e)
+          ? "You're offline, and this needs a connection. Your other changes are kept on this phone."
+          : (e as Error).message,
+      );
       if (status === 503) void checkMaintenance();
       if (status === 401) {
         await clearSession();
@@ -232,8 +253,11 @@ export function usePlanner() {
     // screen until a later refresh succeeds (then only its own error clears).
     const background = async () => {
       void checkMaintenance();
+      // Anything made offline goes first, so the refresh below includes it.
+      await flush();
       try {
         await refresh({ silent: true });
+        noteOnline();
         if (backgroundError.current) {
           const stale = backgroundError.current;
           backgroundError.current = "";
@@ -245,10 +269,17 @@ export function usePlanner() {
           resetSession();
           return;
         }
+        // No connection isn't an error to show: the sync pill says so, and
+        // the last data stays on screen.
+        if (isOfflineError(e)) {
+          noteOffline();
+          return;
+        }
         backgroundError.current = (e as Error).message;
         setError(backgroundError.current);
       }
     };
+    whenSent(() => void refresh({ silent: true }).catch(() => {}));
     const loop = async () => {
       if (AppState.currentState === "active") await background();
       if (alive) timer = setTimeout(loop, 30000);
@@ -310,7 +341,10 @@ export function usePlanner() {
   const signOut = () =>
     act(async () => {
       await disablePush();
+      // This phone leaves presence while the session can still say so.
+      await client.leavePresence(deviceId()).catch(() => {});
       await client.logout();
+      await clearOutbox();
       await clearSession();
       resetSession();
     });
@@ -318,12 +352,19 @@ export function usePlanner() {
   /** Re-read the signed-in user, e.g. after confirming their email. */
   const refreshUser = () => act(async () => setUser(await client.me()));
 
+  const shownItems = useMemo(
+    () => applyOutbox(items, outbox.entries),
+    [items, outbox.entries],
+  );
+
   return {
     token,
     ready,
     user,
     setUser,
-    items,
+    items: shownItems,
+    /** Changes made offline, waiting or needing a decision. */
+    outbox,
     notices,
     teams,
     lists,

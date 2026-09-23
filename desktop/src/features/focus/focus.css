@@ -49,7 +49,7 @@
   gap: 16px;
   padding: 28px;
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   margin-bottom: 24px;
 }
@@ -93,7 +93,7 @@
   align-self: start;
   padding: 20px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
 }
 .focus-next h2 {
@@ -114,7 +114,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   text-align: left;
 }
@@ -153,7 +153,7 @@
   align-items: center;
   gap: 6px;
   padding: 26px 34px;
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: 0 20px 70px #1c312433;
   color: var(--green);
@@ -221,5 +221,104 @@
   }
   .focus-clock {
     font-size: 48px;
+  }
+}
+
+/* ---- rhythm: work sessions and breaks ---------------------------------- */
+.focus-rhythm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 14px;
+}
+.focus-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.focus-custom label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.focus-custom input {
+  width: 64px;
+}
+.focus-interval-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.focus-ring {
+  --p: 0%;
+  flex: none;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    var(--color-accent) 0 var(--p),
+    var(--color-surfaceMuted) var(--p) 100%
+  );
+}
+.focus-ring > span {
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+.focus-interval.is-break .focus-ring {
+  background: conic-gradient(
+    var(--color-dot) 0 var(--p),
+    var(--color-surfaceMuted) var(--p) 100%
+  );
+}
+.focus-interval-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.focus-interval-text strong {
+  font:
+    700 15px "Manrope",
+    sans-serif;
+  color: var(--color-text);
+}
+.focus-interval-text small {
+  color: var(--color-textSoft);
+  font-size: 13px;
+}
+.focus-dots {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.focus-dots i {
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-surfaceMuted);
+  border: 1px solid var(--border);
+}
+.focus-dots i.on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+.focus-dots i.now {
+  background: var(--color-accentSoft);
+  border-color: var(--color-accent);
+}
+@media (max-width: 520px) {
+  .focus-interval-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

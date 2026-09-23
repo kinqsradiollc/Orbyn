@@ -6,6 +6,7 @@ import {
   type RepeatDraft,
   type RepeatFreq,
 } from "../lib/planning";
+import { DateField } from "./DateField";
 
 type Props = {
   value: RepeatDraft;
@@ -119,7 +120,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
           {d.ends === "until" && (
             <label>
               Last date
-              <input
+              <DateField
                 type="date"
                 required
                 value={d.until}

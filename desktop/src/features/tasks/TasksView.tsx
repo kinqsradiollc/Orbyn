@@ -1,6 +1,14 @@
 import { Select } from "../../components/Select";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
-import { Columns3, List, ListTodo, Pin, Search, X } from "lucide-react";
+import {
+  Columns3,
+  List,
+  ListTodo,
+  Pin,
+  Search,
+  X,
+  BadgeCheck,
+} from "lucide-react";
 import {
   searchItems,
   emptyPlans,
@@ -14,6 +22,8 @@ import {
   type Status,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { ProgressDialog } from "../followthrough/ProgressDialog";
+import "../followthrough/followthrough.css";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { Popover } from "../../components/Popover";
@@ -177,6 +187,7 @@ export function TasksView({
 }: Props) {
   const { lists, tags, listById, tagById } = usePlanning();
   const [filter, setFilter] = useState<Filter>("all");
+  const [progressOpen, setProgressOpen] = useState(false);
   const [layout, setLayoutState] = useState<Layout>(() =>
     saved(LAYOUT_KEY, ["list", "board"], "list"),
   );
@@ -494,6 +505,9 @@ export function TasksView({
 
   return (
     <section className="card tasks-card">
+      {progressOpen && (
+        <ProgressDialog onClose={() => setProgressOpen(false)} />
+      )}
       <div className="section-heading tasks-heading">
         <h2>
           All items <span>{items.length}</span>
@@ -520,6 +534,13 @@ export function TasksView({
             }
           >
             <Pin size={14} aria-hidden="true" /> View
+          </button>
+          <button
+            className="secondary tasks-view-button"
+            aria-haspopup="dialog"
+            onClick={() => setProgressOpen(true)}
+          >
+            <BadgeCheck size={14} aria-hidden="true" /> Done this week
           </button>
           <div className="segmented" role="group" aria-label="Layout">
             <button

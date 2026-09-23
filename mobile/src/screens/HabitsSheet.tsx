@@ -18,6 +18,7 @@ import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { deviceTimeZone, WEEK_ORDER, WEEKDAYS } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
@@ -97,10 +98,24 @@ function Body() {
         days: draft.days,
         priority: draft.priority,
       };
-      await client.createHabit(body);
-      await reload();
+      const made = await outbox.createHabit(body);
       animateLayout();
       setDraft(blank);
+      if (made) await reload();
+      else
+        setHabits((all) => [
+          ...(all ?? []),
+          {
+            id: `waiting-${Date.now()}`,
+            ...draft,
+            name: body.name,
+            window_start: null,
+            window_end: null,
+            active: true,
+            position: all?.length ?? 0,
+            created_at: new Date().toISOString(),
+          },
+        ]);
     });
 
   const planHabits = () =>
@@ -174,8 +189,14 @@ function Body() {
                   busy={busy}
                   onSave={(patch) =>
                     run(async () => {
-                      await client.updateHabit(h.id, patch);
-                      await reload();
+                      if (await outbox.updateHabit(h.id, h.name, patch))
+                        await reload();
+                      else
+                        setHabits((all) =>
+                          (all ?? []).map((x) =>
+                            x.id === h.id ? { ...x, ...patch } : x,
+                          ),
+                        );
                     })
                   }
                   onDelete={() =>
@@ -189,8 +210,15 @@ function Body() {
                           style: "destructive",
                           onPress: () =>
                             void run(async () => {
-                              await client.deleteHabit(h.id);
-                              await reload();
+                              const gone = await outbox.deleteHabit(
+                                h.id,
+                                h.name,
+                              );
+                              if (gone !== null) await reload();
+                              else
+                                setHabits((all) =>
+                                  (all ?? []).filter((x) => x.id !== h.id),
+                                );
                               animateLayout();
                               setExpanded(null);
                             }),

@@ -30,11 +30,13 @@ import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamTime } from "./TeamTime";
+import { MoreMenu } from "../components/MoreMenu";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
 
@@ -71,6 +73,7 @@ export function TeamDetailPage({
   const [detail, setDetail] = useState<TeamDetail | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const [email, setEmail] = useState("");
   const [newRole, setNewRole] = useState<TeamRole>("member");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -99,7 +102,8 @@ export function TeamDetailPage({
   /** Mutate, then reload this page and the planner. */
   const run = (fn: () => Promise<unknown>, animate = false) =>
     act(async () => {
-      await fn();
+      // Null: kept on the phone until it's back online; nothing to re-read.
+      if ((await fn()) === null) return;
       await load(animate);
       await onChanged();
     });
@@ -172,6 +176,17 @@ export function TeamDetailPage({
       ],
     );
 
+  const menu = [
+    ...(hasTeamPermission(manage, "team:update")
+      ? [{ label: "Rename team", onPress: () => setRenaming(true) }]
+      : []),
+    ...(detail.role
+      ? [{ label: "Leave team", destructive: true, onPress: leave }]
+      : []),
+    ...(hasTeamPermission(manage, "team:delete")
+      ? [{ label: "Delete team", destructive: true, onPress: destroy }]
+      : []),
+  ];
   return (
     <ScrollView
       contentContainerStyle={sheetStyles.body}
@@ -191,6 +206,8 @@ export function TeamDetailPage({
               tone={roleTone(detail.role)}
             />
           )}
+          <View style={{ flex: 1 }} />
+          <MoreMenu label="Team options" disabled={busy} actions={menu} />
         </View>
         <Text style={[shared.subtitle, s.gap]}>
           {detail.member_count} member{detail.member_count === 1 ? "" : "s"} ·{" "}
@@ -219,7 +236,7 @@ export function TeamDetailPage({
           </View>
         )}
 
-        {hasTeamPermission(manage, "team:update") && (
+        {renaming && hasTeamPermission(manage, "team:update") && (
           <View style={shared.card}>
             <Text style={shared.label}>Team name</Text>
             <TextInput
@@ -237,9 +254,12 @@ export function TeamDetailPage({
               icon="check"
               style={{ marginBottom: 0 }}
               disabled={busy || !name.trim() || name.trim() === detail.name}
-              onPress={() =>
-                run(() => client.updateTeam(teamId, { name: name.trim() }))
-              }
+              onPress={() => {
+                setRenaming(false);
+                void run(() =>
+                  client.updateTeam(teamId, { name: name.trim() }),
+                );
+              }}
             />
           </View>
         )}
@@ -414,7 +434,7 @@ export function TeamDetailPage({
                       onToggle={(item) =>
                         run(
                           () =>
-                            client.postItemUpdate(item.id, {
+                            outbox.postItemUpdate(item, {
                               status: toggledStatus(item),
                             }),
                           true,
@@ -439,27 +459,6 @@ export function TeamDetailPage({
             )}
           </>
         )}
-
-        <View style={s.footer}>
-          {detail.role && (
-            <Button
-              secondary
-              icon="logOut"
-              title="Leave team"
-              disabled={busy}
-              onPress={leave}
-            />
-          )}
-          {hasTeamPermission(manage, "team:delete") && (
-            <Button
-              destructive
-              icon="trash"
-              title="Delete team"
-              disabled={busy}
-              onPress={destroy}
-            />
-          )}
-        </View>
       </View>
     </ScrollView>
   );
@@ -530,6 +529,5 @@ const s = themed(() =>
       fontSize: 11,
       color: colors.muted,
     },
-    footer: { marginTop: 18 },
   }),
 );

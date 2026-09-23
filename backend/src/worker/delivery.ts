@@ -55,16 +55,38 @@ export async function deliverOne(): Promise<boolean> {
     const stale =
       n.kind === "booker_reminder"
         ? !bookerMail
-        : n.kind === "invite"
-          ? await inviteStale(db, n)
-          : PLANNER_KINDS.includes(n.kind)
-            ? await plannerNoticeStale(db, n, item)
-            : !item ||
-              !item.can_see ||
-              item.disabled ||
-              isClosed(item.status) ||
-              item.reminder_version !== n.item_version ||
-              (n.channel === "email" && !item.email_reminders);
+        : n.kind === "promise"
+          ? !(
+              await db.query("SELECT 1 FROM work_records WHERE id = $1", [
+                n.ref,
+              ])
+            ).rowCount
+          : n.kind === "ask"
+            ? // Only while the ask is still waiting on someone.
+              !(
+                await db.query(
+                  "SELECT 1 FROM task_asks WHERE id = $1 AND status IN ('open', 'countered')",
+                  [n.ref],
+                )
+              ).rowCount
+            : n.kind === "template"
+              ? // About a template, not a task: stale only if the template went.
+                !(
+                  await db.query(
+                    "SELECT 1 FROM project_templates WHERE id = $1",
+                    [n.ref],
+                  )
+                ).rowCount
+              : n.kind === "invite"
+                ? await inviteStale(db, n)
+                : PLANNER_KINDS.includes(n.kind)
+                  ? await plannerNoticeStale(db, n, item)
+                  : !item ||
+                    !item.can_see ||
+                    item.disabled ||
+                    isClosed(item.status) ||
+                    item.reminder_version !== n.item_version ||
+                    (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,

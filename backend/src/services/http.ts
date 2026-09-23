@@ -11,9 +11,10 @@ import { closeDatabase, pool } from "../db/pool.js";
 import { apiKeyId, authenticate } from "../lib/auth.js";
 import { cachedSettings, settings } from "../lib/settings.js";
 import { versionInfo } from "../lib/version.js";
+import { idempotency } from "../lib/idempotency.js";
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
-export type ServiceName = "api" | "ai" | "status" | "all";
+export type ServiceName = "api" | "ai" | "status" | "realtime" | "all";
 
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -141,6 +142,9 @@ export async function createService(
       .code(code)
       .send({ message: code === 500 ? "Unexpected server error" : e.message });
   });
+
+  // Changes sent with an Idempotency-Key happen once (offline replays).
+  if (name !== "status") idempotency(app);
 
   // Conditional GETs: unchanged responses cost a 304 with no body, which
   // keeps the apps' polling cheap in bandwidth and client work.

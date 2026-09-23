@@ -258,7 +258,7 @@ export function CalendarView({
     include?: string[];
     key: number;
   } | null>(null);
-  const tuner = usePlanTuning(plan, setPlan, plannerOpen, data, report);
+  const tuner = usePlanTuning(plan, setPlan, plannerOpen, data, report, items);
   const tuning = plannerOpen && !!plan && !plan.applied;
   const ghosts = plan && !plan.applied ? plan.blocks : [];
   const latestNav = useRef({ onDateChange, onModeChange, mode });
@@ -923,6 +923,7 @@ export function CalendarView({
           {plannerOpen && (
             <PlannerPanel
               prefs={prefs}
+              items={items}
               teams={teams}
               plan={plan}
               tuner={tuner}

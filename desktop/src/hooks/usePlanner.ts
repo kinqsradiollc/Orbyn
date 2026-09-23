@@ -10,6 +10,7 @@ import {
 } from "@orbyn/core";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { client } from "../lib/api";
+import { deviceId } from "../lib/device";
 import { celebrate } from "../lib/celebrate";
 import { session } from "../lib/session";
 
@@ -206,6 +207,8 @@ export function usePlanner() {
 
   const logout = () =>
     act(async () => {
+      // This device leaves presence while the session can still say so.
+      await client.leavePresence(deviceId()).catch(() => {});
       await client.logout();
       clearSession();
     });

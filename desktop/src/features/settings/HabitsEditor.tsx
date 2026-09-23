@@ -20,6 +20,7 @@ import {
   minutesLabel,
   WEEKDAY_SHORT,
 } from "../../lib/planning";
+import { DateField } from "../../components/DateField";
 
 type Props = { report: (e: unknown) => void };
 
@@ -368,7 +369,7 @@ function HabitForm({
       <div className="settings-row">
         <label>
           From (optional)
-          <input
+          <DateField
             type="time"
             value={d.window_start}
             onChange={(e) => set("window_start", e.target.value)}
@@ -376,7 +377,7 @@ function HabitForm({
         </label>
         <label>
           To (optional)
-          <input
+          <DateField
             type="time"
             value={d.window_end}
             onChange={(e) => set("window_end", e.target.value)}

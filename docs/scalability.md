@@ -44,10 +44,28 @@ flowchart LR
 | Gateway (nginx) | More instances behind the load balancer      | Routes `/ai/*`, `/status`, everything else; keep-alive upstreams; `least_conn` |
 | `api`           | Horizontal, CPU-based autoscaling            | Planner, auth, teams, admin                                                    |
 | `ai`            | Horizontal                                   | Mostly waiting on providers; scale on concurrency                              |
+| `realtime`      | Horizontal, on CPU and memory                | Holds the apps' open streams; one `LISTEN` connection per copy fans news out   |
 | `status`        | 2 for availability                           | One prober at a time (advisory lock); report cached 15 s                       |
 | `notifier`      | Horizontal                                   | Parallel lanes (`NOTIFIER_CONCURRENCY`) per instance                           |
 | PgBouncer       | 2+ instances, scaled by hand                 | Transaction pooling; `<db>_read` route to a replica                            |
 | Postgres        | Vertical primary, horizontal read replicas   | Managed service recommended in production                                      |
+
+### Why realtime is its own service
+
+Live news (`GET /events`) and live documents (`GET /events/docs/:id`) keep a connection open for
+as long as an app is. On the API those would pin connections to copies that otherwise serve short
+requests and scale on CPU; a deploy or scale-down would drop them mid-request. The realtime copies
+hold nothing but streams: each keeps one Postgres `LISTEN` connection and forwards news to the
+streams connected to it. The API (and the worker) raise news with `NOTIFY` inside the transaction
+that made the change, so any API copy reaches readers on any realtime copy, and nothing is sent
+for a change that rolled back. Each stream closes itself after 15 minutes and the apps reconnect
+with backoff, which spreads readers over new copies and picks up teams joined since.
+
+Presence check-ins (`POST /presence/heartbeat`, about one a minute per open app) are ordinary
+short writes on the API, one row per device. Changes made offline are replayed with an
+`Idempotency-Key`; the first answer is kept in `idempotency_keys` for a day and a repeat gets it
+back, so a retry after a dropped connection never does anything twice. Old keys are pruned as
+requests come in.
 
 ## Running services on separate machines
 
@@ -72,14 +90,14 @@ after 3 failures for 10 seconds.
 **Services.** Each host runs the backend image with the command for its
 service and these settings:
 
-| Setting                                                 | Value on a multi-host deployment                                    |
-| ------------------------------------------------------- | ------------------------------------------------------------------- |
-| `DATABASE_URL`                                          | PgBouncer (or the managed pooler) for the primary                   |
-| `DATABASE_READ_URL`                                     | PgBouncer's `<db>_read` route or a replica endpoint                 |
-| `TRUST_PROXY`                                           | `true` behind the gateway                                           |
-| `RATE_LIMIT_PER_MINUTE`                                 | A generous per-instance backstop, or `0` to leave it to the gateway |
-| `STATUS_GATEWAY_URL`, `STATUS_API_URL`, `STATUS_AI_URL` | Internal URLs the status service probes                             |
-| `SECRETS_KEY`                                           | The same value on every `ai` and `api` instance                     |
+| Setting                                                                        | Value on a multi-host deployment                                    |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `DATABASE_URL`                                                                 | PgBouncer (or the managed pooler) for the primary                   |
+| `DATABASE_READ_URL`                                                            | PgBouncer's `<db>_read` route or a replica endpoint                 |
+| `TRUST_PROXY`                                                                  | `true` behind the gateway                                           |
+| `RATE_LIMIT_PER_MINUTE`                                                        | A generous per-instance backstop, or `0` to leave it to the gateway |
+| `STATUS_GATEWAY_URL`, `STATUS_API_URL`, `STATUS_AI_URL`, `STATUS_REALTIME_URL` | Internal URLs the status service probes                             |
+| `SECRETS_KEY`                                                                  | The same value on every `ai` and `api` instance                     |
 
 Migrations run once per release from one place (`node backend/dist/migrate.js`
 against the primary directly) before new instances start.

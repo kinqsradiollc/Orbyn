@@ -46,6 +46,8 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
+import { DocViewers } from "./DocViewers";
+import { PageFreshness } from "./PageFreshness";
 import { DocChat } from "./DocChat";
 import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
@@ -117,6 +119,13 @@ const rememberMode = (docId: string, mode: DocMode) => {
   } catch {
     // Remembering is a convenience; a browser that refuses is not an error.
   }
+};
+
+/** Grow the title box to fit its text, where CSS field-sizing isn't there. */
+const fitTitle = (el: HTMLTextAreaElement | null) => {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
 };
 
 export function DocEditor({
@@ -919,6 +928,7 @@ export function DocEditor({
           </span>
         )}
         <span className="doc-bar-actions">
+          <DocViewers docId={doc.id} />
           <DocModeSwitch
             mode={mode}
             canWrite={canWrite}
@@ -1076,18 +1086,30 @@ export function DocEditor({
       >
         <div className="doc-main">
           <div className="doc-page" ref={pageRef}>
+            {doc.kind === "doc" && (
+              <PageFreshness doc={doc} canWrite={canWrite} />
+            )}
             {reading ? (
               <h1 className="doc-title is-reading">{title || "Untitled"}</h1>
             ) : (
-              <input
+              // A textarea so a long title wraps instead of running out of
+              // the page; it is still one line of text, so Enter is ignored.
+              <textarea
                 id="doc-title"
                 className="doc-title"
+                rows={1}
                 value={title}
                 placeholder="Untitled"
                 maxLength={200}
+                ref={fitTitle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
                 onChange={(e) => {
-                  setTitle(e.target.value);
-                  queueSave(e.target.value, blocks);
+                  const next = e.target.value.replace(/\s*\n\s*/g, " ");
+                  fitTitle(e.target);
+                  setTitle(next);
+                  queueSave(next, blocks);
                 }}
               />
             )}

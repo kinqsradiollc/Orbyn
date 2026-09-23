@@ -24,6 +24,8 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { dayKey, ESTIMATES, minutesLabel, spanLabel } from "../../lib/planning";
 import { addDays, rangeTitle, startOfWeek } from "../calendar/dates";
 import { AtRiskList } from "./AtRiskList";
+import { TeamCapacity } from "./TeamCapacity";
+import { TeamAttention } from "./TeamAttention";
 
 type Props = {
   team: TeamDetail;
@@ -239,6 +241,31 @@ export function TeamPlanning({
           </div>
         )}
         <OutcomeNote outcome={pin.outcome} />
+      </section>
+
+      <section className="team-block" aria-labelledby="capacity-title">
+        <h4 id="capacity-title">Who has room</h4>
+        <p className="muted team-block-lead">
+          Free working time each day, after meetings, bookings and planned work.
+          Nobody sees what anyone&apos;s time is for.
+        </p>
+        <TeamCapacity
+          teamId={team.id}
+          weekStart={weekStart}
+          canWrite={canWrite}
+          report={report}
+          onNewTask={onNewEvent}
+        />
+      </section>
+
+      <section className="team-block" aria-labelledby="attention-title">
+        <h4 id="attention-title">Meeting budget</h4>
+        <TeamAttention
+          teamId={team.id}
+          weekStart={weekStart}
+          canManage={canManage}
+          report={report}
+        />
       </section>
 
       <section className="team-block" aria-labelledby="load-title">

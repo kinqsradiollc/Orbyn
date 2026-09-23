@@ -15,6 +15,7 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { DayPicker } from "../../components/DayPicker";
 import { Swatches } from "../lists/ListsView";
 import { longDay, SWATCHES, timeZones } from "../../lib/planning";
+import { DateField } from "../../components/DateField";
 
 /** How a frame repeats: chosen weekdays, a preset rule, or custom RRULE text. */
 type RepeatMode =
@@ -290,7 +291,7 @@ export function FrameForm({
         )}
         <div className="settings-field">
           <label htmlFor="frame-start">Starts</label>
-          <input
+          <DateField
             id="frame-start"
             type="time"
             required
@@ -300,7 +301,7 @@ export function FrameForm({
         </div>
         <div className="settings-field">
           <label htmlFor="frame-end">Ends</label>
-          <input
+          <DateField
             id="frame-end"
             type="time"
             required

@@ -5,7 +5,8 @@ import {
   weekdayOf,
   zonedParts,
 } from "./time.js";
-import type { Item, ItemInput, Kind, Priority } from "./types.js";
+import { findRepeat, firstRepeatDay, repeatRrule } from "./recurrence.js";
+import type { Habit, Item, ItemInput, Kind, Priority } from "./types.js";
 
 /**
  * Quick add: turn one line typed into the command bar into an item, with no
@@ -21,10 +22,17 @@ import type { Item, ItemInput, Kind, Priority } from "./types.js";
  *   for 2h, 45m       an event's length, or a task's estimate
  *   ~45m              always an estimate
  *   all day
+ *   every Monday, every other Fri, first Tue of the month, until Dec, for 6 weeks
+ *   3 times a week, 20 minutes a day                    (a habit)
  *
  * A time range, a start with a length, "all day", someone to invite or the
  * word "meeting" makes an event; anything else is a task. A date without a
  * time is a whole day. Hours 1 to 7 without am/pm ("at 3") are afternoon.
+ *
+ * A repeat with a clock time, or on set days of the month, repeats the item.
+ * One that says how often but not when — "3 times a week", "read 20 minutes
+ * every day" — is a habit instead, which the planner finds time for: the
+ * result then carries `habit`, and that is what should be created.
  */
 export type QuickAddChipKind =
   | "kind"
@@ -37,7 +45,9 @@ export type QuickAddChipKind =
   | "person"
   | "list"
   | "tag"
-  | "priority";
+  | "priority"
+  | "repeat"
+  | "habit";
 
 /** A recognised part of the text: what was typed and what it means. */
 export type QuickAddChip = {
@@ -47,7 +57,8 @@ export type QuickAddChip = {
   /**
    * What it resolved to: a date ("2026-09-20"), a time ("15:00" or
    * "15:00-16:00"), minutes, a list, tag or user id, an email, a priority,
-   * the location, or "event"/"task".
+   * the location, "event"/"task"/"habit", the RRULE of a repeat, or what a
+   * habit asks for ("3× a week · 30 min").
    */
   value: string;
 };
@@ -69,15 +80,73 @@ export type QuickAddOptions = {
   members?: QuickAddMember[];
   /** The person typing: they can be the assignee but aren't invited. */
   selfId?: string;
+  /**
+   * Whether the text may make a habit (default true). Off, a phrase only a
+   * habit could hold ("3 times a week") is left in the title.
+   */
+  habits?: boolean;
 };
+
+/** A habit made from quick add, ready for `POST /planner/habits`. */
+export type QuickAddHabit = Pick<
+  Habit,
+  | "name"
+  | "cadence"
+  | "period"
+  | "duration_minutes"
+  | "days"
+  | "window_start"
+  | "window_end"
+  | "priority"
+>;
 
 /** Item fields ready for `POST /items`. */
 export type QuickAddDraft = Partial<ItemInput> & { title: string; kind: Kind };
 
-export type QuickAddResult = { input: QuickAddDraft; chips: QuickAddChip[] };
+export type QuickAddResult = {
+  input: QuickAddDraft;
+  chips: QuickAddChip[];
+  /** Set when the text describes a habit: create this, not `input`. */
+  habit?: QuickAddHabit;
+};
 
-/** What `POST /items/quick` answers once it has created the item. */
-export type QuickAddCreated = { item: Item; chips: QuickAddChip[] };
+/**
+ * What `POST /items/quick` answers once it has created the item — or the
+ * habit, when the text described one.
+ */
+export type QuickAddCreated =
+  | { item: Item; habit?: undefined; chips: QuickAddChip[] }
+  | { item: null; habit: Habit; chips: QuickAddChip[] };
+
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "3× a week · 30 min", "Every day · 20 min", "Mon, Thu · 45 min". */
+export function describeHabit(
+  h: Pick<Habit, "cadence" | "period" | "duration_minutes" | "days">,
+) {
+  const length =
+    h.duration_minutes % 60 === 0
+      ? `${h.duration_minutes / 60} h`
+      : h.duration_minutes > 60
+        ? `${Math.floor(h.duration_minutes / 60)} h ${h.duration_minutes % 60} min`
+        : `${h.duration_minutes} min`;
+  const days = [...h.days].sort((a, b) => a - b).join(",");
+  const often =
+    h.period === "day"
+      ? h.cadence === 1
+        ? days === "0,1,2,3,4,5,6"
+          ? "Every day"
+          : days === "1,2,3,4,5"
+            ? "Every weekday"
+            : `Every ${h.days.map((d) => DAY_SHORT[d]).join(", ")}`
+        : `${h.cadence}× a day`
+      : h.cadence === h.days.length && h.days.length < 7
+        ? h.days.map((d) => DAY_SHORT[d]).join(", ")
+        : h.cadence === 1
+          ? "Once a week"
+          : `${h.cadence}× a week`;
+  return `${often} · ${length}`;
+}
 
 const MONTHS =
   "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
@@ -216,7 +285,7 @@ export function parseQuickAdd(
     // "…;Cafe Roma tomorrow 3pm": the location stops where the time starts.
     const cut = value.search(
       new RegExp(
-        `\\s(?:(?:on|at|by|from)\\s+)?(?:\\.?(?:today|tonight|tomorrow|tmrw?|next\\s|this\\s|in\\s\\d|${WEEKDAY}|${MONTHS})${END}|\\d{1,2}(?::\\d{2})?\\s?(?:am|pm)${END}|\\d{1,2}:\\d{2}|\\d{1,2}\\/\\d{1,2}|\\d{4}-\\d{2}|all[ -]day|for\\s+(?:\\d|an?\\s+hour|half)|~|\\.(?=[a-z0-9]))`,
+        `\\s(?:(?:every|each)\\s|(?:daily|weekly|monthly)${END}|(?:on|at|by|from)\\s+)?(?:\\.?(?:today|tonight|tomorrow|tmrw?|next\\s|this\\s|in\\s\\d|${WEEKDAY}|${MONTHS})${END}|\\d{1,2}(?::\\d{2})?\\s?(?:am|pm)${END}|\\d{1,2}:\\d{2}|\\d{1,2}\\/\\d{1,2}|\\d{4}-\\d{2}|all[ -]day|for\\s+(?:\\d|an?\\s+hour|half)|~|\\.(?=[a-z0-9]))`,
         "i",
       ),
     );
@@ -328,6 +397,20 @@ export function parseQuickAdd(
     priority = level;
     chip("priority", span, level);
   });
+
+  // ---- repeats: "every Monday", "3 times a week", "until December" -----------
+  const repeat = findRepeat(work, today);
+  let repeatChip: (QuickAddChip & { at: number }) | undefined;
+  if (repeat) {
+    for (const span of repeat.spans) take(span.start, span.end);
+    repeatChip = {
+      kind: "repeat",
+      text: repeat.spans.map((x) => x.text.trim()).join(" "),
+      value: "",
+      at: repeat.spans[0].start,
+    };
+    chips.push(repeatChip);
+  }
 
   // ---- all day, estimates ----------------------------------------------------
   let allDay = false;
@@ -556,6 +639,91 @@ export function parseQuickAdd(
     length = undefined;
   }
   if (tonight && start === undefined && !allDay) start = 19 * 60;
+
+  // ---- a repeat: a habit, or a repeating item and the day it starts --------
+  let habit: QuickAddHabit | undefined;
+  if (repeat && repeatChip) {
+    const minutes = repeat.minutes ?? length ?? estimate;
+    const fixed = finish !== undefined || allDay || attendees.length > 0;
+    const loose =
+      start === undefined &&
+      date === undefined &&
+      minutes !== undefined &&
+      (repeat.freq === "DAILY" || repeat.freq === "WEEKLY") &&
+      repeat.interval === 1 &&
+      !repeat.count &&
+      !repeat.until &&
+      !repeat.lasts;
+    const wantsHabit =
+      options.habits !== false && !fixed && (!!repeat.perPeriod || loose);
+    // "3 times a week" says how often but on no particular days: only a
+    // habit can hold it.
+    // "20 minutes a day" can still repeat an item daily with that estimate.
+    const onlyHabit =
+      !!repeat.perPeriod && !(repeat.perPeriod.cadence === 1 && repeat.minutes);
+    const first =
+      wantsHabit || onlyHabit
+        ? null
+        : date !== undefined
+          ? firstRepeatDay(repeat, date)
+          : firstRepeatDay(
+              repeat,
+              today,
+              start !== undefined && start <= nowMinutes,
+            );
+    if (wantsHabit) {
+      const period =
+        repeat.perPeriod?.period ?? (repeat.freq === "DAILY" ? "day" : "week");
+      const days = repeat.byDay.length ? repeat.byDay : [0, 1, 2, 3, 4, 5, 6];
+      const duration = Math.max(5, Math.min(480, minutes ?? 30));
+      const cadence = Math.min(
+        period === "day" ? 6 : 21,
+        repeat.perPeriod?.cadence ??
+          (period === "day" ? 1 : repeat.byDay.length || 1),
+      );
+      const window =
+        repeat.window ??
+        (start !== undefined
+          ? {
+              start: clockText(start),
+              end: clockText(Math.min(start + duration + 60, 23 * 60 + 59)),
+            }
+          : null);
+      habit = {
+        name: "",
+        cadence,
+        period,
+        duration_minutes: duration,
+        days,
+        window_start: window?.start ?? null,
+        window_end: window?.end ?? null,
+        priority: priority ?? "medium",
+      };
+      repeatChip.kind = "habit";
+      repeatChip.value = describeHabit(habit);
+      // The habit holds the length and the time; they are not the item's.
+      for (let i = chips.length - 1; i >= 0; i--)
+        if (["duration", "estimate", "time"].includes(chips[i].kind))
+          chips.splice(i, 1);
+    } else if (first) {
+      // Where the series starts, shown beside it when no date was typed.
+      if (date === undefined)
+        chips.push({
+          kind: "date",
+          text: "",
+          value: first,
+          at: repeatChip.at + 0.5,
+        });
+      date = first;
+      if (repeat.minutes && kind === "task" && estimate === undefined)
+        estimate = repeat.minutes;
+      repeatChip.value = repeatRrule(repeat, first);
+    } else {
+      // Nothing it could repeat as: the words go back into the title.
+      for (const span of repeat.spans) putBack(span);
+      chips.splice(chips.indexOf(repeatChip), 1);
+    }
+  }
   // An event needs a start: the next full hour today when none was given.
   if (event && date === undefined && start === undefined && !allDay)
     start = Math.min(23 * 60, (nowParts.hour + 1) * 60);
@@ -585,6 +753,8 @@ export function parseQuickAdd(
   if (priority) input.priority = priority;
   if (estimate !== undefined && kind === "task")
     input.estimate_minutes = estimate;
+  if (repeatChip?.kind === "repeat" && repeatChip.value)
+    input.rrule = repeatChip.value;
   if (list) input.list_id = list.id;
   if (tagIds.length) input.tag_ids = tagIds;
   input.team_id = teamId;
@@ -601,9 +771,11 @@ export function parseQuickAdd(
     .replace(/\s+([,.!?])/g, "$1")
     .slice(0, 200);
 
-  chips.push({ kind: "kind", text: "", value: kind, at: -1 });
+  chips.push({ kind: "kind", text: "", value: habit ? "habit" : kind, at: -1 });
+  if (habit) habit.name = input.title.slice(0, 60);
   return {
     input,
+    ...(habit ? { habit } : {}),
     chips: chips
       .sort((a, b) => a.at - b.at)
       .map(({ kind: k, text: t, value }) => ({ kind: k, text: t, value })),

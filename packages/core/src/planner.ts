@@ -32,6 +32,9 @@ const PLANNING_FIELDS = [
   "color",
   "alerts",
   "parent_id",
+  "target_value",
+  "current_value",
+  "value_unit",
 ] as const;
 
 /**

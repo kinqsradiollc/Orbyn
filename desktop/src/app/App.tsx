@@ -13,6 +13,10 @@ import {
 import { client } from "../lib/api";
 import { setPageMeta } from "../lib/seo";
 import { usePlanner } from "../hooks/usePlanner";
+import { usePresence } from "../hooks/usePresence";
+import { FocusElsewhere } from "../features/focus/FocusElsewhere";
+import { WelcomeBack } from "../features/followthrough/WelcomeBack";
+import { AsksPanel } from "../features/followthrough/AsksPanel";
 import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
@@ -102,6 +106,7 @@ export function App() {
     refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
+  usePresence(token, () => void refresh({ silent: true }));
   const [view, setView] = useState<View>("Overview");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
@@ -123,11 +128,30 @@ export function App() {
   /** A meeting note opened from its event, handed to the Docs view. */
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  /** A template to open for review, from a "ready to start" notice. */
+  const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  // A narrow icon rail instead of the full sidebar, remembered per browser.
+  const [railed, setRailed] = useState(() => {
+    try {
+      return localStorage.getItem("orbyn-sidebar") === "rail";
+    } catch {
+      return false;
+    }
+  });
+  const toggleRail = () =>
+    setRailed((was) => {
+      try {
+        localStorage.setItem("orbyn-sidebar", was ? "full" : "rail");
+      } catch {
+        // Private windows can refuse storage; the choice lasts this visit.
+      }
+      return !was;
+    });
   /** The booking to open in the bookings inbox (from a notification). */
   const [bookingFocus, setBookingFocus] = useState<BookingFocus | null>(null);
   // Public pages from emailed links: booking pages and invitations.
@@ -196,6 +220,11 @@ export function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCommandOpen((open) => !open);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        toggleRail();
         return;
       }
       if (
@@ -491,9 +520,11 @@ export function App() {
 
   return (
     <PlanningContext.Provider value={planning}>
-      <div className="app">
+      <div className={"app" + (railed ? " is-railed" : "")}>
         <Sidebar
           open={mobileNav}
+          railed={railed}
+          onToggleRail={toggleRail}
           view={view}
           user={user}
           hasUnread={notices.some((n) => !n.read)}
@@ -508,6 +539,11 @@ export function App() {
           {newVersion.available && (
             <UpdateBanner onDismiss={newVersion.dismiss} />
           )}
+          <FocusElsewhere
+            items={items}
+            hidden={!!shownFocus}
+            onOpen={setFocusTask}
+          />
           <Topbar
             view={view}
             onToggleMenu={() => setMobileNav(!mobileNav)}
@@ -533,6 +569,18 @@ export function App() {
                   view={view}
                   user={user}
                   onNewItem={() => newItem()}
+                />
+              )}
+              {view === "Overview" && (
+                <WelcomeBack
+                  onOpenItem={openItemById}
+                  onOpenDoc={(id) =>
+                    void client.getDoc(id).then((doc) => {
+                      setNoteDoc(doc);
+                      setView("Docs");
+                    }, report)
+                  }
+                  onOpenAsks={() => navigate("Notifications")}
                 />
               )}
               {view === "Overview" && (
@@ -591,6 +639,10 @@ export function App() {
               {view === "Projects" && (
                 <ProjectsView
                   items={items}
+                  userId={user?.id ?? ""}
+                  teams={teams}
+                  openTemplate={templateToOpen}
+                  onTemplateOpened={() => setTemplateToOpen(null)}
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
@@ -659,6 +711,9 @@ export function App() {
                 />
               )}
               {view === "Notifications" && (
+                <AsksPanel onOpenItem={openItemById} />
+              )}
+              {view === "Notifications" && (
                 <NotificationsView
                   notices={notices}
                   onRead={planner.markRead}
@@ -668,6 +723,10 @@ export function App() {
                   onOpenItem={openItemById}
                   onOpenCalendar={() => navigate("Calendar")}
                   onOpenBooking={openBooking}
+                  onOpenTemplate={(id) => {
+                    setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
                 />
               )}
               {view === "Settings" && (

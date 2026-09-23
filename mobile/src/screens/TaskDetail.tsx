@@ -32,6 +32,9 @@ import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { LinkedText } from "../components/LinkedText";
+import { AskBox } from "../components/followthrough/Asks";
+import { ProofSection } from "../components/followthrough/Proofs";
+import { MeetingOutcome } from "../components/followthrough/MeetingOutcome";
 import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
@@ -40,6 +43,7 @@ import { Sheet, sheetStyles } from "../components/Sheet";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import { canJoin } from "../lib/planning";
 import {
   leftLabel,
@@ -309,7 +313,7 @@ function Body({
     setBusy(true);
     setError("");
     try {
-      await client.createItem({
+      await outbox.createItem({
         title,
         kind: "task",
         status: "todo",
@@ -343,17 +347,27 @@ function Body({
       ],
     );
 
-  /** Run a change; the server answers with the fresh detail. */
-  const run = async (fn: () => Promise<ItemDetail>) => {
+  /**
+   * Run a change; the server answers with the fresh detail. Offline, a
+   * change that can wait is kept on the phone (`fn` answers null) and shown
+   * here as `expected`.
+   */
+  const run = async (
+    fn: () => Promise<ItemDetail | null>,
+    expected?: Partial<ItemDetail>,
+  ) => {
     setBusy(true);
     setError("");
     const before = item.status;
     try {
-      const next = await fn();
+      const answer = await fn();
       animateLayout();
-      setDetail(next);
+      if (answer) setDetail(answer);
+      else setDetail((d) => (d ? { ...d, ...expected } : d));
+      const status = answer?.status ?? expected?.status ?? item.status;
       // A status change, an update or the last checklist step can finish it.
-      if (next.status === "done" && before !== "done") celebrate(next.title);
+      if (status === "done" && before !== "done")
+        celebrate(answer?.title ?? item.title);
       onChanged();
       return true;
     } catch (e) {
@@ -369,7 +383,13 @@ function Body({
 
   const setStatus = (status: Status) => {
     if (status !== item.status)
-      void run(() => client.postItemUpdate(item.id, { status }));
+      void run(
+        () =>
+          outbox.postItemUpdate(item, {
+            status,
+          }) as Promise<ItemDetail | null>,
+        { status, ...(status === "done" ? { progress: 100 } : {}) },
+      );
   };
   /** Set progress by hand; saved half a second after the last change. */
   const setProgress = (value: number) => {
@@ -378,9 +398,13 @@ function Body({
     if (progressTimer.current) clearTimeout(progressTimer.current);
     progressTimer.current = setTimeout(() => {
       progressTimer.current = null;
-      void run(() => client.postItemUpdate(item.id, { progress: next })).then(
-        () => setDraft(null),
-      );
+      void run(
+        () =>
+          outbox.postItemUpdate(item, {
+            progress: next,
+          }) as Promise<ItemDetail | null>,
+        { progress: next },
+      ).then(() => setDraft(null));
     }, 500);
   };
   const addStep = async () => {
@@ -392,11 +416,13 @@ function Body({
     const body = note.trim();
     const status = noteStatus && noteStatus !== item.status ? noteStatus : null;
     if (!body && !status) return;
-    const ok = await run(() =>
-      client.postItemUpdate(item.id, {
-        ...(body ? { body } : {}),
-        ...(status ? { status } : {}),
-      }),
+    const ok = await run(
+      () =>
+        outbox.postItemUpdate(item, {
+          ...(body ? { body } : {}),
+          ...(status ? { status } : {}),
+        }) as Promise<ItemDetail | null>,
+      status ? { status } : {},
     );
     if (ok) {
       setNote("");
@@ -599,6 +625,10 @@ function Body({
             accessibilityLabel="Task status"
           />
 
+          {item.kind === "task" && !!item.team_id && (
+            <AskBox itemId={item.id} onChanged={onChanged} />
+          )}
+
           {/* Progress */}
           <FadeIn index={1} style={[shared.card, s.progressCard]}>
             <View style={s.progressTop}>
@@ -687,6 +717,22 @@ function Body({
               </>
             )}
           </FadeIn>
+
+          {item.kind === "task" && (
+            <ProofSection itemId={item.id} canWrite={!readOnly} />
+          )}
+          {item.kind === "event" &&
+            (!!item.team_id || !!detail?.attendees?.length) && (
+              <MeetingOutcome
+                item={
+                  {
+                    ...item,
+                    attendees: detail?.attendees ?? item.attendees,
+                  } as Item
+                }
+                canWrite={!readOnly}
+              />
+            )}
 
           {/* Which project this belongs to, and where in it. */}
           {item.kind === "task" && !readOnly && !!projects?.length && (

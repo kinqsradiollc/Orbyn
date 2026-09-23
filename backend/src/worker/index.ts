@@ -1,3 +1,4 @@
+import { runDueTemplates } from "../modules/templates/routes.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { closeEmail } from "./channels/email.js";
@@ -66,6 +67,8 @@ export async function runWorker() {
         if (Date.now() - lastNotices >= NOTICES_MS) {
           await scanPlanningNotices();
           await scanDigests();
+          // Templates with a rhythm: say when one is ready to start.
+          await runDueTemplates();
           lastNotices = Date.now();
         }
         // Pages waiting to be measured for semantic search. Does nothing at
