@@ -4,6 +4,7 @@ import { pool, transaction } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
+import { externalEntries } from "../planner/subscriptions.js";
 
 // A minimal Model Context Protocol server over HTTP (JSON-RPC 2.0), so a
 // person's own AI tools can search and add to their planner with a personal
@@ -46,7 +47,7 @@ const TOOLS = [
   {
     name: "get_agenda",
     description:
-      "The person's open tasks and events due in the next few days (default 7).",
+      "The person's open tasks and events in the next few days (default 7), including events from calendars they subscribe to (timetables, exams, shifts).",
     inputSchema: {
       type: "object",
       properties: { days: { type: "number" } },
@@ -118,10 +119,26 @@ async function runTool(u: UserRow, name: string, args: Args): Promise<string> {
         [u.id, String(days)],
       )
     ).rows;
-    if (!rows.length) return `Nothing due in the next ${days} days.`;
-    return rows
-      .map((r) => `- ${r.due_at!.toISOString()} — ${r.title} (${r.kind})`)
-      .join("\n");
+    const now = new Date();
+    const subscribed = await externalEntries(
+      pool,
+      u.id,
+      now,
+      new Date(now.getTime() + days * 86_400_000),
+      { visible: true },
+    );
+    const lines = [
+      ...rows.map((r) => ({
+        at: r.due_at!.toISOString(),
+        text: `${r.title} (${r.kind})`,
+      })),
+      ...subscribed.slice(0, 200).map((e) => ({
+        at: e.start_at,
+        text: `${e.title} (${e.all_day ? "all day, " : ""}from "${e.name}")`,
+      })),
+    ].sort((a, b) => a.at.localeCompare(b.at));
+    if (!lines.length) return `Nothing due in the next ${days} days.`;
+    return lines.map((l) => `- ${l.at} — ${l.text}`).join("\n");
   }
   throw new Error(`Unknown tool: ${name}`);
 }

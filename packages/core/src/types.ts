@@ -17,6 +17,8 @@ import type {
   calendarFeedSettingsInput,
   calendarSubscriptionInput,
   calendarSubscriptionUpdate,
+  CALENDAR_KINDS,
+  CALENDAR_SHARING,
   EDIT_SCOPES,
   RSVP_STATUSES,
   dateOverride,
@@ -660,8 +662,10 @@ export type ExternalEntry = {
   end_at: string;
   all_day: boolean;
   location: string;
-  /** Whether it counts as busy (the subscription's setting). */
+  /** Whether it counts as busy (the subscription's settings). */
   busy: boolean;
+  /** What the subscription holds. */
+  calendar_kind?: CalendarKind;
 };
 
 /** Time the calendar keeps around events: buffers and travel. */
@@ -1001,8 +1005,29 @@ export type PlannerReview = {
   /** Past blocks whose tasks are still open. */
   unfinished: TimeBlock[];
   at_risk: AtRiskTask[];
-  /** Future blocks that now overlap an event. */
-  conflicts: { block: TimeBlock; entry: CalendarEntry }[];
+  /** Future blocks that now overlap an event, yours or a subscribed one. */
+  conflicts: { block: TimeBlock; entry: AgendaEntry }[];
+};
+
+/**
+ * One thing on your day, from your own events or a calendar you subscribe
+ * to: what digests, clash checks, the assistant and widgets read. Only ever
+ * shown to its owner.
+ */
+export type AgendaEntry = {
+  source: "event" | "subscription";
+  /** Your event's item; null for a subscribed event. */
+  item_id: string | null;
+  title: string;
+  start_at: string;
+  end_at: string;
+  all_day: boolean;
+  location: string;
+  /** Whether it counts as busy. */
+  busy: boolean;
+  /** The subscribed calendar's name; null for your own events. */
+  calendar: string | null;
+  calendar_kind: CalendarKind | null;
 };
 
 // ---- Teams: availability, workload, meeting times --------------------------
@@ -1361,12 +1386,20 @@ export type CalendarFeedSettings = {
 };
 
 /** A calendar from another app that Orbyn reads by its ICS link. */
+export type CalendarKind = (typeof CALENDAR_KINDS)[number];
+export type CalendarSharing = (typeof CALENDAR_SHARING)[number];
+
 export type CalendarSubscription = {
   id: string;
   url: string;
   name: string;
   color: string;
+  kind: CalendarKind;
   busy: boolean;
+  all_day_busy: boolean;
+  visible: boolean;
+  sharing: CalendarSharing;
+  reminder_minutes: number | null;
   last_fetched_at: string | null;
   /** Why the last refresh failed; null when it worked. */
   last_error: string | null;

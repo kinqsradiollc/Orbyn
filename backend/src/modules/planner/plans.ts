@@ -26,9 +26,8 @@ import { fail } from "@orbyn/core";
 import { membershipRole, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadItem, mutate } from "../items/service.js";
 import {
-  blocksTime,
   busyIntervals,
-  calendarEntries,
+  agendaEntries,
   loadPrefs,
   mergeIntervals,
   timeBlocks,
@@ -843,18 +842,19 @@ export async function reviewFor(
   const horizon = new Date(now.getTime() + REVIEW_DAYS * 86_400_000);
   const [unfinished, entries, blocks, atRisk] = await Promise.all([
     unfinishedBlocks(db, userId, now),
-    calendarEntries(db, userId, now, horizon),
+    agendaEntries(db, userId, now, horizon, { hidden: true }),
     timeBlocks(db, userId, now, horizon),
     atRiskFor(db, userId, now),
   ]);
-  // Free and all-day events don't clash with anything.
-  const events = entries.filter((e) => blocksTime(e) && e.end_at);
+  // Only busy time clashes: your timed events and subscribed ones that count
+  // as busy (a class, a shift, an exam day). Free events don't.
+  const events = entries.filter((e) => e.busy);
   const nowIso = now.toISOString();
   const conflicts: PlannerReview["conflicts"] = [];
   for (const block of blocks) {
     if (block.start_at < nowIso) continue;
     const entry = events.find(
-      (e) => e.start_at < block.end_at && block.start_at < e.end_at!,
+      (e) => e.start_at < block.end_at && block.start_at < e.end_at,
     );
     if (entry) conflicts.push({ block, entry });
   }

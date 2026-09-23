@@ -27,7 +27,7 @@ import {
 } from "../lib/outbox";
 import { deviceTimeZone } from "../lib/planning";
 import { deviceId } from "../lib/device";
-import { publishGlance } from "../lib/widget";
+import { clearGlance, publishGlance } from "../lib/widget";
 import { animateLayout } from "../motion";
 
 export type SignInInput = {
@@ -89,7 +89,7 @@ export function usePlanner() {
 
   const resetSession = () => {
     void clearCache();
-    publishGlance([]);
+    clearGlance();
     setToken("");
     setItems([]);
     setNotices([]);

@@ -4,11 +4,12 @@ import {
   clockMinutes,
   dayTime,
   localDateKey,
+  type AgendaEntry,
   type DigestPrefs,
 } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import {
-  blocksTime,
+  agendaEntries,
   calendarEntries,
   loadPrefs,
   timeBlocks,
@@ -32,6 +33,12 @@ function clockOf(iso: string, tz: string) {
 
 const bullet = (s: string) => `• ${s}`;
 
+/** "9:00 am — Lecture (Uni timetable)", or "All day — Exam (Exams)". */
+function agendaLine(e: AgendaEntry, tz: string) {
+  const when = e.all_day ? "All day" : clockOf(e.start_at, tz);
+  return bullet(`${when} — ${e.title}${e.calendar ? ` (${e.calendar})` : ""}`);
+}
+
 /** The morning agenda: today's events, due tasks, set-aside time and habits. */
 export async function buildMorning(
   userId: string,
@@ -41,15 +48,19 @@ export async function buildMorning(
 ): Promise<{ subject: string; lines: string[] }> {
   const today = localDateKey(now, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
-  const [entries, blocks, habits, review] = await Promise.all([
+  const [entries, agenda, blocks, habits, review] = await Promise.all([
     calendarEntries(pool, userId, now, dayEnd),
+    agendaEntries(pool, userId, dayTime(today, 0, tz), dayEnd),
     timeBlocks(pool, userId, now, dayEnd),
     habitBlocksIn(pool, userId, now, dayEnd),
     reviewFor(pool, userId, now),
   ]);
-  const events = entries
-    .filter((e) => e.kind === "event" && blocksTime(e) && e.end_at)
-    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  // Your events and your subscribed calendars' (classes, shifts, exams),
+  // all-day ones first. Timed ones already over are left out.
+  const nowIso = now.toISOString();
+  const events = agenda
+    .filter((e) => e.all_day || e.end_at > nowIso)
+    .sort((a, b) => Number(b.all_day) - Number(a.all_day));
   const dueTasks = entries
     .filter(
       (e) =>
@@ -62,9 +73,7 @@ export async function buildMorning(
     lines.push("Nothing scheduled today — a clear page.");
   if (events.length) {
     lines.push("Today’s events:");
-    lines.push(
-      ...events.map((e) => bullet(`${clockOf(e.start_at, tz)} — ${e.title}`)),
-    );
+    lines.push(...events.slice(0, 20).map((e) => agendaLine(e, tz)));
   }
   if (dueTasks.length) {
     lines.push("Due today:");
@@ -107,7 +116,7 @@ export async function buildEvening(
   const tomorrow = addDays(today, 1);
   const tomStart = dayTime(tomorrow, 0, tz);
   const tomEnd = dayTime(addDays(tomorrow, 1), 0, tz);
-  const [review, done, tomorrowEntries] = await Promise.all([
+  const [review, done, tomorrowEntries, tomorrowAgenda] = await Promise.all([
     reviewFor(pool, userId, now),
     pool.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM items
@@ -116,11 +125,12 @@ export async function buildEvening(
       [userId, dayTime(today, 0, tz).toISOString(), tomStart.toISOString()],
     ),
     calendarEntries(pool, userId, tomStart, tomEnd),
+    agendaEntries(pool, userId, tomStart, tomEnd),
   ]);
   const finished = done.rows[0].n;
-  const tomorrowEvents = tomorrowEntries
-    .filter((e) => e.kind === "event" && blocksTime(e) && e.end_at)
-    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  const tomorrowEvents = tomorrowAgenda.sort(
+    (a, b) => Number(b.all_day) - Number(a.all_day),
+  );
   const tomorrowTasks = tomorrowEntries.filter(
     (e) => e.kind === "task" && e.status !== "done" && e.status !== "cancelled",
   );
@@ -137,11 +147,7 @@ export async function buildEvening(
   }
   if (tomorrowEvents.length || tomorrowTasks.length) {
     lines.push("Tomorrow:");
-    lines.push(
-      ...tomorrowEvents
-        .slice(0, 8)
-        .map((e) => bullet(`${clockOf(e.start_at, tz)} — ${e.title}`)),
-    );
+    lines.push(...tomorrowEvents.slice(0, 12).map((e) => agendaLine(e, tz)));
     lines.push(...tomorrowTasks.slice(0, 8).map((t) => bullet(t.title)));
   } else lines.push("Nothing on the calendar for tomorrow yet.");
   lines.push(`Plan tomorrow: ${appLink("/app")}`);

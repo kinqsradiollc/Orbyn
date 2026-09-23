@@ -285,7 +285,7 @@ export async function icsFeed(
       userId,
       new Date(now - 30 * DAY),
       new Date(now + 180 * DAY),
-      { blocks: true, derived: true, frames: true },
+      { blocks: true, derived: true, frames: true, audience: "others" },
     );
     const stamp = utc(new Date(now));
     return calendar(

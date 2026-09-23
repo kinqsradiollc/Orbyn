@@ -7,11 +7,11 @@ import {
 } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import {
-  blocksTime,
-  calendarEntries,
+  agendaEntries,
   loadPrefs,
   timeBlocks,
 } from "../modules/planner/calendar.js";
+import { externalOccurrences } from "../modules/planner/subscriptions.js";
 import {
   atRiskFor,
   openTasks,
@@ -69,7 +69,7 @@ export async function advanceRepeating(now = new Date()) {
 }
 
 export type PlannerNoticeKind =
-  "conflict" | "rollforward" | "at_risk" | "deadline";
+  "conflict" | "rollforward" | "at_risk" | "deadline" | "calendar";
 
 /**
  * One planner notice: in the app always, and on push and email as the
@@ -144,17 +144,17 @@ export async function scanConflicts(now = new Date()) {
   for (const { user_id } of users) {
     const [blocks, entries, prefs] = await Promise.all([
       timeBlocks(pool, user_id, now, horizon),
-      calendarEntries(pool, user_id, now, horizon),
+      agendaEntries(pool, user_id, now, horizon, { hidden: true }),
       loadPrefs(pool, user_id),
     ]);
-    // Free and all-day events don't clash with anything.
-    const events = entries.filter((e) => blocksTime(e) && e.end_at);
+    // Only busy time clashes, from your events or subscribed calendars.
+    const events = entries.filter((e) => e.busy);
     const when = whenFormat(prefs.timezone);
     const nowIso = now.toISOString();
     for (const b of blocks) {
       if (b.start_at <= nowIso) continue;
       const clash = events.find(
-        (e) => e.start_at < b.end_at && b.start_at < e.end_at!,
+        (e) => e.start_at < b.end_at && b.start_at < e.end_at,
       );
       if (!clash) continue;
       await notify(
@@ -306,4 +306,73 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
       );
     }
   }
+}
+
+/**
+ * Reminders for events on subscribed calendars that ask for them (exams the
+ * day before, meetings ten minutes before, or whatever you chose). Each
+ * occurrence is reminded once, recorded in external_reminders; one missed
+ * by more than a few minutes (the worker was down) is skipped rather than
+ * sent late.
+ */
+export async function remindSubscribed(now = new Date()) {
+  const subs = (
+    await pool.query<{
+      id: string;
+      user_id: string;
+      name: string;
+      reminder_minutes: number;
+    }>(
+      `SELECT s.id, s.user_id, s.name, s.reminder_minutes FROM calendar_subscriptions s
+         JOIN users u ON u.id = s.user_id AND NOT u.disabled
+       WHERE s.reminder_minutes IS NOT NULL LIMIT 2000`,
+    )
+  ).rows;
+  if (!subs.length) return 0;
+  const byUser = new Map<string, typeof subs>();
+  for (const sub of subs)
+    byUser.set(sub.user_id, [...(byUser.get(sub.user_id) ?? []), sub]);
+  const email = await emailEnabled();
+  const grace = 5 * 60_000;
+  let sent = 0;
+  for (const [userId, mine] of byUser) {
+    const reminders = new Map(mine.map((m) => [m.id, m]));
+    const longest = Math.max(...mine.map((m) => m.reminder_minutes));
+    const [occurrences, prefs] = await Promise.all([
+      externalOccurrences(
+        pool,
+        userId,
+        new Date(now.getTime() - grace),
+        new Date(now.getTime() + (longest + 1) * 60_000),
+      ),
+      loadPrefs(pool, userId),
+    ]);
+    const when = whenFormat(prefs.timezone);
+    for (const o of occurrences) {
+      const sub = reminders.get(o.subscription_id);
+      if (!sub) continue;
+      const start = Date.parse(o.start_at);
+      const due = start - sub.reminder_minutes * 60_000;
+      if (now.getTime() < due || now.getTime() > due + grace) continue;
+      const claimed = await pool.query(
+        `INSERT INTO external_reminders (subscription_id, uid, starts_at)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [o.subscription_id, o.uid, o.start_at],
+      );
+      if (!claimed.rowCount) continue;
+      await notify(
+        {
+          userId,
+          itemId: null,
+          kind: "calendar",
+          ref: `${o.subscription_id}:${o.start_at}:${o.uid}`.slice(0, 500),
+          title: o.title || sub.name,
+          body: `${o.all_day ? "All day" : when.format(new Date(start))}${o.location ? ` · ${o.location}` : ""} · ${sub.name}`,
+        },
+        email,
+      );
+      sent++;
+    }
+  }
+  return sent;
 }

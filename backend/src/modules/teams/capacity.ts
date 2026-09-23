@@ -24,7 +24,12 @@ import { teamMembers } from "./routes.js";
 
 const MAX_MEMBERS = 50;
 /** Busy time teammates see: planned sessions and busy frames count too. */
-const TEAM_BUSY = { blocks: true, derived: true, frames: true };
+const TEAM_BUSY = {
+  blocks: true,
+  derived: true,
+  frames: true,
+  audience: "others",
+} as const;
 
 type Span = { start: number; end: number };
 

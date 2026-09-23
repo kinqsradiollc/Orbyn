@@ -913,7 +913,7 @@ test("the ICS parser reads folded lines, zones, dates, durations, repeats and ch
     "UID:odd@example",
     "DTSTART:20261001T230000Z",
     "DTEND:20261002T000000Z",
-    "RRULE:FREQ=MONTHLY;BYDAY=2MO",
+    "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2MO",
     "SUMMARY:A very long title that goes on and on so that the line has to be fol",
     " ded by the calendar app",
     "END:VEVENT",
@@ -1020,18 +1020,24 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
     url: "webcal://93.184.216.34/team.ics",
     name: "Team",
     color: "#123456",
+    busy: false,
   });
   assert.equal(sub.status, 201, sub.raw.body);
   assert.equal(sub.body.url, "https://93.184.216.34/team.ics");
   assert.equal(sub.body.busy, false);
-  assert.equal(sub.body.last_fetched_at, null);
+  // Read as soon as it's added.
+  assert.notEqual(sub.body.last_fetched_at, null);
+  assert.equal(sub.body.event_count, 3);
   const refresh = () =>
     call(me.token, "POST", `/me/calendar-subscriptions/${sub.body.id}/refresh`);
   const first = await refresh();
   assert.equal(first.status, 200, first.raw.body);
   assert.equal(first.body.last_error, null);
   assert.equal(first.body.event_count, 3);
-  assert.deepEqual(seen, ["https://93.184.216.34/team.ics"]);
+  assert.deepEqual(seen, [
+    "https://93.184.216.34/team.ics",
+    "https://93.184.216.34/team.ics",
+  ]);
 
   const shown = async () =>
     ((await entries(me.token, 1, 4)).external as Json[]).map((e) => [
@@ -1052,7 +1058,7 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
   assert.equal(one.name, "Team");
   assert.equal(one.color, "#123456");
   assert.equal(one.subscription_id, sub.body.id);
-  // Not busy until asked; then only as intervals, and never the all-day one.
+  // Not busy when turned off; then only as intervals, and never the all-day one.
   assert.deepEqual(await busyOf(me.token, me.id, 1, 4), []);
   const busy = await call(
     me.token,

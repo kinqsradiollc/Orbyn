@@ -30,7 +30,13 @@ const MAX_MEMBERS = 50;
 type Span = { start: number; end: number };
 
 /** Busy time teammates see: busy frames count, like events. */
-const TEAM_BUSY = { blocks: true, derived: true, frames: true };
+/** What teammates see: busy time only, and none from calendars kept private. */
+const TEAM_BUSY = {
+  blocks: true,
+  derived: true,
+  frames: true,
+  audience: "others",
+} as const;
 
 /** Free working time for one person in [from, to). */
 async function memberFree(db: Db, userId: string, from: Date, to: Date) {
@@ -99,7 +105,11 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
           user_id: p.id,
           name: p.name,
           timezone: (await loadPrefs(db, p.id)).timezone,
-          busy: await busyIntervals(db, p.id, from, to, TEAM_BUSY),
+          // Your own view includes calendars you keep from teammates.
+          busy: await busyIntervals(db, p.id, from, to, {
+            ...TEAM_BUSY,
+            audience: p.id === u.id ? "self" : "others",
+          }),
         })),
     );
   });
@@ -198,6 +208,7 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
         const busy = await busyIntervals(db, m.user_id, from, to, {
           blocks: false,
           derived: true,
+          audience: "others",
         });
         const free = freeSpans(workingSpans(prefs, from, to), busy);
         const capacity = Math.round(
