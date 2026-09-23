@@ -470,6 +470,11 @@
 .tg-event {
   position: absolute;
   z-index: 1;
+  /* Time blocks are buttons, so they need flex set here; everything a block
+     holds stays inside it. */
+  display: flex;
+  overflow: hidden;
+  line-height: 1.3;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
@@ -483,11 +488,18 @@
   box-shadow: inset 3px 0 0 var(--tone-fg);
 }
 .tg-event .cal-title {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  /* A block, not flex, so a long title ends in "…" rather than being cut. */
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 600;
   white-space: nowrap;
+}
+.tg-event .cal-title > svg {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -2px;
 }
 .tg-event small {
   display: flex;
@@ -504,6 +516,23 @@
   gap: 6px;
   padding-top: 0;
   padding-bottom: 0;
+}
+.tg-event.is-short .cal-title {
+  flex: 1 1 auto;
+}
+.tg-event.is-short small {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+/* A slot shared with another event gets narrow: the title keeps the room. */
+.tg-slot {
+  container-type: inline-size;
+}
+@container (max-width: 120px) {
+  .tg-event.is-short small {
+    display: none;
+  }
 }
 .tg-event:focus-visible {
   z-index: 3;
@@ -897,6 +926,8 @@
   margin: 0;
   padding: 0 12px 12px;
   display: grid;
+  /* A long title shortens with "…" instead of widening the list past the card. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 .schedule-item {
@@ -951,10 +982,35 @@
   gap: 12px 12px;
   padding: 0 20px 16px;
 }
+/* Every field's label sits above it, and the field fills its column. */
 .planner-form > label {
-  display: block;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
   font-size: 11px;
   font-weight: 500;
+}
+.planner-form > label > :is(.select, .date-field) {
+  display: flex;
+  width: 100%;
+}
+.planner-form
+  > label
+  > :is(.select, .date-field)
+  > :is(.select-control, .date-field-control) {
+  min-height: var(--control-h);
+  padding-inline: var(--control-pad-x);
+}
+/* The parts under the form line up with it, inside the card. */
+.planner-panel > .what-if-open,
+.planner-panel > .what-if,
+.planner-panel > .plan-experiments {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+.planner-panel > .plan-experiments {
+  margin-bottom: 12px;
 }
 .planner-form .wide {
   grid-column: 1 / -1;

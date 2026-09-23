@@ -95,9 +95,21 @@
   text-align: left;
   cursor: pointer;
 }
+.plan-experiments-toggle strong {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.plan-experiments-toggle .muted {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .plan-experiments-toggle > span:last-child {
   margin-left: auto;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 .plan-experiments-body {

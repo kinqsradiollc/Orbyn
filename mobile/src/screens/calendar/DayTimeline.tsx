@@ -1594,14 +1594,17 @@ const s = themed(() =>
       opacity: 0.8,
     },
     pinned: { borderStyle: "solid", opacity: 0.9 },
+    // The resize handle sits in the bottom-right corner: in the middle it
+    // crossed the title of a short block.
     grip: {
       position: "absolute",
       left: 0,
       right: 0,
       bottom: 0,
       height: 14,
-      alignItems: "center",
+      alignItems: "flex-end",
       justifyContent: "center",
+      paddingRight: 8,
     },
     gripBar: { width: 18, height: 3, borderRadius: 2, opacity: 0.6 },
     blockTop: { flexDirection: "row", alignItems: "center", gap: 4 },
