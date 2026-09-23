@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Lightbulb, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
 import { RATINGS, type Rating, type StudyCard } from "@orbyn/core";
 import { client } from "../../lib/api";
 
@@ -118,7 +118,7 @@ export function ReviewSession({
     if (!card || quiz) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, [contenteditable]")) return;
+      if (target.closest?.("input, textarea, [contenteditable]")) return;
       if (!shown && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setShown(true);
@@ -143,10 +143,16 @@ export function ReviewSession({
         <button className="text-button" onClick={() => onDone(reviewed)}>
           <ArrowLeft size={15} /> Back to Study
         </button>
-        <span className="muted">
+        <span className="study-review-title">
           {quiz ? "Quiz" : "Review"} · {title}
-          {queue ? ` · ${reviewed} of ${total}` : ""}
         </span>
+        {queue && total > 0 ? (
+          <span className="study-review-count">
+            {Math.min(reviewed + 1, total)} / {total}
+          </span>
+        ) : (
+          <span />
+        )}
       </div>
       {queue && total > 0 && (
         <div
@@ -164,13 +170,16 @@ export function ReviewSession({
         <p className="muted">Getting your cards…</p>
       ) : !card ? (
         <div className="card study-finished">
+          <span className="study-finished-icon" aria-hidden="true">
+            <Check size={22} />
+          </span>
           <strong>
             {reviewed
-              ? `Done — ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
+              ? `Done. ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
               : "Nothing to review right now."}
           </strong>
           <p className="muted">
-            Each card comes back when it&apos;s about to slip — the better you
+            Each card comes back when it&apos;s about to slip. The better you
             knew it, the longer the wait.
           </p>
           <button className="primary" onClick={() => onDone(reviewed)}>
@@ -178,18 +187,32 @@ export function ReviewSession({
           </button>
         </div>
       ) : (
-        <div className="card study-flash" aria-live="polite">
-          <small className="muted study-from">
-            From{" "}
-            <button
-              className="text-button"
-              onClick={() => onOpenPage(card.doc_id)}
-            >
-              {card.doc_title}
-            </button>
-            {card.reps === 0 ? " · new" : ""}
-          </small>
-          <p className="study-question">{card.question}</p>
+        <>
+          <div
+            className={"card study-flash" + (shown ? " is-shown" : "")}
+            aria-live="polite"
+          >
+            <div className="study-from">
+              <button
+                className="study-source"
+                onClick={() => onOpenPage(card.doc_id)}
+                title="Open the page"
+              >
+                <FileText size={12} aria-hidden="true" /> {card.doc_title}
+              </button>
+              {card.reps === 0 && <span className="chip">New</span>}
+            </div>
+            <div className="study-face">
+              <span className="study-face-label">Question</span>
+              <p className="study-question">{card.question}</p>
+            </div>
+            {shown && (
+              <div className="study-face study-face-answer">
+                <span className="study-face-label">Answer</span>
+                <p className="study-answer">{card.answer}</p>
+              </div>
+            )}
+          </div>
 
           {quiz && !shown && (
             <form
@@ -213,7 +236,7 @@ export function ReviewSession({
                   }
                 }}
               />
-              <div className="button-row">
+              <div className="study-quiz-actions">
                 <button
                   type="button"
                   className="text-button"
@@ -232,56 +255,55 @@ export function ReviewSession({
           )}
 
           {!quiz && !shown && (
-            <button
-              className="primary study-show"
-              onClick={() => setShown(true)}
-            >
-              Show answer <kbd>space</kbd>
-            </button>
+            <div className="study-controls">
+              <button
+                className="primary study-show"
+                onClick={() => setShown(true)}
+              >
+                Show answer
+              </button>
+              <small className="study-hint">Press space to show</small>
+            </div>
           )}
 
           {shown && (
-            <>
-              <div className="study-answer">{card.answer}</div>
+            <div className="study-controls">
               {grade && (
                 <p className={`study-grade is-${grade.verdict}`}>
                   <strong>
                     {grade.verdict === "correct"
-                      ? "Right"
+                      ? "Right."
                       : grade.verdict === "partly"
-                        ? "Partly right"
-                        : "Not quite"}
+                        ? "Partly right."
+                        : "Not quite."}
                   </strong>{" "}
                   {grade.feedback}
                 </p>
               )}
-              {explained ? (
+              {explained && (
                 <p className="study-explain">
-                  {explained.explanation}
-                  {explained.beyond_notes && (
-                    <small className="muted"> (Goes beyond your notes.)</small>
-                  )}
+                  <Lightbulb size={14} aria-hidden="true" />
+                  <span>
+                    {explained.explanation}
+                    {explained.beyond_notes && (
+                      <small className="muted"> Goes beyond your notes.</small>
+                    )}
+                  </span>
                 </p>
-              ) : (
-                <button
-                  className="text-button study-explain-button"
-                  disabled={explaining}
-                  onClick={() => void explain()}
-                >
-                  <Lightbulb size={14} />{" "}
-                  {explaining ? "Explaining…" : "Explain this"}
-                </button>
               )}
+              <span className="study-rate-label">
+                How well did you know it?
+              </span>
               <div
                 className="study-rate"
                 role="group"
                 aria-label="How well did you know it?"
               >
-                {RATINGS.map((r, i) => (
+                {RATINGS.map((r) => (
                   <button
                     key={r}
                     className={
-                      "secondary study-rate-" +
+                      "study-rate-" +
                       r +
                       (grade?.suggested_rating === r ? " is-suggested" : "")
                     }
@@ -289,21 +311,33 @@ export function ReviewSession({
                     onClick={() => void rate(r)}
                   >
                     <strong>{LABEL[r]}</strong>
-                    <small>
-                      {card.next[r]}
-                      {!quiz && <kbd>{i + 1}</kbd>}
-                    </small>
+                    <small>{card.next[r]}</small>
                   </button>
                 ))}
               </div>
-            </>
+              <div className="study-after">
+                {!quiz && (
+                  <small className="study-hint">Keys 1–4 to rate</small>
+                )}
+                {!explained && (
+                  <button
+                    className="text-button"
+                    disabled={explaining}
+                    onClick={() => void explain()}
+                  >
+                    <Lightbulb size={14} />{" "}
+                    {explaining ? "Explaining…" : "Explain this"}
+                  </button>
+                )}
+              </div>
+            </div>
           )}
           {note && (
             <p className="muted study-note" role="status">
               {note}
             </p>
           )}
-        </div>
+        </>
       )}
     </div>
   );

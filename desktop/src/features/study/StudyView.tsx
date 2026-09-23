@@ -165,154 +165,195 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
 
   const toReview = data.due_today + data.new_cards;
 
+  const minutes = Math.max(1, Math.round((toReview * 8) / 60));
+
   return (
     <div className="study">
-      <section className="card study-today">
-        <div className="study-stats">
-          <Stat label="To review today" value={data.due_today} />
-          <Stat label="New today" value={data.new_cards} />
-          <Stat label="Reviewed today" value={data.reviewed_today} />
-          <Stat
-            label="Day streak"
-            value={data.streak}
-            icon={<Flame size={15} aria-hidden="true" />}
-          />
-        </div>
-        <div className="study-actions">
-          <button
-            className="primary"
-            disabled={!toReview}
-            onClick={() => setSession({ title: "All your cards", quiz: false })}
-          >
-            <BookOpenCheck size={16} />
-            {toReview ? `Review now · ${toReview}` : "All caught up"}
-          </button>
-          <button className="secondary" onClick={() => void makeHabit()}>
-            <Repeat size={15} /> Make it a daily habit
-          </button>
-          <button className="text-button" onClick={() => void newPage()}>
-            <Plus size={15} /> New study page
-          </button>
-        </div>
-        {note && (
-          <p className="study-note" role="status">
-            {note}
+      <section className="card study-hero">
+        <div className="study-hero-main">
+          <span className="study-eyebrow">Today</span>
+          <h2 className="study-hero-count">
+            {toReview
+              ? `${toReview} card${toReview === 1 ? "" : "s"} to review`
+              : "You're all caught up"}
+          </h2>
+          <p className="muted">
+            {toReview
+              ? `${data.due_today} due · ${data.new_cards} new · about ${minutes} min`
+              : "Cards come back when they're about to slip. Check in tomorrow."}
           </p>
-        )}
+          <div className="study-actions">
+            <button
+              className="primary"
+              disabled={!toReview}
+              onClick={() =>
+                setSession({ title: "All your cards", quiz: false })
+              }
+            >
+              <BookOpenCheck size={16} /> Start review
+            </button>
+            <button className="secondary" onClick={() => void newPage()}>
+              <Plus size={15} /> New study page
+            </button>
+          </div>
+          {note && (
+            <p className="study-note" role="status">
+              <Check size={14} aria-hidden="true" /> {note}
+            </p>
+          )}
+        </div>
+        <div className="study-hero-side">
+          <dl className="study-stats">
+            <div>
+              <dt>Reviewed today</dt>
+              <dd>{data.reviewed_today}</dd>
+            </div>
+            <div>
+              <dt>Day streak</dt>
+              <dd>
+                <Flame size={16} aria-hidden="true" /> {data.streak}
+              </dd>
+            </div>
+          </dl>
+          <button className="text-button" onClick={() => void makeHabit()}>
+            <Repeat size={14} /> Make it a daily habit
+          </button>
+        </div>
       </section>
 
       {data.exams.length > 0 && (
         <section className="study-section">
           <h2>Exams coming up</h2>
           <ul className="study-exams">
-            {data.exams.map((exam) => (
-              <li key={exam.key} className="card study-exam">
-                <div className="study-exam-head">
-                  <div>
-                    <strong>{exam.title}</strong>
-                    <small>
-                      {when(exam.starts_at, exam.all_day)} · in {exam.days_left}{" "}
-                      day{exam.days_left === 1 ? "" : "s"}
-                      {exam.source !== "yours" ? ` · ${exam.source}` : ""}
-                    </small>
+            {data.exams.map((exam) => {
+              const d = new Date(exam.starts_at);
+              const ready =
+                exam.readiness == null
+                  ? null
+                  : Math.round(exam.readiness * 100);
+              return (
+                <li key={exam.key} className="card study-exam">
+                  <div className="study-exam-row">
+                    <div className="study-date" aria-hidden="true">
+                      <b>{d.getDate()}</b>
+                      <span>
+                        {d.toLocaleString("en-GB", { month: "short" })}
+                      </span>
+                    </div>
+                    <div className="study-exam-info">
+                      <strong>{exam.title}</strong>
+                      <small>
+                        {when(exam.starts_at, exam.all_day)} ·{" "}
+                        {exam.days_left === 0
+                          ? "today"
+                          : `in ${exam.days_left} day${exam.days_left === 1 ? "" : "s"}`}
+                        {exam.source !== "yours" ? ` · ${exam.source}` : ""}
+                      </small>
+                      {ready != null ? (
+                        <div className="study-exam-ready">
+                          <div
+                            className="study-bar"
+                            role="progressbar"
+                            aria-label={`${exam.title}: known well`}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={ready}
+                          >
+                            <i style={{ width: `${ready}%` }} />
+                          </div>
+                          <span>{ready}% known well</span>
+                        </div>
+                      ) : (
+                        <small className="muted">
+                          No pages attached yet. Choose what you&apos;re
+                          revising.
+                        </small>
+                      )}
+                    </div>
+                    <div className="study-exam-actions">
+                      {exam.doc_ids.length > 0 && (
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            setSession({
+                              title: exam.title,
+                              quiz: false,
+                              docId:
+                                exam.doc_ids.length === 1
+                                  ? exam.doc_ids[0]
+                                  : undefined,
+                              ahead: true,
+                            })
+                          }
+                        >
+                          Revise now
+                        </button>
+                      )}
+                      <button
+                        className="secondary"
+                        onClick={() => setPlanning(exam)}
+                      >
+                        <CalendarClock size={15} /> Plan revision
+                      </button>
+                    </div>
                   </div>
-                  {exam.readiness != null && (
-                    <span className="study-ready">
-                      {Math.round(exam.readiness * 100)}% known well
-                    </span>
-                  )}
-                </div>
-                {exam.readiness != null && (
-                  <div
-                    className="study-bar"
-                    role="progressbar"
-                    aria-label={`${exam.title}: known well`}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(exam.readiness * 100)}
-                  >
-                    <i style={{ width: `${exam.readiness * 100}%` }} />
-                  </div>
-                )}
-                <div className="study-exam-pages">
-                  {exam.doc_ids.length ? (
-                    exam.doc_ids.map((id) => (
+                  <div className="study-exam-pages">
+                    {exam.doc_ids.map((id) => (
                       <span key={id} className="chip">
-                        {data.decks.find((d) => d.doc_id === id)?.title ??
+                        {data.decks.find((x) => x.doc_id === id)?.title ??
                           "Page"}
                       </span>
-                    ))
-                  ) : (
-                    <small className="muted">
-                      No pages attached yet — choose what you&apos;re revising.
-                    </small>
-                  )}
-                </div>
-                {choosing === exam.key && (
-                  <fieldset className="study-choose">
-                    <legend>Pages to revise for this exam</legend>
-                    {data.decks.length ? (
-                      data.decks.map((d) => (
-                        <label key={d.doc_id} className="check-line">
-                          <input
-                            type="checkbox"
-                            checked={exam.doc_ids.includes(d.doc_id)}
-                            onChange={(e) =>
-                              void attach(
-                                exam,
-                                e.target.checked
-                                  ? [...exam.doc_ids, d.doc_id]
-                                  : exam.doc_ids.filter((x) => x !== d.doc_id),
-                              )
-                            }
-                          />
-                          {d.title}
-                          <small className="muted">
-                            {d.cards} card{d.cards === 1 ? "" : "s"}
-                          </small>
-                        </label>
-                      ))
-                    ) : (
-                      <small className="muted">No pages with cards yet.</small>
-                    )}
-                  </fieldset>
-                )}
-                <div className="study-exam-actions">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      setChoosing(choosing === exam.key ? null : exam.key)
-                    }
-                  >
-                    {choosing === exam.key ? "Done" : "Choose pages"}
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => setPlanning(exam)}
-                  >
-                    <CalendarClock size={15} /> Plan my revision
-                  </button>
-                  {exam.doc_ids.length > 0 && (
+                    ))}
                     <button
                       className="text-button"
+                      aria-expanded={choosing === exam.key}
                       onClick={() =>
-                        setSession({
-                          title: exam.title,
-                          quiz: false,
-                          docId:
-                            exam.doc_ids.length === 1
-                              ? exam.doc_ids[0]
-                              : undefined,
-                          ahead: true,
-                        })
+                        setChoosing(choosing === exam.key ? null : exam.key)
                       }
                     >
-                      Revise now
+                      {choosing === exam.key
+                        ? "Done"
+                        : exam.doc_ids.length
+                          ? "Change pages"
+                          : "Choose pages"}
                     </button>
+                  </div>
+                  {choosing === exam.key && (
+                    <fieldset className="study-choose">
+                      <legend>Pages to revise for this exam</legend>
+                      {data.decks.length ? (
+                        data.decks.map((x) => (
+                          <label key={x.doc_id} className="check-line">
+                            <input
+                              type="checkbox"
+                              checked={exam.doc_ids.includes(x.doc_id)}
+                              onChange={(e) =>
+                                void attach(
+                                  exam,
+                                  e.target.checked
+                                    ? [...exam.doc_ids, x.doc_id]
+                                    : exam.doc_ids.filter(
+                                        (y) => y !== x.doc_id,
+                                      ),
+                                )
+                              }
+                            />
+                            {x.title}
+                            <small className="muted">
+                              {x.cards} card{x.cards === 1 ? "" : "s"}
+                            </small>
+                          </label>
+                        ))
+                      ) : (
+                        <small className="muted">
+                          No pages with cards yet.
+                        </small>
+                      )}
+                    </fieldset>
                   )}
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
@@ -340,12 +381,36 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                   className="study-deck-title"
                   onClick={() => void openPage(d.doc_id)}
                 >
-                  <FileText size={15} aria-hidden="true" />
+                  <span className="study-deck-icon" aria-hidden="true">
+                    <FileText size={15} />
+                  </span>
                   <strong>{d.title}</strong>
                 </button>
+                <div className="study-deck-meta">
+                  <span>
+                    {d.cards} card{d.cards === 1 ? "" : "s"}
+                  </span>
+                  {d.due > 0 && (
+                    <span className="chip chip-warn">{d.due} due</span>
+                  )}
+                  {d.new > 0 && <span className="chip">{d.new} new</span>}
+                </div>
+                <div
+                  className="study-bar"
+                  role="progressbar"
+                  aria-label={`${d.title}: known well`}
+                  aria-valuemin={0}
+                  aria-valuemax={d.cards}
+                  aria-valuenow={d.known}
+                >
+                  <i
+                    style={{
+                      width: `${d.cards ? (d.known / d.cards) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
                 <small className="muted">
-                  {d.cards} card{d.cards === 1 ? "" : "s"} · {d.due} due ·{" "}
-                  {d.new} new · {d.known} known well
+                  {d.known} of {d.cards} known well
                 </small>
                 <div className="study-deck-actions">
                   <button
@@ -376,11 +441,12 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                   </button>
                   <button
                     className="text-button"
+                    title="Suggest cards from this page"
                     onClick={() =>
                       setMaking({ docId: d.doc_id, title: d.title })
                     }
                   >
-                    <Sparkles size={14} /> Suggest cards
+                    <Sparkles size={14} /> Suggest
                   </button>
                 </div>
               </li>
@@ -446,26 +512,6 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: number;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="study-stat">
-      <b>
-        {icon}
-        {value}
-      </b>
-      <span>{label}</span>
     </div>
   );
 }
