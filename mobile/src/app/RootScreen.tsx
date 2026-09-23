@@ -303,6 +303,11 @@ export function RootScreen() {
     if (previous) setSheet(previous);
   };
   const onSheetDismissed = () => {
+    // Only iOS waits for a sheet's dismissal to present the next one. The
+    // web build also reports dismissals, but there the next sheet is already
+    // showing (and closeSheet already went back), so going back again here
+    // would replace it with the sheet that was just left.
+    if (Platform.OS !== "ios") return;
     const next = pending.current;
     pending.current = null;
     if (next) show(next);

@@ -28,7 +28,7 @@ import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
 import { deviceTimeZone } from "../lib/planning";
 import { animateLayout } from "../motion";
-import { colors, fonts, themed } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 type Mode =
@@ -254,22 +254,35 @@ function Home({
   return (
     <>
       <View style={shared.card}>
-        <View style={s.stats}>
-          <Stat label="To review" value={data.due_today} />
-          <Stat label="New today" value={data.new_cards} />
-          <Stat label="Reviewed" value={data.reviewed_today} />
-          <Stat label="Day streak" value={data.streak} />
-        </View>
+        <Text style={s.kicker}>TODAY</Text>
+        <Text style={s.heroCount}>
+          {toReview
+            ? `${toReview} card${toReview === 1 ? "" : "s"} to review`
+            : "You're all caught up"}
+        </Text>
+        <Text style={shared.small}>
+          {toReview
+            ? `${data.due_today} due · ${data.new_cards} new · about ${Math.max(1, Math.round((toReview * 8) / 60))} min`
+            : "Cards come back when they're about to slip."}
+        </Text>
         <Button
-          title={toReview ? `Review now · ${toReview}` : "All caught up"}
-          icon="check"
+          title="Start review"
           disabled={!toReview}
           style={s.gapTop}
           onPress={() =>
             onMode({ kind: "review", title: "All your cards", quiz: false })
           }
         />
+        <View style={s.tiles}>
+          <Stat label="Reviewed today" value={data.reviewed_today} />
+          <Stat label="Day streak" value={data.streak} />
+        </View>
         <View style={s.row}>
+          <SmallAction
+            label="New study page"
+            disabled={false}
+            onPress={onNewPage}
+          />
           <SmallAction
             label="Make it a daily habit"
             disabled={false}
@@ -293,13 +306,8 @@ function Home({
               )
             }
           />
-          <SmallAction
-            label="New study page"
-            disabled={false}
-            onPress={onNewPage}
-          />
         </View>
-        {!!note && <Text style={[shared.small, s.gapTop]}>{note}</Text>}
+        {!!note && <Text style={[s.note, s.gapTop]}>{note}</Text>}
       </View>
 
       {data.exams.length > 0 && (
@@ -307,14 +315,30 @@ function Home({
           <Text style={[shared.eyebrow, s.eyebrow]}>EXAMS COMING UP</Text>
           {data.exams.map((exam) => (
             <View key={exam.key} style={shared.card}>
-              <Text style={s.title}>{exam.title}</Text>
-              <Text style={shared.small}>
-                {when(exam.starts_at, exam.all_day)} · in {exam.days_left} day
-                {exam.days_left === 1 ? "" : "s"}
-                {exam.readiness != null
-                  ? ` · ${Math.round(exam.readiness * 100)}% known well`
-                  : ""}
-              </Text>
+              <View style={s.examHead}>
+                <View style={s.date}>
+                  <Text style={s.dateDay}>
+                    {new Date(exam.starts_at).getDate()}
+                  </Text>
+                  <Text style={s.dateMonth}>
+                    {new Date(exam.starts_at)
+                      .toLocaleString("en-GB", { month: "short" })
+                      .toUpperCase()}
+                  </Text>
+                </View>
+                <View style={s.flex}>
+                  <Text style={s.title}>{exam.title}</Text>
+                  <Text style={shared.small}>
+                    {when(exam.starts_at, exam.all_day)} ·{" "}
+                    {exam.days_left === 0
+                      ? "today"
+                      : `in ${exam.days_left} day${exam.days_left === 1 ? "" : "s"}`}
+                    {exam.readiness != null
+                      ? ` · ${Math.round(exam.readiness * 100)}% known well`
+                      : ""}
+                  </Text>
+                </View>
+              </View>
               {exam.readiness != null && (
                 <View style={s.bar}>
                   <View
@@ -366,7 +390,7 @@ function Home({
                   }
                 />
                 <SmallAction
-                  label="Plan my revision"
+                  label="Plan revision"
                   disabled={false}
                   onPress={() => onMode({ kind: "plan", exam })}
                 />
@@ -402,54 +426,72 @@ function Home({
           </Text>
         </View>
       ) : (
-        data.decks.map((d) => (
-          <View key={d.doc_id} style={shared.card}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => onOpenPage(d.doc_id)}
-            >
-              <Text style={s.title}>{d.title}</Text>
-            </Pressable>
-            <Text style={shared.small}>
-              {d.cards} card{d.cards === 1 ? "" : "s"} · {d.due} due · {d.new}{" "}
-              new · {d.known} known well
-            </Text>
-            <View style={s.row}>
-              <SmallAction
-                label="Review"
-                disabled={!d.due && !d.new}
-                onPress={() =>
-                  onMode({
-                    kind: "review",
-                    docId: d.doc_id,
-                    title: d.title,
-                    quiz: false,
-                  })
-                }
-              />
-              <SmallAction
-                label="Quiz me"
-                disabled={false}
-                onPress={() =>
-                  onMode({
-                    kind: "review",
-                    docId: d.doc_id,
-                    title: d.title,
-                    quiz: true,
-                    ahead: true,
-                  })
-                }
-              />
-              <SmallAction
-                label="Suggest cards"
-                disabled={false}
-                onPress={() =>
-                  onMode({ kind: "suggest", docId: d.doc_id, title: d.title })
-                }
-              />
+        <View style={shared.card}>
+          {data.decks.map((d, n) => (
+            <View key={d.doc_id} style={[s.deck, n > 0 && s.divider]}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onOpenPage(d.doc_id)}
+              >
+                <Text style={s.title} numberOfLines={1}>
+                  {d.title}
+                </Text>
+              </Pressable>
+              <View style={s.deckMeta}>
+                <Text style={shared.small}>
+                  {d.cards} card{d.cards === 1 ? "" : "s"} · {d.known} known
+                  well
+                </Text>
+                {d.due > 0 && (
+                  <Text style={[s.pill, s.pillWarn]}>{d.due} due</Text>
+                )}
+                {d.new > 0 && <Text style={s.pill}>{d.new} new</Text>}
+              </View>
+              <View style={[s.bar, s.barSlim]}>
+                <View
+                  style={[
+                    s.barFill,
+                    { width: `${d.cards ? (d.known / d.cards) * 100 : 0}%` },
+                  ]}
+                />
+              </View>
+              <View style={s.rowTight}>
+                <SmallAction
+                  label="Review"
+                  disabled={!d.due && !d.new}
+                  onPress={() =>
+                    onMode({
+                      kind: "review",
+                      docId: d.doc_id,
+                      title: d.title,
+                      quiz: false,
+                    })
+                  }
+                />
+                <SmallAction
+                  label="Quiz me"
+                  disabled={false}
+                  onPress={() =>
+                    onMode({
+                      kind: "review",
+                      docId: d.doc_id,
+                      title: d.title,
+                      quiz: true,
+                      ahead: true,
+                    })
+                  }
+                />
+                <SmallAction
+                  label="Suggest"
+                  disabled={false}
+                  onPress={() =>
+                    onMode({ kind: "suggest", docId: d.doc_id, title: d.title })
+                  }
+                />
+              </View>
             </View>
-          </View>
-        ))
+          ))}
+        </View>
       )}
 
       {pages.length > 0 && (
@@ -501,8 +543,8 @@ function Home({
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <View style={s.stat}>
-      <Text style={s.statValue}>{value}</Text>
       <Text style={shared.small}>{label}</Text>
+      <Text style={s.statValue}>{value}</Text>
     </View>
   );
 }
@@ -574,11 +616,11 @@ function Review({
       <View style={shared.card}>
         <Text style={s.title}>
           {reviewed
-            ? `Done — ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
+            ? `Done. ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
             : "Nothing to review right now."}
         </Text>
         <Text style={shared.small}>
-          Each card comes back when it's about to slip — the better you knew it,
+          Each card comes back when it's about to slip. The better you knew it,
           the longer the wait.
         </Text>
         <Button
@@ -590,9 +632,14 @@ function Review({
     );
   return (
     <>
-      <Text style={shared.small}>
-        {title} · {reviewed} of {total}
-      </Text>
+      <View style={s.reviewHead}>
+        <Text style={[shared.small, s.flex]} numberOfLines={1}>
+          {quiz ? "Quiz" : "Review"} · {title}
+        </Text>
+        <Text style={s.count}>
+          {Math.min(reviewed + 1, total)} / {total}
+        </Text>
+      </View>
       <View style={s.bar}>
         <View
           style={[
@@ -602,118 +649,131 @@ function Review({
         />
       </View>
       <View style={[shared.card, s.flash]}>
-        <Pressable
-          accessibilityRole="link"
-          onPress={() => onOpenPage(card.doc_id)}
-        >
-          <Text style={shared.small}>
-            From {card.doc_title}
-            {card.reps === 0 ? " · new" : ""}
+        <View style={s.flashTop}>
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => onOpenPage(card.doc_id)}
+            style={s.source}
+          >
+            <Text style={s.sourceText} numberOfLines={1}>
+              {card.doc_title}
+            </Text>
+          </Pressable>
+          {card.reps === 0 && <Text style={s.pill}>New</Text>}
+        </View>
+        <View style={s.face}>
+          <Text style={s.faceLabel}>QUESTION</Text>
+          <Text style={[s.question, shown && s.questionSmall]}>
+            {card.question}
           </Text>
-        </Pressable>
-        <Text style={s.question}>{card.question}</Text>
-        {quiz && !shown && (
-          <>
-            <TextInput
-              style={[shared.input, s.answerInput]}
-              value={answer}
-              onChangeText={setAnswer}
-              multiline
-              placeholder="Type your answer…"
-              placeholderTextColor={colors.faint}
-              accessibilityLabel="Your answer"
-            />
-            <View style={s.row}>
-              <SmallAction
-                label="I don't know"
-                disabled={false}
-                onPress={() => setShown(true)}
-              />
-              <SmallAction
-                label={busy ? "Checking…" : "Check"}
-                disabled={busy || !answer.trim()}
-                onPress={() => {
-                  setBusy(true);
-                  client
-                    .gradeAnswer(card.id, answer)
-                    .then(setGrade, (e: Error) => onError(e.message))
-                    .finally(() => {
-                      setBusy(false);
-                      setShown(true);
-                    });
-                }}
-              />
-            </View>
-          </>
-        )}
-        {!quiz && !shown && (
-          <Button
-            title="Show answer"
-            style={s.gapTop}
-            onPress={() => setShown(true)}
-          />
-        )}
+        </View>
         {shown && (
-          <>
-            <View style={s.answer}>
-              <Text style={s.answerText}>{card.answer}</Text>
-            </View>
-            {grade && (
-              <Text style={shared.body}>
-                <Text style={s.verdict}>
-                  {grade.verdict === "correct"
-                    ? "Right. "
-                    : grade.verdict === "partly"
-                      ? "Partly right. "
-                      : "Not quite. "}
-                </Text>
-                {grade.feedback}
-              </Text>
-            )}
-            {explained ? (
-              <Text style={shared.body}>{explained}</Text>
-            ) : (
-              <SmallAction
-                label="Explain this"
-                disabled={busy}
-                onPress={() =>
-                  void client.explainCard(card.id).then(
-                    (r) =>
-                      setExplained(
-                        r.explanation +
-                          (r.beyond_notes ? " (Goes beyond your notes.)" : ""),
-                      ),
-                    (e: Error) => onError(e.message),
-                  )
-                }
-              />
-            )}
-            <View style={s.rate}>
-              {RATINGS.map((r) => (
-                <Pressable
-                  key={r}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${LABEL[r]}, back in ${card.next[r]}`}
-                  disabled={busy}
-                  onPress={() => void rate(r)}
-                  style={[
-                    s.rateButton,
-                    grade?.suggested_rating === r && s.rateSuggested,
-                  ]}
-                >
-                  <Text style={s.rateLabel}>{LABEL[r]}</Text>
-                  <Text style={shared.small}>{card.next[r]}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </>
+          <View style={[s.face, s.faceAnswer]}>
+            <Text style={s.faceLabel}>ANSWER</Text>
+            <Text style={s.answerText}>{card.answer}</Text>
+          </View>
         )}
       </View>
-      <SmallAction
-        label="Finish"
-        disabled={false}
-        onPress={() => onDone(reviewed)}
-      />
+      {quiz && !shown && (
+        <>
+          <TextInput
+            style={[shared.input, s.answerInput]}
+            value={answer}
+            onChangeText={setAnswer}
+            multiline
+            placeholder="Type your answer…"
+            placeholderTextColor={colors.faint}
+            accessibilityLabel="Your answer"
+          />
+          <View style={s.row}>
+            <SmallAction
+              label="I don't know"
+              disabled={false}
+              onPress={() => setShown(true)}
+            />
+            <SmallAction
+              label={busy ? "Checking…" : "Check"}
+              disabled={busy || !answer.trim()}
+              onPress={() => {
+                setBusy(true);
+                client
+                  .gradeAnswer(card.id, answer)
+                  .then(setGrade, (e: Error) => onError(e.message))
+                  .finally(() => {
+                    setBusy(false);
+                    setShown(true);
+                  });
+              }}
+            />
+          </View>
+        </>
+      )}
+      {!quiz && !shown && (
+        <Button title="Show answer" onPress={() => setShown(true)} />
+      )}
+      {shown && (
+        <>
+          {grade && (
+            <Text style={[shared.body, s.callout]}>
+              <Text style={s.verdict}>
+                {grade.verdict === "correct"
+                  ? "Right. "
+                  : grade.verdict === "partly"
+                    ? "Partly right. "
+                    : "Not quite. "}
+              </Text>
+              {grade.feedback}
+            </Text>
+          )}
+          {!!explained && (
+            <Text style={[shared.body, s.callout]}>{explained}</Text>
+          )}
+          <Text style={[shared.small, s.center]}>
+            How well did you know it?
+          </Text>
+          <View style={s.rate}>
+            {RATINGS.map((r) => (
+              <Pressable
+                key={r}
+                accessibilityRole="button"
+                accessibilityLabel={`${LABEL[r]}, back in ${card.next[r]}`}
+                disabled={busy}
+                onPress={() => void rate(r)}
+                style={[
+                  s.rateButton,
+                  grade?.suggested_rating === r && s.rateSuggested,
+                ]}
+              >
+                <Text style={[s.rateLabel, RATE_TONE[r]]}>{LABEL[r]}</Text>
+                <Text style={shared.small}>{card.next[r]}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
+      <View style={s.after}>
+        {shown && !explained && (
+          <SmallAction
+            label="Explain this"
+            disabled={busy}
+            onPress={() =>
+              void client.explainCard(card.id).then(
+                (r) =>
+                  setExplained(
+                    r.explanation +
+                      (r.beyond_notes ? " (Goes beyond your notes.)" : ""),
+                  ),
+                (e: Error) => onError(e.message),
+              )
+            }
+          />
+        )}
+        <SmallAction
+          label="Finish"
+          disabled={false}
+          onPress={() => onDone(reviewed)}
+        />
+      </View>
     </>
   );
 }
@@ -935,12 +995,117 @@ function Plan({
 
 const s = themed(() =>
   StyleSheet.create({
-    stats: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-    stat: { minWidth: 70, flexGrow: 1 },
-    statValue: {
+    kicker: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      letterSpacing: 1,
+      color: colors.muted,
+    },
+    heroCount: {
       fontFamily: fonts.display,
       fontSize: 24,
+      lineHeight: 30,
       color: colors.text,
+      marginTop: 4,
+      marginBottom: 2,
+    },
+    tiles: { flexDirection: "row", gap: 10, marginTop: 14 },
+    stat: {
+      flex: 1,
+      gap: 2,
+      padding: 12,
+      borderRadius: radii.input,
+      backgroundColor: colors.surfaceMuted,
+    },
+    statValue: {
+      fontFamily: fonts.display,
+      fontSize: 22,
+      color: colors.text,
+    },
+    note: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
+    flex: { flex: 1, minWidth: 0 },
+    center: { textAlign: "center", marginTop: 10, marginBottom: 2 },
+    after: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 8,
+      marginTop: 8,
+    },
+    rowTight: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+    examHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+    date: {
+      width: 48,
+      height: 52,
+      borderRadius: radii.input,
+      backgroundColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    dateDay: { fontFamily: fonts.display, fontSize: 19, color: colors.accent },
+    dateMonth: {
+      fontFamily: fonts.semibold,
+      fontSize: 10,
+      letterSpacing: 0.6,
+      color: colors.accent,
+    },
+    deck: { gap: 6, paddingVertical: 12 },
+    deckMeta: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
+    pill: {
+      overflow: "hidden",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: radii.pill,
+      backgroundColor: colors.accentSoft,
+      color: colors.accent,
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+    },
+    pillWarn: {
+      backgroundColor: colors.warningSoft,
+      color: colors.warningStrong,
+    },
+    barSlim: { height: 5, marginTop: 4, marginBottom: 4 },
+    reviewHead: { flexDirection: "row", alignItems: "center", gap: 12 },
+    count: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
+    flashTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    source: {
+      flexShrink: 1,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radii.pill,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    sourceText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    face: { alignItems: "center", gap: 8, paddingVertical: 18 },
+    faceAnswer: {
+      paddingTop: 18,
+      borderTopWidth: 1,
+      borderStyle: "dashed",
+      borderTopColor: colors.border,
+    },
+    faceLabel: {
+      fontFamily: fonts.semibold,
+      fontSize: 10.5,
+      letterSpacing: 1,
+      color: colors.muted,
+    },
+    questionSmall: { fontSize: 17, lineHeight: 23 },
+    callout: {
+      padding: 12,
+      borderRadius: radii.input,
+      backgroundColor: colors.surfaceMuted,
+      overflow: "hidden",
     },
     row: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
     gapTop: { marginTop: 12 },
@@ -965,23 +1130,20 @@ const s = themed(() =>
       backgroundColor: colors.accent,
       borderRadius: 3,
     },
-    flash: { gap: 12 },
+    flash: { gap: 4, minHeight: 220 },
     question: {
       fontFamily: fonts.display,
-      fontSize: 21,
-      lineHeight: 28,
+      fontSize: 22,
+      lineHeight: 29,
       color: colors.text,
-    },
-    answer: {
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: 12,
-      padding: 14,
+      textAlign: "center",
     },
     answerText: {
       fontFamily: fonts.regular,
-      fontSize: 16,
-      lineHeight: 23,
+      fontSize: 17,
+      lineHeight: 24,
       color: colors.text,
+      textAlign: "center",
     },
     answerInput: { minHeight: 80, textAlignVertical: "top" },
     verdict: { fontFamily: fonts.semibold },
@@ -992,7 +1154,7 @@ const s = themed(() =>
       minWidth: 70,
       alignItems: "center",
       paddingVertical: 10,
-      borderRadius: 12,
+      borderRadius: radii.input,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -1022,3 +1184,18 @@ const s = themed(() =>
     },
   }),
 );
+
+const RATE_TONE = {
+  get again() {
+    return { color: colors.danger };
+  },
+  get hard() {
+    return { color: colors.warningStrong };
+  },
+  get good() {
+    return { color: colors.accent };
+  },
+  get easy() {
+    return { color: colors.accent };
+  },
+} as Record<Rating, { color: string }>;
