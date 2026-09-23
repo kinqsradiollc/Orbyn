@@ -2,6 +2,8 @@ import {
   IMPORT_LIMITS,
   assembleImport,
   ocrPageToMarkdown,
+  pageToMarkdown,
+  runningLines,
   type ImportFileType,
   type ImportedPage,
 } from "@orbyn/core";
@@ -10,6 +12,8 @@ import { pool, transaction } from "../../db/pool.js";
 import { announceTo } from "../presence/live.js";
 import { NotAWordFile, docxToMarkdown } from "./docx.js";
 import { PdfLocked, PdfUnreadable, readPdf, singlePage } from "./pdf.js";
+import { formulaAvailable, readFormulas } from "./formula.js";
+import { ocrImage, renderPdfPage, tesseractAvailable } from "./tesseract.js";
 import { serviceKey } from "./tokens.js";
 
 /**
@@ -142,21 +146,51 @@ async function readNext(): Promise<boolean> {
   return true;
 }
 
+type Engine = "full" | "tesseract" | "none";
+
+/**
+ * How this converter reads pages without their own text: the heavy OCR
+ * model when OCR_URL is set, else the built-in Tesseract when it's
+ * installed (it is in the backend image), else not at all.
+ */
+async function engine(): Promise<Engine> {
+  if (env.OCR_URL) return "full";
+  return (await tesseractAvailable()) ? "tesseract" : "none";
+}
+
+/** Limits on pages read from images: tight for the heavy model, loose for Tesseract. */
+const scanLimits = (e: Engine) =>
+  e === "full"
+    ? {
+        perFile: IMPORT_LIMITS.maxOcrPagesPerFile,
+        perDay: IMPORT_LIMITS.ocrPagesPerDay,
+      }
+    : {
+        perFile: IMPORT_LIMITS.maxPages,
+        perDay: IMPORT_LIMITS.scanPagesPerDay,
+      };
+
+type ReadPage = {
+  page: number;
+  markdown: string;
+  needsOcr: boolean;
+  engine: string;
+  tables?: number;
+  figures?: number;
+  equations?: number;
+  checks?: number;
+};
+
 async function readImport(row: ImportRow) {
   const data = await fileFor(row);
-  const pages: {
-    page: number;
-    markdown: string;
-    needsOcr: boolean;
-    tables?: number;
-    figures?: number;
-  }[] = [];
+  const pages: ReadPage[] = [];
   const notes: string[] = [];
+  const how = await engine();
 
   if (row.file_type === "docx") {
     try {
       const doc = docxToMarkdown(data);
-      pages.push({ page: 1, needsOcr: false, ...doc });
+      pages.push({ page: 1, needsOcr: false, engine: "docx", ...doc });
     } catch (error) {
       if (error instanceof NotAWordFile)
         throw new ImportFailure(
@@ -181,30 +215,48 @@ async function readImport(row: ImportRow) {
         );
       throw error;
     }
-    pages.push(...read);
+    // Running headers and footers are found across the pages with text.
+    const running = runningLines(
+      read.filter((p) => !p.needsOcr).map((p) => p.text),
+    );
+    for (const p of read) {
+      const scanned = p.needsOcr && how !== "none";
+      const result = pageToMarkdown(p.text, p.page, running);
+      pages.push({
+        page: p.page,
+        needsOcr: scanned,
+        engine: scanned ? how : "text",
+        markdown: result.markdown.replace(/%%formula \d+%%/g, ""),
+        tables: result.tables,
+        figures: result.figures,
+        equations: result.equations,
+        checks: result.checks,
+      });
+    }
+    const rough = read.filter((p) => p.needsOcr).length;
+    if (how === "none" && rough) {
+      if (rough === read.length)
+        throw new ImportFailure(
+          "This PDF is scanned, and reading scanned pages isn't set up on this server. Word files and PDFs with real text import fine.",
+        );
+      notes.push(
+        `${rough} scanned page${rough === 1 ? "" : "s"} imported roughly (no OCR on this server)`,
+      );
+    }
   } else {
     // A photo or screenshot of notes: one page, read by OCR.
-    pages.push({ page: 1, markdown: "", needsOcr: true });
+    if (how === "none")
+      throw new ImportFailure(
+        "Reading photos of notes isn't set up on this server. Word files and PDFs with real text import fine.",
+      );
+    pages.push({ page: 1, markdown: "", needsOcr: true, engine: how });
   }
 
-  let ocr = pages.filter((p) => p.needsOcr);
-  if (ocr.length && !env.OCR_URL) {
-    if (ocr.length === pages.length || row.file_type !== "pdf")
-      throw new ImportFailure(
-        row.file_type === "pdf"
-          ? "This PDF is scanned, and reading scanned pages isn't turned on on this server yet. Word files and PDFs with real text import fine."
-          : "Reading photos of notes isn't turned on on this server yet. Word files and PDFs with real text import fine.",
-      );
-    // Keep what the text layer had for those pages, and say so.
-    notes.push(
-      `${ocr.length} scanned page${ocr.length === 1 ? "" : "s"} imported roughly (OCR is off)`,
-    );
-    for (const p of ocr) p.needsOcr = false;
-    ocr = [];
-  }
-  if (ocr.length > IMPORT_LIMITS.maxOcrPagesPerFile)
+  const ocr = pages.filter((p) => p.needsOcr);
+  const limits = scanLimits(how);
+  if (ocr.length > limits.perFile)
     throw new ImportFailure(
-      `This file has ${ocr.length} scanned pages. Orbyn reads up to ${IMPORT_LIMITS.maxOcrPagesPerFile} scanned pages per file; split it into parts and upload each one.`,
+      `This file has ${ocr.length} scanned pages. Orbyn reads up to ${limits.perFile} scanned pages per file; split it into parts and upload each one.`,
     );
   if (ocr.length) {
     const today = Number(
@@ -217,9 +269,9 @@ async function readImport(row: ImportRow) {
         )
       ).rows[0].n,
     );
-    if (today + ocr.length > IMPORT_LIMITS.ocrPagesPerDay)
+    if (today + ocr.length > limits.perDay)
       throw new ImportFailure(
-        `Orbyn reads up to ${IMPORT_LIMITS.ocrPagesPerDay} scanned pages a day per person, and this file would go over. Try again tomorrow; Word files and PDFs with real text don't count.`,
+        `Orbyn reads up to ${limits.perDay} scanned pages a day per person, and this file would go over. Try again tomorrow; Word files and PDFs with real text don't count.`,
       );
   }
 
@@ -228,8 +280,9 @@ async function readImport(row: ImportRow) {
     for (const p of pages)
       await db.query(
         `INSERT INTO import_pages (import_id, page, needs_ocr, markdown,
-           tables, figures, done_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $3 THEN NULL ELSE now() END)`,
+           tables, figures, equations, checks, engine, done_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                 CASE WHEN $3 THEN NULL ELSE now() END)`,
         [
           row.id,
           p.page,
@@ -237,6 +290,9 @@ async function readImport(row: ImportRow) {
           p.needsOcr ? null : p.markdown,
           p.tables ?? 0,
           p.figures ?? 0,
+          p.equations ?? 0,
+          p.checks ?? 0,
+          p.engine,
         ],
       );
     await db.query(
@@ -253,7 +309,96 @@ async function readImport(row: ImportRow) {
 
 // ---------------------------------------------------------------- OCR ---
 
-/** Read one waiting scanned page with the OCR service. */
+type PageRead = {
+  markdown: string;
+  tables: number;
+  figures: number;
+  equations: number;
+  checks: number;
+};
+
+/** One page with the heavy OCR model (OCR_URL). */
+async function readWithModel(
+  row: ImportRow,
+  data: Buffer,
+  page: number,
+): Promise<PageRead> {
+  const body = row.file_type === "pdf" ? await singlePage(data, page) : data;
+  const res = await fetch(`${env.OCR_URL}/ocr`, {
+    method: "POST",
+    headers: {
+      "Content-Type":
+        row.file_type === "pdf"
+          ? "application/pdf"
+          : row.file_type === "png"
+            ? "image/png"
+            : "image/jpeg",
+    },
+    body: new Uint8Array(body),
+    signal: AbortSignal.timeout(env.OCR_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`OCR answered ${res.status}`);
+  const raw = ((await res.json()) as { markdown?: string }).markdown ?? "";
+  const read = ocrPageToMarkdown(raw, page);
+  return {
+    ...read,
+    equations: (read.markdown.match(/\$\$|\$[^$\n]+\$/g) ?? []).length,
+    checks: 0,
+  };
+}
+
+/**
+ * One page with Tesseract: the page as an image (a PDF page drawn at 300
+ * dpi, or the photo itself), its words read with their boxes, then the
+ * same page reading as a PDF's own text. Lines it couldn't read that look
+ * like maths go to the formula model when there is one.
+ */
+async function readWithTesseract(
+  row: ImportRow,
+  data: Buffer,
+  page: number,
+): Promise<PageRead> {
+  const image =
+    row.file_type === "pdf" ? await renderPdfPage(data, page) : data;
+  const text = await ocrImage(image);
+  const result = pageToMarkdown(text, page);
+  let markdown = result.markdown;
+  let equations = result.equations;
+  let checks = result.checks;
+  if (result.formulaBoxes.length) {
+    let latex: string[] = result.formulaBoxes.map(() => "");
+    if (formulaAvailable())
+      latex = await readFormulas(
+        image,
+        row.file_type === "jpeg" ? "image/jpeg" : "image/png",
+        result.formulaBoxes.map((b) => ({
+          left: b.x,
+          top: text.height - b.y - b.h,
+          width: b.w,
+          height: b.h,
+        })),
+      ).catch((error: Error) => {
+        log("formula model failed", { import: row.id, error: error.message });
+        return result.formulaBoxes.map(() => "");
+      });
+    markdown = markdown.replace(/%%formula (\d+)%%/g, (_m, i: string) => {
+      const tex = latex[Number(i)];
+      if (!tex) return `*Equation on page ${page} (not read)*`;
+      equations++;
+      checks++;
+      return `$$\n${tex}\n%check\n$$`;
+    });
+  }
+  return {
+    markdown,
+    tables: result.tables,
+    figures: result.figures,
+    equations,
+    checks,
+  };
+}
+
+/** Read one waiting scanned page. */
 async function ocrNext(): Promise<boolean> {
   const claimed = (
     await pool.query<{ import_id: string; page: number; attempts: number }>(
@@ -276,29 +421,14 @@ async function ocrNext(): Promise<boolean> {
   ).rows[0];
   if (!row) return true;
   const started = Date.now();
-  let markdown: string;
-  let tables = 0;
-  let figures = 0;
+  const how = await engine();
+  let read: PageRead;
   try {
     const data = await fileFor(row);
-    const body =
-      row.file_type === "pdf" ? await singlePage(data, claimed.page) : data;
-    const res = await fetch(`${env.OCR_URL}/ocr`, {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          row.file_type === "pdf"
-            ? "application/pdf"
-            : row.file_type === "png"
-              ? "image/png"
-              : "image/jpeg",
-      },
-      body: new Uint8Array(body),
-      signal: AbortSignal.timeout(env.OCR_TIMEOUT_MS),
-    });
-    if (!res.ok) throw new Error(`OCR answered ${res.status}`);
-    const raw = ((await res.json()) as { markdown?: string }).markdown ?? "";
-    ({ markdown, tables, figures } = ocrPageToMarkdown(raw, claimed.page));
+    read =
+      how === "full"
+        ? await readWithModel(row, data, claimed.page)
+        : await readWithTesseract(row, data, claimed.page);
   } catch (error) {
     if (error instanceof ImportFailure) {
       await failImport(row, error.message);
@@ -318,13 +448,30 @@ async function ocrNext(): Promise<boolean> {
       await new Promise((r) => setTimeout(r, 5_000));
       return true;
     }
-    markdown = `*Page ${claimed.page} couldn't be read.*`;
+    read = {
+      markdown: `*Page ${claimed.page} couldn't be read.*`,
+      tables: 0,
+      figures: 0,
+      equations: 0,
+      checks: 0,
+    };
   }
   await pool.query(
     `UPDATE import_pages SET markdown = $3, tables = $4, figures = $5,
-            ocr_ms = $6, done_at = now()
+            equations = $6, checks = $7, engine = $8, ocr_ms = $9,
+            done_at = now()
       WHERE import_id = $1 AND page = $2`,
-    [row.id, claimed.page, markdown, tables, figures, Date.now() - started],
+    [
+      row.id,
+      claimed.page,
+      read.markdown,
+      read.tables,
+      read.figures,
+      read.equations,
+      read.checks,
+      how,
+      Date.now() - started,
+    ],
   );
   const left = Number(
     (
@@ -367,8 +514,11 @@ async function finish(importId: string) {
         needs_ocr: boolean;
         tables: number;
         figures: number;
+        equations: number;
+        checks: number;
       }>(
-        `SELECT page, markdown, needs_ocr, tables, figures FROM import_pages
+        `SELECT page, markdown, needs_ocr, tables, figures, equations, checks
+           FROM import_pages
           WHERE import_id = $1 ORDER BY page`,
         [row.id],
       )
@@ -378,6 +528,8 @@ async function finish(importId: string) {
       ocr: p.needs_ocr,
       tables: p.tables,
       figures: p.figures,
+      equations: p.equations,
+      checks: p.checks,
     }));
     const { title, content, notes } = assembleImport(imported, row.file_name, {
       notes: row.notes ?? [],
@@ -405,7 +557,10 @@ async function finish(importId: string) {
         )
       ).rows[0].id;
       await db.query(
-        `UPDATE imports SET status = 'ready', doc_id = $2, notes = $3::jsonb
+        `UPDATE imports SET status = 'ready', doc_id = $2, notes = $3::jsonb,
+                engines = (SELECT coalesce(array_agg(DISTINCT engine), '{}')
+                             FROM import_pages
+                            WHERE import_id = $1 AND engine IS NOT NULL)
           WHERE id = $1`,
         [row.id, docId, JSON.stringify(notes)],
       );
@@ -479,7 +634,23 @@ async function heartbeat() {
     `INSERT INTO service_heartbeats (service, last_seen_at) VALUES ('converter', now())
      ON CONFLICT (service) DO UPDATE SET last_seen_at = now()`,
   );
+  // What this server can read, for the apps and Admin → Storage.
+  const how = await engine();
+  await pool.query(
+    `INSERT INTO converter_state (id, scans, formulas, workers, updated_at)
+     VALUES (1, $1, $2, $3, now())
+     ON CONFLICT (id) DO UPDATE SET scans = $1, formulas = $2, workers = $3,
+       updated_at = now()`,
+    [how, how === "tesseract" && formulaAvailable(), lanesFor(how)],
+  );
 }
+
+const lanesFor = (how: Engine) =>
+  how === "full"
+    ? env.OCR_WORKERS
+    : how === "tesseract"
+      ? env.TESSERACT_WORKERS
+      : 0;
 
 /** Run until SIGINT/SIGTERM: one reading lane and one lane per OCR worker. */
 export async function runConverter() {
@@ -522,16 +693,28 @@ export async function runConverter() {
       await sleep(10_000);
     }
   };
+  const how = await engine();
   log("started", {
-    ocr: env.OCR_URL ? `${env.OCR_WORKERS} worker(s)` : "off",
+    scans: how,
+    lanes: lanesFor(how),
+    formulas: formulaAvailable(),
   });
   await Promise.all([
     upkeep(),
     lane("read", readNext),
-    ...(env.OCR_URL
-      ? Array.from({ length: env.OCR_WORKERS }, (_, n) =>
-          lane(`ocr${n + 1}`, ocrNext),
-        )
-      : []),
+    ...Array.from({ length: lanesFor(how) }, (_, n) =>
+      lane(`ocr${n + 1}`, ocrNext),
+    ),
   ]);
+}
+
+/**
+ * Work through everything waiting, once (reading, then scanned pages), and
+ * report what this converter can read. For tests and one-off runs; the
+ * service itself runs `runConverter`.
+ */
+export async function convertPending() {
+  await heartbeat();
+  while (await readNext());
+  if (lanesFor(await engine()) > 0) while (await ocrNext());
 }

@@ -55,7 +55,7 @@ async function studyFor(userId: string) {
   // Anyone with cards, or pages with card lines not yet read.
   const has = await pool.query(
     `SELECT 1 FROM study_cards WHERE user_id = $1
-     UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND d.content::text LIKE '% :: %'
+     UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '%{{%}}%')
      LIMIT 1`,
     [userId],
   );

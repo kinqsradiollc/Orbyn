@@ -255,7 +255,9 @@ Flashcards from the person's own pages, reviewed with spaced repetition, and rev
 exams (`packages/core/src/study.ts`, `backend/src/modules/study/`). Everything is free, and cards
 come only from Orbyn pages: nothing is imported from other apps.
 
-A **card** is any paragraph, bullet or numbered line written `Question :: Answer`. Each person keeps
+A **card** is any paragraph, bullet or numbered line written `Question :: Answer`. `Front ::: Back`
+makes a card in each direction, and `The {{leader}} sends heartbeats` (a cloze) makes one card per
+`{{…}}`, with that part hidden. `$…$` in a card is rendered as maths. Each person keeps
 their own review state for the cards on the pages they can see (a team page's cards are studied by
 each member separately). A named line keeps its card and history when its wording changes; a line
 without a name is matched by its question. Removing the line removes the card. Scheduling is FSRS
@@ -264,7 +266,7 @@ and the others in days. At most 20 new cards are introduced a day.
 
 | Method and path                           | Body / result                                                                                                  |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `GET /study`                              | `{ due_today, new_cards, reviewed_today, streak, decks[], exams[], weak[] }`                                   |
+| `GET /study`                              | `{ due_today, new_cards, reviewed_today, streak, decks[], exams[], weak[], forecast[] }`                       |
 | `GET /study/queue`                        | `?doc_id=&limit=&ahead=true` → cards to review now (due, then today's new ones), each with `next` per rating   |
 | `POST /study/cards/:id/review`            | `{ "rating": "again" \| "hard" \| "good" \| "easy" }` → the card, rescheduled                                  |
 | `PUT /study/exams`                        | `{ key, title, starts_at, doc_ids }`: the pages you're revising for an exam → the overview                     |
@@ -277,6 +279,9 @@ and the others in days. At most 20 new cards are introduced a day.
 **Exams** are upcoming events (60 days) from a subscribed calendar of the Exams kind, or events named
 like one (exam, midterm, final, test, quiz). Each has a `key` built from its source and start.
 `readiness` is the share of the attached pages' cards known well (stable for a week or more).
+`projected` is the share known well by the exam if every review is done when due and new cards are
+learnt 20 a day. `forecast` gives reviews due on each of the next 7 days, with overdue ones counted
+today. Each deck also has `next_due_at` and `imported_from`.
 
 The AI routes answer `503` without a provider. Reviewing never calls the AI. The agenda gets a
 **Study** section (cards to review, exams within two weeks), the morning digest counts cards due,
@@ -293,19 +298,38 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
 1. `POST /imports` gives an upload link for one file.
 2. The app `PUT`s the file's bytes to that link. The link goes to the **file store**, not the API.
    It works once and for ten minutes.
-3. The file store queues the file for the **converter**. The converter reads Word files and PDF
-   pages with real text directly, in seconds. It sends only scanned pages, photos and pages that are
-   mostly maths to the OCR service.
+3. The file store queues the file for the **converter**, which reads each page the cheapest way
+   that works:
+   - **Word files:** read directly. Equations become exact LaTeX.
+   - **PDF pages with real text:** read with their fonts. Columns come out in order, and repeated
+     headers, footers and page numbers are dropped. Bold, headings, lists and tables are kept.
+     Maths in maths fonts becomes LaTeX.
+   - **Scanned pages and photos:** read with the built-in Tesseract (English), then laid out the
+     same way.
+   - **Equations on scans:** read with the optional formula model when it's on; otherwise each
+     keeps a placeholder.
+   - **The heavy OCR model** replaces Tesseract only where it's configured, which it isn't by
+     default.
 4. The finished page is created with `in_uploads: true`, an in-app notice (`kind: "import"`) says
    it's ready, and the file is deleted.
 
-| Method and path       | Body / result                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `POST /imports`       | `{ file_name, bytes, mime? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up             |
-| `PUT {upload_path}`   | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`) |
-| `GET /imports`        | Your imports still going, and the last 7 days' → `[ImportJob]`                                                           |
-| `GET /imports/:id`    | → `ImportJob`                                                                                                            |
-| `DELETE /imports/:id` | Cancels an import still going, or clears a finished one → `204`                                                          |
+| Method and path             | Body / result                                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `POST /imports`             | `{ file_name, bytes, mime? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up             |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`) |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                           |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                            |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                          |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                               |
+
+`scans` is how pages without their own text are read:
+
+- `"tesseract"`: built in; printed text, no maths.
+- `"full"`: the heavy OCR model.
+- `"none"`.
+- `"unknown"`: the converter hasn't reported in the last 2 minutes.
+
+The apps use this to say what will import before an upload, not after.
 
 An `ImportJob` has these fields:
 
@@ -316,6 +340,11 @@ An `ImportJob` has these fields:
 - `error`: why it failed, in words for the person.
 - `notes`: what changed on the way in, such as "2 tables kept as lists" or "1 figure left out".
 
+**Maths.** An equation read from a PDF's fonts, or from a scan, whose layout was a guess (a stacked
+fraction, a matrix, limits above and below) is a math block with `check: true`. The apps show a
+**Check** mark on it, and the page's note says how many there are. Editing the equation clears the
+mark. Equations from Word are exact and never marked.
+
 **Pages** carry `imported_from` (`{ file_name, file_type, pages, ocr_pages, imported_at }`) and
 `in_uploads`. Moving a page into a folder (or Unfiled) or a project with `PUT /docs/:id` sets
 `in_uploads` to false, which takes it out of Uploads. Orbyn pages have no table or image blocks
@@ -325,15 +354,38 @@ placeholder line.
 **Limits:**
 
 - 50 MB and 200 pages per file.
-- Up to 40 pages per file that need OCR, and 60 OCR pages per person per day. Pages read directly
-  don't count.
+- Scanned pages: up to 200 per file and 400 per person per day with Tesseract. With the heavy OCR
+  model it's 40 per file and 60 per day. Pages read directly don't count.
 - Two files importing at once per person.
 - The upload is refused when its first bytes don't match its type. A password-protected PDF, a
   `.doc` file, or a scanned PDF on a server without OCR each fails with a message saying what to do.
 
 **Deleting files:** the file store deletes a file when its import ends, whether it's ready, failed
-or cancelled. A sweep every 10 minutes also removes anything older than 24 hours. The sweeper keeps
-the `imports` rows (file name and outcome) for 30 days.
+or cancelled. A sweep every 10 minutes also removes anything older than 24 hours, and uploads that
+never arrived after 30 minutes. It refuses new uploads when less than `FILES_MIN_FREE_MB` (1 GB)
+would be left on its disk. The sweeper keeps the `imports` rows (file name and outcome) for 30 days.
+
+### Admin → Storage (`system:manage`)
+
+These show information about stored files, never their contents. Admins can delete a file but not
+open one.
+
+| Method and path                         | Body / result                                                                                  |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /admin/storage`                    | See the list below                                                                             |
+| `DELETE /admin/storage/files/:importId` | Deletes the stored file now and cancels its import → `204` (audited as `storage.file_deleted`) |
+| `POST /admin/storage/sweep`             | Runs the file store's sweep now → `{ removed }` (audited as `storage.swept`)                   |
+
+`GET /admin/storage` returns:
+
+- `database`: its size in bytes.
+- `files`: count, bytes, the oldest file, and free disk space.
+- `reading`: how scans are read, whether equations on scans are, the number of workers, and the
+  converter's last report.
+- `queue`: imports waiting and reading, pages waiting, seconds per page, and failures today with
+  their reasons.
+- `stored`: each file with its owner, name, size, status, and when it will be deleted.
+- `history`: the last 30 days of imports, with which reader handled each page.
 
 ## Profile
 

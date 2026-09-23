@@ -1929,6 +1929,11 @@ h4.doc-heading {
   max-width: 64ch;
   font-size: 13px;
 }
+.uploads-hint {
+  margin: -6px 0 0;
+  font-size: 12px;
+  color: var(--color-faint);
+}
 .uploads-empty {
   display: grid;
   justify-items: center;
@@ -2071,4 +2076,20 @@ h4.doc-heading {
     grid-column: 1 / -1;
     justify-content: flex-end;
   }
+}
+
+/* An equation read from an imported file whose layout was a guess. */
+.doc-math {
+  position: relative;
+}
+.doc-math-check {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+  font-size: 11px;
+  font-weight: 650;
 }

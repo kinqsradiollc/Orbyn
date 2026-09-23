@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   Database,
+  HardDrive,
   LayoutDashboard,
   ListTodo,
   Network,
@@ -32,6 +33,7 @@ import { AdminAudit } from "./AdminAudit";
 import { AdminAi } from "./AdminAi";
 import { AdminSystem } from "./AdminSystem";
 import { AdminDatabase } from "./AdminDatabase";
+import { AdminStorage } from "./AdminStorage";
 import { AdminRequests } from "./AdminRequests";
 import { AdminAnalytics } from "./AdminAnalytics";
 import { AdminUserDetail } from "./AdminUserDetail";
@@ -46,6 +48,7 @@ type Tab =
   | "Teams"
   | "Audit log"
   | "Database"
+  | "Storage"
   | "AI"
   | "System";
 
@@ -57,6 +60,7 @@ const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Teams", icon: Network },
   { label: "Audit log", icon: ScrollText },
   { label: "Database", icon: Database },
+  { label: "Storage", icon: HardDrive },
   { label: "AI", icon: Sparkles },
   { label: "System", icon: ServerCog },
 ];
@@ -104,6 +108,7 @@ export function AdminView({
       (t.label !== "Requests" || canSeeRequests) &&
       (t.label !== "Analytics" || canSeeAnalytics) &&
       (t.label !== "Database" || canManageSystem) &&
+      (t.label !== "Storage" || canManageSystem) &&
       (t.label !== "System" || canManageSystem),
   );
 
@@ -180,6 +185,9 @@ export function AdminView({
           user={props.user}
           refresh={props.refresh}
         />
+      )}
+      {tab === "Storage" && canManageSystem && (
+        <AdminStorage report={props.report} />
       )}
       {tab === "AI" && canManageAi && <AdminAi {...props} />}
       {tab === "System" && canManageSystem && (

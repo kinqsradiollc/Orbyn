@@ -5,6 +5,7 @@ import {
   importCreateInput,
   importRefusal,
   importTypeOf,
+  type ImportCapabilities,
   type ImportJob,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
@@ -104,7 +105,45 @@ async function jobs(db: Queryable, userId: string, id?: string) {
   return rows.map((r) => jobOf(r, perPage));
 }
 
+/** What this server can read, from the converter's latest report. */
+export async function importCapabilities(): Promise<ImportCapabilities> {
+  const state = (
+    await pool.query<{ scans: string; formulas: boolean; fresh: boolean }>(
+      `SELECT scans, formulas, updated_at > now() - interval '2 minutes' AS fresh
+         FROM converter_state WHERE id = 1`,
+    )
+  ).rows[0];
+  const scans = !state
+    ? "unknown"
+    : !state.fresh
+      ? "unknown"
+      : (state.scans as ImportCapabilities["scans"]);
+  const heavy = scans === "full";
+  return {
+    enabled: importsEnabled(),
+    scans,
+    formulas: scans === "full" || (scans === "tesseract" && !!state?.formulas),
+    photos: scans === "full" || scans === "tesseract",
+    limits: {
+      maxBytes: IMPORT_LIMITS.maxBytes,
+      maxPages: IMPORT_LIMITS.maxPages,
+      scanPagesPerFile: heavy
+        ? IMPORT_LIMITS.maxOcrPagesPerFile
+        : IMPORT_LIMITS.maxPages,
+      scanPagesPerDay: heavy
+        ? IMPORT_LIMITS.ocrPagesPerDay
+        : IMPORT_LIMITS.scanPagesPerDay,
+    },
+  };
+}
+
 export async function importRoutes(app: FastifyInstance) {
+  /** What this server can read, so the apps can say so before an upload. */
+  app.get("/imports/capabilities", async (r) => {
+    await authenticate(r);
+    return importCapabilities();
+  });
+
   /**
    * Start an import: returns the import and a link to upload the file to,
    * good for ten minutes and one upload. The file store queues it for the

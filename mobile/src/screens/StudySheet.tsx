@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,8 +11,10 @@ import {
 } from "react-native";
 import {
   RATINGS,
+  mathToText,
   withCards,
   type Doc,
+  type DocSummary,
   type Rating,
   type RevisionPlan,
   type StudyCard,
@@ -24,7 +27,9 @@ import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
+import * as Haptics from "expo-haptics";
 import { client } from "../lib/api";
+import { useImports } from "./docs/Uploads";
 import { confirmAction } from "../lib/confirm";
 import { deviceTimeZone } from "../lib/planning";
 import { animateLayout } from "../motion";
@@ -41,7 +46,8 @@ type Mode =
       ahead?: boolean;
     }
   | { kind: "suggest"; docId: string; title: string }
-  | { kind: "plan"; exam: StudyExam };
+  | { kind: "plan"; exam: StudyExam }
+  | { kind: "pick" };
 
 const LABEL: Record<Rating, string> = {
   again: "Again",
@@ -69,7 +75,10 @@ export function StudySheet({
   onDismiss,
   onOpenPage,
   onPlanned,
+  suggestFrom,
 }: {
+  /** Open straight on suggesting cards from this page (from Docs → Uploads). */
+  suggestFrom?: { docId: string; title: string } | null;
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
@@ -87,10 +96,18 @@ export function StudySheet({
   );
   useEffect(() => {
     if (visible) {
-      setMode({ kind: "home" });
+      setMode(
+        suggestFrom
+          ? {
+              kind: "suggest",
+              docId: suggestFrom.docId,
+              title: suggestFrom.title,
+            }
+          : { kind: "home" },
+      );
       void load();
     }
-  }, [visible, load]);
+  }, [visible, load, suggestFrom]);
 
   const openPage = (docId: string) =>
     void client
@@ -106,7 +123,9 @@ export function StudySheet({
         ? "Suggested cards"
         : mode.kind === "plan"
           ? "Plan revision"
-          : "Study";
+          : mode.kind === "pick"
+            ? "Cards from a page"
+            : "Study";
 
   const home = () => {
     animateLayout();
@@ -162,6 +181,15 @@ export function StudySheet({
                   onPlanned();
                 }
                 home();
+              }}
+            />
+          ) : mode.kind === "pick" ? (
+            <Picker
+              decks={data?.decks.map((d) => d.doc_id) ?? []}
+              onError={setError}
+              onPick={(docId, t) => {
+                animateLayout();
+                setMode({ kind: "suggest", docId, title: t });
               }}
             />
           ) : !data ? (
@@ -223,23 +251,18 @@ function Home({
   onNewPage: () => void;
 }) {
   const [choosing, setChoosing] = useState<string | null>(null);
-  const [pages, setPages] = useState<{ id: string; title: string }[]>([]);
   const toReview = data.due_today + data.new_cards;
-  useEffect(() => {
-    client.listDocs().then(
-      (all) =>
-        setPages(
-          all
-            .filter(
-              (d) =>
-                d.kind !== "agenda" &&
-                !data.decks.some((x) => x.doc_id === d.id),
-            )
-            .map((d) => ({ id: d.id, title: d.title || "Untitled" })),
-        ),
-      () => setPages([]),
-    );
-  }, [data.decks]);
+  // Importing from Study: a finished upload offers "Make cards" right here.
+  const imports = useImports(onError, () => onChanged(data));
+  const readyImports = imports.jobs
+    .filter(
+      (j) =>
+        j.status === "ready" &&
+        j.doc_id &&
+        !data.decks.some((d) => d.doc_id === j.doc_id) &&
+        Date.now() - Date.parse(j.finished_at ?? j.created_at) < 3 * 86_400_000,
+    )
+    .slice(0, 3);
 
   const attach = (exam: StudyExam, ids: string[]) =>
     void client
@@ -250,6 +273,28 @@ function Home({
         doc_ids: ids,
       })
       .then(onChanged, (e: Error) => onError(e.message));
+
+  const totalCards = data.decks.reduce((n, d) => n + d.cards, 0);
+  const forecast = data.forecast ?? [];
+  const peak = Math.max(1, ...forecast.map((f) => f.due));
+  const habit = () =>
+    confirmAction(
+      "Make a daily review a habit?",
+      "Orbyn sets aside 15 minutes a day for reviewing cards.",
+      "Add the habit",
+      () =>
+        void client
+          .createHabit({
+            name: "Review cards",
+            cadence: 1,
+            period: "day",
+            duration_minutes: 15,
+          })
+          .then(
+            () => onError(""),
+            (e: Error) => onError(e.message),
+          ),
+    );
 
   return (
     <>
@@ -263,48 +308,94 @@ function Home({
         <Text style={shared.small}>
           {toReview
             ? `${data.due_today} due · ${data.new_cards} new · about ${Math.max(1, Math.round((toReview * 8) / 60))} min`
-            : "Cards come back when they're about to slip."}
+            : totalCards
+              ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
+              : "Get your first cards below."}
         </Text>
-        <Button
-          title="Start review"
-          disabled={!toReview}
-          style={s.gapTop}
-          onPress={() =>
-            onMode({ kind: "review", title: "All your cards", quiz: false })
-          }
-        />
+        {toReview > 0 ? (
+          <Button
+            title="Start review"
+            style={s.gapTop}
+            onPress={() =>
+              onMode({ kind: "review", title: "All your cards", quiz: false })
+            }
+          />
+        ) : totalCards > 0 ? (
+          <View style={s.twoButtons}>
+            <Button
+              title="Study ahead"
+              style={s.flex}
+              onPress={() =>
+                onMode({
+                  kind: "review",
+                  title: "Study ahead",
+                  quiz: false,
+                  ahead: true,
+                })
+              }
+            />
+            <Button
+              title="Quiz me"
+              secondary
+              style={s.flex}
+              onPress={() =>
+                onMode({
+                  kind: "review",
+                  title: "All your cards",
+                  quiz: true,
+                  ahead: true,
+                })
+              }
+            />
+          </View>
+        ) : null}
         <View style={s.tiles}>
           <Stat label="Reviewed today" value={data.reviewed_today} />
           <Stat label="Day streak" value={data.streak} />
         </View>
+        {totalCards > 0 && forecast.length > 0 && (
+          <View
+            style={s.forecast}
+            accessible
+            accessibilityLabel={`Reviews due over the next 7 days: ${forecast
+              .map((f) => f.due)
+              .join(", ")}`}
+          >
+            {forecast.map((f, i) => (
+              <View key={f.date} style={s.forecastDay}>
+                <View style={s.forecastTrack}>
+                  <View
+                    style={[
+                      s.forecastBar,
+                      i === 0 && s.forecastToday,
+                      { height: `${Math.max(8, (f.due / peak) * 100)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={s.forecastLabel}>
+                  {i === 0
+                    ? "Today"
+                    : new Date(`${f.date}T12:00:00`).toLocaleDateString(
+                        "en-GB",
+                        { weekday: "narrow" },
+                      )}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
         <View style={s.row}>
-          <SmallAction
-            label="New study page"
-            disabled={false}
-            onPress={onNewPage}
-          />
+          {totalCards > 0 && (
+            <SmallAction
+              label="Add cards"
+              disabled={false}
+              onPress={() => onMode({ kind: "pick" })}
+            />
+          )}
           <SmallAction
             label="Make it a daily habit"
             disabled={false}
-            onPress={() =>
-              confirmAction(
-                "Make a daily review a habit?",
-                "Orbyn sets aside 15 minutes a day for reviewing cards.",
-                "Add the habit",
-                () =>
-                  void client
-                    .createHabit({
-                      name: "Review cards",
-                      cadence: 1,
-                      period: "day",
-                      duration_minutes: 15,
-                    })
-                    .then(
-                      () => onError(""),
-                      (e: Error) => onError(e.message),
-                    ),
-              )
-            }
+            onPress={habit}
           />
         </View>
         {!!note && <Text style={[s.note, s.gapTop]}>{note}</Text>}
@@ -335,6 +426,9 @@ function Home({
                       : `in ${exam.days_left} day${exam.days_left === 1 ? "" : "s"}`}
                     {exam.readiness != null
                       ? ` · ${Math.round(exam.readiness * 100)}% known well`
+                      : ""}
+                    {exam.projected != null
+                      ? ` · ${Math.round(exam.projected * 100)}% by the exam if you keep up`
                       : ""}
                   </Text>
                 </View>
@@ -415,105 +509,187 @@ function Home({
         </>
       )}
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>YOUR PAGES WITH CARDS</Text>
       {data.decks.length === 0 ? (
-        <View style={shared.card}>
-          <Text style={s.title}>Cards come from your own pages.</Text>
-          <Text style={shared.body}>
-            In any page, write a line as “Question :: Answer” and it becomes a
-            card. Or pick a page of notes below and let the assistant suggest
-            some for you to approve.
-          </Text>
-        </View>
-      ) : (
-        <View style={shared.card}>
-          {data.decks.map((d, n) => (
-            <View key={d.doc_id} style={[s.deck, n > 0 && s.divider]}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => onOpenPage(d.doc_id)}
-              >
-                <Text style={s.title} numberOfLines={1}>
-                  {d.title}
-                </Text>
-              </Pressable>
-              <View style={s.deckMeta}>
-                <Text style={shared.small}>
-                  {d.cards} card{d.cards === 1 ? "" : "s"} · {d.known} known
-                  well
-                </Text>
-                {d.due > 0 && (
-                  <Text style={[s.pill, s.pillWarn]}>{d.due} due</Text>
-                )}
-                {d.new > 0 && <Text style={s.pill}>{d.new} new</Text>}
+        <>
+          <Text style={[shared.eyebrow, s.eyebrow]}>GET YOUR FIRST CARDS</Text>
+          <View style={shared.card}>
+            {[
+              {
+                title: "Write cards",
+                body: "A new page. Any line written as question :: answer becomes a card.",
+                action: "New study page",
+                run: onNewPage,
+              },
+              {
+                title: "Import lecture notes",
+                body: "A PDF or Word file becomes a page; then Orbyn suggests cards from it.",
+                action: imports.busy ? "Uploading…" : "Import file",
+                run: () =>
+                  void imports
+                    .pickAndImport()
+                    .catch((e: Error) => onError(e.message)),
+              },
+              {
+                title: "From a page you have",
+                body: "Pick a page, and keep the suggested cards you want.",
+                action: "Choose a page",
+                run: () => onMode({ kind: "pick" }),
+              },
+            ].map((w, n) => (
+              <View key={w.title} style={[s.way, n > 0 && s.divider]}>
+                <Text style={s.title}>{w.title}</Text>
+                <Text style={shared.small}>{w.body}</Text>
+                <View style={s.rowTight}>
+                  <SmallAction
+                    label={w.action}
+                    disabled={imports.busy && n === 1}
+                    onPress={w.run}
+                  />
+                </View>
               </View>
-              <View style={[s.bar, s.barSlim]}>
-                <View
-                  style={[
-                    s.barFill,
-                    { width: `${d.cards ? (d.known / d.cards) * 100 : 0}%` },
-                  ]}
-                />
-              </View>
-              <View style={s.rowTight}>
-                <SmallAction
-                  label="Review"
-                  disabled={!d.due && !d.new}
-                  onPress={() =>
-                    onMode({
-                      kind: "review",
-                      docId: d.doc_id,
-                      title: d.title,
-                      quiz: false,
-                    })
-                  }
-                />
-                <SmallAction
-                  label="Quiz me"
-                  disabled={false}
-                  onPress={() =>
-                    onMode({
-                      kind: "review",
-                      docId: d.doc_id,
-                      title: d.title,
-                      quiz: true,
-                      ahead: true,
-                    })
-                  }
-                />
-                <SmallAction
-                  label="Suggest"
-                  disabled={false}
-                  onPress={() =>
-                    onMode({ kind: "suggest", docId: d.doc_id, title: d.title })
-                  }
-                />
-              </View>
+            ))}
+          </View>
+          <View
+            style={s.sample}
+            accessible
+            accessibilityLabel="An example card"
+          >
+            <View style={s.sampleSide}>
+              <Text style={s.faceLabel}>QUESTION</Text>
+              <Text style={shared.body}>What does CAP stand for?</Text>
             </View>
-          ))}
-        </View>
+            <View style={[s.sampleSide, s.sampleBack]}>
+              <Text style={s.faceLabel}>ANSWER</Text>
+              <Text style={shared.small}>
+                Consistency, availability, partition tolerance
+              </Text>
+            </View>
+          </View>
+          <Text style={[shared.small, s.syntax]}>
+            Also: “A ::: B” asks both ways, and “The {"{{leader}}"} sends
+            heartbeats” hides a word.
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={[shared.eyebrow, s.eyebrow]}>
+            PAGES WITH CARDS · {data.decks.length}
+          </Text>
+          <View style={shared.card}>
+            {[...data.decks]
+              .sort(
+                (a, b) =>
+                  b.due + b.new - (a.due + a.new) ||
+                  (a.next_due_at ?? "9").localeCompare(b.next_due_at ?? "9"),
+              )
+              .map((d, n) => {
+                const pct = d.cards ? Math.round((d.known / d.cards) * 100) : 0;
+                const waiting = d.due + d.new;
+                const exam = data.exams.find((e) =>
+                  e.doc_ids.includes(d.doc_id),
+                );
+                return (
+                  <View key={d.doc_id} style={[s.deckRow, n > 0 && s.divider]}>
+                    <View
+                      style={[s.ring, pct >= 100 && s.ringDone]}
+                      accessible
+                      accessibilityLabel={`${pct}% known well`}
+                    >
+                      <Text style={s.ringText}>{pct}%</Text>
+                    </View>
+                    <View style={s.flex}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${d.title}`}
+                        onPress={() => onOpenPage(d.doc_id)}
+                      >
+                        <Text style={s.title} numberOfLines={1}>
+                          {d.title}
+                        </Text>
+                        <Text style={shared.small} numberOfLines={1}>
+                          {d.cards} card{d.cards === 1 ? "" : "s"}
+                          {d.imported_from ? ` · from ${d.imported_from}` : ""}
+                        </Text>
+                      </Pressable>
+                      <View style={s.deckMeta}>
+                        {d.due > 0 && (
+                          <Text style={[s.pill, s.pillWarn]}>{d.due} due</Text>
+                        )}
+                        {d.new > 0 && <Text style={s.pill}>{d.new} new</Text>}
+                        {exam && (
+                          <Text style={[s.pill, s.pillQuiet]}>
+                            Exam {new Date(exam.starts_at).getDate()}{" "}
+                            {new Date(exam.starts_at).toLocaleString("en-GB", {
+                              month: "short",
+                            })}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={s.rowTight}>
+                        <SmallAction
+                          label={waiting ? "Review" : "Quiz me"}
+                          disabled={false}
+                          onPress={() =>
+                            onMode(
+                              waiting
+                                ? {
+                                    kind: "review",
+                                    docId: d.doc_id,
+                                    title: d.title,
+                                    quiz: false,
+                                  }
+                                : {
+                                    kind: "review",
+                                    docId: d.doc_id,
+                                    title: d.title,
+                                    quiz: true,
+                                    ahead: true,
+                                  },
+                            )
+                          }
+                        />
+                        <SmallAction
+                          label="Suggest"
+                          disabled={false}
+                          onPress={() =>
+                            onMode({
+                              kind: "suggest",
+                              docId: d.doc_id,
+                              title: d.title,
+                            })
+                          }
+                        />
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+          </View>
+        </>
       )}
 
-      {pages.length > 0 && (
+      {readyImports.length > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>TURN NOTES INTO CARDS</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>FROM YOUR UPLOADS</Text>
           <View style={shared.card}>
-            <Text style={shared.small}>
-              Pick a page. The assistant suggests cards only from what it says,
-              and you choose which to add.
-            </Text>
-            <ChipRow label="Pages of notes" style={s.gapTop}>
-              {pages.slice(0, 12).map((p) => (
-                <Chip
-                  key={p.id}
-                  label={p.title}
-                  selected={false}
+            {readyImports.map((j, n) => (
+              <View key={j.id} style={[s.deckRow, n > 0 && s.divider]}>
+                <Text style={[shared.body, s.flex]} numberOfLines={2}>
+                  {j.file_name}
+                </Text>
+                <SmallAction
+                  label="Make cards"
+                  disabled={false}
                   onPress={() =>
-                    onMode({ kind: "suggest", docId: p.id, title: p.title })
+                    onMode({
+                      kind: "suggest",
+                      docId: j.doc_id!,
+                      title: j.file_name.replace(/\.[a-z0-9]+$/i, ""),
+                    })
                   }
                 />
-              ))}
-            </ChipRow>
+              </View>
+            ))}
           </View>
         </>
       )}
@@ -536,6 +712,94 @@ function Home({
           </View>
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * Choose a page to have cards suggested from: recently imported and edited
+ * pages first.
+ */
+function Picker({
+  decks,
+  onError,
+  onPick,
+}: {
+  decks: string[];
+  onError: (m: string) => void;
+  onPick: (docId: string, title: string) => void;
+}) {
+  const [pages, setPages] = useState<DocSummary[] | null>(null);
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    client.listDocs().then(
+      (all) =>
+        setPages(
+          all
+            .filter((d) => d.kind !== "agenda")
+            .sort(
+              (a, b) =>
+                Number(!!b.imported_from) - Number(!!a.imported_from) ||
+                b.updated_at.localeCompare(a.updated_at),
+            ),
+        ),
+      (e: Error) => {
+        onError(e.message);
+        setPages([]);
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const shown = (pages ?? []).filter((p) =>
+    `${p.title} ${p.preview}`.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+  return (
+    <>
+      <Text style={shared.small}>
+        The assistant suggests cards only from what the page says, and you
+        choose which to keep.
+      </Text>
+      <TextInput
+        style={[shared.input, s.gapTop]}
+        value={q}
+        onChangeText={setQ}
+        placeholder="Search your pages…"
+        placeholderTextColor={colors.faint}
+        accessibilityLabel="Search your pages"
+      />
+      <View style={[shared.card, s.gapTop]}>
+        {pages === null ? (
+          <Text style={shared.small}>Loading your pages…</Text>
+        ) : shown.length === 0 ? (
+          <Text style={shared.small}>No pages match.</Text>
+        ) : (
+          shown.slice(0, 60).map((p, n) => (
+            <Pressable
+              key={p.id}
+              accessibilityRole="button"
+              onPress={() => onPick(p.id, p.title || "Untitled")}
+              style={({ pressed }) => [
+                s.pickRow,
+                n > 0 && s.divider,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Text style={s.title} numberOfLines={1}>
+                {p.title || "Untitled"}
+              </Text>
+              <Text style={shared.small} numberOfLines={1}>
+                {[
+                  p.imported_from ? "Imported" : null,
+                  decks.includes(p.id) ? "Has cards" : null,
+                  p.preview || "Empty page",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </Text>
+            </Pressable>
+          ))
+        )}
+      </View>
     </>
   );
 }
@@ -608,6 +872,23 @@ function Review({
       setBusy(false);
     }
   };
+
+  // Swipe a shown card: right for Good, left for Again (with a light tap).
+  const [drag, setDrag] = useState(0);
+  const swipe = PanResponder.create({
+    onMoveShouldSetPanResponder: (_e, g) =>
+      Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+    onPanResponderMove: (_e, g) => setDrag(g.dx),
+    onPanResponderRelease: (_e, g) => {
+      setDrag(0);
+      if (Math.abs(g.dx) < 90) return;
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+        () => {},
+      );
+      void rate(g.dx > 0 ? "good" : "again");
+    },
+    onPanResponderTerminate: () => setDrag(0),
+  });
   const total = reviewed + (queue?.length ?? 0);
 
   if (!queue) return <Text style={shared.small}>Getting your cards…</Text>;
@@ -648,7 +929,16 @@ function Review({
           ]}
         />
       </View>
-      <View style={[shared.card, s.flash]}>
+      <View
+        style={[
+          shared.card,
+          s.flash,
+          shown && {
+            transform: [{ translateX: drag }, { rotate: `${drag / 40}deg` }],
+          },
+        ]}
+        {...(shown && !quiz ? swipe.panHandlers : {})}
+      >
         <View style={s.flashTop}>
           <Pressable
             accessibilityRole="link"
@@ -664,13 +954,13 @@ function Review({
         <View style={s.face}>
           <Text style={s.faceLabel}>QUESTION</Text>
           <Text style={[s.question, shown && s.questionSmall]}>
-            {card.question}
+            {mathToText(card.question)}
           </Text>
         </View>
         {shown && (
           <View style={[s.face, s.faceAnswer]}>
             <Text style={s.faceLabel}>ANSWER</Text>
-            <Text style={s.answerText}>{card.answer}</Text>
+            <Text style={s.answerText}>{mathToText(card.answer)}</Text>
           </View>
         )}
       </View>
@@ -730,6 +1020,7 @@ function Review({
           )}
           <Text style={[shared.small, s.center]}>
             How well did you know it?
+            {!quiz ? " Or swipe the card: right for Good, left for Again." : ""}
           </Text>
           <View style={s.rate}>
             {RATINGS.map((r) => (
@@ -995,6 +1286,71 @@ function Plan({
 
 const s = themed(() =>
   StyleSheet.create({
+    twoButtons: { flexDirection: "row", gap: 8, marginTop: 12 },
+    forecast: {
+      flexDirection: "row",
+      gap: 6,
+      height: 64,
+      marginTop: 14,
+      alignItems: "flex-end",
+    },
+    forecastDay: { flex: 1, height: "100%", alignItems: "center", gap: 4 },
+    forecastTrack: { flex: 1, width: "70%", justifyContent: "flex-end" },
+    forecastBar: {
+      width: "100%",
+      borderRadius: 5,
+      backgroundColor: colors.accentSoft,
+      borderWidth: 1,
+      borderColor: colors.accent,
+    },
+    forecastToday: { backgroundColor: colors.accent },
+    forecastLabel: {
+      fontFamily: fonts.regular,
+      fontSize: 10,
+      color: colors.muted,
+    },
+    way: { gap: 4, paddingVertical: 10 },
+    sample: {
+      flexDirection: "row",
+      borderRadius: radii.input,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: "hidden",
+    },
+    sampleSide: { flex: 1, padding: 12, gap: 2 },
+    sampleBack: {
+      borderLeftWidth: 1,
+      borderStyle: "dashed",
+      borderLeftColor: colors.border,
+    },
+    syntax: { marginTop: -2 },
+    deckRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 12,
+    },
+    ring: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      borderWidth: 3,
+      borderColor: colors.accentSoft,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    ringDone: { borderColor: colors.accent },
+    ringText: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.accent,
+    },
+    pillQuiet: {
+      backgroundColor: colors.surfaceMuted,
+      color: colors.textSoft,
+    },
+    pickRow: { paddingVertical: 10, gap: 2 },
     kicker: {
       fontFamily: fonts.semibold,
       fontSize: 11,

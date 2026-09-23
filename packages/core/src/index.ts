@@ -35,3 +35,5 @@ export * from "./legal.js";
 export * from "./calendar-kinds.js";
 export * from "./study.js";
 export * from "./imports.js";
+export * from "./pdftext.js";
+export * from "./omml.js";

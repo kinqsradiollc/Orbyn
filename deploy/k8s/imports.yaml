@@ -8,11 +8,10 @@
 # Both need FILES_SECRET in orbyn-secrets (files also FILES_MASTER_KEY);
 # without FILES_SECRET importing is off and these idle.
 #
-# OCR for scanned pages is not deployed here: it runs on CPU with about
-# 12 GB of RAM per worker (ocr/, Compose profile `ocr`). Run it where you
-# have the memory and set OCR_URL in orbyn-config to reach it; the converter
-# is its only client. Without OCR_URL, Word files and PDFs with real text
-# still import.
+# Scanned pages are read with Tesseract inside the converter (it's in the
+# backend image). The optional formula model (formula/) and heavy OCR model
+# (ocr/) aren't deployed here; run them where you have the memory and set
+# FORMULA_URL / OCR_URL in orbyn-config.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

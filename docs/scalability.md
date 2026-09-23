@@ -38,20 +38,21 @@ flowchart LR
   P -. streaming replication .-> R
 ```
 
-| Layer           | Scales by                                      | Notes                                                                          |
-| --------------- | ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| Load balancer   | Managed (ALB, Cloud Load Balancing, ingress)   | Terminates TLS, health-checks gateways on `/health`                            |
-| Gateway (nginx) | More instances behind the load balancer        | Routes `/ai/*`, `/status`, everything else; keep-alive upstreams; `least_conn` |
-| `api`           | Horizontal, CPU-based autoscaling              | Planner, auth, teams, admin                                                    |
-| `ai`            | Horizontal                                     | Mostly waiting on providers; scale on concurrency                              |
-| `realtime`      | Horizontal, on CPU and memory                  | Holds the apps' open streams; one `LISTEN` connection per copy fans news out   |
-| `status`        | 2 for availability                             | One prober at a time (advisory lock); report cached 15 s                       |
-| `notifier`      | Horizontal                                     | Parallel lanes (`NOTIFIER_CONCURRENCY`) per instance                           |
-| `files`         | 1, on a volume; shard by import id if needed   | Holds upload streams only; files live a day at most                            |
-| `converter`     | Horizontal                                     | Claims files and pages with `SKIP LOCKED`; one OCR lane per OCR worker         |
-| `ocr`           | More containers (`--scale ocr=N`), ~12 GB each | CPU only, one page at a time per container; set `OCR_WORKERS` to match         |
-| PgBouncer       | 2+ instances, scaled by hand                   | Transaction pooling; `<db>_read` route to a replica                            |
-| Postgres        | Vertical primary, horizontal read replicas     | Managed service recommended in production                                      |
+| Layer           | Scales by                                      | Notes                                                                                        |
+| --------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Load balancer   | Managed (ALB, Cloud Load Balancing, ingress)   | Terminates TLS, health-checks gateways on `/health`                                          |
+| Gateway (nginx) | More instances behind the load balancer        | Routes `/ai/*`, `/status`, everything else; keep-alive upstreams; `least_conn`               |
+| `api`           | Horizontal, CPU-based autoscaling              | Planner, auth, teams, admin                                                                  |
+| `ai`            | Horizontal                                     | Mostly waiting on providers; scale on concurrency                                            |
+| `realtime`      | Horizontal, on CPU and memory                  | Holds the apps' open streams; one `LISTEN` connection per copy fans news out                 |
+| `status`        | 2 for availability                             | One prober at a time (advisory lock); report cached 15 s                                     |
+| `notifier`      | Horizontal                                     | Parallel lanes (`NOTIFIER_CONCURRENCY`) per instance                                         |
+| `files`         | 1, on a volume; shard by import id if needed   | Holds upload streams only; files live a day at most                                          |
+| `converter`     | Horizontal                                     | Claims files and pages with `SKIP LOCKED`; runs Tesseract itself (`TESSERACT_WORKERS` lanes) |
+| `formula`       | 1, ~1–2 GB (optional)                          | pix2tex for equations on scans; only lines that look like maths are sent                     |
+| `ocr`           | More containers (`--scale ocr=N`), ~12 GB each | CPU only, one page at a time per container; set `OCR_WORKERS` to match                       |
+| PgBouncer       | 2+ instances, scaled by hand                   | Transaction pooling; `<db>_read` route to a replica                                          |
+| Postgres        | Vertical primary, horizontal read replicas     | Managed service recommended in production                                                    |
 
 ### Why realtime is its own service
 

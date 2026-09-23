@@ -1,0 +1,181 @@
+/* Admin → Storage: what the server holds. */
+.admin-storage {
+  display: grid;
+  gap: 16px;
+}
+.storage-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.storage-stat {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  padding: 16px 18px;
+}
+.storage-stat > small {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.storage-stat > strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 20px;
+  font-weight: 750;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.storage-meter {
+  display: block;
+  height: 6px;
+  margin: 4px 0 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-track);
+  overflow: hidden;
+}
+.storage-meter i {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+.storage-bad {
+  color: var(--color-danger) !important;
+}
+.storage-section {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+}
+.storage-section h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+}
+.storage-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+.storage-head p {
+  margin: 4px 0 0;
+  max-width: 62ch;
+  font-size: 12.5px;
+}
+.storage-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.storage-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-accentText);
+}
+.storage-empty {
+  margin: 0;
+  font-size: 13px;
+}
+.storage-files,
+.storage-reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.storage-files li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.storage-kind {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accentSoft);
+  color: var(--color-accentText);
+  font-size: 10px;
+  font-weight: 750;
+}
+.storage-kind.is-pdf {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.storage-kind.is-png,
+.storage-kind.is-jpeg {
+  background: var(--color-infoSoft);
+  color: var(--color-info);
+}
+.storage-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.storage-main strong {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.storage-main small {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.storage-delete {
+  padding: 7px 12px;
+}
+.storage-reasons li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.storage-reasons li:last-child {
+  border-bottom: 0;
+}
+.storage-table {
+  overflow-x: auto;
+}
+.storage-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.storage-table th,
+.storage-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-divider);
+  white-space: nowrap;
+}
+.storage-table th {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.storage-table td:first-child {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 640px) {
+  .storage-files li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .storage-delete {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+}

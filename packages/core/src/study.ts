@@ -6,7 +6,8 @@ import { newBlockId, type DocBlock } from "./docs.js";
  * repetition, and revision planned around your exams.
  *
  * A card is any line of a page written as `Question :: Answer` (a paragraph,
- * bullet or numbered line). Cards come only from Orbyn pages — nothing is
+ * bullet or numbered line). `Front ::: Back` makes a card each way, and a
+ * line with `{{hidden words}}` makes one card per hidden part (a cloze). Cards come only from Orbyn pages — nothing is
  * imported from other apps — and each keeps a link to the line it came from,
  * so editing the page edits the card.
  */
@@ -23,6 +24,32 @@ export type PageCard = {
 };
 
 const CARD_LINE = /^(.+?)\s+::\s+(.+)$/s;
+const BOTH_WAYS = /^(.+?)\s+:::\s+(.+)$/s;
+const CLOZE = /\{\{(.+?)\}\}/g;
+
+/** The blank shown in place of a hidden part of a cloze card. */
+export const CLOZE_BLANK = "[…]";
+
+/** A line's cloze cards: one per `{{…}}`, the others shown. */
+export function clozeCards(
+  text: string,
+): { question: string; answer: string }[] {
+  const parts = [...text.matchAll(CLOZE)].map((m) => m[1].trim());
+  return parts
+    .map((answer, n) => {
+      let i = -1;
+      const question = text.replace(CLOZE, (_m, inner: string) => {
+        i++;
+        return i === n ? CLOZE_BLANK : inner;
+      });
+      return { question: question.trim(), answer };
+    })
+    .filter((c) => c.answer);
+}
+
+/** Whether a line makes cards (for quick checks before reading a page). */
+export const isCardLine = (text: string) =>
+  CARD_LINE.test(text) || BOTH_WAYS.test(text) || /\{\{.+?\}\}/.test(text);
 
 /** A normalised question, for matching a card to its line again. */
 const questionKey = (q: string) =>
@@ -35,15 +62,31 @@ export function cardsInBlocks(blocks: DocBlock[]): PageCard[] {
   for (const b of blocks) {
     if (b.type !== "paragraph" && b.type !== "bullet" && b.type !== "numbered")
       continue;
+    const add = (key: string, question: string, answer: string) => {
+      if (!question || !answer || seen.has(key)) return;
+      seen.add(key);
+      out.push({ key, block_id: b.id ?? null, question, answer });
+    };
+    const both = b.text.match(BOTH_WAYS);
+    if (both) {
+      const front = both[1].trim();
+      const back = both[2].trim();
+      const key = b.id ?? questionKey(front);
+      add(key, front, back);
+      add(`${key}#r`, back, front);
+      continue;
+    }
     const m = b.text.match(CARD_LINE);
-    if (!m) continue;
-    const question = m[1].trim();
-    const answer = m[2].trim();
-    if (!question || !answer) continue;
-    const key = b.id ?? questionKey(question);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, block_id: b.id ?? null, question, answer });
+    if (m) {
+      const question = m[1].trim();
+      add(b.id ?? questionKey(question), question, m[2].trim());
+      continue;
+    }
+    const cloze = clozeCards(b.text);
+    if (cloze.length) {
+      const base = b.id ?? questionKey(b.text.replace(CLOZE, "$1"));
+      cloze.forEach((c, n) => add(`${base}#c${n + 1}`, c.question, c.answer));
+    }
   }
   return out;
 }
@@ -151,6 +194,36 @@ const intervalDays = (stability: number) =>
   );
 
 /** The card after a review rated `rating` at `now`. */
+/**
+ * The share of cards known well (stable for a week or more) at `at`, if
+ * every review is done "good" when it's due and new cards are learnt
+ * `perDay` a day from `now`. A plan, not a promise: it shows whether
+ * keeping up is enough before an exam.
+ */
+export function projectKnown(
+  cards: CardState[],
+  at: Date,
+  now = new Date(),
+  perDay = 20,
+): number | null {
+  if (!cards.length) return null;
+  let known = 0;
+  let fresh = 0;
+  for (const c of cards) {
+    let s = c;
+    let when =
+      c.reps === 0
+        ? new Date(now.getTime() + Math.floor(fresh++ / perDay) * 86_400_000)
+        : new Date(Math.max(Date.parse(c.due_at), now.getTime()));
+    for (let step = 0; step < 40 && when < at; step++) {
+      s = review(s, "good", when);
+      when = new Date(s.due_at);
+    }
+    if (s.reps > 0 && s.stability >= 7) known++;
+  }
+  return Math.round((known / cards.length) * 100) / 100;
+}
+
 export function review(
   card: CardState,
   rating: Rating,
@@ -242,6 +315,10 @@ export type StudyDeck = {
   due: number;
   new: number;
   known: number;
+  /** When its next card comes back (null when all are new). */
+  next_due_at?: string | null;
+  /** The file the page was imported from, for an imported page. */
+  imported_from?: string | null;
 };
 
 export type StudyExam = {
@@ -255,6 +332,11 @@ export type StudyExam = {
   doc_ids: string[];
   /** Share of the attached decks' cards known well (0–1); null with none. */
   readiness: number | null;
+  /**
+   * The share known well by the exam if every review is done when it's
+   * due and new cards are learnt at the daily pace (0–1); null with none.
+   */
+  projected?: number | null;
   days_left: number;
 };
 
@@ -266,6 +348,8 @@ export type StudyOverview = {
   streak: number;
   decks: StudyDeck[];
   exams: StudyExam[];
+  /** Reviews due on each of the next 7 days (today includes overdue). */
+  forecast?: { date: string; due: number }[];
   /** The cards forgotten most, with the page to re-read. */
   weak: {
     id: string;

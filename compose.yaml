@@ -209,15 +209,38 @@ services:
     environment:
       <<: *backend-env
       FILES_URL: http://files:8000
+      # Scanned pages and photos are read with the built-in Tesseract; set
+      # OCR_URL only to use the heavy `ocr` model instead.
       OCR_URL: ${OCR_URL:-}
       OCR_WORKERS: ${OCR_WORKERS:-1}
+      TESSERACT_WORKERS: ${TESSERACT_WORKERS:-2}
+      FORMULA_URL: ${FORMULA_URL:-}
     command: ["node", "backend/dist/services/converter.js"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
-  # Reads scanned pages and photos with Unlimited-OCR on CPU (no GPU). Off
-  # unless asked for, like mail: add `ocr` to COMPOSE_PROFILES in .env and
+  # Reads pictures of equations on scanned pages as LaTeX (pix2tex, about
+  # 1 GB of RAM, CPU). Off unless asked for: add `formula` to
+  # COMPOSE_PROFILES and set FORMULA_URL=http://formula:8000. Without it,
+  # such equations keep a placeholder; everything else still imports.
+  formula:
+    build:
+      context: ./formula
+    profiles: [formula]
+    mem_limit: ${FORMULA_MEMORY:-2g}
+    cpus: ${FORMULA_CPUS:-2}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5m
+      retries: 5
+    restart: unless-stopped
+
+  # The heavy OCR model, for servers with plenty of memory: Unlimited-OCR on
+  # CPU (no GPU), about 12 GB. Scanned pages are read with the built-in
+  # Tesseract without it. Off unless asked for: add `ocr` to COMPOSE_PROFILES in .env and
   # set OCR_URL=http://ocr:8000, then `docker compose up -d --build`. The
   # model (about 12 GB of RAM in float32) downloads once into ocr_models.
   # It publishes no port to the machine. After the first start has downloaded

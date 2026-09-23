@@ -19,7 +19,42 @@
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": true,
+            "activationRule": {
+              "supportsFileWithMaxCount": 5,
+              "supportsImageWithMaxCount": 5
+            }
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "image/png",
+              "image/jpeg"
+            ],
+            "multipleShareMimeTypes": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              "image/png",
+              "image/jpeg"
+            ]
+          }
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Orbyn uses the camera to scan your notes into a page.",
+          "photosPermission": "Orbyn reads a photo of your notes you choose, to turn it into a page."
+        }
+      ]
     ],
     "extra": {
       "eas": {

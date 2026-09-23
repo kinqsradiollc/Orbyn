@@ -7,6 +7,7 @@ import {
   importTypeOf,
   ocrPageToMarkdown,
   pageNeedsOcr,
+  pageToMarkdown,
   sniffImportType,
   tablesToBullets,
   textPageToMarkdown,
@@ -208,8 +209,9 @@ test("a PDF's own text is read; a blank page is left for OCR; one page can be cu
   const pages = await readPdf(data, 200);
   assert.equal(pages.length, 2);
   assert.equal(pages[0].needsOcr, false);
-  assert.match(pages[0].markdown, /^# Consensus and Raft/);
-  assert.match(pages[0].markdown, /Raft elects a single leader/);
+  const md = pageToMarkdown(pages[0].text, 1).markdown;
+  assert.match(md, /^# Consensus and Raft/);
+  assert.match(md, /Raft elects a single leader/);
   assert.equal(pages[1].needsOcr, true);
   const one = await PDFDocument.load(await singlePage(data, 2));
   assert.equal(one.getPageCount(), 1);

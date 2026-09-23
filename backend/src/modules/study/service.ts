@@ -6,6 +6,7 @@ import {
   localDateKey,
   newCardState,
   nextIntervals,
+  projectKnown,
   type CardState,
   type DocBlock,
   type RevisionPlan,
@@ -94,7 +95,9 @@ export async function syncCards(db: Db, userId: string) {
   const pages = (
     await db.query<{ id: string; content: DocBlock[] }>(
       `SELECT d.id, d.content FROM docs d
-        WHERE ${VISIBLE_DOC} AND d.content::text LIKE '% :: %'
+        WHERE ${VISIBLE_DOC}
+          AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '% ::: %'
+               OR d.content::text LIKE '%{{%}}%')
         ORDER BY d.updated_at DESC LIMIT 500`,
       [userId],
     )
@@ -166,7 +169,7 @@ export async function studyOverview(
   const tz = (await loadPrefs(pool, userId)).timezone || "UTC";
   const todayEnd = endOfToday(now, tz);
   const todayStart = dayTime(localDateKey(now, tz), 0, tz);
-  const [decks, counts, reviewed, days, weak, exams, attached] =
+  const [decks, counts, reviewed, days, weak, exams, attached, ahead, states] =
     await Promise.all([
       pool.query<{
         doc_id: string;
@@ -176,14 +179,18 @@ export async function studyOverview(
         due: number;
         fresh: number;
         known: number;
+        next_due_at: string | null;
+        imported_from: string | null;
       }>(
         `SELECT c.doc_id, d.title, d.team_id, count(*)::int AS cards,
+                min(c.due_at) FILTER (WHERE c.reps > 0) AS next_due_at,
+                d.imported_from->>'file_name' AS imported_from,
                 count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due,
                 count(*) FILTER (WHERE c.reps = 0)::int AS fresh,
                 count(*) FILTER (WHERE c.reps > 0 AND c.stability >= 7)::int AS known
            FROM study_cards c JOIN docs d ON d.id = c.doc_id
           WHERE c.user_id = $1
-          GROUP BY c.doc_id, d.title, d.team_id, d.updated_at
+          GROUP BY c.doc_id, d.title, d.team_id, d.updated_at, d.imported_from
           ORDER BY max(d.updated_at) DESC`,
         [userId, todayEnd],
       ),
@@ -225,6 +232,19 @@ export async function studyOverview(
         "SELECT exam_key, doc_ids FROM study_exams WHERE user_id = $1",
         [userId],
       ),
+      // Reviews due on each of the next seven days (overdue counts today).
+      pool.query<{ day: string; n: number }>(
+        `SELECT to_char(greatest(due_at, $3) AT TIME ZONE $2, 'YYYY-MM-DD') AS day,
+                count(*)::int AS n
+           FROM study_cards
+          WHERE user_id = $1 AND reps > 0 AND due_at < $3 + interval '8 days'
+          GROUP BY 1`,
+        [userId, tz, now],
+      ),
+      pool.query<CardRow>(
+        `${CARD_SELECT} WHERE c.user_id = $1 ORDER BY c.created_at`,
+        [userId],
+      ),
     ]);
   // A streak counts back from today, or from yesterday if today's review
   // hasn't happened yet.
@@ -244,7 +264,20 @@ export async function studyOverview(
     due: d.due,
     new: d.fresh,
     known: d.known,
+    next_due_at: d.next_due_at,
+    imported_from: d.imported_from,
   }));
+  const dueOn = new Map(ahead.rows.map((a) => [a.day, a.n]));
+  const forecast = Array.from({ length: 7 }, (_, i) => {
+    const date = addDays(localDateKey(now, tz), i);
+    return { date, due: dueOn.get(date) ?? 0 };
+  });
+  const statesBy = new Map<string, CardState[]>();
+  for (const c of states.rows) {
+    const list = statesBy.get(c.doc_id) ?? [];
+    list.push(stateOf(c));
+    statesBy.set(c.doc_id, list);
+  }
   const byDoc = new Map(deckList.map((d) => [d.doc_id, d]));
   const attachedBy = new Map(attached.rows.map((a) => [a.exam_key, a.doc_ids]));
   const newLeft = Math.max(0, NEW_PER_DAY - reviewed.rows[0].new_today);
@@ -254,6 +287,7 @@ export async function studyOverview(
     reviewed_today: reviewed.rows[0].n,
     streak,
     decks: deckList,
+    forecast,
     exams: exams.map((e) => {
       const docIds = (attachedBy.get(e.key) ?? []).filter((id) =>
         byDoc.has(id),
@@ -264,6 +298,12 @@ export async function studyOverview(
         ...e,
         doc_ids: docIds,
         readiness: cards ? Math.round((known / cards) * 100) / 100 : null,
+        projected: projectKnown(
+          docIds.flatMap((id) => statesBy.get(id) ?? []),
+          new Date(e.starts_at),
+          now,
+          NEW_PER_DAY,
+        ),
       };
     }),
     weak: weak.rows.map((w) => ({

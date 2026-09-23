@@ -8,7 +8,7 @@ database or to AI providers directly; everything goes through the gateway.
                  ├─► load balancer ─► gateway ──┼─► ai ──────┼─► PgBouncer ─► Postgres primary
  mobile (Expo) ──┘    (production)  └─► status ──┘                  │        └─► read replicas
                                        notifier ─► SMTP, Expo Push ┘
-                                       files ◄─ converter ─► ocr (profile, CPU)
+                                       files ◄─ converter (Tesseract) ─► formula · ocr (profiles)
 ```
 
 ## Services
@@ -60,30 +60,50 @@ like this:
 - A sweep every 10 minutes deletes files whose import has ended or vanished, uploads that stalled,
   and anything older than 24 hours.
 
-The **converter** has one reading lane and one OCR lane per OCR worker (`OCR_WORKERS`):
+The **converter** reads each page the cheapest way that works. It has one reading lane, plus one
+scan lane per worker: `TESSERACT_WORKERS` lanes (2 by default) with the built-in Tesseract, or
+`OCR_WORKERS` lanes with the heavy model.
 
-- The reading lane claims queued imports with `SKIP LOCKED`. It reads Word files with its own zip
-  and XML reader (`modules/imports/docx.ts`), and PDF pages with pdf.js.
-- A PDF page with real text becomes Markdown at once. Size decides headings, bullet characters
-  become lists, and wrapped lines are joined.
-- A page with no real text, garbled text or mostly maths gets an `import_pages` row for OCR.
-- The OCR lanes take waiting pages in page order across every import, so one long scan doesn't hold
-  up everyone else. Each lane cuts the page out (pdf-lib) and posts it to the OCR service.
-- The OCR output has region markers. The converter uses them to drop headers, footers and page
-  numbers and to note figures, then turns tables into bullets
-  (`ocrPageToMarkdown` in `@orbyn/core`).
-- When the last page is in, `assembleImport` builds the page: its title, headings stepped down so
-  there's one section per slide, a source line, and the editor's limits. The converter then creates
-  the page in Uploads, sends an in-app notice and deletes the file.
-- Work a crashed converter held is taken up again after 15 minutes (reading) or the OCR timeout
-  (pages).
+- **Claiming work.** The reading lane claims queued imports with `SKIP LOCKED`.
+- **Word files.** Read with Orbyn's own zip and XML reader (`modules/imports/docx.ts`). Word stores
+  equations as OMML, which `ommlToLatex` in `@orbyn/core` turns into exact LaTeX: fractions,
+  scripts, roots, sums with limits, brackets, accents and matrices.
+- **PDF pages with real text.** pdf.js gives each piece of text with its position, size and real
+  font name. `pageToMarkdown` (`packages/core/src/pdftext.ts`) rebuilds the page from that:
+  - lines in reading order, with two-column pages read column by column;
+  - running headers, footers and page numbers dropped (lines that repeat at the edges across the
+    file);
+  - bold and italic from the font, and headings from size and weight;
+  - bullet and numbered lists, and wrapped lines joined;
+  - aligned rows turned into tables of bullets;
+  - maths: text in maths fonts (TeX's CMMI/CMSY/CMEX, Word's Cambria Math, STIX…) and maths
+    symbols become LaTeX, and raised or lowered small text becomes superscripts and subscripts.
+    A line that is mostly maths becomes a display equation, with a right-hand "(3.1)" as `\tag`.
+    When the layout was a guess (lines stacked above and below), the block gets `check: true`.
+- **Pages without real text** (scans, photos) or with garbled text get an `import_pages` row. The
+  scan lanes take these pages in page order across every import, so one long scan doesn't hold up
+  everyone else. Each lane draws the page with `pdftoppm` at 300 dpi and reads it with Tesseract.
+  Tesseract returns words with boxes, which go through the same `pageToMarkdown`.
+- **Equations on scans.** Lines Tesseract reads with low confidence that look like maths are
+  cropped and sent to the formula model (pix2tex, the `formula` profile) when `FORMULA_URL` is set.
+  Its LaTeX comes back as a checked math block. Without it, such a line becomes "Equation on page N
+  (not read)".
+- **The heavy model.** With `OCR_URL` set (the `ocr` profile, Unlimited-OCR), each scanned page is
+  posted to it instead. Its region markers are used to drop headers, footers and page numbers
+  (`ocrPageToMarkdown`).
+- **Finishing.** `assembleImport` builds the page: its title, headings stepped down so there's one
+  section per slide, the checked equations, a source line, and the editor's limits. The converter
+  then creates the page in Uploads, sends an in-app notice and deletes the file. Each page records
+  which reader handled it (`text`, `docx`, `tesseract`, `full`) for Admin → Storage.
+- **Reporting in.** With each heartbeat, the converter writes what it can read to
+  `converter_state`. `GET /imports/capabilities` and Admin → Storage read it from there.
+- **Recovery.** Work a crashed converter held is taken up again after 15 minutes (reading) or the
+  OCR timeout (pages).
 
-The **OCR service** (`ocr/`) is a small Python HTTP server built on the CPU stack of
-say4n/unlimited-ocr-container. It loads `baidu/Unlimited-OCR` once, in float32 on CPU, and reads
-one page at a time. You scale it by running more containers. It runs only where the Compose profile
-`ocr` is on and `OCR_URL` points at it. Without it, Word files and text PDFs still import, and
-scanned pages are refused with a clear message. For development, `scripts/ocr-standin.mjs` answers
-like it without the model.
+Tesseract (English and page orientation) and `pdftoppm` are installed in the backend image. The
+formula model (`formula/`) and the heavy OCR model (`ocr/`) are separate, optional images behind
+Compose profiles, and neither is built on a development machine. `scripts/ocr-standin.mjs` stands
+in for the heavy model there.
 
 Several notifier instances can run at once: scheduling is serialized with a Postgres advisory lock,
 while delivery uses `FOR UPDATE SKIP LOCKED` so instances never process the same notification

@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CalendarDays,
   FastForward,
+  FileText,
   Hourglass,
   UserCheck,
   Wand2,
@@ -32,6 +33,8 @@ type Props = {
   onOpenBooking: (bookingId: string) => void;
   /** Opens a template that is ready to start, for review ("template" notices). */
   onOpenTemplate?: (templateId: string) => void;
+  /** Opens a page in Docs (an imported file that's ready: "import" notices). */
+  onOpenDoc?: (docId: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -43,6 +46,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   deadline: Hourglass,
   rsvp: UserCheck,
   template: LayoutTemplate,
+  import: FileText,
 };
 
 export function NotificationsView({
@@ -55,6 +59,7 @@ export function NotificationsView({
   onOpenItem,
   onOpenBooking,
   onOpenTemplate,
+  onOpenDoc,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -69,6 +74,11 @@ export function NotificationsView({
         };
         // Answers to invitations point at the event.
         const eventId = n.kind === "rsvp" ? n.item_id : undefined;
+        // An imported file that's ready points at its page ("doc:<id>").
+        const docId =
+          n.kind === "import" && n.ref?.startsWith("doc:")
+            ? n.ref.slice(4).split(":")[0]
+            : undefined;
         const openEvent = (id: string) => {
           if (!n.read) onRead(n);
           onOpenItem(id);
@@ -92,7 +102,12 @@ export function NotificationsView({
                   ? openBooking(bookingId)
                   : eventId
                     ? openEvent(eventId)
-                    : onRead(n)
+                    : docId && onOpenDoc
+                      ? (() => {
+                          if (!n.read) onRead(n);
+                          onOpenDoc(docId);
+                        })()
+                      : onRead(n)
               }
             >
               <Icon size={19} />

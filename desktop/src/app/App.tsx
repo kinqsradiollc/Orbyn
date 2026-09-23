@@ -803,6 +803,12 @@ export function App() {
                     setTemplateToOpen(id);
                     navigate("Projects");
                   }}
+                  onOpenDoc={(id) =>
+                    void client.getDoc(id).then((doc) => {
+                      setNoteDoc(doc);
+                      navigate("Docs");
+                    }, report)
+                  }
                 />
               )}
               {view === "Settings" && (

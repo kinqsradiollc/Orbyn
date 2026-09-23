@@ -35,6 +35,7 @@ export function InboxScreen({
   onOpenItem,
   onOpenTemplate,
   onOpenItemById,
+  onOpenDoc,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -53,6 +54,8 @@ export function InboxScreen({
   onOpenTemplate?: (notice: Notice) => void;
   /** Open a task an ask is about. */
   onOpenItemById?: (itemId: string) => void;
+  /** Open the page an "import" notice is about (`ref` = "doc:<id>"). */
+  onOpenDoc?: (notice: Notice, docId: string) => void;
 }) {
   const asks = onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null;
   if (!notices.length)
@@ -75,6 +78,11 @@ export function InboxScreen({
       {asks}
       {notices.map((n, i) => {
         const booking = n.kind === "booking" && !!n.ref;
+        // An imported file that's ready points at its page.
+        const docId =
+          n.kind === "import" && n.ref?.startsWith("doc:")
+            ? n.ref.slice(4).split(":")[0]
+            : null;
         const action =
           n.kind === "conflict" && n.ref
             ? { label: "Reschedule", run: onReschedule }
@@ -86,7 +94,12 @@ export function InboxScreen({
                   ? { label: "Open event", run: onOpenItem }
                   : n.kind === "template" && n.ref && onOpenTemplate
                     ? { label: "Review", run: onOpenTemplate }
-                    : null;
+                    : docId && onOpenDoc
+                      ? {
+                          label: "Open page",
+                          run: (x: Notice) => onOpenDoc(x, docId),
+                        }
+                      : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
@@ -99,7 +112,13 @@ export function InboxScreen({
                     ? undefined
                     : "Marks this notice as read"
               }
-              onPress={() => (booking ? onOpenBooking(n) : onRead(n))}
+              onPress={() =>
+                booking
+                  ? onOpenBooking(n)
+                  : docId && onOpenDoc
+                    ? onOpenDoc(n, docId)
+                    : onRead(n)
+              }
               style={({ pressed }) => [
                 s.row,
                 !n.read && s.unread,

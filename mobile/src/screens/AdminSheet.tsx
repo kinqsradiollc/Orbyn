@@ -32,6 +32,7 @@ import { shared } from "../styles";
 import { AdminAi } from "./AdminAi";
 import { LegalCard } from "./AdminLegal";
 import { AdminDatabase } from "./AdminDatabase";
+import { AdminStorage } from "./AdminStorage";
 import {
   AdminAccount,
   AdminAnalyticsView,
@@ -53,6 +54,7 @@ type Segment =
   | "teams"
   | "audit"
   | "database"
+  | "storage"
   | "ai"
   | "system";
 
@@ -61,6 +63,7 @@ const SEGMENT_LABELS = {
   analytics: "Analytics",
   requests: "Requests",
   database: "Database",
+  storage: "Storage",
   ai: "AI",
   system: "System",
 } as const;
@@ -110,7 +113,7 @@ export function AdminSheet({
       ? (["requests"] as const)
       : []),
     // The database is shown to those who run the system, as on the desktop.
-    ...(canManageSystem ? (["database"] as const) : []),
+    ...(canManageSystem ? (["database", "storage"] as const) : []),
     ...(canManageAi ? (["ai"] as const) : []),
     ...(canManageSystem ? (["system"] as const) : []),
   ];
@@ -188,6 +191,9 @@ export function AdminSheet({
             {segment === "audit" && <Audit act={act} busy={busy} />}
             {segment === "database" && canManageSystem && (
               <AdminDatabase act={act} busy={busy} meId={user?.id} />
+            )}
+            {segment === "storage" && canManageSystem && (
+              <AdminStorage act={act} busy={busy} />
             )}
             {segment === "ai" && canManageAi && (
               <AdminAi act={act} busy={busy} />

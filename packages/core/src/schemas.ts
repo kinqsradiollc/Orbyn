@@ -301,7 +301,12 @@ const docBlock = z.discriminatedUnion("type", [
     text: z.string().max(20000),
     lang: z.string().max(20).default(""),
   }),
-  z.object({ ...named, type: z.literal("math"), text: z.string().max(4000) }),
+  z.object({
+    ...named,
+    type: z.literal("math"),
+    text: z.string().max(4000),
+    check: z.boolean().optional(),
+  }),
   z.object({ ...named, type: z.literal("divider") }),
 ]);
 

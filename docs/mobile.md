@@ -21,10 +21,23 @@ message instead.
   beside the editor and collapses it behind Browse library on narrow screens; on wide screens
   Hide library gives the page the full width, and the web sidebar collapses to an icon rail.
 - Import file (Documents) picks a PDF, Word file or photo of notes with `expo-document-picker`
-  and uploads it. The page lands in the Uploads collection, which also shows files still being
+  and uploads it. **Scan notes** takes a photo with the camera (`expo-image-picker`) when the
+  server can read photos (`GET /imports/capabilities`). Files **shared to Orbyn** from another app
+  (the iOS share extension and Android share targets from `expo-sharing`, set up in `app.json`)
+  are imported too, and Docs opens on Uploads. Uploads rows offer Make cards (it opens Study's
+  suggestions) and Import again after a failure. Tapping an "import ready" notice opens the page. The page lands in the Uploads collection, which also shows files still being
   read, with progress. Move to folder files a page and takes it out of Uploads. The picker is a
-  native module, so iOS and Android need a new development or EAS build after this change. The
-  web build works as is.
+  native module, so iOS and Android need a new development or EAS build after this change: the
+  picker, the camera, the share extension, haptics and file saving are all native. The web build
+  works as is.
+- Study matches the web: three ways to get your first cards, pages with cards as compact rows,
+  Study ahead and Quiz me when nothing is due, a 7-day forecast, and each exam's projection.
+  Maths in cards reads as text. While reviewing, swipe a shown card right for Good or left for
+  Again, with a light haptic tap.
+- Settings → Passkeys lists and removes passkeys; Add a passkey opens the web app in a browser
+  sheet (passkeys belong to Orbyn's web address). Sync & devices can forget a device. Exporting a
+  page (every format) and an admin's export of a user's data are saved through the share sheet
+  (`expo-file-system`, `expo-sharing`). Admin → Storage is on the phone too.
 - Document cards expose Open, Star and Folder separately to accessibility services. Document
   titles grow as they wrap, including while editing.
 - Projects opens on Tasks, with Notes, Timeline, Decisions and History in separate views.

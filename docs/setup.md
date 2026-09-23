@@ -132,7 +132,8 @@ docker compose down -v                  # stop and delete the database volume
 | `notifier`         | no port                                             | Reminder delivery                                                        |
 | `files`            | internal `files:8000`                               | File store for imports; uploads arrive through the gateway's `/files/u/` |
 | `converter`        | no port                                             | Turns imported PDFs, Word files and photos into pages                    |
-| `ocr`              | internal `ocr:8000`                                 | OCR for scanned pages (`ocr` profile; production server only)            |
+| `formula`          | internal `formula:8000`                             | Equations on scanned pages (`formula` profile; optional)                 |
+| `ocr`              | internal `ocr:8000`                                 | Heavy OCR model (`ocr` profile; off by default, big servers only)        |
 | `postgres`         | `localhost:5433`                                    | Database                                                                 |
 | `pgbouncer`        | internal `pgbouncer:6432`                           | Connection pooler every service connects through                         |
 | `postgres-replica` | `localhost:5434`                                    | Streaming read replica (`replica` profile, optional)                     |
@@ -194,8 +195,13 @@ address (for example `http://localhost:8008`). Then run the converter:
 npm run dev:converter -w backend
 ```
 
-Never build the OCR image on a development machine. To try scanned pages, run the stand-in, which
-answers like the OCR service without the model, and point the converter at it:
+Scanned pages and photos are read with Tesseract, which the converter runs directly. For that
+locally, install it with `pdftoppm` (`brew install tesseract poppler` on macOS, or
+`apt install tesseract-ocr poppler-utils`). Without them, only Word files and PDFs with real text
+import.
+
+Never build the `formula` or heavy `ocr` image on a development machine. To try the heavy model's
+path, run the stand-in, which answers like it without the model, and point the converter at it:
 
 ```bash
 node scripts/ocr-standin.mjs

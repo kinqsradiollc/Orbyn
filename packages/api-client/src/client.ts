@@ -5,6 +5,8 @@ import {
   type AdminUserDetail,
   type Announcement,
   type LegalAdminView,
+  type AdminStorage,
+  type ImportCapabilities,
   type ImportCreateInput,
   type ImportJob,
   type Rating,
@@ -2137,6 +2139,27 @@ export class OrbynClient {
   }
   getImport(id: string) {
     return this.request<ImportJob>(`/imports/${id}`);
+  }
+  /** What this server can read (scans, photos, equations), before an upload. */
+  importCapabilities() {
+    return this.request<ImportCapabilities>("/imports/capabilities");
+  }
+  /** Admin → Storage: the database, the file store, the import queue. */
+  adminStorage() {
+    return this.request<AdminStorage>("/admin/storage");
+  }
+  /** Delete a stored upload now; its import is cancelled (audited). */
+  adminDeleteStoredFile(importId: string) {
+    return this.request<void>(`/admin/storage/files/${importId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Run the file store's sweep now (audited). */
+  adminSweepStorage() {
+    return this.request<{ removed: number }>("/admin/storage/sweep", {
+      method: "POST",
+      body: {},
+    });
   }
   /** Cancel an import still going, or clear a finished one from the list. */
   removeImport(id: string) {

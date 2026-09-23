@@ -67,6 +67,8 @@ cors=$(setting CORS_ORIGINS)
 profiles=$(setting COMPOSE_PROFILES)
 ocr_on=0
 case ",$profiles," in *,ocr,*) ocr_on=1 ;; esac
+formula_on=0
+case ",$profiles," in *,formula,*) formula_on=1 ;; esac
 problems=0
 
 preflight() {
@@ -88,6 +90,13 @@ preflight() {
   fi
   if [ "$ocr_on" = 1 ] && [ -z "$(setting OCR_URL)" ]; then
     warn "The ocr profile is on but OCR_URL is unset: set OCR_URL=http://ocr:8000 or scanned pages are refused."
+  fi
+  if [ "$formula_on" = 1 ] && [ -z "$(setting FORMULA_URL)" ]; then
+    warn "The formula profile is on but FORMULA_URL is unset: set FORMULA_URL=http://formula:8000 or scanned equations keep a placeholder."
+  fi
+  if [ "$formula_on" = 0 ] && [ -n "$(setting FORMULA_URL)" ]; then
+    echo "FORMULA_URL is set but the formula profile is off: add formula to COMPOSE_PROFILES, or clear FORMULA_URL." >&2
+    problems=1
   fi
   if [ "$ocr_on" = 0 ] && [ -n "$(setting OCR_URL)" ]; then
     echo "OCR_URL is set but the ocr profile is off: add ocr to COMPOSE_PROFILES, or clear OCR_URL." >&2
@@ -119,7 +128,9 @@ if [ "$CHECK" = 1 ]; then
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
   echo "- apply migrations, then roll out api, ai, status, notifier, files, converter and the web app"
-  [ "$ocr_on" = 1 ] && echo "- start or replace the OCR service ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no OCR service (the ocr profile is off)"
+  echo "- scanned pages and photos: read with the built-in Tesseract"
+  [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
+  [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
   echo "- replace the gateway only if it changed; prune leftover images; check /version"
   echo
   echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}"
@@ -266,6 +277,10 @@ rollout files "$(setting FILES_REPLICAS 1)"
 rollout converter "$(setting CONVERTER_REPLICAS 1)"
 # The OCR service loads a large model, so it's replaced in place rather than
 # rolled: scanned pages wait in the queue while it starts, and nothing is lost.
+if [ "$formula_on" = 1 ]; then
+  log "Starting the formula model"
+  compose up -d --no-deps formula
+fi
 if [ "$ocr_on" = 1 ]; then
   log "Starting the OCR service"
   compose up -d --no-deps --scale "ocr=$(setting OCR_WORKERS 1)" ocr

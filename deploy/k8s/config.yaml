@@ -61,3 +61,7 @@ data:
   # how many pages it reads at once (one per OCR worker).
   OCR_URL: ""
   OCR_WORKERS: "1"
+  # Scanned pages are read with Tesseract inside the converter; the formula
+  # model (equations on scans) is optional, wherever it runs.
+  TESSERACT_WORKERS: "2"
+  FORMULA_URL: ""

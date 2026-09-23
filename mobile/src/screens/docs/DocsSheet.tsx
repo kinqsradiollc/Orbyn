@@ -61,7 +61,15 @@ export function DocsSheet({
   onClose,
   onDismiss,
   onItemsChanged,
+  onMakeCards,
+  startInUploads,
+  onStarted,
 }: {
+  /** Open on Uploads (after files were shared to Orbyn). */
+  startInUploads?: boolean;
+  onStarted?: () => void;
+  /** Suggest study cards from a page (opens Study). */
+  onMakeCards?: (docId: string, title: string) => void;
   visible: boolean;
   /** Opens straight onto today's agenda instead of the list. */
   agenda?: boolean;
@@ -128,6 +136,10 @@ export function DocsSheet({
       return;
     }
     void loadList();
+    if (startInUploads) {
+      selectCollection(null, null, false, null, true);
+      onStarted?.();
+    }
     // Folders and stars are small lists and only matter beside the pages,
     // so they are fetched with them rather than kept in the app's state.
     client.listFolders().then(setFolders, () => setFolders([]));
@@ -781,6 +793,13 @@ export function DocsSheet({
                   onFile={setFiling}
                   onRemove={(job) => void imports.remove(job)}
                   onImport={importFile}
+                  onScan={() =>
+                    void imports
+                      .scanNotes()
+                      .catch((e: Error) => setError(e.message))
+                  }
+                  onMakeCards={onMakeCards}
+                  caps={imports.caps}
                 />
               )}
               {!(uploadsOnly && !hits) &&

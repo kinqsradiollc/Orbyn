@@ -208,73 +208,6 @@
   margin-left: 6px;
 }
 
-/* Pages with cards: tiles. */
-.study-decks {
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-}
-.study-deck {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
-  align-content: start;
-}
-.study-deck > small {
-  font-size: 11.5px;
-  margin-top: -4px;
-}
-.study-deck-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--color-text);
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-}
-.study-deck-title strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.study-deck-title:hover strong {
-  text-decoration: underline;
-}
-.study-deck-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  background: var(--color-accentSoft);
-  color: var(--color-accentText);
-}
-.study-deck-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--color-muted);
-}
-.study-deck-meta > span:first-child {
-  margin-right: 2px;
-}
-.study-deck-actions {
-  padding-top: 10px;
-  border-top: 1px solid var(--color-divider);
-}
-.study-deck-actions .secondary {
-  padding: 7px 12px;
-}
-.study-deck-actions .text-button {
-  margin-left: auto;
-}
 .study-empty,
 .study-pick {
   display: grid;
@@ -677,5 +610,347 @@
   }
   .study-question {
     font-size: 20px;
+  }
+}
+
+/* Seven days of reviews, beside today's numbers. */
+.study-forecast {
+  display: grid;
+  grid-template-columns: repeat(7, 22px);
+  gap: 6px;
+  align-items: end;
+  height: 64px;
+}
+.study-forecast span {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 4px;
+  height: 100%;
+  justify-items: center;
+}
+.study-forecast i {
+  align-self: end;
+  width: 100%;
+  border-radius: 6px 6px 3px 3px;
+  background: var(--color-accentSoft);
+  border: 1px solid var(--color-accent);
+  border-bottom-width: 2px;
+}
+.study-forecast span:first-child i {
+  background: var(--color-accent);
+}
+.study-forecast small {
+  font-size: 10px;
+  color: var(--color-muted);
+}
+
+/* No cards yet: three ways in, and what a card looks like. */
+.study-ways {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.study-way {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  justify-items: start;
+  padding: 18px;
+}
+.study-way p {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.study-way-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accentSoft);
+  color: var(--color-accentText);
+}
+.study-sample {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+  font-size: 13.5px;
+}
+.study-sample > div {
+  padding: 12px 14px;
+}
+.study-sample > div + div {
+  border-left: 1px dashed var(--color-border);
+  color: var(--color-muted);
+}
+.study-sample span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.study-syntax {
+  margin: 0;
+  font-size: 12.5px;
+}
+
+/* Pages with cards: one compact row each. */
+.study-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.study-section-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.study-section-head h2 small {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.study-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.study-search {
+  width: 180px;
+}
+.study-deck-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.study-deck-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 18px;
+  border-top: 1px solid var(--color-divider);
+}
+.study-deck-row:first-child {
+  border-top: 0;
+}
+.study-ring {
+  --pct: 0%;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--color-accent) var(--pct),
+    var(--color-track) 0
+  );
+}
+.study-ring b {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  font-size: 10.5px;
+  font-weight: 750;
+  color: var(--color-accentText);
+  font-variant-numeric: tabular-nums;
+}
+.study-deck-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.study-deck-main strong {
+  font-size: 14px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-deck-main:hover strong {
+  text-decoration: underline;
+}
+.study-deck-main small {
+  font-size: 12px;
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-deck-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.chip-info {
+  background: var(--color-infoSoft);
+  color: var(--color-info);
+}
+.chip-quiet {
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+}
+.study-deck-go {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.study-deck-go .primary,
+.study-deck-go .secondary {
+  padding: 8px 14px;
+  min-width: 86px;
+}
+.study-deck-empty {
+  padding: 14px 18px;
+  font-size: 13px;
+}
+.study-menu {
+  position: relative;
+}
+.study-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  display: grid;
+  min-width: 170px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+.study-menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.study-menu-list button:hover,
+.study-menu-list button:focus-visible {
+  background: var(--color-hover);
+}
+
+/* Imports that just became pages: make cards from them. */
+.study-uploads {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px;
+}
+.study-uploads ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.study-uploads li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+/* Choosing a page to make cards from. */
+.study-picker .modal-body {
+  display: grid;
+  gap: 12px;
+}
+.study-picker .modal-body p {
+  margin: 0;
+}
+.study-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.study-picker-list button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+.study-picker-list button:hover,
+.study-picker-list button:focus-visible {
+  background: var(--color-hover);
+  border-color: var(--color-border);
+}
+.study-picker-list span {
+  display: grid;
+  min-width: 0;
+}
+.study-picker-list strong {
+  color: var(--color-text);
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.study-picker-list small {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .study-deck-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .study-deck-chips {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+  .study-deck-go {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  .study-sample {
+    grid-template-columns: 1fr;
+  }
+  .study-sample > div + div {
+    border-left: 0;
+    border-top: 1px dashed var(--color-border);
   }
 }
