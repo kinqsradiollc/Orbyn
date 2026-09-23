@@ -1,4 +1,5 @@
 import { SettingsSection } from "./settings/SettingsSection";
+import { PrivacySection } from "./settings/PrivacySection";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -102,6 +103,7 @@ export function SettingsScreen({
   onOpenTags,
   onOpenHabits,
   onOpenSync,
+  onAccountDeleted,
 }: {
   user: User | null;
   busy: boolean;
@@ -115,6 +117,8 @@ export function SettingsScreen({
   onOpenHabits: () => void;
   /** Sync and devices: what's waiting on this phone, and where Orbyn is open. */
   onOpenSync: () => void;
+  /** After deleting your own account: leave the app. */
+  onAccountDeleted: () => void;
 }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const theme = useTheme();
@@ -808,6 +812,13 @@ export function SettingsScreen({
           </Text>
         )}
       </SettingsSection>
+
+      <PrivacySection
+        email={user?.email ?? ""}
+        busy={busy}
+        act={act}
+        onDeleted={onAccountDeleted}
+      />
 
       <SettingsSection title="AI provider">
         <Text style={shared.body}>

@@ -559,9 +559,6 @@
 :root[data-theme="dark"] .sidebar {
   background: var(--color-surface);
 }
-:root[data-theme="dark"] .workspace {
-  background: var(--color-sunken);
-}
 :root[data-theme="dark"] .avatar {
   background: var(--color-chip);
   color: var(--color-accentText);

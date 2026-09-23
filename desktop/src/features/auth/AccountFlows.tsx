@@ -5,7 +5,7 @@ import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
 
 /** The plain single-card layout the account-flow pages share with sign-in. */
-function AuthShell({
+export function AuthShell({
   onHome,
   children,
 }: {

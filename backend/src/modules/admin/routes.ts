@@ -18,12 +18,15 @@ import { adminDatabaseRoutes } from "./database.js";
 import { adminInsightRoutes } from "./insights.js";
 import { adminUserPowerRoutes } from "./users.js";
 import { adminSweepRoutes } from "./sweep.js";
+import {
+  LAST_ADMIN,
+  deleteAccount,
+  otherActiveAdmins,
+} from "../../lib/accounts.js";
 
 const USER_COLUMNS = `u.id, u.email, u.name, u.email_reminders, u.role, u.disabled, u.email_verified, u.created_at,
   (SELECT count(*)::int FROM team_members m WHERE m.user_id=u.id) AS team_count,
   (SELECT count(*)::int FROM items i WHERE i.user_id=u.id) AS item_count`;
-
-const LAST_ADMIN = "Orbyn needs at least one active admin.";
 
 async function adminUser(id: string, db?: Db) {
   const row = (
@@ -35,17 +38,6 @@ async function adminUser(id: string, db?: Db) {
   ).rows[0];
   if (!row) fail(404, "User not found");
   return row;
-}
-
-/** Serialise changes that could remove the last admin, then count the others. */
-async function otherActiveAdmins(userId: string, db: Db) {
-  await db.query("SELECT pg_advisory_xact_lock(786241)");
-  return (
-    await db.query<{ n: number }>(
-      "SELECT count(*)::int AS n FROM users WHERE role='admin' AND NOT disabled AND id<>$1",
-      [userId],
-    )
-  ).rows[0].n;
 }
 
 /**
@@ -182,36 +174,7 @@ export async function adminRoutes(app: FastifyInstance) {
         (await otherActiveAdmins(id, db)) === 0
       )
         fail(409, LAST_ADMIN);
-      // Teams they solely own pass to the most senior remaining member;
-      // teams left with nobody are deleted. Their team items move to an owner
-      // so shared work survives the account.
-      await db.query(
-        `UPDATE team_members m SET role='owner'
-         FROM (
-           SELECT DISTINCT ON (x.team_id) x.team_id, x.user_id
-           FROM team_members x
-           WHERE x.user_id<>$1 AND x.team_id IN (
-             SELECT o.team_id FROM team_members o WHERE o.user_id=$1 AND o.role='owner'
-             AND NOT EXISTS (SELECT 1 FROM team_members p WHERE p.team_id=o.team_id AND p.role='owner' AND p.user_id<>$1)
-           )
-           ORDER BY x.team_id, CASE x.role WHEN 'admin' THEN 0 WHEN 'member' THEN 1 ELSE 2 END, x.created_at
-         ) heir
-         WHERE m.team_id=heir.team_id AND m.user_id=heir.user_id`,
-        [id],
-      );
-      await db.query(
-        `DELETE FROM teams t WHERE t.id IN (SELECT team_id FROM team_members WHERE user_id=$1)
-         AND NOT EXISTS (SELECT 1 FROM team_members m WHERE m.team_id=t.id AND m.user_id<>$1)`,
-        [id],
-      );
-      await db.query(
-        `UPDATE items i SET user_id=(
-           SELECT m.user_id FROM team_members m WHERE m.team_id=i.team_id AND m.role='owner' AND m.user_id<>$1
-           ORDER BY m.created_at LIMIT 1)
-         WHERE i.user_id=$1 AND i.team_id IS NOT NULL`,
-        [id],
-      );
-      await db.query("DELETE FROM users WHERE id=$1", [id]);
+      await deleteAccount(db, id);
       await audit(
         {
           actorId: actor.id,

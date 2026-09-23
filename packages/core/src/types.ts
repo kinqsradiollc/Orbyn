@@ -196,6 +196,10 @@ export type User = {
   /** Your public profile's address (/u/<handle>), if you made one. */
   handle?: string | null;
   bio?: string;
+  /** The Terms version you last accepted; null until you accept one. */
+  terms_version?: string | null;
+  /** Whether you turned usage analytics off (Settings → Privacy). */
+  analytics_opt_out?: boolean;
 };
 
 /** Your public profile, as you edit it. */

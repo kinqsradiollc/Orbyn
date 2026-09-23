@@ -178,6 +178,7 @@ export function usePlanner() {
                 name: values.name,
                 email: values.email,
                 password: values.password,
+                accept_terms: values.accept_terms || undefined,
               })
             : await client.login({
                 email: values.email,

@@ -38,6 +38,7 @@ import {
   realtimeRoutes,
 } from "./modules/realtime/routes.js";
 import { presenceRoutes } from "./modules/presence/routes.js";
+import { legalRoutes } from "./modules/legal/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -52,6 +53,7 @@ export const serviceModules: Record<
     systemRoutes,
     authRoutes,
     userRoutes,
+    legalRoutes,
     inboundRoutes,
     mcpRoutes,
     davRoutes,

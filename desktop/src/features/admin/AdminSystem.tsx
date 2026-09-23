@@ -36,6 +36,7 @@ import type { TeamActions } from "../teams/TeamDetail";
 import { humanizeDuration } from "../status/StatusPage";
 import "./ai.css";
 import "./system.css";
+import { LegalCard } from "./AdminLegal";
 import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 
@@ -103,6 +104,7 @@ export function AdminSystem({ user, report, onMaintenanceChange }: Props) {
       <SettingsCard user={user} report={report} />
       <MaintenanceCard report={report} onChange={onMaintenanceChange} />
       <AnnouncementCard report={report} />
+      <LegalCard report={report} />
       <RetentionCard report={report} />
       <VersionCard report={report} />
     </>

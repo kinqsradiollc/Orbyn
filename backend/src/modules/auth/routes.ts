@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import {
+  agreementVersion,
   credentials,
   emailToken,
   fail,
@@ -41,6 +42,7 @@ import {
   verifyRegistration,
 } from "./webauthn.js";
 import { enforceTwoFactor, twoFactorOn } from "./twoFactor.js";
+import { settings } from "../../lib/settings.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import {
   generateSecret,
@@ -69,12 +71,24 @@ export async function authRoutes(app: FastifyInstance) {
       // Otherwise confirmation is required only when mail can actually be
       // sent; without a mail server there is no way to confirm an address.
       const verified = isAdmin || !(await emailEnabled());
+      // Agreeing on the form counts only for the version in force now; an
+      // older one is asked for again once signed in.
+      const terms =
+        d.accept_terms === agreementVersion((await settings()).legal)
+          ? d.accept_terms
+          : null;
       const row = (
         await db.query<UserRow>(
-          "INSERT INTO users(email,name,password_hash,role,email_verified) VALUES($1,$2,$3,$4,$5) RETURNING *",
-          [d.email, d.name, hash, role, verified],
+          `INSERT INTO users(email,name,password_hash,role,email_verified,terms_version,terms_accepted_at)
+           VALUES($1,$2,$3,$4,$5,$6::text,CASE WHEN $6::text IS NULL THEN NULL ELSE now() END) RETURNING *`,
+          [d.email, d.name, hash, role, verified, terms],
         )
       ).rows[0];
+      if (terms)
+        await db.query(
+          "INSERT INTO consent_log (user_id, kind, version, granted, user_agent) VALUES ($1, 'terms', $2, true, $3)",
+          [row.id, terms, String(r.headers["user-agent"] ?? "").slice(0, 400)],
+        );
       if (!verified) {
         const token = await issueToken(db, row.id, "verify");
         // Sent after the row is committed, so the link always resolves.

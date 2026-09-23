@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600;650;700&family=Manrope:wght@400;500;600;650;700;750;800&display=swap");
+@import "./fonts.css";
 :root {
   font-family: "DM Sans", sans-serif;
   color: var(--color-text);
@@ -139,6 +139,7 @@ small {
 }
 .sidebar-head {
   flex-shrink: 0;
+  margin-bottom: 18px;
 }
 /* Only the destinations scroll. Settings and your account stay put at the
    bottom of the window, however short it is. */
@@ -181,16 +182,6 @@ small {
   /* The gap the flex row used to give the dot, less its side bearing. */
   margin-left: 4px;
 }
-.workspace {
-  margin: 20px 0 18px;
-  display: flex;
-  gap: 11px;
-  align-items: center;
-  background: #f8f9f7;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px 10px;
-}
 .avatar {
   height: 33px;
   width: 33px;
@@ -203,13 +194,11 @@ small {
   font-size: 12px;
   flex-shrink: 0;
 }
-.workspace strong,
 .profile strong {
   display: block;
   font-size: 12px;
   font-weight: 600;
 }
-.workspace small,
 .profile small {
   display: block;
   font-size: 10px;
@@ -328,15 +317,8 @@ nav button i,
   .is-railed .nav-label,
   .is-railed .sidebar nav button > span,
   .is-railed .settings-link > span,
-  .is-railed .workspace > div,
   .is-railed .profile > div {
     display: none;
-  }
-  .is-railed .workspace {
-    justify-content: center;
-    padding: 6px;
-    border-color: transparent;
-    background: none;
   }
   .is-railed .nav-group + .nav-group {
     margin-top: 10px;
@@ -2417,6 +2399,45 @@ footer svg {
   display: block;
   margin: -4px 0 4px auto;
   font-size: 13px;
+}
+
+/* Sign-up's agreement: a real checkbox (not the full-width field style), then
+ * what Orbyn counts, in small print. */
+.auth-card .auth-consent {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 16px;
+}
+.auth-card .auth-consent .check-line {
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.auth-card .auth-consent input {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-top: 2px !important;
+}
+.auth-card .auth-consent p,
+.auth-card > .auth-legal {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+.auth-card > .auth-legal {
+  text-align: center;
+}
+.auth-card :is(.auth-consent, .auth-legal) a {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-card :is(.auth-consent, .auth-legal) a:hover {
+  text-decoration: underline;
 }
 
 /* The "unverified" pill and its Verify action sit under the email address. */
