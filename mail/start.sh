@@ -20,4 +20,6 @@ case "${MAIL_CONFIG:-maddy.conf}" in
     ;;
   *) fail "MAIL_CONFIG must be maddy.conf or maddy-relay.conf" ;;
 esac
-exec /bin/maddy --config "/data/conf/${MAIL_CONFIG:-maddy.conf}" run
+# Without Windows line endings, whatever the checkout did to them.
+tr -d '\r' < "/data/conf/${MAIL_CONFIG:-maddy.conf}" > /tmp/maddy.conf
+exec /bin/maddy --config /tmp/maddy.conf run
