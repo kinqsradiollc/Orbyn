@@ -1144,6 +1144,8 @@ export const plannerPrefsInput = z
     travel_padding_minutes: z.number().int().min(0).max(30).optional(),
     /** Scale each task's estimate by how long that kind of task really takes. */
     learn_estimates: z.boolean().optional(),
+    learn_rhythm: z.boolean().optional(),
+    balance_load: z.boolean().optional(),
     /** Morning agenda and evening review emails; send the keys you change. */
     digest: z
       .object({

@@ -96,7 +96,14 @@ const toggle = (ids: string[], id: string) =>
 /** "Due Fri, 3 PM · 1h planned of 2h". */
 function taskLine(t: PlanTask) {
   const estimate = t.estimate_minutes
-    ? minutesLabel(t.estimate_minutes)
+    ? minutesLabel(t.estimate_minutes) +
+      (t.estimate_guess && !t.estimate_tuned
+        ? t.estimate_guess.basis === "similar"
+          ? " (like similar tasks)"
+          : t.estimate_guess.basis === "typical"
+            ? " (your usual task)"
+            : ` (usual for this ${t.estimate_guess.basis})`
+        : "")
     : "no estimate (counts as 30m)";
   return [
     t.due_at ? `Due ${dateLabel(t.due_at)}` : "",

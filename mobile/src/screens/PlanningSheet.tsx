@@ -13,11 +13,14 @@ import {
   BREAK_LEVELS,
   PRIORITIES,
   TRAVEL_MODES,
+  clockMinutes,
+  hourText,
   isTimeZone,
+  learningSummary,
   type BreakLevel,
   type BufferScope,
   type DigestPrefs,
-  type EstimateModel,
+  type PlannerLearning,
   type TravelMode,
   type Frame,
   type Place,
@@ -90,6 +93,8 @@ type Form = {
   travelPad: string;
   digest: DigestPrefs;
   learn_estimates: boolean;
+  learn_rhythm: boolean;
+  balance_load: boolean;
 };
 
 /** Most minutes added to every travel time. */
@@ -123,6 +128,8 @@ const toForm = (p: PlannerPrefs): Form => ({
     evening_time: "17:00",
   },
   learn_estimates: p.learn_estimates ?? false,
+  learn_rhythm: p.learn_rhythm ?? true,
+  balance_load: p.balance_load ?? true,
   timezone: p.timezone,
   work_days: p.work_days,
   work_start: p.work_start,
@@ -274,7 +281,7 @@ function Body({ teams }: { teams: Team[] }) {
   const [saved, setSaved] = useState(false);
   const [editingFrame, setEditingFrame] = useState<Frame | "new" | null>(null);
   const [editingPlace, setEditingPlace] = useState<Place | "new" | null>(null);
-  const [estimates, setEstimates] = useState<EstimateModel | null>(null);
+  const [learning, setLearning] = useState<PlannerLearning | null>(null);
   const device = deviceTimeZone();
 
   useEffect(() => {
@@ -288,7 +295,7 @@ function Body({ teams }: { teams: Team[] }) {
       setFrames(f);
       setPlaces(pl);
     });
-    client.getEstimates().then(setEstimates, () => setEstimates(null));
+    client.getLearning().then(setLearning, () => setLearning(null));
   }, [run]);
 
   const patch = (next: Partial<Form>) => {
@@ -332,6 +339,8 @@ function Body({ teams }: { teams: Team[] }) {
         travel_padding_minutes: pad,
         digest: form.digest,
         learn_estimates: form.learn_estimates,
+        learn_rhythm: form.learn_rhythm,
+        balance_load: form.balance_load,
       });
       setForm(toForm(p));
       setSaved(true);
@@ -359,6 +368,7 @@ function Body({ teams }: { teams: Team[] }) {
 
   const reloadFrames = async () => setFrames(await client.listFrames());
   const reloadPlaces = async () => setPlaces(await client.listPlaces());
+  const learned = learningSummary(learning);
 
   return (
     <>
@@ -721,32 +731,53 @@ function Body({ teams }: { teams: Team[] }) {
                 </View>
               </Disclosure>
               <Disclosure
-                title="Learn from your pace"
-                detail="Use past work to improve estimates"
+                title="What Orbyn has learned"
+                detail="Estimates, your best hours and a usual day"
               >
                 <Text style={[shared.small, s.sectionHint]}>
-                  {estimates && estimates.overall.samples >= 3
-                    ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
-                    : "The planner learns how long tasks really take once you finish a few with an estimate and logged time."}
+                  The planner learns from your own finished tasks, planned
+                  blocks and focus sessions. Your tasks aren’t changed; only
+                  where and how long they’re planned.
                 </Text>
-                <View style={s.switchRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.switchTitle}>
-                      Adjust estimates from history
-                    </Text>
-                    <Text style={shared.small}>
-                      Scales planned time; your estimates aren’t changed.
-                    </Text>
+                {(
+                  [
+                    [
+                      "learn_estimates",
+                      "Adjust estimates from history",
+                      learned.estimates,
+                    ],
+                    [
+                      "learn_rhythm",
+                      "Put demanding work in your best hours",
+                      learned.rhythm,
+                    ],
+                    [
+                      "balance_load",
+                      "Keep days to what you usually get through",
+                      learned.load,
+                    ],
+                  ] as const
+                ).map(([key, title, detail]) => (
+                  <View key={key} style={s.switchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.switchTitle}>{title}</Text>
+                      <Text style={shared.small}>{detail}</Text>
+                    </View>
+                    <Switch
+                      trackColor={{ true: colors.accent }}
+                      value={form[key]}
+                      accessibilityLabel={title}
+                      onValueChange={(on) => patch({ [key]: on })}
+                    />
                   </View>
-                  <Switch
-                    trackColor={{ true: colors.accent }}
-                    value={form.learn_estimates}
-                    accessibilityLabel="Adjust estimates from history"
-                    onValueChange={(learn_estimates) =>
-                      patch({ learn_estimates })
-                    }
+                ))}
+                {learning && learning.rhythm.confidence > 0 && (
+                  <HourStrip
+                    hours={learning.rhythm.hours}
+                    from={Number(form.work_start.slice(0, 2))}
+                    to={Math.ceil(clockMinutes(form.work_end) / 60)}
                   />
-                </View>
+                )}
               </Disclosure>
               <Disclosure
                 title="Daily digest"
@@ -1556,6 +1587,57 @@ function PlaceForm({
   );
 }
 
+/** How each working hour usually goes: green goes well, grey slips. */
+function HourStrip({
+  hours,
+  from,
+  to,
+}: {
+  hours: number[];
+  from: number;
+  to: number;
+}) {
+  const end = Math.max(to, from + 1);
+  const shown = hours
+    .map((v, h) => ({ v, h }))
+    .filter((x) => x.h >= from && x.h < end);
+  const best = shown.filter((x) => x.v >= 0.25).map((x) => hourText(x.h));
+  return (
+    <View
+      style={s.strip}
+      accessible
+      accessibilityLabel={
+        best.length
+          ? `Hours that usually go well: ${best.join(", ")}`
+          : "No hours stand out yet"
+      }
+    >
+      <View style={s.stripBars}>
+        {shown.map(({ v, h }) => (
+          <View
+            key={h}
+            style={[
+              s.stripBar,
+              { height: 8 + Math.abs(v) * 32 },
+              v >= 0.25 ? s.stripGood : v <= -0.25 ? s.stripSlip : s.stripEven,
+            ]}
+          />
+        ))}
+      </View>
+      <View style={s.stripAxis}>
+        <Text style={shared.small}>{hourText(from)}</Text>
+        <Text style={shared.small}>{hourText(end)}</Text>
+      </View>
+      <View style={s.stripLegend}>
+        <View style={[s.stripKey, s.stripGood]} />
+        <Text style={shared.small}>usually goes well</Text>
+        <View style={[s.stripKey, s.stripSlip, s.stripKeyGap]} />
+        <Text style={shared.small}>often slips</Text>
+      </View>
+    </View>
+  );
+}
+
 const s = themed(() =>
   StyleSheet.create({
     saveFooter: {
@@ -1589,6 +1671,30 @@ const s = themed(() =>
       fontSize: 15,
       color: colors.text,
       marginBottom: 3,
+    },
+    strip: { marginTop: 8, marginBottom: 4 },
+    stripBars: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: 3,
+      height: 40,
+    },
+    stripBar: { flex: 1, borderRadius: 3 },
+    stripGood: { backgroundColor: colors.accent },
+    stripSlip: { backgroundColor: colors.muted },
+    stripEven: { backgroundColor: colors.border },
+    stripLegend: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginTop: 6,
+    },
+    stripKey: { width: 9, height: 9, borderRadius: 3 },
+    stripKeyGap: { marginLeft: 8 },
+    stripAxis: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 4,
     },
     card: {
       backgroundColor: colors.surface,

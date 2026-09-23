@@ -3,6 +3,7 @@ import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
   blockText,
+  estimateModelOf,
   isClosed,
   KINDS,
   parseDoc,
@@ -17,6 +18,9 @@ import {
   type SystemRole,
 } from "@orbyn/core";
 import { makePlan } from "../../planner/plans.js";
+import { loadLearning } from "../../planner/learning.js";
+import { upNext } from "../../planner/next.js";
+import { loadPrefs } from "../../planner/calendar.js";
 import { planMarkdown } from "./planText.js";
 import { pool } from "../../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../../lib/teams.js";
@@ -1098,6 +1102,89 @@ export const TOOLS: Tool[] = [
       })
       .strict(),
     rankTasks,
+  ),
+  tool(
+    {
+      name: "up_next",
+      description:
+        "What to do right now: the free time until the user's next event (or the end of their working day) and up to three tasks worth starting in it, each with the reasons (planned for now, due soon, fits the free time, an hour that usually goes well for them, keeps slipping) and a sensible session length. Use for 'what should I do now', 'I have 30 minutes', 'what next'. Read only.",
+      parameters: NO_ARGS,
+    },
+    z.object({}).strict(),
+    async (ctx) => {
+      const next = await upNext(pool, ctx.user.id);
+      return {
+        free_time: next.window && {
+          from: localIso(next.window.start_at, ctx.timezone),
+          until: localIso(next.window.end_at, ctx.timezone),
+          minutes: next.window.minutes,
+          next_event: next.window.until,
+        },
+        suggestions: next.suggestions.map((s) => ({
+          title: s.title,
+          due: s.due_at ? localIso(s.due_at, ctx.timezone) : null,
+          priority: s.priority,
+          session_minutes: s.minutes,
+          planned_now: s.planned_now,
+          reasons: s.reasons,
+        })),
+        note: next.window
+          ? undefined
+          : "No free time right now (an event is on, or it's outside working hours); the tasks are still the ones to do next.",
+      };
+    },
+  ),
+  tool(
+    {
+      name: "get_work_patterns",
+      description:
+        "What the planner has learned from the user's own history: how long their tasks really take against their estimates (overall, by tag and by list), which hours of the day usually go well for them, and how much planned time they usually get through in a day. Use for 'when am I most productive', 'how long do my tasks really take', 'am I planning too much'. Read only; say plainly when there isn't enough history yet.",
+      parameters: NO_ARGS,
+    },
+    z.object({}).strict(),
+    async (ctx) => {
+      const prefs = await loadPrefs(pool, ctx.user.id);
+      const l = await loadLearning(pool, ctx.user.id, prefs.timezone);
+      const e = estimateModelOf(l.durations, !!prefs.learn_estimates);
+      const clock = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+      return {
+        durations:
+          e.overall.samples >= 3
+            ? {
+                ratio: e.overall.ratio,
+                usual_range: e.overall.range,
+                from_tasks: e.overall.samples,
+                by_tag: e.tags
+                  .slice(0, 5)
+                  .map((t) => ({ tag: t.name, ratio: t.ratio })),
+                by_list: (e.lists ?? [])
+                  .slice(0, 5)
+                  .map((t) => ({ list: t.name, ratio: t.ratio })),
+                typical_task_minutes: e.typical_minutes,
+                applied_by_planner: e.applied,
+              }
+            : "Not enough finished tasks with an estimate and logged time yet.",
+        best_hours: l.rhythm.peak
+          ? `${clock(l.rhythm.peak.start_hour)}–${clock(l.rhythm.peak.end_hour)}`
+          : "Not enough planned blocks or focus sessions yet.",
+        hours_that_slip: l.rhythm.confidence
+          ? l.rhythm.hours
+              .map((v, h) => ({ v, h }))
+              .filter((x) => x.v <= -0.5)
+              .map((x) => clock(x.h))
+          : [],
+        typical_day:
+          l.load.typical_day_minutes == null
+            ? "Not enough planned days yet."
+            : {
+                minutes: l.load.typical_day_minutes,
+                share_of_planned_time_done: l.load.follow_through,
+                from_days: l.load.days,
+              },
+        planner_uses_best_hours: prefs.learn_rhythm !== false,
+        planner_balances_days: prefs.balance_load !== false,
+      };
+    },
   ),
   tool(
     {

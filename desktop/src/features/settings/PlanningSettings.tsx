@@ -6,7 +6,10 @@ import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import {
   BREAK_LEVELS,
   TRAVEL_MODES,
+  clockMinutes,
   describeRrule,
+  hourText as clockText,
+  learningSummary,
   type BreakLevel,
   type BufferScope,
   type Frame,
@@ -17,7 +20,7 @@ import {
   type TravelMode,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import type { EstimateModel } from "@orbyn/core";
+import type { PlannerLearning } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { DayPicker } from "../../components/DayPicker";
@@ -91,6 +94,50 @@ function NumberInput({
   );
 }
 
+/** How each working hour usually goes: green goes well, dark grey slips. */
+function HourStrip({
+  hours,
+  from,
+  to,
+}: {
+  hours: number[];
+  from: number;
+  to: number;
+}) {
+  const shown = hours
+    .map((v, h) => ({ v, h }))
+    .filter((x) => x.h >= from && x.h < Math.max(to, from + 1));
+  return (
+    <figure
+      className="hour-strip"
+      aria-label="How your working hours usually go"
+    >
+      <div className="hour-strip-bars">
+        {shown.map(({ v, h }) => (
+          <span
+            key={h}
+            className={
+              v >= 0.25 ? "is-good" : v <= -0.25 ? "is-slipping" : "is-even"
+            }
+            style={{ height: `${8 + Math.abs(v) * 32}px` }}
+            title={`${clockText(h)}: ${v >= 0.25 ? "usually goes well" : v <= -0.25 ? "often slips" : "about average"}`}
+          />
+        ))}
+      </div>
+      <figcaption>
+        <span className="hour-strip-axis">
+          <span>{clockText(from)}</span>
+          <span>{clockText(Math.max(to, from + 1))}</span>
+        </span>
+        <span className="hour-strip-legend">
+          <i className="is-good" /> usually goes well
+          <i className="is-slipping" /> often slips
+        </span>
+      </figcaption>
+    </figure>
+  );
+}
+
 /**
  * How you like to work: time zone, working hours, how the planner pads and
  * splits tasks, buffers and travel, extra time zones, frames and places.
@@ -99,13 +146,13 @@ export function PlanningSettings({ teams, report }: Props) {
   const { prefs, savePrefs, lists } = usePlanning();
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
   const [zoneToAdd, setZoneToAdd] = useState("");
-  const [estimates, setEstimates] = useState<EstimateModel | null>(null);
+  const [learning, setLearning] = useState<PlannerLearning | null>(null);
   const save = useAction(report);
   const preview = useAction(report);
   const zones = timeZones();
 
   useEffect(() => {
-    client.getEstimates().then(setEstimates, () => setEstimates(null));
+    client.getLearning().then(setLearning, () => setLearning(null));
   }, []);
 
   useEffect(() => {
@@ -377,10 +424,11 @@ export function PlanningSettings({ teams, report }: Props) {
             </label>
           </div>
 
-          <h3 className="settings-subtitle">Learning your estimates</h3>
+          <h3 className="settings-subtitle">What Orbyn has learned</h3>
           <p className="muted">
-            The planner can scale each task by how long that kind of work really
-            takes you, from your finished tasks. Your estimates aren’t changed.
+            The planner learns from your own finished tasks, planned blocks and
+            focus sessions, and nobody else’s. Your tasks aren’t changed; only
+            where and how long they’re planned.
           </p>
           <div className="settings-grid">
             <label className="switch-line settings-field">
@@ -393,25 +441,63 @@ export function PlanningSettings({ teams, report }: Props) {
               />
               <span>
                 Adjust estimates from history
-                <small>
-                  {estimates && estimates.overall.samples >= 3
-                    ? `You take about ${estimates.overall.ratio}× your estimate across ${estimates.overall.samples} finished tasks.`
-                    : "A few finished tasks with an estimate and logged time are needed first."}
-                </small>
+                <small>{learningSummary(learning).estimates}</small>
+              </span>
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={draft.learn_rhythm ?? true}
+                onChange={(e) => set("learn_rhythm", e.target.checked)}
+              />
+              <span>
+                Put demanding work in your best hours
+                <small>{learningSummary(learning).rhythm}</small>
+              </span>
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={draft.balance_load ?? true}
+                onChange={(e) => set("balance_load", e.target.checked)}
+              />
+              <span>
+                Keep days to what you usually get through
+                <small>{learningSummary(learning).load}</small>
               </span>
             </label>
           </div>
-          {estimates && estimates.tags.length > 0 && (
-            <ul className="estimate-tags">
-              {estimates.tags.slice(0, 6).map((t) => (
-                <li key={t.tag_id}>
-                  <span>#{t.name}</span>
-                  <span className="mono">{t.ratio}×</span>
-                  <small className="muted">{t.samples} tasks</small>
-                </li>
-              ))}
-            </ul>
+          {learning && learning.rhythm.confidence > 0 && (
+            <HourStrip
+              hours={learning.rhythm.hours}
+              from={Number(draft.work_start.slice(0, 2))}
+              to={Math.ceil(clockMinutes(draft.work_end) / 60)}
+            />
           )}
+          {learning &&
+            (learning.estimates.tags.length > 0 ||
+              (learning.estimates.lists ?? []).length > 0) && (
+              <ul className="estimate-tags">
+                {learning.estimates.tags.slice(0, 6).map((t) => (
+                  <li key={t.tag_id}>
+                    <span>#{t.name}</span>
+                    <span className="mono">{t.ratio}×</span>
+                    <small className="muted">{t.samples} tasks</small>
+                  </li>
+                ))}
+                {(learning.estimates.lists ?? []).slice(0, 6).map((l) => (
+                  <li key={l.list_id}>
+                    <span>{l.name}</span>
+                    <span className="mono">{l.ratio}×</span>
+                    <small className="muted">{l.samples} tasks</small>
+                  </li>
+                ))}
+              </ul>
+            )}
 
           <h3 className="settings-subtitle">Daily digest</h3>
           <p className="muted">

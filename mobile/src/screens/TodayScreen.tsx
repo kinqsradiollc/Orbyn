@@ -22,6 +22,7 @@ import { QuickAdd } from "../components/QuickAdd";
 import { SmallAction } from "../components/SmallAction";
 import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
+import { UpNextCard } from "../components/UpNextCard";
 import {
   EmptyState,
   ItemRows,
@@ -50,9 +51,12 @@ export function TodayScreen({
   onQuickAdded,
   onAsk,
   onShowAll,
+  onFocus,
   ...handlers
 }: ListHandlers & {
   items: Item[];
+  /** Starts focus mode on a task. */
+  onFocus: (item: Item) => void;
   /** Opens the Tasks tab. */
   onShowAll: () => void;
   userId?: string;
@@ -139,6 +143,9 @@ export function TodayScreen({
         ))}
       </View>
 
+      {open.some((i) => i.kind === "task") && (
+        <UpNextCard items={items} onOpen={handlers.onOpen} onFocus={onFocus} />
+      )}
       {open.some((i) => i.kind === "task") && (
         <FadeIn style={[shared.card, s.plan]}>
           <View style={s.planText}>

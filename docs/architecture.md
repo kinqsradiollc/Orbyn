@@ -240,7 +240,9 @@ loop (`backend/src/modules/ai/agent/`):
      the app's own priority-score order, each with why), `list_projects` and `get_project` (progress,
      risk, stages, and decisions no task delivers), `find_free_time` (free stretches in working
      hours), `get_calendar` (your events and subscribed calendars' events, with titles; subscribed
-     ones read only) and `get_follow_through` (asks, promises, undelivered decisions, how plans held).
+     ones read only), `get_follow_through` (asks, promises, undelivered decisions, how plans held),
+     `up_next` (the free time before the next event and the tasks worth starting in it, with why)
+     and `get_work_patterns` (what the planner has learned: real durations, best hours, a usual day).
      Asking what to do first ("help me prioritise") is advice: the guard allows no proposals for it
      unless the message also names a change. Every query is scoped on
      the server, using the session's user id, to the user's own personal items and their teams'
@@ -387,12 +389,47 @@ other calendars only through their ICS links.
   score (`3 × priority + 4 × urgency + 2 if overdue + 1 × size_fit`, where `size_fit` is 1 when
   the remaining estimate fits the first planned day's largest free slot, 0.5 when it doesn't and
   0.75 without an estimate; blocked tasks last), padded, split into sessions with breaks, into the
-  earliest slot that ends before the due time. Tasks that don't fit are listed with a reason, and
-  ones that can't make their due time are flagged at risk. Task lists show and sort by the same
+  best slot that ends before the due time (see learned placement below; without it, the earliest).
+  Tasks that don't fit are listed with a reason, and ones that can't make their due time are
+  flagged at risk. Task lists show and sort by the same
   score (`GET /items?sort=score`), comparing with today's largest free slot. Previews are stored
   as `plans` for an hour, with everything they were made from, and applied in one transaction
   that skips any block that has started to clash. The assistant uses the same engine through its
   `plan_schedule` tool (Matilda's graph plans directly), so it never places times itself.
+- **Learning from history** (`modules/planner/learning.ts`, models in `@orbyn/core` `learning.ts`):
+  worked out from each person's own rows on every plan and never stored, so deleting a task or
+  focus session also removes it from what's learned. Three models, each shrunk towards "no
+  change" while there's little history:
+  - _Durations._ How long work really takes is right-skewed (roughly log-normal: most tasks run a
+    little over, a few far over), so actual ÷ estimate is averaged in log space, each task capped at
+    ¼–4×, weighted by recency (45-day half-life), and shrunk towards 1 by two tasks' worth of
+    evidence (empirical-Bayes partial pooling); tags and lists shrink towards the overall figure.
+    With `learn_estimates` on, estimates are scaled by it, and a task with no estimate is planned
+    from finished tasks with similar titles (the reference class), else its list's or tag's
+    usual length, else the person's typical task, rather than 30 minutes.
+  - _Rhythm._ Which hours go well: past blocks by local hour, with the share whose time went into
+    the task (finished that day, or focus logged), plus focus sessions outside blocks. Rates are
+    smoothed towards the person's own average (a Beta prior worth two hours) and across neighbouring
+    hours, and scaled by evidence (full after about 20 hours). Research on time of day and
+    chronotype finds real but person-specific effects, so nothing is assumed about mornings.
+  - _Load._ How much planned time a day usually gets through: the upper quartile of kept minutes
+    over days with at least an hour planned (five days needed; never below two hours).
+- **Learned placement** (`scheduler.ts`, `smart`): tasks are ranked by the priority score plus
+  slack (least slack first: free time before the due time minus the time still needed, so big work
+  due later can go before small work due sooner), and each session takes the lowest-cost start
+  among the free stretches (every half hour), on time if possible. The cost: later is worse (0.8 a
+  day, 0.1 an hour, tripled for pressing tasks); demanding work (priority, and sessions of an hour
+  or more) gains in hours that usually go well and light work leaves them free (`learn_rhythm`);
+  a session next to related work (same list or a shared tag) gains, as switching tasks costs time;
+  gaps too short to use cost; and time past the usual day costs 3 an hour (`balance_load`). Each
+  task's sessions are then numbered in time order. The plan's summary says what this did ("… is
+  in your best hours", "Thursday has more than you usually get through").
+- **Up next** (`modules/planner/next.ts`, `GET /planner/next`): the free time from now to the next
+  event or the end of the working day, and up to three tasks for it, each with its reasons in
+  words: a block planned for now first, then the priority score lifted when a task fits the free
+  time, is demanding at an hour that usually goes well, or keeps slipping (two or more past blocks
+  that mostly didn't go into it, offered as a 25-minute start, since starting is the hard part).
+  Shown as the Overview's "Up next" card (desktop) and on Today (mobile).
 - **Tuning a plan** (`modules/planner/plans.ts`): `PATCH /planner/plans/:id` makes the plan again
   from its stored inputs with tasks added or left out, estimates changed (optionally saved through
   `mutate()`), keep-free times, a scope, and pinned blocks, which the engine keeps in place and

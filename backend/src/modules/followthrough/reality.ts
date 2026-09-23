@@ -16,6 +16,7 @@ import {
 import { reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { loadPrefs } from "../planner/calendar.js";
+import { keptBlocks } from "../planner/learning.js";
 import { computePlan } from "../planner/plans.js";
 
 const WINDOW_DAYS = 28;
@@ -35,52 +36,14 @@ export async function planReality(
   const today = localDateKey(now, timezone);
   const from = dayTime(addDays(today, -WINDOW_DAYS), 0, timezone);
   const to = dayTime(today, 0, timezone);
-  const blocks = (
-    await db.query<{ item_id: string; start_at: Date; end_at: Date }>(
-      `SELECT item_id, start_at, end_at FROM time_blocks
-        WHERE user_id = $1 AND start_at >= $2 AND start_at < $3`,
-      [userId, from, to],
-    )
-  ).rows;
-  const ids = [...new Set(blocks.map((b) => b.item_id))];
-  const [done, focus] = await Promise.all([
-    db.query<{ item_id: string; at: Date }>(
-      `SELECT item_id, min(created_at) AS at FROM item_updates
-        WHERE status = 'done' AND item_id = ANY($1::uuid[]) GROUP BY item_id`,
-      [ids],
-    ),
-    db.query<{ item_id: string; started_at: Date; minutes: number }>(
-      `SELECT item_id, started_at, minutes FROM focus_sessions
-        WHERE user_id = $1 AND kind = 'work' AND item_id = ANY($2::uuid[])
-          AND started_at >= $3 AND started_at < $4`,
-      [userId, ids, from, to],
-    ),
-  ]);
-  const doneAt = new Map(done.rows.map((r) => [r.item_id, r.at.getTime()]));
-  const worked = new Map<string, number>();
-  for (const f of focus.rows) {
-    const key = `${f.item_id}|${localDateKey(f.started_at, timezone)}`;
-    worked.set(key, (worked.get(key) ?? 0) + f.minutes);
-  }
+  const { blocks } = await keptBlocks(db, userId, from, to, timezone);
   type Day = { planned: number; kept: number };
   const days = new Map<string, Day>();
   for (const b of blocks) {
     const day = localDateKey(b.start_at, timezone);
-    const minutes = (b.end_at.getTime() - b.start_at.getTime()) / 60_000;
-    const endOfDay = dayTime(addDays(day, 1), 0, timezone).getTime();
-    const finished = (doneAt.get(b.item_id) ?? Infinity) <= endOfDay;
-    const key = `${b.item_id}|${day}`;
-    let kept = 0;
-    if (finished) kept = minutes;
-    else {
-      // Focus time that day on this task, shared out over its sessions.
-      const left = worked.get(key) ?? 0;
-      kept = Math.min(minutes, left);
-      worked.set(key, left - kept);
-    }
     const d = days.get(day) ?? { planned: 0, kept: 0 };
-    d.planned += minutes;
-    d.kept += kept;
+    d.planned += (b.end_at.getTime() - b.start_at.getTime()) / 60_000;
+    d.kept += b.kept;
     days.set(day, d);
   }
   const by_weekday = Array.from({ length: 7 }, (_, weekday) => {

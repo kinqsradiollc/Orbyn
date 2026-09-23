@@ -1266,7 +1266,58 @@ Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "
 
 ### `GET /planner/estimates` (auth)
 
-What the planner has learned about how long tasks really take: `{ overall: { ratio, samples }, tags: [{ tag_id, name, ratio, samples }], applied }`. `ratio` is actual ÷ estimated over finished tasks (clamped 0.5–3, held at 1 below 3 samples). With `learn_estimates` on in planner prefs, the planner scales each task's estimate by the matching tag's ratio, else the overall one — the stored estimate is never changed.
+What the planner has learned about how long tasks really take: `{ overall: { ratio, samples, range }, tags: [{ tag_id, name, ratio, samples }], lists: [{ list_id, name, ratio, samples }], typical_minutes, applied }`. `ratio` is actual ÷ estimated over finished tasks with time logged, averaged in log space, weighted towards recent tasks (45-day half-life) and shrunk towards 1 while there are few of them (clamped 0.5–3; held at 1 below 3 samples). `range` is the middle half of how tasks go (a quarter run shorter, a quarter longer). Tags and lists (3 or more tasks) shrink towards the overall ratio. `typical_minutes` is how long a task usually takes you (from 5 finished tasks). With `learn_estimates` on in planner prefs, the planner scales each task's estimate by its tags' and list's ratios, weighted by how many tasks each rests on, else the overall one, and plans a task with no estimate from finished tasks with similar titles, else its list's or tag's usual length, else `typical_minutes`. The stored estimate is never changed.
+
+### `GET /planner/learning` (auth)
+
+Everything the planner has learned from your own history (nothing is stored; it's worked out
+from your tasks, blocks and focus sessions each time):
+
+```json
+{
+  "estimates": {
+    "overall": { "ratio": 1.3, "samples": 14, "range": [1.1, 1.6] },
+    "tags": [],
+    "lists": [],
+    "typical_minutes": 45,
+    "applied": false
+  },
+  "rhythm": {
+    "hours": [0, 0, "…24 values, -1 to 1"],
+    "confidence": 0.8,
+    "evidence_minutes": 960,
+    "peak": { "start_hour": 10, "end_hour": 12 },
+    "applied": true
+  },
+  "load": {
+    "typical_day_minutes": 210,
+    "follow_through": 0.72,
+    "days": 12,
+    "applied": true
+  }
+}
+```
+
+`rhythm.hours[h]` is how the local hour `h` usually goes, from -1 (time planned then usually
+slips) to 1 (usually goes into the work, where focus sessions cluster), learned from the last 8
+weeks of blocks and focus sessions and smoothed towards your own average; `confidence` (0–1)
+grows with evidence, and `peak` names the best two hours once there's enough. `load` is the
+upper quartile of planned time you got through per day (from 5 days with at least an hour
+planned; never below 2 hours) and the share of planned time done. `applied` follows the prefs
+`learn_estimates`, `learn_rhythm` and `balance_load`.
+
+### `GET /planner/next` (auth)
+
+What to do now: `{ at, window, suggestions }`. `window` is the free time from now to the next
+event (or the end of the working day), `{ start_at, end_at, minutes, until }` with `until` the
+event's title (null for the end of the day); null during an event or outside working hours.
+`suggestions` holds up to three open tasks: `{ item_id, title, due_at, priority, minutes,
+reasons, planned_now }`. A task with a block right now comes first (`planned_now`); then the
+priority score, lifted for a task that fits the window, a demanding task at an hour that usually
+goes well for you, and one that keeps slipping (two or more past blocks that mostly didn't go into
+it: `minutes` is then at most 25). `reasons` are short sentences, most important first
+("Due today, 17:00", "Fits the 45 min before Standup", "Your focus usually goes well around now",
+"Planned 3 times without getting done: try 25 minutes of it").
 
 ### `POST /planner/digest/test` (auth)
 
@@ -1440,7 +1491,11 @@ Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turn
 notices off), `planner_notices` (`{ "push": true, "email": false }`; send either key to change
 it) and `default_alerts` (`{ "event": [30], "task": [30], "all_day": [30] }`, the alerts new items
 get; send any key to change it), `count_blocks_as_spent` (default false; see
-[Blocks as time spent](#items)), `buffer_scope` and `travel_padding_minutes`.
+[Blocks as time spent](#items)), `buffer_scope` and `travel_padding_minutes`, and three learning switches: `learn_estimates`
+(default false), `learn_rhythm` (default true: put demanding work in the hours that usually go
+well) and `balance_load` (default true: spread plans over several days so no day asks much more
+than you usually get through). The last two do nothing until there's enough history; see
+[`GET /planner/learning`](#get-plannerlearning-auth).
 
 **Which events get buffers** (`buffer_scope`, replaced as a whole when sent):
 `{ "personal": true, "team_ids": null, "list_ids": [], "min_minutes": 0, "only_with_others": false }`
@@ -1507,7 +1562,12 @@ Plans also carry `options` (what the plan was made with: `start_date`, `days`, `
 `include_item_ids`, `exclude_item_ids`, `estimates`, `pinned_blocks`), `superseded_by`,
 `estimates_saved`, and `tasks`, a checklist of every task considered: `{ item_id, title, due_at,
 priority, team_id, list_id, estimate_minutes, estimate_tuned, included, planned_minutes, reason,
-at_risk }`, where `reason` says why a task wasn't (fully) planned or was left out.
+at_risk, estimate_guess }`, where `reason` says why a task wasn't (fully) planned or was left out
+and `estimate_guess` (`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set
+when a task with no estimate was planned for a learned length. Blocks are placed at the best time
+rather than simply the earliest (see [Planning in the architecture notes](architecture.md#planning)),
+and `summary` says so when learning moved something ("Thesis chapter is in your best hours
+(10:00–12:00).") or a day asks for more than you usually get through.
 
 `PATCH /planner/plans/:id` (the owner, before the plan is applied or expires) makes the plan again
 with some tuning. Each field given replaces the plan's current value; `estimates` merge by task:

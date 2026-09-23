@@ -767,16 +767,88 @@ export type PlannerPrefs = {
   digest?: DigestPrefs;
   /** Scale each task's estimate by how long that kind of task really takes. */
   learn_estimates?: boolean;
+  /** Put demanding work in the hours that usually go well (learned). */
+  learn_rhythm?: boolean;
+  /** Spread work so no day asks for much more than you usually get through. */
+  balance_load?: boolean;
 };
 
 /** What the planner has learned about how long tasks really take. */
 export type EstimateModel = {
-  /** actual ÷ estimated over recent finished tasks; 1 until there's enough data. */
-  overall: { ratio: number; samples: number };
+  /**
+   * actual ÷ estimated over recent finished tasks; 1 until there's enough
+   * data. `range` is the middle half of how tasks go (a quarter run shorter
+   * than its low end, a quarter longer than its high end).
+   */
+  overall: {
+    ratio: number;
+    samples: number;
+    range?: [number, number] | null;
+  };
   /** Per-tag ratios, only where there are enough finished tasks to trust. */
   tags: { tag_id: string; name: string; ratio: number; samples: number }[];
+  /** Per-list ratios, the same way. */
+  lists?: { list_id: string; name: string; ratio: number; samples: number }[];
+  /** How long a task usually takes you when it has no estimate, once known. */
+  typical_minutes?: number | null;
   /** Whether the planner is applying these corrections. */
   applied: boolean;
+};
+
+/** Which hours of the day usually go well, learned from kept blocks and focus. */
+export type RhythmModel = {
+  /** Per local hour 0–23, from -1 (planned time usually slips) to 1 (usually goes well). */
+  hours: number[];
+  /** 0–1: how much history there is behind it. */
+  confidence: number;
+  /** Minutes of planned blocks and focus sessions it was learned from. */
+  evidence_minutes: number;
+  /** The best two hours in a row, once there's enough history. */
+  peak: { start_hour: number; end_hour: number } | null;
+};
+
+/** How much planned time someone usually gets through in a day. */
+export type LoadModel = {
+  /** Minutes a good-but-normal day gets through; null until there's history. */
+  typical_day_minutes: number | null;
+  /** Share of planned time that got done (0–1). */
+  follow_through: number | null;
+  /** Days with at least an hour planned that it was learned from. */
+  days: number;
+};
+
+/** Everything the planner has learned from someone's history (`GET /planner/learning`). */
+export type PlannerLearning = {
+  estimates: EstimateModel;
+  rhythm: RhythmModel & { applied: boolean };
+  load: LoadModel & { applied: boolean };
+};
+
+/** A task worth doing now, and why (`GET /planner/next`). */
+export type UpNextSuggestion = {
+  item_id: string;
+  title: string;
+  due_at: string | null;
+  priority: "low" | "medium" | "high";
+  /** A sensible session to start with now, in minutes. */
+  minutes: number;
+  /** Short reasons, most important first ("Due today, 17:00"). */
+  reasons: string[];
+  /** Time is set aside for it right now. */
+  planned_now: boolean;
+};
+
+export type UpNext = {
+  at: string;
+  /** The free time from now to the next event or the end of the working day. */
+  window: {
+    start_at: string;
+    end_at: string;
+    minutes: number;
+    /** What ends the window: the next event's title, or null for the end of the day. */
+    until: string | null;
+  } | null;
+  suggestions: UpNextSuggestion[];
 };
 
 export type BufferScope = z.output<typeof bufferScopeInput>;
@@ -933,6 +1005,14 @@ export type PlanTask = {
   estimate_minutes: number | null;
   /** True when the plan uses a tuned estimate rather than the task's. */
   estimate_tuned: boolean;
+  /**
+   * For a task with no estimate, the length learned from finished tasks that
+   * the plan used instead of 30 minutes, and what it came from.
+   */
+  estimate_guess?: {
+    minutes: number;
+    basis: "similar" | "list" | "tag" | "typical";
+  } | null;
   /** False for tasks left out of this plan. */
   included: boolean;
   /** Minutes the plan gives it (pinned blocks included). */
