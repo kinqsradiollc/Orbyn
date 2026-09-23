@@ -1,3 +1,5 @@
+import { parseProjectDraft } from "../project-draft.js";
+import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
   blockText,
@@ -35,6 +37,7 @@ export type AgentContext = {
   /** The latest request, which decides whether changes and deletions are allowed. */
   intentText: string;
   actions: Action[];
+  projectDraft?: ProjectDraft;
   clarification: { question: string; options: string[] } | null;
   /** A schedule planned this turn, for the user to review and apply. */
   plan?: Plan | null;
@@ -815,6 +818,31 @@ const NO_ARGS: JsonSchema = {
 export const TOOLS: Tool[] = [
   tool(
     {
+      name: "propose_project",
+      description:
+        "Break a project into concrete subtasks with estimated minutes and dependency ids. Orbyn schedules these into available frames. Use for requests to break down or draft a project. Do not combine with other proposals or plan_schedule in this turn. The user reviews the entire graph and schedule before approval.",
+      parameters: z.toJSONSchema(projectDraftSchema) as JsonSchema,
+    },
+    projectDraftSchema,
+    async (ctx, draft) => {
+      if (!mayChange(ctx.intentText))
+        throw new Error("The user must ask to draft or decompose a project.");
+      if (ctx.actions.length || ctx.plan || ctx.projectDraft)
+        throw new Error(
+          "Review one project at a time; do not mix it with other changes.",
+        );
+      ctx.projectDraft = parseProjectDraft(JSON.stringify(draft));
+      return {
+        title: draft.title,
+        tasks: draft.tasks,
+        review_required: true,
+        message:
+          "The project and a schedule will be shown for approval. Nothing has been created yet.",
+      };
+    },
+  ),
+  tool(
+    {
       name: "search_docs",
       description:
         "Search the pages and notes this person can read — documents, meeting notes, agendas, project notes. Use this before answering anything about what was written down, decided or agreed. Returns ids and the line that matched, for citing.",
@@ -1454,6 +1482,13 @@ export async function runTool(
   ctx: AgentContext,
 ): Promise<{ content: string; isError: boolean }> {
   const name = call.name.replace(/^functions\./, "").trim();
+  if (
+    ctx.projectDraft &&
+    (name.startsWith("propose_") || name === "plan_schedule")
+  )
+    return errorResult(
+      "A project is already drafted for review. Do not add separate changes or schedules to this turn.",
+    );
   const found = TOOLS.find((t) => t.spec.name === name);
   if (!found)
     return errorResult(

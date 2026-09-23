@@ -33,6 +33,7 @@ import {
 } from "../lib/planning";
 import { RepeatPicker } from "./RepeatPicker";
 import { TagPicker } from "./TagPicker";
+import { WaitsOnPicker } from "./WaitsOnPicker";
 import { LinksField, type LinkDraft } from "./LinksField";
 import {
   AlertsPicker,
@@ -58,6 +59,8 @@ type Props = {
   occurrence?: OccurrenceRef | null;
   busy: boolean;
   error: string;
+  /** Everything visible, so a task can be pointed at what it waits on. */
+  items?: Item[];
   onClose: () => void;
   /** For a repeating item, `options` says which occurrences it changes. */
   onSave: (data: ItemInput, options?: EditOptions) => void;
@@ -81,6 +84,7 @@ export function ItemEditor({
   occurrence,
   busy,
   error,
+  items = [],
   onClose,
   onSave,
   onDelete,
@@ -104,6 +108,7 @@ export function ItemEditor({
   );
   const [listId, setListId] = useState<string | null>(base.list_id ?? null);
   const [tagIds, setTagIds] = useState<string[]>(base.tag_ids ?? []);
+  const [waitsOn, setWaitsOn] = useState<string[]>(base.prerequisite_ids ?? []);
   const [assigneeId, setAssigneeId] = useState<string | null>(
     base.assignee_id ?? null,
   );
@@ -369,6 +374,7 @@ export function ItemEditor({
               estimate_minutes: estimate,
               list_id: listId,
               tag_ids: tagIds,
+              prerequisite_ids: kind === "task" ? waitsOn : [],
               assignee_id: teamId ? assigneeId : null,
               location: location.trim(),
               meeting_url: meetingUrl.trim(),
@@ -673,6 +679,16 @@ export function ItemEditor({
               onChange={setTagIds}
               onCreate={readOnly ? undefined : createTag}
             />
+            {/* Only a task waits on anything; an event happens when it does. */}
+            {kind === "task" && (
+              <WaitsOnPicker
+                selfId={existing?.id ?? null}
+                items={items}
+                selected={waitsOn}
+                onChange={setWaitsOn}
+                readOnly={readOnly}
+              />
+            )}
             <ColorPicker value={color} onChange={setColor} />
             <LinksField value={links} onChange={setLinks} state={linksState} />
             <RepeatPicker

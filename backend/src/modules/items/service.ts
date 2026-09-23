@@ -13,7 +13,7 @@ import {
   type Kind,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
-import { requireTeam } from "../../lib/teams.js";
+import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import {
   isOccurrence,
@@ -59,6 +59,7 @@ export type ItemRow = Item & {
  */
 export const ITEM_COLUMNS = `i.*, t.name AS team_name, a.name AS assignee_name,
   coalesce((SELECT array_agg(it.tag_id ORDER BY it.tag_id) FROM item_tags it WHERE it.item_id = i.id), '{}') AS tag_ids,
+  coalesce((SELECT array_agg(dep.prerequisite_id ORDER BY dep.prerequisite_id) FROM item_dependencies dep WHERE dep.item_id = i.id), '{}') AS prerequisite_ids,
   CASE WHEN i.estimate_minutes IS NULL THEN NULL
        ELSE greatest(0, i.estimate_minutes - i.spent_minutes) END AS remaining_minutes,
   (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status <> 'cancelled') AS child_count,
@@ -390,6 +391,55 @@ export async function moveItem(
   );
 }
 
+/**
+ * Check and save what a task waits on.
+ *
+ * A prerequisite has to be a task the same person can already see, or the
+ * planner would leak one space's titles into another's schedule. A task
+ * cannot wait on itself, and it cannot wait on anything that is already
+ * waiting on it however far down the chain — a cycle would leave every task
+ * in it permanently unplaceable, with nothing to say why.
+ */
+async function setPrerequisites(
+  db: Db,
+  actor: Actor,
+  itemId: string,
+  ids: string[],
+) {
+  const wanted = [...new Set(ids)].filter((id) => id !== itemId);
+  if (wanted.length !== new Set(ids).size)
+    fail(422, "A task can't wait on itself.");
+  if (wanted.length) {
+    const visible = (
+      await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM items i
+          WHERE i.id = ANY($2::uuid[]) AND i.kind = 'task' AND (${VISIBLE_ITEMS})`,
+        [actor.id, wanted],
+      )
+    ).rows[0].n;
+    if (visible !== wanted.length)
+      fail(422, "A task can only wait on tasks you can see.");
+    const cycle = await db.query(
+      `WITH RECURSIVE chain(id) AS (
+         SELECT unnest($2::uuid[])
+         UNION
+         SELECT d.prerequisite_id FROM item_dependencies d JOIN chain c ON d.item_id = c.id
+       )
+       SELECT 1 FROM chain WHERE id = $1 LIMIT 1`,
+      [itemId, wanted],
+    );
+    if (cycle.rowCount)
+      fail(422, "That would make a loop: these tasks would wait on each other.");
+  }
+  await db.query("DELETE FROM item_dependencies WHERE item_id = $1", [itemId]);
+  if (wanted.length)
+    await db.query(
+      `INSERT INTO item_dependencies (item_id, prerequisite_id)
+       SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+      [itemId, wanted],
+    );
+}
+
 async function setTags(db: Db, itemId: string, tagIds: string[]) {
   await db.query("DELETE FROM item_tags WHERE item_id = $1", [itemId]);
   if (tagIds.length)
@@ -561,6 +611,9 @@ export async function mutate(
       )
     ).rows[0];
     await setTags(db, created.id, tagIds);
+    // Only a task waits on anything; an event happens when it happens.
+    if (d.prerequisite_ids?.length && d.kind === "task")
+      await setPrerequisites(db, actor, created.id, d.prerequisite_ids);
     if (d.links?.length) await setLinks(db, created.id, d.links);
     await touch(db, [parentId]);
     if (d.attendees?.length) {
@@ -753,6 +806,14 @@ export async function mutate(
     ],
   );
   await setTags(db, current.id, tagIds);
+  // Omitted keeps what is saved, like the other planning fields; a task that
+  // stops being a task stops waiting on anything.
+  if (d.kind !== "task")
+    await db.query("DELETE FROM item_dependencies WHERE item_id = $1", [
+      current.id,
+    ]);
+  else if (d.prerequisite_ids !== undefined)
+    await setPrerequisites(db, actor, current.id, d.prerequisite_ids);
   if (d.links !== undefined) await setLinks(db, current.id, d.links);
   if (parentId !== current.parent_id || status !== current.status)
     await touch(db, [current.parent_id, parentId]);

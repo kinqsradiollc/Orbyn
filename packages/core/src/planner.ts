@@ -21,6 +21,7 @@ const PLANNING_FIELDS = [
   "estimate_minutes",
   "list_id",
   "tag_ids",
+  "prerequisite_ids",
   "assignee_id",
   "location",
   "meeting_url",

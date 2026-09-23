@@ -1,3 +1,4 @@
+import { ProjectDraftReview } from "./ProjectDraftReview";
 import { alertLabel } from "./EventFields";
 import { Fragment, type ReactNode } from "react";
 import { Bell, Calendar, Check, Clock, Flag, Users, X } from "lucide-react";
@@ -293,7 +294,8 @@ export function ProposalReview({
         onKept={onKeptNote}
         report={() => {}}
       />
-      {count > 0 && (
+      {proposal.project && <ProjectDraftReview project={proposal.project} />}
+      {count > 0 && !proposal.project && (
         <div
           className={
             "ai-actions" + (status === "discarded" ? " is-discarded" : "")
@@ -324,8 +326,10 @@ export function ProposalReview({
       {status === "pending" && (
         <div className="ai-decide">
           <button className="primary" disabled={busy} onClick={onApply}>
-            <Check size={15} /> Approve {count}{" "}
-            {count === 1 ? "change" : "changes"}
+            <Check size={15} />{" "}
+            {proposal.project
+              ? "Create project and schedule"
+              : `Approve ${count} ${count === 1 ? "change" : "changes"}`}
           </button>
           <button className="secondary" disabled={busy} onClick={onDismiss}>
             Discard

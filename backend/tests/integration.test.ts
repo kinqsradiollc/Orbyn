@@ -566,8 +566,138 @@ test("drafting a project returns a reviewable proposal, applied on request", asy
   const after = (
     await app.inject({ url: "/items", headers: headers(alice) })
   ).json();
-  assert.equal(after.length, before + 3, "the three tasks were created");
-  assert.ok(
-    after.some((i: { title: string }) => i.title === "Pick a platform"),
+  // Four, not three: a project is applied as a parent task with the subtasks
+  // hanging off it, which is what the review card promises ("a parent task and
+  // N subtasks") and what the planner's open_children accounting expects.
+  assert.equal(
+    after.length,
+    before + 4,
+    "the parent task and its three subtasks were created",
   );
+  const parent = after.find(
+    (i: { title: string }) => i.title === "Launch the newsletter",
+  );
+  assert.ok(parent, "the project's parent task was created");
+  const children = after.filter(
+    (i: { parent_id: string | null }) => i.parent_id === parent.id,
+  );
+  assert.deepEqual(
+    children.map((c: { title: string }) => c.title).sort(),
+    ["Invite subscribers", "Pick a platform", "Write the first issue"],
+    "every subtask hangs off the parent",
+  );
+});
+
+test("an approved project persists its dependencies, its stages and its calendar blocks", async () => {
+  providerResponse = {
+    title: "Ship the redesign",
+    tasks: [
+      {
+        id: "design",
+        title: "Design the screens",
+        notes: "",
+        estimate_minutes: 90,
+        due_in_days: 1,
+        depends_on: [],
+      },
+      {
+        id: "build",
+        title: "Build the screens",
+        notes: "",
+        estimate_minutes: 90,
+        due_in_days: 3,
+        depends_on: ["design"],
+      },
+      {
+        id: "ship",
+        title: "Ship it",
+        notes: "",
+        estimate_minutes: 60,
+        due_in_days: 5,
+        depends_on: ["build"],
+      },
+    ],
+  };
+  const draft = await app.inject({
+    method: "POST",
+    url: "/ai/project",
+    headers: headers(alice),
+    payload: { prompt: "Redesign the app", timezone: "Australia/Melbourne" },
+  });
+  assert.equal(draft.statusCode, 200, draft.body);
+  const proposal = draft.json();
+
+  // The reviewable graph and its schedule come back before anything is stored.
+  assert.equal(proposal.project.tasks.length, 3);
+  assert.deepEqual(proposal.project.tasks[0].depends_on, []);
+  assert.ok(proposal.project.blocks.length > 0, "a schedule was previewed");
+  const edgesBefore = await pool.query(
+    "SELECT count(*)::int AS n FROM item_dependencies",
+  );
+  const edgeCountBefore = edgesBefore.rows[0].n;
+
+  const applied = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: headers(alice),
+  });
+  assert.equal(applied.statusCode, 200, applied.body);
+
+  const project = (
+    await pool.query<{ id: string; name: string; stages: number }>(
+      `SELECT p.id, p.name, (SELECT count(*)::int FROM project_stages s WHERE s.project_id = p.id) AS stages
+         FROM projects p WHERE p.name = $1 AND p.user_id = $2 ORDER BY p.created_at DESC LIMIT 1`,
+      ["Ship the redesign", aliceId],
+    )
+  ).rows[0];
+  assert.ok(project, "the project itself was created");
+  assert.ok(project.stages > 0, "the project got its default stages");
+
+  const rows = (
+    await pool.query<{ item: string; prerequisite: string }>(
+      `SELECT i.title AS item, p.title AS prerequisite
+         FROM item_dependencies d
+         JOIN items i ON i.id = d.item_id
+         JOIN items p ON p.id = d.prerequisite_id
+        WHERE i.project_id = $1
+        ORDER BY i.title`,
+      [project.id],
+    )
+  ).rows;
+  assert.deepEqual(
+    rows,
+    [
+      { item: "Build the screens", prerequisite: "Design the screens" },
+      { item: "Ship it", prerequisite: "Build the screens" },
+    ],
+    "the graph the user reviewed is the graph that was stored",
+  );
+
+  // Scoped to THIS project's subtasks: the suite shares one database, so a
+  // bare count would pick up every planner block any other test left behind.
+  const blocks = (
+    await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n
+         FROM time_blocks b JOIN items i ON i.id = b.item_id
+        WHERE b.source = 'planner' AND i.project_id = $1`,
+      [project.id],
+    )
+  ).rows[0].n;
+  assert.equal(
+    blocks,
+    proposal.project.blocks.length,
+    "every previewed session became a calendar block",
+  );
+
+  // Approving twice must not double-write.
+  const again = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: headers(alice),
+  });
+  assert.equal(again.statusCode, 200);
+  const edgesAfter = await pool.query(
+    "SELECT count(*)::int AS n FROM item_dependencies",
+  );
+  assert.equal(edgesAfter.rows[0].n, edgeCountBefore + 2, "re-approval is idempotent");
 });

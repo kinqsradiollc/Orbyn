@@ -964,6 +964,15 @@ export async function plannerRoutes(app: FastifyInstance) {
       if (plan.expires_at <= new Date())
         fail(409, "This plan expired. Make a new one.");
       if (!plan.blocks.length) fail(409, "This plan has no blocks to add.");
+      const dependencies = await db.query(
+        "SELECT 1 FROM item_dependencies WHERE item_id=ANY($1::uuid[]) LIMIT 1",
+        [plan.blocks.map((b) => b.item_id)],
+      );
+      if (dependencies.rowCount && (await planStale(db, plan.id, u.id)))
+        fail(
+          409,
+          "The dependency schedule changed. Refresh the plan before applying it.",
+        );
       const starts = plan.blocks.map((b) => Date.parse(b.start_at));
       const ends = plan.blocks.map((b) => Date.parse(b.end_at));
       const busy = await busyIntervals(

@@ -1,3 +1,4 @@
+import { ProjectDraftReview } from "./ProjectDraftReview";
 import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
@@ -314,7 +315,8 @@ export function ProposalReview({
         onKept={onKeptNote}
         report={() => {}}
       />
-      {count > 0 && (
+      {proposal.project && <ProjectDraftReview project={proposal.project} />}
+      {count > 0 && !proposal.project && (
         <View style={[s.actions, status === "discarded" && { opacity: 0.5 }]}>
           {proposal.actions.map((a, n) => {
             const op = OPERATION[a.operation];
@@ -340,7 +342,11 @@ export function ProposalReview({
       {status === "pending" && (
         <View style={s.buttons}>
           <Button
-            title={`Approve ${count} ${count === 1 ? "change" : "changes"}`}
+            title={
+              proposal.project
+                ? "Create project and schedule"
+                : `Approve ${count} ${count === 1 ? "change" : "changes"}`
+            }
             icon="check"
             disabled={busy}
             onPress={onApprove}

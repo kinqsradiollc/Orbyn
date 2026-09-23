@@ -37,6 +37,9 @@ export type SchedulerTask = {
   /** Open subtasks, and the minutes they still need between them. */
   open_children?: number;
   children_remaining?: number;
+  /** Prerequisites, with a known finish when already completed or fully scheduled. */
+  dependencies?: { id: string; ready_at: string | null }[];
+  scheduled_end_at?: string | null;
 };
 
 export type SchedulerInput = {
@@ -242,6 +245,17 @@ export function sessions(
   return out;
 }
 
+/** Titles as a sentence: "A", "A and B", "A, B and C". */
+function list(titles: string[]): string {
+  const shown = titles.slice(0, 3);
+  const rest = titles.length - shown.length;
+  const joined =
+    shown.length > 1
+      ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}`
+      : shown[0];
+  return rest > 0 ? `${joined} and ${rest} more` : joined;
+}
+
 export function schedule(input: SchedulerInput): SchedulerResult {
   let free = subtract(windows(input), input.busy);
   const capacity = free.reduce((sum, s) => sum + (s.end - s.start) / MINUTE, 0);
@@ -278,7 +292,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   }
   if (pinned.length) free = subtract(free, pinned);
 
-  const ranked = input.tasks
+  const rankedByScore = input.tasks
     .filter((t) => !isClosed(t.status))
     .map((t) => ({ task: t, score: scoreOf(t) }))
     .sort(
@@ -288,6 +302,31 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         a.task.title.localeCompare(b.task.title),
     );
 
+  const ranked: typeof rankedByScore = [];
+  const pending = [...rankedByScore];
+  const visited = new Set<string>();
+  while (pending.length) {
+    const index = pending.findIndex(({ task }) =>
+      (task.dependencies ?? []).every(
+        (d) =>
+          !byId.has(d.id) ||
+          visited.has(d.id) ||
+          isClosed(byId.get(d.id)!.status),
+      ),
+    );
+    if (index < 0) {
+      ranked.push(...pending);
+      break;
+    }
+    const [next] = pending.splice(index, 1);
+    ranked.push(next);
+    visited.add(next.task.id);
+  }
+  const completed = new Map<string, number>(
+    input.tasks
+      .filter((t) => t.status === "done")
+      .map((t) => [t.id, input.now.getTime()]),
+  );
   for (const { task, score } of ranked) {
     const unplace = (reason: string) =>
       unplaced.push({
@@ -296,6 +335,51 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         due_at: task.due_at,
         reason,
       });
+    const waitingOn = (task.dependencies ?? []).map((d) => ({
+      id: d.id,
+      end: byId.has(d.id)
+        ? completed.get(d.id)
+        : d.ready_at
+          ? Date.parse(d.ready_at)
+          : undefined,
+    }));
+    const ends = waitingOn.map((d) => d.end);
+    const ready = Math.max(
+      input.now.getTime(),
+      ...ends.filter((t): t is number => t !== undefined),
+    );
+    const ownPins = pinned.filter((p) => p.item_id === task.id);
+    // Say which task is in the way. "A prerequisite is not fully scheduled"
+    // leaves someone looking at a task they cannot plan with no way to find
+    // out what they have to plan first.
+    const blocking = waitingOn
+      .filter((d) => d.end === undefined || !Number.isFinite(d.end))
+      .map((d) => byId.get(d.id)?.title)
+      .filter((title): title is string => !!title);
+    if (ends.some((t) => t === undefined || !Number.isFinite(t))) {
+      for (let i = blocks.length - 1; i >= 0; i--)
+        if (blocks[i].item_id === task.id) blocks.splice(i, 1);
+      unplace(
+        blocking.length
+          ? `Waiting on ${list(blocking)}, which ${blocking.length === 1 ? "isn't" : "aren't"} fully scheduled yet.`
+          : "Waiting on a task that isn't fully scheduled yet.",
+      );
+      continue;
+    }
+    if (ownPins.some((p) => Date.parse(p.start_at) < ready)) {
+      for (let i = blocks.length - 1; i >= 0; i--)
+        if (blocks[i].item_id === task.id) blocks.splice(i, 1);
+      unplace("A pinned session starts before what it waits on finishes.");
+      continue;
+    }
+    const finish = () =>
+      Math.max(
+        ready,
+        task.scheduled_end_at ? Date.parse(task.scheduled_end_at) : ready,
+        ...blocks
+          .filter((b) => b.item_id === task.id)
+          .map((b) => Date.parse(b.end_at)),
+      );
     if (task.status === "blocked") {
       if (!pinnedMinutes.has(task.id))
         unplace("Blocked, so it wasn't planned.");
@@ -306,7 +390,10 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       remainingOf(task) -
       task.scheduled_minutes -
       (pinnedMinutes.get(task.id) ?? 0);
-    if (remaining <= 0) continue;
+    if (remaining <= 0) {
+      completed.set(task.id, finish());
+      continue;
+    }
     const padded = roundUpMinutes(remaining * (1 + input.padPercent / 100));
     const parts = sessions(
       padded,
@@ -324,18 +411,20 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       const fits = (s: Segment) => {
         if (s.frame && !frameAccepts(s.frame, task, estimate)) return false;
         blockedByFrames = false;
-        return s.end - s.start >= need;
+        return s.end - Math.max(s.start, ready) >= need;
       };
       // Earliest slot that ends by the due time; otherwise the earliest at all.
       const candidates = free.filter(fits);
-      const onTime = candidates.find((s) => s.start + need <= due);
+      const onTime = candidates.find(
+        (s) => Math.max(s.start, ready) + need <= due,
+      );
       const slot = onTime ?? candidates[0];
       if (!slot) {
         ok = false;
         break;
       }
       if (!onTime) lateSession = true;
-      const start = slot.start;
+      const start = Math.max(slot.start, ready);
       const end = start + need;
       placed.push({
         item_id: task.id,
@@ -352,7 +441,10 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       const taken = end + (minutes >= 45 ? pause : 0);
       free = free.flatMap((s) => {
         if (s !== slot) return [s];
-        return taken < s.end ? [{ ...s, start: ceilToGrid(taken) }] : [];
+        return [
+          ...(s.start < start ? [{ ...s, end: start }] : []),
+          ...(taken < s.end ? [{ ...s, start: ceilToGrid(taken) }] : []),
+        ];
       });
     }
     if (!ok) {
@@ -375,6 +467,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       continue;
     }
     blocks.push(...placed);
+    completed.set(task.id, finish());
     if (lateSession && task.due_at)
       atRisk.push({
         item_id: task.id,

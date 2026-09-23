@@ -238,15 +238,63 @@ a.drawer-fact {
 
 /* Repeat and tag pickers inside the item editor. */
 .repeat-picker,
-.tag-picker {
+.tag-picker,
+.waits-on {
   margin: 0 0 18px;
   padding: 12px 14px 14px;
   border: 1px solid var(--border);
   border-radius: 9px;
   min-width: 0;
 }
+/* What a task waits on: the list it already waits on, then one way to add. */
+.waits-on {
+  display: grid;
+  gap: 8px;
+}
+.waits-on-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.waits-on-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  background: var(--color-sunken);
+  font-size: 0.85rem;
+}
+.waits-on-list li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.waits-on-list button {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.waits-on-list button:hover {
+  color: var(--color-text);
+}
+.waits-on select {
+  width: 100%;
+  min-width: 0;
+}
 .repeat-picker legend,
 .tag-picker legend,
+.waits-on legend,
 .check-group legend {
   padding: 0 4px;
   font-size: 11px;

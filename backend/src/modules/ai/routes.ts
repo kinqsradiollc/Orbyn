@@ -1,9 +1,10 @@
+import { loadPrefs } from "../planner/calendar.js";
+import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
+import { proposeProject, applyProject } from "./project-proposal.js";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import {
   actionSchema,
-  addDays,
   chatRequest,
-  dayTime,
   fail,
   HttpError,
   MAX_REMINDER_MINUTES,
@@ -21,7 +22,6 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { audit } from "../../lib/audit.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
-import { loadPrefs } from "../planner/calendar.js";
 import { pruneActions } from "./guards.js";
 import { ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
@@ -99,6 +99,15 @@ async function answer(
         ? `The AI provider could not answer: ${error.message} Please try again.`
         : "The AI provider could not answer. Please try again.",
     );
+  }
+  if (ctx.projectDraft && !ctx.clarification) {
+    const proposal = await proposeProject(
+      pool,
+      u.id,
+      ctx.projectDraft,
+      d.timezone,
+    );
+    return { ...proposal, sources: result.sources };
   }
   let actions = result.actions;
   if (result.legacy) {
@@ -237,11 +246,7 @@ export async function aiRoutes(app: FastifyInstance) {
         "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
     const today = localDateKey(new Date(), d.timezone);
-    const system = `You plan projects. Reply with ONE JSON object and nothing else:
-{"title": string, "tasks": [{"title": string, "notes": string, "estimate_minutes": number, "due_in_days": number}]}
-- 3 to 15 tasks, in the order they should be done.
-- estimate_minutes is a rough guess; due_in_days is days from today (today is 0).
-- Keep titles short and concrete. No prose outside the JSON.`;
+    const system = PROJECT_DRAFT_PROMPT;
     let content: string;
     try {
       content = await complete(
@@ -259,76 +264,16 @@ export async function aiRoutes(app: FastifyInstance) {
       );
       fail(502, "The AI provider could not answer. Please try again.");
     }
-    let draft: { title?: string; tasks?: unknown[] };
+    let draft;
     try {
-      const clean = content
-        .replace(/<think>[\s\S]*?<\/think>/gi, "")
-        .replace(/^```json\s*|^```\s*|```\s*$/gim, "")
-        .trim();
-      draft = JSON.parse(
-        clean.slice(clean.indexOf("{"), clean.lastIndexOf("}") + 1),
-      );
+      draft = parseProjectDraft(content);
     } catch {
       fail(
         502,
-        "The AI provider returned a plan Orbyn couldn't read. Try again.",
+        "The AI provider returned an invalid task graph. Please try again.",
       );
     }
-    const prefs = await loadPrefs(pool, u.id);
-    const tasks = Array.isArray(draft.tasks) ? draft.tasks.slice(0, 20) : [];
-    const actions = tasks.flatMap((t) => {
-      const task = t as {
-        title?: unknown;
-        notes?: unknown;
-        estimate_minutes?: unknown;
-        due_in_days?: unknown;
-      };
-      const title = typeof task.title === "string" ? task.title.trim() : "";
-      if (!title) return [];
-      const days = Math.max(0, Math.min(365, Number(task.due_in_days) || 0));
-      const estimate = Math.max(
-        0,
-        Math.min(10080, Number(task.estimate_minutes) || 0),
-      );
-      return [
-        {
-          operation: "create" as const,
-          data: {
-            title: title.slice(0, 200),
-            notes:
-              typeof task.notes === "string" ? task.notes.slice(0, 10000) : "",
-            kind: "task" as const,
-            priority: "medium" as const,
-            due_at: dayTime(
-              addDays(today, days),
-              9 * 60,
-              prefs.timezone,
-            ).toISOString(),
-            ...(estimate ? { estimate_minutes: estimate } : {}),
-          },
-        },
-      ];
-    });
-    if (!actions.length)
-      fail(502, "The AI provider didn't return any tasks. Try rephrasing.");
-    const parsed = actions.map((a) => actionSchema.parse(a));
-    const title =
-      typeof draft.title === "string" && draft.title.trim()
-        ? draft.title.trim().slice(0, 120)
-        : d.prompt.slice(0, 120);
-    const p = (
-      await pool.query<{ id: string }>(
-        "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
-        [u.id, JSON.stringify(parsed)],
-      )
-    ).rows[0];
-    return {
-      id: p.id,
-      summary: `**${title}** — ${parsed.length} task${parsed.length === 1 ? "" : "s"} to review.`,
-      actions: parsed,
-      follow_ups: [],
-      plan: null,
-    };
+    return proposeProject(pool, u.id, draft, d.timezone);
   });
 
   // The whole turn in one request. Anything in front of Orbyn that gives up
@@ -409,7 +354,10 @@ export async function aiRoutes(app: FastifyInstance) {
       if (p.applied) return { applied: true };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
-      for (const raw of p.actions) await mutate(db, u, actionSchema.parse(raw));
+      if (p.project) await applyProject(db, u, p.project);
+      else
+        for (const raw of p.actions)
+          await mutate(db, u, actionSchema.parse(raw));
       await db.query("UPDATE proposals SET applied=true WHERE id=$1", [p.id]);
       await audit(
         {

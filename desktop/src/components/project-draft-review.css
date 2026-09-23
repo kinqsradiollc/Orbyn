@@ -1,0 +1,48 @@
+.project-draft-review {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+  min-width: 0;
+}
+.project-draft-review h3,
+.project-draft-review p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.project-draft-review > ol {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+.project-draft-review > ol > li {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  min-width: 0;
+}
+.project-draft-review li strong {
+  overflow-wrap: anywhere;
+}
+.project-draft-review li ul {
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.project-draft-warning {
+  color: var(--color-warn);
+  font-size: 0.85rem;
+}
+/*
+ * The dark theme carries a global `:root[data-theme="dark"] p` rule, and an
+ * attribute selector plus an element beats a bare class. Without this the
+ * warnings keep their colour in light mode and quietly turn into ordinary
+ * muted text in dark — the one place a reader most needs them to stand out.
+ */
+.project-draft-review p.project-draft-warning {
+  color: var(--color-warn);
+}

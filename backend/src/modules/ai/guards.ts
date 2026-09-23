@@ -29,7 +29,7 @@ const COMPARED = [
 
 /** Words that ask for a change to the planner. */
 const CHANGE_INTENT =
-  /\b(add|create|make|schedule|book|plan|put|set|remind|move|reschedule|change|update|edit|rename|shift|push|postpone|delay|bring|mark|complete[ds]?|finish(?:ed|es)?|done|tick|check off|start|block|unblock|progress|delete|remove|cancel(?:l?ed)?|clear|drop|erase|trash|get rid of|archive|share|assign|prioriti[sz]e[ds]?|split|duplicate|copy)\b/i;
+  /\b(decompose|draft|break down|break .{1,80} into (?:sub)?tasks|add|create|make|schedule|book|plan|put|set|remind|move|reschedule|change|update|edit|rename|shift|push|postpone|delay|bring|mark|complete[ds]?|finish(?:ed|es)?|done|tick|check off|start|block|unblock|progress|delete|remove|cancel(?:l?ed)?|clear|drop|erase|trash|get rid of|archive|share|assign|prioriti[sz]e[ds]?|split|duplicate|copy)\b/i;
 /**
  * Telling the assistant what happened ("the oral defence has been completed",
  * "I paid the bill", "the meeting got cancelled", "the dentist didn't happen")

@@ -167,6 +167,12 @@ export const itemData = z
     estimate_minutes: z.number().int().min(1).max(10080).nullable().optional(),
     list_id: z.uuid().nullable().optional(),
     tag_ids: z.array(z.uuid()).max(20).optional(),
+    /**
+     * Tasks this one waits on. The planner will not place a task before every
+     * prerequisite is finished or fully scheduled. Omitted on edit keeps what
+     * is saved, the way the other planning fields do.
+     */
+    prerequisite_ids: z.array(z.uuid()).max(14).optional(),
     /** Who on the team is doing a team task. */
     assignee_id: z.uuid().nullable().optional(),
     location: z.string().trim().max(300).optional(),

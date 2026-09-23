@@ -733,6 +733,7 @@ export function App() {
             key={editing === "new" ? "new" : editing.id + ":" + editing.version}
             editing={editing}
             teams={teams}
+            items={items}
             defaultTeamId={draftTeamId}
             draft={editing === "new" ? draft : null}
             busy={busy}

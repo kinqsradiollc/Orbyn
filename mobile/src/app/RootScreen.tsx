@@ -742,6 +742,7 @@ export function RootScreen() {
         <ItemEditor
           editing={editing}
           teams={teams}
+          items={items}
           busy={busy}
           error={error}
           onChange={(patch) =>

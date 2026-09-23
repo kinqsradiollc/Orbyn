@@ -107,6 +107,15 @@ async function candidateTasks(
                         FROM time_blocks b
                         WHERE b.item_id = i.id AND b.user_id = $1 AND b.end_at > now()), 0)::int
                 AS scheduled_minutes,
+              (SELECT max(b.end_at) FROM time_blocks b WHERE b.item_id=i.id AND b.user_id=$1 AND b.end_at>now()) AS scheduled_end_at,
+              coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'ready_at',
+                CASE WHEN p.status='done' THEN '1970-01-01T00:00:00Z'::timestamptz
+                WHEN p.status NOT IN ('blocked','cancelled') AND
+                  coalesce((SELECT sum(extract(epoch FROM (b.end_at-greatest(b.start_at,now())))/60) FROM time_blocks b WHERE b.item_id=p.id AND b.user_id=$1 AND b.end_at>now()),0)
+                  >= greatest(0,coalesce(p.estimate_minutes,30)-p.spent_minutes)
+                THEN coalesce((SELECT max(b.end_at) FROM time_blocks b WHERE b.item_id=p.id AND b.user_id=$1 AND b.end_at>now()), '1970-01-01T00:00:00Z'::timestamptz)
+                ELSE NULL END) ORDER BY p.id)
+                FROM item_dependencies dep JOIN items p ON p.id=dep.prerequisite_id WHERE dep.item_id=i.id), '[]'::jsonb) AS dependencies,
               ${CHILD_COLUMNS}
        FROM items i
        WHERE i.kind = 'task' AND i.status NOT IN ('done', 'cancelled') AND (
@@ -132,6 +141,9 @@ async function candidateTasks(
   return rows.map((t) => ({
     ...t,
     due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
+    scheduled_end_at: t.scheduled_end_at
+      ? new Date(t.scheduled_end_at).toISOString()
+      : null,
   }));
 }
 
@@ -231,6 +243,8 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
             t.tag_ids,
             t.open_children,
             t.children_remaining,
+            t.dependencies,
+            t.scheduled_end_at,
           ]),
       }),
     )

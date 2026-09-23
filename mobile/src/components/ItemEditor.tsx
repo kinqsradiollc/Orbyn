@@ -59,6 +59,8 @@ type Props = {
   editing: Editing | null;
   /** Your teams, for the "Share with" picker and the viewer read-only check. */
   teams: Team[];
+  /** Everything visible, so a task can be pointed at what it waits on. */
+  items?: Item[];
   busy: boolean;
   error: string;
   /** Only the fields that changed; the parent merges them into its latest copy. */
@@ -73,6 +75,8 @@ type Props = {
 const PERSONAL = "personal";
 /** The server's cap on tags per item. */
 const MAX_TAGS = 20;
+/** The most a task may wait on, matching the schema. */
+const MAX_WAITS_ON = 14;
 /** Every status, closed ones last. */
 const STATUS_OPTIONS = [...statusOrder, "cancelled"] as const;
 type LinkDraft = { url: string; title: string };
@@ -105,6 +109,7 @@ export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
 function Form({
   editing,
   teams,
+  items = [],
   busy,
   error,
   onChange,
@@ -161,6 +166,14 @@ function Form({
   const scopeLists = lists.filter((l) => (l.team_id ?? null) === teamId);
   const scopeTags = tags.filter((t) => (t.team_id ?? null) === teamId);
   const tagIds = editing.tag_ids ?? [];
+  const waitsOn = editing.prerequisite_ids ?? [];
+  const waitable = items.filter(
+    (i) =>
+      i.kind === "task" &&
+      i.id !== ("id" in editing ? editing.id : null) &&
+      i.status !== "done" &&
+      i.status !== "cancelled",
+  );
   const [members, setMembers] = useState<TeamMember[]>([]);
   useEffect(() => {
     if (!teamId) {
@@ -767,6 +780,56 @@ function Form({
               </Text>
             )}
           </Section>
+          {/* What a task waits on. The planner will not place it until every
+              one of these is finished or fully scheduled, so this is the
+              field that explains a task the planner keeps refusing. A loop
+              would leave every task in it unplaceable for good, so the
+              server refuses one; here a task simply is not offered itself. */}
+          {editing.kind === "task" && (
+            <Section label="Waiting on">
+              {waitable.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  keyboardShouldPersistTaps="handled"
+                  showsHorizontalScrollIndicator={false}
+                >
+                  <ChipRow label="Waiting on" multi>
+                    {waitable.map((t) => {
+                      const on = waitsOn.includes(t.id);
+                      return (
+                        <Chip
+                          key={t.id}
+                          multi
+                          compact
+                          label={t.title}
+                          selected={on}
+                          disabled={
+                            readOnly || (!on && waitsOn.length >= MAX_WAITS_ON)
+                          }
+                          onPress={() =>
+                            onChange({
+                              prerequisite_ids: on
+                                ? waitsOn.filter((id) => id !== t.id)
+                                : [...waitsOn, t.id],
+                            })
+                          }
+                        />
+                      );
+                    })}
+                  </ChipRow>
+                </ScrollView>
+              ) : (
+                <Text style={shared.small}>
+                  Nothing else open to wait on yet.
+                </Text>
+              )}
+              {waitsOn.length >= MAX_WAITS_ON && (
+                <Text style={[shared.small, s.hint]}>
+                  Up to {MAX_WAITS_ON} at a time.
+                </Text>
+              )}
+            </Section>
+          )}
           <Section label="Colour on the calendar">
             <ColorField
               value={editing.color ?? null}

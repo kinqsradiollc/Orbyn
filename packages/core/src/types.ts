@@ -1,3 +1,4 @@
+import type { ProjectDecomposition } from "./projectDraft.js";
 import type { DocSource, DraftNote } from "./docs.js";
 
 import type { z } from "zod";
@@ -107,6 +108,8 @@ export type Item = ItemInput & {
   /** Subtasks that aren't cancelled, and how many of them are done. */
   child_count?: number;
   children_done?: number;
+  /** Tasks this one waits on, oldest id first. Empty when nothing blocks it. */
+  prerequisite_ids?: string[];
 };
 
 export type ItemSort = (typeof ITEM_SORTS)[number];
@@ -293,6 +296,8 @@ export type Notice = {
 
 /** An AI plan awaiting user approval. `id` is the proposal id to apply. */
 export type Proposal = AgentReply & {
+  /** A dependency-aware project and schedule, approved together. */
+  project?: ProjectDecomposition | null;
   id: string;
   /**
    * Quick replies the user can tap, such as the choices in a clarifying
