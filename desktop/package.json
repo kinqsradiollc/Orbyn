@@ -6,7 +6,7 @@
   "main": "electron.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/prerender-home.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0",
     "desktop": "electron .",

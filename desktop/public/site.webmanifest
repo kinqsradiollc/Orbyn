@@ -1,7 +1,7 @@
 {
   "name": "Orbyn",
   "short_name": "Orbyn",
-  "description": "Tasks, calendar, planning and team time in one place, on your own server.",
+  "description": "One planner for tasks, calendar, projects and notes — that plans your day around them.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f8fa",

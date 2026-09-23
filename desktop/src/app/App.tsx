@@ -143,13 +143,14 @@ export function App() {
   useEffect(() => {
     // Public booking pages set their own titles and say noindex themselves.
     if (isPublicBooking) return;
-    const app =
-      "Tasks, calendar, planning and team time in one place, on your own server.";
+    // The same words index.html ships, so the page says one thing whether or
+    // not a crawler runs the script.
+    const app = "One planner for tasks, calendar, projects and notes.";
     setPageMeta(
       path === "/"
         ? {
-            title: "Orbyn — Your life, in a better orbit",
-            description: `${app} Plan your day, protect your focus and make time for the people who matter.`,
+            title: "Orbyn — Planner for tasks, calendar, projects and notes",
+            description: `${app} Orbyn plans your day around them, with an AI assistant that asks first. Web, desktop, iOS and Android.`,
             index: true,
           }
         : path === "/status"

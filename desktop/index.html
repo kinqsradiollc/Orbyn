@@ -4,21 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8fa" />
-    <title>Orbyn — Your life, in a better orbit</title>
+    <title>Orbyn — Planner for tasks, calendar, projects and notes</title>
     <meta
       name="description"
-      content="Tasks, calendar, planning and team time in one place, on your own server. Plan your day, protect your focus and make time for the people who matter."
+      content="One planner for tasks, calendar, projects and notes. Orbyn plans your day around them, with an AI assistant that asks first. Web, desktop, iOS and Android."
     />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <!-- The app fills these in for the current address; these are the values
-         crawlers and link previews get without running any script. Change the
-         domain to your own when you host Orbyn elsewhere. -->
+         crawlers and link previews get without running any script. -->
     <link rel="canonical" href="https://orbyn.dev/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Orbyn" />
-    <meta property="og:title" content="Orbyn — Your life, in a better orbit" />
+    <meta property="og:locale" content="en_US" />
+    <meta
+      property="og:title"
+      content="Orbyn — Planner for tasks, calendar, projects and notes"
+    />
     <meta
       property="og:description"
-      content="Tasks, calendar, planning and team time in one place, on your own server."
+      content="One planner for tasks, calendar, projects and notes — that plans your day around them."
     />
     <meta property="og:url" content="https://orbyn.dev/" />
     <meta property="og:image" content="https://orbyn.dev/og-image.png" />
@@ -29,39 +33,80 @@
       content="Orbyn — Your life, in a better orbit"
     />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Orbyn — Your life, in a better orbit" />
+    <meta
+      name="twitter:title"
+      content="Orbyn — Planner for tasks, calendar, projects and notes"
+    />
     <meta
       name="twitter:description"
-      content="Tasks, calendar, planning and team time in one place, on your own server."
+      content="One planner for tasks, calendar, projects and notes — that plans your day around them."
     />
     <meta name="twitter:image" content="https://orbyn.dev/og-image.png" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <!-- What Orbyn is, for search engines. No rating or price is claimed: none
+         exists to cite, and structured data has to describe the page as it
+         is. The FAQ is added at build time from the same list the page shows
+         (scripts/prerender-home.mjs), so the two cannot drift apart. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
         "@graph": [
           {
+            "@type": "WebSite",
+            "@id": "https://orbyn.dev/#website",
+            "name": "Orbyn",
+            "url": "https://orbyn.dev/",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://orbyn.dev/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://orbyn.dev/#organization",
+            "name": "Orbyn",
+            "url": "https://orbyn.dev/",
+            "logo": "https://orbyn.dev/icon-512.png"
+          },
+          {
             "@type": "SoftwareApplication",
+            "@id": "https://orbyn.dev/#app",
             "name": "Orbyn",
             "url": "https://orbyn.dev/",
             "image": "https://orbyn.dev/og-image.png",
             "applicationCategory": "ProductivityApplication",
             "operatingSystem": "Web, macOS, Windows, Linux, iOS, Android",
-            "description": "Tasks, calendar, planning and team time in one place, on your own server. Plan your day, protect your focus and make time for the people who matter."
-          },
-          {
-            "@type": "Organization",
-            "name": "Orbyn",
-            "url": "https://orbyn.dev/",
-            "logo": "https://orbyn.dev/icon-512.png"
+            "publisher": { "@id": "https://orbyn.dev/#organization" },
+            "description": "One planner for tasks, calendar, projects and notes. Orbyn plans your day around them, with an AI assistant that asks first.",
+            "featureList": [
+              "Tasks with priorities, subtasks, checklists, lists, tags and repeats",
+              "Calendar with events, invitees and reminders",
+              "Natural-language quick add",
+              "Automatic day planning around meetings, focus hours and habits",
+              "Task dependencies respected by the planner",
+              "Projects with stages, timeline, deadlines and at-risk warnings",
+              "AI project breakdown into scheduled subtasks with estimates",
+              "Docs and notes with comments, suggestions, version history and maths",
+              "Export pages as PDF, Word, Markdown or HTML",
+              "AI assistant whose every change is reviewed before it is saved",
+              "Focus mode and time tracking",
+              "Shared team spaces with roles, availability and workload",
+              "Booking pages with round-robin, approvals and reschedule links",
+              "Calendar subscriptions, iCal feed and CalDAV",
+              "Email to task, webhooks, API keys and MCP",
+              "Passkeys and two-factor sign-in",
+              "Data export"
+            ]
           }
         ]
       }
     </script>
+    <!--faq-ld-->
     <script>
+      // Script runs, so the homepage may fade sections in as they scroll into
+      // view (html.js .reveal in home.css). Without this they stay visible.
+      document.documentElement.classList.add("js");
       // Apply the saved theme before first paint (see src/lib/theme.ts): light
       // unless Dark, or System on a dark device, was chosen in Settings.
       try {
@@ -90,11 +135,21 @@
   <body>
     <noscript>
       <p style="font-family: sans-serif; padding: 24px">
-        Orbyn brings your tasks, calendar, planning and team time together in
-        one place, on your own server. It needs JavaScript to run.
+        You can read about Orbyn without JavaScript, but the planner needs it to
+        run.
       </p>
     </noscript>
-    <div id="root"></div>
+    <!-- The homepage is written in here at build time, so crawlers that run
+         no script and link previews read the page itself, not an empty div.
+         The app replaces it when it starts. -->
+    <div id="root"><!--home--></div>
+    <script>
+      // Only the homepage is written in. Every other address — the app, sign
+      // in, a booking page, the desktop app loading from disk — starts empty
+      // as it always has, rather than flashing the homepage first.
+      if (location.protocol === "file:" || location.pathname !== "/")
+        document.getElementById("root").textContent = "";
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

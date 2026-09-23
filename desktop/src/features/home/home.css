@@ -2,6 +2,13 @@
   background: #fbfcf8;
   color: var(--color-text);
   overflow: hidden;
+  /* The page's own values, named for the sections added after it: the
+     card, the soft green band and its edge, the quiet text and the rule. */
+  --home-card: white;
+  --home-band: #edf2e5;
+  --home-band-line: #e1e9d8;
+  --home-quiet: #89947e;
+  --home-rule: #dfe7d5;
 }
 .home button,
 .home a {
@@ -181,10 +188,12 @@
   letter-spacing: 1.2px;
   color: #adb6a5;
 }
-.home-preview h2 {
+.home-preview-title {
   font-size: 20px;
   letter-spacing: -0.8px;
   font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text);
   margin: 24px 0;
 }
 .home-preview-date {
@@ -331,6 +340,8 @@
   max-width: 380px;
   font-size: 13px;
   line-height: 1.8;
+  /* No single word left alone on a last line ("…beside / it."). */
+  text-wrap: pretty;
 }
 .home-feature-grid {
   margin-top: 39px;
@@ -649,8 +660,10 @@
 }
 .home-footer-links {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: 20px;
+  gap: 8px 20px;
 }
 .home-footer-links a {
   color: #698061;
@@ -688,7 +701,7 @@
     width: 300px;
     padding: 19px;
   }
-  .home-preview h2 {
+  .home-preview-title {
     font-size: 17px;
   }
   .home-floating-ai {
@@ -932,8 +945,12 @@
   }
 }
 
-/* Scroll reveal (hooks/useReveal adds .is-visible once). */
-.reveal {
+/* Scroll reveal (hooks/useReveal adds .is-visible once). Only once script is
+   running — index.html marks <html class="js"> before first paint — because
+   the page is written into index.html at build time, and without script
+   nothing would ever add .is-visible: everything below the fold would ship
+   invisible to readers without JavaScript and to crawlers that run none. */
+html.js .reveal {
   opacity: 0;
   translate: 0 var(--motion-distance);
   transition:
@@ -943,7 +960,158 @@
     min(var(--i, 0), var(--motion-max-stagger, 8)) * var(--motion-stagger)
   );
 }
-.reveal.is-visible {
+html.js .reveal.is-visible {
   opacity: 1;
   translate: none;
+}
+
+/* ---- sections added for the whole product ---- */
+
+/* A heading on the left and what it means on the right. */
+.home-split {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 60px;
+  align-items: start;
+}
+.home-split .home-section-heading {
+  position: sticky;
+  top: 40px;
+}
+
+/* A capability list: an icon, what it is, what it does for you. */
+.home-points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 30px;
+}
+.home-points li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding-top: 22px;
+  border-top: 1px solid var(--home-rule);
+}
+.home-points .home-feature-icon {
+  margin: 0;
+}
+.home-points h3 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  margin: 2px 0 7px;
+}
+.home-points p {
+  text-wrap: pretty;
+  font-size: 12px;
+  line-height: 1.85;
+  color: var(--home-quiet);
+  margin: 0;
+}
+
+/* Privacy: the soft band the device section already uses. */
+.home-yours {
+  background: var(--home-band);
+  border-block: 1px solid var(--home-band-line);
+  padding: 80px max(36px, calc((100vw - 1048px) / 2));
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 60px;
+  align-items: start;
+}
+.home-yours .home-points li {
+  border-top-color: var(--home-band-line);
+}
+.home-yours .home-feature-icon {
+  background: var(--home-card);
+}
+
+/* Questions, as native disclosures: readable without script, and by anyone. */
+.home-faq {
+  max-width: 820px;
+  margin: auto;
+  padding: 90px 36px 30px;
+}
+.home-faq-list {
+  margin-top: 30px;
+  display: grid;
+}
+.home-faq details {
+  border-top: 1px solid var(--home-rule);
+}
+.home-faq details:last-child {
+  border-bottom: 1px solid var(--home-rule);
+}
+.home-faq summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 0;
+  cursor: pointer;
+}
+.home-faq summary::-webkit-details-marker {
+  display: none;
+}
+.home-faq summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.home-faq summary h3 {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+.home-faq summary svg {
+  flex: none;
+  color: var(--home-quiet);
+  transition: rotate var(--motion-fast, 0.15s) var(--ease-out, ease);
+}
+.home-faq details[open] summary svg {
+  rotate: 90deg;
+}
+.home-faq details p {
+  text-wrap: pretty;
+  margin: 0 0 22px;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--home-quiet);
+}
+
+@media (max-width: 900px) {
+  .home-split,
+  .home-yours {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 34px;
+  }
+  .home-split .home-section-heading {
+    position: static;
+  }
+}
+@media (max-width: 650px) {
+  .home-points {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .home-yours {
+    padding: 60px 25px;
+  }
+  .home-faq {
+    padding: 60px 25px 20px;
+  }
+  .home-footer {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .home-footer-links {
+    justify-content: flex-start;
+  }
 }
