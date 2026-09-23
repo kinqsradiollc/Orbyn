@@ -86,17 +86,7 @@ export async function enqueue() {
       [await emailEnabled()],
     );
     await expireInvites(db);
-    // Deleted-item records (for incremental sync) are kept for 90 days.
-    await db.query(
-      "DELETE FROM deleted_items WHERE deleted_at < now() - interval '90 days'",
-    );
-    await db.query("DELETE FROM sessions WHERE expires_at<now()");
-    await db.query(
-      "DELETE FROM proposals WHERE expires_at<now()-interval '1 day'",
-    );
-    // Finished reminder records are kept for 90 days, then removed.
-    await db.query(
-      "DELETE FROM notifications WHERE created_at < now() - interval '90 days' AND state IN ('sent','cancelled','failed')",
-    );
+    // Expired and outdated records are cleared hourly by the sweeper
+    // (lib/sweep.ts), in slices, rather than on every cycle.
   });
 }

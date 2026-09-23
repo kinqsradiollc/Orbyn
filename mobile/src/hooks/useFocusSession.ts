@@ -212,17 +212,17 @@ export function useFocusSession({
     let alive = true;
     client.currentFocus().then(
       (c) => {
-        if (
-          !alive ||
-          !c ||
-          c.device_id === deviceId() ||
-          c.state.item_id !== latest.current.item.id
-        )
-          return;
+        if (!alive || !c || c.state.item_id !== latest.current.item.id) return;
         const r = focusRhythm(c.state.rhythm);
         if (!r || !r.work) return;
         chosen.current = true;
         setRhythm(r);
+        // This phone's own session, after stepping away: carry on where it
+        // is. The server already holds it, so it isn't shared again.
+        if (c.device_id === deviceId()) {
+          setState(c.state);
+          return;
+        }
         const at = Date.now();
         update({
           ...c.state,

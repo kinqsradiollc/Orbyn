@@ -21,9 +21,18 @@ import { planMarkdown } from "./planText.js";
 import { pool } from "../../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../../lib/teams.js";
 import { mayChange, wantsDeletion } from "../guards.js";
-import { offsetAt } from "../prompt.js";
 import { localIso } from "../snapshot.js";
 import type { JsonSchema, ToolCall, ToolSpec } from "./protocol.js";
+import {
+  findFreeTime,
+  followThrough,
+  getProject,
+  listProjects,
+  rankTasks,
+} from "./workspace.js";
+import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
+
+export { toInstant, whenLabel };
 
 /**
  * The assistant's tools. Reads only ever see the signed-in user's own items
@@ -73,40 +82,9 @@ type Row = {
   steps_total: number;
   steps_done: number;
   version: number;
+  estimate_minutes?: number | null;
+  project_name?: string | null;
 };
-
-/** Text from the database, without control characters and cut to size. */
-const clean = (text: unknown, max: number) =>
-  Array.from(String(text ?? ""))
-    .map((c) => (c < " " && c !== "\n" && c !== "\t" ? " " : c))
-    .join("")
-    .slice(0, max);
-
-/**
- * "Wed 16 Sept, 07:00–08:00" in the user's timezone. Models misname weekdays
- * when they work them out from a date, so every item carries its own.
- */
-export function whenLabel(
-  start: Date | null,
-  end: Date | null,
-  timezone: string,
-): string | null {
-  if (!start) return null;
-  const day = new Intl.DateTimeFormat("en-GB", {
-    timeZone: timezone,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(start);
-  const time = (d: Date) =>
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: timezone,
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(d);
-  return `${day}, ${time(start)}${end ? `–${time(end)}` : ""}`;
-}
 
 /** An item as the model sees it: local times, short text, no owner ids. */
 function brief(row: Row, timezone: string) {
@@ -122,6 +100,8 @@ function brief(row: Row, timezone: string) {
     team: row.team_name ? clean(row.team_name, 80) : null,
     team_id: row.team_id,
     progress: row.progress,
+    ...(row.estimate_minutes ? { estimate_minutes: row.estimate_minutes } : {}),
+    ...(row.project_name ? { project: clean(row.project_name, 80) } : {}),
     ...(row.steps_total
       ? { checklist: `${row.steps_done}/${row.steps_total} done` }
       : {}),
@@ -130,33 +110,6 @@ function brief(row: Row, timezone: string) {
 
 const ITEM_SELECT =
   "SELECT i.*, t.name AS team_name FROM items i LEFT JOIN teams t ON t.id = i.team_id";
-const isUuid = (value: string) => z.uuid().safeParse(value).success;
-
-/** "YYYY-MM-DD" in the user's timezone. */
-function localDate(date: Date, timezone: string) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-/** A date or date-time from the model as an instant; bare values are local time. */
-export function toInstant(
-  value: string,
-  timezone: string,
-  endOfDay = false,
-): string {
-  const v = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v))
-    return `${v}T${endOfDay ? "23:59:59" : "00:00:00"}${offsetAt(timezone, new Date(`${v}T12:00:00Z`))}`;
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(v)) {
-    const full = v.length === 16 ? `${v}:00` : v;
-    return full + offsetAt(timezone, new Date(`${full}Z`));
-  }
-  return v;
-}
 
 // ---- argument schemas: JSON Schema for the model, zod for the server --------
 
@@ -278,7 +231,18 @@ export async function overview(ctx: AgentContext) {
     overdue: list(overdue, 5),
     due_today: list(dueToday, 10),
     next_7_days: list(upcoming, 10),
-    note: "Only some items are listed here; use search_items for the rest.",
+    without_a_date: list(
+      open.filter((r) => !r.due_at),
+      10,
+    ),
+    // The top of the app's own order, so even a provider without tools can
+    // answer "what should I do first?" from the data it is given.
+    suggested_order: (await rankTasks(ctx, { limit: 5 })).tasks.map((t) => ({
+      title: t.title,
+      when: t.when,
+      why: t.why,
+    })),
+    note: "Only some items are listed here; use search_items for the rest and rank_tasks for what to do first.",
   };
 }
 
@@ -333,6 +297,9 @@ const searchArgs = z
     due_from: z.string().max(40).optional(),
     due_to: z.string().max(40).optional(),
     include_done: z.boolean().optional(),
+    no_due_date: z.boolean().optional(),
+    project_id: z.string().max(60).optional(),
+    list_id: z.string().max(60).optional(),
     limit: z.number().int().min(1).max(25).optional(),
     offset: z.number().int().min(0).max(1000).optional(),
   })
@@ -363,6 +330,18 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
       );
     add("i.team_id = $?", a.team_id);
   }
+  if (a.no_due_date) where.push("i.due_at IS NULL");
+  for (const [field, value] of [
+    ["project_id", a.project_id],
+    ["list_id", a.list_id],
+  ] as const) {
+    if (!value) continue;
+    if (!isUuid(value))
+      throw new Error(
+        `${field} must be an id from list_projects or search_items.`,
+      );
+    add(`i.${field} = $?`, value);
+  }
   for (const [value, op, end] of [
     [a.due_from, ">=", false],
     [a.due_to, "<=", true],
@@ -377,8 +356,10 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
   values.push(limit, a.offset ?? 0);
   const rows = (
     await pool.query<Row & { total: number }>(
-      `SELECT i.*, t.name AS team_name, count(*) OVER()::int AS total
+      `SELECT i.*, t.name AS team_name, p.name AS project_name,
+              count(*) OVER()::int AS total
        FROM items i LEFT JOIN teams t ON t.id = i.team_id
+         LEFT JOIN projects p ON p.id = i.project_id
        WHERE ${where.join(" AND ")}
        ORDER BY (i.due_at IS NULL), i.due_at, i.updated_at DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -1002,7 +983,7 @@ export const TOOLS: Tool[] = [
     {
       name: "search_items",
       description:
-        "Find items by words, status, type, priority, team or due-date range, with the ids needed for changes. Leaves out done items unless include_done or status asks for them.",
+        "Find items by words, status, type, priority, team, project, list or due-date range — or with no due date — with the ids needed for changes. Leaves out done items unless include_done or status asks for them.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -1031,6 +1012,15 @@ export const TOOLS: Tool[] = [
               "YYYY-MM-DD (the end of that local day) or a date-time: due on or before.",
           },
           include_done: { type: "boolean" },
+          no_due_date: {
+            type: "boolean",
+            description: "Only items without a due date.",
+          },
+          project_id: {
+            type: "string",
+            description: "A project id from list_projects.",
+          },
+          list_id: { type: "string", description: "A list id." },
           limit: { type: "integer", minimum: 1, maximum: 25 },
           offset: { type: "integer", minimum: 0 },
         },
@@ -1053,6 +1043,116 @@ export const TOOLS: Tool[] = [
     },
     z.object({ id: z.string().max(60) }).strict(),
     getItem,
+  ),
+  tool(
+    {
+      name: "rank_tasks",
+      description:
+        "Open tasks in the order to do them, by the app's own priority score, each with the reasons (overdue, due soon, high priority, started, blocked, no date, no estimate). Use for 'what should I do first', 'help me prioritise', or which undated tasks matter. Read only.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          limit: { type: "integer", minimum: 1, maximum: 25 },
+          team_id: {
+            type: "string",
+            description: 'A team id from list_teams, or "personal".',
+          },
+          only_undated: {
+            type: "boolean",
+            description: "Only tasks without a due date.",
+          },
+        },
+      },
+    },
+    z
+      .object({
+        limit: z.number().int().min(1).max(25).optional(),
+        team_id: z.string().max(60).optional(),
+        only_undated: z.boolean().optional(),
+      })
+      .strict(),
+    rankTasks,
+  ),
+  tool(
+    {
+      name: "list_projects",
+      description:
+        "The user's projects with progress, deadline and whether each is at risk. Read only.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: { include_archived: { type: "boolean" } },
+      },
+    },
+    z.object({ include_archived: z.boolean().optional() }).strict(),
+    listProjects,
+  ),
+  tool(
+    {
+      name: "get_project",
+      description:
+        "One project in full: open tasks by stage, its notes, and open decisions and promises (flagging decisions no task delivers). Read only.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["project_id"],
+        properties: {
+          project_id: {
+            type: "string",
+            description: "An id from list_projects.",
+          },
+        },
+      },
+    },
+    z.object({ project_id: z.string().max(60) }).strict(),
+    getProject,
+  ),
+  tool(
+    {
+      name: "find_free_time",
+      description:
+        "Free stretches in the user's working hours over the coming days, around events and booked time. Use for 'when am I free', 'do I have time for X'. Read only; to place tasks use plan_schedule.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          start_date: {
+            type: "string",
+            description:
+              "YYYY-MM-DD in the user's time zone; now when omitted.",
+          },
+          days: { type: "integer", minimum: 1, maximum: 14 },
+          min_minutes: {
+            type: "integer",
+            minimum: 5,
+            maximum: 480,
+            description: "Shortest stretch worth listing; 30 by default.",
+          },
+        },
+      },
+    },
+    z
+      .object({
+        start_date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.")
+          .optional(),
+        days: z.number().int().min(1).max(14).optional(),
+        min_minutes: z.number().int().min(5).max(480).optional(),
+      })
+      .strict(),
+    findFreeTime,
+  ),
+  tool(
+    {
+      name: "get_follow_through",
+      description:
+        "What is waiting on people: tasks asked of the user or by them, open promises, decisions no task delivers, and how well plans have held lately. Use for 'what am I waiting on', 'what do I owe people', weekly reviews. Read only.",
+      parameters: NO_ARGS,
+    },
+    z.object({}).strict(),
+    (ctx) => followThrough(ctx),
   ),
   tool(
     {

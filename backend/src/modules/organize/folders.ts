@@ -18,8 +18,11 @@ import { requireTeam } from "../../lib/teams.js";
  * ones belong to their creator and team ones follow the team's roles.
  */
 
+/** Selects a folder; `$1` must be the reader's id (docs they can't see aren't counted). */
 const COLUMNS = `f.id, f.user_id, f.team_id, f.name, f.position, f.created_at,
-  (SELECT count(*)::int FROM docs d WHERE d.folder_id = f.id) AS doc_count`;
+  (SELECT count(*)::int FROM docs d WHERE d.folder_id = f.id
+     AND ((d.team_id IS NULL AND d.user_id = $1)
+       OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))) AS doc_count`;
 
 const VISIBLE = `((f.team_id IS NULL AND f.user_id = $1)
   OR f.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
@@ -73,8 +76,8 @@ export async function folderRoutes(app: FastifyInstance) {
       ).rows[0].id;
       return (
         await db.query<Folder>(
-          `SELECT ${COLUMNS} FROM folders f WHERE f.id = $1`,
-          [id],
+          `SELECT ${COLUMNS} FROM folders f WHERE f.id = $2`,
+          [u.id, id],
         )
       ).rows[0];
     });
@@ -95,8 +98,8 @@ export async function folderRoutes(app: FastifyInstance) {
       );
       return (
         await db.query<Folder>(
-          `SELECT ${COLUMNS} FROM folders f WHERE f.id = $1`,
-          [id],
+          `SELECT ${COLUMNS} FROM folders f WHERE f.id = $2`,
+          [u.id, id],
         )
       ).rows[0];
     });
@@ -127,6 +130,19 @@ export async function folderRoutes(app: FastifyInstance) {
   app.put("/favourites", async (r, reply) => {
     const u = await authenticate(r);
     const body = favouriteInput.parse(r.body);
+    // Only what this person can see can be starred.
+    if (body.starred) {
+      const table = body.kind === "doc" ? "docs" : "projects";
+      const visible = (
+        await pool.query(
+          `SELECT 1 FROM ${table} x WHERE x.id = $2
+             AND ((x.team_id IS NULL AND x.user_id = $1)
+               OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+          [u.id, body.target_id],
+        )
+      ).rowCount;
+      if (!visible) fail(404, "Not found");
+    }
     if (body.starred)
       await pool.query(
         `INSERT INTO favourites (user_id, kind, target_id) VALUES ($1,$2,$3)

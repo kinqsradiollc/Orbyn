@@ -1,0 +1,519 @@
+/* Admin: requests, analytics and one account in full. */
+.admin-requests,
+.admin-analytics,
+.admin-user {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.admin-requests-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 22px 24px;
+}
+.admin-requests-head h2 {
+  margin: 7px 0 5px;
+  font-size: 20px;
+}
+.admin-requests-head p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.admin-requests-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-requests-controls .select {
+  width: 160px;
+}
+.admin-requests-controls button {
+  margin: 0;
+}
+.admin-empty {
+  margin: 0;
+  padding: 22px 24px;
+}
+
+/* One card per service. */
+.admin-service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.admin-service {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px 18px;
+}
+.admin-service-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.admin-service dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin: 0;
+}
+.admin-service dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.admin-service dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.admin-service dd small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.admin-health,
+.admin-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.admin-health.is-ok,
+.admin-status.is-ok {
+  background: var(--color-soft);
+  color: var(--color-accent);
+}
+.admin-health.is-warn,
+.admin-status.is-warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+.admin-health.is-bad,
+.admin-status.is-bad {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+
+/* Column charts. */
+.admin-chart-card {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 16px 18px;
+  min-width: 0;
+}
+.admin-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-chart-head h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.admin-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.admin-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+.admin-legend i.is-danger {
+  background: var(--color-danger);
+}
+.admin-legend i + i,
+.admin-legend b + i {
+  margin-left: 8px;
+}
+.admin-legend b {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.admin-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.bars {
+  margin: 0;
+  min-width: 0;
+}
+.bars-plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding-top: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.bars-max {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.bars-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.bars-fill {
+  position: relative;
+  width: 100%;
+  min-height: 2px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: color-mix(in srgb, var(--color-accent) 72%, transparent);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.bars-col:hover .bars-fill {
+  background: var(--color-accent);
+}
+.bars-secondary {
+  width: 100%;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: var(--color-danger);
+}
+.bars-axis {
+  display: flex;
+  gap: 2px;
+  margin-top: 5px;
+}
+.bars-axis span {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Slow and failing routes. */
+.admin-route-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+.admin-routes {
+  margin: 0;
+  padding: 16px 18px;
+  min-width: 0;
+}
+.admin-routes h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+.admin-routes p {
+  margin: 0;
+  font-size: 12px;
+}
+.admin-routes ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-routes li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.admin-routes code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.admin-routes .muted {
+  font-size: 11px;
+}
+
+/* The request log. */
+.admin-log {
+  margin: 0;
+  min-width: 0;
+}
+.admin-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 21px 14px;
+}
+.admin-log-filters .select {
+  width: 150px;
+}
+.admin-log-filters .db-search {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+.admin-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--color-textSoft);
+  white-space: nowrap;
+}
+.admin-log-row {
+  cursor: pointer;
+}
+.admin-log-row:hover td,
+.admin-log-row.is-open td {
+  background: var(--color-hover);
+}
+.admin-log-row:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.admin-log-table code {
+  font-size: 11px;
+}
+.admin-log-table td.is-slow {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.admin-log-detail td {
+  white-space: normal;
+  background: var(--color-sunken);
+}
+.admin-log-detail dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 4px 0 8px;
+}
+.admin-log-detail dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+.admin-log-detail dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+/* Analytics tiles. */
+.admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+.admin-tile {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 14px 16px;
+}
+.admin-tile span {
+  color: var(--color-textSoft);
+  font-size: 12px;
+}
+.admin-tile strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.admin-tile small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* One account. */
+.admin-user > .text-button {
+  justify-self: start;
+}
+.admin-user-head {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 20px 22px;
+}
+.admin-user-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.admin-user-title h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.admin-user-title p {
+  margin: 0;
+  font-size: 13px;
+}
+.admin-user-title button {
+  margin: 0;
+}
+.admin-user-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.admin-user-edit label {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 220px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-user-edit input {
+  width: 100%;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+.admin-user-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.admin-user-edit-actions button {
+  margin: 0;
+}
+.admin-user-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+.admin-user-facts dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.admin-user-facts dd {
+  margin: 3px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.admin-user-actions {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 18px 22px;
+}
+.admin-user-actions h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.admin-user-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-user-actions button {
+  margin: 0;
+}
+.admin-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 12px;
+  border: 1px solid var(--color-warnBorder);
+  border-radius: var(--radius-sm);
+  background: var(--color-warnSoft);
+}
+.admin-link code {
+  flex: 1 1 260px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.admin-link small {
+  flex: 1 1 100%;
+}
+.admin-user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.admin-user-grid > .card {
+  margin: 0;
+  min-width: 0;
+}
+.admin-user-activity {
+  padding: 0 21px 18px;
+}
+.admin-sessions {
+  display: grid;
+  margin: 0;
+  padding: 0 0 6px;
+  list-style: none;
+}
+.admin-sessions li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 21px;
+  border-top: 1px solid var(--border);
+}
+.admin-sessions li > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+}
+.admin-sessions strong {
+  text-transform: capitalize;
+}
+.admin-user-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.admin-user-link:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The grids space these cards; the card's own bottom margin would double it. */
+.admin-requests > .card,
+.admin-analytics > .card,
+.admin-user > .card,
+.admin-route-grid > .card,
+.admin-chart-grid > .card {
+  margin: 0;
+}
+.admin-route-grid {
+  align-items: start;
+}
+
+/* Cards clip by default; these hold pickers whose lists open past the edge. */
+.admin-requests-head,
+.admin-log,
+.admin-user-head {
+  overflow: visible;
+}

@@ -1,6 +1,12 @@
 import {
   HttpError,
   type AdminOverview,
+  type AdminAnalytics,
+  type AdminUserDetail,
+  type Announcement,
+  type RequestLogRow,
+  type RequestSummary,
+  type SweepView,
   type AdminDatabaseTable,
   type AdminDatabaseTableDetail,
   type AdminDatabaseRows,
@@ -1831,10 +1837,10 @@ export class OrbynClient {
 
   // ---- AI assistant ----
   /** Draft a project (subtasks) from a prompt, as a proposal to review. */
-  draftProject(prompt: string, timezone: string) {
+  draftProject(prompt: string, timezone: string, teamId?: string | null) {
     return this.request<Proposal>("/ai/project", {
       method: "POST",
-      body: { prompt, timezone },
+      body: { prompt, timezone, ...(teamId ? { team_id: teamId } : {}) },
     });
   }
   /**
@@ -1907,6 +1913,101 @@ export class OrbynClient {
   // ---- admin (system admins only) ----
   adminOverview() {
     return this.request<AdminOverview>("/admin/overview");
+  }
+  /** How each service is answering over the last `hours`. */
+  adminRequestSummary(hours = 24) {
+    return this.request<RequestSummary>(
+      `/admin/requests/summary?hours=${hours}`,
+    );
+  }
+  /** The request log, newest first; `before` pages back. */
+  adminRequests(
+    filters: {
+      service?: string;
+      status?: "2xx" | "3xx" | "4xx" | "5xx";
+      route?: string;
+      user?: string;
+      request_id?: string;
+      slow?: boolean;
+      before?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(filters))
+      if (v !== undefined && v !== "" && v !== false) q.set(k, String(v));
+    return this.request<{ rows: RequestLogRow[]; more: boolean }>(
+      `/admin/requests${q.size ? `?${q}` : ""}`,
+    );
+  }
+  adminAnalytics(days = 30) {
+    return this.request<AdminAnalytics>(`/admin/analytics?days=${days}`);
+  }
+  adminUserDetail(id: string) {
+    return this.request<AdminUserDetail>(`/admin/users/${id}`);
+  }
+  adminUpdateUserProfile(id: string, input: { name?: string; email?: string }) {
+    return this.request<{ ok: true; verify_again: boolean }>(
+      `/admin/users/${id}/profile`,
+      { method: "PUT", body: input },
+    );
+  }
+  /** Sign someone out on every device. */
+  adminSignOutUser(id: string) {
+    return this.request<{ ended: number }>(`/admin/users/${id}/sign-out`, {
+      method: "POST",
+    });
+  }
+  adminEndSession(id: string, sessionId: string) {
+    return this.request<void>(`/admin/users/${id}/sessions/${sessionId}`, {
+      method: "DELETE",
+    });
+  }
+  /** A one-hour password reset link to pass on (also emailed when mail is set up). */
+  adminResetLink(id: string) {
+    return this.request<{
+      link: string;
+      expires_in_minutes: number;
+      emailed: boolean;
+    }>(`/admin/users/${id}/reset-link`, { method: "POST" });
+  }
+  adminResetTwoFactor(id: string) {
+    return this.request<{ cleared: boolean }>(`/admin/users/${id}/reset-2fa`, {
+      method: "POST",
+    });
+  }
+  adminExportUser(id: string) {
+    return this.request<unknown>(`/admin/users/${id}/export`);
+  }
+  /** The notice everyone sees, or null. */
+  announcement() {
+    return this.request<Announcement | null>("/announcement", {
+      anonymous: true,
+    });
+  }
+  setAnnouncement(input: {
+    message: string;
+    tone?: "info" | "warning";
+    until?: string | null;
+  }) {
+    return this.request<Announcement>("/admin/announcement", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** What the sweeper keeps, for how long, and when it last ran. */
+  adminSweep() {
+    return this.request<SweepView>("/admin/sweep");
+  }
+  /** Days to keep, per kind of record; 0 keeps forever. */
+  setRetention(days: Record<string, number>) {
+    return this.request<SweepView>("/admin/sweep/retention", {
+      method: "PUT",
+      body: days,
+    });
+  }
+  runSweep() {
+    return this.request<SweepView>("/admin/sweep/run", { method: "POST" });
   }
   adminDatabaseTables() {
     return this.request<AdminDatabaseTable[]>("/admin/database/tables");

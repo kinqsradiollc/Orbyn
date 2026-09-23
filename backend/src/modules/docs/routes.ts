@@ -85,6 +85,43 @@ const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.bo
 const VISIBLE = `((d.team_id IS NULL AND d.user_id = $1)
   OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
 
+/**
+ * A page may hang off a task, a project or a folder only in its own space:
+ * a personal page off the author's own things, a team page off that team's.
+ * Anything else is "not found" — the same answer as for an id that doesn't
+ * exist, so ids from another space reveal nothing.
+ */
+async function checkLinks(
+  db: Queryable,
+  u: UserRow,
+  teamId: string | null,
+  links: {
+    item_id?: string | null;
+    project_id?: string | null;
+    folder_id?: string | null;
+  },
+) {
+  const inSpace = (alias: string) =>
+    `${alias}.team_id IS NOT DISTINCT FROM $2::uuid
+       AND (${alias}.team_id IS NOT NULL OR ${alias}.user_id = $1)
+       AND (${alias}.team_id IS NULL OR ${alias}.team_id IN
+         (SELECT team_id FROM team_members WHERE user_id = $1))`;
+  for (const [id, table, alias, name] of [
+    [links.item_id, "items", "i", "Task"],
+    [links.project_id, "projects", "p", "Project"],
+    [links.folder_id, "folders", "f", "Folder"],
+  ] as const) {
+    if (!id) continue;
+    const found = (
+      await db.query(
+        `SELECT 1 FROM ${table} ${alias} WHERE ${alias}.id = $3 AND ${inSpace(alias)}`,
+        [u.id, teamId, id],
+      )
+    ).rowCount;
+    if (!found) fail(404, `${name} not found`);
+  }
+}
+
 type Owned = {
   id: string;
   user_id: string;
@@ -295,6 +332,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const data = docInput.parse(r.body ?? {});
     if (data.team_id) await requireTeam(data.team_id, u, "items:write");
+    await checkLinks(pool, u, data.team_id ?? null, data);
     const doc = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const id = (
@@ -420,6 +458,10 @@ export async function docRoutes(app: FastifyInstance) {
     const saved = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const current = await requireDoc(db, id, u, "items:write");
+      await checkLinks(db, u, current.team_id, {
+        project_id: body.project_id,
+        folder_id: body.folder_id,
+      });
       if (current.version !== body.version)
         fail(
           409,
@@ -688,10 +730,10 @@ export async function docRoutes(app: FastifyInstance) {
     const existing = (
       await pool.query<Doc>(
         `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
-          WHERE d.item_id = $1 AND d.kind = 'meeting'
-            AND (d.team_id IS NOT NULL OR d.user_id = $2)
+          WHERE d.item_id = $2 AND d.kind = 'meeting'
+            AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
           ORDER BY d.created_at LIMIT 1`,
-        [id, u.id],
+        [u.id, id, event.team_id],
       )
     ).rows[0];
     if (existing) return existing;

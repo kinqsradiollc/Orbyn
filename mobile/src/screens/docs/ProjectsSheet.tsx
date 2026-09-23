@@ -82,6 +82,9 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  const [newSummary, setNewSummary] = useState("");
+  const [newTeam, setNewTeam] = useState<string | null>(null);
+  const [newDue, setNewDue] = useState<string | null>(null);
   const [section, setSection] = useState<
     "tasks" | "notes" | "timeline" | "decisions" | "history"
   >("tasks");
@@ -254,13 +257,86 @@ export function ProjectsSheet({
     const name = (draft ?? "").trim();
     if (!name) return;
     void run(async () => {
-      const made = await client.createProject({ name });
+      const made = await client.createProject({
+        name,
+        summary: newSummary.trim(),
+        team_id: newTeam,
+        deadline: newDue ? new Date(`${newDue}T17:00:00`).toISOString() : null,
+      });
       setDraft(null);
+      setNewSummary("");
+      setNewTeam(null);
+      setNewDue(null);
       await reload();
       setOpen(made);
       setSection("tasks");
     });
   };
+
+  // One form for a new project, in the empty state and above the list: the
+  // name, what it's for, whose it is and when it's due, as on the desktop.
+  const writableTeams = teams.filter((t) => canWriteIn(t.id));
+  const newProjectForm = (
+    <View style={styles.newForm}>
+      <TextInput
+        style={styles.nameInput}
+        value={draft ?? ""}
+        autoFocus
+        maxLength={120}
+        placeholder="What is it called?"
+        placeholderTextColor={colors.faint}
+        accessibilityLabel="New project name"
+        onChangeText={setDraft}
+      />
+      <TextInput
+        style={[styles.nameInput, styles.summaryInput]}
+        value={newSummary}
+        multiline
+        maxLength={2000}
+        placeholder="What it's for (optional)"
+        placeholderTextColor={colors.faint}
+        accessibilityLabel="What the project is for"
+        onChangeText={setNewSummary}
+      />
+      {writableTeams.length > 0 && (
+        <ChipRow label="Whose project">
+          <Chip
+            label="Just me"
+            selected={newTeam === null}
+            onPress={() => setNewTeam(null)}
+          />
+          {writableTeams.map((t) => (
+            <Chip
+              key={t.id}
+              label={t.name}
+              selected={newTeam === t.id}
+              onPress={() => setNewTeam(t.id)}
+            />
+          ))}
+        </ChipRow>
+      )}
+      <DateField
+        label="Due date"
+        value={newDue}
+        clearable
+        placeholder="Due (optional)"
+        onChange={setNewDue}
+      />
+      <View style={styles.actions}>
+        <SmallAction
+          label="Cancel"
+          disabled={busy}
+          onPress={() => setDraft(null)}
+        />
+        <Button
+          title="Create project"
+          disabled={busy || !(draft ?? "").trim()}
+          style={styles.createButton}
+          onPress={create}
+        />
+      </View>
+    </View>
+  );
 
   const startAiDraft = () => {
     setDraft(null);
@@ -327,7 +403,13 @@ export function ProjectsSheet({
   }, [visible]);
 
   /** Tasks in no project at all, which any stage can take. */
-  const unfiled = items.filter((i) => !i.project_id && i.kind === "task");
+  // Only tasks in the open project's own space can be filed into it.
+  const unfiled = items.filter(
+    (i) =>
+      !i.project_id &&
+      i.kind === "task" &&
+      (i.team_id ?? null) === (open?.team_id ?? null),
+  );
 
   const tasksIn = (project: Project, stageId: string | null) =>
     items.filter(
@@ -916,24 +998,7 @@ export function ProjectsSheet({
                   />
                 </View>
               ) : (
-                <View style={styles.newRow}>
-                  <TextInput
-                    style={styles.nameInput}
-                    value={draft}
-                    autoFocus
-                    maxLength={120}
-                    placeholder="What is it called?"
-                    placeholderTextColor={colors.faint}
-                    accessibilityLabel="New project name"
-                    onChangeText={setDraft}
-                    onSubmitEditing={create}
-                  />
-                  <Button
-                    title="Create"
-                    disabled={busy || !draft.trim()}
-                    onPress={create}
-                  />
-                </View>
+                newProjectForm
               )}
             </View>
           ) : (
@@ -966,31 +1031,7 @@ export function ProjectsSheet({
                   </View>
                 </View>
               ) : (
-                <View style={styles.newRow}>
-                  <TextInput
-                    style={styles.nameInput}
-                    value={draft}
-                    autoFocus
-                    maxLength={120}
-                    placeholder="What is it called?"
-                    placeholderTextColor={colors.faint}
-                    accessibilityLabel="New project name"
-                    onChangeText={setDraft}
-                    onSubmitEditing={create}
-                  />
-                  <View style={styles.actions}>
-                    <SmallAction
-                      label="Cancel"
-                      disabled={busy}
-                      onPress={() => setDraft(null)}
-                    />
-                    <Button
-                      title="Create"
-                      disabled={busy || !draft.trim()}
-                      onPress={create}
-                    />
-                  </View>
-                </View>
+                newProjectForm
               )}
               {projects.map((p) => (
                 <Pressable
@@ -1041,6 +1082,9 @@ const styles = themed(() =>
   StyleSheet.create({
     list: { gap: 10 },
     createActions: { gap: 8 },
+    newForm: { gap: 12 },
+    summaryInput: { minHeight: 76, paddingTop: 12, textAlignVertical: "top" },
+    createButton: { marginBottom: 0, flex: 1 },
     createMore: { flexDirection: "row", gap: 8 },
     createHalf: { flex: 1, minWidth: 0 },
     aiDraft: { gap: 16 },

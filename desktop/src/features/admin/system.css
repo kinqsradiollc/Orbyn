@@ -83,6 +83,18 @@
   font-weight: 500;
   min-width: 0;
 }
+/* Pickers sit under their label and span the field, like the inputs do. */
+.system-label > .select,
+.system-label > .date-field {
+  display: flex;
+  width: 100%;
+  margin-top: 7px;
+}
+.system-label > .select .select-control,
+.system-label > .date-field .date-field-control {
+  min-height: 40px;
+  padding-inline: 12px;
+}
 .system-label-row {
   display: flex;
   align-items: center;
@@ -295,4 +307,34 @@
   .system-test {
     padding: 16px 17px 20px;
   }
+}
+
+/* Data retention. */
+.system-retention td {
+  vertical-align: middle;
+}
+.system-retention td small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  white-space: normal;
+}
+.system-days {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+.system-form .system-days input,
+.system-days input {
+  width: 84px;
+  margin: 0;
+  padding: 7px 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.system-retention + .system-footer,
+.table-wrap + .system-footer {
+  margin-top: 16px;
 }

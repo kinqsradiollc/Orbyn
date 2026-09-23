@@ -128,7 +128,13 @@ export function ProjectDetail({
   const grouped = useMemo(() => group(items, project), [items, project]);
   const percent = projectProgress(project);
   const risk = projectAtRisk(project);
-  const unfiledPool = items.filter((i) => !i.project_id && i.kind === "task");
+  // Only tasks in the project's own space can be filed into it.
+  const unfiledPool = items.filter(
+    (i) =>
+      !i.project_id &&
+      i.kind === "task" &&
+      (i.team_id ?? null) === (project.team_id ?? null),
+  );
 
   useEffect(() => {
     let active = true;

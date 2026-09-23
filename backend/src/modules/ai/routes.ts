@@ -28,6 +28,7 @@ import { resolveAi } from "./providers/resolve.js";
 import { complete } from "./providers/adapters.js";
 import { runAgent } from "./agent/loop.js";
 import { overview, related, type AgentContext } from "./agent/tools.js";
+import { requireTeam } from "../../lib/teams.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -239,6 +240,7 @@ export async function aiRoutes(app: FastifyInstance) {
     } catch {
       fail(422, "Unknown timezone");
     }
+    if (d.team_id) await requireTeam(d.team_id, u, "items:write");
     const ai = await resolveAi();
     if (!ai)
       fail(
@@ -273,7 +275,17 @@ export async function aiRoutes(app: FastifyInstance) {
         "The AI provider returned an invalid task graph. Please try again.",
       );
     }
-    return proposeProject(pool, u.id, draft, d.timezone);
+    const proposal = await proposeProject(pool, u.id, draft, d.timezone);
+    if (!d.team_id) return proposal;
+    // Approving it makes a team project, as a template started for a team does.
+    await pool.query(
+      "UPDATE proposals SET project = project || $2::jsonb WHERE id = $1",
+      [proposal.id, JSON.stringify({ team_id: d.team_id })],
+    );
+    return {
+      ...proposal,
+      project: { ...proposal.project!, team_id: d.team_id },
+    };
   });
 
   // The whole turn in one request. Anything in front of Orbyn that gives up

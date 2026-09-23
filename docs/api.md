@@ -928,6 +928,41 @@ counts, but never the contents of personal or team items.
 | `GET /admin/database/tables/:name`      | Columns, types, defaults, primary keys and indexes for one table; requires `system:manage`                                                                   |
 | `GET /admin/database/tables/:name/rows` | Read-only, redacted 25-row preview; `?offset=0..10000`; requires `system:manage`                                                                             |
 
+| `GET /admin/users/:id` | One account in full: sessions, sign-in methods, teams, counts, 30 days of activity and its audit history (never item contents) |
+| `PUT /admin/users/:id/profile` | `{ "name"?, "email"? }`; a new email must be unused (`409`), and is unverified again when mail is set up |
+| `POST /admin/users/:id/sign-out` | Ends every session → `{ ended }`; not for your own account (`409`) |
+| `DELETE /admin/users/:id/sessions/:sid` | Ends one session → `204` |
+| `POST /admin/users/:id/reset-link` | A one-hour, single-use password reset link to pass on → `{ link, expires_in_minutes, emailed }` (also emailed when mail is set up) |
+| `POST /admin/users/:id/reset-2fa` | Clears two-step verification for someone locked out → `{ cleared }`; passkeys stay |
+| `GET /admin/users/:id/export` | Everything the account holds, as `/me/export` gives it (a file download) |
+| `GET /admin/requests/summary` | `?hours=1..168` → per service: requests, 4xx/5xx, p50/p95/max latency, copies; hourly timeline; slowest and failing routes. `requests:read` |
+| `GET /admin/requests` | The request log, newest first: `?service=&status=2xx\|3xx\|4xx\|5xx&route=&user=&request_id=&slow=true&before=<id>&limit=` → `{ rows, more }` |
+| `GET /admin/analytics` | `?days=7..365` → totals (active today/7/30 days, signups, items, tasks done, pages, AI requests, focus, bookings, reminders) and a daily series; `analytics:read` |
+| `PUT /admin/announcement` | `{ "message", "tone": "info"\|"warning", "until"? }`; an empty message removes it. `system:manage` |
+| `GET /admin/sweep` | What the sweeper keeps: each kind of record with its keep time, table size and the last run. `system:manage` |
+| `PUT /admin/sweep/retention` | `{ "<rule>": days }`; 0 keeps forever; below a rule's minimum is `422` |
+| `POST /admin/sweep/run` | Sweeps now → the same view with the result; `409` while another sweep runs |
+
+Every account action is confirmed in the apps and written to the audit log with who did it.
+
+`GET /announcement` is public: the admins' notice (`{ message, tone, until, updated_at }`) or
+`null` once removed or past `until`. The apps show it at the top until dismissed.
+
+**Request tracing.** Every service records the requests it answers, batched every two seconds off
+the request path: the matched route pattern (never the raw URL), status, duration, service and
+copy, the gateway's `X-Request-Id` (echoed on every response, so an error a person reports can be
+found by its id) and who asked. No IP addresses. `REQUEST_LOG_SAMPLE` (0–1, default 1) keeps a
+share of ordinary requests; errors and requests over a second are always kept. Health probes and
+live streams are left out. Daily roll-ups per route (`request_daily`) and per person
+(`daily_activity`) keep the long view for analytics.
+
+**The sweeper.** The worker clears outdated records hourly, a few thousand rows at a time, under an
+advisory lock so one copy sweeps: request traces (7 days), status checks (90), finished reminders
+(90), webhook deliveries (30), deletion records (90), expired plan drafts (7), old presence (30),
+the audit log (730), daily roll-ups (400), and always expired sessions, email links, passkey
+challenges, assistant proposals and jobs, and replay keys. Page history and project timelines are
+kept forever unless an admin sets a keep time.
+
 The last active admin cannot be demoted, disabled, or deleted (`409`), and admins cannot delete
 their own account here.
 
@@ -1026,7 +1061,7 @@ What the planner has learned about how long tasks really take: `{ overall: { rat
 
 ### `POST /ai/project` (auth, 10/min)
 
-`{ "prompt", "timezone" }`. Drafts a project from the prompt: the AI provider returns a title and a set of subtasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
+`{ "prompt", "timezone", "team_id"? }`. With `team_id` (you need write access to that team) the project and its tasks become the team's once approved. Drafts a project from the prompt: the AI provider returns a title and a set of subtasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
 
 ### `POST /ai/chat/start` (auth, 10/min)
 

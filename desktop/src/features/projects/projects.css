@@ -1153,3 +1153,88 @@
     align-items: center;
   }
 }
+
+/* Starting a project. */
+.modal.new-project {
+  width: min(620px, calc(100vw - 32px));
+}
+.new-project-body {
+  display: grid;
+  gap: 18px;
+}
+.new-project-body {
+  gap: 0;
+}
+/* Inset like the dialog's form fields (.modal form pads 22px). */
+.new-project-body .segmented {
+  justify-self: start;
+  margin: 4px 22px 0;
+}
+.new-project-draft {
+  padding: 18px 22px 22px;
+}
+.new-project-stages {
+  margin: 0 0 18px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.new-project-stages legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.new-project-stages ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.new-project-stages li {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px 3px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  font-size: 12px;
+}
+.new-project-stages li .icon-button {
+  padding: 3px;
+  border-radius: var(--radius-pill);
+}
+.new-project-stage-add {
+  display: flex;
+  gap: 8px;
+}
+.modal .new-project-stage-add input {
+  flex: 1;
+  margin-top: 0;
+}
+.new-project-stage-add button {
+  margin: 0;
+  flex: none;
+}
+.new-project .button-row {
+  align-items: center;
+}
+.new-project-template {
+  margin-right: auto;
+}
+.new-project-note {
+  margin: 0 0 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.new-project-error {
+  margin: 0 0 12px;
+  color: var(--color-danger);
+  font-size: 12px;
+}
+.new-project-draft {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
