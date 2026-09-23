@@ -178,14 +178,13 @@ export async function readObject(id: string): Promise<Buffer> {
   ]);
 }
 
-/** Refuse new uploads when the disk is this full. */
-const DISK_FULL = 0.85;
-
-async function diskFull(): Promise<boolean> {
+/** Refuse new uploads when less than this much disk is free (FILES_MIN_FREE_MB). */
+async function diskFull(incoming: number): Promise<boolean> {
   try {
     await mkdir(filesDir(), { recursive: true, mode: 0o700 });
     const s = await statfs(filesDir());
-    return 1 - s.bavail / s.blocks > DISK_FULL;
+    const free = s.bavail * s.bsize;
+    return free - incoming < env.FILES_MIN_FREE_MB * 1024 * 1024;
   } catch {
     return false;
   }
@@ -297,7 +296,7 @@ export async function filesRoutes(app: FastifyInstance) {
         return reply.code(413).send({
           message: `This file is over the ${Math.round(IMPORT_LIMITS.maxBytes / 1024 / 1024)} MB limit.`,
         });
-      if (await diskFull())
+      if (await diskFull(length || claim.m))
         return reply.code(507).send({
           message:
             "Orbyn can't take new files right now. Try again in a few minutes.",
@@ -385,6 +384,45 @@ export async function filesRoutes(app: FastifyInstance) {
       [id],
     );
     return reply.code(204).send();
+  });
+
+  /** What the store holds, for Admin → Storage (ids and sizes only). */
+  app.get("/internal/stats", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    let names: string[] = [];
+    try {
+      names = await readdir(filesDir());
+    } catch {
+      names = [];
+    }
+    const files: { id: string; bytes: number; stored_at: string }[] = [];
+    for (const n of names) {
+      const id = /^([0-9a-f-]{36})\.bin$/.exec(n)?.[1];
+      if (!id) continue;
+      const st = await stat(join(filesDir(), n)).catch(() => null);
+      if (st)
+        files.push({
+          id,
+          bytes: st.size,
+          stored_at: new Date(st.mtimeMs).toISOString(),
+        });
+    }
+    let disk: { total: number; free: number } | null = null;
+    try {
+      const s = await statfs(filesDir());
+      disk = { total: s.blocks * s.bsize, free: s.bavail * s.bsize };
+    } catch {
+      disk = null;
+    }
+    return { files, disk };
+  });
+
+  /** Sweep now (Admin → Storage). */
+  app.post("/internal/sweep", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    return { removed: await sweepFiles() };
   });
 
   // Every ten minutes, whatever else happens.

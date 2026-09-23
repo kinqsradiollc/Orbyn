@@ -65,8 +65,12 @@ export type DocBlock = Named &
     | { type: "todo"; text: string; done: boolean }
     | { type: "quote"; text: string }
     | { type: "code"; text: string; lang: string }
-    /** Display maths. `text` is LaTeX without the `$$` fences. */
-    | { type: "math"; text: string }
+    /**
+     * Display maths. `text` is LaTeX without the `$$` fences. `check` marks
+     * an equation read from a file whose layout was a guess; editing it
+     * (or confirming it) clears the mark.
+     */
+    | { type: "math"; text: string; check?: boolean }
     | { type: "divider" }
   );
 
@@ -573,6 +577,29 @@ const SYMBOLS: Record<string, string> = {
   sqrt: "\u221a",
   nabla: "\u2207",
   partial: "\u2202",
+  lfloor: "\u230a",
+  rfloor: "\u230b",
+  lceil: "\u2308",
+  rceil: "\u2309",
+  langle: "\u27e8",
+  rangle: "\u27e9",
+  cdots: "\u22ef",
+  ldots: "\u2026",
+  in: "\u2208",
+  forall: "\u2200",
+  exists: "\u2203",
+  prod: "\u220f",
+  neq: "\u2260",
+  leq: "\u2264",
+  geq: "\u2265",
+  Rightarrow: "\u21d2",
+  mid: "|",
+  // Sizing and delimiter commands carry nothing in plain text.
+  left: "",
+  right: "",
+  big: "",
+  Big: "",
+  tag: "",
 };
 
 /**
@@ -588,6 +615,15 @@ export function mathToText(text: string): string {
     text
       // Drop the fences; the maths itself stays.
       .replace(/\$([^$\n]+?)\$/g, "$1")
+      // \mathrm{min} and \mathbb{R} read as their letters; \text{…} as its text.
+      .replace(
+        /\\(?:mathrm|operatorname|text|mathit|mathbf)\s*\{([^{}]*)\}/g,
+        "$1",
+      )
+      .replace(
+        /\\mathbb\s*\{([A-Z])\}/g,
+        (_m, l: string) => ({ R: "ℝ", N: "ℕ", Z: "ℤ", Q: "ℚ", C: "ℂ" })[l] ?? l,
+      )
       // \frac{a}{b} reads as a/b.
       .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1/$2")
       // \| is the norm bars; \{ and \} are literal braces.

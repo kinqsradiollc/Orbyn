@@ -91,23 +91,37 @@ export async function buildMorning(
         ),
     );
   }
-  if (habits.length) {
-    lines.push("Habits:");
-    lines.push(
-      ...habits.map((h) => bullet(`${clockOf(h.start_at, tz)} — ${h.name}`)),
+  // Cards due today, which the "Review cards" habit (made by Study) names.
+  const cardsDue = (
+    await pool.query<{ due: number }>(
+      "SELECT count(*) FILTER (WHERE reps > 0 AND due_at < $2)::int AS due FROM study_cards WHERE user_id = $1",
+      [userId, dayEnd],
+    )
+  ).rows[0].due;
+  const isReview = (name: string) => /^review cards$/i.test(name.trim());
+  // A review habit says how many cards wait, and nothing when none do.
+  const habitLines = habits
+    .filter((h) => !isReview(h.name) || cardsDue > 0)
+    .map((h) =>
+      bullet(
+        `${clockOf(h.start_at, tz)} — ${h.name}${
+          isReview(h.name)
+            ? ` (${cardsDue} card${cardsDue === 1 ? "" : "s"} due)`
+            : ""
+        }`,
+      ),
     );
+  if (habitLines.length) {
+    lines.push("Habits:");
+    lines.push(...habitLines);
   }
   if (review.at_risk.length) {
     lines.push("Heads up — at risk of being late:");
     lines.push(...review.at_risk.slice(0, 3).map((t) => bullet(t.title)));
   }
-  const study = await pool.query<{ due: number }>(
-    "SELECT count(*) FILTER (WHERE reps > 0 AND due_at < $2)::int AS due FROM study_cards WHERE user_id = $1",
-    [userId, dayEnd],
-  );
-  if (study.rows[0].due)
+  if (cardsDue)
     lines.push(
-      `Study: ${study.rows[0].due} card${study.rows[0].due === 1 ? "" : "s"} to review today.`,
+      `Study: ${cardsDue} card${cardsDue === 1 ? "" : "s"} to review today.`,
     );
   lines.push(`Open your day: ${appLink("/app")}`);
   return { subject: "Your day ahead", lines };

@@ -238,6 +238,14 @@ export function DocBody({
               index,
               <View style={styles.block}>
                 <Text style={styles.math}>{mathToText(block.text)}</Text>
+                {block.check && (
+                  <Text
+                    style={styles.mathCheck}
+                    accessibilityLabel="Check this equation: it was read from an imported file and its layout was a guess"
+                  >
+                    Check
+                  </Text>
+                )}
               </View>,
             );
           case "divider":
@@ -338,6 +346,18 @@ const styles = themed(() =>
     },
     code: { color: colors.text, fontSize: 13, fontFamily: "monospace" },
     math: { color: colors.text, fontSize: 16, textAlign: "center" },
+    mathCheck: {
+      alignSelf: "flex-end",
+      marginTop: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 1,
+      borderRadius: 999,
+      overflow: "hidden",
+      backgroundColor: colors.warningSoft,
+      color: colors.warningStrong,
+      fontSize: 11,
+      fontWeight: "600",
+    },
     divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
   }),
 );

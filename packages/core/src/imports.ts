@@ -43,6 +43,11 @@ export const IMPORT_LIMITS = {
   maxOcrPagesPerFile: 40,
   /** OCR pages per person per day; pages read directly don't count. */
   ocrPagesPerDay: 60,
+  /**
+   * Pages read with the light OCR (Tesseract) per person per day. It takes
+   * seconds a page, so the limit is generous.
+   */
+  scanPagesPerDay: 400,
   /** Files converting at once, per person. */
   activePerUser: 2,
   /** The file store deletes anything older than this, whatever happened. */
@@ -415,24 +420,22 @@ export function textPageToMarkdown(lines: TextLine[]): string {
   return out.join("\n").trim();
 }
 
-/** Symbols that mean a page is mostly maths, which OCR reads as LaTeX. */
-const MATH_SYMBOLS =
-  /[∑∏∫∮√∞≈≠≤≥±∓∂∇∈∉⊂⊆∪∩∀∃→←↔⇒⇔αβγδεζηθλμνξπρστφχψωΓΔΘΛΞΠΣΦΨΩ]/g;
-
 /**
- * Whether a PDF page has to go through OCR: it has no real text (a scan or
- * a photo), its text is garbled (fonts without a proper text mapping), or
- * it is mostly maths, which the text layer turns into loose symbols.
+ * Whether a PDF page has to be read from an image (OCR): it has no real text
+ * (a scan or a photo), or its text is garbled (a font without a proper
+ * mapping to characters). Pages of maths with real text are read from their
+ * fonts instead (pdftext.ts), which is better than OCR at maths.
  */
 export function pageNeedsOcr(text: string): boolean {
   const t = text.replace(/\s+/g, "");
   if (t.length < 30) return true;
-  const broken = (t.match(/[�-]/g) ?? []).length;
+  const broken = (t.match(/[\uFFFD\uE000-\uF8FF]/g) ?? []).length;
   if (broken / t.length > 0.05) return true;
   const letters = (t.match(/\p{L}/gu) ?? []).length;
-  if (letters / t.length < 0.4) return true;
-  const maths = (t.match(MATH_SYMBOLS) ?? []).length;
-  return maths / t.length > 0.06;
+  const maths = (
+    t.match(/[\u2200-\u22ff\u0370-\u03ff\u{1d400}-\u{1d7ff}]/gu) ?? []
+  ).length;
+  return (letters - maths) / Math.max(1, t.length - maths) < 0.25;
 }
 
 // ------------------------------------------------------------ assemble ---
@@ -455,6 +458,9 @@ export type ImportedPage = {
   ocr?: boolean;
   tables?: number;
   figures?: number;
+  /** Equations found, and how many of them to check. */
+  equations?: number;
+  checks?: number;
 };
 
 /** The notes shown under an imported page's title, in plain words. */
@@ -469,6 +475,11 @@ export function importNotes(pages: ImportedPage[], extra: string[] = []) {
     notes.push(`${figures} figure${figures === 1 ? "" : "s"} left out`);
   if (ocr)
     notes.push(`${ocr} page${ocr === 1 ? "" : "s"} read from an image (OCR)`);
+  const checks = pages.reduce((n, p) => n + (p.checks ?? 0), 0);
+  if (checks)
+    notes.push(
+      `${checks} equation${checks === 1 ? "" : "s"} may need checking`,
+    );
   return [...notes, ...extra];
 }
 
@@ -498,7 +509,12 @@ export function assembleImport(
     blocks = blocks.slice(1);
   }
   blocks = blocks.map((b) =>
-    b.type === "heading" && b.level === 1 ? { ...b, level: 2 } : b,
+    b.type === "heading" && b.level === 1
+      ? { ...b, level: 2 }
+      : // An equation whose layout was a guess carries a mark to check it.
+        b.type === "math" && /\n?%check\s*$/.test(b.text)
+        ? { ...b, text: b.text.replace(/\s*%check\s*$/, ""), check: true }
+        : b,
   );
   const notes = importNotes(pages, opts.notes);
   let cut = false;
@@ -555,3 +571,100 @@ export function importStatusLine(job: ImportJob): string {
       return "Cancelled";
   }
 }
+
+// ------------------------------------------------------- capabilities ---
+
+/**
+ * What this server can read, so the apps can say so before an upload
+ * instead of failing after it. `scans` is how pages without their own text
+ * are read: "tesseract" (built in: printed text, no maths), "full" (the
+ * heavy OCR model), "none", or "unknown" while the converter hasn't
+ * reported.
+ */
+export type ImportCapabilities = {
+  enabled: boolean;
+  scans: "full" | "tesseract" | "none" | "unknown";
+  /** Pictures of equations on scans are read as LaTeX. */
+  formulas: boolean;
+  /** Photos of notes can be imported. */
+  photos: boolean;
+  limits: {
+    maxBytes: number;
+    maxPages: number;
+    scanPagesPerFile: number;
+    scanPagesPerDay: number;
+  };
+};
+
+/** A sentence for the import button's hint, from what the server can read. */
+export function importHint(c: ImportCapabilities | null): string {
+  if (!c) return "PDF, Word (.docx), PNG or JPEG.";
+  if (!c.enabled) return "Importing files isn't set up on this server yet.";
+  const base = `PDF or Word (.docx), up to ${Math.round(c.limits.maxBytes / 1024 / 1024)} MB.`;
+  if (c.scans === "none" || c.scans === "unknown")
+    return `${base} Scanned pages and photos aren't read on this server.`;
+  if (c.scans === "tesseract")
+    return `${base} Scans and photos of printed notes are read too${c.formulas ? ", equations included" : "; handwriting and scanned equations aren't"}.`;
+  return `${base} Scans, photos and equations are read too.`;
+}
+
+// ------------------------------------------------- admin → storage ---
+
+export type AdminStoredFile = {
+  import_id: string;
+  object_id: string | null;
+  owner_id: string;
+  owner_name: string;
+  owner_email: string;
+  file_name: string;
+  file_type: ImportFileType;
+  bytes: number;
+  status: ImportStatus;
+  uploaded_at: string;
+  /** When the file store deletes it, whatever happens. */
+  deletes_at: string;
+};
+
+export type AdminStorage = {
+  database: { bytes: number };
+  files: {
+    /** Whether the file store answered. */
+    reachable: boolean;
+    count: number;
+    bytes: number;
+    oldest_at: string | null;
+    disk_total: number | null;
+    disk_free: number | null;
+  };
+  reading: {
+    scans: ImportCapabilities["scans"];
+    formulas: boolean;
+    workers: number;
+    /** When the converter last reported in. */
+    converter_seen_at: string | null;
+    converter_ok: boolean;
+  };
+  queue: {
+    waiting: number;
+    queued: number;
+    reading: number;
+    ocr: number;
+    pages_waiting: number;
+    seconds_per_page: number | null;
+    failed_today: number;
+    reasons: { error: string; count: number }[];
+  };
+  stored: AdminStoredFile[];
+  history: {
+    id: string;
+    owner_name: string;
+    file_name: string;
+    file_type: ImportFileType;
+    pages: number | null;
+    engines: string[];
+    status: ImportStatus;
+    error: string | null;
+    created_at: string;
+    seconds: number | null;
+  }[];
+};

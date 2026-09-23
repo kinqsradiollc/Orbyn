@@ -22,6 +22,7 @@ import {
   type InboxInfo,
   type PlannerAnalytics,
   type ChatChannel,
+  type Passkey,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
@@ -29,7 +30,9 @@ import { Chip, ChipRow } from "../components/Chip";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
-import { client } from "../lib/api";
+import * as WebBrowser from "expo-web-browser";
+import { client, webOrigin } from "../lib/api";
+import { confirmAction } from "../lib/confirm";
 import { disablePush, enablePush } from "../lib/push";
 import {
   colors,
@@ -548,6 +551,10 @@ export function SettingsScreen({
         )}
       </SettingsSection>
 
+      <SettingsSection title="Passkeys">
+        <Passkeys act={act} busy={busy} />
+      </SettingsSection>
+
       <SettingsSection title="Signed-in devices">
         {(sessions ?? []).map((sess, i) => (
           <View key={sess.id} style={[s.sessionRow, i > 0 && s.sessionDivider]}>
@@ -962,3 +969,81 @@ const s = themed(() =>
     signOut: { marginTop: 8 },
   }),
 );
+
+/**
+ * Passkeys: sign in with Face ID, Touch ID or a security key instead of a
+ * password. Listed and removed here; a new one is made in the web app
+ * (opened in a browser sheet), where the passkey belongs to Orbyn's
+ * address, and it then works on every device synced to the same account.
+ */
+function Passkeys({
+  act,
+  busy,
+}: {
+  act: (fn: () => Promise<void>) => Promise<void>;
+  busy: boolean;
+}) {
+  const [keys, setKeys] = useState<Passkey[] | null>(null);
+  const load = () => client.listPasskeys().then(setKeys, () => setKeys([]));
+  useEffect(() => {
+    void load();
+  }, []);
+  return (
+    <>
+      <Text style={shared.body}>
+        Sign in with Face ID, Touch ID or a security key instead of your
+        password.
+      </Text>
+      {keys === null ? (
+        <Text style={[shared.small, { marginTop: 8 }]}>Loading…</Text>
+      ) : keys.length === 0 ? (
+        <Text style={[shared.small, { marginTop: 8 }]}>No passkeys yet.</Text>
+      ) : (
+        keys.map((k, i) => (
+          <View key={k.id} style={[s.sessionRow, i > 0 && s.sessionDivider]}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.prefTitle}>{k.name}</Text>
+              <Text style={shared.small}>
+                Added {new Date(k.created_at).toLocaleDateString()}
+                {k.last_used_at
+                  ? ` · last used ${new Date(k.last_used_at).toLocaleDateString()}`
+                  : " · not used yet"}
+              </Text>
+            </View>
+            <SmallAction
+              label="Remove"
+              destructive
+              disabled={busy}
+              onPress={() =>
+                confirmAction(
+                  `Remove “${k.name}”?`,
+                  "You won't be able to sign in with it any more.",
+                  "Remove",
+                  () =>
+                    void act(async () => {
+                      await client.deletePasskey(k.id);
+                      await load();
+                    }),
+                )
+              }
+            />
+          </View>
+        ))
+      )}
+      <Button
+        title="Add a passkey"
+        secondary
+        disabled={busy}
+        style={{ marginTop: 12, marginBottom: 0 }}
+        onPress={() =>
+          void WebBrowser.openBrowserAsync(`${webOrigin}/app`).then(
+            () => void load(),
+          )
+        }
+      />
+      <Text style={[shared.small, { marginTop: 6 }]}>
+        Opens Orbyn on the web: go to Settings → Security → Add a passkey.
+      </Text>
+    </>
+  );
+}

@@ -192,6 +192,14 @@ export function BlockView({
       return (
         <div className="doc-math">
           <Math latex={block.text} display />
+          {block.check && (
+            <span
+              className="doc-math-check"
+              title="Read from an imported file, where this equation's layout was a guess. Edit it to confirm."
+            >
+              Check
+            </span>
+          )}
         </div>
       );
     case "divider":

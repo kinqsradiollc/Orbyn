@@ -339,7 +339,11 @@ export type Notice = {
     /** Someone asked you to take on a task (`ref` = the ask). */
     | "ask"
     /** A promise offered to you, or an answer to one (`ref` = the record). */
-    | "promise";
+    | "promise"
+    /** A subscribed calendar's event is coming up. */
+    | "calendar"
+    /** An imported file is ready in Uploads (`ref` = "doc:<page id>"). */
+    | "import";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

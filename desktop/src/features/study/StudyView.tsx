@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpenCheck,
   CalendarClock,
   Check,
+  FastForward,
   FileText,
+  FileUp,
   Flame,
+  HelpCircle,
+  MoreHorizontal,
+  PenLine,
   Lightbulb,
   Plus,
   Repeat,
@@ -14,6 +19,7 @@ import {
 import {
   withCards,
   type Doc,
+  type DocSummary,
   type RevisionPlan,
   type StudyExam,
   type StudyOverview,
@@ -24,6 +30,7 @@ import { deviceTimeZone } from "../../lib/planning";
 import { useConfirm } from "../../components/Confirm";
 import { Select } from "../../components/Select";
 import { ReviewSession } from "./ReviewSession";
+import { ImportButton, useImports } from "../docs/Uploads";
 import "./study.css";
 
 type Props = {
@@ -49,6 +56,15 @@ const when = (iso: string, allDay: boolean) =>
     ...(allDay ? {} : { hour: "2-digit", minute: "2-digit" }),
   });
 
+/** "today", "tomorrow", "in 3 days" for a coming date. */
+const relDay = (iso: string) => {
+  const days = Math.round(
+    (new Date(iso).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) /
+      86_400_000,
+  );
+  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+};
+
 const EXAMPLE = `What does CAP stand for? :: Consistency, availability, partition tolerance`;
 
 /**
@@ -67,6 +83,11 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
   const [planning, setPlanning] = useState<StudyExam | null>(null);
   const [choosing, setChoosing] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"due" | "known" | "title">("due");
+  // Importing from Study: a finished upload offers "Make cards" right here.
+  const imports = useImports(report, () => void load());
 
   const load = useCallback(
     () =>
@@ -164,8 +185,31 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
   if (!data) return <p className="muted">Loading your cards…</p>;
 
   const toReview = data.due_today + data.new_cards;
+  const readyImports = imports.jobs
+    .filter(
+      (j) =>
+        j.status === "ready" &&
+        j.doc_id &&
+        !data.decks.some((d) => d.doc_id === j.doc_id) &&
+        Date.now() - Date.parse(j.finished_at ?? j.created_at) < 3 * 86_400_000,
+    )
+    .slice(0, 3);
 
   const minutes = Math.max(1, Math.round((toReview * 8) / 60));
+  const totalCards = data.decks.reduce((n, d) => n + d.cards, 0);
+  const forecast = data.forecast ?? [];
+  const peak = Math.max(1, ...forecast.map((f) => f.due));
+  const q = query.trim().toLowerCase();
+  const decks = [...data.decks]
+    .filter((d) => !q || d.title.toLowerCase().includes(q))
+    .sort((a, b) =>
+      sort === "title"
+        ? a.title.localeCompare(b.title)
+        : sort === "known"
+          ? a.known / Math.max(1, a.cards) - b.known / Math.max(1, b.cards)
+          : b.due + b.new - (a.due + a.new) ||
+            (a.next_due_at ?? "9").localeCompare(b.next_due_at ?? "9"),
+    );
 
   return (
     <div className="study">
@@ -180,21 +224,54 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
           <p className="muted">
             {toReview
               ? `${data.due_today} due · ${data.new_cards} new · about ${minutes} min`
-              : "Cards come back when they're about to slip. Check in tomorrow."}
+              : totalCards
+                ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
+                : "Get your first cards below: write them, import lecture notes, or pick a page."}
           </p>
           <div className="study-actions">
-            <button
-              className="primary"
-              disabled={!toReview}
-              onClick={() =>
-                setSession({ title: "All your cards", quiz: false })
-              }
-            >
-              <BookOpenCheck size={16} /> Start review
-            </button>
-            <button className="secondary" onClick={() => void newPage()}>
-              <Plus size={15} /> New study page
-            </button>
+            {toReview ? (
+              <button
+                className="primary"
+                onClick={() =>
+                  setSession({ title: "All your cards", quiz: false })
+                }
+              >
+                <BookOpenCheck size={16} /> Start review
+              </button>
+            ) : totalCards ? (
+              <>
+                <button
+                  className="primary"
+                  title="Review the cards due soonest, ahead of time"
+                  onClick={() =>
+                    setSession({
+                      title: "Study ahead",
+                      quiz: false,
+                      ahead: true,
+                    })
+                  }
+                >
+                  <FastForward size={16} /> Study ahead
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    setSession({
+                      title: "All your cards",
+                      quiz: true,
+                      ahead: true,
+                    })
+                  }
+                >
+                  <Sparkles size={15} /> Quiz me
+                </button>
+              </>
+            ) : null}
+            {totalCards > 0 && (
+              <button className="text-button" onClick={() => setPicking(true)}>
+                <Plus size={15} /> Add cards
+              </button>
+            )}
           </div>
           {note && (
             <p className="study-note" role="status">
@@ -215,6 +292,31 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
               </dd>
             </div>
           </dl>
+          {totalCards > 0 && forecast.length > 0 && (
+            <div
+              className="study-forecast"
+              role="img"
+              aria-label={`Reviews due over the next 7 days: ${forecast
+                .map((f) => f.due)
+                .join(", ")}`}
+            >
+              {forecast.map((f, i) => (
+                <span key={f.date} title={`${f.due} due`}>
+                  <i
+                    style={{ height: `${Math.max(6, (f.due / peak) * 100)}%` }}
+                  />
+                  <small>
+                    {i === 0
+                      ? "Today"
+                      : new Date(`${f.date}T12:00:00`).toLocaleDateString(
+                          "en-GB",
+                          { weekday: "narrow" },
+                        )}
+                  </small>
+                </span>
+              ))}
+            </div>
+          )}
           <button className="text-button" onClick={() => void makeHabit()}>
             <Repeat size={14} /> Make it a daily habit
           </button>
@@ -261,7 +363,11 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                           >
                             <i style={{ width: `${ready}%` }} />
                           </div>
-                          <span>{ready}% known well</span>
+                          <span>
+                            {ready}% known well
+                            {exam.projected != null &&
+                              ` · ${Math.round(exam.projected * 100)}% by the exam if you keep up`}
+                          </span>
                         </div>
                       ) : (
                         <small className="muted">
@@ -358,102 +464,216 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
         </section>
       )}
 
-      <section className="study-section">
-        <h2>Your pages with cards</h2>
-        {data.decks.length === 0 ? (
-          <div className="card study-empty">
-            <strong>Cards come from your own pages.</strong>
-            <p className="muted">
-              In any page, write a line as <code>Question :: Answer</code> and
-              it becomes a card. Or open a page of notes here and let the
-              assistant suggest some for you to approve.
-            </p>
-            <code className="study-example">{EXAMPLE}</code>
-            <button className="primary" onClick={() => void newPage()}>
-              <Plus size={15} /> New study page
-            </button>
+      {data.decks.length === 0 ? (
+        <section className="study-section">
+          <h2>Get your first cards</h2>
+          <div className="study-ways">
+            <div className="card study-way">
+              <span className="study-way-icon" aria-hidden="true">
+                <PenLine size={16} />
+              </span>
+              <strong>Write cards</strong>
+              <p className="muted">
+                A new page. Any line written as question :: answer becomes a
+                card.
+              </p>
+              <button className="primary" onClick={() => void newPage()}>
+                <Plus size={15} /> New study page
+              </button>
+            </div>
+            <div className="card study-way">
+              <span className="study-way-icon" aria-hidden="true">
+                <FileUp size={16} />
+              </span>
+              <strong>Import lecture notes</strong>
+              <p className="muted">
+                A PDF or Word file becomes a page, then Orbyn suggests cards
+                from it.
+              </p>
+              <ImportButton
+                onFiles={(files) => void imports.importFiles(files)}
+                busy={imports.busy}
+                className="secondary"
+              />
+            </div>
+            <div className="card study-way">
+              <span className="study-way-icon" aria-hidden="true">
+                <Sparkles size={16} />
+              </span>
+              <strong>From a page you have</strong>
+              <p className="muted">
+                Pick a page, and keep the suggested cards you want.
+              </p>
+              <button className="secondary" onClick={() => setPicking(true)}>
+                Choose a page…
+              </button>
+            </div>
           </div>
-        ) : (
-          <ul className="study-decks">
-            {data.decks.map((d) => (
-              <li key={d.doc_id} className="card study-deck">
+          <div className="study-sample" aria-label="An example card">
+            <div>
+              <span>Question</span>What does CAP stand for?
+            </div>
+            <div>
+              <span>Answer</span>Consistency, availability, partition tolerance
+            </div>
+          </div>
+          <p className="muted study-syntax">
+            Also: <code>A ::: B</code> asks both ways, and{" "}
+            <code>{"The {{leader}} sends heartbeats"}</code> hides a word.
+          </p>
+        </section>
+      ) : (
+        <section className="study-section">
+          <div className="study-section-head">
+            <h2>
+              Pages with cards <small>{data.decks.length}</small>
+            </h2>
+            <div className="study-tools">
+              {data.decks.length >= 8 && (
+                <input
+                  className="study-search"
+                  aria-label="Search pages with cards"
+                  placeholder="Search…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              )}
+              <Select
+                aria-label="Sort pages"
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+              >
+                <option value="due">Due first</option>
+                <option value="known">Least known first</option>
+                <option value="title">Title A–Z</option>
+              </Select>
+              <button className="secondary" onClick={() => setPicking(true)}>
+                <Plus size={15} /> Add cards
+              </button>
+            </div>
+          </div>
+          <ul className="card study-deck-list">
+            {decks.map((d) => {
+              const pct = d.cards ? Math.round((d.known / d.cards) * 100) : 0;
+              const exam = data.exams.find((e) => e.doc_ids.includes(d.doc_id));
+              const waiting = d.due + d.new;
+              return (
+                <li key={d.doc_id} className="study-deck-row">
+                  <span
+                    className="study-ring"
+                    style={{ ["--pct" as string]: `${pct}%` }}
+                    role="img"
+                    aria-label={`${pct}% known well`}
+                  >
+                    <b>{pct}%</b>
+                  </span>
+                  <button
+                    className="study-deck-main"
+                    onClick={() => void openPage(d.doc_id)}
+                    title="Open the page"
+                  >
+                    <strong>{d.title}</strong>
+                    <small>
+                      {d.cards} card{d.cards === 1 ? "" : "s"}
+                      {d.next_due_at && !d.due
+                        ? ` · next review ${relDay(d.next_due_at)}`
+                        : ""}
+                      {d.imported_from
+                        ? ` · imported from ${d.imported_from}`
+                        : ""}
+                    </small>
+                  </button>
+                  <span className="study-deck-chips">
+                    {d.due > 0 && (
+                      <span className="chip chip-warn">{d.due} due</span>
+                    )}
+                    {d.new > 0 && <span className="chip">{d.new} new</span>}
+                    {exam && (
+                      <span className="chip chip-info" title={exam.title}>
+                        Exam {when(exam.starts_at, true)}
+                      </span>
+                    )}
+                    {!waiting && pct === 100 && (
+                      <span className="chip chip-quiet">Done for now</span>
+                    )}
+                  </span>
+                  <span className="study-deck-go">
+                    <button
+                      className={waiting ? "primary" : "secondary"}
+                      onClick={() =>
+                        setSession(
+                          waiting
+                            ? { docId: d.doc_id, title: d.title, quiz: false }
+                            : {
+                                docId: d.doc_id,
+                                title: d.title,
+                                quiz: true,
+                                ahead: true,
+                              },
+                        )
+                      }
+                    >
+                      {waiting ? "Review" : "Quiz me"}
+                    </button>
+                    <DeckMenu
+                      title={d.title}
+                      onSuggest={() =>
+                        setMaking({ docId: d.doc_id, title: d.title })
+                      }
+                      onOpen={() => void openPage(d.doc_id)}
+                      onQuiz={() =>
+                        setSession({
+                          docId: d.doc_id,
+                          title: d.title,
+                          quiz: true,
+                          ahead: true,
+                        })
+                      }
+                      onAhead={() =>
+                        setSession({
+                          docId: d.doc_id,
+                          title: d.title,
+                          quiz: false,
+                          ahead: true,
+                        })
+                      }
+                    />
+                  </span>
+                </li>
+              );
+            })}
+            {decks.length === 0 && (
+              <li className="study-deck-empty muted">
+                No pages match “{query}”.
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
+
+      {readyImports.length > 0 && (
+        <section className="card study-uploads">
+          <strong>From your uploads</strong>
+          <ul>
+            {readyImports.map((j) => (
+              <li key={j.id}>
+                <span>{j.file_name}</span>
                 <button
-                  className="study-deck-title"
-                  onClick={() => void openPage(d.doc_id)}
+                  className="secondary"
+                  onClick={() =>
+                    setMaking({
+                      docId: j.doc_id!,
+                      title: j.file_name.replace(/\.[a-z0-9]+$/i, ""),
+                    })
+                  }
                 >
-                  <span className="study-deck-icon" aria-hidden="true">
-                    <FileText size={15} />
-                  </span>
-                  <strong>{d.title}</strong>
+                  <Sparkles size={14} /> Make cards
                 </button>
-                <div className="study-deck-meta">
-                  <span>
-                    {d.cards} card{d.cards === 1 ? "" : "s"}
-                  </span>
-                  {d.due > 0 && (
-                    <span className="chip chip-warn">{d.due} due</span>
-                  )}
-                  {d.new > 0 && <span className="chip">{d.new} new</span>}
-                </div>
-                <div
-                  className="study-bar"
-                  role="progressbar"
-                  aria-label={`${d.title}: known well`}
-                  aria-valuemin={0}
-                  aria-valuemax={d.cards}
-                  aria-valuenow={d.known}
-                >
-                  <i
-                    style={{
-                      width: `${d.cards ? (d.known / d.cards) * 100 : 0}%`,
-                    }}
-                  />
-                </div>
-                <small className="muted">
-                  {d.known} of {d.cards} known well
-                </small>
-                <div className="study-deck-actions">
-                  <button
-                    className="secondary"
-                    disabled={!d.due && !d.new}
-                    onClick={() =>
-                      setSession({
-                        docId: d.doc_id,
-                        title: d.title,
-                        quiz: false,
-                      })
-                    }
-                  >
-                    Review
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      setSession({
-                        docId: d.doc_id,
-                        title: d.title,
-                        quiz: true,
-                        ahead: true,
-                      })
-                    }
-                  >
-                    Quiz me
-                  </button>
-                  <button
-                    className="text-button"
-                    title="Suggest cards from this page"
-                    onClick={() =>
-                      setMaking({ docId: d.doc_id, title: d.title })
-                    }
-                  >
-                    <Sparkles size={14} /> Suggest
-                  </button>
-                </div>
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       {data.weak.length > 0 && (
         <section className="study-section">
@@ -475,11 +695,17 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
         </section>
       )}
 
-      <MakeCardsFromAnyPage
-        decks={data.decks.map((d) => d.doc_id)}
-        onPick={(docId, title) => setMaking({ docId, title })}
-        report={report}
-      />
+      {picking && (
+        <PagePicker
+          decks={data.decks.map((d) => d.doc_id)}
+          report={report}
+          onClose={() => setPicking(false)}
+          onPick={(docId, title) => {
+            setPicking(false);
+            setMaking({ docId, title });
+          }}
+        />
+      )}
 
       {making && (
         <MakeCardsDialog
@@ -516,68 +742,163 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
   );
 }
 
-/** Pick any page of notes (with cards or not) to have cards suggested from. */
-function MakeCardsFromAnyPage({
+/** A menu of a page's other actions. */
+function DeckMenu({
+  title,
+  onSuggest,
+  onOpen,
+  onQuiz,
+  onAhead,
+}: {
+  title: string;
+  onSuggest: () => void;
+  onOpen: () => void;
+  onQuiz: () => void;
+  onAhead: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const item = (label: string, icon: React.ReactNode, act: () => void) => (
+    <button
+      role="menuitem"
+      onClick={() => {
+        setOpen(false);
+        act();
+      }}
+    >
+      {icon} {label}
+    </button>
+  );
+  return (
+    <span className="study-menu" ref={ref}>
+      <button
+        className="icon-button"
+        aria-label={`More for ${title}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <MoreHorizontal size={18} />
+      </button>
+      {open && (
+        <span className="study-menu-list" role="menu">
+          {item("Suggest cards", <Sparkles size={14} />, onSuggest)}
+          {item("Quiz me", <HelpCircle size={14} />, onQuiz)}
+          {item("Study ahead", <FastForward size={14} />, onAhead)}
+          {item("Open page", <FileText size={14} />, onOpen)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Choose a page to have cards suggested from: recently imported and
+ * recently edited pages first, pages that already have cards marked.
+ */
+function PagePicker({
   decks,
-  onPick,
   report,
+  onPick,
+  onClose,
 }: {
   decks: string[];
-  onPick: (docId: string, title: string) => void;
   report: (e: unknown) => void;
+  onPick: (docId: string, title: string) => void;
+  onClose: () => void;
 }) {
-  const [pages, setPages] = useState<{ id: string; title: string }[] | null>(
-    null,
-  );
-  const [chosen, setChosen] = useState("");
+  const [pages, setPages] = useState<DocSummary[] | null>(null);
+  const [q, setQ] = useState("");
   useEffect(() => {
-    client
-      .listDocs()
-      .then(
-        (all) =>
-          setPages(
-            all
-              .filter((d) => d.kind !== "agenda" && !decks.includes(d.id))
-              .map((d) => ({ id: d.id, title: d.title || "Untitled" })),
-          ),
-        report,
-      );
+    client.listDocs().then(
+      (all) =>
+        setPages(
+          all
+            .filter((d) => d.kind !== "agenda")
+            .sort(
+              (a, b) =>
+                Number(!!b.imported_from) - Number(!!a.imported_from) ||
+                b.updated_at.localeCompare(a.updated_at),
+            ),
+        ),
+      (e) => {
+        report(e);
+        setPages([]);
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (!pages?.length) return null;
+  const shown = (pages ?? []).filter((p) =>
+    `${p.title} ${p.preview}`.toLowerCase().includes(q.trim().toLowerCase()),
+  );
   return (
-    <section className="study-section">
-      <h2>Turn notes into cards</h2>
-      <div className="card study-pick">
-        <p className="muted">
-          Pick a page of notes. The assistant suggests cards from it — only from
-          what the page says — and you choose which to add.
-        </p>
-        <div className="study-pick-row">
-          <Select
-            aria-label="Page of notes"
-            value={chosen}
-            onChange={(e) => setChosen(e.target.value)}
-          >
-            <option value="">Choose a page…</option>
-            {pages.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </Select>
-          <button
-            className="secondary"
-            disabled={!chosen}
-            onClick={() =>
-              onPick(chosen, pages.find((p) => p.id === chosen)?.title ?? "")
-            }
-          >
-            <Sparkles size={14} /> Suggest cards
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <section
+        className="modal study-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="study-picker-title"
+      >
+        <div className="section-heading">
+          <h2 id="study-picker-title">Cards from a page</h2>
+          <button className="icon-button" aria-label="Close" onClick={onClose}>
+            <X size={20} />
           </button>
         </div>
-      </div>
-    </section>
+        <div className="modal-body">
+          <p className="muted">
+            The assistant suggests cards only from what the page says, and you
+            choose which to keep.
+          </p>
+          <input
+            autoFocus
+            aria-label="Search your pages"
+            placeholder="Search your pages…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {pages === null ? (
+            <p className="muted">Loading your pages…</p>
+          ) : shown.length === 0 ? (
+            <p className="muted">No pages match.</p>
+          ) : (
+            <ul className="study-picker-list">
+              {shown.slice(0, 60).map((p) => (
+                <li key={p.id}>
+                  <button onClick={() => onPick(p.id, p.title || "Untitled")}>
+                    <FileText size={15} aria-hidden="true" />
+                    <span>
+                      <strong>{p.title || "Untitled"}</strong>
+                      <small>{p.preview || "Empty page"}</small>
+                    </span>
+                    {p.imported_from && <span className="chip">Imported</span>}
+                    {decks.includes(p.id) && (
+                      <span className="chip chip-quiet">Has cards</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 

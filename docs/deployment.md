@@ -36,7 +36,8 @@ Two images are built from the repository root:
 | `backend/Dockerfile`   | Every backend service and migrations (one image) | `node backend/dist/services/api.js`, `.../services/ai.js`, `.../services/status.js`, `.../services/notifier.js`, `node backend/dist/migrate.js`; `server.js` runs all in one |
 | `desktop/Dockerfile`   | Static web app behind unprivileged nginx         | nginx                                                                                                                                                                        |
 | `pgbouncer/Dockerfile` | Connection pooler (Alpine's PgBouncer)           | Configured from environment at start                                                                                                                                         |
-| `ocr/Dockerfile`       | OCR for imported scans (CPU, Python)             | Built only with the `ocr` Compose profile; see [Importing files](#importing-pdf-and-word-files-into-docs)                                                                    |
+| `formula/Dockerfile`   | Equations on imported scans (pix2tex, CPU)       | Built only with the `formula` Compose profile                                                                                                                                |
+| `ocr/Dockerfile`       | Heavy OCR for imported scans (CPU, Python)       | Built only with the `ocr` Compose profile; see [Importing files](#importing-pdf-and-word-files-into-docs)                                                                    |
 
 The gateway uses the stock `nginxinc/nginx-unprivileged` image with `gateway/` mounted.
 
@@ -400,13 +401,13 @@ the repository folder, next to `compose.yaml`.
 First, tell Compose which optional services this machine uses, once, in `.env`:
 
 ```bash
-COMPOSE_PROFILES=tunnel,mail,ocr
+COMPOSE_PROFILES=tunnel,mail
 ```
 
-Every command below then includes the tunnel, your own mail server and the OCR service for
-imported scans. Without that line, add `--profile tunnel --profile mail --profile ocr` to each
-one, or they are silently left out. Leave `ocr` out on a machine without about 16 GB of RAM to
-spare; see [Importing files](#importing-pdf-and-word-files-into-docs).
+Every command below then includes the tunnel and your own mail server. Without that line, add
+`--profile tunnel --profile mail` to each one, or they are silently left out. The optional
+`formula` and `ocr` profiles are described in
+[Importing files](#importing-pdf-and-word-files-into-docs).
 
 ### Install or update everything
 
@@ -524,12 +525,21 @@ it as healthy. Its configuration lives in Cloudflare, not here: the public hostn
 ## Importing PDF and Word files into Docs
 
 People can import a lecture PDF, a Word document or a photo of notes. It becomes a page in
-Docs → Uploads, and the file is deleted. Three services do the work:
+Docs → Uploads, and the file is deleted. These services do the work:
 
 - **`files`** is the file store. It holds uploads encrypted, only until they're read, and never
-  longer than 24 hours, in the `import_files` volume.
-- **`converter`** reads Word files and PDF pages with real text, in seconds.
-- **`ocr`** reads scanned pages and photos with Unlimited-OCR, on CPU. It's optional.
+  longer than 24 hours, in the `import_files` volume. It refuses uploads when less than
+  `FILES_MIN_FREE_MB` (1 GB) would be left on the disk.
+- **`converter`** reads everything:
+  - Word files, with exact equations;
+  - PDF pages with real text, with columns, headings, tables and maths from their fonts;
+  - scanned pages and photos of printed notes, with **Tesseract**. Tesseract is built into the
+    image (English), needs no model download and about 100 MB of memory, and takes a few seconds
+    a page.
+- **`formula`** (optional, the `formula` profile) reads equations on scanned pages as LaTeX with
+  pix2tex. It needs about 1–2 GB of RAM.
+- **`ocr`** (optional, the `ocr` profile, **off by default**) is the heavy Unlimited-OCR model. It
+  needs about 16 GB of RAM, and is only worth it on a big server for scanned maths and handwriting.
 
 `files` and `converter` always run. Importing stays off until the secrets are set. In `.env`:
 
@@ -540,54 +550,50 @@ FILES_SECRET=<openssl rand -base64 32>
 FILES_MASTER_KEY=<openssl rand -base64 32>
 ```
 
-**Reading scanned pages (the `ocr` profile).** OCR runs on CPU in float32, with no GPU. It needs
-about 12 GB of RAM for the model, and Compose caps it at 16 GB (`OCR_MEMORY`) and 8 CPUs
-(`OCR_CPUS`). A dense page takes minutes. To turn it on, add to `.env`:
+That is all a normal server needs: Word files, PDFs and scans all import.
+
+**Equations on scans (the `formula` profile).** To read pictures of equations on scanned pages as
+LaTeX, add to `.env`:
 
 ```bash
-COMPOSE_PROFILES=tunnel,mail,ocr
-OCR_URL=http://ocr:8000
+COMPOSE_PROFILES=tunnel,mail,formula
+FORMULA_URL=http://formula:8000
 ```
 
-Then:
+Then run `docker compose up -d --build --wait`. The image downloads its model while it's built, so
+the running container needs no internet. Compose caps it at 2 GB (`FORMULA_MEMORY`) and 2 CPUs
+(`FORMULA_CPUS`).
 
-```bash
-docker compose up -d --build --wait
-```
+**The heavy OCR model (the `ocr` profile).** This is only for servers with plenty of memory. It
+needs about 12 GB for the model, and Compose caps it at 16 GB (`OCR_MEMORY`). On a smaller server
+it can take the whole machine down, so it's off by default. To try it, add `ocr` to
+`COMPOSE_PROFILES` and set `OCR_URL=http://ocr:8000`. The first start downloads the model into
+`ocr_models`, and `docker compose logs -f ocr` shows `model loaded`. After that, `OCR_OFFLINE=1`
+stops it from reaching the internet, and `OCR_MODEL_REVISION` pins a reviewed commit. While it's
+set, it replaces Tesseract for scanned pages. More workers:
+`docker compose up -d --scale ocr=2 ocr` with `OCR_WORKERS=2`.
 
-The first start downloads the model into the `ocr_models` volume, which can take a while.
-`docker compose logs -f ocr` shows `model loaded` when it's ready. Until then scanned pages wait in
-the queue. Once it has loaded, you can set `OCR_OFFLINE=1` so it never reaches the internet again,
-and set `OCR_MODEL_REVISION` to the commit you reviewed so a rebuild can't pull different model
-code.
+Never build the `ocr` or `formula` image on a development machine. Tesseract and `pdftoppm` from
+Homebrew or apt are enough there, and `scripts/ocr-standin.mjs` stands in for the heavy model.
 
-To read more pages at once, run another worker and tell the converter:
+| Setting              | Default            | What it does                                             |
+| -------------------- | ------------------ | -------------------------------------------------------- |
+| `FILES_SECRET`       | (blank: off)       | Signs upload links and the converter's requests          |
+| `FILES_MASTER_KEY`   | derived (dev only) | Wraps each file's own encryption key                     |
+| `FILES_MIN_FREE_MB`  | `1024`             | Uploads are refused below this much free disk            |
+| `TESSERACT_WORKERS`  | `2`                | Scanned pages read at once with Tesseract                |
+| `FORMULA_URL`        | (blank: off)       | `http://formula:8000` with the `formula` profile         |
+| `FORMULA_MEMORY`     | `2g`               | Memory cap for the `formula` container                   |
+| `OCR_URL`            | (blank: off)       | `http://ocr:8000` with the `ocr` profile (heavy)         |
+| `OCR_WORKERS`        | `1`                | Heavy OCR pages read at once (one per `ocr` container)   |
+| `OCR_TIMEOUT_MS`     | `600000`           | Longest one scanned page may take                        |
+| `OCR_MEMORY`         | `16g`              | Memory cap for each `ocr` container                      |
+| `OCR_IMAGE_MODE`     | `gundam`           | `gundam` crops (better on dense pages); `base` is faster |
+| `OCR_MODEL_REVISION` | `main`             | Pin the heavy model and its code to a reviewed commit    |
+| `OCR_OFFLINE`        | `0`                | `1` after the first download: no internet access         |
 
-```bash
-docker compose up -d --scale ocr=2 ocr
-```
-
-and set `OCR_WORKERS=2`. Each worker takes about 12 GB.
-
-Without the profile, Word files and PDFs with real text still import. Scanned pages and photos are
-refused with a message saying OCR isn't turned on. Never build the OCR image on a development
-machine; `scripts/ocr-standin.mjs` stands in for it there.
-
-| Setting              | Default               | What it does                                             |
-| -------------------- | --------------------- | -------------------------------------------------------- |
-| `FILES_SECRET`       | (blank: off)          | Signs upload links and the converter's requests          |
-| `FILES_MASTER_KEY`   | derived (dev only)    | Wraps each file's own encryption key                     |
-| `OCR_URL`            | (blank: no OCR)       | `http://ocr:8000` with the `ocr` profile                 |
-| `OCR_WORKERS`        | `1`                   | OCR pages read at once (one per `ocr` container)         |
-| `OCR_TIMEOUT_MS`     | `600000`              | Longest one page may take                                |
-| `OCR_MEMORY`         | `16g`                 | Memory cap for each `ocr` container                      |
-| `OCR_CPUS`           | `8`                   | CPU cap for each `ocr` container                         |
-| `OCR_THREADS`        | `0` (PyTorch default) | CPU threads PyTorch uses                                 |
-| `OCR_IMAGE_MODE`     | `gundam`              | `gundam` crops (better on dense pages); `base` is faster |
-| `OCR_MODEL_REVISION` | `main`                | Pin the model and its code to a reviewed commit          |
-| `OCR_OFFLINE`        | `0`                   | `1` after the first download: no internet access         |
-
-The status page lists **Document import**, which is the converter's heartbeat.
+The status page lists **Document import**, which is the converter's heartbeat. Admin → Storage
+shows the files on the server, the queue, how scans are read, and the last month of imports.
 `docker compose logs -f converter` shows each file it reads.
 
 ## Email to task

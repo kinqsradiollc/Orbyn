@@ -98,6 +98,8 @@ const schema = z.object({
   FILES_MASTER_KEY: z.string().default(""),
   FILES_URL: z.string().default("http://localhost:8000"),
   FILES_DIR: z.string().default(""),
+  /** The file store refuses uploads when less disk than this (MB) would be left. */
+  FILES_MIN_FREE_MB: z.coerce.number().int().min(0).default(1024),
   /**
    * The OCR service (Compose profile `ocr`) for scanned pages and photos.
    * Blank: Word files and PDFs with real text still import; scanned pages
@@ -106,6 +108,17 @@ const schema = z.object({
   OCR_URL: z.string().default(""),
   /** Scanned pages read at once; one per OCR worker (`--scale ocr=N`). */
   OCR_WORKERS: z.coerce.number().int().min(1).max(16).default(1),
+  /**
+   * Scanned pages read at once with the built-in Tesseract (used when
+   * OCR_URL is blank). Each takes about one CPU core for a few seconds.
+   */
+  TESSERACT_WORKERS: z.coerce.number().int().min(1).max(16).default(2),
+  /**
+   * The formula model (Compose profile `formula`, pix2tex), which reads
+   * pictures of equations as LaTeX for scanned pages. Blank: such lines
+   * keep a placeholder.
+   */
+  FORMULA_URL: z.string().default(""),
   /** How long one page may take on CPU before it's given up on. */
   OCR_TIMEOUT_MS: z.coerce.number().int().min(10_000).default(600_000),
 });

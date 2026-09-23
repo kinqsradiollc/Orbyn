@@ -4,8 +4,11 @@ import {
   IMPORT_ACCEPT,
   IMPORT_ACTIVE,
   IMPORT_LIMITS,
+  importHint,
   importRefusal,
   importStatusLine,
+  importTypeOf,
+  type ImportCapabilities,
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
@@ -18,6 +21,10 @@ import { client } from "../../lib/api";
 export function useImports(report: (e: unknown) => void, onReady: () => void) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [starting, setStarting] = useState(0);
+  const [caps, setCaps] = useState<ImportCapabilities | null>(null);
+  useEffect(() => {
+    client.importCapabilities().then(setCaps, () => setCaps(null));
+  }, []);
   const ready = useRef(new Set<string>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -57,6 +64,19 @@ export function useImports(report: (e: unknown) => void, onReady: () => void) {
       const refused = importRefusal(file.name, file.type);
       if (refused) {
         report(new Error(refused));
+        continue;
+      }
+      const type = importTypeOf(file.name, file.type);
+      if (caps && !caps.enabled) {
+        report(new Error("Importing files isn't set up on this server yet."));
+        return;
+      }
+      if ((type === "png" || type === "jpeg") && caps && !caps.photos) {
+        report(
+          new Error(
+            `${file.name}: photos of notes can't be read on this server. Import a PDF or Word file instead.`,
+          ),
+        );
         continue;
       }
       if (file.size > IMPORT_LIMITS.maxBytes) {
@@ -99,7 +119,7 @@ export function useImports(report: (e: unknown) => void, onReady: () => void) {
     void refresh();
   };
 
-  return { jobs, importFiles, remove, busy: starting > 0 };
+  return { jobs, importFiles, remove, busy: starting > 0, caps };
 }
 
 /** The "Import file" button: a hidden file input behind a normal button. */
@@ -156,7 +176,9 @@ export function UploadsPanel({
   onRemove,
   onMakeCards,
   onFiles,
+  caps,
 }: {
+  caps: ImportCapabilities | null;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -180,6 +202,7 @@ export function UploadsPanel({
         file, then deletes it; only the page stays. Move a page to a folder when
         you&apos;re ready.
       </p>
+      <p className="uploads-hint">{importHint(caps)}</p>
       {!waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
           <FileUp size={22} aria-hidden="true" />

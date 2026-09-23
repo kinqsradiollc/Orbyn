@@ -1,5 +1,5 @@
 import { inflateRawSync } from "node:zlib";
-import { rowsToBullets } from "@orbyn/core";
+import { ommlXmlToLatex, rowsToBullets } from "@orbyn/core";
 
 /**
  * Reading a Word document (.docx) into Markdown for an Orbyn page.
@@ -10,7 +10,9 @@ import { rowsToBullets } from "@orbyn/core";
  * rather than a library: only what a Word file uses is handled.
  *
  * Kept: headings (Title and Heading 1–3), paragraphs, bold and italic,
- * bulleted and numbered lists, quotes, and equations as LaTeX-ish text.
+ * bulleted and numbered lists, quotes, and equations — Word stores their
+ * structure (OMML), so they become exact LaTeX: inline as `$…$`, and an
+ * equation on its own line as a math block.
  * Tables become one bullet per row; pictures are counted and left out.
  */
 
@@ -133,10 +135,8 @@ function runsText(p: string): { text: string; figures: number } {
     /<w:r\b[^>]*>([\s\S]*?)<\/w:r>|<m:oMath\b[^>]*>([\s\S]*?)<\/m:oMath>/g;
   for (const m of p.matchAll(pieces)) {
     if (m[2] !== undefined) {
-      const tex = [...m[2].matchAll(/<m:t[^>]*>([\s\S]*?)<\/m:t>/g)]
-        .map((t) => decode(t[1]))
-        .join("");
-      if (tex.trim()) out += ` $${tex.trim()}$ `;
+      const tex = ommlXmlToLatex(m[0]);
+      if (tex) out += ` $${tex}$ `;
       continue;
     }
     const run = m[1];
@@ -181,6 +181,7 @@ export function docxToMarkdown(buf: Buffer): {
   markdown: string;
   tables: number;
   figures: number;
+  equations: number;
 } {
   const zip = readZip(buf);
   const document = zip.get("word/document.xml");
@@ -196,6 +197,7 @@ export function docxToMarkdown(buf: Buffer): {
   const lines: string[] = [];
   let tables = 0;
   let figures = 0;
+  let equations = 0;
   let code: string[] = [];
   const flushCode = () => {
     if (code.length) lines.push("```", ...code, "```", "");
@@ -213,9 +215,29 @@ export function docxToMarkdown(buf: Buffer): {
       lines.push("", ...rowsToBullets(rows), "");
       continue;
     }
+    // An equation on its own line (Word's "display" equation): a math block.
+    if (/<m:oMathPara\b/.test(block)) {
+      const outside = runsText(
+        block.replace(/<m:oMathPara\b[\s\S]*?<\/m:oMathPara>/g, ""),
+      ).text;
+      if (!outside.trim()) {
+        flushCode();
+        for (const [math] of block.matchAll(
+          /<m:oMath\b[^>]*>[\s\S]*?<\/m:oMath>/g,
+        )) {
+          const tex = ommlXmlToLatex(math);
+          if (tex) {
+            equations++;
+            lines.push("$$", tex, "$$", "");
+          }
+        }
+        continue;
+      }
+    }
     const pPr = /<w:pPr>([\s\S]*?)<\/w:pPr>/.exec(block)?.[1] ?? "";
     const style = styles.get(attr(pPr, "w:pStyle") ?? "") ?? {};
     const { text, figures: pictures } = runsText(block);
+    equations += (text.match(/\$[^$]+\$/g) ?? []).length;
     if (pictures) {
       figures += pictures;
       if (!text) {
@@ -249,5 +271,6 @@ export function docxToMarkdown(buf: Buffer): {
       .trim(),
     tables,
     figures,
+    equations,
   };
 }

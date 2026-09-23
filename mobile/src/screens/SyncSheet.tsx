@@ -14,6 +14,7 @@ import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { SwitchRow } from "./booking/ui";
 import { client } from "../lib/api";
+import { confirmAction } from "../lib/confirm";
 import { deviceId } from "../lib/device";
 import { onLive } from "../lib/live";
 import * as outbox from "../lib/outbox";
@@ -169,6 +170,23 @@ function Body({ state }: { state: Outbox }) {
                       : syncLabel(d)}
                   </Text>
                 </View>
+                {d.device_id !== self && (
+                  <SmallAction
+                    label="Forget"
+                    disabled={false}
+                    onPress={() =>
+                      confirmAction(
+                        `Forget ${d.label ?? d.platform}?`,
+                        "It leaves this list. If it's still signed in, it shows up again next time it's used.",
+                        "Forget",
+                        () =>
+                          void client
+                            .forgetDevice(d.device_id)
+                            .then(load, () => {}),
+                      )
+                    }
+                  />
+                )}
               </View>
             ))
           )}

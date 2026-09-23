@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Platform,
   RefreshControl,
   ScrollView,
@@ -64,6 +65,7 @@ import { TagsSheet } from "../screens/TagsSheet";
 import { Sheet } from "../components/Sheet";
 import { BrowseScreen } from "../screens/BrowseScreen";
 import { DocsSheet } from "../screens/docs/DocsSheet";
+import { sendLocalFile, takeSharedFiles } from "../screens/docs/Uploads";
 import { ProjectsSheet } from "../screens/docs/ProjectsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
@@ -173,6 +175,15 @@ export function RootScreen() {
   const [task, setTask] = useState<Item | null>(null);
   /** The meeting note being read, opened from its event. */
   const [note, setNote] = useState<Doc | null>(null);
+  /** A page to suggest study cards from, when Study opens from Uploads. */
+  const [studySuggest, setStudySuggest] = useState<{
+    docId: string;
+    title: string;
+  } | null>(null);
+  // Study opened any other way starts on its home page.
+  useEffect(() => {
+    if (sheet !== "study") setStudySuggest(null);
+  }, [sheet]);
   /** The task in focus mode. */
   const [focus, setFocus] = useState<Item | null>(null);
   /** A plan to open the Plan my day sheet on (unfinished work moved forward). */
@@ -224,6 +235,29 @@ export function RootScreen() {
   const routePush = useRef<((data: Record<string, unknown>) => void) | null>(
     null,
   );
+  // Files shared to Orbyn from another app become imports in Uploads. The
+  // check runs when the app opens and each time it comes back to the front.
+  const [docsInUploads, setDocsInUploads] = useState(false);
+  useEffect(() => {
+    if (!token || Platform.OS === "web") return;
+    const check = async () => {
+      const files = await takeSharedFiles();
+      if (!files.length) return;
+      for (const file of files)
+        await sendLocalFile(file).catch((e: Error) =>
+          setError(e.message || "The shared file couldn't be imported."),
+        );
+      setDocsInUploads(true);
+      present({ sheet: "docs" });
+    };
+    void check();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void check();
+    });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   const handledPush = useRef("");
   useEffect(() => {
     if (!token) return;
@@ -808,6 +842,14 @@ export function RootScreen() {
                         present({ sheet: "projects" });
                       })
                     }
+                    onOpenDoc={(n, docId) =>
+                      void noticeAction(n, () =>
+                        act(async () => {
+                          setNote(await client.getDoc(docId));
+                          present({ sheet: "note" });
+                        }),
+                      )
+                    }
                   />
                 )}
                 {tab === "Browse" && (
@@ -965,6 +1007,7 @@ export function RootScreen() {
         />
         <StudySheet
           visible={sheet === "study"}
+          suggestFrom={studySuggest}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenPage={(doc) => {
@@ -980,6 +1023,12 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
+          onMakeCards={(docId, title) => {
+            setStudySuggest({ docId, title });
+            present({ sheet: "study" });
+          }}
+          startInUploads={docsInUploads}
+          onStarted={() => setDocsInUploads(false)}
         />
         <DocsSheet
           visible={sheet === "note"}

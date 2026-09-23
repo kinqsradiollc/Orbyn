@@ -701,6 +701,7 @@ export function DocsView({
                 onRemove={(job) => void imports.remove(job)}
                 onMakeCards={setMaking}
                 onFiles={importFiles}
+                caps={imports.caps}
               />
             ) : failed ? (
               <div>

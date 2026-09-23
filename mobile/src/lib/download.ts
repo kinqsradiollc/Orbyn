@@ -3,26 +3,24 @@ import { EXPORT_LABELS, type ExportFormat } from "@orbyn/core";
 import { client } from "./api";
 
 /**
- * Taking a page away, on a phone.
+ * Taking a page (or an export) away, on a phone.
  *
  * In the web build a blob and a link do it, the same way the desktop does.
- * On a real phone there is no file system here to write to: saving a PDF
- * would mean `expo-file-system` and `expo-sharing`, which are not installed
- * and could not be tested on a device from here. So a phone shares the text
- * shapes through the system sheet, which is the phone idiom anyway, and the
- * shapes that are files say plainly where to get them.
+ * On a phone the file is written to the app's cache and handed to the
+ * system share sheet (expo-file-system and expo-sharing), so it can be
+ * saved to Files, sent, or opened in another app — every format, PDF and
+ * Word included.
  */
 
-/** Which formats can actually be taken away on this device. */
-export const formatsHere = (): ExportFormat[] =>
-  Platform.OS === "web" ? ["md", "txt", "html", "docx", "pdf"] : ["md", "txt"];
-
-export async function downloadDoc(
-  docId: string,
-  format: ExportFormat,
+/** Save `data` as a file called `name`: a download on the web, the share sheet on a phone. */
+export async function saveFile(
+  name: string,
+  data: Blob | string,
+  mimeType: string,
 ): Promise<void> {
-  const { blob, name } = await client.exportDoc(docId, format);
   if (Platform.OS === "web") {
+    const blob =
+      typeof data === "string" ? new Blob([data], { type: mimeType }) : data;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -31,9 +29,36 @@ export async function downloadDoc(
     URL.revokeObjectURL(url);
     return;
   }
-  // A phone gets the words through the share sheet. Only ever the text
-  // shapes reach here, so there is nothing binary to mangle.
-  await Share.share({ title: name, message: await blob.text() });
+  const [{ File, Paths }, Sharing] = await Promise.all([
+    import("expo-file-system"),
+    import("expo-sharing"),
+  ]);
+  const file = new File(Paths.cache, name.replace(/[\\/:*?"<>|]+/g, "-"));
+  file.create({ overwrite: true });
+  file.write(
+    typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer()),
+  );
+  if (await Sharing.isAvailableAsync())
+    await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: name });
+  else if (typeof data === "string")
+    await Share.share({ title: name, message: data });
+}
+
+/** Which formats can be taken away on this device: all of them now. */
+export const formatsHere = (): ExportFormat[] => [
+  "md",
+  "txt",
+  "html",
+  "docx",
+  "pdf",
+];
+
+export async function downloadDoc(
+  docId: string,
+  format: ExportFormat,
+): Promise<void> {
+  const { blob, name } = await client.exportDoc(docId, format);
+  await saveFile(name, blob, blob.type || "application/octet-stream");
 }
 
 /** What the one control that reveals the shapes is called. */

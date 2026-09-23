@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import {
   IMPORT_ACTIVE,
   IMPORT_LIMITS,
   IMPORT_MIME,
+  importHint,
   importRefusal,
   importStatusLine,
+  importTypeOf,
+  type ImportCapabilities,
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
@@ -14,6 +18,72 @@ import { Icon } from "../../components/Icon";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
+
+type LocalFile = {
+  name: string;
+  size?: number | null;
+  mimeType?: string | null;
+  uri: string;
+  file?: File;
+};
+
+/**
+ * Upload one local file for importing: start the import, send the bytes,
+ * and cancel the import if the upload doesn't arrive.
+ */
+export async function sendLocalFile(file: LocalFile): Promise<void> {
+  // On the web the picker hands over the File itself; on a phone, a local
+  // copy that fetch can read as a Blob.
+  const body: Blob =
+    Platform.OS === "web" && file.file
+      ? file.file
+      : await (await fetch(file.uri)).blob();
+  const { upload_path, import: started } = await client.createImport({
+    file_name: file.name,
+    bytes: file.size ?? body.size,
+    mime: file.mimeType ?? undefined,
+  });
+  try {
+    await client.uploadImportFile(
+      upload_path,
+      body,
+      file.mimeType ?? "application/octet-stream",
+    );
+  } catch (e) {
+    await client.removeImport(started.id).catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Files shared to Orbyn from another app (the share sheet), imported into
+ * Docs → Uploads. Receiving shares needs a native build with the share
+ * extension; anywhere else (the web, Expo Go) this finds nothing.
+ */
+export async function takeSharedFiles(): Promise<LocalFile[]> {
+  if (Platform.OS === "web") return [];
+  try {
+    const Sharing = await import("expo-sharing");
+    if (!Sharing.getSharedPayloads().length) return [];
+    const resolved = await Sharing.getResolvedSharedPayloadsAsync();
+    Sharing.clearSharedPayloads();
+    return resolved
+      .filter(
+        (p): p is typeof p & { contentUri: string } =>
+          !!p.contentUri && p.contentType !== "website",
+      )
+      .map((p) => ({
+        name:
+          p.originalName ??
+          `Shared ${p.contentMimeType?.includes("pdf") ? "file.pdf" : "notes.jpg"}`,
+        size: p.contentSize,
+        mimeType: p.contentMimeType,
+        uri: p.contentUri,
+      }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Importing files into Docs on the phone: pick a PDF, Word file or photo of
@@ -23,6 +93,10 @@ import { colors, fonts, radii, themed } from "../../theme";
 export function useImports(onError: (m: string) => void, onReady: () => void) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [uploading, setUploading] = useState(0);
+  const [caps, setCaps] = useState<ImportCapabilities | null>(null);
+  useEffect(() => {
+    client.importCapabilities().then(setCaps, () => setCaps(null));
+  }, []);
   const ready = useRef(new Set<string>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
@@ -55,6 +129,41 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     return () => clearInterval(timer);
   }, [active, uploading, refresh]);
 
+  /** Upload one file (picked or photographed). */
+  const upload = async (file: LocalFile) => {
+    const refused = importRefusal(file.name, file.mimeType ?? undefined);
+    if (refused) {
+      onError(refused);
+      return;
+    }
+    const type = importTypeOf(file.name, file.mimeType ?? undefined);
+    if (caps && !caps.enabled) {
+      onError("Importing files isn't set up on this server yet.");
+      return;
+    }
+    if ((type === "png" || type === "jpeg") && caps && !caps.photos) {
+      onError(
+        "Photos of notes can't be read on this server. Import a PDF or Word file instead.",
+      );
+      return;
+    }
+    if ((file.size ?? 0) > IMPORT_LIMITS.maxBytes) {
+      onError(
+        `${file.name} is over the ${IMPORT_LIMITS.maxBytes / 1024 / 1024} MB limit.`,
+      );
+      return;
+    }
+    setUploading((n) => n + 1);
+    try {
+      await sendLocalFile(file);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setUploading((n) => n - 1);
+      void refresh();
+    }
+  };
+
   /** Choose files and upload them one after another. */
   const pickAndImport = async () => {
     const picked = await DocumentPicker.getDocumentAsync({
@@ -63,48 +172,36 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
       copyToCacheDirectory: true,
     });
     if (picked.canceled) return;
-    for (const asset of picked.assets) {
-      const refused = importRefusal(asset.name, asset.mimeType);
-      if (refused) {
-        onError(refused);
-        continue;
-      }
-      if ((asset.size ?? 0) > IMPORT_LIMITS.maxBytes) {
-        onError(
-          `${asset.name} is over the ${IMPORT_LIMITS.maxBytes / 1024 / 1024} MB limit.`,
-        );
-        continue;
-      }
-      setUploading((n) => n + 1);
-      let startedId: string | null = null;
-      try {
-        // On the web the picker hands over the File itself; on a phone, a
-        // local copy that fetch can read as a Blob.
-        const body: Blob =
-          Platform.OS === "web" && asset.file
-            ? asset.file
-            : await (await fetch(asset.uri)).blob();
-        const { upload_path, import: started } = await client.createImport({
-          file_name: asset.name,
-          bytes: asset.size ?? body.size,
-          mime: asset.mimeType ?? undefined,
-        });
-        startedId = started.id;
-        await refresh();
-        await client.uploadImportFile(
-          upload_path,
-          body,
-          asset.mimeType ?? "application/octet-stream",
-        );
-      } catch (e) {
-        onError((e as Error).message);
-        // The upload didn't arrive: don't leave the import waiting for it.
-        if (startedId) await client.removeImport(startedId).catch(() => {});
-      } finally {
-        setUploading((n) => n - 1);
-        void refresh();
-      }
+    for (const asset of picked.assets) await upload(asset);
+  };
+
+  /** Photograph a page of notes and import it. */
+  const scanNotes = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      onError(
+        "Orbyn needs the camera to scan notes. Allow it in Settings, or choose a file instead.",
+      );
+      return;
     }
+    const shot = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+      exif: false,
+    });
+    if (shot.canceled || !shot.assets[0]) return;
+    const photo = shot.assets[0];
+    const stamp = new Date()
+      .toISOString()
+      .slice(0, 16)
+      .replace("T", " ")
+      .replace(":", ".");
+    await upload({
+      name: `Scanned notes ${stamp}.jpg`,
+      size: photo.fileSize ?? null,
+      mimeType: "image/jpeg",
+      uri: photo.uri,
+    });
   };
 
   const remove = async (job: ImportJob) => {
@@ -117,7 +214,14 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     void refresh();
   };
 
-  return { jobs, pickAndImport, remove, busy: uploading > 0 };
+  return {
+    jobs,
+    pickAndImport,
+    scanNotes,
+    remove,
+    busy: uploading > 0,
+    caps,
+  };
 }
 
 const kindLabel = (type: string) =>
@@ -135,7 +239,13 @@ export function UploadsList({
   onFile,
   onRemove,
   onImport,
+  onScan,
+  onMakeCards,
+  caps,
 }: {
+  caps: ImportCapabilities | null;
+  onScan?: () => void;
+  onMakeCards?: (docId: string, title: string) => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -157,6 +267,7 @@ export function UploadsList({
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
         file, then deletes it; only the page stays.
       </Text>
+      <Text style={s.hint}>{importHint(caps)}</Text>
       {!waiting.length && !shownJobs.length && (
         <View style={s.empty}>
           <View style={s.emptyIcon}>
@@ -167,11 +278,20 @@ export function UploadsList({
             Scanned pages take a few minutes each to read. You can close the app
             meanwhile; you&apos;ll get a notification.
           </Text>
-          <SmallAction
-            label={busy ? "Uploading…" : "Choose a file"}
-            disabled={busy}
-            onPress={onImport}
-          />
+          <View style={s.actions}>
+            <SmallAction
+              label={busy ? "Uploading…" : "Choose a file"}
+              disabled={busy}
+              onPress={onImport}
+            />
+            {onScan && caps?.photos && Platform.OS !== "web" && (
+              <SmallAction
+                label="Scan notes"
+                disabled={busy}
+                onPress={onScan}
+              />
+            )}
+          </View>
         </View>
       )}
       {shownJobs.map((job) => {
@@ -225,6 +345,13 @@ export function UploadsList({
                     onPress={() => onOpen(job.doc_id!)}
                   />
                 )}
+                {job.status === "failed" && (
+                  <SmallAction
+                    label="Import again"
+                    disabled={busy}
+                    onPress={onImport}
+                  />
+                )}
                 <SmallAction
                   label={active ? "Cancel" : "Clear"}
                   disabled={false}
@@ -266,6 +393,13 @@ export function UploadsList({
                 disabled={false}
                 onPress={() => onFile(doc)}
               />
+              {onMakeCards && (
+                <SmallAction
+                  label="Make cards"
+                  disabled={false}
+                  onPress={() => onMakeCards(doc.id, doc.title || "Untitled")}
+                />
+              )}
             </View>
           </View>
         </View>
@@ -290,6 +424,13 @@ const kindText = (type: string) =>
 const s = themed(() =>
   StyleSheet.create({
     list: { gap: 10 },
+    hint: {
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 17,
+      color: colors.faint,
+      marginTop: -4,
+    },
     intro: {
       fontFamily: fonts.regular,
       fontSize: 13,

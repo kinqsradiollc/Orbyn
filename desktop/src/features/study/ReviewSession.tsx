@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
 import { RATINGS, type Rating, type StudyCard } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { Inline } from "../docs/DocBlocks";
 
 const LABEL: Record<Rating, string> = {
   again: "Again",
@@ -204,12 +205,16 @@ export function ReviewSession({
             </div>
             <div className="study-face">
               <span className="study-face-label">Question</span>
-              <p className="study-question">{card.question}</p>
+              <p className="study-question">
+                <Inline text={card.question} />
+              </p>
             </div>
             {shown && (
               <div className="study-face study-face-answer">
                 <span className="study-face-label">Answer</span>
-                <p className="study-answer">{card.answer}</p>
+                <p className="study-answer">
+                  <Inline text={card.answer} />
+                </p>
               </div>
             )}
           </div>

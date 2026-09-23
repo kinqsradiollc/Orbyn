@@ -18,6 +18,7 @@ import { adminDatabaseRoutes } from "./database.js";
 import { adminInsightRoutes } from "./insights.js";
 import { adminUserPowerRoutes } from "./users.js";
 import { adminSweepRoutes } from "./sweep.js";
+import { adminStorageRoutes } from "./storage.js";
 import {
   LAST_ADMIN,
   deleteAccount,
@@ -50,6 +51,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await adminInsightRoutes(app);
   await adminUserPowerRoutes(app);
   await adminSweepRoutes(app);
+  await adminStorageRoutes(app);
   app.get("/admin/overview", async (r): Promise<AdminOverview> => {
     await authorize(r, "admin:access");
     return (

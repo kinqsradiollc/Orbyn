@@ -32,6 +32,15 @@ FROM manifests AS prod-deps
 RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
 
 FROM node:22-bookworm-slim
+# Reading scanned pages and photos (the converter): Tesseract with English and
+# page orientation, and poppler's pdftoppm to draw a PDF page as an image.
+# About 60 MB; no model to download and nothing to turn on.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-osd \
+    poppler-utils \
+  && rm -rf /var/lib/apt/lists/*
 # Set by scripts/deploy.sh; shown in Admin -> System and at /version.
 ARG GIT_SHA=dev
 ARG BUILD_TIME=

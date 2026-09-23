@@ -21,6 +21,7 @@ import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
+import { saveFile } from "../lib/download";
 import { confirmAction } from "../lib/confirm";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -529,6 +530,29 @@ export function AdminAccount({
                     () =>
                       then(async () =>
                         setLink((await client.adminResetLink(d.id)).link),
+                      ),
+                  )
+                }
+              />
+              <SmallAction
+                label="Export their data"
+                disabled={busy}
+                onPress={() =>
+                  confirmAction(
+                    `Export ${d.email}'s data?`,
+                    "Everything in their account, as a JSON file. This is recorded in the audit log.",
+                    "Export",
+                    () =>
+                      then(async () =>
+                        saveFile(
+                          `orbyn-export-${d.email}.json`,
+                          JSON.stringify(
+                            await client.adminExportUser(d.id),
+                            null,
+                            2,
+                          ),
+                          "application/json",
+                        ),
                       ),
                   )
                 }
