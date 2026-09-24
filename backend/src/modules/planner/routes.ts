@@ -33,6 +33,7 @@ import {
   rollForwardInput,
   type CalendarView,
   type EstimateModel,
+  type ItemSessions,
   type PlannerLearning,
   type UpNext,
   estimateModelOf,
@@ -65,6 +66,7 @@ import {
   timeBlocks,
 } from "./calendar.js";
 import { adoptDeviceZone } from "./timezone.js";
+import { itemSessions, withSessionFacts } from "./sessions.js";
 import {
   daysForRule,
   FRAME_COLUMNS,
@@ -133,7 +135,8 @@ async function ownBlock(db: Db, id: string, userId: string) {
   return row;
 }
 
-async function blockById(
+/** One of your sessions as stored, with its task's title and status. */
+async function plainBlockById(
   db: Db,
   id: string,
   userId: string,
@@ -151,6 +154,13 @@ async function blockById(
     start_at: new Date(b.start_at).toISOString(),
     end_at: new Date(b.end_at).toISOString(),
   };
+}
+
+/** One of your sessions, with its deadline, number and project (see sessions.ts). */
+async function blockById(db: Db, id: string, userId: string) {
+  return (
+    await withSessionFacts(db, userId, [await plainBlockById(db, id, userId)])
+  )[0];
 }
 
 /** Where the API can be reached from outside, for links in responses. */
@@ -730,7 +740,9 @@ export async function plannerRoutes(app: FastifyInstance) {
     const [entries, blocks, places, frameRows, external, habit_blocks] =
       await Promise.all([
         calendarEntries(db, u.id, from, to),
-        timeBlocks(db, u.id, from, to),
+        timeBlocks(db, u.id, from, to).then((b) =>
+          withSessionFacts(db, u.id, b),
+        ),
         loadPlaces(db, u.id),
         loadFrames(db, u.id),
         externalEntries(db, u.id, from, to, { visible: true }),
@@ -829,12 +841,19 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.get("/blocks", async (r) => {
     const u = await authenticate(r);
     const q = rangeQuery.parse(r.query);
-    return timeBlocks(
-      reader(r.headers),
+    const db = reader(r.headers);
+    return withSessionFacts(
+      db,
       u.id,
-      new Date(q.from),
-      new Date(q.to),
+      await timeBlocks(db, u.id, new Date(q.from), new Date(q.to)),
     );
+  });
+
+  // One task's sessions (yours), with its deadline and how much of the time
+  // still to come ends by it. Reading them never makes a plan.
+  app.get("/items/:id/sessions", async (r): Promise<ItemSessions> => {
+    const u = await authenticate(r);
+    return itemSessions(reader(r.headers), u.id, idParam(r));
   });
 
   app.post("/blocks", async (r, reply) => {
@@ -1088,8 +1107,10 @@ export async function plannerRoutes(app: FastifyInstance) {
             [b.item_id, u.id, b.start_at, b.end_at, plan.id],
           )
         ).rows[0];
-        created.push(await blockById(db, id, u.id));
+        created.push(await plainBlockById(db, id, u.id));
       }
+      // Numbered together, once every session of the plan is in.
+      const saved = await withSessionFacts(db, u.id, created);
       await db.query("UPDATE plans SET applied = true WHERE id = $1", [
         plan.id,
       ]);
@@ -1100,10 +1121,10 @@ export async function plannerRoutes(app: FastifyInstance) {
           { user_id: u.id, team_id: null },
           {
             plan_id: plan.id,
-            blocks: created,
+            blocks: saved,
           },
         );
-      return { blocks: created, skipped };
+      return { blocks: saved, skipped };
     });
   });
 

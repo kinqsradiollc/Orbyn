@@ -79,6 +79,10 @@ export type PlanRequest = {
   days?: number;
   /** Tasks the preview must include ("Plan it"). */
   include?: string[];
+  /** Plan only these tasks ("Find time before the deadline"). */
+  only?: string[];
+  /** Plan up to this deadline, counting days in the planner's zone. */
+  until?: string | null;
 };
 
 const MODES: { id: CalendarMode; label: string; key: string }[] = [
@@ -261,6 +265,8 @@ export function CalendarView({
   const [autoPreview, setAutoPreview] = useState<{
     days?: number;
     include?: string[];
+    only?: string[];
+    until?: string | null;
     key: number;
   } | null>(null);
   const tuner = usePlanTuning(plan, setPlan, plannerOpen, data, report, items);
@@ -279,10 +285,16 @@ export function CalendarView({
         onModeChange(planRequest.plan.days > 1 ? "week" : "day");
     } else {
       if (mode === "month" || mode === "agenda")
-        onModeChange(planRequest.days && planRequest.days > 1 ? "week" : "day");
+        onModeChange(
+          (planRequest.days && planRequest.days > 1) || planRequest.until
+            ? "week"
+            : "day",
+        );
       setAutoPreview({
         days: planRequest.days,
         include: planRequest.include,
+        only: planRequest.only,
+        until: planRequest.until,
         key: planRequest.key,
       });
     }
@@ -1020,6 +1032,16 @@ export function CalendarView({
           onDuplicate={() => void duplicate(menu.block)}
           onReschedule={() => void reschedule(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
+          onFindTime={() => {
+            // The planner, previewing only this task up to its deadline.
+            setPlannerOpen(true);
+            if (mode === "month" || mode === "agenda") onModeChange("week");
+            setAutoPreview({
+              key: Date.now(),
+              until: menu.block.deadline_at,
+              only: [menu.block.item_id],
+            });
+          }}
           onDelete={async () => {
             if (
               await ask({

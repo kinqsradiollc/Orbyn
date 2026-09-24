@@ -197,6 +197,15 @@ export function RootScreen() {
   const back = useRef<SheetName[]>([]);
   /** An unapplied plan shown as faint blocks on the calendar. */
   const [preview, setPreview] = useState<Plan | null>(null);
+  /** A day for the calendar to show ("Show" on a task's session). */
+  const [calendarJump, setCalendarJump] = useState<{
+    at: string;
+    key: number;
+  } | null>(null);
+  // Only once: coming back to the calendar later starts where it usually does.
+  useEffect(() => {
+    if (tab !== "Calendar") setCalendarJump(null);
+  }, [tab]);
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
   const scroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
@@ -794,6 +803,7 @@ export function RootScreen() {
                     onFocus={openFocus}
                     onScrollTo={scrollToView}
                     controlsSlot={calendarControls}
+                    jump={calendarJump}
                     {...listHandlers}
                   />
                 )}
@@ -931,6 +941,14 @@ export function RootScreen() {
           onEdit={editItem}
           onFocus={openFocus}
           onChanged={planChanged}
+          onShowOnCalendar={(at) => {
+            // Straight to the calendar: nothing reopens behind it.
+            back.current = [];
+            setSheet(null);
+            setSearch("");
+            setTab("Calendar");
+            setCalendarJump({ at, key: Date.now() });
+          }}
         />
         <FocusScreen
           item={sheet === "focus" ? focus : null}

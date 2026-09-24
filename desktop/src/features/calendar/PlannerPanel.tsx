@@ -19,6 +19,7 @@ import {
   BREAK_LEVELS,
   dateLabel,
   localDateKey,
+  planDaysBefore,
   type BreakLevel,
   type BusyInterval,
   type HttpError,
@@ -62,8 +63,18 @@ type Props = {
   /** Tuning the previewed plan (shared with the grid). */
   tuner: PlanTuning;
   onPlan: (plan: Plan | null) => void;
-  /** Set to run a preview right away ("Plan my day", "Plan it"). */
-  request: { days?: number; include?: string[]; key: number } | null;
+  /**
+   * Set to run a preview right away ("Plan my day", "Plan it", or "Find
+   * time before the deadline" for `only` some tasks).
+   */
+  request: {
+    days?: number;
+    include?: string[];
+    only?: string[];
+    /** Plan up to this deadline (days counted in the planner's zone). */
+    until?: string | null;
+    key: number;
+  } | null;
   /** Reload the calendar and planner after a change. */
   onChanged: () => Promise<void>;
   report: (e: unknown) => void;
@@ -177,7 +188,7 @@ export function PlannerPanel({
   }, [loadReview, revision]);
 
   const preview = useCallback(
-    async (dayCount = days, include?: string[]) => {
+    async (dayCount = days, include?: string[], only?: string[]) => {
       setPending(true);
       setOutcome(null);
       try {
@@ -189,7 +200,9 @@ export function PlannerPanel({
           pad_percent: pad,
           break_level: breakLevel,
           timezone: deviceTimeZone(),
-          scope: scopeOf(personal, teamIds, listIds) ?? undefined,
+          ...(only?.length
+            ? { item_ids: only }
+            : { scope: scopeOf(personal, teamIds, listIds) ?? undefined }),
         });
         // "Plan it": make sure the task is in, even outside the scope.
         if (
@@ -226,12 +239,18 @@ export function PlannerPanel({
   latestPreview.current = preview;
   useEffect(() => {
     if (!request) return;
-    const count = request.days ?? days;
+    const zone = prefs?.timezone ?? deviceTimeZone();
+    const count =
+      (request.until
+        ? planDaysBefore(request.until, new Date(), zone)
+        : undefined) ??
+      request.days ??
+      days;
     setDays(count);
     setStartDate(today());
     // Let the state settle so the preview uses today's date.
     const id = setTimeout(
-      () => void latestPreview.current(count, request.include),
+      () => void latestPreview.current(count, request.include, request.only),
       0,
     );
     return () => clearTimeout(id);
@@ -353,11 +372,14 @@ export function PlannerPanel({
             value={days}
             onChange={(e) => setDays(Number(e.target.value))}
           >
-            {[1, 2, 3, 4, 5, 6, 7, 14].map((d) => (
-              <option key={d} value={d}>
-                {d === 1 ? "1 day" : `${d} days`}
-              </option>
-            ))}
+            {/* Up to a deadline can be any number of days. */}
+            {[...new Set([1, 2, 3, 4, 5, 6, 7, 14, days])]
+              .sort((a, b) => a - b)
+              .map((d) => (
+                <option key={d} value={d}>
+                  {d === 1 ? "1 day" : `${d} days`}
+                </option>
+              ))}
           </Select>
         </label>
         {(teams.length > 0 || lists.length > 0) && (

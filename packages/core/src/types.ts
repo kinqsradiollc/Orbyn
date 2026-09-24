@@ -622,6 +622,56 @@ export type TimeBlock = {
   team_id: string | null;
   list_id: string | null;
   estimate_minutes: number | null;
+  // The rest come with `GET /blocks`, `GET /calendar`, `GET
+  // /items/:id/sessions` and the session webhooks; lists built for other
+  // uses (the review, the assistant) leave them out.
+  /**
+   * When the session's task is due, as the task shows it. For a repeating
+   * task, the occurrence this session is for (see `sessionDueFor`). Null
+   * without a date.
+   */
+  due_at?: string | null;
+  /** That due date is a whole day: due by the end of it. */
+  due_all_day?: boolean;
+  /** The moment it's due by (see `deadlineOf`); null without a date. */
+  deadline_at?: string | null;
+  /** The task's project, if it's in one. */
+  project_id?: string | null;
+  /**
+   * This session's number among all of your sessions for the task (for a
+   * repeating task, for that occurrence), in time order: "Session 2 of 3".
+   */
+  part?: number;
+  parts?: number;
+  /** The session ends after the deadline. */
+  after_deadline?: boolean;
+};
+
+/**
+ * `GET /items/:id/sessions`: your sessions for one task, past ones too, and
+ * how much of the time still to come ends by its deadline.
+ */
+export type ItemSessions = {
+  item_id: string;
+  /** When the task is due (the current occurrence of a repeating one). */
+  due_at: string | null;
+  due_all_day: boolean;
+  /** The moment it's due by (see `deadlineOf`). */
+  deadline_at: string | null;
+  /**
+   * Its project's deadline, a latest date for the project's tasks. Never a
+   * task's own deadline.
+   */
+  project_deadline: string | null;
+  /**
+   * Your sessions for it, oldest first. For a repeating task, those for the
+   * current occurrence and later ones.
+   */
+  sessions: TimeBlock[];
+  /** Minutes still to come in sessions that end by the deadline (all of them without one). */
+  planned_minutes: number;
+  /** Minutes still to come in sessions that end after the deadline. */
+  late_minutes: number;
 };
 
 /** One occurrence of an item on the calendar. */

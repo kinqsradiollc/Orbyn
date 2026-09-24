@@ -13,12 +13,15 @@ import {
   addMonths,
   byDueDate,
   dateLabel,
+  deadlineLine,
   describeRrule,
   emptyDay,
   itemBody,
   itemsOnDay,
   monthGrid,
+  planDaysBefore,
   sameDay,
+  sessionCount,
   type BusyInterval,
   type CalendarEntry,
   type CalendarSet,
@@ -55,6 +58,7 @@ import { readLocal, saveLocal } from "../lib/localPrefs";
 import {
   canJoin,
   clockLabel,
+  deviceTimeZone,
   rangeLabel,
   shortDay,
   slotLabel,
@@ -189,8 +193,11 @@ export function CalendarScreen({
   onFocus,
   onScrollTo,
   controlsSlot,
+  jump,
   ...handlers
 }: ListHandlers & {
+  /** Show this day ("Show" on a task's session); a new key jumps again. */
+  jump?: { at: string; key: number } | null;
   /** The page's sticky header: the date navigation and view switch go there. */
   controlsSlot?: SlotHandle;
   items: Item[];
@@ -341,6 +348,15 @@ export function CalendarScreen({
     toIso,
     cal,
   );
+
+  // Asked from elsewhere to show a day (a task's session).
+  useEffect(() => {
+    if (!jump) return;
+    const day = new Date(jump.at);
+    setSelected(day);
+    setMonth(day);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump?.key]);
 
   // A new preview (not one tuned here) jumps to its first planned day.
   const previewId = preview?.id;
@@ -645,7 +661,8 @@ export function CalendarScreen({
     });
 
   const blockMenu = (block: TimeBlock) => {
-    const open = block.status !== "done";
+    const open = block.status !== "done" && block.status !== "cancelled";
+    const late = open && !!block.after_deadline;
     const actions: MenuAction[] = [
       {
         label: "Open task",
@@ -653,17 +670,45 @@ export function CalendarScreen({
         run: () => openItem(block.item_id),
       },
     ];
-    if (open && canEdit(block.item_id))
+    if (late && canEdit(block.item_id))
       actions.push({
-        label: "Mark task done",
-        icon: "check",
-        run: () => void markDone(block.item_id, block.title, false),
+        label: "Find time before the deadline",
+        icon: "sparkles",
+        // A preview for this task alone, up to its deadline, on the calendar.
+        run: () =>
+          void act(async () => {
+            const plan = await client.previewPlan({
+              item_ids: [block.item_id],
+              days: planDaysBefore(
+                block.deadline_at,
+                new Date(),
+                prefs?.timezone ?? deviceTimeZone(),
+              ),
+              timezone: deviceTimeZone(),
+            });
+            if (plan.blocks.some((b) => b.item_id === block.item_id))
+              onPreviewChange(plan);
+            else
+              showNote(
+                plan.unplaced.find((u) => u.item_id === block.item_id)
+                  ?.reason ??
+                  plan.tasks?.find((t) => t.item_id === block.item_id)
+                    ?.reason ??
+                  "There’s no free working time for this before it’s due.",
+              );
+          }),
       });
     if (open && onFocus)
       actions.push({
         label: "Start focus",
         icon: "play",
         run: () => startFocus(block.item_id),
+      });
+    if (open && canEdit(block.item_id))
+      actions.push({
+        label: "Mark task done",
+        icon: "check",
+        run: () => void markDone(block.item_id, block.title, false),
       });
     actions.push(
       { label: "Move to…", icon: "clock", run: () => setMoving(block) },
@@ -710,9 +755,25 @@ export function CalendarScreen({
           reload();
         }),
     });
+    const count = sessionCount(block);
+    const deadline = deadlineLine(block);
     setMenu({
       title: block.title,
-      detail: `${slotLabel(block.start_at, block.end_at)} · session`,
+      detail: [
+        slotLabel(block.start_at, block.end_at),
+        count ?? "Session",
+        ...(block.source === "planner" ? ["from a plan"] : []),
+      ].join(" · "),
+      facts: deadline
+        ? [
+            {
+              text: late
+                ? `${deadline} · This session ends after it`
+                : deadline,
+              warn: late,
+            },
+          ]
+        : [],
       actions,
     });
   };

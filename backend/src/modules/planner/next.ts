@@ -204,7 +204,9 @@ export async function upNext(
         `Planned for now, until ${clockText(new Date(block.end_at), tz)}`,
       );
     if (t.due_at) {
-      const due = Date.parse(t.due_at);
+      // Overdue once its deadline has passed: an all-day task isn't overdue
+      // during its own day.
+      const due = Date.parse(t.deadline_at ?? t.due_at);
       if (due < at)
         reasons.push(`Overdue since ${whenText(t.due_at, now, tz)}`);
       else if (due - at < 7 * 86_400_000)

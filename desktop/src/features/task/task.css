@@ -497,3 +497,60 @@ button.step-title {
 .booked-list .link-button {
   flex: none;
 }
+
+/* ---- Sessions: summary, past rows dimmed, late rows flagged ---------- */
+.sessions-head {
+  flex-wrap: wrap;
+}
+.sessions-tools {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.sessions-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0 0 8px;
+}
+.sessions-list li {
+  flex-wrap: wrap;
+}
+.sessions-list .session-when {
+  min-width: 0;
+}
+.sessions-list .session-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+.sessions-list li.is-past {
+  color: var(--color-muted);
+}
+.sessions-list li.is-late {
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-warnBorder);
+  border-radius: var(--radius-sm);
+  background: var(--color-warnSoft);
+  box-shadow: inset 3px 0 0 var(--color-warn);
+}
+.sessions-list li.is-late + li {
+  border-top-color: transparent;
+}
+.sessions-list li.is-late strong {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.sessions-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.sessions-empty .drawer-hint {
+  margin: 0;
+}

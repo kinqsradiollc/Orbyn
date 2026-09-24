@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
+  deadlineOf,
   hasSystemPermission,
   hasTeamPermission,
   planDayPrompt,
@@ -416,6 +417,27 @@ export function App() {
       days: daysLeft > 0 ? Math.min(7, daysLeft) : undefined,
       include: [n.item_id],
     });
+  };
+  /**
+   * "Find time before the deadline" on a task: the calendar's planner,
+   * previewing only this task over the days up to its deadline.
+   */
+  const findTimeFor = (item: Item) => {
+    closeTask();
+    navigate("Calendar");
+    setPlanRequest({
+      key: Date.now(),
+      until: deadlineOf(item),
+      only: [item.id],
+    });
+  };
+  /** "Show on calendar" on a session: its week, with the task panel closed. */
+  const showOnCalendar = (at: string) => {
+    closeTask();
+    navigate("Calendar");
+    setCalendarDate(new Date(at));
+    if (calendarMode === "month" || calendarMode === "agenda")
+      setCalendarMode("week");
   };
   /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
   const openItemById = (id: string) => {
@@ -853,6 +875,8 @@ export function App() {
             onOpenItem={setOpenTask}
             onChanged={refresh}
             onError={report}
+            onFindTime={findTimeFor}
+            onShowOnCalendar={showOnCalendar}
             onOpenNote={(event) => {
               void client
                 .itemNote(event.id)

@@ -415,6 +415,11 @@ a.drawer-fact {
   margin: 0;
   font-size: 9px;
 }
+/* A fact that needs attention (a session after its deadline). */
+.popover-head small.popover-warn {
+  color: var(--color-warn);
+  font-weight: 600;
+}
 .popover-actions {
   display: grid;
   gap: 2px;

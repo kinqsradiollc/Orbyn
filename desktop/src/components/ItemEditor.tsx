@@ -528,7 +528,7 @@ export function ItemEditor({
               {allDay ? (
                 <>
                   <label>
-                    Starts
+                    {kind === "task" ? "Due" : "Starts"}
                     <DateField
                       type="date"
                       required
@@ -553,7 +553,7 @@ export function ItemEditor({
               ) : (
                 <>
                   <label>
-                    Due / start time
+                    {kind === "task" ? "Due" : "Start time"}
                     <DateField
                       type="datetime-local"
                       value={dueValue}
@@ -567,6 +567,11 @@ export function ItemEditor({
                       value={endValue}
                       onChange={(e) => setEndValue(e.target.value)}
                     />
+                    {kind === "task" && endValue && (
+                      <small className="field-hint">
+                        With an end time, it&apos;s due when it ends.
+                      </small>
+                    )}
                   </label>
                   {kind === "event" && (
                     <AttentionWarning

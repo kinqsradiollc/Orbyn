@@ -30,6 +30,11 @@ export type SchedulerTask = {
   priority: Priority;
   status: Status;
   due_at: string | null;
+  /**
+   * The moment it's due by (`deadlineOf`: the end of the day for an all-day
+   * task, the end time for a task with one). `due_at` when not given.
+   */
+  deadline_at?: string | null;
   estimate_minutes: number | null;
   spent_minutes: number;
   /** Future time already set aside for this task. */
@@ -359,6 +364,12 @@ export function slackUrgency(
   return Math.min(1, Math.max(0, 1 - slack / (remainingMinutes + 240)));
 }
 
+/** When a task is due by, as a timestamp (Infinity without a date). */
+const deadlineMs = (t: Pick<SchedulerTask, "due_at" | "deadline_at">) => {
+  const at = t.deadline_at ?? t.due_at;
+  return at ? Date.parse(at) : Infinity;
+};
+
 /** Free minutes in `free` between `from` and `to`. */
 const freeBetween = (free: Segment[], from: number, to: number) =>
   free.reduce(
@@ -442,7 +453,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       urgencyOf.set(
         t.id,
         slackUrgency(
-          freeBetween(free, input.now.getTime(), Date.parse(t.due_at)),
+          freeBetween(free, input.now.getTime(), deadlineMs(t)),
           need,
         ),
       );
@@ -560,7 +571,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       input.splitAfterMinutes,
       input.minBlockMinutes,
     );
-    const due = task.due_at ? Date.parse(task.due_at) : Infinity;
+    const due = deadlineMs(task);
     const placed: PlannedBlock[] = [];
     let blockedByFrames = input.useFrames && input.frames.length > 0;
     let lateSession = false;

@@ -5,6 +5,7 @@ import {
   Crosshair,
   ExternalLink,
   FastForward,
+  Flag,
   Lock,
   MapPin,
   Pencil,
@@ -12,11 +13,14 @@ import {
   SkipForward,
   Trash2,
   Video,
+  Wand2,
 } from "lucide-react";
 import {
   dateLabel,
+  deadlineLine,
   describeRrule,
   isClosed,
+  sessionCount,
   type CalendarEntry,
   type ExternalEntry,
   type FrameOccurrence,
@@ -162,9 +166,15 @@ type BlockProps = {
   onReschedule: () => void;
   onChangeTime: () => void;
   onDelete: () => void;
+  /** Plan this task before its deadline (offered on late sessions). */
+  onFindTime?: () => void;
 };
 
-/** A time block's menu: open its task, finish, focus, copy, move or delete it. */
+/**
+ * A session's menu: what it is (its number, its task's deadline), then open
+ * its task, find time before the deadline when it's late, focus, finish,
+ * move, copy or delete it.
+ */
 export function BlockMenu({
   block: b,
   anchor,
@@ -177,30 +187,41 @@ export function BlockMenu({
   onReschedule,
   onChangeTime,
   onDelete,
+  onFindTime,
 }: BlockProps) {
   const act = (fn: () => void) => () => {
     onClose();
     fn();
   };
   const open = !isClosed(b.status);
+  const count = sessionCount(b);
+  const deadline = deadlineLine(b);
+  const late = open && !!b.after_deadline;
   return (
-    <Popover anchor={anchor} label={`Time for ${b.title}`} onClose={onClose}>
+    <Popover anchor={anchor} label={`Session for ${b.title}`} onClose={onClose}>
       <div className="popover-head">
         <small className="eyebrow">SESSION</small>
         <strong>{b.title}</strong>
         <small>
           <CalendarClock size={12} aria-hidden="true" /> {shortDay(b.start_at)},{" "}
           {spanLabel(b.start_at, b.end_at)}
+          {count && ` · ${count}`}
           {b.source === "planner" && " · from a plan"}
         </small>
+        {deadline && (
+          <small className={late ? "popover-warn" : undefined}>
+            <Flag size={12} aria-hidden="true" /> {deadline}
+            {late && " · This session ends after it"}
+          </small>
+        )}
       </div>
       <div className="popover-actions">
         <button onClick={act(onOpen)}>
           <ExternalLink size={14} /> Open task
         </button>
-        {open && canWrite && (
-          <button onClick={act(onComplete)}>
-            <CircleCheck size={14} /> Mark task done
+        {late && canWrite && onFindTime && (
+          <button onClick={act(onFindTime)}>
+            <Wand2 size={14} /> Find time before the deadline
           </button>
         )}
         {open && (
@@ -208,19 +229,24 @@ export function BlockMenu({
             <Crosshair size={14} /> Start focus
           </button>
         )}
-        {open && (
-          <button onClick={act(onDuplicate)}>
-            <Copy size={14} /> Duplicate
-          </button>
-        )}
-        {open && (
-          <button onClick={act(onReschedule)}>
-            <FastForward size={14} /> Move to next free time
+        {open && canWrite && (
+          <button onClick={act(onComplete)}>
+            <CircleCheck size={14} /> Mark task done
           </button>
         )}
         <button onClick={act(onChangeTime)}>
           <CalendarClock size={14} /> Change time…
         </button>
+        {open && (
+          <button onClick={act(onReschedule)}>
+            <FastForward size={14} /> Move to next free time
+          </button>
+        )}
+        {open && (
+          <button onClick={act(onDuplicate)}>
+            <Copy size={14} /> Duplicate
+          </button>
+        )}
         <button className="is-danger" onClick={act(onDelete)}>
           <Trash2 size={14} /> Delete session
         </button>

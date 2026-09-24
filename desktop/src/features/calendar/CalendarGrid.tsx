@@ -9,6 +9,7 @@ import {
 import { Lock, Pin, Sparkles, Timer, Users, Video, X } from "lucide-react";
 import {
   sameDay,
+  sessionLine,
   statusLabels,
   type BusyInterval,
   type CalendarEntry,
@@ -817,6 +818,9 @@ export function CalendarGrid({
                   if (cell.type === "block") {
                     const b = cell.block;
                     const dragging = moving?.id === b.id;
+                    // "Session 2 · due Fri 5 pm", or a late session's warning.
+                    const line = sessionLine(b, now);
+                    const late = !!b.after_deadline && b.status !== "done";
                     return (
                       <div
                         key={p.key}
@@ -827,9 +831,10 @@ export function CalendarGrid({
                           className={
                             "cal-block tg-event" +
                             (short ? " is-short" : "") +
-                            (b.status === "done" ? " is-done" : "")
+                            (b.status === "done" ? " is-done" : "") +
+                            (late ? " is-late" : "")
                           }
-                          aria-label={`Time for ${b.title}, ${spanLabel(b.start_at, b.end_at)}`}
+                          aria-label={`Session for ${b.title}, ${spanLabel(b.start_at, b.end_at)}${line ? `, ${line}` : ""}`}
                           aria-haspopup="dialog"
                           onPointerDown={(ev) =>
                             begin(
@@ -858,7 +863,13 @@ export function CalendarGrid({
                             <Timer size={11} aria-hidden="true" />
                             {b.title}
                           </span>
-                          <small>{spanLabel(b.start_at, b.end_at)}</small>
+                          {line && (
+                            <small className="cal-session">{line}</small>
+                          )}
+                          {/* A short tile has room for one: the session line. */}
+                          {(!short || !line) && (
+                            <small>{spanLabel(b.start_at, b.end_at)}</small>
+                          )}
                         </button>
                         <span
                           className="tg-resize"

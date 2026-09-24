@@ -116,6 +116,15 @@ async function notify(
   );
 }
 
+/** "Fri 2 Oct", for a task due on a whole day. */
+const dayFormat = (timeZone: string) =>
+  new Intl.DateTimeFormat("en-AU", {
+    timeZone,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+
 const whenFormat = (timeZone: string) =>
   new Intl.DateTimeFormat("en-AU", {
     timeZone,
@@ -287,8 +296,8 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
     const horizon = now.getTime() + days * 86_400_000;
     const flagged = new Set(atRisk.map((t) => t.item_id));
     for (const t of await openTasks(pool, user_id)) {
-      if (!t.due_at || flagged.has(t.id)) continue;
-      const due = Date.parse(t.due_at);
+      if (!t.deadline_at || flagged.has(t.id)) continue;
+      const due = Date.parse(t.deadline_at);
       if (due <= now.getTime() || due > horizon) continue;
       const left = remainingOf(t) - t.scheduled_minutes;
       // Time already blocked out for the rest of it: nothing to warn about.
@@ -300,7 +309,11 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           kind: "deadline",
           ref: today,
           title: `Due soon: ${t.title}`,
-          body: `"${t.title}" is due ${when.format(new Date(due))}, and no session is planned for it yet. Plan it?`,
+          body: `"${t.title}" is due ${
+            t.due_all_day
+              ? dayFormat(prefs.timezone).format(new Date(t.due_at!))
+              : when.format(new Date(due))
+          }, and no session is planned for it yet. Plan it?`,
         },
         email,
       );

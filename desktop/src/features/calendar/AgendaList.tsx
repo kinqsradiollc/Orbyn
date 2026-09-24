@@ -3,6 +3,7 @@ import {
   dayHeading,
   emptyDay,
   sameDay,
+  sessionLine,
   type CalendarEntry,
   type ExternalEntry,
   type TimeBlock,
@@ -198,8 +199,15 @@ export function AgendaList({
                   </span>
                   <span className="agenda-main">
                     <strong>{r.block.title}</strong>
-                    <small>
-                      <Timer size={11} aria-hidden="true" /> Session ·{" "}
+                    <small
+                      className={
+                        r.block.after_deadline && r.block.status !== "done"
+                          ? "agenda-late"
+                          : undefined
+                      }
+                    >
+                      <Timer size={11} aria-hidden="true" />{" "}
+                      {sessionLine(r.block) ?? "Session"} ·{" "}
                       {spanLabel(r.block.start_at, r.block.end_at)}
                     </small>
                   </span>

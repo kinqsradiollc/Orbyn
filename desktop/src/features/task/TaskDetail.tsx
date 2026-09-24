@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Ban,
   CalendarClock,
-  CalendarPlus,
   Check,
   CornerLeftUp,
   Hourglass,
@@ -25,6 +24,8 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
+  deadlineOf,
+  dueDate,
   freshItem,
   isClosed,
   sameDay,
@@ -36,7 +37,6 @@ import {
   type ItemLink,
   type ItemStep,
   type Status,
-  type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { AskBox } from "../followthrough/AskBox";
@@ -49,28 +49,11 @@ import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import { ItemFacts } from "../../components/ItemFacts";
-import { BlockDialog } from "../calendar/BlockDialog";
-import { minutesLabel, spanLabel } from "../../lib/planning";
+import { minutesLabel } from "../../lib/planning";
+import { SessionsSection } from "./SessionsSection";
 import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
 import { errorText } from "../../lib/errors";
-
-/** How far ahead "Booked time" looks. */
-const BOOKED_DAYS = 30;
-
-const shortDay = (iso: string) =>
-  new Date(iso).toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-
-/** The next quarter hour from now, for "Schedule…". */
-function nextQuarter() {
-  const d = new Date();
-  d.setMinutes(Math.ceil((d.getMinutes() + 1) / 15) * 15, 0, 0);
-  return d;
-}
 
 type Props = {
   /** The task as listed; the panel loads its checklist and timeline. */
@@ -95,6 +78,10 @@ type Props = {
   onError: (e: unknown) => void;
   /** Opens (or starts) the meeting note for an event. */
   onOpenNote?: (item: Item) => void;
+  /** Plan time for the task in the calendar, before its deadline. */
+  onFindTime?: (item: Item) => void;
+  /** Show a session's day on the calendar. */
+  onShowOnCalendar?: (at: string) => void;
 };
 
 const SNAPS = [0, 25, 50, 75, 100];
@@ -131,6 +118,8 @@ export function TaskDetail({
   onOpenNote,
   items,
   onOpenItem,
+  onFindTime,
+  onShowOnCalendar,
 }: Props) {
   const { ask, tell } = useConfirm();
   const [detail, setDetail] = useState<ItemDetail | null>(null);
@@ -173,36 +162,9 @@ export function TaskDetail({
     };
   }, [reloadKey, item.id]);
 
-  // Booked time: this task's time blocks over the next 30 days.
-  const [booked, setBooked] = useState<TimeBlock[] | null>(null);
-  const [bookedTick, setBookedTick] = useState(0);
+  /** A dialog in the Sessions section is open: it handles Escape. */
   const [scheduling, setScheduling] = useState(false);
   const [blockPending, setBlockPending] = useState(false);
-  useEffect(() => {
-    if (item.kind !== "task") return;
-    let alive = true;
-    const now = Date.now();
-    client
-      .listBlocks(
-        new Date(now).toISOString(),
-        new Date(now + BOOKED_DAYS * 86_400_000).toISOString(),
-      )
-      .then(
-        (all) =>
-          alive &&
-          setBooked(
-            all
-              .filter(
-                (b) => b.item_id === item.id && Date.parse(b.end_at) > now,
-              )
-              .sort((a, b) => Date.parse(a.start_at) - Date.parse(b.start_at)),
-          ),
-        () => alive && setBooked([]),
-      );
-    return () => {
-      alive = false;
-    };
-  }, [item.id, item.kind, reloadKey, bookedTick]);
   // Subtasks: a new one goes in the same place (team and list) as this task.
   const [newSubtask, setNewSubtask] = useState("");
   const addSubtask = (e: FormEvent) => {
@@ -221,13 +183,12 @@ export function TaskDetail({
       setNewSubtask("");
     });
   };
-  /** Add or remove a block, then reload the list and the planner. */
+  /** Add a subtask, then reload the list and the planner. */
   const blockAction = async (fn: () => Promise<unknown>) => {
     setBlockPending(true);
     setError("");
     try {
       await fn();
-      setBookedTick((n) => n + 1);
       await onChanged();
     } catch (e) {
       setError(errorText(e));
@@ -440,7 +401,10 @@ export function TaskDetail({
           <div className="drawer-facts">
             <span>
               <CalendarClock size={14} aria-hidden="true" />
-              {timeRange(current.due_at, current.end_at)}
+              {current.kind === "task" && current.due_at && !current.end_at
+                ? // "Due" is the deadline: an all-day task is due by the end of its day.
+                  `Due ${dueDate(deadlineOf(current)!, !!current.all_day)}`
+                : timeRange(current.due_at, current.end_at)}
             </span>
             <span className={"priority " + current.priority}>
               {current.priority} priority
@@ -519,6 +483,19 @@ export function TaskDetail({
 
           {current.kind === "task" && current.team_id && (
             <AskBox itemId={current.id} onChanged={() => void onChanged()} />
+          )}
+
+          {current.kind === "task" && (
+            <SessionsSection
+              item={current}
+              canWrite={canWrite}
+              reloadKey={reloadKey}
+              onFindTime={onFindTime}
+              onShowOnCalendar={onShowOnCalendar}
+              onDialogChange={setScheduling}
+              onChanged={onChanged}
+              onError={onError}
+            />
           )}
 
           <section className="drawer-section" aria-labelledby="progress-title">
@@ -802,53 +779,6 @@ export function TaskDetail({
             )}
           </section>
 
-          {current.kind === "task" && (
-            <section className="drawer-section" aria-labelledby="booked-title">
-              <div className="drawer-section-head">
-                <h3 id="booked-title">
-                  <CalendarClock size={16} aria-hidden="true" /> Sessions
-                </h3>
-                {current.status !== "done" && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    disabled={blockPending}
-                    onClick={() => setScheduling(true)}
-                  >
-                    <CalendarPlus size={14} /> Schedule…
-                  </button>
-                )}
-              </div>
-              {booked === null ? (
-                <p className="drawer-hint">Loading sessions…</p>
-              ) : booked.length ? (
-                <ul className="booked-list">
-                  {booked.map((b) => (
-                    <li key={b.id}>
-                      <span>
-                        {shortDay(b.start_at)},{" "}
-                        {spanLabel(b.start_at, b.end_at)}
-                      </span>
-                      <button
-                        type="button"
-                        className="link-button"
-                        disabled={blockPending}
-                        aria-label={`Remove the time on ${shortDay(b.start_at)}, ${spanLabel(b.start_at, b.end_at)}`}
-                        onClick={() =>
-                          void blockAction(() => client.deleteBlock(b.id))
-                        }
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="drawer-hint">No sessions yet.</p>
-              )}
-            </section>
-          )}
-
           <section className="drawer-section" aria-labelledby="updates-title">
             <div className="drawer-section-head">
               <h3 id="updates-title">
@@ -988,25 +918,6 @@ export function TaskDetail({
             Close
           </button>
         </div>
-        {scheduling && (
-          <BlockDialog
-            heading="Plan a session"
-            subject={current.title}
-            start={nextQuarter()}
-            minutes={Math.min(current.estimate_minutes ?? 30, 1440)}
-            onClose={() => setScheduling(false)}
-            onSave={(start, end) => {
-              setScheduling(false);
-              void blockAction(() =>
-                client.createBlock({
-                  item_id: item.id,
-                  start_at: start.toISOString(),
-                  end_at: end.toISOString(),
-                }),
-              );
-            }}
-          />
-        )}
       </aside>
     </div>
   );

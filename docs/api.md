@@ -1472,7 +1472,8 @@ At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
   occurrence with `occurrence` set, and `overridden: true` on one changed on its own. Each also
   has `all_day`, `busy` (false for free events, all-day items and tasks), `color`, `alerts` and
   `attendee_count`.
-- `blocks`: your sessions, with their task's title and status.
+- `blocks`: your sessions, with their task's title and status, and what each is for (see
+  [Sessions](#sessions-blocks)).
 - `derived`: buffers and travel time around events, worked out from your planner settings and
   places (never stored, so they always follow the events).
 - `frames`: each occurrence of your frames in the range:
@@ -1501,14 +1502,43 @@ A session is time planned for working on a task; the API calls it a block. Each 
 own. Moving, rescheduling or deleting one sends `block.updated` or `block.deleted` to your
 webhooks and refreshes your other devices, like any other change.
 
+**Due means the deadline.** A task is due at its due time; a task with an end time (drawn as a
+span) is due when it ends; an all-day task is due at the end of its day (its `due_at` is the
+local midnight it starts), so sessions on the day itself are on time. Planned time and the
+deadline stay separate: the planner never moves a deadline. Every "is this after the
+deadline?" check, in the planner, the at-risk and due-soon notices and the fields below, uses
+this rule (`deadlineOf` in `@orbyn/core`).
+
+Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
+routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
+`status`, `kind`, `priority`, `team_id`, `list_id` and `estimate_minutes`:
+
+| Field            | Meaning                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `due_at`         | When the task is due, as it shows it; null without a date. For a repeating task, the occurrence this session is for: the first one whose deadline it ends by, so time after one occurrence's deadline is for the next |
+| `due_all_day`    | That due date is a whole day (due by the end of it)                                                                                                                                                                   |
+| `deadline_at`    | The moment it's due by, by the rule above                                                                                                                                                                             |
+| `after_deadline` | The session ends after `deadline_at`                                                                                                                                                                                  |
+| `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
+| `project_id`     | The task's project, or null                                                                                                                                                                                           |
+
 | Method and path               | Body / result                                                                                                                                                                              |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                 |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                     |
 | `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                               |
 | `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                                                                                                                                 |
 | `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                  |
 | `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days                                                                                                        |
 | `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days |
+
+`GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
+sessions, planned_minutes, late_minutes }`: your sessions for the task, oldest first, past ones
+too (for a repeating task, those for its current occurrence and later ones);
+`planned_minutes` is the time still to come in sessions that end by the deadline (all of it
+without one), and `late_minutes` the time still to come in sessions that end after it.
+`project_deadline` is the deadline of the task's project, a latest date for its tasks that never
+becomes the task's own.
 
 ## Planner
 
@@ -1594,7 +1624,9 @@ teams named (all your teams when `team_ids` is omitted, none when it's empty) an
 ```
 
 The planner considers your open personal tasks and team tasks assigned to you (or exactly the
-`item_ids` you name). Tasks without an estimate count as 30 minutes.
+`item_ids` you name). Tasks without an estimate count as 30 minutes. A block's `part` and `parts`
+count the sessions the task already has too, the way they'll be numbered once saved, so "Session
+3 of 4" in a preview is session 3 of 4 on the calendar.
 
 Plans also carry `options` (what the plan was made with: `start_date`, `days`, `pad_percent`,
 `split`, `break_level`, `use_frames`, `timezone`, `scope`, `keep_free`, `item_ids`,
@@ -1806,8 +1838,9 @@ too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.resc
   `item_id`, `title`, `due_at`, `remaining_minutes`, `free_minutes`, `reason`.
 
 Sessions also send `block.updated` when one is moved, resized or rescheduled (`data`: the
-session, as `GET /blocks` returns it) and `block.deleted` when one is removed (`data`: `id`,
-`item_id`, `start_at`, `end_at`).
+session, as `GET /blocks` returns it, with its deadline and number) and `block.deleted` when one
+is removed (`data`: `id`, `item_id`, `start_at`, `end_at`). `block.scheduled` carries the new
+sessions the same way.
 
 The notifier looks for starting events and sessions every minute, so a delivery can come up to a
 minute late; one that started up to 5 minutes ago still goes.

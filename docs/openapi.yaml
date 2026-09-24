@@ -430,6 +430,21 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ItemDetail" }
+  /items/{id}/sessions:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Sessions]
+      summary: One task's sessions (yours), with its deadline
+      description: |
+        Past sessions too, oldest first (for a repeating task, those for its
+        current occurrence and later ones). Reading them never makes a plan.
+      responses:
+        "200":
+          description: The task's sessions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ItemSessions" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /lists:
     get:
@@ -1159,6 +1174,40 @@ components:
         end_at: { type: string, format: date-time }
         source: { type: string, enum: [manual, planner] }
         title: { type: string }
+        due_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the task is due (for a repeating task, the occurrence this session is for).
+        due_all_day: { type: boolean }
+        deadline_at:
+          type: [string, "null"]
+          format: date-time
+          description: The moment it's due by; the end of the day for an all-day task, the end time for a span.
+        after_deadline:
+          { type: boolean, description: The session ends after the deadline. }
+        part:
+          type: integer
+          description: Its number among all of your sessions for the task, in time order.
+        parts: { type: integer }
+        project_id: { type: [string, "null"], format: uuid }
+    ItemSessions:
+      description: One task's sessions (yours) and its deadline.
+      type: object
+      properties:
+        item_id: { type: string, format: uuid }
+        due_at: { type: [string, "null"], format: date-time }
+        due_all_day: { type: boolean }
+        deadline_at: { type: [string, "null"], format: date-time }
+        project_deadline: { type: [string, "null"], format: date-time }
+        sessions:
+          type: array
+          items: { $ref: "#/components/schemas/TimeBlock" }
+        planned_minutes:
+          type: integer
+          description: Time still to come in sessions that end by the deadline.
+        late_minutes:
+          type: integer
+          description: Time still to come in sessions that end after the deadline.
     WebhookEvent:
       type: string
       enum:

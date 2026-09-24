@@ -3,6 +3,7 @@ import {
   addDays,
   clockMinutes,
   dayTime,
+  deadlineOf,
   guessEstimate,
   hasTeamPermission,
   learnedRatio,
@@ -36,6 +37,7 @@ import {
   timeBlocks,
 } from "./calendar.js";
 import { loadFrames } from "./frames.js";
+import { numberPlanBlocks } from "./sessions.js";
 import { loadLearning, smartPlacementOf } from "./learning.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
@@ -72,7 +74,11 @@ const stateOf = (d: Partial<PlanState>): PlanState => ({
   pinned_blocks: d.pinned_blocks ?? [],
 });
 
-type Candidate = SchedulerTask & { version: number };
+type Candidate = SchedulerTask & {
+  version: number;
+  /** Due on a whole day (by the end of it) rather than at a time. */
+  due_all_day?: boolean;
+};
 
 /**
  * A task's open subtasks and the minutes they still need (on alias `i`), so
@@ -101,9 +107,16 @@ export async function candidateTasks(
 ): Promise<Candidate[]> {
   const scope = options.scope;
   const rows = (
-    await db.query<Candidate & { due_at: Date | null }>(
-      `SELECT i.id, i.title, i.priority, i.status, i.due_at, i.estimate_minutes,
-              i.spent_minutes, i.list_id, i.team_id, i.version,
+    await db.query<
+      Candidate & {
+        due_at: Date | null;
+        end_at: Date | null;
+        all_day: boolean;
+        timezone: string;
+      }
+    >(
+      `SELECT i.id, i.title, i.priority, i.status, i.due_at, i.end_at, i.all_day,
+              i.timezone, i.estimate_minutes, i.spent_minutes, i.list_id, i.team_id, i.version,
               coalesce((SELECT array_agg(x.tag_id ORDER BY x.tag_id) FROM item_tags x WHERE x.item_id = i.id), '{}') AS tag_ids,
               coalesce((SELECT sum(extract(epoch FROM (b.end_at - greatest(b.start_at, now()))) / 60)
                         FROM time_blocks b
@@ -140,9 +153,12 @@ export async function candidateTasks(
       ],
     )
   ).rows;
-  return rows.map((t) => ({
+  return rows.map(({ end_at, all_day, timezone, ...t }) => ({
     ...t,
     due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
+    // One rule for when it's due by (the end of the day for an all-day task).
+    deadline_at: deadlineOf({ due_at: t.due_at, end_at, all_day, timezone }),
+    due_all_day: !!t.due_at && all_day,
     scheduled_end_at: t.scheduled_end_at
       ? new Date(t.scheduled_end_at).toISOString()
       : null,
@@ -239,6 +255,7 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
             t.priority,
             t.status,
             t.due_at,
+            t.deadline_at,
             t.estimate_minutes,
             t.spent_minutes,
             t.list_id,
@@ -292,7 +309,11 @@ export async function computePlan(
   const tasks: Candidate[] = [
     ...inputs.tasks
       .filter((t) => !dropped.has(t.id))
-      .map((t) => (moved.has(t.id) ? { ...t, due_at: moved.get(t.id)! } : t)),
+      .map((t) =>
+        moved.has(t.id)
+          ? { ...t, due_at: moved.get(t.id)!, deadline_at: moved.get(t.id)! }
+          : t,
+      ),
     ...(scenario.add_tasks ?? []).map((t): Candidate => ({
       id: t.id,
       title: t.title,
@@ -410,11 +431,17 @@ export async function makePlan(
     tasks,
     excluded,
     options,
-    result,
+    result: computed,
     start,
     days,
     guessed,
   } = await computePlan(db, userId, d, now);
+  // Numbered among the sessions each task already has, as they'll be once
+  // saved, so the preview and the calendar agree.
+  const result = {
+    ...computed,
+    blocks: await numberPlanBlocks(db, userId, computed.blocks),
+  };
   const summary = describePlan(result, days);
   const checklist = planTasks(tasks, excluded, state, result, guessed);
   // Tuning makes the same days again, even once tomorrow has become today.
@@ -834,8 +861,8 @@ export async function atRiskFor(
     loadPrefs(db, userId),
   ]);
   const due = tasks.filter((t) => {
-    if (!t.due_at || t.status === "blocked") return false;
-    const at = Date.parse(t.due_at);
+    if (!t.deadline_at || t.status === "blocked") return false;
+    const at = Date.parse(t.deadline_at);
     return at > now.getTime() && at <= horizon.getTime();
   });
   if (!due.length) return [];
@@ -846,7 +873,7 @@ export async function atRiskFor(
   const free = freeSpans(workingSpans(prefs, now, horizon), busy);
   const atRisk: AtRiskTask[] = [];
   for (const t of due) {
-    const dueAt = Date.parse(t.due_at!);
+    const dueAt = Date.parse(t.deadline_at!);
     const remaining = Math.max(0, remainingOf(t) - t.scheduled_minutes);
     if (!remaining) continue;
     const freeMinutes = Math.round(

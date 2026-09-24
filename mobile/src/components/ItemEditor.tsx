@@ -464,9 +464,9 @@ function Form({
           </Section>
           {allDay && (
             <>
-              <Section label={editing.kind === "event" ? "First day" : "Day"}>
+              <Section label={editing.kind === "event" ? "First day" : "Due"}>
                 <DateField
-                  label={editing.kind === "event" ? "First day" : "Day"}
+                  label={editing.kind === "event" ? "First day" : "Due"}
                   value={keyOf(firstDay)}
                   onChange={(key) => {
                     if (!key) return;
@@ -512,14 +512,23 @@ function Form({
               {(["due_at", "end_at"] as const).map((field) => (
                 <Section
                   key={field}
-                  label={field === "due_at" ? "Due / start" : "End (optional)"}
+                  label={
+                    field === "end_at"
+                      ? "End (optional)"
+                      : editing.kind === "event"
+                        ? "Start"
+                        : "Due"
+                  }
                 >
                   <View style={s.dateRow}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={
-                        (field === "due_at" ? "Due date: " : "End date: ") +
-                        dateLabel(editing[field])
+                        (field === "end_at"
+                          ? "End: "
+                          : editing.kind === "event"
+                            ? "Start: "
+                            : "Due: ") + dateLabel(editing[field])
                       }
                       disabled={readOnly}
                       onPress={() => setPicker({ field, mode: "date" })}
@@ -558,6 +567,13 @@ function Form({
                       </Pressable>
                     )}
                   </View>
+                  {field === "end_at" &&
+                    editing.kind === "task" &&
+                    !!editing.end_at && (
+                      <Text style={[shared.small, s.hint]}>
+                        With an end time, it’s due when it ends.
+                      </Text>
+                    )}
                 </Section>
               ))}
               {editing.kind === "event" && (

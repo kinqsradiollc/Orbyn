@@ -1,0 +1,704 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+// Connects only to a verified test database (see setup.ts).
+import "./setup.js";
+
+/**
+ * One deadline rule, and sessions that say what they're for: "Due" means
+ * the deadline (the end time for a span, the end of the day for an all-day
+ * task), every session carries its task's deadline, its number among all of
+ * your sessions for the task and whether it ends after the deadline, and a
+ * task's sessions can be read on their own without making a plan.
+ */
+process.env.SMTP_HOST = "";
+const { buildApp } = await import("../src/app.js");
+const { pool } = await import("../src/db/pool.js");
+const { migrate } = await import("../src/db/migrate.js");
+const { schedule } = await import("../src/modules/planner/scheduler.js");
+const {
+  addDays,
+  dayTime,
+  deadlineLine,
+  deadlineOf,
+  dueWhen,
+  endsAfterDeadline,
+  localDateKey,
+  numberSessions,
+  planDaysBefore,
+  sessionCount,
+  sessionDueFor,
+  sessionLine,
+} = await import("@orbyn/core");
+const app = await buildApp();
+
+const TZ = "Australia/Melbourne";
+let caller = 0;
+const address = () => `10.63.${Math.floor(++caller / 250)}.${caller % 250}`;
+
+type Json = Record<string, any>;
+async function call(
+  token: string | null,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  url: string,
+  payload?: unknown,
+  from = address(),
+) {
+  const r = await app.inject({
+    method,
+    url,
+    remoteAddress: from,
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+    ...(payload === undefined ? {} : { payload: payload as Json }),
+  });
+  let body: any = null;
+  try {
+    body = r.body ? JSON.parse(r.body) : null;
+  } catch {
+    body = r.body;
+  }
+  return { status: r.statusCode, body, raw: r };
+}
+
+async function newUser() {
+  const r = await call(null, "POST", "/auth/register", {
+    email: `due-${randomUUID()}@example.com`,
+    password: "a-long-test-password",
+    name: "Planner",
+  });
+  assert.equal(r.status, 201, r.raw.body);
+  const token = r.body.token as string;
+  await call(token, "PUT", "/planner/prefs", {
+    timezone: TZ,
+    work_days: [0, 1, 2, 3, 4, 5, 6],
+    work_start: "09:00",
+    work_end: "17:00",
+  });
+  return { token, id: r.body.user.id as string };
+}
+
+/** A Melbourne wall-clock time on the day `offset` days from today. */
+const local = (offset: number, hour: number, minute = 0) =>
+  dayTime(
+    addDays(localDateKey(new Date(), TZ), offset),
+    hour * 60 + minute,
+    TZ,
+  ).toISOString();
+async function newTask(token: string, data: Json) {
+  const r = await call(token, "POST", "/items", { kind: "task", ...data });
+  assert.equal(r.status, 201, r.raw.body);
+  return r.body as Json;
+}
+
+async function session(
+  token: string,
+  itemId: string,
+  start: string,
+  minutes = 45,
+) {
+  const r = await call(token, "POST", "/blocks", {
+    item_id: itemId,
+    start_at: start,
+    end_at: new Date(Date.parse(start) + minutes * 60_000).toISOString(),
+  });
+  assert.equal(r.status, 201, r.raw.body);
+  return r.body as Json;
+}
+
+/** Your sessions for one task, from `GET /blocks` over the next weeks. */
+async function listed(token: string, itemId: string, from = local(-3, 0)) {
+  const r = await call(
+    token,
+    "GET",
+    `/blocks?from=${encodeURIComponent(from)}&to=${encodeURIComponent(local(40, 0))}`,
+  );
+  assert.equal(r.status, 200, r.raw.body);
+  return (r.body as Json[]).filter((b) => b.item_id === itemId);
+}
+
+before(async () => {
+  await migrate();
+});
+
+after(async () => {
+  await app.close();
+  await pool.end();
+});
+
+// ---- the rule ------------------------------------------------------------------
+
+test("a task is due at its due time, the end of a span, or the end of an all-day date", () => {
+  assert.equal(deadlineOf({ due_at: null }), null);
+  assert.equal(
+    deadlineOf({ due_at: "2026-10-02T07:00:00.000Z" }),
+    "2026-10-02T07:00:00.000Z",
+  );
+  // A span is due when it ends.
+  assert.equal(
+    deadlineOf({
+      due_at: "2026-10-02T05:00:00.000Z",
+      end_at: "2026-10-02T07:00:00.000Z",
+    }),
+    "2026-10-02T07:00:00.000Z",
+  );
+  // All-day Friday 2 October in Melbourne: due at the midnight after it.
+  const friday = dayTime("2026-10-02", 0, TZ).toISOString();
+  const saturday = dayTime("2026-10-03", 0, TZ).toISOString();
+  assert.equal(
+    deadlineOf({ due_at: friday, all_day: true, timezone: TZ }),
+    saturday,
+  );
+  // Several days: the end is already the midnight after the last one.
+  const monday = dayTime("2026-10-05", 0, TZ).toISOString();
+  assert.equal(
+    deadlineOf({ due_at: friday, end_at: monday, all_day: true, timezone: TZ }),
+    monday,
+  );
+  // Only what ends after the deadline is late.
+  assert.equal(endsAfterDeadline(saturday, saturday), false);
+  assert.equal(
+    endsAfterDeadline(
+      new Date(Date.parse(saturday) + 1).toISOString(),
+      saturday,
+    ),
+    true,
+  );
+  assert.equal(endsAfterDeadline(saturday, null), false);
+});
+
+test("a repeating task's session is for the first occurrence it ends by", () => {
+  // Every Monday and Wednesday at 5 pm UTC from Monday 5 October, but not
+  // Wednesday 7 October; then every week for two more occurrences only.
+  const dueFor = sessionDueFor({
+    due_at: "2026-10-05T17:00:00.000Z",
+    series_start: "2026-10-05T17:00:00.000Z",
+    rrule: "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4",
+    exdates: ["2026-10-07T17:00:00.000Z"],
+    timezone: "UTC",
+  });
+  assert.equal(
+    dueFor("2026-10-05T12:00:00Z")?.due_at,
+    "2026-10-05T17:00:00.000Z",
+  );
+  // Exactly at the deadline still counts for it.
+  assert.equal(
+    dueFor("2026-10-05T17:00:00Z")?.due_at,
+    "2026-10-05T17:00:00.000Z",
+  );
+  // After Monday's deadline: the next occurrence, skipping the removed one.
+  assert.equal(
+    dueFor("2026-10-06T09:00:00Z")?.due_at,
+    "2026-10-12T17:00:00.000Z",
+  );
+  // Past the last occurrence (COUNT=4 with one removed): the last one.
+  const last = dueFor("2026-11-30T09:00:00Z")!;
+  assert.equal(last.due_at, "2026-10-14T17:00:00.000Z");
+  assert.equal(
+    endsAfterDeadline("2026-11-30T09:00:00Z", last.deadline_at),
+    true,
+  );
+  // A one-off task has one due date whatever the session.
+  const once = sessionDueFor({ due_at: "2026-10-05T17:00:00.000Z" });
+  assert.equal(
+    once("2027-01-01T00:00:00Z")?.deadline_at,
+    "2026-10-05T17:00:00.000Z",
+  );
+  assert.equal(sessionDueFor({ due_at: null })("2026-10-05T00:00:00Z"), null);
+});
+
+test("sessions are numbered in time order within their task", () => {
+  const s = [
+    { id: "c", item_id: "a", start_at: "2026-10-03T10:00:00Z" },
+    { id: "a", item_id: "a", start_at: "2026-10-01T10:00:00Z" },
+    { id: "x", item_id: "b", start_at: "2026-10-02T10:00:00Z" },
+    { id: "b", item_id: "a", start_at: "2026-10-01T10:00:00Z" },
+  ];
+  const n = numberSessions(s, (x) => x.item_id);
+  assert.deepEqual(
+    s.map((x) => [x.id, n.get(x)!.part, n.get(x)!.parts]),
+    [
+      ["c", 3, 3],
+      ["a", 1, 3],
+      ["x", 1, 1],
+      ["b", 2, 3],
+    ],
+  );
+});
+
+test("a session says its number and deadline only when that helps", () => {
+  const now = new Date("2026-09-28T01:00:00Z");
+  const soon = "2026-10-02T07:00:00.000Z";
+  const far = "2026-11-20T07:00:00.000Z";
+  const base = {
+    start_at: "2026-10-01T04:00:00Z",
+    end_at: "2026-10-01T05:30:00Z",
+  };
+  // One of several sessions, due within a week.
+  assert.equal(
+    sessionLine(
+      { ...base, part: 2, parts: 3, due_at: soon, deadline_at: soon },
+      now,
+    ),
+    `Session 2 · due ${dueWhen(soon, false, now)}`,
+  );
+  // After the deadline, whatever else.
+  assert.equal(
+    sessionLine(
+      { ...base, part: 3, parts: 3, deadline_at: soon, after_deadline: true },
+      now,
+    ),
+    "Session 3 · after the deadline",
+  );
+  assert.equal(
+    sessionLine(
+      { ...base, part: 1, parts: 1, deadline_at: soon, after_deadline: true },
+      now,
+    ),
+    "After the deadline",
+  );
+  // A single session: only when it's due soon.
+  assert.match(
+    sessionLine(
+      { ...base, part: 1, parts: 1, due_at: soon, deadline_at: soon },
+      now,
+    )!,
+    /^Due /,
+  );
+  assert.equal(
+    sessionLine(
+      { ...base, part: 1, parts: 1, due_at: far, deadline_at: far },
+      now,
+    ),
+    null,
+  );
+  // Several sessions and no deadline.
+  assert.equal(
+    sessionLine({ ...base, part: 2, parts: 3 }, now),
+    "Session 2 of 3",
+  );
+  assert.equal(
+    sessionCount({ ...base, part: 2, parts: 3 }),
+    "Session 2 of 3 planned",
+  );
+  assert.equal(sessionCount(base), null);
+  assert.match(deadlineLine({ ...base, deadline_at: soon })!, /^Deadline /);
+  // An all-day date reads as its own day, not the midnight after it.
+  const allDayEnd = dayTime("2026-10-03", 0, TZ).toISOString();
+  assert.match(
+    deadlineLine({ ...base, deadline_at: allDayEnd, due_all_day: true })!,
+    /^Deadline end of /,
+  );
+  assert.equal(deadlineLine(base), null);
+});
+
+test("a plan for one task looks ahead to its deadline, counted where the planner plans", () => {
+  // 10 am Thursday 24 September in Melbourne.
+  const now = new Date(dayTime("2026-09-24", 10 * 60, TZ));
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, TZ).toISOString();
+  assert.equal(planDaysBefore(null, now, TZ), undefined);
+  assert.equal(planDaysBefore(at("2026-09-24", 17), now, TZ), 1);
+  assert.equal(planDaysBefore(at("2026-09-26", 17), now, TZ), 3);
+  // An all-day deadline (the midnight after the day) counts that day, not the next.
+  assert.equal(planDaysBefore(at("2026-09-25", 0), now, TZ), 1);
+  // Two weeks at most; nothing once it has passed.
+  assert.equal(planDaysBefore(at("2026-12-01", 17), now, TZ), 14);
+  assert.equal(planDaysBefore(at("2026-09-24", 9), now, TZ), undefined);
+  // In Los Angeles it's still Wednesday, so Saturday is a day further off.
+  assert.equal(planDaysBefore(at("2026-09-26", 20), now, TZ), 3);
+  assert.equal(
+    planDaysBefore(at("2026-09-26", 20), now, "America/Los_Angeles"),
+    4,
+  );
+});
+
+test("the planner treats an all-day task as due at the end of its day", () => {
+  const input = (deadline_at?: string) => ({
+    tasks: [
+      {
+        id: "report",
+        title: "Report",
+        priority: "medium" as const,
+        status: "todo" as const,
+        due_at: "2026-09-22T00:00:00.000Z",
+        ...(deadline_at ? { deadline_at } : {}),
+        estimate_minutes: 60,
+        spent_minutes: 0,
+        scheduled_minutes: 0,
+        list_id: null,
+        tag_ids: [],
+        team_id: null,
+      },
+    ],
+    busy: [],
+    frames: [],
+    useFrames: false,
+    days: ["2026-09-22"],
+    timezone: "UTC",
+    workDays: [2],
+    workStart: "09:00",
+    workEnd: "17:00",
+    padPercent: 0,
+    split: true,
+    splitAfterMinutes: 60,
+    minBlockMinutes: 15,
+    breakLevel: "none" as const,
+    now: new Date("2026-09-22T08:00:00Z"),
+  });
+  // Read as due at the midnight it starts, the day's time is already late…
+  assert.equal(schedule(input()).at_risk.length, 1);
+  // …but it's due by the end of the day, so 9 am is on time.
+  const onTime = schedule(input("2026-09-23T00:00:00.000Z"));
+  assert.equal(onTime.blocks.length, 1);
+  assert.equal(onTime.at_risk.length, 0);
+});
+
+// ---- sessions carry what they're for -------------------------------------------
+
+test("each session carries its deadline, its number of all your sessions and the project", async () => {
+  const me = await newUser();
+  const project = await call(me.token, "POST", "/projects", {
+    name: "Reports",
+    deadline: local(20, 17),
+  });
+  assert.equal(project.status, 201, project.raw.body);
+  const t = await newTask(me.token, {
+    title: "Quarterly report",
+    due_at: local(4, 17),
+    estimate_minutes: 240,
+  });
+  const filed = await call(me.token, "PUT", `/items/${t.id}/project`, {
+    project_id: project.body.id,
+  });
+  assert.equal(filed.status, 200, filed.raw.body);
+  const first = await session(me.token, t.id, local(-1, 9, 15));
+  // The answer to POST /blocks already knows where it stands.
+  assert.equal(first.part, 1);
+  assert.equal(first.parts, 1);
+  await session(me.token, t.id, local(2, 14), 90);
+  const late = await session(me.token, t.id, local(5, 10));
+  assert.equal(late.after_deadline, true);
+
+  const all = await listed(me.token, t.id);
+  assert.deepEqual(
+    all.map((b) => [b.part, b.parts, b.after_deadline]),
+    [
+      [1, 3, false],
+      [2, 3, false],
+      [3, 3, true],
+    ],
+  );
+  for (const b of all) {
+    assert.equal(b.due_at, new Date(local(4, 17)).toISOString());
+    assert.equal(b.deadline_at, new Date(local(4, 17)).toISOString());
+    assert.equal(b.due_all_day, false);
+    assert.equal(b.project_id, project.body.id);
+  }
+  // Numbers count sessions outside the range asked for too.
+  const later = await listed(me.token, t.id, local(1, 0));
+  assert.deepEqual(
+    later.map((b) => `${b.part}/${b.parts}`),
+    ["2/3", "3/3"],
+  );
+  // The calendar view says the same.
+  const cal = await call(
+    me.token,
+    "GET",
+    `/calendar?from=${encodeURIComponent(local(1, 0))}&to=${encodeURIComponent(local(8, 0))}`,
+  );
+  assert.equal(cal.status, 200, cal.raw.body);
+  const shown = (cal.body.blocks as Json[]).filter((b) => b.item_id === t.id);
+  assert.deepEqual(
+    shown.map((b) => [b.part, b.parts, b.after_deadline]),
+    [
+      [2, 3, false],
+      [3, 3, true],
+    ],
+  );
+  // Moving the late one before the deadline makes it on time, and renumbers.
+  const moved = await call(me.token, "PUT", `/blocks/${late.id}`, {
+    start_at: local(1, 9),
+    end_at: local(1, 9, 45),
+  });
+  assert.equal(moved.status, 200, moved.raw.body);
+  assert.equal(moved.body.after_deadline, false);
+  assert.equal(moved.body.part, 2);
+  assert.equal(moved.body.parts, 3);
+});
+
+test("an all-day task's sessions on its day are on time; the next day they're late", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Tax return",
+    due_at: local(3, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const onTheDay = await session(me.token, t.id, local(3, 20));
+  const dayAfter = await session(me.token, t.id, local(4, 9));
+  assert.equal(onTheDay.after_deadline, false);
+  const [a, b] = await listed(me.token, t.id);
+  assert.equal(a.after_deadline, false);
+  assert.equal(b.after_deadline, true);
+  assert.equal(b.id, dayAfter.id);
+  assert.equal(a.due_all_day, true);
+  assert.equal(a.due_at, new Date(local(3, 0)).toISOString());
+  assert.equal(a.deadline_at, new Date(local(4, 0)).toISOString());
+});
+
+test("a task with an end time is due when it ends", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Workshop prep",
+    due_at: local(3, 9),
+    end_at: local(3, 12),
+  });
+  const before = await session(me.token, t.id, local(3, 10));
+  const after = await session(me.token, t.id, local(3, 12));
+  assert.equal(before.after_deadline, false);
+  assert.equal(after.after_deadline, true);
+  assert.equal(before.deadline_at, new Date(local(3, 12)).toISOString());
+});
+
+test("a repeating task's later sessions are for its next occurrence, numbered on their own", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Practise scales",
+    due_at: local(2, 17),
+    rrule: "FREQ=DAILY",
+    timezone: TZ,
+  });
+  await session(me.token, t.id, local(1, 10));
+  await session(me.token, t.id, local(2, 18));
+  await session(me.token, t.id, local(3, 10));
+  const all = await listed(me.token, t.id);
+  assert.deepEqual(
+    all.map((b) => [b.due_at, b.part, b.parts, b.after_deadline]),
+    [
+      [new Date(local(2, 17)).toISOString(), 1, 1, false],
+      [new Date(local(3, 17)).toISOString(), 1, 2, false],
+      [new Date(local(3, 17)).toISOString(), 2, 2, false],
+    ],
+  );
+});
+
+// ---- one task's sessions ---------------------------------------------------------
+
+test("a task's sessions can be read on their own, and reading them makes no plan", async () => {
+  const me = await newUser();
+  const project = await call(me.token, "POST", "/projects", {
+    name: "Launch",
+    deadline: local(20, 17),
+  });
+  const t = await newTask(me.token, {
+    title: "Write the launch post",
+    due_at: local(4, 17),
+    estimate_minutes: 240,
+  });
+  await call(me.token, "PUT", `/items/${t.id}/project`, {
+    project_id: project.body.id,
+  });
+  await session(me.token, t.id, local(-1, 9, 15));
+  await session(me.token, t.id, local(2, 14), 90);
+  await session(me.token, t.id, local(5, 10));
+  const plans = async () =>
+    Number(
+      (
+        await pool.query("SELECT count(*) FROM plans WHERE user_id = $1", [
+          me.id,
+        ])
+      ).rows[0].count,
+    );
+  const before = await plans();
+  const r = await call(me.token, "GET", `/items/${t.id}/sessions`);
+  assert.equal(r.status, 200, r.raw.body);
+  assert.equal(await plans(), before);
+  assert.equal(r.body.item_id, t.id);
+  assert.equal(r.body.deadline_at, new Date(local(4, 17)).toISOString());
+  assert.equal(r.body.due_all_day, false);
+  assert.equal(r.body.project_deadline, new Date(local(20, 17)).toISOString());
+  // Past ones too, oldest first.
+  assert.deepEqual(
+    (r.body.sessions as Json[]).map((s) => `${s.part}/${s.parts}`),
+    ["1/3", "2/3", "3/3"],
+  );
+  // Only time still to come that ends by the deadline counts as planned.
+  assert.equal(r.body.planned_minutes, 90);
+  assert.equal(r.body.late_minutes, 45);
+
+  // No date: everything still to come is planned, nothing is late.
+  const undated = await newTask(me.token, { title: "Someday" });
+  await session(me.token, undated.id, local(2, 9), 30);
+  const u = await call(me.token, "GET", `/items/${undated.id}/sessions`);
+  assert.equal(u.status, 200, u.raw.body);
+  assert.equal(u.body.deadline_at, null);
+  assert.equal(u.body.project_deadline, null);
+  assert.equal(u.body.planned_minutes, 30);
+  assert.equal(u.body.late_minutes, 0);
+  assert.equal(u.body.sessions[0].after_deadline, false);
+});
+
+test("a repeating task lists the sessions for its current occurrence and later", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Weekly review",
+    due_at: local(2, 17),
+    rrule: "FREQ=DAILY",
+    timezone: TZ,
+  });
+  // Done last time, before the series' first due date.
+  await session(me.token, t.id, local(-1, 10));
+  // Finish this occurrence: it moves on to the next day.
+  const current = await call(me.token, "GET", `/items/${t.id}`);
+  const done = await call(me.token, "PUT", `/items/${t.id}`, {
+    title: current.body.title,
+    notes: current.body.notes,
+    kind: "task",
+    status: "done",
+    priority: current.body.priority,
+    due_at: current.body.due_at,
+    end_at: null,
+    team_id: null,
+    rrule: "FREQ=DAILY",
+    timezone: TZ,
+    version: current.body.version,
+  });
+  assert.equal(done.status, 200, done.raw.body);
+  const next = await session(me.token, t.id, local(3, 10));
+  const r = await call(me.token, "GET", `/items/${t.id}/sessions`);
+  assert.equal(r.status, 200, r.raw.body);
+  assert.deepEqual(
+    (r.body.sessions as Json[]).map((s) => s.id),
+    [next.id],
+  );
+  assert.equal(r.body.deadline_at, new Date(local(3, 17)).toISOString());
+  assert.equal(r.body.planned_minutes, 45);
+});
+
+test("only your own sessions, only for a task you can see", async () => {
+  const me = await newUser();
+  const stranger = await newUser();
+  const mine = await newTask(me.token, { title: "Mine", due_at: local(3, 17) });
+  await session(me.token, mine.id, local(1, 10));
+  // Someone else can't read it, or tell that it exists.
+  const theirs = await call(
+    stranger.token,
+    "GET",
+    `/items/${mine.id}/sessions`,
+  );
+  assert.equal(theirs.status, 404);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${randomUUID()}/sessions`)).status,
+    404,
+  );
+  assert.equal(
+    (await call(null, "GET", `/items/${mine.id}/sessions`)).status,
+    401,
+  );
+  // A malformed id is refused before anything is read (validation: 422).
+  assert.equal(
+    (await call(me.token, "GET", "/items/not-an-id/sessions")).status,
+    422,
+  );
+
+  // A teammate's sessions on a team task stay theirs.
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams (name, created_by) VALUES ('Session crew', $1) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'member')",
+    [team, me.id, stranger.id],
+  );
+  const shared = await newTask(me.token, {
+    title: "Shared",
+    team_id: team,
+    due_at: local(3, 17),
+  });
+  await session(me.token, shared.id, local(1, 10));
+  await session(stranger.token, shared.id, local(1, 12));
+  await session(stranger.token, shared.id, local(2, 12));
+  const mineOnly = await call(me.token, "GET", `/items/${shared.id}/sessions`);
+  assert.equal(mineOnly.status, 200, mineOnly.raw.body);
+  assert.equal(mineOnly.body.sessions.length, 1);
+  assert.equal(mineOnly.body.sessions[0].parts, 1);
+  const theirsOnly = await call(
+    stranger.token,
+    "GET",
+    `/items/${shared.id}/sessions`,
+  );
+  assert.deepEqual(
+    (theirsOnly.body.sessions as Json[]).map((s) => `${s.part}/${s.parts}`),
+    ["1/2", "2/2"],
+  );
+});
+
+test("reading a task's sessions is rate limited like everything else", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, { title: "Busy" });
+  const from = "10.64.0.1";
+  const first = await call(
+    me.token,
+    "GET",
+    `/items/${t.id}/sessions`,
+    undefined,
+    from,
+  );
+  assert.equal(first.status, 200);
+  const limit = Number(first.raw.headers["ratelimit-limit"]);
+  assert.ok(limit > 0);
+  let last = first;
+  for (let i = 0; i < limit && last.status !== 429; i++)
+    last = await call(
+      me.token,
+      "GET",
+      `/items/${t.id}/sessions`,
+      undefined,
+      from,
+    );
+  assert.equal(last.status, 429);
+});
+
+// ---- plans number the same way -------------------------------------------------
+
+test("a plan numbers its sessions among those already saved, as the calendar will", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Thesis chapter",
+    due_at: local(8, 17),
+    estimate_minutes: 240,
+  });
+  await session(me.token, t.id, local(1, 9));
+  const plan = await call(me.token, "POST", "/planner/preview", {
+    item_ids: [t.id],
+    days: 7,
+    timezone: TZ,
+  });
+  assert.equal(plan.status, 200, plan.raw.body);
+  const planned = (plan.body.blocks as Json[]).filter(
+    (b) => b.item_id === t.id,
+  );
+  assert.ok(planned.length >= 1, plan.raw.body);
+  // Every number counts the saved session too, and none is used twice.
+  for (const b of planned) assert.equal(b.parts, planned.length + 1);
+  assert.equal(new Set(planned.map((b) => b.part)).size, planned.length);
+  const applied = await call(
+    me.token,
+    "POST",
+    `/planner/plans/${plan.body.id}/apply`,
+  );
+  assert.equal(applied.status, 200, applied.raw.body);
+  assert.equal(applied.body.skipped, 0);
+  // Saved, each keeps the number the preview gave it.
+  const saved = await listed(me.token, t.id);
+  for (const b of planned) {
+    const same = saved.find((s) => s.start_at === b.start_at);
+    assert.ok(same, `saved ${b.start_at}`);
+    assert.equal(same.part, b.part);
+    assert.equal(same.parts, b.parts);
+  }
+  for (const b of applied.body.blocks as Json[])
+    assert.equal(b.parts, planned.length + 1);
+});

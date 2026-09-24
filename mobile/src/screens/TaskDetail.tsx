@@ -13,6 +13,8 @@ import {
 } from "react-native";
 import {
   dateLabel,
+  deadlineOf,
+  dueDate,
   hasTeamPermission,
   isClosed,
   statusLabels,
@@ -38,7 +40,7 @@ import { MeetingOutcome } from "../components/followthrough/MeetingOutcome";
 import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
-import { SchedulePanel } from "../components/SchedulePanel";
+import { SessionsPanel } from "../components/SessionsPanel";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
@@ -108,6 +110,7 @@ export function TaskDetail({
   onChanged,
   onOpenNote,
   onOpenItem,
+  onShowOnCalendar,
 }: {
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
@@ -128,6 +131,8 @@ export function TaskDetail({
   onChanged: () => void;
   /** Open (or start) the meeting note for an event. */
   onOpenNote?: (event: Item) => void;
+  /** Show a session's day on the calendar. */
+  onShowOnCalendar?: (at: string) => void;
 }) {
   return (
     <Sheet
@@ -148,6 +153,7 @@ export function TaskDetail({
           onChanged={onChanged}
           onOpenNote={onOpenNote}
           onOpenItem={onOpenItem}
+          onShowOnCalendar={onShowOnCalendar}
         />
       )}
       <CelebrationHost />
@@ -164,6 +170,7 @@ function Body({
   onChanged,
   onOpenNote,
   onOpenItem,
+  onShowOnCalendar,
 }: {
   seed: Item;
   items: Item[];
@@ -173,6 +180,7 @@ function Body({
   onChanged: () => void;
   onOpenNote?: (event: Item) => void;
   onOpenItem: (item: Item) => void;
+  onShowOnCalendar?: (at: string) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
   /** The task above, when it isn't among the loaded items. */
@@ -504,10 +512,14 @@ function Body({
               <View style={s.metaItem}>
                 <Icon name="clock" size={14} color={colors.muted} />
                 <Text style={s.metaText}>
-                  {dateLabel(item.due_at)}
-                  {item.end_at
-                    ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                    : ""}
+                  {item.kind === "task" && item.due_at && !item.end_at
+                    ? // "Due" is the deadline: an all-day task is due by the end of its day.
+                      `Due ${dueDate(deadlineOf(item)!, !!item.all_day)}`
+                    : `${dateLabel(item.due_at)}${
+                        item.end_at
+                          ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                          : ""
+                      }`}
                 </Text>
               </View>
               <View style={[s.chip, { backgroundColor: priority.bg }]}>
@@ -605,14 +617,26 @@ function Body({
           </FadeIn>
 
           {canWork && (
-            <View>
-              <Button
-                title="Focus on this"
-                icon="target"
-                onPress={() => onFocus(item)}
-              />
-              <SchedulePanel item={item} onBooked={onChanged} />
-            </View>
+            <Button
+              title="Focus on this"
+              icon="target"
+              onPress={() => onFocus(item)}
+            />
+          )}
+
+          {item.kind === "task" && (
+            <SessionsPanel
+              item={item}
+              canWork={canWork}
+              reloadKey={[
+                item.version,
+                item.status,
+                item.due_at,
+                item.end_at,
+              ].join("|")}
+              onChanged={onChanged}
+              onShowOnCalendar={onShowOnCalendar}
+            />
           )}
 
           {readOnly && (

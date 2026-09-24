@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import {
   sameDay,
+  sessionLine,
   statusLabels,
   zonedParts,
   type BusyInterval,
@@ -943,6 +944,9 @@ export function DayTimeline({
               const color = listColor(b.list_id);
               const lifted = drag?.id === b.id;
               const save = (from: Date, to: Date) => onMoveBlock?.(b, from, to);
+              // "Session 2 · due Fri 5 pm", or a late session's warning.
+              const line = sessionLine(b, now);
+              const late = !!b.after_deadline && b.status !== "done";
               return (
                 <DraggableBlock
                   key={slot.key}
@@ -951,12 +955,13 @@ export function DayTimeline({
                     s.event,
                     s.block,
                     !!color && { borderColor: color },
+                    late && s.lateBlock,
                   ]}
                   canDrag={canDrag(b, !!onMoveBlock)}
                   lifted={lifted}
                   gripColor={color ?? colors.accent}
                   badge={dayBadge(b.id)}
-                  accessibilityLabel={`Session for ${b.title}, ${range}. Opens task details`}
+                  accessibilityLabel={`Session for ${b.title}, ${range}${line ? `, ${line}` : ""}. Opens task details`}
                   onTap={() => onOpen(b.item_id)}
                   onMenu={() => onBlockMenu(b)}
                   onBegin={() => begin(b)}
@@ -977,7 +982,7 @@ export function DayTimeline({
                       color={color ?? colors.accent}
                     />
                     <Text
-                      numberOfLines={compact ? 1 : 2}
+                      numberOfLines={compact || line ? 1 : 2}
                       style={[
                         s.eventTitle,
                         color ? s.grow : s.blockTitle,
@@ -987,6 +992,15 @@ export function DayTimeline({
                       {b.title}
                     </Text>
                   </View>
+                  {/* A late session says so even when its tile is small. */}
+                  {(!compact || late) && !!line && (
+                    <Text
+                      numberOfLines={1}
+                      style={[s.sessionLine, late && s.lateLine]}
+                    >
+                      {line}
+                    </Text>
+                  )}
                   {!compact && (
                     <Text
                       numberOfLines={1}
@@ -1617,6 +1631,15 @@ const s = themed(() =>
       color: colors.accent,
     },
     softTime: { color: colors.textSoft },
+    /** A session that ends after its task's deadline. */
+    lateBlock: { borderStyle: "solid", borderColor: colors.warningStrong },
+    sessionLine: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      marginTop: 1,
+      color: colors.textSoft,
+    },
+    lateLine: { fontFamily: fonts.semibold, color: colors.warningStrong },
     eventTitle: {
       flexShrink: 1,
       fontFamily: fonts.semibold,

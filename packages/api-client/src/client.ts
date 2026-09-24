@@ -1,5 +1,6 @@
 import {
   HttpError,
+  type ItemSessions,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -1194,6 +1195,10 @@ export class OrbynClient {
   listBlocks(from: string, to: string) {
     const q = new URLSearchParams({ from, to });
     return this.request<TimeBlock[]>(`/blocks?${q}`);
+  }
+  /** Your sessions for one task, past ones too, with its deadline. Makes no plan. */
+  itemSessions(itemId: string) {
+    return this.request<ItemSessions>(`/items/${itemId}/sessions`);
   }
   createBlock(input: BlockInput) {
     return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
