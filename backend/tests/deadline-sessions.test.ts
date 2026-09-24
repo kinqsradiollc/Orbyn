@@ -16,16 +16,20 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { schedule } = await import("../src/modules/planner/scheduler.js");
+const { rankTasks } = await import("../src/modules/ai/agent/workspace.js");
+const { scanPlanningNotices } = await import("../src/worker/planning.js");
 const {
   addDays,
   dayTime,
   deadlineLine,
   deadlineOf,
+  dueBeforeToday,
   dueWhen,
   endsAfterDeadline,
   localDateKey,
   numberSessions,
   planDaysBefore,
+  priorityScore,
   sessionCount,
   sessionDueFor,
   sessionLine,
@@ -701,4 +705,191 @@ test("a plan numbers its sessions among those already saved, as the calendar wil
   }
   for (const b of applied.body.blocks as Json[])
     assert.equal(b.parts, planned.length + 1);
+});
+
+// ---- every "is it past the deadline?" check reads the same rule ------------------
+
+test("priority and 'overdue' on task lists read the deadline too", () => {
+  // 10 am Thursday 24 September in Melbourne.
+  const now = dayTime("2026-09-24", 10 * 60, TZ);
+  const at = (day: string, hour: number, minute = 0) =>
+    dayTime(day, hour * 60 + minute, TZ).toISOString();
+  const task = { priority: "medium" as const, status: "todo" };
+  const dueAt = (due_at: string) => priorityScore({ ...task, due_at }, now);
+
+  // An all-day task due today is due by tonight: not overdue this morning,
+  // and as pressing as a task due at midnight tonight.
+  const today = {
+    ...task,
+    due_at: at("2026-09-24", 0),
+    all_day: true,
+    timezone: TZ,
+  };
+  assert.equal(priorityScore(today, now), dueAt(at("2026-09-25", 0)));
+  assert.ok(priorityScore(today, now) < dueAt(at("2026-09-24", 0)));
+  // A task with an end time is due when it ends.
+  const span = {
+    ...task,
+    due_at: at("2026-09-23", 9),
+    end_at: at("2026-09-24", 17),
+  };
+  assert.equal(priorityScore(span, now), dueAt(at("2026-09-24", 17)));
+  // A deadline the caller already worked out is used as it is.
+  assert.equal(
+    priorityScore(
+      {
+        ...task,
+        due_at: at("2026-09-20", 9),
+        deadline_at: at("2026-09-26", 17),
+      },
+      now,
+    ),
+    dueAt(at("2026-09-26", 17)),
+  );
+  // Past the deadline: the overdue weight (2) on top of full urgency (4).
+  assert.equal(dueAt(at("2026-09-23", 17)) - dueAt(at("2026-10-30", 17)), 6);
+
+  // Overdue on task lists: the deadline fell on a day before today.
+  const overdue = (item: Parameters<typeof dueBeforeToday>[0]) =>
+    dueBeforeToday(item, now, TZ);
+  assert.equal(overdue({ due_at: null }), false);
+  assert.equal(
+    overdue({ due_at: at("2026-09-24", 9) }),
+    false,
+    "earlier today",
+  );
+  assert.equal(overdue({ due_at: at("2026-09-23", 23) }), true, "last night");
+  assert.equal(overdue({ ...today }), false, "all-day today");
+  assert.equal(
+    overdue({ due_at: at("2026-09-23", 0), all_day: true, timezone: TZ }),
+    true,
+    "all-day yesterday",
+  );
+  assert.equal(
+    overdue({ due_at: at("2026-09-23", 22), end_at: at("2026-09-24", 1) }),
+    false,
+    "ended today",
+  );
+  assert.equal(
+    overdue({ due_at: at("2026-09-22", 22), end_at: at("2026-09-23", 23) }),
+    true,
+    "ended yesterday",
+  );
+  // Two all-day dates: due by the end of the last one.
+  const days = (first: string, last: string) => ({
+    due_at: at(first, 0),
+    end_at: at(addDays(last, 1), 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  assert.equal(overdue(days("2026-09-23", "2026-09-24")), false);
+  assert.equal(overdue(days("2026-09-22", "2026-09-23")), true);
+});
+
+test("task lists and the assistant don't call an all-day task overdue on its day", async () => {
+  const me = await newUser();
+  const allDay = (offset: number, title: string) =>
+    newTask(me.token, {
+      title,
+      due_at: local(offset, 0),
+      all_day: true,
+      timezone: TZ,
+    });
+  const today = await allDay(0, "Due today");
+  const yesterday = await allDay(-1, "Due yesterday");
+
+  // The list's priority score: the overdue weight only once the day is over.
+  const listed = await call(me.token, "GET", "/items?sort=score&limit=50");
+  assert.equal(listed.status, 200, listed.raw.body);
+  const score = (id: string) =>
+    (listed.body as Json[]).find((i) => i.id === id)!.score as number;
+  // medium (6) + full urgency (4) + overdue (2), and a size term of at least 0.5.
+  assert.ok(score(yesterday.id) >= 12.5, `${score(yesterday.id)}`);
+  assert.ok(score(today.id) < 12, `${score(today.id)}`);
+
+  // The assistant's "what should I do first?" says the same.
+  const ranked = await rankTasks(
+    { user: { id: me.id, role: "member" }, timezone: TZ } as never,
+    {},
+  );
+  const why = (id: string) => ranked.tasks.find((t) => t.id === id)!.why;
+  assert.ok(why(yesterday.id).includes("overdue"), why(yesterday.id).join());
+  assert.ok(!why(today.id).includes("overdue"), why(today.id).join());
+  assert.ok(why(today.id).includes("due today"), why(today.id).join());
+});
+
+test("the welcome-back brief says an all-day task due today is due, not overdue", async () => {
+  const me = await newUser();
+  const today = await newTask(me.token, {
+    title: "Renew licence",
+    due_at: local(0, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const late = await newTask(me.token, {
+    title: "Book venue",
+    due_at: local(-1, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const beat = () =>
+    call(me.token, "POST", "/presence/heartbeat", {
+      device_id: "due-laptop",
+      platform: "web",
+    });
+  await beat();
+  await pool.query(
+    "UPDATE reentry SET last_active_at = now() - interval '3 days' WHERE user_id = $1",
+    [me.id],
+  );
+  await beat();
+  const brief = await call(me.token, "GET", "/me/reentry");
+  assert.equal(brief.status, 200, brief.raw.body);
+  const line = (id: string) =>
+    (brief.body.due as Json[]).find((d) => d.item_id === id)!.detail as string;
+  assert.match(line(today.id), /^Due /);
+  assert.match(line(late.id), /^Overdue since /);
+});
+
+test("an all-day task due today with nothing planned gets its due-soon notice", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Pay supplier",
+    due_at: local(0, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const big = await newTask(me.token, {
+    title: "Stocktake",
+    due_at: local(0, 0),
+    all_day: true,
+    timezone: TZ,
+    estimate_minutes: 900,
+  });
+  // 10 am on its day: its deadline is tonight, so it's due soon, not past.
+  await scanPlanningNotices(new Date(local(0, 10)), [me.id]);
+  const notices = (await call(me.token, "GET", "/notifications"))
+    .body as Json[];
+  const due = notices.filter((n) => n.kind === "deadline");
+  assert.deepEqual(
+    due.map((n) => n.item_id),
+    [t.id],
+  );
+  // Both name the day it's due, not the midnight it starts.
+  const day = new Intl.DateTimeFormat("en-AU", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(local(0, 12)));
+  assert.equal(
+    due[0].body,
+    `"Pay supplier" is due ${day}, and no session is planned for it yet. Plan it?`,
+  );
+  const risk = notices.filter((n) => n.kind === "at_risk");
+  assert.deepEqual(
+    risk.map((n) => n.item_id),
+    [big.id],
+  );
+  assert.match(risk[0].body, new RegExp(`It's due ${day}\\. Plan it\\?$`));
 });

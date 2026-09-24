@@ -83,7 +83,7 @@ export function PlanCard({ plan, onApply, onOpenInPlanner, limit = 6 }: Props) {
                       {b.parts > 1 && (
                         <small>
                           {" "}
-                          · part {b.part} of {b.parts}
+                          · Session {b.part} of {b.parts}
                         </small>
                       )}
                       {b.frame_name && <small> · {b.frame_name}</small>}

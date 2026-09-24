@@ -1063,7 +1063,9 @@ score = 3 × priority (low 1, medium 2, high 3) + 4 × urgency + 2 if overdue + 
         + 0.5 if in progress − 3 if blocked
 ```
 
-Urgency rises from 0 a week before the due time to 1 at it. `size_fit` is 1 when the remaining
+Urgency rises from 0 a week before the deadline to 1 at it, and a task is overdue once its deadline
+has passed; the deadline follows the one rule in [Sessions](#sessions-blocks) (the end of the day
+for an all-day task, the end time for a task that has one). `size_fit` is 1 when the remaining
 estimate (estimate − time spent) fits the largest free working slot left today (or on the next
 working day once today's hours are over), 0.5 when it doesn't, and 0.75 for a task without an
 estimate. The planner ranks tasks with the same score, comparing with the first planned day.
@@ -1530,8 +1532,10 @@ webhooks and refreshes your other devices, like any other change.
 span) is due when it ends; an all-day task is due at the end of its day (its `due_at` is the
 local midnight it starts), so sessions on the day itself are on time. Planned time and the
 deadline stay separate: the planner never moves a deadline. Every "is this after the
-deadline?" check, in the planner, the at-risk and due-soon notices and the fields below, uses
-this rule (`deadlineOf` in `@orbyn/core`).
+deadline?" check, in the planner, the at-risk and due-soon notices, the priority `score`, the
+apps' "Overdue", the welcome-back brief, the assistant's ranking and the fields below, uses this
+rule (`deadlineOf` in `@orbyn/core`). On task lists a task is overdue once its deadline fell on
+a day before today (`dueBeforeToday`), so one due earlier today isn't yet.
 
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
@@ -1577,7 +1581,7 @@ becomes the task's own.
 | `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                |
 | `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced         |
 | `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
-| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`                                                                                           |
+| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task due on a whole day has `due_all_day: true`                             |
 | `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
 
 Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
@@ -2060,7 +2064,8 @@ with the change — and compared. Nothing is saved; no plan is stored.
 
 After 36 hours or more away (measured from presence check-ins), for three days or until
 dismissed: `assigned`, `changed` (by others, on your tasks), `asks` waiting on you, `mentions`,
-`due` (overdue or within three days) and team `pages` changed, five of each at most.
+`due` (overdue, that is past its deadline, or within three days) and team `pages` changed, five
+of each at most.
 `POST /me/reentry/dismiss` puts it away.
 
 ### `GET /docs/fading?team_id=` (auth)

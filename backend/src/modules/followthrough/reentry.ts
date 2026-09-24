@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   dateLabel,
+  deadlineOf,
   REENTRY_AWAY_HOURS,
   type ReentryBrief,
   type ReentryLine,
@@ -93,8 +94,15 @@ export async function reentryRoutes(app: FastifyInstance) {
           ORDER BY created_at DESC LIMIT ${LIMIT}`,
         [u.id, since],
       ),
-      db.query<{ id: string; title: string; due_at: Date }>(
-        `SELECT i.id, i.title, i.due_at FROM items i
+      db.query<{
+        id: string;
+        title: string;
+        due_at: Date;
+        end_at: Date | null;
+        all_day: boolean;
+        timezone: string;
+      }>(
+        `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone FROM items i
           WHERE ${mine} AND i.kind = 'task'
             AND i.status NOT IN ('done', 'cancelled')
             AND i.due_at IS NOT NULL AND i.due_at < now() + interval '3 days'
@@ -148,7 +156,9 @@ export async function reentryRoutes(app: FastifyInstance) {
         item_id: x.id,
         title: x.title,
         detail:
-          x.due_at.getTime() < now
+          // Overdue once the deadline has passed (`deadlineOf`): an all-day
+          // task is due by the end of its day.
+          Date.parse(deadlineOf(x)!) < now
             ? `Overdue since ${dateLabel(x.due_at.toISOString())}`
             : `Due ${dateLabel(x.due_at.toISOString())}`,
       })),

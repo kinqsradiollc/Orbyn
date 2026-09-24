@@ -193,7 +193,10 @@ const quoted = (titles: string[]) =>
 /**
  * People with planner activity worth a notice: they use the planner (saved
  * settings or blocks in the last two weeks) and have either recent blocks to
- * roll forward or open tasks due in the next two weeks.
+ * roll forward or open tasks due in the next two weeks. A task counts until
+ * its deadline (`deadlineOf`): its end time when it has one, and the end of
+ * its day when it's all-day (a day and an hour after its midnight here, to
+ * cover a daylight-saving change; the notices check exactly).
  */
 const ACTIVE_USERS = `
   SELECT a.user_id FROM (
@@ -204,7 +207,9 @@ const ACTIVE_USERS = `
     AND (EXISTS (SELECT 1 FROM time_blocks b WHERE b.user_id = a.user_id
                   AND b.end_at > $1::timestamptz - interval '14 days' AND b.end_at < $1)
       OR EXISTS (SELECT 1 FROM items i WHERE i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
-                  AND i.due_at > $1 AND i.due_at < $1::timestamptz + interval '14 days'
+                  AND coalesce(i.end_at, i.due_at + CASE WHEN i.all_day
+                        THEN interval '25 hours' ELSE interval '0 hours' END) > $1
+                  AND i.due_at < $1::timestamptz + interval '14 days'
                   AND ((i.team_id IS NULL AND i.user_id = a.user_id) OR i.assignee_id = a.user_id)))
   ORDER BY a.user_id LIMIT 1000`;
 
@@ -270,7 +275,11 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           kind: "at_risk",
           ref: today,
           title: `At risk: ${t.title}`,
-          body: `${t.reason} It's due ${when.format(new Date(t.due_at!))}. Plan it?`,
+          body: `${t.reason} It's due ${
+            t.due_all_day
+              ? dayFormat(prefs.timezone).format(new Date(t.due_at!))
+              : when.format(new Date(t.due_at!))
+          }. Plan it?`,
         },
         email,
       );

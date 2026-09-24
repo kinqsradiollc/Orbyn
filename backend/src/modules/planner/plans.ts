@@ -888,6 +888,7 @@ export async function atRiskFor(
         item_id: t.id,
         title: t.title,
         due_at: t.due_at,
+        due_all_day: !!t.due_all_day,
         reason: `Needs ${hoursLabel(remaining)} more, with ${hoursLabel(freeMinutes)} free before it's due.`,
         remaining_minutes: remaining,
         free_minutes: freeMinutes,

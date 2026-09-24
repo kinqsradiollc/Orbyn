@@ -868,8 +868,9 @@ export function DayTimeline({
             };
             if (slot.type === "ghost") {
               const g = slot.ghost;
-              const part = g.parts > 1 ? ` · ${g.part}/${g.parts}` : "";
-              const label = `Planned, not saved yet${g.pinned ? ", pinned" : ""}: ${g.title}, ${range}${g.parts > 1 ? `, part ${g.part} of ${g.parts}` : ""}`;
+              const part =
+                g.parts > 1 ? ` · Session ${g.part} of ${g.parts}` : "";
+              const label = `Planned, not saved yet${g.pinned ? ", pinned" : ""}: ${g.title}, ${range}${g.parts > 1 ? `, session ${g.part} of ${g.parts}` : ""}`;
               const content = (
                 <>
                   <View style={s.blockTop}>

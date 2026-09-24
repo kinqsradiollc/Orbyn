@@ -1119,6 +1119,8 @@ export type PlanStaleness = { stale: boolean };
 export type AtRiskTask = UnplacedTask & {
   remaining_minutes: number;
   free_minutes: number;
+  /** Due on a whole day (by the end of it) rather than at a time. */
+  due_all_day?: boolean;
 };
 
 /** What needs attention in the plan. */

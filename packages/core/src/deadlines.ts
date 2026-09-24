@@ -237,6 +237,25 @@ export function dueWhen(
   });
 }
 
+/**
+ * Whether a task's deadline fell on a day before today: what "overdue" means
+ * on task lists. Days are the device's, or `timeZone`'s when given. A task
+ * due earlier today isn't overdue yet, an all-day task becomes overdue the
+ * day after its date, and a task with an end time the day after it ends.
+ */
+export function dueBeforeToday(
+  item: DeadlineSource,
+  now = new Date(),
+  timeZone?: string,
+): boolean {
+  const deadline = deadlineOf(item);
+  if (!deadline) return false;
+  const at = namedAt(deadline, !!item.all_day);
+  return timeZone
+    ? localDateKey(at, timeZone) < localDateKey(now, timeZone)
+    : localDay(at) < localDay(now);
+}
+
 /** "Fri 2 Oct, 5 pm", or "Fri 2 Oct" for an all-day date. */
 export function dueDate(deadline: string, allDay = false): string {
   const at = namedAt(deadline, allDay);

@@ -936,7 +936,7 @@ export function CalendarGrid({
                       </span>
                       <small>
                         {spanLabel(g.start_at, g.end_at)}
-                        {g.parts > 1 && ` · ${g.part}/${g.parts}`}
+                        {g.parts > 1 && ` · Session ${g.part} of ${g.parts}`}
                       </small>
                       {tunable && (
                         <button

@@ -153,16 +153,25 @@ type ScoreRow = {
   status: string;
   priority: "low" | "medium" | "high";
   due_at: Date | string | null;
+  end_at: Date | string | null;
+  all_day: boolean;
+  timezone: string;
   estimate_minutes: number | null;
   spent_minutes: number;
   created_at: Date | string;
 };
 
-/** The priority score of an open task; null for events and closed tasks. */
+const isoOrNull = (v: Date | string | null) =>
+  v ? new Date(v).toISOString() : null;
+
+/**
+ * The priority score of an open task; null for events and closed tasks.
+ * Its urgency counts to the task's deadline (`deadlineOf`).
+ */
 const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
   i.kind === "task" && !isClosed(i.status)
     ? priorityScore(
-        { ...i, due_at: i.due_at ? new Date(i.due_at).toISOString() : null },
+        { ...i, due_at: isoOrNull(i.due_at), end_at: isoOrNull(i.end_at) },
         now,
         slot,
       )
@@ -273,8 +282,8 @@ export async function itemRoutes(app: FastifyInstance) {
       // Rank every match by score, then load the page asked for.
       const ranked = (
         await db.query<ScoreRow>(
-          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.estimate_minutes,
-                  i.spent_minutes, i.created_at
+          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.end_at, i.all_day,
+                  i.timezone, i.estimate_minutes, i.spent_minutes, i.created_at
            FROM items i WHERE ${where} LIMIT ${MAX_SCORED}`,
           filters,
         )

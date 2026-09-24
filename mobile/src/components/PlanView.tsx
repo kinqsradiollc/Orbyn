@@ -86,7 +86,7 @@ export function PlanView({
                 <View
                   style={s.block}
                   accessible
-                  accessibilityLabel={`${rangeLabel(b.start_at, b.end_at)}, ${b.title}${b.parts > 1 ? `, part ${b.part} of ${b.parts}` : ""}${b.pinned ? ", pinned" : ""}`}
+                  accessibilityLabel={`${rangeLabel(b.start_at, b.end_at)}, ${b.title}${b.parts > 1 ? `, session ${b.part} of ${b.parts}` : ""}${b.pinned ? ", pinned" : ""}`}
                 >
                   <Text style={s.time}>{rangeLabel(b.start_at, b.end_at)}</Text>
                   <View style={s.blockMain}>
@@ -97,7 +97,7 @@ export function PlanView({
                       <Text style={shared.small}>
                         {[
                           b.pinned ? "Pinned" : "",
-                          b.parts > 1 ? `Part ${b.part} of ${b.parts}` : "",
+                          b.parts > 1 ? `Session ${b.part} of ${b.parts}` : "",
                           b.frame_name ?? "",
                         ]
                           .filter(Boolean)

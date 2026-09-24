@@ -1,4 +1,5 @@
 import {
+  deadlineOf,
   isClosed,
   priorityScore,
   projectAtRisk,
@@ -44,6 +45,8 @@ type TaskRow = {
   priority: "low" | "medium" | "high";
   due_at: Date | null;
   end_at: Date | null;
+  all_day: boolean;
+  timezone: string;
   estimate_minutes: number | null;
   spent_minutes: number;
   team_name: string | null;
@@ -51,14 +54,30 @@ type TaskRow = {
   list_name: string | null;
 };
 
+/**
+ * When a task is due by (`deadlineOf`: the end of the day for an all-day
+ * task, the end time for one that has it), as an ISO string or null.
+ */
+const deadlineOfRow = (row: TaskRow) =>
+  deadlineOf({
+    due_at: row.due_at,
+    end_at: row.end_at,
+    all_day: row.all_day,
+    timezone: row.timezone,
+  });
+
 /** Why a task ranks where it does, in words a person would use. */
 function reasons(row: TaskRow, now: Date, timezone: string) {
   const out: string[] = [];
-  const due = row.due_at?.getTime();
+  // Overdue once the deadline has passed: not during an all-day task's day.
+  const deadline = deadlineOfRow(row);
+  const due = deadline ? Date.parse(deadline) : undefined;
   if (due !== undefined && due < now.getTime()) out.push("overdue");
   else if (due !== undefined) {
     const days = (due - now.getTime()) / 86_400_000;
-    if (localDate(row.due_at!, timezone) === localDate(now, timezone))
+    // The day it's due on: an all-day deadline is the midnight after it.
+    const dueDay = new Date(due - (row.all_day ? 60_000 : 0));
+    if (localDate(dueDay, timezone) === localDate(now, timezone))
       out.push("due today");
     else if (days <= 2) out.push("due in the next two days");
     else if (days <= 7) out.push("due this week");
@@ -71,7 +90,7 @@ function reasons(row: TaskRow, now: Date, timezone: string) {
 }
 
 const RANK_SELECT = `SELECT i.id, i.title, i.kind, i.status, i.priority, i.due_at, i.end_at,
-    i.estimate_minutes, i.spent_minutes, t.name AS team_name,
+    i.all_day, i.timezone, i.estimate_minutes, i.spent_minutes, t.name AS team_name,
     p.name AS project_name, l.name AS list_name
   FROM items i
   LEFT JOIN teams t ON t.id = i.team_id
@@ -117,6 +136,7 @@ export async function rankTasks(
           priority: r.priority,
           status: r.status,
           due_at: r.due_at?.toISOString() ?? null,
+          deadline_at: deadlineOfRow(r),
           estimate_minutes: r.estimate_minutes,
           spent_minutes: r.spent_minutes,
         },
@@ -130,7 +150,7 @@ export async function rankTasks(
     total_open: ranked.length,
     largest_free_minutes_today: free,
     how_ranked:
-      "The app's own priority score: 3 x priority + 4 x urgency (rises over the week before the due time) + 2 if overdue + how well the remaining estimate fits today's largest free stretch; started work rises, blocked work sinks.",
+      "The app's own priority score: 3 x priority + 4 x urgency (rises over the week before the deadline; an all-day task is due by the end of its day, one with an end time when it ends) + 2 once the deadline has passed + how well the remaining estimate fits today's largest free stretch; started work rises, blocked work sinks.",
     tasks: ranked.slice(0, limit).map(({ row, score }, n) => ({
       rank: n + 1,
       id: row.id,
