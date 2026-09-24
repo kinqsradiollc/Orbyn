@@ -46,7 +46,7 @@ export async function memoryRoutes(app: FastifyInstance) {
                 d.updated_at, d.reviewed_at
            FROM docs d JOIN users o ON o.id = d.user_id
            LEFT JOIN teams t ON t.id = d.team_id
-          WHERE ${VISIBLE} AND d.kind = 'doc'
+          WHERE ${VISIBLE} AND d.kind = 'doc' AND d.deleted_at IS NULL
             AND ($2::uuid IS NULL OR d.team_id = $2)
             AND greatest(d.updated_at, coalesce(d.reviewed_at, d.updated_at))
                 < now() - make_interval(days => $3)
@@ -81,7 +81,11 @@ export async function memoryRoutes(app: FastifyInstance) {
           title: string;
           user_id: string;
           team_id: string | null;
-        }>("SELECT id, title, user_id, team_id FROM docs WHERE id = $1", [id])
+        }>(
+          `SELECT id, title, user_id, team_id FROM docs
+            WHERE id = $1 AND deleted_at IS NULL`,
+          [id],
+        )
       ).rows[0];
       if (!doc) fail(404, "Document not found");
       if (doc.team_id) await requireTeam(doc.team_id, u, "items:write", db);

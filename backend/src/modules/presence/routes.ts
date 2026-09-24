@@ -265,7 +265,8 @@ export async function presenceRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const visible = (
       await db.query(
-        `SELECT 1 FROM docs d WHERE d.id = $2 AND ${VISIBLE_DOC}`,
+        `SELECT 1 FROM docs d
+          WHERE d.id = $2 AND d.deleted_at IS NULL AND ${VISIBLE_DOC}`,
         [u.id, docId],
       )
     ).rowCount;

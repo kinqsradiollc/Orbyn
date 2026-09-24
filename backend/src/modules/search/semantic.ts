@@ -152,7 +152,8 @@ export async function nearest(
         `SELECT e.doc_id AS id, e.block_id, e.quote,
                 1 - (e.embedding <=> $2::vector) AS nearness
            FROM doc_embeddings e JOIN docs d ON d.id = e.doc_id
-          WHERE ((d.team_id IS NULL AND d.user_id = $1)
+          WHERE d.deleted_at IS NULL
+            AND ((d.team_id IS NULL AND d.user_id = $1)
                  OR d.team_id IN (SELECT team_id FROM team_members
                                    WHERE user_id = $1))
           ORDER BY e.embedding <=> $2::vector

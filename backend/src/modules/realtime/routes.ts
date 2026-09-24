@@ -68,7 +68,8 @@ async function docStream(
     const id = idParam(r);
     const doc = (
       await reader(r.headers).query<{ id: string }>(
-        `SELECT d.id FROM docs d WHERE d.id = $2 AND ${VISIBLE_DOC}`,
+        `SELECT d.id FROM docs d
+          WHERE d.id = $2 AND d.deleted_at IS NULL AND ${VISIBLE_DOC}`,
         [u.id, id],
       )
     ).rows[0];

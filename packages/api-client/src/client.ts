@@ -26,6 +26,7 @@ import {
   type AdminDatabaseTableDetail,
   type AdminDatabaseRows,
   type Doc,
+  type TrashedDoc,
   type DocBlock,
   type DocKind,
   type DocComment,
@@ -755,13 +756,20 @@ export class OrbynClient {
     return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
   }
   /** Turn a document's unticked checklist lines into tasks. */
-  docToTasks(id: string) {
+  /**
+   * Turn a page's open checklist lines into tasks: every one that isn't a
+   * task yet, or only the lines named in `blockIds` ("Make task").
+   */
+  docToTasks(id: string, blockIds?: string[]) {
     return this.request<{
       created: number;
       items: Item[];
       /** The document as it now stands, with the new lines tied to tasks. */
       doc: Doc | null;
-    }>(`/docs/${id}/tasks`, { method: "POST" });
+    }>(`/docs/${id}/tasks`, {
+      method: "POST",
+      ...(blockIds?.length ? { body: { block_ids: blockIds } } : {}),
+    });
   }
 
   // Projects
@@ -1059,8 +1067,21 @@ export class OrbynClient {
   ) {
     return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
   }
+  /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+  }
+  /** Pages in Trash, most recently deleted first. */
+  listTrash() {
+    return this.request<TrashedDoc[]>("/docs/trash");
+  }
+  /** Bring a page back from Trash, as it was. */
+  restoreDoc(id: string) {
+    return this.request<Doc>(`/docs/${id}/restore`, { method: "POST" });
+  }
+  /** Delete a page in Trash for good. There is no undo. */
+  deleteDocForever(id: string) {
+    return this.request<void>(`/docs/${id}/forever`, { method: "DELETE" });
   }
 
   /** Past states of a document, newest first, without their content. */

@@ -1,3 +1,4 @@
+import { TRASH_DAYS } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 
 /**
@@ -190,6 +191,15 @@ export const SWEEP_RULES: SweepRule[] = [
     detail: "Which subscribed events were already reminded, once they're past.",
     table: "external_reminders",
     where: "starts_at < now() - interval '2 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "doc_trash",
+    label: "Pages in Trash",
+    detail: `Deleted pages, once they have been in Trash for ${TRASH_DAYS} days. Their history and comments go with them.`,
+    table: "docs",
+    where: `deleted_at IS NOT NULL AND deleted_at < now() - interval '${TRASH_DAYS} days'`,
     days: 0,
     configurable: false,
   },

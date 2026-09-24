@@ -30,8 +30,9 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
  */
 
 /** Pages `$1` can see. */
-export const VISIBLE_DOC = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+export const VISIBLE_DOC = `(((d.team_id IS NULL AND d.user_id = $1)
+  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+  AND d.deleted_at IS NULL)`;
 
 /** An exam on the calendar: a subscribed exams calendar, or an event named like one. */
 const EXAM_WORDS =
@@ -83,7 +84,7 @@ export const cardOf = (r: CardRow, now = new Date()): StudyCard => {
 export const CARD_SELECT = `SELECT c.id, c.doc_id, d.title AS doc_title, c.card_key, c.block_id,
     c.question, c.answer, c.stability, c.difficulty, c.reps, c.lapses,
     c.last_review_at, c.due_at
-  FROM study_cards c JOIN docs d ON d.id = c.doc_id`;
+  FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL`;
 
 /**
  * Bring `userId`'s cards in line with the pages they can see: new lines
@@ -122,10 +123,14 @@ export async function syncCards(db: Db, userId: string) {
     );
     for (const c of cards) keep.push({ doc: page.id, key: c.key });
   }
+  // A page in Trash keeps its cards and their review history, hidden, so
+  // restoring it brings them back as they were.
   await db.query(
     `DELETE FROM study_cards c WHERE c.user_id = $1
        AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS k(doc uuid, key text)
-                        WHERE k.doc = c.doc_id AND k.key = c.card_key)`,
+                        WHERE k.doc = c.doc_id AND k.key = c.card_key)
+       AND NOT EXISTS (SELECT 1 FROM docs t
+                        WHERE t.id = c.doc_id AND t.deleted_at IS NOT NULL)`,
     [userId, JSON.stringify(keep)],
   );
 }
@@ -188,7 +193,7 @@ export async function studyOverview(
                 count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due,
                 count(*) FILTER (WHERE c.reps = 0)::int AS fresh,
                 count(*) FILTER (WHERE c.reps > 0 AND c.stability >= 7)::int AS known
-           FROM study_cards c JOIN docs d ON d.id = c.doc_id
+           FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL
           WHERE c.user_id = $1
           GROUP BY c.doc_id, d.title, d.team_id, d.updated_at, d.imported_from
           ORDER BY max(d.updated_at) DESC`,
@@ -222,7 +227,7 @@ export async function studyOverview(
         lapses: number;
       }>(
         `SELECT c.id, c.question, c.doc_id, d.title AS doc_title, c.lapses
-           FROM study_cards c JOIN docs d ON d.id = c.doc_id
+           FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL
           WHERE c.user_id = $1 AND c.lapses > 0
           ORDER BY c.lapses DESC, c.difficulty DESC LIMIT 6`,
         [userId],

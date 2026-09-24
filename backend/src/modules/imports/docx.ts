@@ -259,9 +259,15 @@ export function docxToMarkdown(buf: Buffer): {
         "",
       );
     else if (style.quote) lines.push(`> ${text}`, "");
-    else if (numId && numId !== "0")
-      lines.push(numbering.get(numId) === false ? `1. ${text}` : `- ${text}`);
-    else lines.push(text, "");
+    else if (numId && numId !== "0") {
+      // Word's list level becomes the item's indentation, so nested lists
+      // come in nested.
+      const level = Math.min(3, Math.max(0, Number(attr(pPr, "w:ilvl")) || 0));
+      lines.push(
+        "    ".repeat(level) +
+          (numbering.get(numId) === false ? `1. ${text}` : `- ${text}`),
+      );
+    } else lines.push(text, "");
   }
   flushCode();
   return {

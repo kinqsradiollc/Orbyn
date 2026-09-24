@@ -83,6 +83,7 @@ export async function studyRoutes(app: FastifyInstance) {
     const visible = (
       await pool.query<{ id: string }>(
         `SELECT d.id FROM docs d WHERE d.id = ANY ($2::uuid[])
+           AND d.deleted_at IS NULL
            AND ((d.team_id IS NULL AND d.user_id = $1)
              OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
         [u.id, d.doc_ids],

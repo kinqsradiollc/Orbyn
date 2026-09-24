@@ -47,7 +47,7 @@ export async function aiDocRoutes(app: FastifyInstance) {
         team_id: string | null;
       }>(
         `SELECT d.id, d.title, d.content, d.team_id FROM docs d
-          WHERE d.id = $2
+          WHERE d.id = $2 AND d.deleted_at IS NULL
             AND ((d.team_id IS NULL AND d.user_id = $1)
                  OR d.team_id IN (SELECT team_id FROM team_members
                                    WHERE user_id = $1))`,

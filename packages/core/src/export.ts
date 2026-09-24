@@ -1,5 +1,6 @@
 import {
   blockText,
+  listLayout,
   mathToText,
   parseDocInline,
   serializeDoc,
@@ -64,6 +65,7 @@ function inlineHtml(text: string): string {
       if (run.link) return `<a href="${escapeHtml(run.link)}">${body}</a>`;
       if (run.bold) return `<strong>${body}</strong>`;
       if (run.italic) return `<em>${body}</em>`;
+      if (run.highlight) return `<mark>${body}</mark>`;
       return body;
     })
     .join("");
@@ -75,19 +77,33 @@ function inlineHtml(text: string): string {
  */
 export function docToHtml(title: string, blocks: DocBlock[]): string {
   const body: string[] = [];
-  let list: "ul" | "ol" | null = null;
-  const closeList = () => {
-    if (list) body.push(`</${list}>`);
-    list = null;
-  };
-  const openList = (kind: "ul" | "ol") => {
-    if (list !== kind) {
-      closeList();
-      body.push(`<${kind}>`);
-      list = kind;
+  const layout = listLayout(blocks);
+  // The lists open around the current line, outermost first. A list item is
+  // left open until the next line, so a nested list can go inside it.
+  const open: ("ul" | "ol")[] = [];
+  const endItem = () => (body[body.length - 1] += "</li>");
+  const closeTo = (depth: number) => {
+    while (open.length > depth) {
+      endItem();
+      body.push(`</${open.pop()}>`);
     }
   };
-  for (const block of blocks) {
+  const closeList = () => closeTo(0);
+  const item = (index: number, kind: "ul" | "ol") => {
+    const { depth, number } = layout[index];
+    closeTo(depth + 1);
+    if (open.length === depth + 1 && open[depth] !== kind) closeTo(depth);
+    if (open.length === depth + 1) endItem();
+    else {
+      body.push(
+        kind === "ol" && number !== null && number !== 1
+          ? `<ol start="${number}">`
+          : `<${kind}>`,
+      );
+      open.push(kind);
+    }
+  };
+  for (const [index, block] of blocks.entries()) {
     switch (block.type) {
       case "heading": {
         closeList();
@@ -96,19 +112,19 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
         break;
       }
       case "bullet":
-        openList("ul");
-        body.push(`<li>${inlineHtml(block.text)}</li>`);
+        item(index, "ul");
+        body.push(`<li>${inlineHtml(block.text)}`);
         break;
       case "numbered":
-        openList("ol");
-        body.push(`<li>${inlineHtml(block.text)}</li>`);
+        item(index, "ol");
+        body.push(`<li>${inlineHtml(block.text)}`);
         break;
       case "todo":
-        openList("ul");
+        item(index, "ul");
         body.push(
           `<li class="t"><input type="checkbox" disabled${
             block.done ? " checked" : ""
-          }> ${inlineHtml(block.text)}</li>`,
+          }> ${inlineHtml(block.text)}`,
         );
         break;
       case "quote":
@@ -148,6 +164,7 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
                border-left: 3px solid #c9c9c9; color: #555; }
   .m { font-style: italic; }
   li.t { list-style: none; margin-left: -1.2rem; }
+  mark { background: #fbf1dc; color: inherit; padding: 0 0.1em; }
   hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
 </style>
 <h1>${escapeHtml(title)}</h1>
@@ -158,13 +175,15 @@ ${body.join("\n")}
 
 /** A page as plain words: the title, a blank line, then each line. */
 export function docToText(title: string, blocks: DocBlock[]): string {
-  const lines = blocks.map((b) => {
+  const layout = listLayout(blocks);
+  const lines = blocks.map((b, i) => {
     if (b.type === "divider") return "---";
     const text = plainRuns(blockText(b));
+    const indent = "    ".repeat(layout[i].depth);
     if (b.type === "heading") return text.toUpperCase();
-    if (b.type === "bullet") return `• ${text}`;
-    if (b.type === "numbered") return `- ${text}`;
-    if (b.type === "todo") return `[${b.done ? "x" : " "}] ${text}`;
+    if (b.type === "bullet") return `${indent}• ${text}`;
+    if (b.type === "numbered") return `${indent}${layout[i].number}. ${text}`;
+    if (b.type === "todo") return `${indent}[${b.done ? "x" : " "}] ${text}`;
     if (b.type === "quote") return `> ${text}`;
     return text;
   });

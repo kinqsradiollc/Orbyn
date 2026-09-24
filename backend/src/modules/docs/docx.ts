@@ -1,5 +1,6 @@
 import {
   blockText,
+  listLayout,
   mathToText,
   parseDocInline,
   type DocBlock,
@@ -32,6 +33,7 @@ function run(piece: DocInline): string {
   if (piece.code || piece.math)
     marks.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>');
   if (piece.link) marks.push('<w:color w:val="1155CC"/><w:u w:val="single"/>');
+  if (piece.highlight) marks.push('<w:highlight w:val="yellow"/>');
   const text = esc(piece.math ? mathToText(piece.text) : piece.text);
   // xml:space keeps the spaces between words from being collapsed away.
   return `<w:r>${
@@ -48,19 +50,23 @@ const para = (style: string | null, runs: string, extra = "") =>
 
 const runsFor = (text: string) => parseDocInline(text).map(run).join("");
 
-function blockXml(block: DocBlock): string {
+/** A list paragraph's place in a numbering: which list, and how deep. */
+const listPr = (numId: number, depth: number) =>
+  `<w:numPr><w:ilvl w:val="${depth}"/><w:numId w:val="${numId}"/></w:numPr>`;
+
+function blockXml(block: DocBlock, depth = 0, numId = 2): string {
   switch (block.type) {
     case "heading":
       return para(`Heading${block.level}`, runsFor(block.text));
     case "bullet":
-      return para("ListParagraph", runsFor(block.text), BULLET);
+      return para("ListParagraph", runsFor(block.text), listPr(1, depth));
     case "numbered":
-      return para("ListParagraph", runsFor(block.text), NUMBER);
+      return para("ListParagraph", runsFor(block.text), listPr(numId, depth));
     case "todo":
       return para(
         "ListParagraph",
         runsFor(`${block.done ? "☑" : "☐"} ${block.text}`),
-        BULLET,
+        listPr(1, depth),
       );
     case "quote":
       return para("Quote", runsFor(block.text));
@@ -78,9 +84,6 @@ function blockXml(block: DocBlock): string {
       return para(null, runsFor(blockText(block)));
   }
 }
-
-const BULLET = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
-const NUMBER = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>';
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -117,13 +120,36 @@ ${style("Code", "Code", '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:rFonts
 ${style("ListParagraph", "List Paragraph", '<w:pPr><w:ind w:left="720"/><w:spacing w:after="80"/></w:pPr>')}
 </w:styles>`;
 
-/** One bulleted list and one numbered list, which is all a page needs. */
-const NUMBERING = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+/** Four levels of a list, each tucked in a step further than the last. */
+const levels = (lvl: (i: number) => string) =>
+  [0, 1, 2, 3]
+    .map(
+      (i) =>
+        `<w:lvl w:ilvl="${i}">${lvl(i)}<w:pPr><w:ind w:left="${720 + 360 * i}" w:hanging="360"/></w:pPr></w:lvl>`,
+    )
+    .join("");
+
+/**
+ * One bulleted list and one numbered list, each four levels deep. Every
+ * numbered list on the page is its own instance of the numbered one, so a
+ * list after a paragraph counts from its own start rather than carrying on
+ * from the list before it.
+ */
+const numbering = (
+  numbered: { numId: number; depth: number; start: number }[],
+) =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>
-<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>
+<w:abstractNum w:abstractNumId="0">${levels((i) => `<w:numFmt w:val="bullet"/><w:lvlText w:val="${["•", "◦", "▪", "•"][i]}"/>`)}</w:abstractNum>
+<w:abstractNum w:abstractNumId="1">${levels((i) => `<w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%${i + 1}."/>`)}</w:abstractNum>
 <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 <w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
+${numbered
+  .map(
+    (n) =>
+      `<w:num w:numId="${n.numId}"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="${n.depth}"><w:startOverride w:val="${n.start}"/></w:lvlOverride></w:num>`,
+  )
+  .join("\n")}
 </w:numbering>`;
 
 export function docToDocx(
@@ -131,11 +157,46 @@ export function docToDocx(
   blocks: DocBlock[],
   at = new Date(),
 ): Buffer {
+  const layout = listLayout(blocks);
+  // Each numbered list gets a numbering of its own (see `numbering`).
+  const numbered: { numId: number; depth: number; start: number }[] = [];
+  let lists: (number | null)[] = [];
+  let first = true;
+  const body = blocks.map((block, i) => {
+    const { depth, number } = layout[i];
+    if (
+      block.type !== "bullet" &&
+      block.type !== "numbered" &&
+      block.type !== "todo"
+    ) {
+      lists = [];
+      return blockXml(block);
+    }
+    lists = lists.slice(0, depth + 1);
+    while (lists.length < depth + 1) lists.push(null);
+    if (block.type !== "numbered") {
+      lists[depth] = null;
+      return blockXml(block, depth);
+    }
+    if (lists[depth] === null) {
+      // The first list counting from 1 uses the numbering as it stands;
+      // every other list is an instance of its own, restarted.
+      const start = number ?? 1;
+      if (first && start === 1 && depth === 0) lists[depth] = 2;
+      else {
+        const numId = numbered.length + 3;
+        numbered.push({ numId, depth, start });
+        lists[depth] = numId;
+      }
+      first = false;
+    }
+    return blockXml(block, depth, lists[depth]!);
+  });
   const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:body>
 ${para("Title", run({ text: title, start: 0 }))}
-${blocks.map(blockXml).join("\n")}
+${body.join("\n")}
 <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
 </w:body>
 </w:document>`;
@@ -146,7 +207,7 @@ ${blocks.map(blockXml).join("\n")}
       { name: "word/_rels/document.xml.rels", body: DOC_RELS },
       { name: "word/document.xml", body: document },
       { name: "word/styles.xml", body: STYLES },
-      { name: "word/numbering.xml", body: NUMBERING },
+      { name: "word/numbering.xml", body: numbering(numbered) },
     ],
     at,
   );

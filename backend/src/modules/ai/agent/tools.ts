@@ -1536,7 +1536,8 @@ async function searchDocs(
          FROM docs d
          LEFT JOIN projects p ON p.id = d.project_id
          CROSS JOIN q
-        WHERE ((d.team_id IS NULL AND d.user_id = $1)
+        WHERE d.deleted_at IS NULL
+          AND ((d.team_id IS NULL AND d.user_id = $1)
                OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
           AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
           AND ($3::text IS NULL OR d.kind = $3)
@@ -1571,7 +1572,7 @@ async function readDoc(ctx: AgentContext, a: { doc_id: string }) {
       updated_at: string;
     }>(
       `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
-        WHERE d.id = $2
+        WHERE d.id = $2 AND d.deleted_at IS NULL
           AND ((d.team_id IS NULL AND d.user_id = $1)
                OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
       [ctx.user.id, a.doc_id],
@@ -1676,7 +1677,7 @@ async function proposeDocEdit(
   const doc = (
     await pool.query<{ id: string; content: DocBlock[]; title: string }>(
       `SELECT d.id, d.content, d.title FROM docs d
-        WHERE d.id = $2
+        WHERE d.id = $2 AND d.deleted_at IS NULL
           AND ((d.team_id IS NULL AND d.user_id = $1)
                OR d.team_id IN (SELECT team_id FROM team_members
                                  WHERE user_id = $1))`,
