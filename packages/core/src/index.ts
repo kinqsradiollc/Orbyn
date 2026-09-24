@@ -8,6 +8,7 @@ export * from "./time.js";
 export * from "./planner.js";
 export * from "./deadlines.js";
 export * from "./fit.js";
+export * from "./today.js";
 export * from "./priority.js";
 export * from "./presentation.js";
 export * from "./richText.js";

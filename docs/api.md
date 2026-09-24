@@ -1619,6 +1619,102 @@ same room. The
 apps show the status on a task's Sessions card; task rows show it only within a week of the
 deadline or when a session falls after it (`fitChipShown`).
 
+## Today and planned time
+
+Planned time (sessions) and the deadline stay separate. These two reads put them side by side:
+one Today list, and the planned time behind "Planned 9:15" and the status chips on task rows. Both
+only read. A malformed query string is `400`; an account that hasn't confirmed its email gets
+`403`, as everywhere.
+
+### `GET /today?timezone=` (auth)
+
+The day's events, your sessions, your tasks due today and late ones, in one list (`todayList` in
+`@orbyn/core`). The day is `timezone`'s (send the device's), or your planner's when left out.
+
+```json
+{
+  "day": "2026-09-24",
+  "timezone": "Australia/Melbourne",
+  "now": "2026-09-24T02:00:00.000Z",
+  "from": "2026-09-23T14:00:00.000Z",
+  "to": "2026-09-24T14:00:00.000Z",
+  "rows": [
+    {
+      "key": "task:…",
+      "kind": "task",
+      "at": "2026-09-24T01:00:00.000Z",
+      "item_id": "…",
+      "title": "Send invoice",
+      "due": "today",
+      "deadline_at": "2026-09-24T07:00:00.000Z",
+      "due_all_day": false,
+      "sessions": [{ "id": "…", "start_at": "…", "end_at": "…" }],
+      "fit": { "status": "on_track", "label": "On track", "…": "…" },
+      "chips": [
+        { "kind": "planned", "starts": ["2026-09-24T01:00:00.000Z"] },
+        {
+          "kind": "due",
+          "deadline_at": "2026-09-24T07:00:00.000Z",
+          "all_day": false
+        }
+      ],
+      "action": "focus",
+      "past": false
+    }
+  ],
+  "late_total": 1,
+  "unfinished": [
+    {
+      "block_id": "…",
+      "item_id": "…",
+      "title": "Competitor review",
+      "start_at": "…",
+      "end_at": "…",
+      "yesterday": true
+    }
+  ]
+}
+```
+
+`rows` run in time order: all-day events first, then events (yours, your teams' and the calendars
+you subscribe to and show; `calendar` names a subscribed one, whose `item_id` is null), your
+sessions (`block_id`, `part`/`parts`, `deadline_at`, `after_deadline`) and your tasks due today
+(yours, or assigned to you). A task due today sits at its first session today, or at its deadline
+when it has none. A task that is both planned and due today is **one row with two chips**
+(`planned` and `due`), never a session row as well. Late tasks (due on an earlier day) come last,
+latest deadline first: at most 20, with `late_total` counting them all; a late task with a session
+today joins that session's place instead. A task due today that isn't on track has a `fit` chip
+("Nothing planned", "Short 1h", "At risk"). Finished tasks and their sessions, and cancelled
+events, are left out.
+
+Every row has the same fields (null or empty when they don't apply). `action` is `"focus"` when
+time is planned now or later today, `"plan"` for a task due today or late with time still missing
+(`fit.short_minutes > 0`), or null. `past` marks an event or session that's over. `unfinished`
+holds sessions from earlier days whose task is still open with no time planned since (the review's
+rule, latest first); the apps offer Plan again (`POST /planner/roll-forward` with its `block_id`).
+`todayRowWords`, `todayChipText` and `unfinishedHeading` in `@orbyn/core` give the words both apps
+use ("9:15–10:00 · Session 1 · due Tue 6 Oct", "Due today 5 pm", "Late · due Tue 22 Sep",
+"Not finished yesterday").
+
+### `GET /planned?item_ids=&from=&to=` (auth)
+
+Your planned time, task by task, kept apart from the task itself (sessions change without the task
+changing, and devices sync tasks by `updated_at`):
+
+- `item_ids` (comma-separated, up to 200): those tasks, any you can see;
+- without it: every open task that's yours to plan (your own, or assigned to you), plus any task
+  with a session of yours in the window;
+- `from` and `to` (together, at most 62 days): each task lists your sessions in that window.
+
+→ `{ from, to, tasks: [{ item_id, sessions, next, planned_minutes, late_minutes, fit }] }`.
+`sessions` are `{ id, start_at, end_at, after_deadline }` in the window, soonest first (none
+without one). `next` is your next session still to come or under way. `planned_minutes`,
+`late_minutes` and `fit` follow the rule above (the Sessions card's), with `fit` null for a
+finished task or one that isn't yours to plan and has none of your sessions. The apps ask for the
+device's day: a task row shows "Planned 9:15" for a session today (`plannedLabel`), its status only
+within a week of the deadline or when a session falls after it (`rowFitChip`), and "Tasks to
+place" hides tasks already on track and says "2 h still to plan" (`stillToPlan`).
+
 ## Planner
 
 | Method and path                                              | Body / result                                                                                                                                                                                                                            |

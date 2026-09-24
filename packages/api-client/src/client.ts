@@ -1,6 +1,8 @@
 import {
   HttpError,
   type ItemSessions,
+  type PlannedFeed,
+  type TodayList,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -1283,6 +1285,30 @@ export class OrbynClient {
   /** What to do now: the free time until your next event and tasks for it. */
   getUpNext() {
     return this.request<UpNext>("/planner/next");
+  }
+  /**
+   * Today, planned and due in one list: events, your sessions, tasks due
+   * today and late ones, and unfinished sessions from earlier days. The day
+   * is `timezone`'s (pass the device's), or the planner's.
+   */
+  today(timezone?: string) {
+    const q = timezone ? `?${new URLSearchParams({ timezone })}` : "";
+    return this.request<TodayList>(`/today${q}`);
+  }
+  /**
+   * Your planned time, task by task, with each task's status: some tasks
+   * (`item_ids`), or every open task that's yours to plan plus any with a
+   * session in the window (`from`, `to`), whose sessions each lists.
+   */
+  planned(options: { item_ids?: string[]; from?: string; to?: string } = {}) {
+    const q = new URLSearchParams();
+    if (options.item_ids?.length) q.set("item_ids", options.item_ids.join(","));
+    if (options.from && options.to) {
+      q.set("from", options.from);
+      q.set("to", options.to);
+    }
+    const text = q.toString();
+    return this.request<PlannedFeed>(`/planned${text ? `?${text}` : ""}`);
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {

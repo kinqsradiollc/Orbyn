@@ -901,6 +901,44 @@ export const rangeQuery = z
     "Ask for 62 days or fewer at a time",
   );
 
+/** `GET /today`: the day in this zone (the planner's when left out). */
+export const todayQuery = z.object({ timezone: timeZoneField.optional() });
+
+/** Planned-feed tasks asked for at once, at most. */
+export const PLANNED_MAX_IDS = 200;
+
+/**
+ * `GET /planned`: some tasks by id (`item_ids`, comma-separated), a window
+ * whose sessions to list (`from` and `to`, together), or both.
+ */
+export const plannedQuery = z
+  .object({
+    item_ids: z
+      .preprocess(
+        (v) =>
+          typeof v === "string"
+            ? v
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : v,
+        z.array(z.uuid()).min(1).max(PLANNED_MAX_IDS),
+      )
+      .optional(),
+    from: instant.optional(),
+    to: instant.optional(),
+  })
+  .refine((d) => !d.from === !d.to, "Give both from and to, or neither")
+  .refine(
+    (d) => !d.from || !d.to || Date.parse(d.to) > Date.parse(d.from),
+    "End must be after start",
+  )
+  .refine(
+    (d) =>
+      !d.from || !d.to || Date.parse(d.to) - Date.parse(d.from) <= MAX_RANGE_MS,
+    "Ask for 62 days or fewer at a time",
+  );
+
 const blockTimes = {
   start_at: instant,
   end_at: instant,

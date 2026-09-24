@@ -445,6 +445,59 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ItemSessions" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /today:
+    get:
+      tags: [Sessions]
+      summary: Today, planned and due in one list
+      description: |
+        The day's events, your sessions, your tasks due today and late ones.
+        A task both planned and due today is one row with two chips. Also
+        unfinished sessions from earlier days. Reads only.
+      parameters:
+        - name: timezone
+          in: query
+          required: false
+          description: The zone whose day it is (the device's); the planner's when left out.
+          schema: { type: string, example: Australia/Melbourne }
+      responses:
+        "200":
+          description: The Today list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TodayList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /planned:
+    get:
+      tags: [Sessions]
+      summary: Your planned time, task by task, with each task's status
+      description: |
+        With `item_ids`, those tasks (any you can see); without, every open
+        task that's yours to plan plus any with a session of yours in the
+        window. With `from` and `to` (together, 62 days at most), each task
+        lists your sessions in that window.
+      parameters:
+        - name: item_ids
+          in: query
+          required: false
+          description: Task ids, comma-separated (200 at most).
+          schema: { type: string }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: The planned feed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannedFeed" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   /lists:
     get:
@@ -955,6 +1008,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: A malformed request, such as a query string that doesn't parse; `message` says why
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     Invalid:
       description: Validation failed; `message` lists why
       content:
@@ -1209,6 +1267,124 @@ components:
         late_minutes:
           type: integer
           description: Time still to come in sessions that end after the deadline.
+    DeadlineFit:
+      description: A task's one "does it fit?" status against its deadline.
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              on_track,
+              short,
+              late_session,
+              unplanned,
+              at_risk,
+              overdue,
+              no_deadline,
+            ]
+        label: { type: string, example: Short 2h }
+        needed_minutes: { type: integer }
+        planned_minutes: { type: integer }
+        late_minutes: { type: integer }
+        short_minutes: { type: integer }
+        free_minutes: { type: [integer, "null"] }
+        deadline_at: { type: [string, "null"], format: date-time }
+    PlannedFeed:
+      description: Your planned time, task by task.
+      type: object
+      properties:
+        from: { type: [string, "null"], format: date-time }
+        to: { type: [string, "null"], format: date-time }
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              item_id: { type: string, format: uuid }
+              sessions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    start_at: { type: string, format: date-time }
+                    end_at: { type: string, format: date-time }
+                    after_deadline: { type: boolean }
+              next:
+                type: [object, "null"]
+                properties:
+                  start_at: { type: string, format: date-time }
+                  end_at: { type: string, format: date-time }
+              planned_minutes: { type: integer }
+              late_minutes: { type: integer }
+              fit:
+                oneOf:
+                  - { $ref: "#/components/schemas/DeadlineFit" }
+                  - { type: "null" }
+    TodayList:
+      description: Today, planned and due in one list.
+      type: object
+      properties:
+        day: { type: string, example: "2026-09-24" }
+        timezone: { type: string }
+        now: { type: string, format: date-time }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              kind: { type: string, enum: [event, session, task] }
+              at: { type: [string, "null"], format: date-time }
+              start_at: { type: [string, "null"], format: date-time }
+              end_at: { type: [string, "null"], format: date-time }
+              all_day: { type: boolean }
+              item_id: { type: [string, "null"], format: uuid }
+              block_id: { type: [string, "null"], format: uuid }
+              occurrence: { type: [string, "null"], format: date-time }
+              calendar: { type: [string, "null"] }
+              title: { type: string }
+              due: { type: [string, "null"], enum: [today, late, null] }
+              deadline_at: { type: [string, "null"], format: date-time }
+              due_all_day: { type: boolean }
+              part: { type: [integer, "null"] }
+              parts: { type: [integer, "null"] }
+              after_deadline: { type: boolean }
+              sessions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    start_at: { type: string, format: date-time }
+                    end_at: { type: string, format: date-time }
+              fit:
+                oneOf:
+                  - { $ref: "#/components/schemas/DeadlineFit" }
+                  - { type: "null" }
+              chips:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    kind: { type: string, enum: [planned, due, fit] }
+              action: { type: [string, "null"], enum: [focus, plan, null] }
+              past: { type: boolean }
+        late_total: { type: integer }
+        unfinished:
+          type: array
+          items:
+            type: object
+            properties:
+              block_id: { type: string, format: uuid }
+              item_id: { type: string, format: uuid }
+              title: { type: string }
+              start_at: { type: string, format: date-time }
+              end_at: { type: string, format: date-time }
+              yesterday: { type: boolean }
     WebhookEvent:
       type: string
       enum:

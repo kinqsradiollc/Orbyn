@@ -29,10 +29,12 @@ import {
   placeUpdate,
   plannerPrefsInput,
   planApplyInput,
+  plannedQuery,
   planPreviewInput,
   planTuneInput,
   rangeQuery,
   rollForwardInput,
+  todayQuery,
   type CalendarView,
   type EstimateModel,
   type ItemSessions,
@@ -48,11 +50,13 @@ import {
   type Plan,
   type PlanApplied,
   type PlanMove,
+  type PlannedFeed,
   type PlannerAnalytics,
   type PlannerPrefs,
   type PlannerReview,
   type PlanStaleness,
   type TimeBlock,
+  type TodayList,
 } from "@orbyn/core";
 import { z } from "zod";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
@@ -91,6 +95,9 @@ import { buildEvening, buildMorning } from "../../worker/digest.js";
 import { loadEstimateModel } from "./estimates.js";
 import { loadLearning } from "./learning.js";
 import { upNext } from "./next.js";
+import { plannedFeed } from "./planned.js";
+import { todayFor } from "./today.js";
+import { validationMessage } from "../../services/http.js";
 import { emailEnabled, sendEmail } from "../../worker/channels/email.js";
 import {
   createHabit,
@@ -175,6 +182,19 @@ function publicOrigin(r: FastifyRequest) {
     (r.headers["x-forwarded-proto"] as string | undefined) ?? r.protocol;
   const prefix = (r.headers["x-forwarded-prefix"] as string | undefined) ?? "";
   return `${proto}://${host}${prefix.replace(/\/$/, "")}`;
+}
+
+/**
+ * A query string checked by `schema`. A malformed one is refused with 400
+ * (the request itself is wrong, not the data it would send).
+ */
+function queryOf<T extends z.ZodType>(
+  schema: T,
+  r: FastifyRequest,
+): z.output<T> {
+  const parsed = schema.safeParse(r.query ?? {});
+  if (!parsed.success) fail(400, validationMessage(parsed.error.issues));
+  return parsed.data;
 }
 
 export async function plannerRoutes(app: FastifyInstance) {
@@ -358,6 +378,26 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.get("/planner/next", async (r): Promise<UpNext> => {
     const u = await authenticate(r);
     return upNext(reader(r.headers), u.id);
+  });
+
+  // Today, planned and due in one list: the day's events, your sessions,
+  // your tasks due today and late ones (one row, two chips, when a task is
+  // both planned and due), and unfinished sessions from earlier days. The
+  // day is `timezone`'s (the device's), or the planner's.
+  app.get("/today", async (r): Promise<TodayList> => {
+    const u = await authenticate(r);
+    const q = queryOf(todayQuery, r);
+    return todayFor(reader(r.headers), u.id, new Date(), q.timezone);
+  });
+
+  // Your planned time, task by task, with each task's "does it fit?"
+  // status: some tasks (`item_ids`), or every open task that's yours to plan
+  // plus any with a session in the window (`from`, `to`), whose sessions
+  // each task lists. Kept out of the task itself (see planned.ts).
+  app.get("/planned", async (r): Promise<PlannedFeed> => {
+    const u = await authenticate(r);
+    const q = queryOf(plannedQuery, r);
+    return plannedFeed(reader(r.headers), u.id, q);
   });
 
   // Where your set-aside time went: totals, by list and by tag, over a window.

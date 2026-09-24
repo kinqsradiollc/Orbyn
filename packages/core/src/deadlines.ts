@@ -193,9 +193,9 @@ const localDay = (d: Date) =>
 
 /**
  * "5 pm" or "5:30 pm" where the device's clock has am and pm, "17:00" where
- * it doesn't (a bare "17" reads oddly).
+ * it doesn't (a bare "17" reads oddly). In `timeZone` when given.
  */
-function clock(at: Date, timeZone?: string) {
+export function clockLabel(at: Date, timeZone?: string) {
   const zone = timeZone ? { timeZone } : {};
   const twelve = new Intl.DateTimeFormat([], {
     hour: "numeric",
@@ -225,26 +225,39 @@ const namedAt = (deadline: string, allDay: boolean) =>
   new Date(Date.parse(deadline) - (allDay ? 60_000 : 0));
 
 /**
- * When something is due, briefly and in the device's zone: "today 5 pm",
- * "tomorrow", "Fri 5 pm" within a week, else "Fri 16 Oct". All-day dates
- * leave the time out.
+ * Whole days from `now`'s day to `at`'s: in `timeZone` when given, else on
+ * the device's clock.
+ */
+export function daysFrom(now: Date, at: Date, timeZone?: string): number {
+  if (!timeZone) return Math.round((localDay(at) - localDay(now)) / DAY_MS);
+  const key = (d: Date) => Date.parse(`${localDateKey(d, timeZone)}T00:00:00Z`);
+  return Math.round((key(at) - key(now)) / DAY_MS);
+}
+
+/**
+ * When something is due, briefly: "today 5 pm", "tomorrow", "Fri 5 pm"
+ * within a week, else "Fri 16 Oct". All-day dates leave the time out. In
+ * the device's zone, or `timeZone`'s when given.
  */
 export function dueWhen(
   deadline: string,
   allDay = false,
   now = new Date(),
+  timeZone?: string,
 ): string {
   const at = namedAt(deadline, allDay);
-  const days = Math.round((localDay(at) - localDay(now)) / DAY_MS);
-  const time = allDay ? "" : ` ${clock(at)}`;
+  const days = daysFrom(now, at, timeZone);
+  const zone = timeZone ? { timeZone } : {};
+  const time = allDay ? "" : ` ${clockLabel(at, timeZone)}`;
   if (days === 0) return `today${time}`;
   if (days === 1) return `tomorrow${time}`;
   if (days > 1 && days < SESSION_DUE_SOON_DAYS)
-    return `${at.toLocaleDateString([], { weekday: "short" })}${time}`;
+    return `${at.toLocaleDateString([], { weekday: "short", ...zone })}${time}`;
   return at.toLocaleDateString([], {
     weekday: "short",
     day: "numeric",
     month: "short",
+    ...zone,
   });
 }
 
@@ -298,7 +311,7 @@ export function dueDate(
     month: "short",
     ...(timeZone ? { timeZone } : {}),
   });
-  return allDay ? day : `${day}, ${clock(at, timeZone)}`;
+  return allDay ? day : `${day}, ${clockLabel(at, timeZone)}`;
 }
 
 /**
@@ -343,7 +356,7 @@ export function dueLine(item: DeadlineSource): string | null {
   const start = new Date(item.due_at);
   const startsOn =
     localDay(start) === localDay(new Date(deadline))
-      ? clock(start)
+      ? clockLabel(start)
       : dueDate(start.toISOString());
   return `${due} · starts ${startsOn}`;
 }
@@ -352,9 +365,14 @@ export function dueLine(item: DeadlineSource): string | null {
  * The second line on a session's calendar tile: "Session 2 · due Fri 5 pm",
  * "Session 3 · after the deadline", "Due tomorrow 5 pm" or "Session 2 of 3".
  * It shows when the task has more than one session, is due within a week,
- * or the session ends after the deadline; otherwise null.
+ * or the session ends after the deadline; otherwise null. Days and times in
+ * the device's zone, or `timeZone`'s when given.
  */
-export function sessionLine(s: SessionWords, now = new Date()): string | null {
+export function sessionLine(
+  s: SessionWords,
+  now = new Date(),
+  timeZone?: string,
+): string | null {
   const numbered = (s.parts ?? 1) > 1 ? `Session ${s.part}` : "";
   const join = (text: string) =>
     numbered ? `${numbered} · ${text}` : text[0].toUpperCase() + text.slice(1);
@@ -365,7 +383,9 @@ export function sessionLine(s: SessionWords, now = new Date()): string | null {
     deadline >= now.getTime() &&
     deadline - now.getTime() <= SESSION_DUE_SOON_DAYS * DAY_MS;
   if (s.deadline_at && (soon || numbered))
-    return join(`due ${dueWhen(s.deadline_at, !!s.due_all_day, now)}`);
+    return join(
+      `due ${dueWhen(s.deadline_at, !!s.due_all_day, now, timeZone)}`,
+    );
   return numbered ? `${numbered} of ${s.parts}` : null;
 }
 
