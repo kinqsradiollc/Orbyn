@@ -23,6 +23,8 @@ import {
 import { EmptyState } from "../../components/EmptyState";
 import { WorkspaceStrip } from "./WorkspaceStrip";
 import { UpNextCard } from "./UpNextCard";
+import { TodayCard } from "./TodayCard";
+import { usePlanned } from "../../app/planned";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -43,6 +45,16 @@ type Props = {
   onPlanDay: () => void;
   /** Starts focus mode on a task. */
   onFocus: (item: Item) => void;
+  /** Opens a task or event by id (from the Today card). */
+  onOpenById: (id: string) => void;
+  /** Plans time for a task, looking ahead as far as its deadline. */
+  onPlanIt: (itemId: string) => void;
+  /** A plan for an unfinished session's work. */
+  onPlanAgain: (blockId: string) => void;
+  /** "Plan my day": today in the calendar with a plan preview. */
+  onPlanMyDay: () => void;
+  /** Every late task, in My tasks. */
+  onShowLate: () => void;
 };
 
 export function OverviewView({
@@ -56,8 +68,20 @@ export function OverviewView({
   onPlanDay,
   onOpenDoc,
   onFocus,
+  onOpenById,
+  onPlanIt,
+  onPlanAgain,
+  onPlanMyDay,
+  onShowLate,
 }: Props) {
   const now = new Date();
+  const planned = usePlanned();
+  /** Focus on a task by id: the listed copy, else the task opens instead. */
+  const focusById = (id: string) => {
+    const item = items.find((i) => i.id === id);
+    if (item) onFocus(item);
+    else onOpenById(id);
+  };
   const {
     pending,
     today,
@@ -131,6 +155,40 @@ export function OverviewView({
       </section>
       <div className="overview-grid">
         <div>
+          {/* Older servers have no Today list: what's due today, as before. */}
+          {!planned.ready || planned.today ? (
+            <TodayCard
+              today={planned.today}
+              onOpen={onOpenById}
+              onFocus={focusById}
+              onPlanIt={onPlanIt}
+              onPlanAgain={onPlanAgain}
+              onOpenCalendar={() => onNavigate("Calendar")}
+              onPlanDay={onPlanMyDay}
+              onShowLate={onShowLate}
+            />
+          ) : (
+            <OverviewSection
+              icon={Sun}
+              title="Due today"
+              count={today.length}
+              className="ov-due-today"
+            >
+              {today.length ? (
+                rows(today)
+              ) : (
+                <EmptyState
+                  icon={Sun}
+                  title="A little breathing room."
+                  body="Nothing due today. Add something worth making time for."
+                >
+                  <button className="text-button" onClick={onNewItem}>
+                    Plan something <Plus size={14} />
+                  </button>
+                </EmptyState>
+              )}
+            </OverviewSection>
+          )}
           {attention.length > 0 && (
             <OverviewSection
               icon={AlertTriangle}
@@ -162,26 +220,6 @@ export function OverviewView({
               <p className="section-empty">
                 {inProgressEmpty(inProgressCount)}
               </p>
-            )}
-          </OverviewSection>
-          <OverviewSection
-            icon={Sun}
-            title="Due today"
-            count={today.length}
-            className="ov-due-today"
-          >
-            {today.length ? (
-              rows(today)
-            ) : (
-              <EmptyState
-                icon={Sun}
-                title="A little breathing room."
-                body="Nothing due today. Add something worth making time for."
-              >
-                <button className="text-button" onClick={onNewItem}>
-                  Plan something <Plus size={14} />
-                </button>
-              </EmptyState>
             )}
           </OverviewSection>
         </div>

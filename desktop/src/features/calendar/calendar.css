@@ -984,6 +984,9 @@
   font-size: 11px;
   color: #6f7b72;
 }
+.schedule-main .plan-chip {
+  margin-top: 4px;
+}
 .panel-more {
   margin: 0 23px 14px;
 }

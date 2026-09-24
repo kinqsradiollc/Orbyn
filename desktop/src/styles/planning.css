@@ -1276,3 +1276,33 @@ kbd {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
+
+/* Planned time beside a task: "Planned 9:15", its status ("Short 2h",
+   "Nothing planned"), "2 h still to plan". Rows, Today and Tasks to place. */
+.item-plan {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+.plan-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+.plan-chip.is-accent,
+.plan-chip.is-ok {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+.plan-chip.is-warn {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}

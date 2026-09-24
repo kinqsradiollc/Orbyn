@@ -60,9 +60,19 @@ export const sizeOf = (i: Pick<Item, "estimate_minutes">): Size => {
 /** Due-date buckets for the task filter. */
 export type DueFilter =
   "any" | "overdue" | "today" | "tomorrow" | "soon" | "week" | "none";
-export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
+/**
+ * Whether a task falls in a due bucket. "today" is planned or due today:
+ * `plannedToday` holds the tasks with a session of yours today.
+ */
+export function matchesDue(
+  i: Item,
+  due: DueFilter,
+  now = new Date(),
+  plannedToday?: Set<string>,
+) {
   if (due === "any") return true;
   if (due === "none") return !i.due_at;
+  if (due === "today" && plannedToday?.has(i.id)) return true;
   if (!i.due_at) return false;
   if (due === "overdue") return isOverdue(i, now);
   // The day it's due by: an all-day task's last day, a span's end.

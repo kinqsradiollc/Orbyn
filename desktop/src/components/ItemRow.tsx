@@ -10,7 +10,14 @@ import {
   ListTree,
   Users,
 } from "lucide-react";
-import { dateLabel, isClosed, type Item } from "@orbyn/core";
+import {
+  dateLabel,
+  isClosed,
+  plannedLabel,
+  rowFitChip,
+  type Item,
+} from "@orbyn/core";
+import { usePlanned } from "../app/planned";
 import { stagger } from "../lib/motion";
 import { minutesLabel } from "../lib/planning";
 import { progressOf, stepsLabel, updatesLabel } from "../lib/tasks";
@@ -77,6 +84,12 @@ export function ItemRow({
     i.kind === "task" && !isClosed(i.status) && i.remaining_minutes != null
       ? `${minutesLabel(i.remaining_minutes)} left`
       : null;
+  // "Planned 9:15" for a session today, and the task's status only within a
+  // week of its deadline or with a session after it.
+  const planned = usePlanned().byItem.get(i.id);
+  const open = i.kind === "task" && !isClosed(i.status);
+  const plannedToday = open ? plannedLabel(planned) : null;
+  const fitChip = open ? rowFitChip(planned?.fit) : null;
   return (
     <div
       className={
@@ -124,6 +137,18 @@ export function ItemRow({
             : i.notes || (i.team_id ? "Team plan" : "Personal")}
           {i.due_at && " · " + dateLabel(i.due_at)}
         </span>
+        {(plannedToday || fitChip) && (
+          <span className="item-plan">
+            {plannedToday && (
+              <span className="plan-chip is-accent">{plannedToday}</span>
+            )}
+            {fitChip && (
+              <span className={`plan-chip is-${fitChip.tone}`}>
+                {fitChip.text}
+              </span>
+            )}
+          </span>
+        )}
         {(showProgress || steps || updates || subtasks || left) && (
           <span className="item-progress-line">
             {showProgress && (
