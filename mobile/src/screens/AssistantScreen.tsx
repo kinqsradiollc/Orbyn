@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -16,7 +16,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { PlanView } from "../components/PlanView";
+import { PlanView, tickedMoves } from "../components/PlanView";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion } from "../motion";
@@ -142,8 +142,11 @@ export function AssistantScreen({
                   <PlanCard
                     plan={turn.proposal.plan}
                     applied={turn.planApplied}
+                    result={turn.planResult}
                     busy={locked}
-                    onApply={() => void assistant.applyPlan(turn.id)}
+                    onApply={(moves) =>
+                      void assistant.applyPlan(turn.id, moves)
+                    }
                   />
                 )}
               </View>
@@ -220,18 +223,27 @@ export function AssistantComposer({
   );
 }
 
-/** A schedule the assistant planned, to review and apply as time blocks. */
+/**
+ * A schedule the assistant planned, to review and apply: its sessions, the
+ * late sessions it can move before their deadline (the planner's own ticked,
+ * yours unticked) and what's at risk. Once applied, it says what it did.
+ */
 function PlanCard({
   plan,
   applied,
+  result,
   busy,
   onApply,
 }: {
   plan: Plan;
   applied: boolean;
+  /** What applying did, in words (when applied here). */
+  result?: string;
   busy: boolean;
-  onApply: () => void;
+  onApply: (moves: string[]) => void;
 }) {
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
+  const chosen = tickedMoves(plan, ticks);
   return (
     <FadeIn style={s.plan}>
       <View style={s.planHead}>
@@ -240,7 +252,16 @@ function PlanCard({
           Proposed schedule
         </Text>
       </View>
-      <PlanView plan={plan} limit={6} />
+      <PlanView
+        plan={applied ? { ...plan, applied: true } : plan}
+        limit={6}
+        ticks={ticks}
+        onTick={
+          applied || busy
+            ? undefined
+            : (id, on) => setTicks((t) => ({ ...t, [id]: on }))
+        }
+      />
       {applied ? (
         <View style={s.planDone}>
           <Icon
@@ -249,15 +270,17 @@ function PlanCard({
             color={colors.accent}
             strokeWidth={2.4}
           />
-          <Text style={s.planDoneText}>Added to your calendar</Text>
+          <Text style={s.planDoneText} accessibilityRole="alert">
+            {result ?? "Added to your calendar"}
+          </Text>
         </View>
       ) : (
         <Button
-          title="Apply plan"
+          title="Apply"
           icon="check"
-          disabled={busy || plan.blocks.length === 0}
+          disabled={busy || (plan.blocks.length === 0 && chosen.length === 0)}
           style={s.planButton}
-          onPress={onApply}
+          onPress={() => onApply(chosen)}
         />
       )}
     </FadeIn>
@@ -481,13 +504,15 @@ const s = themed(() =>
     planButton: { marginTop: 12, marginBottom: 0 },
     planDone: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 6,
       marginTop: 12,
     },
     planDoneText: {
+      flex: 1,
       fontFamily: fonts.semibold,
       fontSize: 13,
+      lineHeight: 18,
       color: colors.accent,
     },
   }),

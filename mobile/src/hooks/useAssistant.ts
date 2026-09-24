@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  planOutcome,
   proposalNote,
   type ChatTurn,
   type Item,
@@ -21,6 +22,11 @@ export type Turn =
       before: Item[];
       /** Whether the schedule in `proposal.plan` has been applied. */
       planApplied: boolean;
+      /**
+       * What applying it did, in words ("Planned 3 tasks today · Moved 1
+       * session before its deadline."), once applied here.
+       */
+      planResult?: string;
     };
 
 type Options = {
@@ -167,18 +173,22 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     if (id) setState(id, "discarded");
   };
 
-  /** Save the schedule a reply planned (its time blocks) to the calendar. */
-  const applyPlan = (turnId: string) => {
+  /**
+   * Save the schedule a reply planned (its sessions) to the calendar, moving
+   * the late sessions ticked (`moves`; the planner's choice when omitted).
+   */
+  const applyPlan = (turnId: string, moves?: string[]) => {
     const turn = turnsRef.current.find((t) => t.id === turnId);
     if (!turn || turn.role !== "assistant" || !turn.proposal.plan)
       return Promise.resolve();
     const plan = turn.proposal.plan;
     return act(async () => {
-      await client.applyPlan(plan.id);
+      const result = await client.applyPlan(plan.id, moves ? { moves } : {});
+      const planResult = planOutcome(result, plan.at_risk);
       setTurns((t) =>
         t.map((x) =>
           x.id === turnId && x.role === "assistant"
-            ? { ...x, planApplied: true }
+            ? { ...x, planApplied: true, planResult }
             : x,
         ),
       );

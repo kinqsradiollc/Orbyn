@@ -515,6 +515,19 @@ button.step-title {
   gap: 6px 8px;
   margin: 0 0 8px;
 }
+/* The task's "does it fit?" status beside the summary. */
+.fit-chip.is-ok {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+.sessions-risk {
+  margin: -4px 0 8px;
+  color: var(--color-warn);
+}
+.sessions-empty .fit-chip {
+  margin-left: 4px;
+  vertical-align: 1px;
+}
 .sessions-list li {
   flex-wrap: wrap;
 }

@@ -166,7 +166,7 @@ type BlockProps = {
   onReschedule: () => void;
   onChangeTime: () => void;
   onDelete: () => void;
-  /** Plan this task before its deadline (offered on late sessions). */
+  /** Move it to free time before its deadline (offered on late sessions). */
   onFindTime?: () => void;
 };
 

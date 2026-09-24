@@ -14,6 +14,7 @@ import {
   freshItem,
   motion,
   planDayPrompt,
+  deadlineOf,
   hasSystemPermission,
   hasTeamPermission,
   itemBody,
@@ -484,9 +485,21 @@ export function RootScreen() {
     act(async () =>
       openPlanner(await client.rollForward(), "Move work forward"),
     );
-  /** A plan that includes this task (at-risk and due-soon notices). */
+  /**
+   * A plan that includes this task (at-risk and due-soon notices), looking
+   * ahead as far as its deadline.
+   */
   const startPlanIt = (itemId?: string | null) =>
-    act(async () => openPlanner(await planIncluding(itemId), "Plan my day"));
+    act(async () => {
+      const known = itemId ? items.find((i) => i.id === itemId) : undefined;
+      const item =
+        known ??
+        (itemId ? await client.getItem(itemId).catch(() => null) : null);
+      openPlanner(
+        await planIncluding(itemId, item ? deadlineOf(item) : null),
+        "Plan my day",
+      );
+    });
   /** A planner notice's action; the notice is marked read alongside. */
   const noticeAction = (n: Notice, start: () => Promise<void>) => {
     if (!n.read)
@@ -976,6 +989,14 @@ export function RootScreen() {
             setTab("Calendar");
             setSearch("");
             closeSheet();
+          }}
+          onShowDay={(at) => {
+            // Straight to the calendar: nothing reopens behind it.
+            back.current = [];
+            setSheet(null);
+            setSearch("");
+            setTab("Calendar");
+            setCalendarJump({ at, key: Date.now() });
           }}
         />
         <ListsSheet

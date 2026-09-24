@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
+  atRiskReason,
   deadlineOf,
   dueDate,
+  fitTone,
+  moveTimes,
   planDaysBefore,
   type Item,
   type ItemSessions,
@@ -15,6 +18,7 @@ import { Chip, ChipRow } from "./Chip";
 import { ErrorBanner } from "./ErrorBanner";
 import { TimeField } from "./Field";
 import { Icon } from "./Icon";
+import { Pill } from "./Pill";
 import { SmallAction } from "./SmallAction";
 import { client } from "../lib/api";
 import {
@@ -133,6 +137,10 @@ export function SessionsPanel({
   const findLabel = deadline ? "Find time before the deadline" : "Find time";
   const offered: PlannedBlock[] =
     plan?.blocks.filter((b) => b.item_id === item.id) ?? [];
+  // Its sessions after the deadline the plan would move before it: asked
+  // for here, so all of them are moved (yours too).
+  const moves = plan?.moves?.filter((m) => m.item_id === item.id) ?? [];
+  const fit = data?.fit ?? null;
 
   const find = () =>
     run(async () => {
@@ -147,7 +155,10 @@ export function SessionsPanel({
         days: planDaysBefore(deadline, new Date(), zone) ?? FIND_DAYS,
         timezone: deviceTimeZone(),
       });
-      const mine = next.blocks.filter((b) => b.item_id === item.id);
+      const mine = [
+        ...next.blocks.filter((b) => b.item_id === item.id),
+        ...(next.moves ?? []).filter((m) => m.item_id === item.id),
+      ];
       animateLayout();
       setPlan(mine.length ? next : null);
       setReason(
@@ -171,7 +182,7 @@ export function SessionsPanel({
   const bookAll = () =>
     run(async () => {
       if (!plan) return;
-      await client.applyPlan(plan.id);
+      await client.applyPlan(plan.id, { moves: moves.map((m) => m.block_id) });
       await done();
     });
 
@@ -211,7 +222,20 @@ export function SessionsPanel({
       {!!data && sessions.length > 0 && (
         <>
           <Text style={[shared.small, s.summary]}>{summary(data, item)}</Text>
-          {data.late_minutes > 0 && (
+          {fit && fit.status !== "no_deadline" && (
+            <View style={s.fitRow}>
+              <Pill
+                label={fit.label}
+                tone={fitTone(fit.status) === "warn" ? "warning" : "accent"}
+              />
+            </View>
+          )}
+          {fit?.status === "at_risk" && fit.free_minutes !== null && (
+            <Text style={[shared.small, s.riskText]}>
+              {atRiskReason(fit.short_minutes, fit.free_minutes)}
+            </Text>
+          )}
+          {data.late_minutes > 0 && fit?.status !== "late_session" && (
             <View style={s.lateChip}>
               <Text style={s.lateChipText}>
                 {minutesLabel(data.late_minutes)} after the deadline
@@ -260,33 +284,61 @@ export function SessionsPanel({
         </>
       )}
       {!!data && !sessions.length && (
-        <Text style={[shared.body, s.gapSmall]}>{emptyText(data, item)}</Text>
+        <>
+          <Text style={[shared.body, s.gapSmall]}>{emptyText(data, item)}</Text>
+          {fit && fit.status !== "no_deadline" && (
+            <View style={s.fitRow}>
+              <Pill
+                label={fit.label}
+                tone={fitTone(fit.status) === "warn" ? "warning" : "accent"}
+              />
+            </View>
+          )}
+        </>
       )}
 
-      {offered.length > 0 && (
+      {(offered.length > 0 || moves.length > 0) && (
         <View style={s.offer}>
-          <Text style={shared.label}>
-            {offered.length > 1
-              ? `${offered.length} sessions found`
-              : "Next free time"}
-          </Text>
+          {offered.length > 0 && (
+            <Text style={shared.label}>
+              {offered.length > 1
+                ? `${offered.length} sessions found`
+                : "Next free time"}
+            </Text>
+          )}
           {offered.map((b) => (
             <Text key={b.start_at} style={s.offerTime}>
               {slotLabel(b.start_at, b.end_at)}
               {b.parts > 1 ? ` · Session ${b.part}` : ""}
             </Text>
           ))}
+          {moves.length > 0 && (
+            <Text style={[shared.label, offered.length > 0 && s.gapSmall]}>
+              Move before the deadline
+            </Text>
+          )}
+          {moves.map((m) => (
+            <Text key={m.block_id} style={s.offerTime}>
+              {moveTimes(m)}
+            </Text>
+          ))}
           <Button
             title={
-              offered.length > 1
-                ? `Add these ${offered.length} sessions`
-                : "Book this time"
+              moves.length && !offered.length
+                ? moves.length > 1
+                  ? "Move them before the deadline"
+                  : "Move it before the deadline"
+                : moves.length
+                  ? "Apply"
+                  : offered.length > 1
+                    ? `Add these ${offered.length} sessions`
+                    : "Book this time"
             }
             icon="check"
             disabled={busy}
             style={s.offerButton}
             onPress={() =>
-              offered.length > 1
+              offered.length > 1 || moves.length
                 ? void bookAll()
                 : void book(
                     new Date(offered[0].start_at),
@@ -377,6 +429,8 @@ const s = themed(() =>
       marginBottom: 8,
     },
     summary: { marginBottom: 8 },
+    fitRow: { flexDirection: "row", marginBottom: 8 },
+    riskText: { color: colors.warning, marginBottom: 8 },
     lateChip: {
       alignSelf: "flex-start",
       paddingVertical: 3,

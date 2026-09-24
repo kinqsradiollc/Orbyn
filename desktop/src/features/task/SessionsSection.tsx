@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, CalendarPlus, Wand2 } from "lucide-react";
 import {
+  atRiskReason,
   dueDate,
+  fitTone,
   isClosed,
   type HttpError,
   type Item,
@@ -156,6 +158,22 @@ export function SessionsSection({
   const findLabel = data?.deadline_at
     ? "Find time before the deadline"
     : "Find time";
+  // Its one "does it fit?" status: "On track", "Short 2h", "Session after
+  // the deadline", "Nothing planned", "At risk" or "Deadline passed".
+  const fit = data?.fit ?? null;
+  const tone = fit ? fitTone(fit.status) : "muted";
+  const fitChip =
+    fit && fit.status !== "no_deadline" ? (
+      <span
+        className={"chip fit-chip " + (tone === "warn" ? "chip-warn" : "is-ok")}
+      >
+        {fit.label}
+      </span>
+    ) : null;
+  const riskText =
+    fit?.status === "at_risk" && fit.free_minutes !== null
+      ? atRiskReason(fit.short_minutes, fit.free_minutes)
+      : null;
 
   const row = (b: TimeBlock) => {
     const past = Date.parse(b.end_at) <= now;
@@ -238,17 +256,22 @@ export function SessionsSection({
         <>
           <p className="drawer-hint sessions-summary">
             {data && summary(data, item)}
-            {!!data?.late_minutes && (
+            {fitChip}
+            {!!data?.late_minutes && data.fit?.status !== "late_session" && (
               <span className="chip chip-warn">
                 {minutesLabel(data.late_minutes)} after the deadline
               </span>
             )}
           </p>
+          {riskText && <p className="drawer-hint sessions-risk">{riskText}</p>}
           <ul className="booked-list sessions-list">{sessions.map(row)}</ul>
         </>
       ) : (
         <div className="sessions-empty">
-          <p className="drawer-hint">{emptyText(data, item)}</p>
+          <p className="drawer-hint">
+            {emptyText(data, item)} {fitChip}
+          </p>
+          {riskText && <p className="drawer-hint sessions-risk">{riskText}</p>}
           {canPlan && onFindTime && (
             <button
               type="button"

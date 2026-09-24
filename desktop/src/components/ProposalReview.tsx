@@ -42,7 +42,7 @@ type Props = {
   /** Sends a suggested quick reply; only the latest reply gets one. */
   onFollowUp?: (text: string) => void;
   /** Saves the reply's plan (when it has one); resolves with a message. */
-  onApplyPlan?: (plan: Plan) => Promise<string>;
+  onApplyPlan?: (plan: Plan, moves?: string[]) => Promise<string>;
   /** Shows the reply's plan in the calendar's planner. */
   onOpenPlan?: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */
@@ -307,7 +307,7 @@ export function ProposalReview({
       {plan && (
         <PlanCard
           plan={plan}
-          onApply={onApplyPlan && (() => onApplyPlan(plan))}
+          onApply={onApplyPlan && ((moves) => onApplyPlan(plan, moves))}
           onOpenInPlanner={onOpenPlan && (() => onOpenPlan(plan))}
         />
       )}

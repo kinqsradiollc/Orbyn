@@ -1,5 +1,6 @@
 import {
   HttpError,
+  planDaysBefore,
   type BusyInterval,
   type Plan,
   type PlannedBlock,
@@ -155,9 +156,27 @@ export async function remakePlan(plan: Plan): Promise<Plan> {
   }
 }
 
-/** A fresh plan that makes sure one task is in it ("Plan it" on a notice). */
-export async function planIncluding(itemId?: string | null) {
-  const plan = await client.previewPlan({ timezone: deviceTimeZone() });
+/**
+ * A fresh plan that makes sure one task is in it ("Plan it" on a notice),
+ * looking ahead as far as the task's deadline (`deadline`, counted in the
+ * planner's zone) as the web does.
+ */
+export async function planIncluding(
+  itemId?: string | null,
+  deadline?: string | null,
+) {
+  let days: number | undefined;
+  if (deadline) {
+    const zone = await client
+      .getPlannerPrefs()
+      .then((p) => (p.timezone === "UTC" ? deviceTimeZone() : p.timezone))
+      .catch(() => deviceTimeZone());
+    days = planDaysBefore(deadline, new Date(), zone);
+  }
+  const plan = await client.previewPlan({
+    timezone: deviceTimeZone(),
+    ...(days ? { days } : {}),
+  });
   if (
     !itemId ||
     plan.tasks?.some((t) => t.item_id === itemId && t.included) ||

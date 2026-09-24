@@ -76,7 +76,7 @@ type Props = {
   onGoToProjects?: () => void;
   /** Shows a day in the calendar (from an event search result). */
   onJumpToDate: (date: Date) => void;
-  onApplyPlan: (plan: Plan) => Promise<string>;
+  onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   onOpenPlan: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;

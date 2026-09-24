@@ -18,8 +18,9 @@ import {
   emptyDay,
   itemBody,
   itemsOnDay,
+  lateSessionWarning,
   monthGrid,
-  planDaysBefore,
+  planOutcome,
   sameDay,
   sessionCount,
   type BusyInterval,
@@ -58,7 +59,6 @@ import { readLocal, saveLocal } from "../lib/localPrefs";
 import {
   canJoin,
   clockLabel,
-  deviceTimeZone,
   rangeLabel,
   shortDay,
   slotLabel,
@@ -263,6 +263,14 @@ export function CalendarScreen({
   const [skipped, setSkipped] = useState<FrameOccurrence | null>(null);
   /** A short message after an action ("Done. Next on …"). */
   const [note, setNote] = useState("");
+  /**
+   * A session that now ends after its task's deadline, with the warning
+   * ("This session ends after the deadline (Fri 5 pm)"): Keep it, or Find
+   * time before. Nothing is refused.
+   */
+  const [late, setLate] = useState<{ block: TimeBlock; text: string } | null>(
+    null,
+  );
   /** Options for whatever was held. */
   const [menu, setMenu] = useState<Menu | null>(null);
   /** Tasks to place, calendar sets or teammates. */
@@ -381,11 +389,40 @@ export function CalendarScreen({
     const timer = setTimeout(() => setNote(""), UNDO_MS);
     return () => clearTimeout(timer);
   }, [note]);
+  useEffect(() => {
+    if (!late) return;
+    // Left alone, it stays where it was put.
+    const timer = setTimeout(() => setLate(null), UNDO_MS * 2);
+    return () => clearTimeout(timer);
+  }, [late]);
   const showNote = (text: string) => {
     animateLayout();
+    setLate(null);
     setNote(text);
     AccessibilityInfo.announceForAccessibility(text);
   };
+  /** Warn when a session now ends after its task's deadline. */
+  const warnIfLate = (block: TimeBlock) => {
+    const text = lateSessionWarning(block);
+    if (!text) return false;
+    animateLayout();
+    setNote("");
+    setLate({ block, text: `${text}.` });
+    AccessibilityInfo.announceForAccessibility(text);
+    return true;
+  };
+  /** Move a session to the next free time that ends by its deadline. */
+  const moveBeforeDeadline = (block: TimeBlock) =>
+    act(async () => {
+      setLate(null);
+      const moved = await client.rescheduleBlock(block.id, {
+        before_deadline: true,
+      });
+      showNote(
+        `${block.title} moved to ${slotLabel(moved.start_at, moved.end_at)}, before the deadline.`,
+      );
+      reload();
+    });
 
   const sets = prefs?.calendar_sets ?? [];
   const activeSet = sets.find((set) => set.id === setId) ?? null;
@@ -619,10 +656,11 @@ export function CalendarScreen({
     if (!sameDay(start, selected)) select(start);
     void act(async () => {
       try {
-        await client.updateBlock(block.id, { start_at, end_at });
-        AccessibilityInfo.announceForAccessibility(
-          `${block.title} moved to ${slotLabel(start_at, end_at)}`,
-        );
+        const moved = await client.updateBlock(block.id, { start_at, end_at });
+        if (!warnIfLate(moved))
+          AccessibilityInfo.announceForAccessibility(
+            `${block.title} moved to ${slotLabel(start_at, end_at)}`,
+          );
       } finally {
         // On an error this puts the block back where it was.
         reload();
@@ -674,29 +712,8 @@ export function CalendarScreen({
       actions.push({
         label: "Find time before the deadline",
         icon: "sparkles",
-        // A preview for this task alone, up to its deadline, on the calendar.
-        run: () =>
-          void act(async () => {
-            const plan = await client.previewPlan({
-              item_ids: [block.item_id],
-              days: planDaysBefore(
-                block.deadline_at,
-                new Date(),
-                prefs?.timezone ?? deviceTimeZone(),
-              ),
-              timezone: deviceTimeZone(),
-            });
-            if (plan.blocks.some((b) => b.item_id === block.item_id))
-              onPreviewChange(plan);
-            else
-              showNote(
-                plan.unplaced.find((u) => u.item_id === block.item_id)
-                  ?.reason ??
-                  plan.tasks?.find((t) => t.item_id === block.item_id)
-                    ?.reason ??
-                  "There’s no free working time for this before it’s due.",
-              );
-          }),
+        // This session, moved to the next free time that ends by the deadline.
+        run: () => void moveBeforeDeadline(block),
       });
     if (open && onFocus)
       actions.push({
@@ -718,9 +735,10 @@ export function CalendarScreen({
         run: () =>
           void act(async () => {
             const moved = await client.rescheduleBlock(block.id);
-            showNote(
-              `${block.title} moved to ${slotLabel(moved.start_at, moved.end_at)}.`,
-            );
+            if (!warnIfLate(moved))
+              showNote(
+                `${block.title} moved to ${slotLabel(moved.start_at, moved.end_at)}.`,
+              );
             reload();
           }),
       },
@@ -734,9 +752,10 @@ export function CalendarScreen({
             void act(async () => {
               const copy = await client.duplicateBlock(block.id);
               reload();
-              showNote(
-                `Another session for ${block.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
-              );
+              if (!warnIfLate(copy))
+                showNote(
+                  `Another session for ${block.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
+                );
             }),
         },
         {
@@ -1105,14 +1124,12 @@ export function CalendarScreen({
   const applyPreview = () =>
     act(async () => {
       if (!preview) return;
+      // The moves the planner ticked; "Tune in planner" changes them.
       const result = await client.applyPlan(preview.id);
       onPreviewDone();
       reload();
       onChanged();
-      const n = result.blocks.length;
-      AccessibilityInfo.announceForAccessibility(
-        `Plan saved. ${n} session${n === 1 ? "" : "s"} added${result.skipped ? `; ${result.skipped} skipped because the time is taken` : ""}.`,
-      );
+      showNote(planOutcome(result, preview.at_risk));
     });
 
   const changeMode = (next: Mode) => {
@@ -1154,6 +1171,8 @@ export function CalendarScreen({
         ? "day"
         : mode;
   const planned = preview?.blocks.length ?? 0;
+  /** Late sessions the preview moves before their deadline (the ticked ones). */
+  const movesTicked = preview?.moves?.filter((m) => m.selected).length ?? 0;
   const mates = teammates.shown;
 
   /** One day's timeline: the first column scrolls the page to the hour. */
@@ -1300,10 +1319,13 @@ export function CalendarScreen({
           </View>
           <Text style={[shared.small, s.previewText]}>
             {planned} session{planned === 1 ? "" : "s"} proposed
-            {preview.days > 1 ? ` over ${preview.days} days` : ""}. Hold a faint
-            session to move it (sideways for another day; it stays where you put
-            it), or for options. Hold empty time and drag to keep it free.
-            Nothing is saved until you apply the plan.
+            {preview.days > 1 ? ` over ${preview.days} days` : ""}
+            {movesTicked
+              ? `, and ${movesTicked} late session${movesTicked === 1 ? "" : "s"} moved before ${movesTicked === 1 ? "its deadline" : "their deadlines"}`
+              : ""}
+            . Hold a faint session to move it (sideways for another day; it
+            stays where you put it), or for options. Hold empty time and drag to
+            keep it free. Nothing is saved until you apply the plan.
           </Text>
           {stale && (
             <View style={s.stale} accessibilityRole="alert">
@@ -1376,9 +1398,9 @@ export function CalendarScreen({
           )}
           <View style={s.previewActions}>
             <Button
-              title={handlers.busy ? "Saving…" : "Apply plan"}
+              title={handlers.busy ? "Saving…" : "Apply"}
               icon="check"
-              disabled={handlers.busy || planned === 0}
+              disabled={handlers.busy || (planned === 0 && movesTicked === 0)}
               style={s.previewButton}
               onPress={() => void applyPreview()}
             />
@@ -1518,6 +1540,28 @@ export function CalendarScreen({
           />
         </FadeIn>
       )}
+      {late && (
+        <FadeIn style={[s.undo, s.lateNote]}>
+          <Text style={[s.undoText, s.lateText]} accessibilityRole="alert">
+            {late.text}
+          </Text>
+          <View style={s.lateActions}>
+            <SmallAction
+              label="Keep it"
+              disabled={false}
+              onPress={() => {
+                animateLayout();
+                setLate(null);
+              }}
+            />
+            <SmallAction
+              label="Find time before"
+              disabled={handlers.busy}
+              onPress={() => void moveBeforeDeadline(late.block)}
+            />
+          </View>
+        </FadeIn>
+      )}
 
       {mode === "agenda" ? (
         <AgendaList
@@ -1632,13 +1676,14 @@ export function CalendarScreen({
         onClose={() => setMoving(null)}
         onSave={async (start, end) => {
           if (!moving) return;
-          await client.updateBlock(moving.id, {
+          const moved = await client.updateBlock(moving.id, {
             start_at: start.toISOString(),
             end_at: end.toISOString(),
           });
           setMoving(null);
           select(start);
           reload();
+          warnIfLate(moved);
         }}
       />
       <MoveBlockSheet
@@ -1654,9 +1699,10 @@ export function CalendarScreen({
           setDuplicating(null);
           select(start);
           reload();
-          showNote(
-            `Another session for ${copy.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
-          );
+          if (!warnIfLate(copy))
+            showNote(
+              `Another session for ${copy.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
+            );
         }}
       />
       <MoveBlockSheet
@@ -1726,6 +1772,10 @@ export function CalendarScreen({
         seed={planning?.seed ?? null}
         title={planning?.seed ? "Tune the plan" : "Plan my day"}
         teams={teams}
+        onShowDay={(at) => {
+          setPlanning(null);
+          select(new Date(at));
+        }}
         onClose={() => setPlanning(null)}
         onApplied={() => {
           onPreviewDone();
@@ -1824,6 +1874,13 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.text,
     },
+    lateNote: {
+      flexWrap: "wrap",
+      backgroundColor: colors.warningSoft,
+      borderColor: colors.warningBorder,
+    },
+    lateText: { flexBasis: "100%", color: colors.warningStrong },
+    lateActions: { flexDirection: "row", gap: 8 },
     join: { paddingVertical: 14 },
     joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },

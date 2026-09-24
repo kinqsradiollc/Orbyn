@@ -1289,19 +1289,25 @@ Same body. → `204`
 Up to 100 most recent in-app notices:
 `{ "id", "title", "body", "read", "created_at", "kind", "item_id", "ref" }[]`.
 
-| `kind`        | About                                                                  | `ref`               | Suggested action |
-| ------------- | ---------------------------------------------------------------------- | ------------------- | ---------------- |
-| `reminder`    | An item's reminder; the due time is in your planner time zone          | the alert (minutes) | Open the item    |
-| `rsvp`        | Someone you invited answered (one notice per person, updated)          | the attendee        | Open the event   |
-| `conflict`    | An event now overlaps a future session                                 | the session         | Reschedule       |
-| `booking`     | A booking was made, requested, moved or cancelled                      | the booking         | Open the booking |
-| `rollforward` | Sessions from earlier days are unfinished (from your working start)    | the local date      | Roll forward     |
-| `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date      | Plan it          |
-| `deadline`    | A task is due within `deadline_notice_days` with no session planned    | the local date      | Plan it          |
+| `kind`        | About                                                                   | `ref`               | Suggested action |
+| ------------- | ----------------------------------------------------------------------- | ------------------- | ---------------- |
+| `reminder`    | An item's reminder; the due time is in your planner time zone           | the alert (minutes) | Open the item    |
+| `rsvp`        | Someone you invited answered (one notice per person, updated)           | the attendee        | Open the event   |
+| `conflict`    | An event now overlaps a future session                                  | the session         | Reschedule       |
+| `booking`     | A booking was made, requested, moved or cancelled                       | the booking         | Open the booking |
+| `rollforward` | Sessions from earlier days are unfinished (from your working start)     | the local date      | Roll forward     |
+| `at_risk`     | A task's remaining estimate is more than the free time before it's due  | the local date      | Plan it          |
+| `deadline`    | A task is due within `deadline_notice_days` and isn't planned before it | the local date      | Plan it          |
 
 Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) come at most once a day per
 task (once per block for conflicts, once per day for roll-forward). They also go to push and email
 as your `planner_notices` preference says (push on and email off by default; email needs SMTP).
+
+All three planning notices follow one rule: **only time that ends by the deadline counts as
+planned** (see [Sessions and deadlines](#planner)). A session after the deadline never silences
+them: the due-soon notice then says "…but its session ends after the deadline. Plan it?", or
+"…and 1 h of it isn't planned before then" when only part is planned. Once a deadline has passed,
+sessions still to come are catch-up time: they keep that work from rolling forward again.
 
 ### `POST /notifications/:id/read` (auth)
 
@@ -1556,39 +1562,75 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
 | `project_id`     | The task's project, or null                                                                                                                                                                                           |
 
-| Method and path               | Body / result                                                                                                                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                 |
-| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                     |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                               |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                                                                                                                                 |
-| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                  |
-| `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days                                                                                                        |
-| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days |
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                      |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                          |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                    |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                              |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                       |
+| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by its task's deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                      |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
-sessions, planned_minutes, late_minutes }`: your sessions for the task, oldest first, past ones
+sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
 too (for a repeating task, those for its current occurrence and later ones);
 `planned_minutes` is the time still to come in sessions that end by the deadline (all of it
 without one), and `late_minutes` the time still to come in sessions that end after it.
 `project_deadline` is the deadline of the task's project, a latest date for its tasks that never
 becomes the task's own.
 
+**Does it fit?** `fit` is the task's one status against its deadline (`deadlineFit` in
+`@orbyn/core`), or null for a finished task or one that isn't yours to plan (a teammate's, when
+you have no sessions for it):
+
+```json
+{
+  "status": "late_session",
+  "label": "Session after the deadline",
+  "needed_minutes": 120,
+  "planned_minutes": 60,
+  "late_minutes": 60,
+  "short_minutes": 60,
+  "free_minutes": 300,
+  "deadline_at": "2026-10-02T07:00:00.000Z"
+}
+```
+
+| `status`       | `label`                    | When                                                                        |
+| -------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `on_track`     | On track                   | What it still needs is planned before the deadline                          |
+| `short`        | Short 2h                   | Some of it is planned before the deadline, not all                          |
+| `late_session` | Session after the deadline | A session falls after the deadline, and that time is missing before it      |
+| `unplanned`    | Nothing planned            | No time before the deadline                                                 |
+| `at_risk`      | At risk                    | There isn't enough free working time before the deadline for what's missing |
+| `overdue`      | Deadline passed            | The deadline has passed; sessions still to come count as catch-up time      |
+| `no_deadline`  | No deadline                | Nothing to measure against                                                  |
+
+`needed_minutes` is the estimate minus the time logged (a past session isn't assumed done; a
+parent adds up its subtasks). Only time still to come that ends by the deadline counts in
+`planned_minutes` (for a repeating task, a session after this occurrence's deadline counts toward
+the next one). Without an estimate a task counts as 30 minutes, a guess, so `short` is only said
+within a week of the deadline. `free_minutes` (working hours less your events, up to two weeks
+ahead) is looked up only when the task is short and due within two weeks; otherwise null. The
+apps show the status on a task's Sessions card; task rows show it only within a week of the
+deadline or when a session falls after it (`fitChipShown`).
+
 ## Planner
 
-| Method and path                                              | Body / result                                                                                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people |
-| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters (below)                                                                 |
-| `POST /planner/frames/:id/skip` · `/unskip`                  | `{ "date": "YYYY-MM-DD" }` skips one date of a frame, or brings it back → the frame                                            |
-| `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`, `mode`, `peak_minutes`)                                         |
-| `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                              |
-| `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                               |
-| `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                |
-| `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced         |
-| `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
-| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task has its `deadline_at`, and `due_all_day: true` when due on a whole day |
-| `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
+| Method and path                                              | Body / result                                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people                                                                                                           |
+| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters (below)                                                                                                                                                                           |
+| `POST /planner/frames/:id/skip` · `/unskip`                  | `{ "date": "YYYY-MM-DD" }` skips one date of a frame, or brings it back → the frame                                                                                                                                                      |
+| `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`, `mode`, `peak_minutes`)                                                                                                                                                   |
+| `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                                                                                                                                        |
+| `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                                                                                                                                         |
+| `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                                                                                                                          |
+| `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced                                                                                                                   |
+| `POST /planner/plans/:id/apply`                              | `{ "moves"? }` → saves its blocks and moves the late sessions named (below) → `{ blocks, skipped, moved, moves_skipped }`; `409` if already applied, expired, or there's nothing to add or move; `422` for a move the plan doesn't offer |
+| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task has its `deadline_at`, and `due_all_day: true` when due on a whole day                                                                                                           |
+| `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                                                                                                                          |
 
 Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
 notices off), `planner_notices` (`{ "push": true, "email": false }`; send either key to change
@@ -1671,17 +1713,58 @@ The planner considers your open personal tasks and team tasks assigned to you (o
 count the sessions the task already has too, the way they'll be numbered once saved, so "Session
 3 of 4" in a preview is session 3 of 4 on the calendar.
 
+**Only time before the deadline counts.** A task's sessions that end after its deadline don't
+count as time set aside, so the planner still plans for that time. It first offers to move each
+late session that hasn't started to free time before the deadline, in `moves`:
+
+```json
+"moves": [
+  {
+    "block_id": "uuid",
+    "item_id": "uuid",
+    "title": "Quarterly report",
+    "from_start_at": "2026-10-03T00:00:00.000Z",
+    "from_end_at": "2026-10-03T01:00:00.000Z",
+    "start_at": "2026-09-30T06:00:00.000Z",
+    "end_at": "2026-09-30T07:00:00.000Z",
+    "deadline_at": "2026-10-02T07:00:00.000Z",
+    "due_all_day": false,
+    "source": "planner",
+    "selected": true
+  }
+]
+```
+
+Sessions the planner made are ticked (`selected: true`); sessions you placed by hand (or moved by
+hand) are offered unticked. A moved session covers its own length; only what's still missing
+becomes new blocks, so a plan may hold only moves. A late session that can't fit before the
+deadline stays where it is, and the task is `at_risk` with `remaining_minutes` and `free_minutes`
+and the same words as the daily notice ("Needs 2 h more, with 45 min free before it's due.").
+New time goes before the deadline first; the time a late session that stays already holds is never
+added again after the deadline, so planning again doesn't pile up late sessions.
+Nothing is refused and deadlines never move. Once a deadline has passed, time found is catch-up:
+nothing is moved or flagged.
+
+`POST /planner/plans/:id/apply` takes `{ "moves": ["<block id>", …] }`, the sessions to move
+(the ticked ones when omitted; `[]` moves none). Each is checked again first: it must still be
+yours, unchanged since the plan was made, its task open and the new time free; otherwise it's
+counted in `moves_skipped` and left where it is. `moved` lists the sessions moved, as `GET
+/blocks` returns them; each also sends `block.updated`. Moves never count as slips.
+
 Plans also carry `options` (what the plan was made with: `start_date`, `days`, `pad_percent`,
 `split`, `break_level`, `use_frames`, `timezone`, `scope`, `keep_free`, `item_ids`,
 `include_item_ids`, `exclude_item_ids`, `estimates`, `pinned_blocks`), `superseded_by`,
 `estimates_saved`, and `tasks`, a checklist of every task considered: `{ item_id, title, due_at,
 deadline_at, due_all_day, priority, team_id, list_id, estimate_minutes, estimate_tuned, included,
-planned_minutes, reason, at_risk, estimate_guess }`, where `deadline_at` is the moment the task is
+planned_minutes, moved_minutes, reason, at_risk, fit, estimate_guess }`, where `deadline_at` is the moment the task is
 due by (the end of its day when `due_all_day` is true, its end time when it has one; null without
 a date), `reason` says why a task wasn't (fully) planned or was left out and `estimate_guess`
 (`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set when a task with no
-estimate was planned for a learned length. `unplaced` and `at_risk` rows (`{ item_id, title,
-due_at, reason }`) carry `deadline_at` and `due_all_day` too; a plan saved before they were added
+estimate was planned for a learned length. `planned_minutes` includes the sessions the plan
+offers to move (`moved_minutes`), and `fit` is the task's status once the plan is applied as
+proposed (ticked moves in). `unplaced` and `at_risk` rows (`{ item_id, title,
+due_at, reason }`) carry `deadline_at` and `due_all_day` too, and `at_risk` rows
+`remaining_minutes` and `free_minutes`; a plan saved before they were added
 may leave them out, so name `due_at` then. Blocks are placed at the best time
 rather than simply the earliest (see [Planning in the architecture notes](architecture.md#planning)),
 and `summary` says so when learning moved something ("Thesis chapter is in your best hours

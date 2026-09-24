@@ -391,10 +391,10 @@ export function App() {
     setCalendarMode("day");
     setPlanRequest({ key: Date.now(), days: 1 });
   };
-  const applyPlan = async (plan: Plan) => {
-    const result = await client.applyPlan(plan.id);
+  const applyPlan = async (plan: Plan, moves?: string[]) => {
+    const result = await client.applyPlan(plan.id, moves ? { moves } : {});
     await refresh();
-    return appliedText(result);
+    return appliedText(result, plan);
   };
   /** "Roll forward" on a notice: a plan for unfinished blocks, in the calendar. */
   const rollForward = async () => {
@@ -404,17 +404,17 @@ export function App() {
       report(e);
     }
   };
-  /** "Plan it" on a notice: a preview that includes the task, up to its due day. */
+  /**
+   * "Plan it" on a notice: a preview that includes the task, looking ahead
+   * as far as its deadline (days counted in the planner's zone).
+   */
   const planIt = (n: Notice) => {
     if (!n.item_id) return;
-    const due = items.find((i) => i.id === n.item_id)?.due_at;
-    const daysLeft = due
-      ? Math.ceil((Date.parse(due) - Date.now()) / 86_400_000)
-      : 0;
+    const item = items.find((i) => i.id === n.item_id);
     navigate("Calendar");
     setPlanRequest({
       key: Date.now(),
-      days: daysLeft > 0 ? Math.min(7, daysLeft) : undefined,
+      until: item ? deadlineOf(item) : undefined,
       include: [n.item_id],
     });
   };

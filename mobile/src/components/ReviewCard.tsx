@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { Item, Plan, PlannerReview } from "@orbyn/core";
+import {
+  atRiskLine,
+  type Item,
+  type Plan,
+  type PlannerReview,
+} from "@orbyn/core";
 import { Button } from "./Button";
 import { ErrorBanner } from "./ErrorBanner";
 import { SmallAction } from "./SmallAction";
 import { client } from "../lib/api";
-import { minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
+import { rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, themed } from "../theme";
@@ -13,6 +18,15 @@ import { shared } from "../styles";
 
 /** Unfinished blocks shown before "Show all". */
 const FEW = 5;
+
+/**
+ * An at-risk task in the plan's words: "Needs 2h, 45m free before Fri 2 Oct,
+ * 5 pm", or the daily notice's when the minutes aren't there.
+ */
+const riskLine = (t: PlannerReview["at_risk"][number]) => {
+  const line = atRiskLine(t);
+  return line ? line[0].toUpperCase() + line.slice(1) : t.reason;
+};
 
 /**
  * What needs a look in the plan: unfinished time blocks (move them forward,
@@ -171,11 +185,7 @@ export function ReviewCard({
               <Text style={s.title} numberOfLines={1}>
                 {t.title}
               </Text>
-              <Text style={shared.small}>
-                Needs {minutesLabel(t.remaining_minutes) || "more time"},{" "}
-                {minutesLabel(t.free_minutes) || "no"} free before it’s due.
-                {t.reason ? ` ${t.reason}` : ""}
-              </Text>
+              <Text style={shared.small}>{riskLine(t)}</Text>
             </View>
           ))}
         </View>

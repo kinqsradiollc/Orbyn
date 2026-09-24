@@ -14,6 +14,7 @@ import {
   addMonths,
   dateLabel,
   isClosed,
+  lateSessionWarning,
   monthGrid,
   sameDay,
   startOfDay,
@@ -142,8 +143,16 @@ type Dialog =
   | { kind: "sets" }
   | { kind: "frame"; frameId: string }
   | null;
-/** A short message under the toolbar, sometimes with Undo. */
-type Note = { text: string; undo?: () => void; tone?: "warn" };
+/**
+ * A short message under the toolbar, sometimes with Undo, or with its own
+ * choices ("Keep it", "Find time before").
+ */
+type Note = {
+  text: string;
+  undo?: () => void;
+  tone?: "warn";
+  actions?: { label: string; run: () => void }[];
+};
 
 const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString([], {
@@ -322,17 +331,69 @@ export function CalendarView({
     await reload();
   };
 
+  /** "Moved to Wed 30 Sep, 4:00 pm." */
+  const movedTo = (at: string) =>
+    `${shortDay(at)}, ${new Date(at).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+
+  /**
+   * A session now ends after its task's deadline: say so, and offer to keep
+   * it there or move it to free time before the deadline. Never refused.
+   */
+  const warnIfLate = (block: TimeBlock) => {
+    const text = lateSessionWarning(block);
+    if (!text) return;
+    setNote({
+      tone: "warn",
+      text: `${text}.`,
+      actions: [
+        { label: "Keep it", run: () => setNote(null) },
+        {
+          label: "Find time before",
+          run: () => void moveBeforeDeadline(block),
+        },
+      ],
+    });
+  };
+
+  /** Move a session to the next free time that ends by its deadline. */
+  const moveBeforeDeadline = async (block: TimeBlock) => {
+    try {
+      const moved = await client.rescheduleBlock(block.id, {
+        before_deadline: true,
+      });
+      setNote({
+        text: `Moved to ${movedTo(moved.start_at)}, before the deadline.`,
+        undo: () =>
+          void mutate(() =>
+            client.updateBlock(block.id, {
+              start_at: block.start_at,
+              end_at: block.end_at,
+            }),
+          ),
+      });
+    } catch (e) {
+      if ((e as HttpError).status === 401) report(e);
+      else setNote({ tone: "warn", text: errorText(e) });
+    }
+    await reload();
+  };
+
   const createBlock = (item: Item, start: Date, end?: Date) => {
     if (item.kind !== "task") return;
     const minutes = Math.min(item.estimate_minutes ?? 30, 1440);
-    void mutate(() =>
-      client.createBlock({
-        item_id: item.id,
-        start_at: start.toISOString(),
-        end_at: (
-          end ?? new Date(start.getTime() + minutes * 60_000)
-        ).toISOString(),
-      }),
+    void mutate(async () =>
+      warnIfLate(
+        await client.createBlock({
+          item_id: item.id,
+          start_at: start.toISOString(),
+          end_at: (
+            end ?? new Date(start.getTime() + minutes * 60_000)
+          ).toISOString(),
+        }),
+      ),
     );
   };
 
@@ -353,23 +414,25 @@ export function CalendarView({
           ),
         },
     );
-    void mutate(() =>
-      client.updateBlock(block.id, {
-        start_at: start.toISOString(),
-        end_at: end.toISOString(),
-      }),
+    void mutate(async () =>
+      warnIfLate(
+        await client.updateBlock(block.id, {
+          start_at: start.toISOString(),
+          end_at: end.toISOString(),
+        }),
+      ),
     );
   };
 
-  /** A block moved to the next free working time of the same length. */
+  /**
+   * A block moved to the next free working time of the same length, one
+   * that ends by its deadline when there is one.
+   */
   const reschedule = async (block: TimeBlock) => {
     try {
       const moved = await client.rescheduleBlock(block.id);
-      setNote({
-        text: `Moved to ${shortDay(moved.start_at)}, ${new Date(
-          moved.start_at,
-        ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-      });
+      if (lateSessionWarning(moved)) warnIfLate(moved);
+      else setNote({ text: `Moved to ${movedTo(moved.start_at)}.` });
     } catch (e) {
       report(e);
     }
@@ -382,12 +445,9 @@ export function CalendarView({
         block.id,
         start ? { start_at: start.toISOString() } : {},
       );
-      if (!start)
-        setNote({
-          text: `Copied to ${shortDay(copy.start_at)}, ${new Date(
-            copy.start_at,
-          ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-        });
+      if (lateSessionWarning(copy)) warnIfLate(copy);
+      else if (!start)
+        setNote({ text: `Copied to ${movedTo(copy.start_at)}.` });
     } catch (e) {
       report(e);
     }
@@ -844,6 +904,11 @@ export function CalendarView({
                 Undo
               </button>
             )}
+            {note.actions?.map((a) => (
+              <button key={a.label} className="text-button" onClick={a.run}>
+                {a.label}
+              </button>
+            ))}
             <button
               className="icon-button"
               aria-label="Dismiss"
@@ -969,6 +1034,10 @@ export function CalendarView({
               }}
               request={autoPreview}
               onChanged={changed}
+              onShowDay={(at) => {
+                onDateChange(new Date(at));
+                if (mode === "agenda") onModeChange("week");
+              }}
               report={report}
               revision={revision}
               onClose={closePlanner}
@@ -1032,16 +1101,7 @@ export function CalendarView({
           onDuplicate={() => void duplicate(menu.block)}
           onReschedule={() => void reschedule(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
-          onFindTime={() => {
-            // The planner, previewing only this task up to its deadline.
-            setPlannerOpen(true);
-            if (mode === "month" || mode === "agenda") onModeChange("week");
-            setAutoPreview({
-              key: Date.now(),
-              until: menu.block.deadline_at,
-              only: [menu.block.item_id],
-            });
-          }}
+          onFindTime={() => void moveBeforeDeadline(menu.block)}
           onDelete={async () => {
             if (
               await ask({

@@ -30,7 +30,7 @@ type Props = {
   busy: boolean;
   assistant: Assistant;
   /** Saves a plan the assistant made; resolves with a message. */
-  onApplyPlan: (plan: Plan) => Promise<string>;
+  onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   /** Shows a plan in the calendar's planner. */
   onOpenPlan: (plan: Plan) => void;
   /** Opens a page the assistant read, at the line it cited. */

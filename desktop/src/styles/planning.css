@@ -545,6 +545,65 @@ a.drawer-fact {
   gap: 8px;
   margin-top: 12px;
 }
+/* Late sessions a plan offers to move before their deadline. */
+.plan-moves summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-warn);
+  cursor: pointer;
+  list-style: none;
+}
+.plan-moves summary::-webkit-details-marker {
+  display: none;
+}
+.plan-moves-caret {
+  transition: transform 0.15s ease;
+}
+.plan-moves:not([open]) .plan-moves-caret {
+  transform: rotate(-90deg);
+}
+.plan-moves ul {
+  gap: 6px;
+}
+.plan-moves .check-line {
+  align-items: flex-start;
+  line-height: 1.45;
+}
+.plan-moves .check-line input {
+  margin-top: 1px !important;
+}
+.plan-risk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.plan-risk-more {
+  margin-top: 4px;
+}
+.plan-risk-row .text-button,
+.plan-risk-more .text-button,
+.plan-outcome .text-button {
+  padding: 0;
+  font-size: 12px;
+}
+.plan-outcome {
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-selected);
+}
+.plan-outcome.fail {
+  background: var(--color-dangerSoft);
+}
+.plan-outcome > span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
 .inline-outcome {
   display: flex;
   align-items: flex-start;

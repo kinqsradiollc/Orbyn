@@ -336,6 +336,10 @@ const startLabel = (iso: string) => {
   })} ${at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
+/** "Sat 3 Oct 10:00 → Wed 30 Sep 16:00": where a session is, and where it would go. */
+export const moveTimes = (m: Pick<MoveWords, "from_start_at" | "start_at">) =>
+  `${startLabel(m.from_start_at)} → ${startLabel(m.start_at)}`;
+
 /**
  * One offered move, as the plan preview lists it:
  * "Quarterly report: Sat 3 Oct 10:00 → Wed 30 Sep 16:00 (made by the

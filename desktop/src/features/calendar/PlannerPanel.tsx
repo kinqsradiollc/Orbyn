@@ -16,10 +16,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  atRiskLine,
   BREAK_LEVELS,
   dateLabel,
   dueDateOf,
+  fitTone,
   localDateKey,
+  PLAN_MAX_DAYS,
   planDaysBefore,
   type BreakLevel,
   type BusyInterval,
@@ -78,6 +81,8 @@ type Props = {
   } | null;
   /** Reload the calendar and planner after a change. */
   onChanged: () => Promise<void>;
+  /** Show a day on the calendar (after a plan is applied). */
+  onShowDay?: (at: string) => void;
   report: (e: unknown) => void;
   revision: number;
   onClose: () => void;
@@ -122,6 +127,7 @@ export function PlannerPanel({
   onPlan,
   request,
   onChanged,
+  onShowDay,
   report,
   revision,
   onClose,
@@ -145,8 +151,14 @@ export function PlannerPanel({
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [review, setReview] = useState<PlannerReview | null>(null);
+  /**
+   * Ticks changed on offered moves, by session, kept while the plan is
+   * tuned (each tuning makes a new plan with the same sessions).
+   */
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
   const seeded = useRef(!!prefs);
   const live = !!plan && !plan.applied;
+  const applied = !!plan?.applied;
   const planId = plan?.id;
 
   // Start from saved preferences once they arrive.
@@ -205,6 +217,8 @@ export function PlannerPanel({
             ? { item_ids: only }
             : { scope: scopeOf(personal, teamIds, listIds) ?? undefined }),
         });
+        // A fresh plan after one was applied starts from the planner's ticks.
+        if (applied) setTicks({});
         // "Plan it": make sure the task is in, even outside the scope.
         if (
           include?.length &&
@@ -230,6 +244,7 @@ export function PlannerPanel({
       personal,
       teamIds,
       listIds,
+      applied,
       onPlan,
       fail,
     ],
@@ -284,13 +299,24 @@ export function PlannerPanel({
       listIds.includes(id) ? listIds.filter((x) => x !== id) : [...listIds, id],
     );
 
-  const apply = async () => {
+  const apply = async (moves: string[]) => {
     if (!plan) return "";
-    const result = await client.applyPlan(plan.id);
+    const result = await client.applyPlan(plan.id, { moves });
+    // The ticks stay: the applied plan shows what was moved.
     onPlan({ ...plan, applied: true });
     await onChanged();
     void loadReview();
-    return appliedText(result);
+    return appliedText(result, plan);
+  };
+
+  /** "Look further ahead": the same plan over the most days it can cover. */
+  const lookAhead = () => {
+    setDays(PLAN_MAX_DAYS);
+    void preview(
+      PLAN_MAX_DAYS,
+      plan?.options?.include_item_ids,
+      plan?.options?.item_ids ?? undefined,
+    );
   };
 
   const moveForward = async (ids?: string[]) => {
@@ -542,7 +568,16 @@ export function PlannerPanel({
 
       {plan && (
         <div className="planner-result">
-          <PlanCard key={plan.id} plan={plan} onApply={apply} limit={20} />
+          <PlanCard
+            key={plan.id}
+            plan={plan}
+            onApply={apply}
+            limit={20}
+            ticks={ticks}
+            onTick={(id, on) => setTicks((t) => ({ ...t, [id]: on }))}
+            onLookAhead={lookAhead}
+            onShowOnCalendar={onShowDay}
+          />
         </div>
       )}
       {live && plan && (
@@ -697,11 +732,8 @@ export function PlannerPanel({
                 <li key={t.item_id}>
                   <span>
                     {t.title}
-                    <small>
-                      {dueDateOf(t) ? `Due ${dueDateOf(t)} · ` : ""}
-                      needs {minutesLabel(t.remaining_minutes)}, free{" "}
-                      {minutesLabel(t.free_minutes)}
-                    </small>
+                    {/* The plan's words: "needs 2h, 45m free before Fri 2 Oct, 5 pm". */}
+                    <small>{atRiskLine(t) ?? t.reason}</small>
                   </span>
                 </li>
               ))}
@@ -746,7 +778,11 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
           </small>
         </span>
       </label>
-      {t.at_risk && <span className="chip is-warn">At risk</span>}
+      {t.fit && t.included && fitTone(t.fit.status) === "warn" ? (
+        <span className="chip is-warn">{t.fit.label}</span>
+      ) : (
+        t.at_risk && <span className="chip is-warn">At risk</span>
+      )}
       {editing ? (
         <form
           className="plan-estimate"

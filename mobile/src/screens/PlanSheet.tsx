@@ -3,7 +3,10 @@ import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   BREAK_LEVELS,
   dueDateOf,
+  fitTone,
   localDateKey,
+  PLAN_MAX_DAYS,
+  planOutcome,
   type BreakLevel,
   type Item,
   type Plan,
@@ -24,7 +27,7 @@ import {
 } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
-import { PlanView } from "../components/PlanView";
+import { PlanView, tickedMoves } from "../components/PlanView";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
@@ -133,6 +136,7 @@ export function PlanSheet({
   onDismiss,
   onApplied,
   onShowOnCalendar,
+  onShowDay,
 }: {
   visible: boolean;
   /** For what waits on what, when a session moves to another day. */
@@ -148,6 +152,8 @@ export function PlanSheet({
   onApplied: () => void;
   /** Show the plan as faint blocks on the calendar, to tune and apply there. */
   onShowOnCalendar?: (plan: Plan) => void;
+  /** After a plan is applied: show the day of its first change on the calendar. */
+  onShowDay?: (at: string) => void;
 }) {
   return (
     <Sheet
@@ -164,6 +170,7 @@ export function PlanSheet({
         onApplied={onApplied}
         onDone={onClose}
         onShowOnCalendar={onShowOnCalendar}
+        onShowDay={onShowDay}
       />
     </Sheet>
   );
@@ -176,6 +183,7 @@ function Body({
   onApplied,
   onDone,
   onShowOnCalendar,
+  onShowDay,
 }: {
   seed: Plan | null;
   teams: Team[];
@@ -183,6 +191,7 @@ function Body({
   onApplied: () => void;
   onDone: () => void;
   onShowOnCalendar?: (plan: Plan) => void;
+  onShowDay?: (at: string) => void;
 }) {
   const { lists } = usePlanning();
   const { busy, error, setError, run } = useRun();
@@ -212,10 +221,16 @@ function Body({
     seed?.options?.scope ?? EVERYTHING,
   );
   const [plan, setPlan] = useState<Plan | null>(seed);
+  /** What applying did, in words, and where its first change landed. */
   const [saved, setSaved] = useState<{
-    blocks: number;
-    skipped: number;
+    text: string;
+    at: string | null;
   } | null>(null);
+  /**
+   * Ticks changed on offered moves, by session, kept while the plan is
+   * tuned (each tuning makes a new plan with the same sessions).
+   */
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<PlanTab>("plan");
   /** A proposed block being moved (pinned) with the day and time fields. */
   const [moving, setMoving] = useState<{ key: string; start: Date } | null>(
@@ -281,11 +296,11 @@ function Body({
       setAdding(null);
     });
 
-  const preview = () =>
+  const preview = (dayCount = Number(days), include?: string[]) =>
     run(async () => {
-      const next = await client.previewPlan({
+      let next = await client.previewPlan({
         start_date: start,
-        days: Number(days),
+        days: dayCount,
         pad_percent: pad,
         split,
         break_level: breakLevel,
@@ -298,20 +313,43 @@ function Body({
           : {}),
         ...(isEverything(scope) ? {} : { scope }),
       });
+      // Tasks added by hand ("Plan it") stay in, even outside the scope.
+      if (
+        include?.length &&
+        !include.every((id) =>
+          next.tasks?.some((t) => t.item_id === id && t.included),
+        )
+      )
+        next = await client.tunePlan(next.id, { include_item_ids: include });
       animateLayout();
       setPlan(next);
+      // A fresh plan after one was applied starts from the planner's ticks.
+      if (saved) setTicks({});
       setSaved(null);
       setTab("plan");
     });
 
+  const chosen = plan ? tickedMoves(plan, ticks) : [];
   const apply = () =>
     run(async () => {
       if (!plan) return;
-      const result = await client.applyPlan(plan.id);
+      const result = await client.applyPlan(plan.id, { moves: chosen });
       animateLayout();
-      setSaved({ blocks: result.blocks.length, skipped: result.skipped });
+      setSaved({
+        text: planOutcome(result, plan.at_risk),
+        at:
+          [...result.blocks, ...result.moved]
+            .map((b) => b.start_at)
+            .sort()[0] ?? null,
+      });
+      // The ticks stay: the applied plan shows what was moved.
       onApplied();
     });
+  /** "Look further ahead": the same plan over the most days it can cover. */
+  const lookAhead = () => {
+    setDays(dayOption(PLAN_MAX_DAYS));
+    void preview(PLAN_MAX_DAYS, plan?.options?.include_item_ids);
+  };
 
   const chooseScope = (next: PlanScope) => {
     setScopeState(next);
@@ -621,6 +659,13 @@ function Body({
               <View style={tunable ? s.tabBody : undefined}>
                 <PlanView
                   plan={plan}
+                  ticks={ticks}
+                  onTick={
+                    tunable
+                      ? (id, on) => setTicks((t) => ({ ...t, [id]: on }))
+                      : undefined
+                  }
+                  onLookAhead={tunable ? lookAhead : undefined}
                   actions={
                     tunable
                       ? {
@@ -712,7 +757,13 @@ function Body({
                           </Text>
                         )}
                       </View>
-                      {t.at_risk && <Pill label="At risk" tone="warning" />}
+                      {t.included &&
+                      t.fit &&
+                      fitTone(t.fit.status) === "warn" ? (
+                        <Pill label={t.fit.label} tone="warning" />
+                      ) : (
+                        t.at_risk && <Pill label="At risk" tone="warning" />
+                      )}
                       <Switch
                         value={t.included}
                         disabled={busy}
@@ -887,9 +938,13 @@ function Body({
         {plan && !saved && (
           <>
             <Button
-              title={busy ? "Saving…" : "Apply plan"}
+              title={busy ? "Saving…" : "Apply"}
               icon="check"
-              disabled={busy || plan.applied || plan.blocks.length === 0}
+              disabled={
+                busy ||
+                plan.applied ||
+                (plan.blocks.length === 0 && chosen.length === 0)
+              }
               onPress={() => void apply()}
             />
             {onShowOnCalendar && !plan.applied && plan.blocks.length > 0 && (
@@ -912,13 +967,17 @@ function Body({
               strokeWidth={2.4}
             />
             <Text style={s.savedText} accessibilityRole="alert">
-              Plan saved. {saved.blocks} session{saved.blocks === 1 ? "" : "s"}{" "}
-              added to your calendar
-              {saved.skipped
-                ? `; ${saved.skipped} skipped because the time is taken.`
-                : "."}
+              {saved.text}
             </Text>
           </FadeIn>
+        )}
+        {saved && onShowDay && saved.at && (
+          <Button
+            secondary
+            title="Show on calendar"
+            icon="calendar"
+            onPress={() => onShowDay(saved.at!)}
+          />
         )}
         {saved && <Button secondary title="Done" onPress={onDone} />}
       </View>
@@ -1019,9 +1078,12 @@ const s = themed(() =>
     },
     saved: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 8,
       marginBottom: 14,
+      padding: 12,
+      borderRadius: radii.card,
+      backgroundColor: colors.accentSoft,
     },
     savedText: {
       flex: 1,
