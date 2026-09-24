@@ -42,12 +42,67 @@ const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
 const HIDDEN_OPEN = /<(script|style|template|iframe|object|noscript|svg)\b/gi;
 /** Elements that can be styled invisible, hiding what's inside them. */
 const STYLED_OPEN = /<(span|div|p)\b/gi;
-/** A style attribute's opening, up to its quote when it has one. */
-const STYLE_ATTRIBUTE = /style\s*=\s*(["']?)/gi;
-/** Where a value without quotes ends, as a browser reads it. */
-const UNQUOTED_END = /[\s>]/g;
-/** A declaration that hides what it styles. */
-const HIDING = /display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0/i;
+/**
+ * A character reference, which a browser reads in an attribute value before
+ * the style is: `display&#58;none` is `display:none`.
+ */
+const CHAR_REFERENCE =
+  /&#[xX]([0-9a-fA-F]+);?|&#([0-9]+);?|&([A-Za-z][A-Za-z0-9]*);/g;
+/** The named references for the characters a style is written with. */
+const NAMED_REFERENCES: Record<string, string> = {
+  Tab: "\t",
+  NewLine: "\n",
+  nbsp: "\u00a0",
+  excl: "!",
+  quot: '"',
+  QUOT: '"',
+  num: "#",
+  dollar: "$",
+  percnt: "%",
+  amp: "&",
+  AMP: "&",
+  apos: "'",
+  lpar: "(",
+  rpar: ")",
+  ast: "*",
+  midast: "*",
+  plus: "+",
+  comma: ",",
+  period: ".",
+  sol: "/",
+  colon: ":",
+  semi: ";",
+  lt: "<",
+  LT: "<",
+  equals: "=",
+  gt: ">",
+  GT: ">",
+  quest: "?",
+  commat: "@",
+  lsqb: "[",
+  lbrack: "[",
+  bsol: "\\",
+  rsqb: "]",
+  rbrack: "]",
+  Hat: "^",
+  lowbar: "_",
+  UnderBar: "_",
+  grave: "`",
+  DiacriticalGrave: "`",
+  lcub: "{",
+  lbrace: "{",
+  verbar: "|",
+  vert: "|",
+  VerticalLine: "|",
+  rcub: "}",
+  rbrace: "}",
+};
+/** A CSS comment, which separates what's on either side of it. */
+const CSS_COMMENT = /\/\*[\s\S]*?(?:\*\/|$)/g;
+/** A CSS escape: `\6f ` and `\o` are both "o". */
+const CSS_ESCAPE = /\\(?:([0-9a-fA-F]{1,6})[ \t\n\r\f]?|([^\n\r\f]))/g;
+/** A size or amount of nothing: 0, 0px, .0em, 0%. */
+const ZERO = /^[+-]?(?:0+(?:\.0*)?|\.0+)(?:[a-z]+|%)?$/;
 /**
  * Elements that load something from an address as soon as they're shown,
  * and the hidden ones above (whose tags alone may be left).
@@ -148,79 +203,106 @@ function dropHiddenElements(s: string): string {
   return out + s.slice(from);
 }
 
+/** The character a reference or escape stands for; U+FFFD for none. */
+const codePoint = (n: number) =>
+  n > 0 && n <= 0x10ffff && (n < 0xd800 || n > 0xdfff)
+    ? String.fromCodePoint(n)
+    : "\ufffd";
+
+/** A CSS name or value with its escapes read. */
+const unescapeCss = (text: string) =>
+  text.replace(CSS_ESCAPE, (_, hex: string | undefined, char: string) =>
+    hex === undefined ? char : codePoint(parseInt(hex, 16)),
+  );
+
 /**
- * Whether a tag's text styles its element invisible. Each style value runs
- * to the quote that opened it, or, without quotes (`style=display:none`),
- * to the next space or ">"; the search goes on after it, so the tag is
- * read once.
+ * Whether a style attribute's value hides its element, read as a browser
+ * reads it: character references first, then comments (which separate
+ * words), then each declaration's escapes. Hiding means display none,
+ * visibility hidden or collapse, a font size of zero or no opacity.
  */
-function hidesItself(tag: string): boolean {
-  STYLE_ATTRIBUTE.lastIndex = 0;
-  for (let m; (m = STYLE_ATTRIBUTE.exec(tag));) {
-    const from = m.index + m[0].length;
-    let end: number;
-    if (m[1]) {
-      end = tag.indexOf(m[1], from);
-      // A value that never closes leaves the tag open: it hides nothing.
-      if (end < 0) return false;
-    } else {
-      UNQUOTED_END.lastIndex = from;
-      end = UNQUOTED_END.exec(tag)?.index ?? tag.length;
+function hidingStyle(value: string): boolean {
+  const css = value
+    .replace(CHAR_REFERENCE, (all, hex, dec, name: string | undefined) =>
+      hex !== undefined
+        ? codePoint(parseInt(hex, 16))
+        : dec !== undefined
+          ? codePoint(parseInt(dec, 10))
+          : (NAMED_REFERENCES[name!] ?? all),
+    )
+    .replace(CSS_COMMENT, " ");
+  // Declarations end at a ";" and their name at the first ":", unless a
+  // backslash escapes it.
+  let start = 0;
+  let colon = -1;
+  for (let i = 0; i <= css.length; i++) {
+    const c = css[i];
+    if (c === "\\" && i + 1 < css.length) {
+      i++;
+      continue;
     }
-    if (HIDING.test(tag.slice(from, end))) return true;
-    STYLE_ATTRIBUTE.lastIndex = end + 1;
+    if (c === ":" && colon < 0) colon = i;
+    else if (c === ";" || i === css.length) {
+      if (colon >= 0) {
+        const name = unescapeCss(css.slice(start, colon)).trim().toLowerCase();
+        const setting = unescapeCss(css.slice(colon + 1, i))
+          .replace(/!\s*important\s*$/i, "")
+          .trim()
+          .toLowerCase();
+        if (
+          (name === "display" && setting === "none") ||
+          (name === "visibility" &&
+            (setting === "hidden" || setting === "collapse")) ||
+          (name === "font-size" && ZERO.test(setting)) ||
+          (name === "opacity" && ZERO.test(setting) && !/[a-z]/.test(setting))
+        )
+          return true;
+      }
+      start = i + 1;
+      colon = -1;
+    }
   }
   return false;
 }
 
 /**
+ * Whether a tag styles its element invisible: only its first attribute
+ * named "style" counts, as in a browser (a later one is ignored, and
+ * "style=" inside another attribute's value, or "data-style", is no style).
+ */
+function hidesItself(tag: Tag): boolean {
+  const style = tag.attributes.find((a) => a.name.toLowerCase() === "style");
+  return !!style?.value && hidingStyle(style.value);
+}
+
+/**
  * Spans, divs and paragraphs styled invisible, removed with what they hide
- * (up to their closing tag). A tag is first read the quick way, up to its
- * first ">"; one with a quote in it is read again as a browser reads it,
- * since a quoted value may hold ">" (`<p style="a:b;>;display:none">`).
- * Every tag that shares a ">" with one already read is part of the same
- * text, and a tag read the long way is skipped whole, so each part of the
- * text is read once.
+ * (up to their closing tag). Each tag is read as a browser reads it (a
+ * quoted value may hold ">", as in `<p style="a:b;>;display:none">`), and
+ * the search goes on after it, since nothing inside a tag is another tag:
+ * so each part of the text is read once.
  */
 function dropInvisibleElements(s: string): string {
-  const gt = finder(s, ">");
   const close = closers(s);
   let out = "";
   let from = 0;
-  // The last tag end read and found not to hide anything: its suffixes don't.
-  let plainUntil = -1;
-  const drop = (start: number, end: number) => {
-    out += s.slice(from, start);
-    from = end;
-    STYLED_OPEN.lastIndex = end;
-  };
   STYLED_OPEN.lastIndex = 0;
   for (let m; (m = STYLED_OPEN.exec(s));) {
-    const tagEnd = gt(m.index + m[0].length);
-    if (tagEnd < 0) break;
+    const tag = readTag(s, m.index);
+    // Open to the end of the text: nothing after it is an element (and
+    // dropLoadingTags turns it all into text).
+    if (tag === "open") break;
+    if (!tag) continue;
+    STYLED_OPEN.lastIndex = tag.end;
     const name = m[1].toLowerCase();
+    // "<p-x>" is another element, and one that doesn't hide stays.
+    if (tag.name !== name || !hidesItself(tag)) continue;
     // An element that never closes is left as it is.
-    const closing = close(name, tagEnd + 1);
-    if (!closing || tagEnd === plainUntil) continue;
-    const quick = s.slice(m.index, tagEnd);
-    if (hidesItself(quick)) {
-      drop(m.index, closing.end);
-      continue;
-    }
-    if (/["']/.test(quick)) {
-      const tag = readTag(s, m.index);
-      // Open to the end of the text: nothing after it is an element (and
-      // dropLoadingTags turns it all into text).
-      if (tag === "open") break;
-      if (tag && tag.end > tagEnd + 1) {
-        const closing = close(name, tag.end);
-        if (closing && hidesItself(s.slice(m.index, tag.end - 1)))
-          drop(m.index, closing.end);
-        else STYLED_OPEN.lastIndex = tag.end;
-        continue;
-      }
-    }
-    plainUntil = tagEnd;
+    const closing = close(name, tag.end);
+    if (!closing) continue;
+    out += s.slice(from, m.index);
+    from = closing.end;
+    STYLED_OPEN.lastIndex = closing.end;
   }
   return out + s.slice(from);
 }
@@ -496,7 +578,12 @@ function neutraliseImages(s: string, own: string | null): string {
   return out.join("");
 }
 
-type Tag = { end: number; name: string; attributes: string[] };
+type Tag = {
+  end: number;
+  name: string;
+  /** Each attribute's name as written, and its value (null without "="). */
+  attributes: { name: string; value: string | null }[];
+};
 
 /**
  * The HTML tag starting at the `<` at `i`, read the way a browser reads it:
@@ -512,7 +599,7 @@ function readTag(s: string, i: number): Tag | "open" | null {
   const from = j;
   while (j < s.length && !isSpace(s[j]) && s[j] !== "/" && s[j] !== ">") j++;
   const name = s.slice(from, j).toLowerCase();
-  const attributes: string[] = [];
+  const attributes: Tag["attributes"] = [];
   for (;;) {
     while (j < s.length && (isSpace(s[j]) || s[j] === "/")) j++;
     if (j >= s.length) return "open";
@@ -527,7 +614,11 @@ function readTag(s: string, i: number): Tag | "open" | null {
       s[j] !== "="
     )
       j++;
-    attributes.push(s.slice(start, j));
+    const attribute: Tag["attributes"][number] = {
+      name: s.slice(start, j),
+      value: null,
+    };
+    attributes.push(attribute);
     while (isSpace(s[j])) j++;
     if (s[j] !== "=") continue;
     j++;
@@ -536,8 +627,13 @@ function readTag(s: string, i: number): Tag | "open" | null {
     if (quote === '"' || quote === "'") {
       const close = s.indexOf(quote, j + 1);
       if (close < 0) return "open";
+      attribute.value = s.slice(j + 1, close);
       j = close + 1;
-    } else while (j < s.length && !isSpace(s[j]) && s[j] !== ">") j++;
+    } else {
+      const from = j;
+      while (j < s.length && !isSpace(s[j]) && s[j] !== ">") j++;
+      attribute.value = s.slice(from, j);
+    }
   }
 }
 
@@ -565,7 +661,7 @@ function dropLoadingTags(s: string): string {
     const loads =
       EMBED_SET.has(tag.name) ||
       LOADING_VALUE.test(raw) ||
-      tag.attributes.some((a) => ACTIVE_ATTRIBUTE.test(a));
+      tag.attributes.some((a) => ACTIVE_ATTRIBUTE.test(a.name));
     if (!loads) out += raw;
     i = tag.end;
   }

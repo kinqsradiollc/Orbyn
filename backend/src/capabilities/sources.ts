@@ -15,15 +15,19 @@ import type { Queryable } from "../db/pool.js";
 
 /**
  * SQL for an item's outside source: 'booking_guest', 'inbound_email' or
- * NULL, for the items table under `alias`.
+ * NULL, for the items table under `alias`. The source is kept on the item
+ * (item_sources), so it lasts as long as the item does, even after the
+ * booking or its page is deleted; a booking that still names the item is
+ * the fallback.
  */
 export function itemSourceSql(alias: string): string {
   if (!/^[a-z_][a-z0-9_]*$/.test(alias))
     throw new Error(`Not a safe SQL name: ${alias}`);
-  return `CASE
-    WHEN EXISTS (SELECT 1 FROM bookings bk WHERE bk.item_ids @> ARRAY[${alias}.id]) THEN 'booking_guest'
-    ELSE (SELECT s.source FROM item_sources s WHERE s.item_id = ${alias}.id)
-  END`;
+  return `coalesce(
+    (SELECT s.source FROM item_sources s WHERE s.item_id = ${alias}.id),
+    CASE WHEN EXISTS (SELECT 1 FROM bookings bk WHERE bk.item_ids @> ARRAY[${alias}.id])
+      THEN 'booking_guest' END
+  )`;
 }
 
 /**

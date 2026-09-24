@@ -118,6 +118,43 @@ test("elements styled invisible go with what they hide, however their tag is quo
     ["<p style=color:red>shown</p> after", "shown</p> after"],
     // A space ends a value without quotes: "none" is another attribute.
     ["<p style=display: none>shown</p> after", "shown</p> after"],
+    // Only an attribute named "style" is a style, however other values
+    // end: "style=" inside a title is part of the title.
+    ['<p title="style=" style="display:none">HIDDEN</p> after', " after"],
+    [
+      '<div title="a style=" style="visibility:hidden">HIDDEN</div> after',
+      " after",
+    ],
+    ["<span title='style=' style=display:none>HIDDEN</span> after", " after"],
+    // A browser reads references and comments before the style, and
+    // escapes in it.
+    ['<p style="display:/**/none">HIDDEN</p> after', " after"],
+    ['<p style="display&#58;none">HIDDEN</p> after', " after"],
+    ['<p style="display&#x3A;none">HIDDEN</p> after', " after"],
+    ['<p style="display&colon;none">HIDDEN</p> after', " after"],
+    ['<p style="visibility&#58 hidden">HIDDEN</p> after', " after"],
+    ['<p style="d\\isplay: n\\6f ne">HIDDEN</p> after', " after"],
+    ['<p style="font-size: 0px !important">HIDDEN</p> after', " after"],
+    ['<p style="font-size:.0em">HIDDEN</p> after', " after"],
+    ['<p style="opacity:0">HIDDEN</p> after', " after"],
+    ['<p style="color:red;visibility:collapse;">HIDDEN</p> after', " after"],
+    // Only the first style attribute counts, as in a browser.
+    [
+      '<p style="color:red" style="display:none">shown</p> after',
+      "shown</p> after",
+    ],
+    // A size that isn't zero, another attribute, or a comment inside a
+    // name hides nothing.
+    ['<p style="font-size:0.9em">shown</p> after', "shown</p> after"],
+    ['<p style="font-size:0 px">shown</p> after', "shown</p> after"],
+    ['<p style="opacity:0.5">shown</p> after', "shown</p> after"],
+    [
+      '<p data-style="display:none">shown</p> after',
+      '<p data-style="display:none">shown</p> after',
+    ],
+    ['<p style="dis/**/play:none">shown</p> after', "shown</p> after"],
+    ['<p style="display:no/**/ne">shown</p> after', "shown</p> after"],
+    ['<p style="x:a\\;display:none">HIDDEN</p> after', "HIDDEN</p> after"],
   ] as const)
     assert.equal(clean(text), want, text);
 });
@@ -188,6 +225,11 @@ test("cleaning stays linear on 200,000 characters built to slow it down", () => 
     "<p style=display:none ",
     "<p style=a",
     "<span style=a style=b ",
+    '<p title="style=" ',
+    '<p title="style=" style="display:none">x</p>',
+    '<p style="display&#58;none">',
+    '<p style="/*',
+    "<p style='a:b!",
     '<a b="',
     "<a ",
     "<",
@@ -215,6 +257,10 @@ test("cleaning stays linear on 200,000 characters built to slow it down", () => 
     (size) => `${'<p style="a" '.repeat(size / 13)}>x</p>`,
     (size) => `<span ${"style=a ".repeat(size / 8)}>x</span>`,
     (size) => `${"<div style=display:none>".repeat(size / 24)}</div>`,
+    (size) => `<p ${'title="style=" '.repeat(size / 16)}>x</p>`,
+    (size) => `<p style="${"&#58;/*".repeat(size / 7)}">x</p>`,
+    (size) => `<p style="${"a:!\t".repeat(size / 4)}">x</p>`,
+    (size) => `<p style="${"\\".repeat(size)}">x</p>`,
   ];
   const texts = [
     ...units.map((u) => (size: number) => built(u, size)),

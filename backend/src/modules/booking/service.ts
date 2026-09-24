@@ -173,6 +173,15 @@ export function answerLines(page: PageRow, answers: Record<string, string>) {
 async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
   const ids: string[] = [];
   for (const host of effectiveHosts(page, booking)) {
+    // The event holds what the guest typed: outside agents are told so (and
+    // their email address is masked) for as long as the event lasts, even
+    // after the booking or its page is gone. Recorded first, so whatever is
+    // written while the event is made already knows.
+    const id = randomUUID();
+    await db.query(
+      "INSERT INTO item_sources (item_id, source) VALUES ($1, 'booking_guest')",
+      [id],
+    );
     const item = await mutate(
       db,
       { id: host.user_id, role: "member" },
@@ -200,6 +209,7 @@ async function createHostEvents(db: Db, booking: BookingRow, page: PageRow) {
           meeting_url: page.meeting_url,
         },
       },
+      id,
     );
     ids.push(item!.id);
   }

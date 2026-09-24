@@ -72,10 +72,12 @@ no sessions, JSON answers.
   or to the primary for 10 s after the connection wrote (read-your-writes). Text by others is
   cleaned and fenced as untrusted content, labelled with where it came from: a teammate (also
   when a teammate edited a team page, from `doc_versions`), a subscribed calendar, an imported
-  file, a booking guest (events in `bookings.item_ids`, with email addresses hidden) or an email
-  (`item_sources`). A project's change rows keep their task's source themselves
-  (`project_activity.source`), so a deleted task's title stays fenced. Images that would load
-  from another host are removed. No MCP path calls an AI provider or semantic search.
+  file, a booking guest (with email addresses hidden) or an email. An item's source is kept on
+  the item (`item_sources`, carried to a new series when a repeating one is split), so a
+  booking's events stay the guest's words after the booking or its page is deleted. A project's
+  change rows keep their task's source themselves (`project_activity.source`), so a deleted
+  task's title stays fenced. Images that would load from another host are removed. No MCP path
+  calls an AI provider or semantic search.
 - **Rate limits by credential.** The general limit counts an agent's requests against its
   connection only at the MCP address and only once the credential is a live connection's; a
   made-up one counts per address, like any other request, so it can't skip sign-in limits.
