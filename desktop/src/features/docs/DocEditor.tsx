@@ -39,10 +39,12 @@ import {
   carryBlockIds,
   mergeDocs,
   newBlockId,
+  onlyTaskTicksMoved,
   parseDoc,
   serializeBlock,
   serializeDoc,
   setTodoSource,
+  ticksTakenFrom,
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
@@ -71,6 +73,14 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 /** How long the "someone else edited this" note stays up. */
 const MERGE_NOTE_MS = 6_000;
+
+/**
+ * What to say when the only news is a task tied to a line being finished or
+ * reopened: nothing when the page heard it came from the task itself (most
+ * likely ticked beside the page), and no talk of anyone else otherwise.
+ */
+const taskNews = (by?: string) =>
+  by === "task" ? "" : "A task on this page changed.";
 
 /**
  * Re-read an edited line, so "# " or "- " changes the block's type. Pasting
@@ -187,6 +197,13 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>("idle");
   const version = useRef(doc.version);
+  /**
+   * The version the ticks on screen were taken from, sent with each save so
+   * a tick already counted isn't counted again (see ticksTakenFrom). It
+   * stays put while a tick made here is unsaved, even as other copies are
+   * merged in.
+   */
+  const ticksFrom = useRef(doc.version);
   const dirty = useRef(false);
   /**
    * The document as the server last had it. Merging needs this: it is what
@@ -244,6 +261,7 @@ export function DocEditor({
       doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
     );
     version.current = doc.version;
+    ticksFrom.current = doc.version;
     base.current = doc.content;
     dirty.current = false;
     setSave("idle");
@@ -259,10 +277,14 @@ export function DocEditor({
    * screen. Lines only one side touched are kept as they are; where both
    * sides changed the same line, the version that is already saved stands
    * and the other is put back on the line below, so nothing typed is lost.
-   * Returns the blocks now on screen.
+   * `by` is who moved it on, when the live stream said. Returns the blocks
+   * now on screen.
    */
-  const reconcile = useCallback((theirs: Doc): DocBlock[] => {
+  const reconcile = useCallback((theirs: Doc, by?: string): DocBlock[] => {
     const mine = live.current.blocks;
+    const tasksOnly =
+      theirs.title === live.current.title &&
+      onlyTaskTicksMoved(base.current, theirs);
     const merge = mergeDocs(base.current, mine, theirs.content);
     const next = merge.blocks.length
       ? merge.blocks
@@ -273,13 +295,18 @@ export function DocEditor({
     // The title is one field; whoever saved last has it.
     if (theirs.title !== live.current.title) setTitle(theirs.title);
     live.current = { title: theirs.title, blocks: next };
-    setNote(
+    // A tick kept from before the merge was made on the older copy, and is
+    // still sent as one.
+    ticksFrom.current = ticksTakenFrom(ticksFrom.current, theirs, next);
+    const news =
       merge.conflicts.length === 1
         ? "Someone else edited this. The line you changed is kept below theirs."
         : merge.conflicts.length > 1
           ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
-          : "Updated with someone else's changes.",
-    );
+          : tasksOnly
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
+    if (news) setNote(news);
     return next;
   }, []);
 
@@ -323,12 +350,31 @@ export function DocEditor({
     void persistRef.current(live.current.title, live.current.blocks);
   }, []);
 
+  /**
+   * A save came back: take its ticks, and note the version the ticks on
+   * screen are now taken from. Anything that took a new tick is saved again,
+   * after that, so the save says so.
+   */
+  const settle = useCallback(
+    (sent: DocBlock[], saved: Doc) => {
+      const took = adoptTicks(sent, saved);
+      ticksFrom.current = ticksTakenFrom(
+        ticksFrom.current,
+        saved,
+        live.current.blocks,
+      );
+      if (took) saveAgain();
+    },
+    [adoptTicks, saveAgain],
+  );
+
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
-      // The version these lines' ticks were taken from. A save queued behind
-      // one still running goes out after that one's answer, but its ticks are
-      // still the ones from before it: the server mustn't count them again.
-      const ticksFrom = version.current;
+      // The version these lines' ticks were taken from, as they are now. A
+      // save queued behind one still running goes out after that one's
+      // answer, but its ticks are still the ones from before it: the server
+      // mustn't count them again.
+      const from = ticksFrom.current;
       const write = async () => {
         setSave("saving");
         try {
@@ -339,14 +385,14 @@ export function DocEditor({
               content: nextBlocks,
               version: version.current,
             },
-            { ticksFrom },
+            { ticksFrom: from },
           );
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
-          if (adoptTicks(nextBlocks, saved)) saveAgain();
+          settle(nextBlocks, saved);
           setSave("saved");
           onChanged(saved);
         } catch (e) {
@@ -356,21 +402,24 @@ export function DocEditor({
             try {
               const theirs = await client.getDoc(doc.id);
               const merged = reconcile(theirs);
+              const mergedTitle = live.current.title;
+              // Not theirs.version: a tick kept from before the merge was
+              // made on the older copy (see reconcile).
               const saved = await client.updateDoc(
                 doc.id,
                 {
-                  title: live.current.title,
+                  title: mergedTitle,
                   content: merged,
                   version: version.current,
                 },
-                { ticksFrom: version.current },
+                { ticksFrom: ticksFrom.current },
               );
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
-                live.current.title !== nextTitle ||
-                live.current.blocks !== nextBlocks;
-              if (adoptTicks(merged, saved)) saveAgain();
+                live.current.title !== mergedTitle ||
+                live.current.blocks !== merged;
+              settle(merged, saved);
               setSave("saved");
               onChanged(saved);
               return;
@@ -387,7 +436,7 @@ export function DocEditor({
       saveQueue.current = saveQueue.current.then(write, write);
       return saveQueue.current;
     },
-    [doc.id, onChanged, reconcile, report, adoptTicks, saveAgain],
+    [doc.id, onChanged, reconcile, report, settle],
   );
   persistRef.current = persist;
 
@@ -425,15 +474,21 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
-  const onEvent = useRef<(version: number) => void>(() => {});
-  onEvent.current = (remote: number) => {
+  const onEvent = useRef<(version: number, by: string) => void>(() => {});
+  onEvent.current = (remote: number, by: string) => {
     if (remote && remote <= version.current) return;
     void client.getDoc(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
       // A line open for editing counts as ours even before a keystroke:
       // replacing the whole page would pull the text out from under it.
       if (!dirty.current && focusedRef.current === null) {
+        const news =
+          theirs.title === live.current.title &&
+          onlyTaskTicksMoved(base.current, theirs)
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
         version.current = theirs.version;
+        ticksFrom.current = theirs.version;
         base.current = theirs.content;
         setTitle(theirs.title);
         setBlocks(
@@ -441,11 +496,11 @@ export function DocEditor({
             ? theirs.content
             : [{ type: "paragraph", text: "" }],
         );
-        setNote("Updated with someone else's changes.");
+        if (news) setNote(news);
         onChanged(theirs);
         return;
       }
-      const merged = reconcile(theirs);
+      const merged = reconcile(theirs, by);
       // Only send the merged page back when something of ours was waiting;
       // an open but untouched line has nothing to add.
       if (dirty.current) void persist(live.current.title, merged);
@@ -458,7 +513,10 @@ export function DocEditor({
    * server says only that it moved on; the new copy is read here and folded
    * in, so two people can work on the same page at once.
    */
-  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
+  useEffect(
+    () => client.watchDoc(doc.id, (v, by) => onEvent.current(v, by)),
+    [doc.id],
+  );
 
   // The note is news, not a state to sit in.
   useEffect(() => {
@@ -609,6 +667,7 @@ export function DocEditor({
       .then(({ doc: saved }) => {
         if (saved) {
           version.current = saved.version;
+          ticksFrom.current = saved.version;
           base.current = saved.content;
           setBlocks(saved.content);
           onChanged(saved);
@@ -942,6 +1001,7 @@ export function DocEditor({
         // adopting it keeps the ids, so the lines now follow their tasks.
         if (updated) {
           version.current = updated.version;
+          ticksFrom.current = updated.version;
           base.current = updated.content;
           dirty.current = false;
           setBlocks(updated.content);
@@ -1378,6 +1438,7 @@ export function DocEditor({
             onRestored={(restored) => {
               // The restored page is the page now: adopt it whole.
               version.current = restored.version;
+              ticksFrom.current = restored.version;
               base.current = restored.content;
               dirty.current = false;
               setTitle(restored.title);

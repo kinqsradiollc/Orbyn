@@ -259,6 +259,24 @@ async function syncTicks(
     ),
   );
   if (!ticks.size) return content;
+  // The tasks first, on their own. A task being finished or reopened
+  // elsewhere at this moment is waited for here, and what it changed (the
+  // task, and the version this page shows it from: see followTaskState) is
+  // read afresh below, once it's done. Read in the same statement as the
+  // lock, the link would still say what it said before that change, so an
+  // old tick on this page would count against it. The links aren't locked:
+  // that change writes them while it holds the task.
+  const locked = (
+    await db.query<{ id: string }>(
+      `SELECT i.id FROM items i
+        WHERE i.id IN (SELECT l.item_id FROM doc_task_links l
+                        WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[]))
+        ORDER BY i.id
+        FOR UPDATE`,
+      [docId, [...ticks.keys()]],
+    )
+  ).rows.map((r) => r.id);
+  if (!locked.length) return content;
   const rows = (
     await db.query<{
       block_id: string;
@@ -274,9 +292,9 @@ async function syncTicks(
          JOIN items i ON i.id = l.item_id
          JOIN docs d ON d.id = l.doc_id
         WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[])
-        ORDER BY l.item_id
-        FOR UPDATE OF i`,
-      [docId, [...ticks.keys()]],
+          AND l.item_id = ANY($3::uuid[])
+        ORDER BY l.item_id, l.block_id`,
+      [docId, [...ticks.keys()], locked],
     )
   ).rows;
   if (!rows.length) return content;

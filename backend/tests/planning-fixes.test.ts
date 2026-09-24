@@ -21,9 +21,12 @@ const {
   changeProjectDeadline,
   dayTime,
   localDateKey,
+  mergeDocs,
+  onlyTaskTicksMoved,
   projectDeadlineAt,
   projectDeadlineParts,
   setTodoSource,
+  ticksTakenFrom,
   WEBHOOK_EVENTS,
 } = await import("@orbyn/core");
 const app = await buildApp();
@@ -1150,6 +1153,89 @@ test("a page being saved at that moment isn't waited for, and its old tick doesn
   );
 });
 
+test("a save waiting on a task finished elsewhere reads it afresh, so its old tick doesn't reopen it", async () => {
+  const { setItemStatus } = await import("../src/modules/items/service.js");
+  // Once from an editor that says where its ticks came from, once from an
+  // older app that doesn't.
+  for (const says of [true, false]) {
+    const me = await newUser();
+    const { doc, item } = await linkedLine(me.token, "Renew the insurance");
+    const typed = [
+      ...doc.content,
+      { type: "paragraph", text: "Called them", id: "b" },
+    ];
+    // The task is being finished elsewhere: that request holds it.
+    const holder = await pool.connect();
+    let saving: ReturnType<typeof call> | undefined;
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM items WHERE id = $1 FOR UPDATE", [
+        item.id,
+      ]);
+      const pid = (
+        await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")
+      ).rows[0].pid;
+      // Meanwhile a copy of the page open from before types a line, its
+      // checklist line unticked as it read it. Its save waits for the task.
+      saving = says
+        ? saveFrom(me.token, doc.id, doc.version, doc.version, typed)
+        : call(me.token, "PUT", `/docs/${doc.id}`, {
+            version: doc.version,
+            content: typed,
+          });
+      const deadline = Date.now() + 5000;
+      for (;;) {
+        const waiting = await pool.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM pg_stat_activity
+            WHERE $1 = ANY (pg_blocking_pids(pid))`,
+          [pid],
+        );
+        if (waiting.rows[0].n > 0) break;
+        assert.ok(Date.now() < deadline, "the save waits for the task");
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await setItemStatus(
+        holder as never,
+        { id: me.id, role: "member" },
+        item.id,
+        "done",
+        100,
+      );
+      await holder.query("COMMIT");
+    } catch (e) {
+      await holder.query("ROLLBACK");
+      throw e;
+    } finally {
+      holder.release();
+    }
+    const saved = await saving!;
+    assert.equal(saved.status, 200, saved.raw.body);
+    assert.equal(saved.body.content[0].done, true, `header: ${says}`);
+    assert.equal(saved.body.content[1].text, "Called them");
+    assert.equal(
+      (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+      "done",
+      `header: ${says}`,
+    );
+    // From that save on the page shows it done, and unticking it there
+    // reopens it.
+    const untick = await saveFrom(
+      me.token,
+      doc.id,
+      saved.body.version,
+      saved.body.version,
+      saved.body.content.map((b: Json) =>
+        b.type === "todo" ? { ...b, done: false } : b,
+      ),
+    );
+    assert.equal(untick.status, 200, untick.raw.body);
+    assert.equal(
+      (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+      "todo",
+    );
+  }
+});
+
 // ---- where an editor's ticks came from -----------------------------------------
 
 /** A save that says which version its ticks were taken from. */
@@ -1291,6 +1377,213 @@ test("a refused tick is tried again only when the line is ticked again", async (
     (await call(owner.token, "GET", `/items/${item.id}`)).body.status,
     "done",
   );
+});
+
+/** The page's lines with every checklist line ticked or unticked. */
+const allTicked = (content: Json[], done: boolean) =>
+  content.map((b) => (b.type === "todo" ? { ...b, done } : b));
+
+test("an unsaved tick merged into a newer copy is still sent as made on the older one", async () => {
+  const me = await newUser();
+
+  // A save counted, but its answer never came back (a timeout, a deploy).
+  {
+    const { doc, item } = await linkedLine(me.token, "Feed the fish");
+    await makeDaily(me.token, item.id);
+    const page = (await call(me.token, "GET", `/docs/${doc.id}`)).body;
+    // What the editor keeps: the version its ticks were taken from.
+    let from = page.version as number;
+    const mine = allTicked(page.content, true);
+    const lost = await saveFrom(me.token, doc.id, page.version, from, mine);
+    assert.equal(lost.status, 200, lost.raw.body);
+    assert.equal(await completions(item.id), 1);
+
+    // Not knowing, it types a word, and that save is refused as stale.
+    const typed = [...mine, { type: "paragraph", text: "Flakes", id: "p" }];
+    const stale = await saveFrom(me.token, doc.id, page.version, from, typed);
+    assert.equal(stale.status, 409, stale.raw.body);
+
+    // It reads the page and merges: its tick is still on the line, and is
+    // still one made on the older copy.
+    const theirs = (await call(me.token, "GET", `/docs/${doc.id}`)).body;
+    const merged = mergeDocs(page.content, typed, theirs.content).blocks;
+    assert.equal(merged[0].type === "todo" && merged[0].done, true);
+    from = ticksTakenFrom(from, theirs, merged);
+    assert.equal(from, page.version);
+    const retried = await saveFrom(
+      me.token,
+      doc.id,
+      theirs.version,
+      from,
+      merged,
+    );
+    assert.equal(retried.status, 200, retried.raw.body);
+    assert.equal(await completions(item.id), 1);
+    assert.equal(retried.body.content[0].done, false);
+    assert.equal(retried.body.content[1].text, "Flakes");
+
+    // It takes the answer's tick, and its ticks are now the page's own:
+    // ticking the line again finishes the next occurrence.
+    const shown = adoptTaskTicks(merged, merged, retried.body).blocks;
+    from = ticksTakenFrom(from, retried.body, shown);
+    assert.equal(from, retried.body.version);
+    const again = await saveFrom(
+      me.token,
+      doc.id,
+      retried.body.version,
+      from,
+      allTicked(shown as Json[], true),
+    );
+    assert.equal(again.status, 200, again.raw.body);
+    assert.equal(await completions(item.id), 2);
+  }
+
+  // Two open copies of the page tick the same line within a save's wait.
+  {
+    const { doc, item } = await linkedLine(me.token, "Water the plants");
+    await makeDaily(me.token, item.id);
+    const page = (await call(me.token, "GET", `/docs/${doc.id}`)).body;
+    const ticked = allTicked(page.content, true);
+    const a = await saveFrom(
+      me.token,
+      doc.id,
+      page.version,
+      page.version,
+      ticked,
+    );
+    assert.equal(a.status, 200, a.raw.body);
+    assert.equal(await completions(item.id), 1);
+
+    // The other copy hears of it with its own tick unsaved, merges, and
+    // saves what it has.
+    const theirs = (await call(me.token, "GET", `/docs/${doc.id}`)).body;
+    const merged = mergeDocs(page.content, ticked, theirs.content).blocks;
+    const from = ticksTakenFrom(page.version, theirs, merged);
+    assert.equal(from, page.version);
+    const b = await saveFrom(me.token, doc.id, theirs.version, from, merged);
+    assert.equal(b.status, 200, b.raw.body);
+    assert.equal(await completions(item.id), 1);
+    assert.equal(b.body.content[0].done, false);
+  }
+});
+
+test("an editor's ticks move on to a newer copy only when none are unsaved", () => {
+  const line = (id: string, done: boolean) =>
+    ({ type: "todo", text: id, done, id }) as const;
+  const server = {
+    version: 7,
+    content: [line("a", false), line("b", true), line("c", false)],
+    linked_block_ids: ["a", "b"],
+  };
+  // The lines tied to tasks show what the copy has: from that copy on.
+  assert.equal(ticksTakenFrom(5, server, server.content), 7);
+  // A line that isn't a task can say what it likes.
+  assert.equal(
+    ticksTakenFrom(5, server, [
+      line("a", false),
+      line("b", true),
+      line("c", true),
+    ]),
+    7,
+  );
+  // An unsaved tick on a task's line keeps it where the tick was made.
+  assert.equal(
+    ticksTakenFrom(5, server, [line("a", true), line("b", true)]),
+    5,
+  );
+  assert.equal(ticksTakenFrom(5, server, [line("b", false)]), 5);
+  // So does a task's line the copy doesn't have.
+  assert.equal(
+    ticksTakenFrom(5, { ...server, content: [line("b", true)] }, [
+      line("a", false),
+    ]),
+    5,
+  );
+  // Without the list, any named checklist line might be a task.
+  assert.equal(
+    ticksTakenFrom(5, { version: 7, content: server.content }, [
+      line("c", true),
+    ]),
+    5,
+  );
+  // Never back to an older copy.
+  assert.equal(ticksTakenFrom(9, server, server.content), 9);
+
+  // Only a task's tick moved: nobody wrote on the page.
+  const before = [
+    line("a", false),
+    line("c", false),
+    { type: "paragraph" as const, text: "Notes", id: "p" },
+  ];
+  const moved = (content: Json[]) => ({
+    content: content as typeof before,
+    linked_block_ids: ["a"],
+  });
+  assert.equal(onlyTaskTicksMoved(before, moved(before)), true);
+  assert.equal(
+    onlyTaskTicksMoved(before, moved([line("a", true), before[1], before[2]])),
+    true,
+  );
+  // A tick on a line that isn't a task is somebody's edit.
+  assert.equal(
+    onlyTaskTicksMoved(before, moved([before[0], line("c", true), before[2]])),
+    false,
+  );
+  // So are words, on a task's line or anywhere else, and lines added.
+  assert.equal(
+    onlyTaskTicksMoved(
+      before,
+      moved([
+        { ...line("a", true), text: "Feed the cat" },
+        before[1],
+        before[2],
+      ]),
+    ),
+    false,
+  );
+  assert.equal(
+    onlyTaskTicksMoved(
+      before,
+      moved([line("a", true), before[1], { ...before[2], text: "More notes" }]),
+    ),
+    false,
+  );
+  assert.equal(
+    onlyTaskTicksMoved(before, moved([...before, before[2]])),
+    false,
+  );
+});
+
+test("an open page hears who moved it on", async () => {
+  const { OrbynClient } = await import("@orbyn/api-client");
+  const events = [
+    { docId: "d", version: 4, by: "task" },
+    { docId: "d", version: 5, by: "tab-2" },
+    { docId: "d", version: 6 },
+  ];
+  const stream = (async () =>
+    new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(""), {
+      headers: { "content-type": "text/event-stream" },
+    })) as typeof fetch;
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => "t",
+    streamFetch: stream,
+  });
+  const heard: [number, string][] = [];
+  const stop = client.watchDoc("d", (version, by) => heard.push([version, by]));
+  try {
+    const deadline = Date.now() + 2000;
+    while (heard.length < 3 && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 10));
+  } finally {
+    stop();
+  }
+  assert.deepEqual(heard, [
+    [4, "task"],
+    [5, "tab-2"],
+    [6, ""],
+  ]);
 });
 
 test("the OpenAPI description lists every webhook, sessions included", async () => {

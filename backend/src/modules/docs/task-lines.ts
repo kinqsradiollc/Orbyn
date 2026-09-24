@@ -17,10 +17,12 @@ import { announceDocChange } from "./live.js";
  *
  * A page someone is saving at this moment is locked by that save and is
  * skipped rather than waited for, since that save may itself be waiting for
- * this task (waiting could deadlock). Its save lands next, at the version
- * after the current one; its line was read before this change, so the
- * page's last word on it stands, and the save's answer shows the task as it
- * now is.
+ * this task (waiting could deadlock). That save gives the page its next
+ * version, so the line is shown as the task now stands from that version
+ * on. A save with this task's line on it waits for the task and reads the
+ * task and the link only once this change is committed (see syncTicks), so
+ * a tick it carries from before counts as old, and its answer shows the
+ * task as it now is.
  */
 export async function followTaskState(
   db: Db,

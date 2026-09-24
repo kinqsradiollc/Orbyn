@@ -646,7 +646,11 @@ The reader then re-reads the document and folds the new copy into what is on scr
 payload to a version number means a reader that misses an event still catches up on the next one.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
-request. A tab is never told about its own save. `404` when the document isn't yours to read.
+request — or `"task"` when a task tied to one of its lines was finished or reopened somewhere else,
+or `"agenda"` when the day's agenda was written again from the calendar. A tab is never told about
+its own save. When only a task's tick moved (`onlyTaskTicksMoved` in `@orbyn/core`), Orbyn's
+editors re-read quietly if `by` is `"task"`, and otherwise say "A task on this page changed." rather
+than that someone else edited it. `404` when the document isn't yours to read.
 
 The stream is read with `fetch`, not `EventSource`, because `EventSource` cannot carry an
 `Authorization` header and the token must not travel in the URL.
@@ -909,8 +913,12 @@ unticked again, and a refused tick reads as the task really is), so saving the p
 finishes a task twice:
 
 - An editor sends `X-Orbyn-Ticks-From: <version>`, the version of the page its ticks were taken
-  from: the version it had read or saved when it put the content together. A save queued behind
-  one still running sends the version from before that one's answer. A line whose `done` differs
+  from: the last copy it read, saved or merged whose lines tied to tasks it showed exactly as that
+  copy had them. While a tick made on the page is unsaved, that stays put, even as newer copies
+  are merged in: sent as if made on the newer copy, a tick already counted (a save whose answer
+  was lost, or another open copy ticking the same line) would count again. `ticksTakenFrom` in
+  `@orbyn/core` keeps it. A save queued behind one still running sends the version from before
+  that one's answer. A line whose `done` differs
   from its task counts when its ticks were taken from the first version that shows the line as
   the task now stands, or a later one. So ticking a line on a page opened afresh, or again after
   the save that took the last answer was lost, finishes the next occurrence.
@@ -929,7 +937,9 @@ suggestion changes words only and never finishes or reopens a task.
 When a task tied to a page's line is finished or reopened anywhere else (the planner, another
 page, the assistant), every page showing it moves on a version (without changing `updated_at`) and
 open copies hear about it on the live stream. An editor still showing the old tick gets `409` on
-its next save, re-reads, and merges, so it can't save the old tick back over the change.
+its next save, re-reads, and merges, so it can't save the old tick back over the change. A save of
+the page running at that moment isn't waited for: it gives the page its next version, waits for
+the task itself, and reads the task as it now stands, so an old tick it carries doesn't count.
 
 ### `DELETE /docs/:id` (auth)
 

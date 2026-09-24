@@ -1099,14 +1099,20 @@ export class OrbynClient {
 
   /**
    * Watch a document for changes made elsewhere. Calls `onChange` with the
-   * version the document has reached; the caller then re-reads it. Returns a
-   * function that stops watching.
+   * version the document has reached and who moved it on: another editor's
+   * id, "task" when a task tied to one of its lines was finished or reopened
+   * somewhere else, or "agenda" when the day's agenda was written again
+   * from the calendar. The caller then re-reads it. Returns a function that
+   * stops watching.
    *
    * This reads the stream with `fetch` rather than `EventSource`, which
    * cannot carry an Authorization header and would force the token into the
    * URL, where proxies and logs would keep it.
    */
-  watchDoc(id: string, onChange: (version: number) => void): () => void {
+  watchDoc(
+    id: string,
+    onChange: (version: number, by: string) => void,
+  ): () => void {
     const abort = new AbortController();
     let stopped = false;
     const run = async () => {
@@ -1152,8 +1158,12 @@ export class OrbynClient {
               try {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
+                  by?: string;
                 };
-                onChange(payload.version ?? 0);
+                onChange(
+                  payload.version ?? 0,
+                  typeof payload.by === "string" ? payload.by : "",
+                );
               } catch {
                 // A half-written event: the next one will bring us up to date.
               }

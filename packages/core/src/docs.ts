@@ -773,6 +773,68 @@ export function adoptTaskTicks(
 }
 
 /**
+ * The version of a page that the ticks on screen were taken from, which an
+ * editor sends with each save (`ticksFrom` on updateDoc) so the server can
+ * tell a tick the person just made from one it has already counted.
+ *
+ * An editor keeps this beside the version it saves against, starting from
+ * the version it opened. Each time a copy from the server arrives (a save's
+ * answer, a fresh read, a copy merged in), it moves to that copy's version
+ * only when every line tied to a task shows the tick that copy has for it:
+ * then any tick made from here on is made on the lines as they stand. While
+ * a tick made here is still unsaved it stays at `held`, the version the
+ * tick was made on, even as newer copies are merged around it. Sent as if
+ * taken from the newer copy, a tick the server already counted (its answer
+ * lost, or another open copy of the page ticking the same line) would count
+ * again.
+ */
+export function ticksTakenFrom(
+  held: number,
+  server: Pick<Doc, "version" | "content" | "linked_block_ids">,
+  screen: DocBlock[],
+): number {
+  if (server.version <= held) return held;
+  // Without the list, every named checklist line might be a task.
+  const linked = server.linked_block_ids
+    ? new Set(server.linked_block_ids)
+    : null;
+  const theirs = new Map<string, boolean>();
+  for (const b of server.content)
+    if (b.type === "todo" && b.id) theirs.set(b.id, b.done);
+  for (const b of screen) {
+    if (b.type !== "todo" || !b.id || (linked && !linked.has(b.id))) continue;
+    if (theirs.get(b.id) !== b.done) return held;
+  }
+  return server.version;
+}
+
+/**
+ * Whether a newer copy of a page differs from an older one only in the
+ * ticks of lines tied to tasks: a task was finished or reopened, and nobody
+ * wrote on the page. An editor then says so rather than that someone else
+ * edited it.
+ */
+export function onlyTaskTicksMoved(
+  before: DocBlock[],
+  after: Pick<Doc, "content" | "linked_block_ids">,
+): boolean {
+  if (before.length !== after.content.length) return false;
+  const linked = new Set(after.linked_block_ids ?? []);
+  return after.content.every((b, i) => {
+    const a = before[i];
+    if (sameBlock(a, b)) return true;
+    return (
+      a.type === "todo" &&
+      b.type === "todo" &&
+      !!b.id &&
+      a.id === b.id &&
+      linked.has(b.id) &&
+      sameBlock({ ...a, done: b.done }, b)
+    );
+  });
+}
+
+/**
  * A checklist line's Markdown with its box set to `done`, for a line open
  * for editing whose tick changed underneath it. Anything that isn't a
  * checklist line comes back as it was.
