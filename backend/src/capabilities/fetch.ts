@@ -147,10 +147,11 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     ctx.db.query<{
       id: string;
       title: string;
+      kind: string;
       status: string;
       source: string | null;
     }>(
-      `SELECT c.id, c.title, c.status, ${itemSourceSql("c")} AS source
+      `SELECT c.id, c.title, c.kind, c.status, ${itemSourceSql("c")} AS source
          FROM items c WHERE c.parent_id = $1
         ORDER BY c.position, c.created_at LIMIT 100`,
       [t.id],
@@ -237,7 +238,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     lines.push("", "## Steps");
     for (const s of steps.rows)
       lines.push(
-        `- [${s.status === "done" ? "x" : " "}] ${lineTitle(titleFor(s.title, s.source ?? "you", hide(ctx)) || "Untitled", null, s.source ?? "you")} · task:${s.id}`,
+        `- [${s.status === "done" ? "x" : " "}] ${lineTitle(titleFor(s.title, s.source ?? "you", hide(ctx), s.kind) || "Untitled", null, s.source ?? "you", s.kind)} · ${s.kind === "event" ? "event" : "task"}:${s.id}`,
       );
   }
   if (t.notes.trim())

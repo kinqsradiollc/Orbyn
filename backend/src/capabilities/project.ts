@@ -42,6 +42,7 @@ const taskLine = z.object({
   id: z.string(),
   title: z.string(),
   url: z.string(),
+  kind: z.string().describe('"task" or "event".'),
   status: z.string(),
   priority: z.string(),
   due: when.nullable(),
@@ -116,6 +117,12 @@ export const projectOutput = z.object({
       provenance: z
         .string()
         .describe('"you", or where the title in the summary came from.'),
+      item_kind: z
+        .string()
+        .nullable()
+        .describe(
+          'The kind of item the change is about ("task" or "event"), when known.',
+        ),
     }),
   ),
   health: z.object({
@@ -169,7 +176,10 @@ export async function projectHub(
     return { sql: build(s, p), values: p.values };
   };
   const tasksQ = q(
-    (s, p) => `SELECT i.id, i.title, i.status, i.priority, i.due_at, i.stage_id,
+    (
+      s,
+      p,
+    ) => `SELECT i.id, i.title, i.kind, i.status, i.priority, i.due_at, i.stage_id,
         i.estimate_minutes, i.spent_minutes, a.name AS assignee,
         ${itemSourceSql("i")} AS source
       FROM items i LEFT JOIN users a ON a.id = i.assignee_id
@@ -198,15 +208,20 @@ export async function projectHub(
      ORDER BY w.created_at DESC LIMIT 30`,
   );
   // Notes are listed only when this principal can open the page itself.
+  // Where a task's title came from is kept on the change itself (it
+  // outlives the task); a change written before its task had a source is
+  // checked against the task, while there is one.
   const activityQ = q(
     (s, p) => `SELECT a.created_at, a.summary, u.name AS actor,
         CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''), nullif(g.name, ''), 'an agent') END AS via_agent,
-        CASE WHEN a.entity_type = 'task' THEN (
+        coalesce(a.source, CASE WHEN a.entity_type = 'task' THEN (
           SELECT ${itemSourceSql("x")} FROM (SELECT a.entity_id AS id) x
-        ) END AS source
+        ) END) AS source,
+        coalesce(a.item_kind, i.kind) AS item_kind
       FROM project_activity a
       LEFT JOIN users u ON u.id = a.actor_id
       LEFT JOIN agent_grants g ON g.id = a.via_grant_id
+      LEFT JOIN items i ON a.entity_type = 'task' AND i.id = a.entity_id
      WHERE a.project_id = ${p.add(id)}
        AND (a.entity_type <> 'note' OR EXISTS (
              SELECT 1 FROM docs d WHERE d.id = a.entity_id AND ${visibleDocs("d", s)}))
@@ -220,6 +235,7 @@ export async function projectHub(
     ctx.db.query<{
       id: string;
       title: string;
+      kind: string;
       status: string;
       priority: string;
       due_at: Date | null;
@@ -252,6 +268,7 @@ export async function projectHub(
       actor: string | null;
       via_agent: string | null;
       source: string | null;
+      item_kind: string | null;
     }>(activityQ.sql, activityQ.values),
   ]);
   const openIds = tasks.rows
@@ -295,8 +312,9 @@ export async function projectHub(
     const r = refs({ type: "task", id: t.id });
     return {
       id: r.id,
-      title: titleFor(t.title, t.source ?? "you", hide) || "Untitled",
+      title: titleFor(t.title, t.source ?? "you", hide, t.kind) || "Untitled",
       url: r.url,
+      kind: t.kind,
       status: t.status,
       priority: t.priority,
       due: both(t.due_at, tz),
@@ -351,7 +369,7 @@ export async function projectHub(
       const t = byId.get(b.item_id);
       return {
         task_id: refs({ type: "task", id: b.item_id }).id,
-        task_title: titleFor(t?.title ?? "", t?.source ?? "you", hide),
+        task_title: titleFor(t?.title ?? "", t?.source ?? "you", hide, t?.kind),
         start: both(b.start_at, tz)!,
         end: both(b.end_at, tz)!,
         minutes: Math.round(
@@ -383,10 +401,11 @@ export async function projectHub(
     })),
     activity: activity.rows.map((a) => ({
       at: a.created_at.toISOString(),
-      summary: activitySummary(a.summary, a.source, hide),
+      summary: activitySummary(a.summary, a.source, hide, a.item_kind),
       by: a.actor ? cleanTitle(a.actor) : null,
       via_agent: a.via_agent ? cleanTitle(a.via_agent) : null,
       provenance: a.source ?? "you",
+      item_kind: a.item_kind,
     })),
     health: {
       open_tasks: open.length,
@@ -430,21 +449,26 @@ function activitySummary(
   summary: string,
   source: string | null,
   hide: boolean,
+  kind: string | null,
 ): string {
   const text = cleanTitle(summary);
-  const heading = source ? outsideHeading(source) : null;
+  const heading = source ? outsideHeading(source, kind ?? undefined) : null;
   if (!heading || !hide) return text;
   const m = ACTIVITY_TITLE.exec(text);
   return m ? `${m[1]}: ${heading}` : heading;
 }
 
 /** A change's summary for Markdown, a title from outside fenced. */
-function activityLine(summary: string, source: string): string {
+function activityLine(
+  summary: string,
+  source: string,
+  kind: string | null,
+): string {
   if (source === "you") return summary;
   const m = ACTIVITY_TITLE.exec(summary);
   return m
-    ? `${m[1]}: ${lineTitle(m[2], null, source)}`
-    : lineTitle(summary, null, source);
+    ? `${m[1]}: ${lineTitle(m[2], null, source, kind ?? undefined)}`
+    : lineTitle(summary, null, source, kind ?? undefined);
 }
 
 /** A project hub as Markdown. */
@@ -466,14 +490,18 @@ export function projectMarkdown(h: ProjectHub): string {
     out.push("", `## ${s.name}`);
     for (const t of s.open_tasks)
       out.push(
-        `- ${lineTitle(t.title, t.url, t.provenance)} (${t.status}${t.due ? `, due ${t.due.local}` : ""}${t.assignee ? `, ${t.assignee}` : ""}) · ${t.id}`,
+        `- ${lineTitle(t.title, t.url, t.provenance, t.kind)} (${t.status}${t.due ? `, due ${t.due.local}` : ""}${t.assignee ? `, ${t.assignee}` : ""}) · ${t.id}`,
       );
   }
   if (h.sessions.length) {
+    // Sessions are for open tasks, each listed under its stage.
+    const kinds = new Map(
+      h.stages.flatMap((s) => s.open_tasks.map((t) => [t.id, t.kind])),
+    );
     out.push("", "## Sessions ahead");
     for (const s of h.sessions)
       out.push(
-        `- ${s.start.local}, ${s.minutes} min: ${lineTitle(s.task_title, null, s.provenance)}`,
+        `- ${s.start.local}, ${s.minutes} min: ${lineTitle(s.task_title, null, s.provenance, kinds.get(s.task_id))}`,
       );
   }
   if (h.docs.length) {
@@ -491,7 +519,7 @@ export function projectMarkdown(h: ProjectHub): string {
     out.push("", "## Recent changes");
     for (const a of h.activity)
       out.push(
-        `- ${a.at.slice(0, 16).replace("T", " ")} ${activityLine(a.summary, a.provenance)}${a.by ? ` (${a.by}${a.via_agent ? ` via ${a.via_agent}` : ""})` : ""}`,
+        `- ${a.at.slice(0, 16).replace("T", " ")} ${activityLine(a.summary, a.provenance, a.item_kind)}${a.by ? ` (${a.by}${a.via_agent ? ` via ${a.via_agent}` : ""})` : ""}`,
       );
   }
   return out.join("\n");

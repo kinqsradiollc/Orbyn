@@ -348,7 +348,7 @@ const passage = z.object({
   provenance: z.string(),
   source: z.object({
     id: z.string(),
-    type: z.enum(["doc", "task", "record"]),
+    type: z.enum(["doc", "task", "event", "record"]),
     title: z.string(),
     url: z.string(),
   }),
@@ -503,7 +503,7 @@ export const findPassages = defineCapability({
         extra.push(`x.team_id = ${p2.add(team.team)}`);
       const and = extra.map((e) => ` AND ${e}`).join("");
       const more = await ctx.db.query<{
-        type: "task" | "record";
+        type: "task" | "event" | "record";
         id: string;
         title: string;
         project_id: string | null;
@@ -514,7 +514,8 @@ export const findPassages = defineCapability({
         rank: string;
       }>(
         `WITH q AS (SELECT websearch_to_tsquery('english', ${q2}) AS tsq)
-         SELECT 'task' AS type, x.id, x.title, x.project_id, x.user_id,
+         SELECT CASE WHEN x.kind = 'event' THEN 'event' ELSE 'task' END AS type,
+                x.id, x.title, x.project_id, x.user_id,
                 u.name AS author_name, ${itemSourceSql("x")} AS source,
                 ts_headline('english', x.notes, q.tsq, 'MaxWords=60, MinWords=20, MaxFragments=1, StartSel="", StopSel=""') AS quote,
                 0.6 * ts_rank_cd(to_tsvector('english', x.notes), q.tsq) AS rank
@@ -551,6 +552,7 @@ export const findPassages = defineCapability({
                 r.title,
                 provenance,
                 ctx.principal.flags.hide_outside_content,
+                r.type,
               ) || "Untitled",
             url: at.url,
           },
@@ -574,7 +576,7 @@ export const findPassages = defineCapability({
       ? passages
           .map((p, n) => {
             const where = [
-              lineTitle(p.source.title, null, p.provenance),
+              lineTitle(p.source.title, null, p.provenance, p.source.type),
               ...p.heading_path,
             ].join(" › ");
             const body =

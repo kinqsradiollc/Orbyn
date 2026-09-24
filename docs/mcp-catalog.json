@@ -1131,6 +1131,10 @@
                       "id": { "type": "string" },
                       "title": { "type": "string" },
                       "url": { "type": "string" },
+                      "kind": {
+                        "type": "string",
+                        "description": "\"task\" or \"event\"."
+                      },
                       "status": { "type": "string" },
                       "priority": { "type": "string" },
                       "due": {
@@ -1158,6 +1162,7 @@
                       "id",
                       "title",
                       "url",
+                      "kind",
                       "status",
                       "priority",
                       "due",
@@ -1271,9 +1276,20 @@
                 "provenance": {
                   "type": "string",
                   "description": "\"you\", or where the title in the summary came from."
+                },
+                "item_kind": {
+                  "description": "The kind of item the change is about (\"task\" or \"event\"), when known.",
+                  "type": ["string", "null"]
                 }
               },
-              "required": ["at", "summary", "by", "via_agent", "provenance"],
+              "required": [
+                "at",
+                "summary",
+                "by",
+                "via_agent",
+                "provenance",
+                "item_kind"
+              ],
               "additionalProperties": false
             }
           },
@@ -1389,7 +1405,7 @@
                     "id": { "type": "string" },
                     "type": {
                       "type": "string",
-                      "enum": ["doc", "task", "record"]
+                      "enum": ["doc", "task", "event", "record"]
                     },
                     "title": { "type": "string" },
                     "url": { "type": "string" }

@@ -516,11 +516,13 @@ test("booking guests' words come back fenced, without their email, and hidden on
   const passages = await h.tool(keys.ownerAll, "find_passages", {
     query: "burrow company",
   });
+  // An event's notes are cited as the event's.
   const quoted = passages!.structuredContent.passages.find(
-    (p: { source: { id: string } }) => p.source.id === `task:${event.id}`,
+    (p: { source: { id: string } }) => p.source.id === `event:${event.id}`,
   );
   assert.ok(quoted, JSON.stringify(passages!.structuredContent));
   assert.equal(quoted.provenance, "booking_guest");
+  assert.equal(quoted.source.type, "event");
   assert.match(
     passages!.content[0].text,
     /<untrusted-content source="booking_guest">/,
@@ -903,6 +905,143 @@ test("a task and an event sent by email are outside content in Today, the calend
     });
     fencedOnly(shownMeet!.structuredContent.text, "MAILPLACEWORD");
     assert.match(shownMeet!.structuredContent.text, /^# Event from email\n/);
+
+    // The event in the project, and found by its notes: named "Event from
+    // email" wherever it's listed.
+    await pool.query(
+      "UPDATE items SET project_id = $2, notes = 'MAILNOTEWORD marmot' WHERE id = $1",
+      [meet.id, project.id],
+    );
+    const quietBoth = await h.tool(hiding, "get_project", {
+      project: `project:${project.id}`,
+    });
+    for (const word of WORDS)
+      assert.ok(!JSON.stringify(quietBoth).includes(word));
+    const meetLine = quietBoth!.structuredContent.stages
+      .flatMap((s: { open_tasks: unknown[] }) => s.open_tasks)
+      .find((t: { id: string }) => t.id === `task:${meet.id}`);
+    assert.deepEqual(
+      [meetLine.title, meetLine.kind, meetLine.provenance],
+      ["Event from email", "event", "inbound_email"],
+    );
+    assert.ok(
+      quietBoth!.structuredContent.activity.some(
+        (a: { summary: string; provenance: string; item_kind: string }) =>
+          a.summary === "Task added: Event from email" &&
+          a.provenance === "inbound_email" &&
+          a.item_kind === "event",
+      ),
+    );
+    assert.match(
+      quietBoth!.content[0].text,
+      /Task added: Event from email(?! <untrusted)/,
+    );
+    const shownBoth = await h.tool(keys.ownerPersonal, "get_project", {
+      project: `project:${project.id}`,
+    });
+    fencedOnly(shownBoth!.content[0].text, "MAILMEETWORD");
+    assert.match(
+      shownBoth!.content[0].text,
+      /\[Event from email\]\([^)]*\) <untrusted-content source="inbound_email">MAILMEETWORD/,
+    );
+    assert.match(
+      shownBoth!.content[0].text,
+      /Task added: Event from email <untrusted-content source="inbound_email">MAILMEETWORD/,
+    );
+    const found = await h.tool(keys.ownerPersonal, "find_passages", {
+      query: "MAILNOTEWORD",
+    });
+    const passage = found!.structuredContent.passages.find(
+      (p: { source: { id: string } }) => p.source.id === `event:${meet.id}`,
+    );
+    assert.equal(passage?.source.type, "event");
+    assert.equal(passage?.provenance, "inbound_email");
+    fencedOnly(found!.content[0].text, "MAILMEETWORD");
+    assert.match(
+      found!.content[0].text,
+      /Event from email <untrusted-content source="inbound_email">MAILMEETWORD/,
+    );
+
+    // A change to the task while it's in the project, then both deleted:
+    // the project's recent changes still name them only as outside content.
+    await pool.query(
+      "UPDATE items SET due_at = due_at + interval '1 hour' WHERE id = $1",
+      [task.id],
+    );
+    for (const gone of [task, meet]) {
+      const { version } = (
+        await pool.query<{ version: number }>(
+          "SELECT version FROM items WHERE id = $1",
+          [gone.id],
+        )
+      ).rows[0];
+      const deleted = await h.call(
+        owner.token,
+        "DELETE",
+        `/items/${gone.id}?version=${version}`,
+      );
+      assert.equal(deleted.statusCode, 204, deleted.body);
+    }
+    // Their source rows go with them, once the change rows have it.
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM item_sources WHERE item_id = ANY ($1::uuid[])",
+          [[task.id, meet.id]],
+        )
+      ).rowCount,
+      0,
+    );
+    const quietAfter = await h.tool(hiding, "get_project", {
+      project: `project:${project.id}`,
+    });
+    const quietAfterText = JSON.stringify(quietAfter);
+    for (const word of WORDS)
+      assert.ok(!quietAfterText.includes(word), quietAfterText);
+    const about = (
+      quietAfter!.structuredContent.activity as {
+        summary: string;
+        provenance: string;
+      }[]
+    ).filter((a) => a.provenance === "inbound_email");
+    for (const summary of [
+      "Task removed: Task from email",
+      "Task updated: Task from email",
+      "Task added: Task from email",
+      "Task removed: Event from email",
+      "Task added: Event from email",
+    ])
+      assert.ok(
+        about.some((a) => a.summary === summary),
+        `${summary} in ${quietAfterText}`,
+      );
+    assert.ok(
+      !quietAfter!.structuredContent.activity.some(
+        (a: { provenance: string; summary: string }) =>
+          a.provenance === "you" && /from email/.test(a.summary),
+      ),
+    );
+    const shownAfter = await h.tool(keys.ownerPersonal, "get_project", {
+      project: `project:${project.id}`,
+    });
+    const shownAfterText = shownAfter!.content[0].text;
+    assert.match(shownAfterText, /## Recent changes/);
+    fencedOnly(shownAfterText, "MAILTASKWORD");
+    fencedOnly(shownAfterText, "MAILMEETWORD");
+    assert.match(
+      shownAfterText,
+      /Task removed: Task from email <untrusted-content source="inbound_email">MAILTASKWORD/,
+    );
+    assert.match(
+      shownAfterText,
+      /Task removed: Event from email <untrusted-content source="inbound_email">MAILMEETWORD/,
+    );
+    for (const a of shownAfter!.structuredContent.activity as {
+      summary: string;
+      provenance: string;
+    }[])
+      if (/MAIL(TASK|MEET)WORD/.test(a.summary))
+        assert.equal(a.provenance, "inbound_email", a.summary);
   } finally {
     await pool.query(
       "UPDATE planner_prefs SET default_travel_minutes = $2 WHERE user_id = $1",

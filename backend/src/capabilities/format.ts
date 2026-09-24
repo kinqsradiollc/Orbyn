@@ -42,8 +42,10 @@ const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
 const HIDDEN_OPEN = /<(script|style|template|iframe|object|noscript|svg)\b/gi;
 /** Elements that can be styled invisible, hiding what's inside them. */
 const STYLED_OPEN = /<(span|div|p)\b/gi;
-/** A style attribute's opening, up to its quote. */
-const STYLE_ATTRIBUTE = /style\s*=\s*["']/gi;
+/** A style attribute's opening, up to its quote when it has one. */
+const STYLE_ATTRIBUTE = /style\s*=\s*(["']?)/gi;
+/** Where a value without quotes ends, as a browser reads it. */
+const UNQUOTED_END = /[\s>]/g;
 /** A declaration that hides what it styles. */
 const HIDING = /display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0/i;
 /**
@@ -148,16 +150,23 @@ function dropHiddenElements(s: string): string {
 
 /**
  * Whether a tag's text styles its element invisible. Each style value runs
- * to the quote that opened it, and the search goes on after it, so the tag
- * is read once.
+ * to the quote that opened it, or, without quotes (`style=display:none`),
+ * to the next space or ">"; the search goes on after it, so the tag is
+ * read once.
  */
 function hidesItself(tag: string): boolean {
   STYLE_ATTRIBUTE.lastIndex = 0;
   for (let m; (m = STYLE_ATTRIBUTE.exec(tag));) {
     const from = m.index + m[0].length;
-    const end = tag.indexOf(m[0][m[0].length - 1], from);
-    // A value that never closes leaves the tag open: it hides nothing.
-    if (end < 0) return false;
+    let end: number;
+    if (m[1]) {
+      end = tag.indexOf(m[1], from);
+      // A value that never closes leaves the tag open: it hides nothing.
+      if (end < 0) return false;
+    } else {
+      UNQUOTED_END.lastIndex = from;
+      end = UNQUOTED_END.exec(tag)?.index ?? tag.length;
+    }
     if (HIDING.test(tag.slice(from, end))) return true;
     STYLE_ATTRIBUTE.lastIndex = end + 1;
   }
@@ -765,8 +774,12 @@ export function lineTitle(
   const link = (text: string) => (url ? mdLink(text, url) : text);
   const name = outsideHeading(source, kind);
   if (!name) return link(title);
-  return title === name
-    ? link(name)
+  // Already a neutral name (the connection hides outside content), whatever
+  // kind it was given for: nothing follows it.
+  return title === name ||
+    title === outsideHeading(source, "task") ||
+    title === outsideHeading(source, "event")
+    ? link(title)
     : `${link(name)} ${fencedTitle(title, source)}`;
 }
 
