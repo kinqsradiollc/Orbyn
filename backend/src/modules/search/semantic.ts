@@ -78,6 +78,9 @@ export async function measureQueued(limit = 5): Promise<number> {
     await pool.query<{ doc_id: string; content: DocBlock[] }>(
       `SELECT q.doc_id, d.content FROM doc_embedding_queue q
          JOIN docs d ON d.id = q.doc_id
+        -- A page in Trash can't be searched: measuring it would be a call
+        -- to the provider for nothing. It is queued again when restored.
+        WHERE d.deleted_at IS NULL
         ORDER BY q.queued_at LIMIT $1`,
       [limit],
     )

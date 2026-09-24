@@ -9,13 +9,16 @@ import {
   X,
 } from "lucide-react";
 import {
+  changeAuthors,
   diffBlocks,
   diffCounts,
   listLayout,
+  MAX_SITTINGS,
   type Doc,
   type DocBlock,
   type DocDiffLine,
   type DocVersion,
+  type Sitting,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { BlockView } from "./DocBlocks";
@@ -51,6 +54,11 @@ export type HistoryView = {
   /** The version kept before this one, when there is one. */
   older: Required<DocVersion> | null;
   compare: "current" | "previous";
+  /**
+   * This version and every one kept since, oldest first, to tell who made
+   * each change since; null when there are too many to read.
+   */
+  sittings: Sitting[] | null;
 };
 
 /**
@@ -93,18 +101,29 @@ export function DocHistory({
   const open = (v: DocVersion) => {
     if (!versions) return;
     setBusy(true);
+    const at = versions.findIndex((x) => x.version === v.version);
     // The version kept before this one, for "what this sitting changed".
-    const older =
-      versions[versions.findIndex((x) => x.version === v.version) + 1];
+    const older = versions[at + 1];
+    // The ones kept since, newest first, for who changed what since.
+    const since = at < MAX_SITTINGS ? versions.slice(0, at) : null;
     Promise.all([
       client.getDocVersion(doc.id, v.version),
       older ? client.getDocVersion(doc.id, older.version) : null,
+      since
+        ? Promise.all(since.map((x) => client.getDocVersion(doc.id, x.version)))
+        : null,
     ])
-      .then(([version, before]) =>
+      .then(([version, before, newer]) =>
         onView({
           version,
           older: before,
           compare: viewing?.compare ?? "current",
+          sittings: newer
+            ? [version, ...newer.reverse()].map((x) => ({
+                content: x.content,
+                author: x.author,
+              }))
+            : null,
         }),
       )
       .catch(report)
@@ -233,9 +252,17 @@ export function DocChanges({
   const after = previous ? view.version.content : current;
   const lines = useMemo(() => diffBlocks(before, after), [before, after]);
   const counts = diffCounts(lines);
-  // Who made the changes, when it is one sitting: the person who replaced the
-  // older version's state.
-  const by = previous ? view.older!.author : null;
+  // Who made each change: for one sitting, the person who replaced the
+  // older version's state; since then, whichever sitting made it.
+  const authors = useMemo(
+    () =>
+      previous
+        ? lines.map((l) => (l.change === "same" ? null : view.older!.author))
+        : view.sittings
+          ? changeAuthors(lines, view.sittings)
+          : null,
+    [lines, previous, view],
+  );
   const layoutBefore = useMemo(() => listLayout(before), [before]);
   const layoutAfter = useMemo(() => listLayout(after), [after]);
   const [unfolded, setUnfolded] = useState<Set<number>>(new Set());
@@ -311,6 +338,9 @@ export function DocChanges({
             ]
               .filter(Boolean)
               .join(" · ")}
+        {!nothing &&
+          !authors &&
+          " · made over too many sittings to say who changed each line"}
       </p>
       <div className="doc-body doc-changes-body">
         {rows.map((row) =>
@@ -355,9 +385,9 @@ export function DocChanges({
                     : layoutAfter[row.line.index])}
                 />
               </div>
-              {row.line.change !== "same" && by && (
-                <span className="doc-initials" title={by}>
-                  {initials(by)}
+              {authors?.[row.at] && (
+                <span className="doc-initials" title={authors[row.at]!}>
+                  {initials(authors[row.at])}
                 </span>
               )}
               {row.line.change === "removed" && canRestore && (

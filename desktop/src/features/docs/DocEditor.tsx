@@ -43,6 +43,7 @@ import {
   indentBlocks,
   isListBlock,
   isUrl,
+  keepStart,
   linkRange,
   linkShortcut,
   listLayout,
@@ -61,6 +62,7 @@ import {
   type Restyled,
   carryBlockIds,
   mergeDocs,
+  carryNewIds,
   newBlockId,
   parseDoc,
   serializeBlock,
@@ -99,20 +101,6 @@ const STYLES: { style: InlineStyle; label: string; keys: string }[] = [
   { style: "italic", label: "Italic", keys: "⌘I" },
   { style: "highlight", label: "Highlight", keys: "⌘⇧H" },
 ];
-
-/**
- * A numbered line is typed with the number it shows ("3. …"), so reading it
- * back gives it a `start`. That only means something on the first line of a
- * list; anywhere else the number is counted, and the start is let go.
- */
-function keepStart(blocks: DocBlock[], index: number): DocBlock[] {
-  const b = blocks[index];
-  if (b?.type !== "numbered" || b.start === undefined) return blocks;
-  const { start: _start, ...counted } = b;
-  const probe = blocks.slice();
-  probe[index] = counted;
-  return listLayout(probe)[index].number === 1 ? blocks : probe;
-}
 
 /**
  * Put new words into a line being typed, as typing would: through the
@@ -481,8 +469,20 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
-  const onEvent = useRef<(version: number) => void>(() => {});
-  onEvent.current = (remote: number) => {
+  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
+  onEvent.current = (remote: number, trashed: boolean) => {
+    // Moved to Trash somewhere else: let the page go, rather than keep
+    // typing into something every save will now refuse.
+    if (trashed) {
+      if (timer.current) clearTimeout(timer.current);
+      dirty.current = false;
+      flushOnClose.current = () => {};
+      onDeleted(doc.id);
+      toast({
+        text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
+      });
+      return;
+    }
     if (remote && remote <= version.current) return;
     void client.getDoc(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
@@ -514,7 +514,11 @@ export function DocEditor({
    * server says only that it moved on; the new copy is read here and folded
    * in, so two people can work on the same page at once.
    */
-  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
+  useEffect(
+    () =>
+      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    [doc.id],
+  );
 
   // The note is news, not a state to sit in.
   useEffect(() => {
@@ -870,7 +874,9 @@ export function DocEditor({
   const insertAfter = (index: number) => {
     if (!structural) return;
     const current = blocks[index];
-    settlePendingTask(index);
+    // A "New task" line being left becomes a task, but only once the new
+    // line is on the page: the save that goes first then already holds it.
+    const task = claimPendingTask(current);
     const next = blocks.slice();
     // Enter at the end of a list item makes another at the same depth; on an
     // empty one it steps back out a level, and at the left edge it leaves
@@ -883,6 +889,10 @@ export function DocEditor({
         }
         next[index] = { type: "paragraph", text: "" };
         update(next);
+        // A line of another kind is a new input: open it again, so the
+        // caret stays where the writer is.
+        setFocused(null);
+        requestAnimationFrame(() => setFocused(index));
         return;
       }
       next.splice(
@@ -896,6 +906,7 @@ export function DocEditor({
     } else next.splice(index + 1, 0, { type: "paragraph", text: "" });
     update(next);
     setFocused(index + 1);
+    makePendingTask(task);
   };
 
   /** Tuck a list line in under the one above, or bring it back out. */
@@ -913,15 +924,28 @@ export function DocEditor({
   const linesToTasks = async (blockIds?: string[]) => {
     if (timer.current) clearTimeout(timer.current);
     if (dirty.current) await persist(live.current.title, live.current.blocks);
+    // What the server works from; anything typed after this is newer.
+    const sent = live.current.blocks;
     const { created, doc: updated } = await client.docToTasks(doc.id, blockIds);
-    if (updated) {
+    if (updated && updated.version > version.current) {
       version.current = updated.version;
       base.current = updated.content;
-      dirty.current = false;
-      setBlocks(updated.content);
-      setSave("saved");
       setSavedAt(updated.updated_at);
       onChanged(updated);
+      if (!dirty.current && live.current.blocks === sent) {
+        setBlocks(updated.content);
+        setSave("saved");
+      } else {
+        // The page moved on while the lines were being made tasks: a line
+        // added by Enter, words typed somewhere else. What is on screen
+        // stands, and is saved over the server's copy; only the names the
+        // server gave lines are taken from it, so they stay tied to their
+        // tasks.
+        const now = live.current.blocks;
+        const next = carryNewIds(sent, updated.content, now);
+        if (next !== now) setBlocks(next);
+        queueSave(live.current.title, next);
+      }
     }
     onItemsChanged?.();
     return created;
@@ -929,19 +953,24 @@ export function DocEditor({
 
   /**
    * A line made by "New task" becomes a task once it has words and the
-   * writer moves on from it (Enter, or leaving the line).
+   * writer moves on from it (Enter, or leaving the line). Claiming it first
+   * means it is made once, however the line is left.
    */
-  const settlePendingTask = (index: number) => {
+  const claimPendingTask = (block: DocBlock | undefined): string | null => {
     const id = pendingTask.current;
-    const block = blocks[index];
-    if (!id || block?.id !== id) return;
+    if (!id || block?.id !== id) return null;
     pendingTask.current = null;
-    if (block.type !== "todo" || !block.text.trim()) return;
+    return block.type === "todo" && block.text.trim() ? id : null;
+  };
+  const makePendingTask = (id: string | null) => {
+    if (!id) return;
     void linesToTasks([id]).then(
       (made) => made && toast({ text: "Added to your tasks" }),
       report,
     );
   };
+  const settlePendingTask = (index: number) =>
+    makePendingTask(claimPendingTask(live.current.blocks[index]));
 
   /**
    * Put what is being typed into the open line, without going near the page.

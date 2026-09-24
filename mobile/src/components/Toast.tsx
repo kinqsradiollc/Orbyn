@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TOAST_MS } from "@orbyn/core";
 import { FadeIn } from "../motion";
@@ -52,6 +58,8 @@ export function showToast(o: ToastOptions): void {
   shown = { ...o, key: ++count };
   timer = setTimeout(hideToast, TOAST_MS);
   emit();
+  // Read out at once: a toast is news about something just done.
+  AccessibilityInfo.announceForAccessibility?.(o.text);
 }
 
 /**
@@ -158,7 +166,7 @@ const s = themed(() =>
     close: {
       width: 34,
       height: 34,
-      borderRadius: 17,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },

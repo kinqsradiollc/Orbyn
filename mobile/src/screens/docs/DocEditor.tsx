@@ -13,9 +13,12 @@ import {
   blockText,
   blockToType,
   carryBlockIds,
+  carryNewIds,
   docStats,
   indentBlocks,
   isListBlock,
+  keepStart,
+  listLayout,
   pageFooter,
   textToBlocks,
   withDepth,
@@ -78,6 +81,13 @@ const kindKey = (k: (typeof BLOCK_KINDS)[number]) =>
 const SAVE_AFTER_MS = 900;
 
 const EMPTY: DocBlock = { type: "paragraph", text: "" };
+
+/**
+ * A line as it is typed: its Markdown, with the number it shows on the
+ * page, so the third item of a list opens as "3. …" and not "1. …".
+ */
+const sourceOf = (list: DocBlock[], index: number): string =>
+  serializeBlock(list[index] ?? EMPTY, listLayout(list)[index]?.number);
 
 /**
  * Writing a document on the phone. A line is edited as the Markdown behind
@@ -323,7 +333,7 @@ export function DocEditor({
 
   flushOnClose.current = () => {
     if (!canWrite || suggesting) return;
-    const next = live.current.blocks.slice();
+    let next = live.current.blocks.slice();
     if (focused !== null && next[focused]) {
       const parsed = parseDoc(draft);
       next.splice(
@@ -331,6 +341,7 @@ export function DocEditor({
         1,
         ...carryBlockIds(next[focused], parsed.length ? parsed : [EMPTY]),
       );
+      next = keepStart(next, focused);
     }
     if (dirty.current || JSON.stringify(next) !== JSON.stringify(base.current))
       void persist(live.current.title, next);
@@ -342,8 +353,20 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every render,
    * which on a phone is a request storm rather than a nuisance.
    */
-  const onEvent = useRef<(version: number) => void>(() => {});
-  onEvent.current = (remote: number) => {
+  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
+  onEvent.current = (remote: number, trashed: boolean) => {
+    // Moved to Trash somewhere else: let the page go, rather than keep
+    // typing into something every save will now refuse.
+    if (trashed) {
+      if (timer.current) clearTimeout(timer.current);
+      dirty.current = false;
+      flushOnClose.current = () => {};
+      onDeleted?.();
+      showToast({
+        text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
+      });
+      return;
+    }
     if (remote && remote <= version.current) return;
     void client.getDoc(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
@@ -368,7 +391,11 @@ export function DocEditor({
    * Follow the document while it is open, so a page being written on a
    * desktop at the same time does not go stale in your hand.
    */
-  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
+  useEffect(
+    () =>
+      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    [doc.id],
+  );
 
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
@@ -389,8 +416,7 @@ export function DocEditor({
   };
 
   /** Open a line for editing, showing the Markdown behind it. */
-  const openLine = (index: number) =>
-    openWith(serializeBlock(blocks[index]), index);
+  const openLine = (index: number) => openWith(sourceOf(blocks, index), index);
 
   /**
    * Typing into the open line. A line break means Return was pressed: the
@@ -415,7 +441,7 @@ export function DocEditor({
         next.splice(focused, 1, ...pasted);
         const at = focused + pasted.length - 1;
         update(next);
-        openWith(serializeBlock(pasted[pasted.length - 1]), at);
+        openWith(sourceOf(next, at), at);
         return;
       }
     }
@@ -431,8 +457,12 @@ export function DocEditor({
       !("text" in current && current.text.trim())
     ) {
       if (blockDepth(blocks[focused]) > 0) {
-        update(indentBlocks(blocks, focused, -1));
-        openWith(serializeBlock(current), focused);
+        const out = indentBlocks(blocks, focused, -1);
+        update(out);
+        openWith(
+          serializeBlock(current, listLayout(out)[focused]?.number),
+          focused,
+        );
         return;
       }
       next.splice(focused, 1, EMPTY);
@@ -450,8 +480,10 @@ export function DocEditor({
       : EMPTY;
     next.splice(focused, 1, ...kept, fresh);
     const at = focused + Math.max(parsed.length, 1);
-    update(next);
-    openWith(serializeBlock(fresh) + tail, at);
+    const placed = keepStart(next, focused);
+    update(placed);
+    // The new item opens with the number it will show.
+    openWith(sourceOf(placed, at) + tail, at);
   };
 
   /** The open line as another kind of block, keeping its words. */
@@ -470,7 +502,7 @@ export function DocEditor({
     next[focused] = carryBlockIds(blocks[focused], [
       parseDoc(draft)[0] ?? EMPTY,
     ])[0];
-    return next;
+    return keepStart(next, focused);
   };
 
   /**
@@ -489,10 +521,7 @@ export function DocEditor({
     if (!structural) return;
     const to = focused + by;
     if (to < 0 || to >= blocks.length) return;
-    const next = blocks.slice();
-    next[focused] = carryBlockIds(blocks[focused], [
-      parseDoc(draft)[0] ?? EMPTY,
-    ])[0];
+    const next = withDraft().slice();
     [next[focused], next[to]] = [next[to], next[focused]];
     update(next);
     setFocused(to);
@@ -529,13 +558,14 @@ export function DocEditor({
     const blockId = blocks[focused].id ?? newBlockId();
     const next = blocks.slice();
     next.splice(focused, 1, { ...parsed, id: blockId });
+    const placed = keepStart(next, focused);
     setFocused(null);
-    setBlocks(next);
+    setBlocks(placed);
     // Saved at once rather than on the usual delay: the remark about to be
     // written points at this name, and a name that is not saved is a remark
     // with nothing to hang on.
     if (timer.current) clearTimeout(timer.current);
-    void persist(title, next);
+    void persist(title, placed);
     return { blockId, source: blockText(parsed) };
   };
 
@@ -583,13 +613,13 @@ export function DocEditor({
       ...carryBlockIds(blocks[focused], parsed.length ? parsed : [EMPTY]),
     );
     if (parsed.length > 1) setFocused(focused + parsed.length - 1);
-    update(next);
+    update(keepStart(next, focused));
   };
 
   // Save a paused edit while the keyboard stays open, not only after blur.
   useEffect(() => {
     if (focused === null || suggesting || reading) return;
-    if (serializeBlock(blocks[focused] ?? EMPTY) === draft) return;
+    if (sourceOf(blocks, focused) === draft) return;
     const pending = setTimeout(syncDraft, 300);
     return () => clearTimeout(pending);
     // The draft is the source of this debounce; syncing blocks must not restart it.
@@ -607,7 +637,8 @@ export function DocEditor({
     const block = blocks[focused];
     setFocused(null);
     if (!block?.id) return;
-    const change = proposeEdit(block.id, serializeBlock(block), draft);
+    // Compared with the line as it was shown for typing, number and all.
+    const change = proposeEdit(block.id, sourceOf(blocks, focused), draft);
     if (!change) return;
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
@@ -696,7 +727,7 @@ export function DocEditor({
       else next.splice(focused, 1, EMPTY);
     } else next.splice(focused, 1, ...carryBlockIds(blocks[focused], parsed));
     setFocused(null);
-    update(next);
+    update(parsed.length ? keepStart(next, focused) : next);
   };
 
   const addLine = () => {
@@ -728,13 +759,23 @@ export function DocEditor({
     void (async () => {
       try {
         if (dirty.current) await persist(title, blocks);
+        // What the server works from; anything typed after this is newer.
+        const sent = live.current.blocks;
         const { created, doc: updated } = await client.docToTasks(doc.id);
-        if (updated) {
+        if (updated && updated.version > version.current) {
           version.current = updated.version;
           base.current = updated.content;
-          dirty.current = false;
-          setBlocks(updated.content);
           onChanged(updated);
+          if (!dirty.current && live.current.blocks === sent)
+            setBlocks(updated.content);
+          else {
+            // Typed into meanwhile: what is on screen stands, with the
+            // names the server gave the lines it made tasks of.
+            const now = live.current.blocks;
+            const next = carryNewIds(sent, updated.content, now);
+            if (next !== now) setBlocks(next);
+            queueSave(live.current.title, next);
+          }
         }
         onItemsChanged?.();
         setNote(

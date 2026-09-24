@@ -15,7 +15,10 @@ const {
   serializeBlock,
   listLayout,
   indentBlocks,
+  keepStart,
   carryBlockIds,
+  carryNewIds,
+  changeAuthors,
   blockToType,
   docContent,
   parseDocInline,
@@ -163,6 +166,29 @@ test("numbered lists count, restart after other lines, and keep a start", () => 
   assert.deepEqual(parseDoc(md), blocks);
   // A line in the editor shows its own Markdown, without the page's indent.
   assert.equal(serializeBlock({ type: "bullet", text: "x", depth: 2 }), "- x");
+});
+
+test("a number typed on a line in the middle of a list is counted, not kept", () => {
+  // The third item opened for editing reads "3. …", and reading that back
+  // gives it a start; in the middle of a list the start is let go.
+  const blocks: DocBlock[] = [
+    { type: "numbered", text: "One" },
+    { type: "numbered", text: "Two" },
+    ...parseDoc(serializeBlock({ type: "numbered", text: "Three" }, 3)),
+  ];
+  assert.equal((blocks[2] as { start?: number }).start, 3);
+  const kept = keepStart(blocks, 2);
+  assert.equal((kept[2] as { start?: number }).start, undefined);
+  assert.equal(listLayout(kept)[2].number, 3);
+  // The first line of a list keeps the number it was given.
+  const first: DocBlock[] = [
+    { type: "paragraph", text: "Intro" },
+    ...parseDoc("5. Five"),
+  ];
+  assert.equal(keepStart(first, 1), first);
+  assert.equal(listLayout(first)[1].number, 5);
+  // Anything that isn't a numbered line with a start is left alone.
+  assert.equal(keepStart(blocks, 0), blocks);
 });
 
 test("a bullet at the same depth ends a numbered list", () => {
@@ -445,6 +471,74 @@ test("Word's list paragraphs come in as lists", () => {
   ]);
 });
 
+test("a highlighter is kept, and a page's own background is not", () => {
+  // Google Docs' yellow and light yellow pens.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<b style="font-weight:normal;" id="docs-internal-guid-2"><p dir="ltr">' +
+        '<span style="background-color:transparent;">Plain </span>' +
+        '<span style="background-color:#ffff00;">bright</span>' +
+        '<span style="background-color:transparent;"> and </span>' +
+        '<span style="background-color:#fff2cc;">soft</span></p></b>',
+    ),
+    [{ type: "paragraph", text: "Plain ==bright== and ==soft==" }],
+  );
+  // One highlighted word copied on its own is still highlighted.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<b style="font-weight:normal;" id="docs-internal-guid-3">' +
+        '<span style="background-color:#ffff00;">alone</span></b>',
+    ),
+    [{ type: "paragraph", text: "==alone==" }],
+  );
+  // Word names its pen; <mark> is one.
+  assert.deepEqual(
+    htmlToBlocks(
+      "<p class=MsoNormal>A <span style='background:yellow;mso-highlight:yellow'>word</span> <mark>here</mark></p>",
+    ),
+    [{ type: "paragraph", text: "A ==word== ==here==" }],
+  );
+  // See-through, as a browser writes a span with no background of its own.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<span style="background-color: rgba(0, 0, 0, 0);">plain words</span>',
+    ),
+    [{ type: "paragraph", text: "plain words" }],
+  );
+  assert.deepEqual(
+    htmlToBlocks(
+      '<p>Some <span style="background-color: rgba(0, 0, 0, 0)">plain</span> words</p>',
+    ),
+    [{ type: "paragraph", text: "Some plain words" }],
+  );
+  // A dark-mode page's background, on the span wrapping the copy.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<span style="color: rgb(230, 237, 243); background-color: rgb(13, 17, 23);">dark mode words</span>',
+    ),
+    [{ type: "paragraph", text: "dark mode words" }],
+  );
+  // An off-white page, on the wrapper and on a line; white on a word.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<div style="background-color:#f6f8fa"><p style="background:#fdf6e3">One ' +
+        '<span style="background-color:#f6f8fa">two</span> ' +
+        '<span style="background-color:white">three</span></p><p>Four</p></div>',
+    ),
+    [
+      { type: "paragraph", text: "One two three" },
+      { type: "paragraph", text: "Four" },
+    ],
+  );
+  // A web page's white wrapper around a word that really is highlighted.
+  assert.deepEqual(
+    htmlToBlocks(
+      '<span style="background-color: rgb(255, 255, 255)">Keep <span style="background: rgb(255, 235, 59) none repeat scroll 0% 0%">this</span> in mind</span>',
+    ),
+    [{ type: "paragraph", text: "Keep ==this== in mind" }],
+  );
+});
+
 test("plain text pastes as Markdown, and ⌘⇧V keeps every line as it is", () => {
   assert.deepEqual(textToBlocks("# Title\n- a\n  - b"), [
     { type: "heading", level: 1, text: "Title" },
@@ -501,6 +595,87 @@ test("show changes: added, removed and edited lines, in place", () => {
       [{ type: "paragraph", text: "x", id: "new" }],
     ).every((l) => l.change === "same"),
   );
+});
+
+test("show changes says who made each change since a version", () => {
+  // Kept versions, oldest first: Ann worked from the first, Bo from the
+  // second, and Ann again from the third to the page as it is now.
+  const v1: DocBlock[] = [
+    { type: "paragraph", text: "Kept", id: "k" },
+    { type: "paragraph", text: "Ann cut this", id: "x" },
+    { type: "paragraph", text: "Bo cut this", id: "y" },
+  ];
+  const v2: DocBlock[] = [
+    { type: "paragraph", text: "Kept", id: "k" },
+    { type: "paragraph", text: "Bo cut this", id: "y" },
+    { type: "paragraph", text: "Ann added this", id: "a" },
+  ];
+  const v3: DocBlock[] = [
+    { type: "paragraph", text: "Kept", id: "k" },
+    { type: "paragraph", text: "Ann added this", id: "a" },
+    { type: "paragraph", text: "Bo added this", id: "b" },
+  ];
+  const now: DocBlock[] = [
+    ...v3,
+    { type: "paragraph", text: "Ann added this later", id: "c" },
+  ];
+  const lines = diffBlocks(v1, now);
+  const who = changeAuthors(lines, [
+    { content: v1, author: "Ann" },
+    { content: v2, author: "Bo" },
+    { content: v3, author: "Ann" },
+  ]);
+  const said = Object.fromEntries(
+    lines.map((l, i) => [
+      `${l.change} ${(l.block as { text: string }).text}`,
+      who[i],
+    ]),
+  );
+  assert.deepEqual(said, {
+    "same Kept": null,
+    "removed Ann cut this": "Ann",
+    "removed Bo cut this": "Bo",
+    "added Ann added this": "Ann",
+    "added Bo added this": "Bo",
+    "added Ann added this later": "Ann",
+  });
+  // Without the sittings in between there is only the one name to give.
+  assert.deepEqual(
+    changeAuthors(diffBlocks(v3, now), [{ content: v3, author: "Ann" }]),
+    [null, null, null, "Ann"],
+  );
+});
+
+test("names given while lines became tasks carry onto a page that moved on", () => {
+  const sent: DocBlock[] = [
+    { type: "todo", text: "Call Sam", done: false, id: "local-1" },
+    { type: "todo", text: "No name yet", done: false },
+    { type: "paragraph", text: "Notes" },
+  ];
+  const answer: DocBlock[] = [
+    { type: "todo", text: "Call Sam", done: false, id: "server-1" },
+    { type: "todo", text: "No name yet", done: false, id: "server-2" },
+    { type: "paragraph", text: "Notes" },
+  ];
+  // Enter was pressed after the call went out: a new line under the first,
+  // and words typed into it; the lines that were sent are still there.
+  const now: DocBlock[] = [
+    sent[0],
+    { type: "todo", text: "Typed meanwhile", done: false },
+    sent[1],
+    { ...sent[2], text: "Notes, edited" },
+  ];
+  const carried = carryNewIds(sent, answer, now);
+  assert.deepEqual(carried, [
+    { type: "todo", text: "Call Sam", done: false, id: "server-1" },
+    { type: "todo", text: "Typed meanwhile", done: false },
+    { type: "todo", text: "No name yet", done: false, id: "server-2" },
+    { type: "paragraph", text: "Notes, edited" },
+  ]);
+  // Nothing renamed: the same page comes back, untouched.
+  assert.equal(carryNewIds(sent, sent, now), now);
+  // A copy that doesn't line up with what was sent is not guessed at.
+  assert.equal(carryNewIds(sent, answer.slice(1), now), now);
 });
 
 test("restore this line: edited lines get their words back, gone ones return", () => {
@@ -603,7 +778,8 @@ test("deleting a page moves it to Trash, out of everything else", async () => {
 
   const trash = await call("GET", "/docs/trash");
   assert.equal(trash.statusCode, 200);
-  // The global per-minute limit covers Trash like any other route.
+  // The global per-minute limit covers Trash like any other route (see the
+  // 429 test below).
   assert.ok(trash.headers["ratelimit-limit"] !== undefined);
   const entry = (trash.json() as import("@orbyn/core").TrashedDoc[]).find(
     (d) => d.id === doc.id,
@@ -729,6 +905,176 @@ test("delete for good works only from Trash, and takes the history too", async (
   assert.deepEqual(left.rows[0], { docs: 0, versions: 0 });
 });
 
+test("Trash and restore show in the project's history and reach open editors", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Pages that come and go" })
+  ).json();
+  const doc = await newDoc([{ type: "paragraph", text: "project page" }], {
+    project_id: project.id,
+  });
+  // Listen as an open editor's stream does.
+  const listener = await pool.connect();
+  const heard: { docId: string; version: number; trashed?: boolean }[] = [];
+  listener.on("notification", (m) => {
+    if (m.channel === "doc_changed" && m.payload) {
+      const news = JSON.parse(m.payload);
+      if (news.docId === doc.id) heard.push(news);
+    }
+  });
+  await listener.query("LISTEN doc_changed");
+  try {
+    assert.equal((await call("DELETE", `/docs/${doc.id}`)).statusCode, 204);
+    const trashedAt = (
+      await pool.query<{ event_order: string }>(
+        "SELECT max(event_order)::text AS event_order FROM project_activity WHERE project_id = $1",
+        [project.id],
+      )
+    ).rows[0].event_order;
+    assert.equal(
+      (await call("POST", `/docs/${doc.id}/restore`)).statusCode,
+      200,
+    );
+    for (let i = 0; i < 100 && heard.length < 2; i++)
+      await new Promise((r) => setTimeout(r, 20));
+
+    // Editors are told it went, then that it came back.
+    assert.equal(heard.length, 2);
+    assert.equal(heard[0].trashed, true);
+    assert.equal(heard[0].version, doc.version);
+    assert.equal(heard[1].trashed, undefined);
+
+    // The project's history has both, by the person who did them.
+    const rows = (
+      await pool.query<{
+        kind: string;
+        summary: string;
+        actor: string | null;
+        after_state: unknown;
+      }>(
+        `SELECT a.kind, a.summary, u.name AS actor, a.after_state
+           FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
+          WHERE a.project_id = $1 AND a.entity_id = $2
+          ORDER BY a.event_order`,
+        [project.id, doc.id],
+      )
+    ).rows;
+    assert.deepEqual(
+      rows.map((r) => [r.kind, r.summary, r.actor]),
+      [
+        ["note_added", `Note added: ${doc.title}`, "Writer"],
+        ["note_removed", `Note moved to Trash: ${doc.title}`, "Writer"],
+        ["note_added", `Note restored: ${doc.title}`, "Writer"],
+      ],
+    );
+    assert.equal(rows[1].after_state, null);
+    // Looking back to while it was in Trash, the page isn't in the project.
+    const then = await call(
+      "GET",
+      `/projects/${project.id}/time-machine/${trashedAt}`,
+    );
+    assert.equal(then.statusCode, 200);
+    assert.ok(!then.json().notes.some((n: { id: string }) => n.id === doc.id));
+    const feed = (
+      await call("GET", `/projects/${project.id}/time-machine/checkpoints`)
+    ).json() as { summary: string }[];
+    assert.ok(feed.some((c) => c.summary.startsWith("Note restored:")));
+  } finally {
+    await listener.query("UNLISTEN doc_changed");
+    listener.release();
+  }
+  // A page outside any project leaves no project history behind.
+  const loose = await newDoc([{ type: "paragraph", text: "loose" }]);
+  await call("DELETE", `/docs/${loose.id}`);
+  const none = await pool.query(
+    "SELECT 1 FROM project_activity WHERE entity_id = $1",
+    [loose.id],
+  );
+  assert.equal(none.rowCount, 0);
+});
+
+test("a page in Trash can't be shown as open", async () => {
+  const doc = await newDoc([{ type: "paragraph", text: "open here" }]);
+  const beat = () =>
+    call("POST", "/presence/heartbeat", {
+      device_id: "trash-device-0001",
+      platform: "web",
+      doc_id: doc.id,
+    });
+  assert.equal((await beat()).statusCode, 200);
+  await call("DELETE", `/docs/${doc.id}`);
+  assert.equal((await beat()).statusCode, 404);
+  await call("POST", `/docs/${doc.id}/restore`);
+  assert.equal((await beat()).statusCode, 200);
+});
+
+test("today's agenda brought back from Trash replaces an untouched copy", async () => {
+  const first = (await call("GET", "/agenda/today")).json() as {
+    id: string;
+    title: string;
+  };
+  await call("DELETE", `/docs/${first.id}`);
+  // Opening Agenda while it is in Trash writes a fresh copy.
+  const copy = (await call("GET", "/agenda/today")).json() as { id: string };
+  assert.notEqual(copy.id, first.id);
+  assert.equal(
+    (await call("POST", `/docs/${first.id}/restore`)).statusCode,
+    200,
+  );
+  // The untouched copy is let go; Agenda opens the one that came back.
+  assert.equal((await call("GET", `/docs/${copy.id}`)).statusCode, 404);
+  assert.equal((await call("GET", "/agenda/today")).json().id, first.id);
+
+  // A copy someone wrote in is kept.
+  await call("DELETE", `/docs/${first.id}`);
+  const written = (await call("GET", "/agenda/today")).json() as {
+    id: string;
+    version: number;
+  };
+  await call("PUT", `/docs/${written.id}`, {
+    content: [{ type: "paragraph", text: "My own notes" }],
+    version: written.version,
+  });
+  await call("POST", `/docs/${first.id}/restore`);
+  assert.equal((await call("GET", `/docs/${written.id}`)).statusCode, 200);
+  // Tidy up, so the rest of the file finds one agenda for today.
+  await call("DELETE", `/docs/${written.id}`);
+  await call("DELETE", `/docs/${written.id}/forever`);
+});
+
+test("Trash routes answer 429 past the per-minute limit", async () => {
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  const doc = await newDoc([{ type: "paragraph", text: "limited" }]);
+  await call("DELETE", `/docs/${doc.id}`);
+  await settings();
+  const live = cachedSettings();
+  const was = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  const from = (method: "GET" | "POST" | "DELETE", url: string) =>
+    app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: "10.71.0.1",
+    });
+  try {
+    assert.equal((await from("GET", "/docs/trash")).statusCode, 200);
+    assert.equal((await from("GET", "/docs/trash")).statusCode, 200);
+    const limited = await from("GET", "/docs/trash");
+    assert.equal(limited.statusCode, 429);
+    assert.ok(Number(limited.headers["retry-after"]) > 0);
+    assert.equal(
+      (await from("POST", `/docs/${doc.id}/restore`)).statusCode,
+      429,
+    );
+    assert.equal(
+      (await from("DELETE", `/docs/${doc.id}/forever`)).statusCode,
+      429,
+    );
+  } finally {
+    live.rate_limit_per_minute = was;
+  }
+});
+
 test("the sweeper empties Trash after 30 days, and not before", async () => {
   const rule = SWEEP_RULES.find((r) => r.key === "doc_trash");
   assert.ok(rule);
@@ -808,4 +1154,41 @@ test("Make task turns just the lines asked for into tasks", async () => {
     (await call("POST", `/docs/${doc.id}/tasks`, {})).statusCode,
     404,
   );
+});
+
+test("making tasks waits for a save in flight and keeps what it wrote", async () => {
+  const doc = await newDoc([
+    { type: "todo", text: "Book the room", done: false, id: "r1" },
+  ]);
+  // A save holds the page while the lines are being made tasks.
+  const holder = await pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT 1 FROM docs WHERE id = $1 FOR UPDATE", [doc.id]);
+    const making = call("POST", `/docs/${doc.id}/tasks`, {
+      block_ids: ["r1"],
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    await holder.query(
+      "UPDATE docs SET content = $2::jsonb, version = version + 1 WHERE id = $1",
+      [
+        doc.id,
+        JSON.stringify([
+          { type: "todo", text: "Book the room", done: false, id: "r1" },
+          { type: "paragraph", text: "Written meanwhile", id: "w1" },
+        ]),
+      ],
+    );
+    await holder.query("COMMIT");
+    const made = await making;
+    assert.equal(made.statusCode, 200);
+    assert.equal(made.json().created, 1);
+    // The line written while it waited is still there.
+    assert.deepEqual(
+      (made.json().doc.content as { text: string }[]).map((b) => b.text),
+      ["Book the room", "Written meanwhile"],
+    );
+  } finally {
+    holder.release();
+  }
 });

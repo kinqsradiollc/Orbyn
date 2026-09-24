@@ -3460,6 +3460,12 @@ input[type="number"]::-webkit-outer-spin-button {
   line-height: 1.4;
   animation: motion-fade-up var(--motion-base) var(--ease-out) backwards;
 }
+/* Something that didn't happen: the same toast on the warning tint. */
+.toast.is-warn {
+  border-color: var(--color-warnBorder);
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
 .toast-text {
   flex: 1;
   min-width: 0;

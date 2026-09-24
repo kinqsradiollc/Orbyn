@@ -182,6 +182,21 @@ export function listLayout(
 }
 
 /**
+ * A numbered line is typed with the number it shows ("3. …"), so reading it
+ * back gives it a `start`. That only means something on the first line of a
+ * list; anywhere else the number is counted, and the start is let go.
+ * Returns `blocks` itself when there is nothing to let go.
+ */
+export function keepStart(blocks: DocBlock[], index: number): DocBlock[] {
+  const b = blocks[index];
+  if (b?.type !== "numbered" || b.start === undefined) return blocks;
+  const { start: _start, ...counted } = b;
+  const probe = blocks.slice();
+  probe[index] = counted;
+  return listLayout(probe)[index].number === 1 ? blocks : probe;
+}
+
+/**
  * Tuck a list line in (`by` 1) or bring it out (`by` -1), taking the lines
  * tucked under it along so a list keeps its shape. A line can go at most one
  * step deeper than the list line above it; asking for more, or for a line

@@ -455,7 +455,9 @@ A note for a team event belongs to the team, so one shared meeting keeps one sha
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
 team, if it has one). → `{ "created": 2, "items": [ … ], "doc": { … } }`. Blank and
-already-ticked lines, and lines that are already tasks, are skipped.
+already-ticked lines, and lines that are already tasks, are skipped. The page is read and written
+back under its lock, so a save that arrives meanwhile waits and then merges (`409`) rather than
+being overwritten.
 
 An optional body `{ "block_ids": ["b1"] }` (1–200 line ids) turns only those lines into tasks:
 "Make task" on selected words and "New task" in the `/` menu use it. Anything else in the body
@@ -642,6 +644,9 @@ data: {"docId":"…","version":7,"by":"e4f1c2ab"}
 
 The reader then re-reads the document and folds the new copy into what is on screen. Keeping the
 payload to a version number means a reader that misses an event still catches up on the next one.
+
+When the page is moved to Trash the event also carries `"trashed": true`; an editor that has it
+open lets it go and says where it went, rather than finding out from a save that fails.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
 request. A tab is never told about its own save. `404` when the document isn't yours to read.
@@ -907,7 +912,9 @@ overwriting, so two open tabs can't clobber each other. `title` and `content` ar
 
 Moves the page to **Trash** → `204`. It is kept for 30 days with its history, comments and task
 links, and meanwhile every other route (lists, search, comments, history, exports, study, the
-assistant) answers as if it didn't exist. The sweeper deletes it for good after 30 days.
+assistant, presence) answers as if it didn't exist. The sweeper deletes it for good after 30 days.
+Anyone with it open is told on its live stream (`"trashed": true`); a project page shows as "Note
+moved to Trash" in the project's history, and it isn't measured for semantic search while there.
 
 ### `GET /docs/trash` (auth)
 
@@ -918,7 +925,9 @@ assistant) answers as if it didn't exist. The sweeper deletes it for good after 
 ### `POST /docs/:id/restore` (auth, `items:write`)
 
 Brings a page back from Trash, as it was → the full document. `404` for a page that isn't in
-Trash (or isn't yours to see), `403` for a team viewer.
+Trash (or isn't yours to see), `403` for a team viewer. A project page shows as "Note restored" in
+the project's history. Today's agenda brought back replaces a copy that Agenda wrote meanwhile, if
+nobody wrote in that copy.
 
 ### `DELETE /docs/:id/forever` (auth, `items:write`)
 

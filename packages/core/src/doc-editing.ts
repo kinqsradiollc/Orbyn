@@ -526,6 +526,75 @@ export function restoreLine(
 
 const lineText = (b: DocBlock) => (b.type === "divider" ? "" : b.text);
 
+/**
+ * A stretch of a page's history: the state a kept version holds, and who
+ * made the changes that followed it (a kept version's author is whoever
+ * saved over it).
+ */
+export type Sitting = { content: DocBlock[]; author: string | null };
+
+/**
+ * The most sittings "Show changes" reads to say who changed each line; a
+ * version further back than this is compared without names.
+ */
+export const MAX_SITTINGS = 20;
+
+/**
+ * Who made each change in a comparison of an old version with the page as
+ * it is now. `sittings` runs from the version compared with to the newest
+ * one kept, oldest first. A line that was added is put down to the latest
+ * sitting that started without it, and a line that went to the latest one
+ * that started with it. Unchanged lines, and changes no sitting accounts
+ * for, get null.
+ */
+export function changeAuthors(
+  lines: DocDiffLine[],
+  sittings: Sitting[],
+): (string | null)[] {
+  const keys = sittings.map((s) => new Set(s.content.map(lineKey)));
+  return lines.map((l) => {
+    if (l.change === "same") return null;
+    const key = lineKey(l.block);
+    for (let j = sittings.length - 1; j >= 0; j--) {
+      const has = keys[j].has(key);
+      if (l.change === "added" ? !has : has) return sittings[j].author;
+    }
+    return null;
+  });
+}
+
+/**
+ * Names the server gave lines while it worked on `sent` (making checklist
+ * lines tasks names the ones that had none), carried onto `now`: the page
+ * as it stands, which may have moved on since. A line is matched by the
+ * name it had when sent, or by being the very same line when it had none.
+ * Returns `now` itself when there is nothing to carry.
+ */
+export function carryNewIds(
+  sent: DocBlock[],
+  answer: DocBlock[],
+  now: DocBlock[],
+): DocBlock[] {
+  if (sent.length !== answer.length) return now;
+  const byId = new Map<string, string>();
+  const byLine = new Map<DocBlock, string>();
+  sent.forEach((b, i) => {
+    const got = answer[i];
+    if (!got.id || got.id === b.id || lineText(got) !== lineText(b)) return;
+    if (b.id) byId.set(b.id, got.id);
+    else byLine.set(b, got.id);
+  });
+  if (!byId.size && !byLine.size) return now;
+  let changed = false;
+  const next = now.map((b) => {
+    const id = (b.id && byId.get(b.id)) || byLine.get(b);
+    if (!id || id === b.id) return b;
+    changed = true;
+    return { ...b, id };
+  });
+  return changed ? next : now;
+}
+
 // ------------------------------------------------------------------ trash ---
 
 /** How long a deleted page waits in Trash before it goes for good. */

@@ -24,12 +24,6 @@
   overflow: hidden;
   pointer-events: none;
 }
-.calendar-note.is-warn {
-  border: 1px solid var(--color-warnBorder);
-  background: var(--color-warnSoft);
-  color: var(--color-warn);
-}
-
 /* Teammates' busy times: a thin hatched strip per person at the right edge
    of each day, above entries but narrow enough to keep them readable. */
 .tg-mate,

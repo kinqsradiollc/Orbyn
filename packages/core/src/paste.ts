@@ -146,8 +146,135 @@ type Style = {
 };
 type Run = Style & { text: string };
 
-/** Bold and italic as a style attribute says them (how Google Docs writes). */
-function cssStyle(el: HtmlElement, style: Style): Style {
+/** Elements that sit inside a line, where a background is a highlighter's. */
+const INLINE = new Set([
+  "span",
+  "font",
+  "b",
+  "strong",
+  "i",
+  "em",
+  "cite",
+  "u",
+  "s",
+  "strike",
+  "del",
+  "ins",
+  "sub",
+  "sup",
+  "small",
+  "big",
+  "a",
+  "abbr",
+  "q",
+  "time",
+  "label",
+]);
+
+/** The named colours a background is written in, as red, green and blue. */
+const NAMED: Record<string, [number, number, number]> = {
+  white: [255, 255, 255],
+  black: [0, 0, 0],
+  yellow: [255, 255, 0],
+  lime: [0, 255, 0],
+  green: [0, 128, 0],
+  aqua: [0, 255, 255],
+  cyan: [0, 255, 255],
+  fuchsia: [255, 0, 255],
+  magenta: [255, 0, 255],
+  pink: [255, 192, 203],
+  orange: [255, 165, 0],
+  gold: [255, 215, 0],
+  red: [255, 0, 0],
+  blue: [0, 0, 255],
+  lightyellow: [255, 255, 224],
+  lightgreen: [144, 238, 144],
+  lightpink: [255, 182, 193],
+  lightblue: [173, 216, 230],
+  palegreen: [152, 251, 152],
+  khaki: [240, 230, 140],
+  greenyellow: [173, 255, 47],
+};
+
+/** A CSS colour as red, green, blue and opacity (0–1), or null. */
+function readColour(value: string): [number, number, number, number] | null {
+  const v = value.trim().toLowerCase();
+  if (v === "transparent") return [0, 0, 0, 0];
+  const hex = /^#([0-9a-f]{3,8})$/.exec(v)?.[1];
+  if (hex) {
+    const full =
+      hex.length <= 4
+        ? hex
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : hex;
+    if (full.length !== 6 && full.length !== 8) return null;
+    const at = (i: number) => parseInt(full.slice(i, i + 2), 16);
+    return [at(0), at(2), at(4), full.length === 8 ? at(6) / 255 : 1];
+  }
+  const fn = /^rgba?\(([^)]*)\)$/.exec(v)?.[1];
+  if (fn) {
+    const parts = fn.split(/[\s,/]+/).filter(Boolean);
+    if (parts.length < 3) return null;
+    const channel = (p: string) =>
+      p.endsWith("%") ? (parseFloat(p) / 100) * 255 : parseFloat(p);
+    const alpha = parts[3]
+      ? parts[3].endsWith("%")
+        ? parseFloat(parts[3]) / 100
+        : parseFloat(parts[3])
+      : 1;
+    const out: [number, number, number, number] = [
+      channel(parts[0]),
+      channel(parts[1]),
+      channel(parts[2]),
+      alpha,
+    ];
+    return out.every(Number.isFinite) ? out : null;
+  }
+  const named = NAMED[v];
+  return named ? [...named, 1] : null;
+}
+
+/**
+ * Whether a background reads as a highlighter pen: clearly coloured and not
+ * dark, once any see-through colour is laid over a white page. White,
+ * off-white, grey, dark-mode and see-through grounds are a page's, not a
+ * pen's.
+ */
+function isHighlighter([r, g, b, a]: [number, number, number, number]) {
+  if (a < 0.25) return false;
+  const over = (c: number) => 255 - (255 - Math.min(255, Math.max(0, c))) * a;
+  const rgb = [over(r), over(g), over(b)];
+  const most = Math.max(...rgb);
+  const least = Math.min(...rgb);
+  return most - least >= 20 && (most + least) / 2 >= 115;
+}
+
+/** The colour a style attribute gives a background, the last one set. */
+function groundOf(css: string): [number, number, number, number] | null {
+  let found: [number, number, number, number] | null = null;
+  for (const m of css.matchAll(/background(?:-color)?\s*:\s*([^;]+)/g)) {
+    // `background` may carry an image and a position along with a colour.
+    for (const token of m[1].match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|[a-z]+/g) ??
+      []) {
+      const colour = readColour(token);
+      if (colour) {
+        found = colour;
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Bold, italic and highlighting as a style attribute says them (how Google
+ * Docs and Word write). `ground` says whether a background here can be a
+ * highlighter: only on words within a line, and not on whatever wraps the
+ * whole copy, which carries the page's own background.
+ */
+function cssStyle(el: HtmlElement, style: Style, ground = false): Style {
   const css = (el.attrs.style ?? "").toLowerCase();
   const next = { ...style };
   const weight = /font-weight\s*:\s*([a-z0-9]+)/.exec(css)?.[1];
@@ -156,16 +283,33 @@ function cssStyle(el: HtmlElement, style: Style): Style {
       weight === "bold" || weight === "bolder" || Number(weight) >= 600;
   if (/font-style\s*:\s*italic/.test(css)) next.italic = true;
   if (/font-style\s*:\s*normal/.test(css)) next.italic = false;
-  // A highlighter pen: a background colour that isn't just the page's own.
-  const ground = /background(?:-color)?\s*:\s*([^;]+)/.exec(css)?.[1]?.trim();
-  if (
-    ground &&
-    !/^(transparent|none|inherit|initial|white|#fff|#ffffff|rgba?\(\s*255\s*,\s*255\s*,\s*255)/.test(
-      ground,
-    )
-  )
-    next.highlight = true;
+  // Word names its highlighter outright.
+  const word = /mso-highlight\s*:\s*([a-z]+)/.exec(css)?.[1];
+  if (word && word !== "none" && word !== "auto") next.highlight = true;
+  else if (ground) {
+    const colour = groundOf(css);
+    if (colour && isHighlighter(colour)) next.highlight = true;
+  }
   return next;
+}
+
+/**
+ * The elements that wrap the whole copy, one inside the other. A browser
+ * puts the page's own background on the outermost one, so theirs is never
+ * a highlighter. Google Docs is the exception: its wrapper carries no
+ * background, and a copy of one highlighted word is that word's own span.
+ */
+function wrappersOf(root: HtmlElement, html: string): Set<HtmlElement> {
+  const out = new Set<HtmlElement>();
+  if (/docs-internal-guid/.test(html)) return out;
+  let at = root;
+  for (;;) {
+    const full = at.children.filter((c) => textOf(c).trim() !== "");
+    if (full.length !== 1 || "text" in full[0]) break;
+    at = full[0];
+    out.add(at);
+  }
+  return out;
 }
 
 /** Word marks a list paragraph by style rather than with <li>. */
@@ -229,6 +373,10 @@ function runsToMarkdown(runs: Run[]): string {
  * nothing on it but layout.
  */
 export function htmlToBlocks(html: string): DocBlock[] {
+  const root = readHtml(html);
+  const wrappers = wrappersOf(root, html);
+  /** Whether a background on `el` can be a highlighter. */
+  const inline = (el: HtmlElement) => INLINE.has(el.tag) && !wrappers.has(el);
   const out: DocBlock[] = [];
   /** The line being gathered, and what kind of line it will be. */
   let runs: Run[] = [];
@@ -391,14 +539,17 @@ export function htmlToBlocks(html: string): DocBlock[] {
       case "b":
       case "strong":
         // Google Docs wraps a whole copy in <b style="font-weight:normal">.
-        children({ ...ctx, style: cssStyle(el, { ...ctx.style, bold: true }) });
+        children({
+          ...ctx,
+          style: cssStyle(el, { ...ctx.style, bold: true }, inline(el)),
+        });
         return;
       case "i":
       case "em":
       case "cite":
         children({
           ...ctx,
-          style: cssStyle(el, { ...ctx.style, italic: true }),
+          style: cssStyle(el, { ...ctx.style, italic: true }, inline(el)),
         });
         return;
       case "code":
@@ -423,11 +574,11 @@ export function htmlToBlocks(html: string): DocBlock[] {
       default:
         // Word's own bullet or number, already given by the line's kind.
         if (/mso-list\s*:\s*ignore/i.test(el.attrs.style ?? "")) return;
-        children({ ...ctx, style: cssStyle(el, ctx.style) });
+        children({ ...ctx, style: cssStyle(el, ctx.style, inline(el)) });
     }
   };
 
-  walk(readHtml(html), { style: {}, lists: [], quote: false, item: false });
+  walk(root, { style: {}, lists: [], quote: false, item: false });
   flush();
   return out.slice(0, 2000);
 }

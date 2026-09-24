@@ -102,6 +102,7 @@ import { TeammatesSheet } from "./calendar/TeammatesSheet";
 import { WeekStrip } from "./calendar/WeekStrip";
 import { PlanSheet } from "./PlanSheet";
 import { tap } from "../lib/haptics";
+import { showToast } from "../components/Toast";
 
 const MODES = ["day", "week", "month", "agenda"] as const;
 type Mode = (typeof MODES)[number];
@@ -117,8 +118,6 @@ type Act = (fn: () => Promise<void>) => Promise<void>;
 const SET_KEY = "orbyn-calendar-set";
 /** The view last shown on this device. */
 const MODE_KEY = "orbyn-calendar-mode";
-/** How long "Frame skipped · Undo" and other notes stay up. */
-const UNDO_MS = 10_000;
 /** Days the agenda lists. */
 const AGENDA_DAYS = 14;
 /** Days side by side on a wide screen, and the width that allows them. */
@@ -253,10 +252,6 @@ export function CalendarScreen({
   const [searching, setSearching] = useState(false);
   /** The frame in the frame editor. */
   const [editingFrame, setEditingFrame] = useState<Frame | null>(null);
-  /** The frame day just skipped, for Undo. */
-  const [skipped, setSkipped] = useState<FrameOccurrence | null>(null);
-  /** A short message after an action ("Done. Next on …"). */
-  const [note, setNote] = useState("");
   /** Options for whatever was held. */
   const [menu, setMenu] = useState<Menu | null>(null);
   /** Tasks to place, calendar sets or teammates. */
@@ -356,21 +351,8 @@ export function CalendarScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewId]);
 
-  useEffect(() => {
-    if (!skipped) return;
-    const timer = setTimeout(() => setSkipped(null), UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [skipped]);
-  useEffect(() => {
-    if (!note) return;
-    const timer = setTimeout(() => setNote(""), UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [note]);
-  const showNote = (text: string) => {
-    animateLayout();
-    setNote(text);
-    AccessibilityInfo.announceForAccessibility(text);
-  };
+  /** A short message after an action ("Done. Next on …"): the app's toast. */
+  const showNote = (text: string) => showToast({ text });
 
   const sets = prefs?.calendar_sets ?? [];
   const activeSet = sets.find((set) => set.id === setId) ?? null;
@@ -912,19 +894,18 @@ export function CalendarScreen({
           run: () =>
             void act(async () => {
               await client.skipFrame(f.frame_id, f.date);
-              animateLayout();
-              setSkipped(f);
+              showToast({
+                text: `${f.name} skipped on ${shortDay(f.start_at)}.`,
+                action: { label: "Undo", run: () => void undoSkip(f) },
+              });
               reload();
             }),
         },
       ],
     });
-  const undoSkip = () =>
+  const undoSkip = (f: FrameOccurrence) =>
     act(async () => {
-      if (!skipped) return;
-      await client.unskipFrame(skipped.frame_id, skipped.date);
-      animateLayout();
-      setSkipped(null);
+      await client.unskipFrame(f.frame_id, f.date);
       reload();
     });
 
@@ -1437,29 +1418,6 @@ export function CalendarScreen({
         )}
       </View>
 
-      {skipped && (
-        <FadeIn style={s.undo}>
-          <Text style={s.undoText} accessibilityRole="alert">
-            {skipped.name} skipped on {shortDay(skipped.start_at)}.
-          </Text>
-          <SmallAction
-            label="Undo"
-            disabled={handlers.busy}
-            onPress={() => void undoSkip()}
-          />
-        </FadeIn>
-      )}
-      {!!note && (
-        <FadeIn style={s.undo}>
-          <Text style={s.undoText}>{note}</Text>
-          <SmallAction
-            label="OK"
-            disabled={false}
-            onPress={() => setNote("")}
-          />
-        </FadeIn>
-      )}
-
       {mode === "agenda" ? (
         <AgendaList
           days={agendaDays}
@@ -1747,24 +1705,6 @@ const s = themed(() =>
     },
     previewActions: { flexDirection: "row", gap: 10 },
     previewButton: { flex: 1, marginBottom: 0 },
-    undo: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.input,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      marginBottom: 12,
-    },
-    undoText: {
-      flex: 1,
-      fontFamily: fonts.medium,
-      fontSize: 13,
-      color: colors.text,
-    },
     join: { paddingVertical: 14 },
     joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },

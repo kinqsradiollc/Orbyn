@@ -427,7 +427,7 @@ h4.doc-heading {
 .doc-highlight {
   background: var(--color-warnSoft);
   color: inherit;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   padding: 0 1px;
 }
 .doc-check {

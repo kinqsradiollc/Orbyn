@@ -8,15 +8,18 @@ import {
   View,
 } from "react-native";
 import {
+  changeAuthors,
   diffBlocks,
   diffCounts,
   listLayout,
   mathToText,
+  MAX_SITTINGS,
   restoreLine,
   type Doc,
   type DocBlock,
   type DocDiffLine,
   type DocVersion,
+  type Sitting,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
@@ -77,6 +80,8 @@ export function DocHistory({
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [chosen, setChosen] = useState<Required<DocVersion> | null>(null);
   const [older, setOlder] = useState<Required<DocVersion> | null>(null);
+  /** The chosen version and every one kept since, oldest first. */
+  const [sittings, setSittings] = useState<Sitting[] | null>(null);
   const [compare, setCompare] = useState<Compare>("current");
   const [busy, setBusy] = useState(false);
 
@@ -94,15 +99,28 @@ export function DocHistory({
   const pick = (v: DocVersion) => {
     if (!versions) return;
     setBusy(true);
-    const before =
-      versions[versions.findIndex((x) => x.version === v.version) + 1];
+    const at = versions.findIndex((x) => x.version === v.version);
+    const before = versions[at + 1];
+    // The ones kept since, newest first, for who changed what since.
+    const since = at < MAX_SITTINGS ? versions.slice(0, at) : null;
     Promise.all([
       client.getDocVersion(doc.id, v.version),
       before ? client.getDocVersion(doc.id, before.version) : null,
+      since
+        ? Promise.all(since.map((x) => client.getDocVersion(doc.id, x.version)))
+        : null,
     ])
-      .then(([version, prior]) => {
+      .then(([version, prior, newer]) => {
         setChosen(version);
         setOlder(prior);
+        setSittings(
+          newer
+            ? [version, ...newer.reverse()].map((x) => ({
+                content: x.content,
+                author: x.author,
+              }))
+            : null,
+        );
         if (compare === "previous" && !prior) setCompare("current");
       })
       .catch(report)
@@ -245,6 +263,7 @@ export function DocHistory({
                 compare === "previous" && older ? chosen.content : doc.content
               }
               by={compare === "previous" && older ? older.author : null}
+              sittings={compare === "previous" && older ? undefined : sittings}
               sitting={compare === "previous"}
               canRestore={canWrite && !busy}
               onRestoreLine={putBack}
@@ -271,6 +290,7 @@ function Changes({
   before,
   after,
   by,
+  sittings,
   sitting,
   canRestore,
   onRestoreLine,
@@ -279,12 +299,26 @@ function Changes({
   after: DocBlock[];
   /** Who made the changes, when they are one sitting's. */
   by: string | null;
+  /**
+   * Every sitting since `before`, oldest first, to tell who made each
+   * change (null when there were too many); left out for one sitting.
+   */
+  sittings?: Sitting[] | null;
   sitting: boolean;
   canRestore: boolean;
   onRestoreLine: (source: DocBlock[], index: number) => void;
 }) {
   const lines = useMemo(() => diffBlocks(before, after), [before, after]);
   const counts = diffCounts(lines);
+  const authors = useMemo(
+    () =>
+      sittings === undefined
+        ? lines.map((l) => (l.change === "same" ? null : by))
+        : sittings
+          ? changeAuthors(lines, sittings)
+          : null,
+    [lines, by, sittings],
+  );
   const layoutBefore = useMemo(() => listLayout(before), [before]);
   const layoutAfter = useMemo(() => listLayout(after), [after]);
   const [unfolded, setUnfolded] = useState(false);
@@ -312,6 +346,9 @@ function Changes({
             ]
               .filter(Boolean)
               .join(" · ")}
+        {!nothing &&
+          !authors &&
+          " · made over too many sittings to say who changed each line"}
       </Text>
       {lines.map((line, i) =>
         line.change === "same" && !near.has(i) && !unfolded ? null : (
@@ -323,7 +360,7 @@ function Changes({
                 ? layoutBefore[line.index]
                 : layoutAfter[line.index]
             }
-            by={by}
+            by={authors?.[i] ?? null}
             onRestore={
               line.change === "removed" && canRestore
                 ? () => onRestoreLine(before, line.index)
@@ -352,6 +389,7 @@ function DiffRow({
 }: {
   line: DocDiffLine;
   layout: { depth: number; number: number | null };
+  /** Who made this change, when it is known. */
   by: string | null;
   onRestore?: () => void;
 }) {
@@ -413,9 +451,7 @@ function DiffRow({
           </Text>
         )}
         <View style={styles.diffBody}>{body}</View>
-        {line.change !== "same" && by && (
-          <Text style={styles.initials}>{initials(by)}</Text>
-        )}
+        {by && <Text style={styles.initials}>{initials(by)}</Text>}
       </View>
       {onRestore && (
         <Pressable

@@ -38,6 +38,7 @@ import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { UploadsList, useImports } from "./Uploads";
 import { SmallAction } from "../../components/SmallAction";
+import { MoreMenu } from "../../components/MoreMenu";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
@@ -893,6 +894,21 @@ export function DocsSheet({
                           <Text style={styles.rowTitle} numberOfLines={2}>
                             {page.title || "Untitled"}
                           </Text>
+                          {page.can_restore && (
+                            // Deleting for good is rare and can't be undone,
+                            // so it waits behind ⋯ rather than on the row.
+                            <MoreMenu
+                              label={`Options for ${page.title || "Untitled"}`}
+                              disabled={busy}
+                              actions={[
+                                {
+                                  label: "Delete for good",
+                                  destructive: true,
+                                  onPress: () => destroy(page),
+                                },
+                              ]}
+                            />
+                          )}
                         </View>
                         <Text style={styles.rowPreview} numberOfLines={2}>
                           Deleted {savedAgo(page.deleted_at)}
@@ -906,12 +922,6 @@ export function DocsSheet({
                               label="Restore"
                               disabled={busy}
                               onPress={() => restoreFromTrash(page)}
-                            />
-                            <SmallAction
-                              label="Delete for good"
-                              destructive
-                              disabled={busy}
-                              onPress={() => destroy(page)}
                             />
                           </View>
                         )}

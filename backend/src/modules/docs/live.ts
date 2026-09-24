@@ -18,6 +18,8 @@ type Listener = (payload: {
   docId: string;
   version: number;
   by: string;
+  /** Set when the page was moved to Trash. */
+  trashed?: boolean;
 }) => void;
 
 /** Who is watching which document, in this copy of the API. */
@@ -36,7 +38,7 @@ async function ensureListening(): Promise<void> {
     });
     next.on("notification", (message) => {
       if (message.channel !== CHANNEL || !message.payload) return;
-      let parsed: { docId: string; version: number; by: string };
+      let parsed: Parameters<Listener>[0];
       try {
         parsed = JSON.parse(message.payload);
       } catch {
@@ -57,16 +59,26 @@ async function ensureListening(): Promise<void> {
   return connecting;
 }
 
-/** Tell everyone watching this document that it moved on. */
+/**
+ * Tell everyone watching this document that it moved on, or with `trashed`
+ * that it went to Trash, so an editor that has it open lets it go rather
+ * than finding out from a save that fails.
+ */
 export async function announceDocChange(
   db: { query: pg.Pool["query"] },
   docId: string,
   version: number,
   by: string,
+  news: { trashed?: boolean } = {},
 ): Promise<void> {
   await db.query("SELECT pg_notify($1, $2)", [
     CHANNEL,
-    JSON.stringify({ docId, version, by }),
+    JSON.stringify({
+      docId,
+      version,
+      by,
+      ...(news.trashed ? { trashed: true } : {}),
+    }),
   ]);
 }
 

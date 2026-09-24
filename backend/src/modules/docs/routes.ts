@@ -47,6 +47,7 @@ import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
+import { hasVectors } from "../search/semantic.js";
 import { todaysAgenda } from "./agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
@@ -139,6 +140,76 @@ type Owned = {
   team_id: string | null;
   version: number;
 };
+
+/**
+ * Moving a page to Trash, or back, changes neither its title nor its
+ * version, so the project history trigger doesn't see it. A project page
+ * says so in its project's history here: gone from the project while in
+ * Trash (no state after), and back again when restored.
+ */
+async function noteTrash(
+  db: Queryable,
+  docId: string,
+  actor: string,
+  trashed: boolean,
+) {
+  await db.query(
+    `INSERT INTO project_activity (project_id, actor_id, kind, entity_type,
+       entity_id, summary, before_state, after_state)
+     SELECT d.project_id, $2, $3, 'note', d.id,
+            left($4 || coalesce(nullif(d.title, ''), 'Untitled note'), 240),
+            CASE WHEN $5 THEN jsonb_build_object('title', d.title,
+              'version', d.version::text) END,
+            CASE WHEN $5 THEN NULL ELSE jsonb_build_object('title', d.title,
+              'version', d.version::text) END
+       FROM docs d JOIN projects p ON p.id = d.project_id
+      WHERE d.id = $1`,
+    [
+      docId,
+      actor,
+      trashed ? "note_removed" : "note_added",
+      trashed ? "Note moved to Trash: " : "Note restored: ",
+      trashed,
+    ],
+  );
+}
+
+/**
+ * A page in Trash can't be searched, so it isn't measured for search while
+ * it is there; brought back, it is queued again, which catches any edit it
+ * was still waiting on. Lines already measured keep their measurement.
+ */
+async function searchTrash(db: Db, docId: string, trashed: boolean) {
+  if (!(await hasVectors(db))) return;
+  await db.query(
+    trashed
+      ? "DELETE FROM doc_embedding_queue WHERE doc_id = $1"
+      : `INSERT INTO doc_embedding_queue (doc_id) VALUES ($1)
+           ON CONFLICT (doc_id) DO UPDATE SET queued_at = now()`,
+    [docId],
+  );
+}
+
+/**
+ * Today's agenda brought back from Trash is the one Agenda opens. While it
+ * was away, opening Agenda wrote a fresh copy under the same title; a copy
+ * nobody has touched (never saved, nothing said or tasked on it) is let go
+ * so the two don't sit side by side. One that was written in is kept.
+ */
+async function dropAgendaCopy(db: Queryable, docId: string) {
+  await db.query(
+    `DELETE FROM docs c
+      USING docs d
+      WHERE d.id = $1 AND d.kind = 'agenda'
+        AND c.id <> d.id AND c.kind = 'agenda' AND c.user_id = d.user_id
+        AND c.team_id IS NULL AND c.title = d.title
+        AND c.deleted_at IS NULL AND c.version = 1
+        AND NOT EXISTS (SELECT 1 FROM doc_comments m WHERE m.doc_id = c.id)
+        AND NOT EXISTS (SELECT 1 FROM doc_task_links l WHERE l.doc_id = c.id)
+        AND NOT EXISTS (SELECT 1 FROM doc_suggestions g WHERE g.doc_id = c.id)`,
+    [docId],
+  );
+}
 
 /**
  * The document, locked for a change, when `u` may do `permission` to it. A
@@ -765,36 +836,39 @@ export async function docRoutes(app: FastifyInstance) {
     // Just these lines, when asked: "Make task" and the / menu's "New task"
     // turn one line into a task, not every open line on the page.
     const { block_ids: only } = docTasksInput.parse(r.body ?? {});
-    const doc = (
-      await pool.query<{ content: DocBlock[]; team_id: string | null }>(
-        `SELECT d.content, d.team_id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
-        [u.id, id],
-      )
-    ).rows[0];
-    if (!doc) fail(404, "Document not found");
-    const content = doc.content ?? [];
-    const wanted = content.filter(
-      (b): b is Extract<DocBlock, { type: "todo" }> =>
-        b.type === "todo" &&
-        !b.done &&
-        b.text.trim().length > 0 &&
-        (!only || (!!b.id && only.includes(b.id))),
-    );
-    // A line that is already tied to a task is not made again.
-    const linked = new Set(
-      (
-        await pool.query<{ block_id: string }>(
-          "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
-          [id],
-        )
-      ).rows.map((r) => r.block_id),
-    );
-    const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
-    if (!lines.length) return { created: 0, items: [], doc: null };
-
-    // Each line gets a stable id, so the link survives later edits.
-    const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
     const made = await transaction(async (db) => {
+      // The page is read and written back under its lock, so a save that
+      // lands meanwhile waits, then finds the version moved on and merges,
+      // rather than being written over with the copy read here.
+      const doc = await requireDoc(db, id, u, "items:read");
+      const content =
+        (
+          await db.query<{ content: DocBlock[] | null }>(
+            "SELECT content FROM docs WHERE id = $1",
+            [id],
+          )
+        ).rows[0].content ?? [];
+      const wanted = content.filter(
+        (b): b is Extract<DocBlock, { type: "todo" }> =>
+          b.type === "todo" &&
+          !b.done &&
+          b.text.trim().length > 0 &&
+          (!only || (!!b.id && only.includes(b.id))),
+      );
+      // A line that is already tied to a task is not made again.
+      const linked = new Set(
+        (
+          await db.query<{ block_id: string }>(
+            "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
+            [id],
+          )
+        ).rows.map((r) => r.block_id),
+      );
+      const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
+      if (!lines.length) return null;
+
+      // Each line gets a stable id, so the link survives later edits.
+      const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
       const out = [];
       for (const line of lines) {
         const item = await mutate(db, u, {
@@ -822,6 +896,7 @@ export async function docRoutes(app: FastifyInstance) {
       );
       return out;
     });
+    if (!made) return { created: 0, items: [], doc: null };
     const updated = (
       await pool.query<Doc>(
         `SELECT ${COLUMNS}, d.content FROM docs d
@@ -1213,13 +1288,20 @@ export async function docRoutes(app: FastifyInstance) {
   app.delete("/docs/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    await transaction(async (db) => {
+    const doc = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      await requireDoc(db, id, u, "items:write");
+      const doc = await requireDoc(db, id, u, "items:write");
       await db.query(
         "UPDATE docs SET deleted_at = now(), deleted_by = $2 WHERE id = $1",
         [id, u.id],
       );
+      await noteTrash(db, id, u.id, true);
+      await searchTrash(db, id, true);
+      return doc;
+    });
+    // Anyone with it open is told, so their editor lets it go.
+    await announceDocChange(pool, id, doc.version, editorOf(r), {
+      trashed: true,
     });
     reply.code(204);
   });
@@ -1257,13 +1339,16 @@ export async function docRoutes(app: FastifyInstance) {
   app.post("/docs/:id/restore", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    return transaction(async (db) => {
+    const back = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireDoc(db, id, u, "items:write", true);
       await db.query(
         "UPDATE docs SET deleted_at = NULL, deleted_by = NULL WHERE id = $1",
         [id],
       );
+      await noteTrash(db, id, u.id, false);
+      await searchTrash(db, id, false);
+      await dropAgendaCopy(db, id);
       const doc = (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS} WHERE d.id = $1`,
@@ -1272,6 +1357,8 @@ export async function docRoutes(app: FastifyInstance) {
       ).rows[0];
       return { ...doc, content: await withTaskState(db, id, doc.content) };
     });
+    await announceDocChange(pool, id, back.version, editorOf(r));
+    return back;
   });
 
   /**

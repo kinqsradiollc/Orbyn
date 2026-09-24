@@ -10,10 +10,14 @@ import {
 import { X } from "lucide-react";
 import { TOAST_MS } from "@orbyn/core";
 
-/** A short sentence, and at most one thing to do about it. */
+/**
+ * A short sentence, and at most one thing to do about it. `warn` is for
+ * something that didn't happen ("stayed put"), read out at once.
+ */
 export type ToastOptions = {
   text: string;
   action?: { label: string; run: () => void };
+  tone?: "warn";
 };
 
 type Shown = ToastOptions & { key: number };
@@ -53,8 +57,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {shown && (
           <div
             key={shown.key}
-            className="toast"
-            role="status"
+            className={"toast" + (shown.tone === "warn" ? " is-warn" : "")}
+            role={shown.tone === "warn" ? "alert" : "status"}
             onMouseEnter={() => setHeld(true)}
             onMouseLeave={() => setHeld(false)}
             onFocus={() => setHeld(true)}
