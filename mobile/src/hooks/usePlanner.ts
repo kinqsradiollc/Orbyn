@@ -38,6 +38,9 @@ import { clearGlance, publishGlance } from "../lib/widget";
 import { animateLayout } from "../motion";
 import { errorText } from "../lib/errors";
 
+/** Planned time and Today are asked for again at least this often. */
+const PLANNED_EVERY_MS = 2 * 60_000;
+
 export type SignInInput = {
   email: string;
   password: string;
@@ -111,6 +114,7 @@ export function usePlanner() {
     setPlanned(null);
     setToday(null);
     kept.current = { planned: null, today: null };
+    plannedAt.current = { at: 0, items: "" };
     setUser(null);
   };
 
@@ -148,14 +152,31 @@ export function usePlanner() {
   const kept = useRef<{ planned: PlannedFeed | null; today: TodayList | null }>(
     { planned: null, today: null },
   );
+  /** When planned time and Today were last asked for, and the tasks then. */
+  const plannedAt = useRef({ at: 0, items: "" });
   const refresh = useCallback(
-    async (options?: { animate?: boolean; silent?: boolean }) => {
+    async (options?: {
+      animate?: boolean;
+      silent?: boolean;
+      /** Sessions may have changed (news from another device): ask again. */
+      planned?: boolean;
+    }) => {
       if (!token) return;
       const seq = ++refreshSeq.current;
       // Background refreshes never show the pull-to-refresh spinner.
       if (!options?.silent) setRefreshing(true);
       try {
         const list = await client.listAllItems(500);
+        // Planned time and Today are asked for when something may have
+        // changed them: any refresh you asked for, news from another device,
+        // changed tasks, or a few minutes on (the day moves on). A quiet
+        // poll with nothing new reuses them, to spare the server.
+        const itemsNow = JSON.stringify(list);
+        const ask =
+          !options?.silent ||
+          !!options?.planned ||
+          itemsNow !== plannedAt.current.items ||
+          Date.now() - plannedAt.current.at > PLANNED_EVERY_MS;
         const { from, to } = dayBounds(new Date());
         const [u, n, t, l, g, p, d] = await Promise.all([
           client.me(),
@@ -166,11 +187,16 @@ export function usePlanner() {
           client.listTags().catch((): Tag[] => []),
           // Nor planned time or a Today list: rows and Today do without, and
           // a blip keeps what's on screen.
-          client
-            .planned({ from: from.toISOString(), to: to.toISOString() })
-            .catch(() => kept.current.planned),
-          client.today(deviceTimeZone()).catch(() => kept.current.today),
+          ask
+            ? client
+                .planned({ from: from.toISOString(), to: to.toISOString() })
+                .catch(() => kept.current.planned)
+            : kept.current.planned,
+          ask
+            ? client.today(deviceTimeZone()).catch(() => kept.current.today)
+            : kept.current.today,
         ]);
+        if (ask) plannedAt.current = { at: Date.now(), items: itemsNow };
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
         // `now` moves on every call; it isn't a change.
         const snapshot = JSON.stringify([

@@ -22,8 +22,7 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { usePlannedData } from "../hooks/usePlannedData";
-import { PlanningContext } from "./planning";
-import { PlannedContext } from "./planned";
+import { PlanningProviders } from "./PlanningProviders";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -618,358 +617,352 @@ export function App() {
   };
 
   return (
-    <PlanningContext.Provider value={planning}>
-      <PlannedContext.Provider value={planned}>
-        <div className={"app" + (railed ? " is-railed" : "")}>
-          <Sidebar
-            open={mobileNav}
-            railed={railed}
-            onToggleRail={toggleRail}
-            view={view}
-            user={user}
-            hasUnread={notices.some((n) => !n.read)}
-            onNavigate={navigate}
-            onSignOut={() => void planner.logout()}
+    <PlanningProviders planning={planning} planned={planned}>
+      <div className={"app" + (railed ? " is-railed" : "")}>
+        <Sidebar
+          open={mobileNav}
+          railed={railed}
+          onToggleRail={toggleRail}
+          view={view}
+          user={user}
+          hasUnread={notices.some((n) => !n.read)}
+          onNavigate={navigate}
+          onSignOut={() => void planner.logout()}
+        />
+        <div className="shell">
+          <AnnouncementBanner />
+          <MaintenanceBanner
+            maintenance={planner.maintenance}
+            isAdmin={hasSystemPermission(user?.role, "system:manage")}
           />
-          <div className="shell">
-            <AnnouncementBanner />
-            <MaintenanceBanner
-              maintenance={planner.maintenance}
-              isAdmin={hasSystemPermission(user?.role, "system:manage")}
-            />
-            {newVersion.available && (
-              <UpdateBanner onDismiss={newVersion.dismiss} />
+          {newVersion.available && (
+            <UpdateBanner onDismiss={newVersion.dismiss} />
+          )}
+          <FocusElsewhere
+            items={items}
+            hidden={!!shownFocus}
+            onOpen={setFocusTask}
+          />
+          <Topbar
+            view={view}
+            onToggleMenu={() => setMobileNav(!mobileNav)}
+            onOpenNotifications={() => navigate("Notifications")}
+            onOpenCommand={() => setCommandOpen(true)}
+          />
+          <main className="content">
+            {error && (
+              <div role="alert" className="error">
+                {error}
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss error"
+                  onClick={() => planner.setError("")}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             )}
-            <FocusElsewhere
-              items={items}
-              hidden={!!shownFocus}
-              onOpen={setFocusTask}
-            />
-            <Topbar
-              view={view}
-              onToggleMenu={() => setMobileNav(!mobileNav)}
-              onOpenNotifications={() => navigate("Notifications")}
-              onOpenCommand={() => setCommandOpen(true)}
-            />
-            <main className="content">
-              {error && (
-                <div role="alert" className="error">
-                  {error}
-                  <button
-                    className="icon-button"
-                    aria-label="Dismiss error"
-                    onClick={() => planner.setError("")}
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
+            <div key={view} className="view-enter">
+              {view !== "AI assistant" && (
+                <PageHeading
+                  view={view}
+                  user={user}
+                  onNewItem={() => newItem()}
+                />
               )}
-              <div key={view} className="view-enter">
-                {view !== "AI assistant" && (
-                  <PageHeading
-                    view={view}
-                    user={user}
-                    onNewItem={() => newItem()}
-                  />
-                )}
-                {view === "Overview" && (
-                  <WelcomeBack
-                    onOpenItem={openItemById}
-                    onOpenDoc={(id) =>
-                      void client.getDoc(id).then((doc) => {
-                        setNoteDoc(doc);
-                        setView("Docs");
-                      }, report)
-                    }
-                    onOpenAsks={() => navigate("Notifications")}
-                  />
-                )}
-                {view === "Overview" && (
-                  <OverviewView
-                    {...listProps}
-                    onNewItem={() => newItem()}
-                    onNavigate={navigate}
-                    onOpenDoc={(found) => {
-                      setNoteDoc(found);
-                      setView("Docs");
-                    }}
-                    onPlanDay={() => {
-                      navigate("AI assistant");
-                      void assistant.ask(planDayPrompt);
-                    }}
-                    onFocus={startFocus}
-                    onOpenById={openItemById}
-                    onPlanIt={(id) => planTask(id, true)}
-                    onPlanAgain={(id) => void rollForward([id])}
-                    onPlanMyDay={planMyDay}
-                    onShowLate={() => navigate("My tasks")}
-                  />
-                )}
-                {view === "My tasks" && (
-                  <TasksView
-                    {...listProps}
-                    query={query}
-                    onQueryChange={setQuery}
-                    onSetStatus={setStatus}
-                    userId={user?.id}
-                    onChanged={refresh}
-                  />
-                )}
-                {view === "Lists" && (
-                  <ListsView
-                    {...listProps}
-                    teams={teams}
-                    report={report}
-                    onNewItem={(prefill) => newItem(null, prefill)}
-                  />
-                )}
-                {view === "Agenda" && (
-                  <AgendaView
-                    report={report}
-                    userId={user?.id}
-                    onItemsChanged={() => void refresh()}
-                  />
-                )}
-                {view === "Docs" && (
-                  <DocsView
-                    report={report}
-                    userId={user?.id}
-                    canWriteDoc={canWriteIn}
-                    teamNameFor={(id) =>
-                      teams.find((t) => t.id === id)?.name ?? null
-                    }
-                    onItemsChanged={() => void refresh()}
-                    initialDoc={noteDoc}
-                    onInitialDocShown={() => setNoteDoc(null)}
-                  />
-                )}
-                {view === "Study" && (
-                  <StudyView
-                    report={report}
-                    onOpenPage={(doc) => {
+              {view === "Overview" && (
+                <WelcomeBack
+                  onOpenItem={openItemById}
+                  onOpenDoc={(id) =>
+                    void client.getDoc(id).then((doc) => {
                       setNoteDoc(doc);
                       setView("Docs");
-                    }}
-                    onPlanned={() => void refresh()}
-                  />
-                )}
-                {view === "Projects" && (
-                  <ProjectsView
-                    items={items}
-                    userId={user?.id ?? ""}
-                    teams={teams}
-                    openTemplate={templateToOpen}
-                    onTemplateOpened={() => setTemplateToOpen(null)}
-                    report={report}
-                    onRefresh={() => void refresh()}
-                    onOpenItem={openItem}
-                    onOpenNote={(docId) =>
-                      void client.getDoc(docId).then((doc) => {
-                        setNoteDoc(doc);
-                        setView("Docs");
-                      }, report)
-                    }
-                  />
-                )}
-                {view === "Calendar" && (
-                  <CalendarView
-                    items={items}
-                    teams={teams}
-                    canWrite={canWrite}
-                    onOpen={openItem}
-                    onEditItem={(item, occurrence) => {
-                      setEditing(item);
-                      setEditOccurrence(occurrence ?? null);
-                    }}
-                    onFocus={startFocus}
-                    date={calendarDate}
-                    onDateChange={setCalendarDate}
-                    mode={calendarMode}
-                    onModeChange={setCalendarMode}
-                    shortcuts={
-                      !editing &&
-                      !shownTask &&
-                      !shownFocus &&
-                      !commandOpen &&
-                      !shortcutsOpen
-                    }
-                    onNewEvent={(prefill) => newItem(null, prefill)}
-                    userId={user?.id}
-                    revision={revision}
-                    report={report}
-                    onChanged={refresh}
-                    planRequest={planRequest}
-                  />
-                )}
-                {view === "AI assistant" && (
-                  <AssistantView
-                    items={items}
-                    busy={busy}
-                    assistant={assistant}
-                    onApplyPlan={applyPlan}
-                    onOpenPlan={openPlan}
-                    onShowOnCalendar={showOnCalendar}
-                    onOpenSource={openSource}
-                    onKeptNote={(docId) => openSource({ doc_id: docId })}
-                  />
-                )}
-                {view === "Teams" && (
-                  <TeamsView teams={teams} {...teamActions} />
-                )}
-                {view === "Booking" && (
-                  <BookingView
-                    user={user}
-                    teams={teams}
-                    report={report}
-                    focus={bookingFocus}
-                  />
-                )}
-                {view === "Admin" && isAdmin && (
-                  <AdminView
-                    {...teamActions}
-                    onMaintenanceChange={planner.applyMaintenance}
-                  />
-                )}
-                {view === "Notifications" && (
-                  <AsksPanel onOpenItem={openItemById} />
-                )}
-                {view === "Notifications" && (
-                  <NotificationsView
-                    notices={notices}
-                    onRead={planner.markRead}
-                    onReschedule={reschedule}
-                    onRollForward={() => rollForward()}
-                    onPlanIt={planIt}
-                    onOpenItem={openItemById}
-                    onOpenCalendar={() => navigate("Calendar")}
-                    onOpenBooking={openBooking}
-                    onOpenTemplate={(id) => {
-                      setTemplateToOpen(id);
-                      navigate("Projects");
-                    }}
-                    onOpenDoc={(id) =>
-                      void client.getDoc(id).then((doc) => {
-                        setNoteDoc(doc);
-                        navigate("Docs");
-                      }, report)
-                    }
-                  />
-                )}
-                {view === "Settings" && (
-                  <SettingsView
-                    user={user}
-                    teams={teams}
-                    busy={busy}
-                    report={report}
-                    onEmailReminders={planner.setEmailReminders}
-                    onOpenStatus={() => navigatePath("/status")}
-                    onAccountDeleted={() => {
-                      planner.clearSession();
-                      navigatePath("/", true);
-                    }}
-                  />
-                )}
-              </div>
-              {loading && (
-                <small className="sync-status">Syncing your space…</small>
+                    }, report)
+                  }
+                  onOpenAsks={() => navigate("Notifications")}
+                />
               )}
-              {view !== "AI assistant" && (
-                <footer>
-                  A little more clarity. A little more you. <Orbit size={14} />
-                </footer>
-              )}
-            </main>
-          </div>
-          {shownTask && (
-            <TaskDetail
-              key={shownTask.id}
-              item={shownTask}
-              teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
-              canWrite={canWrite(shownTask)}
-              suspended={!!editing}
-              onClose={closeTask}
-              onEdit={setEditing}
-              onFocus={startFocus}
-              items={items}
-              onOpenItem={setOpenTask}
-              onChanged={refresh}
-              onError={report}
-              onFindTime={findTimeFor}
-              onShowOnCalendar={showOnCalendar}
-              onOpenNote={(event) => {
-                void client
-                  .itemNote(event.id)
-                  .then((note) => {
-                    closeTask();
-                    setNoteDoc(note);
+              {view === "Overview" && (
+                <OverviewView
+                  {...listProps}
+                  onNewItem={() => newItem()}
+                  onNavigate={navigate}
+                  onOpenDoc={(found) => {
+                    setNoteDoc(found);
                     setView("Docs");
-                  })
-                  .catch(report);
-              }}
-            />
-          )}
-          {shownFocus && (
-            <FocusMode
-              key={shownFocus.id}
-              item={shownFocus}
-              items={items}
-              canWrite={canWrite(shownFocus)}
-              onClose={closeFocus}
-              onSwitch={setFocusTask}
-              onChanged={refresh}
-              onError={report}
-            />
-          )}
-          {editing && (
-            <ItemEditor
-              key={
-                editing === "new" ? "new" : editing.id + ":" + editing.version
-              }
-              editing={editing}
-              teams={teams}
-              items={items}
-              defaultTeamId={draftTeamId}
-              draft={editing === "new" ? draft : null}
-              busy={busy}
-              error={error}
-              onClose={() => setEditing(null)}
-              onSave={saveItem}
-              onDelete={deleteItem}
-              occurrence={editing === "new" ? null : editOccurrence}
-            />
-          )}
-          {commandOpen && (
-            <CommandBar
-              items={items}
-              onClose={() => setCommandOpen(false)}
-              onOpenItem={openItem}
-              onOpenDoc={(found) => {
-                setNoteDoc(found);
-                setView("Docs");
-              }}
-              onGoToProjects={() => setView("Projects")}
-              onNewItem={() => newItem()}
-              onPlanDay={planMyDay}
-              onNavigate={navigate}
-              onApplyPlan={applyPlan}
-              onOpenPlan={openPlan}
-              onShowOnCalendar={showOnCalendar}
-              onOpenSource={openSource}
-              onKeptNote={(docId) => openSource({ doc_id: docId })}
-              onApplied={refresh}
-              onShowShortcuts={() => setShortcutsOpen(true)}
-              teams={teams}
-              userId={user?.id}
-              onJumpToDate={jumpToDate}
-              report={report}
-            />
-          )}
-          {shortcutsOpen && (
-            <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
-          )}
-          <Celebration />
+                  }}
+                  onPlanDay={() => {
+                    navigate("AI assistant");
+                    void assistant.ask(planDayPrompt);
+                  }}
+                  onFocus={startFocus}
+                  onOpenById={openItemById}
+                  onPlanIt={(id) => planTask(id, true)}
+                  onPlanAgain={(id) => void rollForward([id])}
+                  onPlanMyDay={planMyDay}
+                  onShowLate={() => navigate("My tasks")}
+                />
+              )}
+              {view === "My tasks" && (
+                <TasksView
+                  {...listProps}
+                  query={query}
+                  onQueryChange={setQuery}
+                  onSetStatus={setStatus}
+                  userId={user?.id}
+                  onChanged={refresh}
+                />
+              )}
+              {view === "Lists" && (
+                <ListsView
+                  {...listProps}
+                  teams={teams}
+                  report={report}
+                  onNewItem={(prefill) => newItem(null, prefill)}
+                />
+              )}
+              {view === "Agenda" && (
+                <AgendaView
+                  report={report}
+                  userId={user?.id}
+                  onItemsChanged={() => void refresh()}
+                />
+              )}
+              {view === "Docs" && (
+                <DocsView
+                  report={report}
+                  userId={user?.id}
+                  canWriteDoc={canWriteIn}
+                  teamNameFor={(id) =>
+                    teams.find((t) => t.id === id)?.name ?? null
+                  }
+                  onItemsChanged={() => void refresh()}
+                  initialDoc={noteDoc}
+                  onInitialDocShown={() => setNoteDoc(null)}
+                />
+              )}
+              {view === "Study" && (
+                <StudyView
+                  report={report}
+                  onOpenPage={(doc) => {
+                    setNoteDoc(doc);
+                    setView("Docs");
+                  }}
+                  onPlanned={() => void refresh()}
+                />
+              )}
+              {view === "Projects" && (
+                <ProjectsView
+                  items={items}
+                  userId={user?.id ?? ""}
+                  teams={teams}
+                  openTemplate={templateToOpen}
+                  onTemplateOpened={() => setTemplateToOpen(null)}
+                  report={report}
+                  onRefresh={() => void refresh()}
+                  onOpenItem={openItem}
+                  onOpenNote={(docId) =>
+                    void client.getDoc(docId).then((doc) => {
+                      setNoteDoc(doc);
+                      setView("Docs");
+                    }, report)
+                  }
+                />
+              )}
+              {view === "Calendar" && (
+                <CalendarView
+                  items={items}
+                  teams={teams}
+                  canWrite={canWrite}
+                  onOpen={openItem}
+                  onEditItem={(item, occurrence) => {
+                    setEditing(item);
+                    setEditOccurrence(occurrence ?? null);
+                  }}
+                  onFocus={startFocus}
+                  date={calendarDate}
+                  onDateChange={setCalendarDate}
+                  mode={calendarMode}
+                  onModeChange={setCalendarMode}
+                  shortcuts={
+                    !editing &&
+                    !shownTask &&
+                    !shownFocus &&
+                    !commandOpen &&
+                    !shortcutsOpen
+                  }
+                  onNewEvent={(prefill) => newItem(null, prefill)}
+                  userId={user?.id}
+                  revision={revision}
+                  report={report}
+                  onChanged={refresh}
+                  planRequest={planRequest}
+                />
+              )}
+              {view === "AI assistant" && (
+                <AssistantView
+                  items={items}
+                  busy={busy}
+                  assistant={assistant}
+                  onApplyPlan={applyPlan}
+                  onOpenPlan={openPlan}
+                  onShowOnCalendar={showOnCalendar}
+                  onOpenSource={openSource}
+                  onKeptNote={(docId) => openSource({ doc_id: docId })}
+                />
+              )}
+              {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
+              {view === "Booking" && (
+                <BookingView
+                  user={user}
+                  teams={teams}
+                  report={report}
+                  focus={bookingFocus}
+                />
+              )}
+              {view === "Admin" && isAdmin && (
+                <AdminView
+                  {...teamActions}
+                  onMaintenanceChange={planner.applyMaintenance}
+                />
+              )}
+              {view === "Notifications" && (
+                <AsksPanel onOpenItem={openItemById} />
+              )}
+              {view === "Notifications" && (
+                <NotificationsView
+                  notices={notices}
+                  onRead={planner.markRead}
+                  onReschedule={reschedule}
+                  onRollForward={() => rollForward()}
+                  onPlanIt={planIt}
+                  onOpenItem={openItemById}
+                  onOpenCalendar={() => navigate("Calendar")}
+                  onOpenBooking={openBooking}
+                  onOpenTemplate={(id) => {
+                    setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenDoc={(id) =>
+                    void client.getDoc(id).then((doc) => {
+                      setNoteDoc(doc);
+                      navigate("Docs");
+                    }, report)
+                  }
+                />
+              )}
+              {view === "Settings" && (
+                <SettingsView
+                  user={user}
+                  teams={teams}
+                  busy={busy}
+                  report={report}
+                  onEmailReminders={planner.setEmailReminders}
+                  onOpenStatus={() => navigatePath("/status")}
+                  onAccountDeleted={() => {
+                    planner.clearSession();
+                    navigatePath("/", true);
+                  }}
+                />
+              )}
+            </div>
+            {loading && (
+              <small className="sync-status">Syncing your space…</small>
+            )}
+            {view !== "AI assistant" && (
+              <footer>
+                A little more clarity. A little more you. <Orbit size={14} />
+              </footer>
+            )}
+          </main>
         </div>
-      </PlannedContext.Provider>
-    </PlanningContext.Provider>
+        {shownTask && (
+          <TaskDetail
+            key={shownTask.id}
+            item={shownTask}
+            teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
+            canWrite={canWrite(shownTask)}
+            suspended={!!editing}
+            onClose={closeTask}
+            onEdit={setEditing}
+            onFocus={startFocus}
+            items={items}
+            onOpenItem={setOpenTask}
+            onChanged={refresh}
+            onError={report}
+            onFindTime={findTimeFor}
+            onShowOnCalendar={showOnCalendar}
+            onOpenNote={(event) => {
+              void client
+                .itemNote(event.id)
+                .then((note) => {
+                  closeTask();
+                  setNoteDoc(note);
+                  setView("Docs");
+                })
+                .catch(report);
+            }}
+          />
+        )}
+        {shownFocus && (
+          <FocusMode
+            key={shownFocus.id}
+            item={shownFocus}
+            items={items}
+            canWrite={canWrite(shownFocus)}
+            onClose={closeFocus}
+            onSwitch={setFocusTask}
+            onChanged={refresh}
+            onError={report}
+          />
+        )}
+        {editing && (
+          <ItemEditor
+            key={editing === "new" ? "new" : editing.id + ":" + editing.version}
+            editing={editing}
+            teams={teams}
+            items={items}
+            defaultTeamId={draftTeamId}
+            draft={editing === "new" ? draft : null}
+            busy={busy}
+            error={error}
+            onClose={() => setEditing(null)}
+            onSave={saveItem}
+            onDelete={deleteItem}
+            occurrence={editing === "new" ? null : editOccurrence}
+          />
+        )}
+        {commandOpen && (
+          <CommandBar
+            items={items}
+            onClose={() => setCommandOpen(false)}
+            onOpenItem={openItem}
+            onOpenDoc={(found) => {
+              setNoteDoc(found);
+              setView("Docs");
+            }}
+            onGoToProjects={() => setView("Projects")}
+            onNewItem={() => newItem()}
+            onPlanDay={planMyDay}
+            onNavigate={navigate}
+            onApplyPlan={applyPlan}
+            onOpenPlan={openPlan}
+            onShowOnCalendar={showOnCalendar}
+            onOpenSource={openSource}
+            onKeptNote={(docId) => openSource({ doc_id: docId })}
+            onApplied={refresh}
+            onShowShortcuts={() => setShortcutsOpen(true)}
+            teams={teams}
+            userId={user?.id}
+            onJumpToDate={jumpToDate}
+            report={report}
+          />
+        )}
+        {shortcutsOpen && (
+          <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+        )}
+        <Celebration />
+      </div>
+    </PlanningProviders>
   );
 }

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo } from "react";
-import type { Tag, TaskList } from "@orbyn/core";
+import type { PlannedFeed, Tag, TaskList, TodayList } from "@orbyn/core";
+import { PlannedProvider } from "./plannedContext";
 
 type Planning = {
   lists: TaskList[];
@@ -19,18 +20,25 @@ const PlanningContext = createContext<Planning>({
 });
 
 /**
- * Lists and tags for rows, the editor and filters. The value only changes
- * when the lists or tags themselves change, so rows don't re-render on polls.
+ * Lists and tags for rows, the editor and filters, and planned time (see
+ * `PlannedProvider`). The value only changes when the lists or tags
+ * themselves change, so rows don't re-render on polls.
  */
 export function PlanningProvider({
   lists,
   tags,
   reload,
+  planned = null,
+  today = null,
   children,
 }: {
   lists: TaskList[];
   tags: Tag[];
   reload: () => Promise<void>;
+  /** Planned time by task, for this day. */
+  planned?: PlannedFeed | null;
+  /** The Today list, for this day. */
+  today?: TodayList | null;
   children: React.ReactNode;
 }) {
   const value = useMemo(
@@ -45,7 +53,9 @@ export function PlanningProvider({
   );
   return (
     <PlanningContext.Provider value={value}>
-      {children}
+      <PlannedProvider feed={planned} today={today}>
+        {children}
+      </PlannedProvider>
     </PlanningContext.Provider>
   );
 }
