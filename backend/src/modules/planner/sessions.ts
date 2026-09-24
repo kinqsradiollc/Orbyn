@@ -1,16 +1,22 @@
 import {
+  deadlineFit,
   deadlineOf,
   endsAfterDeadline,
   fail,
+  isClosed,
   numberSessions,
+  remainingOf,
   sessionDueFor,
+  splitSessions,
   type ItemSessions,
   type PlannedBlock,
   type SessionDue,
+  type Status,
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
 
 /**
  * Sessions with what they're for: the task's deadline (or the occurrence's,
@@ -50,7 +56,8 @@ type Facts = Required<
 
 const iso = (v: Date | string) => new Date(v).toISOString();
 
-async function seriesOf(db: Db, itemIds: string[]) {
+/** Tasks' dates (and projects), by id, to tell which due date each session is for. */
+export async function seriesOf(db: Db, itemIds: string[]) {
   const rows = (
     await db.query<SeriesRow>(
       `SELECT id, due_at, end_at, all_day, timezone, rrule, series_start, exdates, project_id
@@ -194,9 +201,10 @@ export async function numberPlanBlocks(
 }
 
 /**
- * Your sessions for one task you can see, past ones too, and how much of the
- * time still to come ends by its deadline. For a repeating task, the
- * sessions of occurrences already finished are left out.
+ * Your sessions for one task you can see, past ones too, how much of the
+ * time still to come ends by its deadline, and its "does it fit?" status.
+ * For a repeating task, the sessions of occurrences already finished are
+ * left out.
  */
 export async function itemSessions(
   db: Db,
@@ -212,9 +220,22 @@ export async function itemSessions(
       all_day: boolean;
       timezone: string;
       rrule: string | null;
+      series_start: Date | null;
+      exdates: Date[] | null;
+      status: Status;
+      kind: string;
+      mine: boolean;
+      estimate_minutes: number | null;
+      spent_minutes: number;
+      open_children: number;
+      children_remaining: number;
       project_deadline: Date | null;
     }>(
-      `SELECT i.id, i.due_at, i.end_at, i.all_day, i.timezone, i.rrule, p.deadline AS project_deadline
+      `SELECT i.id, i.due_at, i.end_at, i.all_day, i.timezone, i.rrule, i.series_start, i.exdates,
+              i.status, i.kind, i.estimate_minutes, i.spent_minutes,
+              (CASE WHEN i.team_id IS NULL THEN i.user_id = $1 ELSE i.assignee_id = $1 END) AS mine,
+              ${CHILDREN},
+              p.deadline AS project_deadline
        FROM items i LEFT JOIN projects p ON p.id = i.project_id
        WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
       [userId, itemId],
@@ -266,5 +287,70 @@ export async function itemSessions(
     sessions,
     planned_minutes: Math.round(planned),
     late_minutes: Math.round(late),
+    fit: await fitOf(db, userId, item, all, now),
   };
+}
+
+/** A task's open subtasks and what they still need (on alias `i`). */
+const CHILDREN = `
+  (SELECT count(*)::int FROM items c
+   WHERE c.parent_id = i.id AND c.status NOT IN ('done', 'cancelled')) AS open_children,
+  coalesce((SELECT sum(greatest(0, coalesce(c.estimate_minutes, 30) - c.spent_minutes))
+            FROM items c WHERE c.parent_id = i.id AND c.status NOT IN ('done', 'cancelled')), 0)::int
+    AS children_remaining`;
+
+/**
+ * Whether your sessions cover what the task still needs before its deadline
+ * (see `deadlineFit`). Only for an open task that is yours to plan (your own,
+ * assigned to you, or one you've set time aside for); free time before the
+ * deadline is looked up only when it's short and due within two weeks.
+ */
+async function fitOf(
+  db: Db,
+  userId: string,
+  item: {
+    due_at: Date | null;
+    end_at: Date | null;
+    all_day: boolean;
+    timezone: string;
+    rrule: string | null;
+    series_start: Date | null;
+    exdates: Date[] | null;
+    status: Status;
+    kind: string;
+    mine: boolean;
+    estimate_minutes: number | null;
+    spent_minutes: number;
+    open_children: number;
+    children_remaining: number;
+  },
+  sessions: TimeBlock[],
+  now: Date,
+) {
+  if (item.kind !== "task" || isClosed(item.status)) return null;
+  if (!item.mine && !sessions.length) return null;
+  const deadline = deadlineOf(item);
+  const split = splitSessions(item, sessions, now);
+  const needed = remainingOf(item);
+  const input = {
+    deadline_at: deadline,
+    needed_minutes: needed,
+    planned_minutes: split.planned_minutes,
+    late_minutes: split.late_minutes,
+    estimated: item.estimate_minutes != null,
+    now,
+  };
+  const first = deadlineFit(input);
+  const at = deadline ? Date.parse(deadline) : 0;
+  if (
+    !first.short_minutes ||
+    first.status === "overdue" ||
+    first.status === "no_deadline" ||
+    at - now.getTime() > FREE_LOOKAHEAD_DAYS * 86_400_000
+  )
+    return first;
+  return deadlineFit({
+    ...input,
+    free_minutes: await freeMinutesBefore(db, userId, new Date(at), now),
+  });
 }

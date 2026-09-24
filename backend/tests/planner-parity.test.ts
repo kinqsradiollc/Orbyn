@@ -561,9 +561,11 @@ test("planner notices: roll forward, at risk and due soon, once a day, on the la
     estimate_minutes: 30,
     due_at: local(0, 16),
   });
+  // Its session is still to come at the scan (10 am) and ends by the
+  // deadline (4 pm), so it counts: a session after the deadline wouldn't.
   await pool.query(
-    "INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, now() + interval '1 minute', now() + interval '31 minutes')",
-    [covered.id, me.id],
+    "INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [covered.id, me.id, local(0, 11), local(0, 11, 30)],
   );
 
   // Before work starts there's no roll-forward notice yet.

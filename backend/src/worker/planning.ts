@@ -1,8 +1,11 @@
 import {
   clockMinutes,
   dayTime,
+  deadlineFit,
   localDateKey,
   nextOccurrence,
+  remainingOf,
+  spokenMinutes,
   weekdayOf,
 } from "@orbyn/core";
 import { pool } from "../db/pool.js";
@@ -17,7 +20,6 @@ import {
   openTasks,
   unfinishedBlocks,
 } from "../modules/planner/plans.js";
-import { remainingOf } from "../modules/planner/scheduler.js";
 import { queueWebhooks } from "../lib/webhooks.js";
 import { emailEnabled } from "./channels/email.js";
 
@@ -245,8 +247,14 @@ const ACTIVE_USERS = `
  *   from earlier days are unfinished (once per person);
  * - at risk: a task's remaining estimate is more than the free time before
  *   it's due (once per task);
- * - due soon: a task is due within `deadline_notice_days` and has no time set
- *   aside for what's left of it (once per task, not for tasks already at risk).
+ * - due soon: a task is due within `deadline_notice_days` and what's left of
+ *   it isn't planned before the deadline (once per task, not for tasks
+ *   already at risk).
+ *
+ * All three follow the one "does it fit?" rule: only time that ends by the
+ * deadline counts, so a session after it never silences them. Once the
+ * deadline has passed, later sessions are catch-up and keep work from
+ * rolling forward again.
  *
  * Everyone active is reached, a page of people at a time. `only` limits the
  * scan to some people (tests and manual runs).
@@ -288,6 +296,7 @@ export async function scanPlanningNotices(
           pool,
           user_id,
           dayTime(today, 0, tz),
+          now,
         );
         const titles = [...new Set(blocks.map((b) => b.title))];
         if (blocks.length)
@@ -343,13 +352,21 @@ export async function scanPlanningNotices(
     if (!days) continue;
     const horizon = now.getTime() + days * 86_400_000;
     const flagged = new Set(atRisk.map((t) => t.item_id));
-    for (const t of await openTasks(pool, user_id)) {
+    for (const t of await openTasks(pool, user_id, now)) {
       if (!t.deadline_at || flagged.has(t.id)) continue;
       const due = Date.parse(t.deadline_at);
       if (due <= now.getTime() || due > horizon) continue;
-      const left = remainingOf(t) - t.scheduled_minutes;
-      // Time already blocked out for the rest of it: nothing to warn about.
-      if (left <= 0) continue;
+      const fit = deadlineFit({
+        deadline_at: t.deadline_at,
+        needed_minutes: remainingOf(t),
+        planned_minutes: t.scheduled_minutes,
+        late_minutes: t.late_minutes,
+        estimated: t.estimate_minutes != null,
+        now,
+      });
+      // What's left of it is planned before the deadline: nothing to warn about.
+      if (fit.status === "on_track") continue;
+      const words = dueWords(t.deadline_at, !!t.due_all_day);
       await notify(
         {
           userId: user_id,
@@ -357,10 +374,12 @@ export async function scanPlanningNotices(
           kind: "deadline",
           ref: today,
           title: `Due soon: ${t.title}`,
-          body: `"${t.title}" is due ${dueWords(
-            t.deadline_at,
-            !!t.due_all_day,
-          )}, and no session is planned for it yet. Plan it?`,
+          body:
+            fit.status === "late_session"
+              ? `"${t.title}" is due ${words}, but ${(t.late_sessions?.length ?? 0) > 1 ? "its sessions end" : "its session ends"} after the deadline. Plan it?`
+              : fit.status === "short"
+                ? `"${t.title}" is due ${words}, and ${spokenMinutes(fit.short_minutes)} of it isn't planned before then. Plan it?`
+                : `"${t.title}" is due ${words}, and no session is planned for it yet. Plan it?`,
         },
         email,
       );

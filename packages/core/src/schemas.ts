@@ -1416,6 +1416,22 @@ export const blockDuplicateInput = z
   .object({ start_at: instant.optional() })
   .strict();
 
+/**
+ * Moving a session to the next free working time. With `before_deadline`,
+ * only time that ends by its task's deadline will do (409 when there's none).
+ */
+export const blockRescheduleInput = z
+  .object({ before_deadline: z.boolean().default(false) })
+  .strict();
+
+/**
+ * Applying a plan. `moves` names the sessions to move before their deadline
+ * (ids from the plan's `moves`); when omitted, the ones the planner ticked.
+ */
+export const planApplyInput = z
+  .object({ moves: z.array(z.uuid()).max(200).optional() })
+  .strict();
+
 /** Move unfinished blocks forward; all of yesterday's and earlier when omitted. */
 export const rollForwardInput = z
   .object({ block_ids: z.array(z.uuid()).max(100).optional() })

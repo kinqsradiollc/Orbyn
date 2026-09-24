@@ -355,7 +355,8 @@ test("the planner treats an all-day task as due at the end of its day", () => {
     splitAfterMinutes: 60,
     minBlockMinutes: 15,
     breakLevel: "none" as const,
-    now: new Date("2026-09-22T08:00:00Z"),
+    // The evening before, so its day is still ahead either way.
+    now: new Date("2026-09-21T20:00:00Z"),
   });
   // Read as due at the midnight it starts, the day's time is already late…
   assert.equal(schedule(input()).at_risk.length, 1);

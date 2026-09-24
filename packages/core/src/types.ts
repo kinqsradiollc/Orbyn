@@ -1,5 +1,6 @@
 import type { ProjectDecomposition } from "./projectDraft.js";
 import type { DocSource, DraftNote } from "./docs.js";
+import type { DeadlineFit } from "./fit.js";
 
 import type { z } from "zod";
 import type {
@@ -7,6 +8,7 @@ import type {
   agentReply,
   blockDuplicateInput,
   blockInput,
+  blockRescheduleInput,
   blockUpdate,
   bookingPageInput,
   bookingPageUpdate,
@@ -48,6 +50,7 @@ import type {
   placeInput,
   placeUpdate,
   plannerPrefsInput,
+  planApplyInput,
   planPreviewInput,
   planScope,
   planTuneInput,
@@ -672,6 +675,13 @@ export type ItemSessions = {
   planned_minutes: number;
   /** Minutes still to come in sessions that end after the deadline. */
   late_minutes: number;
+  /**
+   * Whether your sessions cover what it still needs before its deadline
+   * (see `deadlineFit`): "On track", "Short 2h", "Session after the
+   * deadline"… Null for a finished task, or one that isn't yours to plan (a
+   * teammate's).
+   */
+  fit: DeadlineFit | null;
 };
 
 /** One occurrence of an item on the calendar. */
@@ -1043,6 +1053,50 @@ export type UnplacedTask = {
   /** Due on a whole day (by the end of it) rather than at a time. */
   due_all_day?: boolean;
   reason: string;
+  /**
+   * For a task at risk: what it still needs before the deadline, and the
+   * free working time there was for it before then.
+   */
+  remaining_minutes?: number;
+  free_minutes?: number;
+};
+
+/**
+ * A session that ends after its task's deadline, which a plan offers to move
+ * to free time before it. Sessions the planner made are ticked (`selected`);
+ * ones you placed by hand are offered unticked. Nothing moves until the plan
+ * is applied with it ticked.
+ */
+export type PlanMove = {
+  /** The session. */
+  block_id: string;
+  item_id: string;
+  title: string;
+  /** Where it is now. */
+  from_start_at: string;
+  from_end_at: string;
+  /** Where it would go, ending by the deadline. */
+  start_at: string;
+  end_at: string;
+  /** The deadline it would end by, and whether that's a whole day. */
+  deadline_at: string | null;
+  due_all_day?: boolean;
+  /** Who placed it: the planner, or you. */
+  source: "manual" | "planner";
+  /** Ticked to move when the plan is applied. */
+  selected: boolean;
+};
+
+/** `POST /planner/plans/:id/apply`: what was added, moved and left out. */
+export type PlanApplied = {
+  /** The sessions added. */
+  blocks: TimeBlock[];
+  /** Sessions left out because something else is there now. */
+  skipped: number;
+  /** Sessions moved before their deadline. */
+  moved: TimeBlock[];
+  /** Moves left out: the session changed or went, or the time is taken now. */
+  moves_skipped: number;
 };
 
 export type PlanScope = z.output<typeof planScope>;
@@ -1072,11 +1126,18 @@ export type PlanTask = {
   } | null;
   /** False for tasks left out of this plan. */
   included: boolean;
-  /** Minutes the plan gives it (pinned blocks included). */
+  /** Minutes the plan gives it (pinned blocks and ticked moves included). */
   planned_minutes: number;
+  /** Of those, minutes in sessions the plan moves before the deadline. */
+  moved_minutes?: number;
   /** Why it wasn't (fully) planned, or why it was left out; null when it fits. */
   reason: string | null;
   at_risk: boolean;
+  /**
+   * Its "does it fit?" status once the plan is applied as proposed (see
+   * `deadlineFit`); left out for tasks the plan leaves out.
+   */
+  fit?: DeadlineFit | null;
 };
 
 /** The options a plan was made with, resolved from the request and preferences. */
@@ -1106,6 +1167,11 @@ export type Plan = {
   unplaced: UnplacedTask[];
   /** Tasks that can't get enough time before they are due. */
   at_risk: UnplacedTask[];
+  /**
+   * Sessions after their task's deadline that the plan can move to free
+   * time before it. A plan may hold only moves.
+   */
+  moves?: PlanMove[];
   capacity_minutes: number;
   planned_minutes: number;
   applied: boolean;
@@ -1588,6 +1654,8 @@ export type PlanPreviewInput = z.input<typeof planPreviewInput>;
 export type PlanTuneInput = z.input<typeof planTuneInput>;
 export type FrameSkipInput = z.input<typeof frameSkipInput>;
 export type BlockDuplicateInput = z.input<typeof blockDuplicateInput>;
+export type BlockRescheduleInput = z.input<typeof blockRescheduleInput>;
+export type PlanApplyInput = z.input<typeof planApplyInput>;
 export type BookingPageInput = z.input<typeof bookingPageInput>;
 export type BookingPageUpdate = z.input<typeof bookingPageUpdate>;
 export type BookingRequest = z.input<typeof bookingRequest>;

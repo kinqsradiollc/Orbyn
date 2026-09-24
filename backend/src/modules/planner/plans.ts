@@ -1,23 +1,26 @@
 import { createHash } from "node:crypto";
 import {
   addDays,
-  clockMinutes,
+  atRiskReason,
   dayTime,
+  deadlineFit,
   deadlineOf,
   guessEstimate,
   hasTeamPermission,
   learnedRatio,
   itemBody,
   localDateKey,
-  weekdayOf,
+  sessionKindFor,
+  spokenMinutes,
+  splitSessions,
   type AtRiskTask,
   type GuessedEstimate,
   type BusyInterval,
   type Frame,
   type Item,
   type Plan,
+  type PlanMove,
   type PlanOptions,
-  type PlannerPrefs,
   type PlannerReview,
   type PlanTask,
   type TimeBlock,
@@ -34,11 +37,11 @@ import {
   busyIntervals,
   agendaEntries,
   loadPrefs,
-  mergeIntervals,
   timeBlocks,
 } from "./calendar.js";
 import { loadFrames } from "./frames.js";
-import { numberPlanBlocks } from "./sessions.js";
+import { freeSpans, workingSpans } from "./free.js";
+import { numberPlanBlocks, seriesOf } from "./sessions.js";
 import { loadLearning, smartPlacementOf } from "./learning.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
@@ -49,6 +52,7 @@ import {
 } from "./scheduler.js";
 
 export { FRAME_COLUMNS, loadFrames } from "./frames.js";
+export { freeSpans, workingSpans } from "./free.js";
 
 export type PreviewInput = z.output<typeof planPreviewInput>;
 export type TuneInput = z.output<typeof planTuneInput>;
@@ -79,6 +83,8 @@ type Candidate = SchedulerTask & {
   version: number;
   /** Due on a whole day (by the end of it) rather than at a time. */
   due_all_day?: boolean;
+  /** Minutes still to come in sessions after a deadline still ahead. */
+  late_minutes: number;
 };
 
 /**
@@ -96,6 +102,12 @@ export const CHILD_COLUMNS = `
  * Open tasks the planner considers: your personal tasks and team tasks
  * assigned to you, narrowed by `scope`. Naming tasks (`only`) lets it plan
  * any task you can see; `include` adds tasks you can see to either.
+ *
+ * Each carries the time you've set aside for it that counts: only sessions
+ * that end by its deadline (for a repeating task, this occurrence's), or any
+ * once the deadline has passed (catch-up) or without one. Sessions after a
+ * deadline still ahead are listed as `late_sessions`, for the planner to
+ * offer to move.
  */
 export async function candidateTasks(
   db: Db,
@@ -104,25 +116,27 @@ export async function candidateTasks(
     only?: string[];
     include?: string[];
     scope?: PreviewInput["scope"] | null;
+    now?: Date;
   } = {},
 ): Promise<Candidate[]> {
   const scope = options.scope;
+  const now = options.now ?? new Date();
   const rows = (
     await db.query<
-      Candidate & {
+      Omit<Candidate, "scheduled_minutes" | "late_minutes"> & {
         due_at: Date | null;
         end_at: Date | null;
         all_day: boolean;
         timezone: string;
+        rrule: string | null;
+        series_start: Date | null;
+        exdates: Date[] | null;
       }
     >(
       `SELECT i.id, i.title, i.priority, i.status, i.due_at, i.end_at, i.all_day,
-              i.timezone, i.estimate_minutes, i.spent_minutes, i.list_id, i.team_id, i.version,
+              i.timezone, i.rrule, i.series_start, i.exdates,
+              i.estimate_minutes, i.spent_minutes, i.list_id, i.team_id, i.version,
               coalesce((SELECT array_agg(x.tag_id ORDER BY x.tag_id) FROM item_tags x WHERE x.item_id = i.id), '{}') AS tag_ids,
-              coalesce((SELECT sum(extract(epoch FROM (b.end_at - greatest(b.start_at, now()))) / 60)
-                        FROM time_blocks b
-                        WHERE b.item_id = i.id AND b.user_id = $1 AND b.end_at > now()), 0)::int
-                AS scheduled_minutes,
               (SELECT max(b.end_at) FROM time_blocks b WHERE b.item_id=i.id AND b.user_id=$1 AND b.end_at>now()) AS scheduled_end_at,
               coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'ready_at',
                 CASE WHEN p.status='done' THEN '1970-01-01T00:00:00Z'::timestamptz
@@ -154,37 +168,90 @@ export async function candidateTasks(
       ],
     )
   ).rows;
-  return rows.map(({ end_at, all_day, timezone, ...t }) => ({
-    ...t,
-    due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
-    // One rule for when it's due by (the end of the day for an all-day task).
-    deadline_at: deadlineOf({ due_at: t.due_at, end_at, all_day, timezone }),
-    due_all_day: !!t.due_at && all_day,
-    scheduled_end_at: t.scheduled_end_at
-      ? new Date(t.scheduled_end_at).toISOString()
-      : null,
-  }));
+  // Your sessions still to come for them, to tell which count.
+  const ahead = new Map<string, LateSessionRow[]>();
+  if (rows.length)
+    for (const b of (
+      await db.query<{
+        id: string;
+        item_id: string;
+        start_at: Date;
+        end_at: Date;
+        source: "manual" | "planner";
+      }>(
+        `SELECT id, item_id, start_at, end_at, source FROM time_blocks
+         WHERE user_id = $1 AND item_id = ANY($2::uuid[]) AND end_at > $3`,
+        [userId, rows.map((r) => r.id), now],
+      )
+    ).rows)
+      ahead.set(b.item_id, [
+        ...(ahead.get(b.item_id) ?? []),
+        {
+          id: b.id,
+          start_at: b.start_at.toISOString(),
+          end_at: b.end_at.toISOString(),
+          source: b.source,
+        },
+      ]);
+  return rows.map(
+    ({ end_at, all_day, timezone, rrule, series_start, exdates, ...t }) => {
+      const task = { due_at: t.due_at, end_at, all_day, timezone };
+      const split = splitSessions(
+        { ...task, rrule, series_start, exdates },
+        ahead.get(t.id) ?? [],
+        now,
+      );
+      return {
+        ...t,
+        due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
+        // One rule for when it's due by (the end of the day for an all-day task).
+        deadline_at: deadlineOf(task),
+        due_all_day: !!t.due_at && all_day,
+        scheduled_minutes: split.planned_minutes,
+        late_minutes: split.late_minutes,
+        // Only sessions that haven't started can move.
+        late_sessions: split.late.filter(
+          (b) => Date.parse(b.start_at) > now.getTime(),
+        ),
+        scheduled_end_at: t.scheduled_end_at
+          ? new Date(t.scheduled_end_at).toISOString()
+          : null,
+      };
+    },
+  );
 }
 
-const hoursLabel = (minutes: number) => {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  return h ? (m ? `${h} h ${m} min` : `${h} h`) : `${m} min`;
+type LateSessionRow = {
+  id: string;
+  start_at: string;
+  end_at: string;
+  source: "manual" | "planner";
 };
+
+const hoursLabel = spokenMinutes;
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** A sentence or three about a plan, for the preview and the assistant. */
 export function describePlan(result: SchedulerResult, days: number) {
   const tasks = new Set(result.blocks.map((b) => b.item_id)).size;
   const notes: string[] = [];
+  const moves = result.moves?.length ?? 0;
+  if (moves)
+    notes.push(
+      moves === 1
+        ? "1 session after its deadline can move before it."
+        : `${moves} sessions after their deadlines can move before them.`,
+    );
   if (result.unplaced.length)
     notes.push(`${plural(result.unplaced.length, "task")} couldn't be placed.`);
   if (result.at_risk.length)
     notes.push(`${plural(result.at_risk.length, "task")} may run late.`);
   if (!result.blocks.length)
-    return result.unplaced.length
-      ? `Nothing fits yet. ${notes.join(" ")}`
-      : "There's nothing to plan: no open task needs time.";
+    return moves
+      ? `No new sessions needed. ${notes.join(" ")}`
+      : result.unplaced.length
+        ? `Nothing fits yet. ${notes.join(" ")}`
+        : "There's nothing to plan: no open task needs time.";
   return [
     `${plural(tasks, "task")} in ${plural(result.blocks.length, "session")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
     ...notes,
@@ -220,6 +287,7 @@ async function planInputs(db: Db, userId: string, state: PlanState, now: Date) {
       only: state.item_ids,
       include,
       scope: state.scope,
+      now,
     }),
   ]);
   return { prefs, tz, start, days, from, to, busy, frames, tasks, include };
@@ -266,6 +334,8 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
             t.children_remaining,
             t.dependencies,
             t.scheduled_end_at,
+            // Sessions after the deadline the plan may offer to move.
+            (t.late_sessions ?? []).map((l) => [l.id, l.start_at, l.end_at]),
           ]),
       }),
     )
@@ -324,6 +394,7 @@ export async function computePlan(
       estimate_minutes: t.estimate_minutes,
       spent_minutes: 0,
       scheduled_minutes: 0,
+      late_minutes: 0,
       list_id: null,
       tag_ids: [],
       team_id: null,
@@ -451,14 +522,26 @@ export async function makePlan(
         }
       : u;
   };
+  // Late sessions it offers to move: the planner's own are ticked, the ones
+  // you placed by hand are offered unticked.
+  const moves: PlanMove[] = (computed.moves ?? []).map((m) => {
+    const t = byId.get(m.item_id);
+    return {
+      ...m,
+      deadline_at: t?.deadline_at ?? null,
+      due_all_day: !!t?.due_all_day,
+      selected: m.source === "planner",
+    };
+  });
   const result = {
     ...computed,
     blocks: await numberPlanBlocks(db, userId, computed.blocks),
     unplaced: computed.unplaced.map(withDeadline),
     at_risk: computed.at_risk.map(withDeadline),
+    moves,
   };
   const summary = describePlan(result, days);
-  const checklist = planTasks(tasks, excluded, state, result, guessed);
+  const checklist = planTasks(tasks, excluded, state, result, guessed, now);
   // Tuning makes the same days again, even once tomorrow has become today.
   const stored: PlanState = { ...state, start_date: start };
   const row = (
@@ -473,6 +556,7 @@ export async function makePlan(
           input: stored,
           resolved: options,
           at_risk: result.at_risk,
+          moves,
           capacity_minutes: result.capacity_minutes,
           planned_minutes: result.planned_minutes,
           summary,
@@ -500,34 +584,67 @@ export async function makePlan(
   };
 }
 
-/** Every task the plan looked at, in or out, with how much time it got and why. */
+const lengthOf = (b: { start_at: string; end_at: string }) =>
+  (Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000;
+
+/**
+ * Every task the plan looked at, in or out, with how much time it got, why,
+ * and whether it fits its deadline once the plan is applied as proposed.
+ */
 function planTasks(
   tasks: Candidate[],
   excluded: Set<string>,
   state: PlanState,
-  result: SchedulerResult,
+  result: Omit<SchedulerResult, "moves"> & { moves: PlanMove[] },
   guessed: Map<string, GuessedEstimate>,
+  now: Date,
 ): PlanTask[] {
   return tasks.map((t) => {
-    const minutes = result.blocks
-      .filter((b) => b.item_id === t.id)
-      .reduce(
-        (sum, b) =>
-          sum + (Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000,
-        0,
-      );
+    const own = result.blocks.filter((b) => b.item_id === t.id);
+    const minutes = own.reduce((sum, b) => sum + lengthOf(b), 0);
+    const moves = result.moves.filter((m) => m.item_id === t.id);
+    const moved = moves.reduce((sum, m) => sum + lengthOf(m), 0);
     const guess = guessed.get(t.id) ?? null;
     const estimate =
       state.estimates[t.id] ?? t.estimate_minutes ?? guess?.minutes ?? null;
-    const remaining =
-      remainingOf({ ...t, estimate_minutes: estimate }) - t.scheduled_minutes;
+    const needed = remainingOf({ ...t, estimate_minutes: estimate });
+    const remaining = needed - t.scheduled_minutes;
     const unplaced = result.unplaced.find((u) => u.item_id === t.id);
+    const risk = result.at_risk.find((a) => a.item_id === t.id);
     const included = !excluded.has(t.id);
     let reason: string | null = null;
     if (!included) reason = "Left out of this plan.";
     else if (unplaced) reason = unplaced.reason;
-    else if (!minutes && remaining <= 0)
+    else if (!minutes && !moved && remaining <= 0)
       reason = "It already has sessions planned.";
+    // As proposed: new sessions count when they end by the deadline (any
+    // once it has passed), and ticked moves come off the late time.
+    const deadline = t.deadline_at ? Date.parse(t.deadline_at) : null;
+    const counts = (b: { end_at: string }) =>
+      deadline === null ||
+      deadline <= now.getTime() ||
+      Date.parse(b.end_at) <= deadline;
+    const ticked = moves
+      .filter((m) => m.selected)
+      .reduce((sum, m) => sum + lengthOf(m), 0);
+    const fit = included
+      ? deadlineFit({
+          deadline_at: t.deadline_at,
+          needed_minutes: needed,
+          planned_minutes:
+            t.scheduled_minutes +
+            ticked +
+            own.filter(counts).reduce((sum, b) => sum + lengthOf(b), 0),
+          late_minutes:
+            Math.max(0, t.late_minutes - ticked) +
+            own
+              .filter((b) => !counts(b))
+              .reduce((sum, b) => sum + lengthOf(b), 0),
+          free_minutes: risk?.free_minutes ?? null,
+          estimated: estimate != null && !guess,
+          now,
+        })
+      : null;
     return {
       item_id: t.id,
       title: t.title,
@@ -541,9 +658,11 @@ function planTasks(
       estimate_tuned: state.estimates[t.id] !== undefined,
       estimate_guess: guess && { minutes: guess.minutes, basis: guess.basis },
       included,
-      planned_minutes: Math.round(minutes),
+      planned_minutes: Math.round(minutes + moved),
+      ...(moved ? { moved_minutes: Math.round(moved) } : {}),
       reason,
-      at_risk: result.at_risk.some((a) => a.item_id === t.id),
+      at_risk: !!risk,
+      fit,
     };
   });
 }
@@ -556,6 +675,7 @@ type PlanRow = {
     input?: Partial<PlanState>;
     resolved?: PlanOptions;
     at_risk?: Plan["at_risk"];
+    moves?: PlanMove[];
     capacity_minutes?: number;
     planned_minutes?: number;
     summary?: string;
@@ -597,6 +717,7 @@ export async function planById(
     blocks: row.blocks,
     unplaced: row.unplaced,
     at_risk: row.options.at_risk ?? [],
+    moves: row.options.moves ?? [],
     capacity_minutes: row.options.capacity_minutes ?? 0,
     planned_minutes: row.options.planned_minutes ?? 0,
     applied: row.applied,
@@ -720,59 +841,14 @@ export async function planStale(
   return fingerprint(inputs) !== row.options.fingerprint;
 }
 
-type Span = { start: number; end: number };
-
-/** Working hours between two instants, as spans. */
-export function workingSpans(
-  prefs: PlannerPrefs,
-  from: Date,
-  to: Date,
-): Span[] {
-  const spans: Span[] = [];
-  const last = localDateKey(to, prefs.timezone);
-  for (
-    let day = localDateKey(from, prefs.timezone);
-    day <= last;
-    day = addDays(day, 1)
-  ) {
-    if (!prefs.work_days.includes(weekdayOf(day))) continue;
-    const start = Math.max(
-      dayTime(day, clockMinutes(prefs.work_start), prefs.timezone).getTime(),
-      from.getTime(),
-    );
-    const end = Math.min(
-      dayTime(day, clockMinutes(prefs.work_end), prefs.timezone).getTime(),
-      to.getTime(),
-    );
-    if (end > start) spans.push({ start, end });
-  }
-  return spans;
-}
-
-/** Spans minus busy intervals. */
-export function freeSpans(spans: Span[], busy: BusyInterval[]): Span[] {
-  const merged = mergeIntervals(busy).map((b) => ({
-    start: Date.parse(b.start_at),
-    end: Date.parse(b.end_at),
-  }));
-  const out: Span[] = [];
-  for (const span of spans) {
-    let cursor = span.start;
-    for (const b of merged) {
-      if (b.end <= cursor || b.start >= span.end) continue;
-      if (b.start > cursor) out.push({ start: cursor, end: b.start });
-      cursor = Math.max(cursor, b.end);
-    }
-    if (cursor < span.end) out.push({ start: cursor, end: span.end });
-  }
-  return out;
-}
-
 const FIVE_MINUTES = 5 * 60_000;
+/** How far "before the deadline" looks for free time, at most. */
+const BEFORE_DEADLINE_DAYS = 31;
 
 /**
  * The next free working slot of `minutes` in the coming week, starting no
- * earlier than `after` (now when omitted).
+ * earlier than `after` (now when omitted). With `by`, only a slot that ends
+ * by then will do, looking as far as `by` (up to a month).
  */
 export async function workingFree(
   db: Db,
@@ -781,11 +857,20 @@ export async function workingFree(
   excludeBlockIds: string[] = [],
   now = new Date(),
   after?: Date,
+  by?: Date,
 ): Promise<BusyInterval | null> {
   const prefs = await loadPrefs(db, userId);
   const earliest = Math.max(now.getTime(), after?.getTime() ?? 0);
   const from = new Date(Math.ceil(earliest / FIVE_MINUTES) * FIVE_MINUTES);
-  const to = new Date(from.getTime() + 7 * 86_400_000);
+  const to = new Date(
+    by
+      ? Math.min(
+          by.getTime(),
+          from.getTime() + BEFORE_DEADLINE_DAYS * 86_400_000,
+        )
+      : from.getTime() + 7 * 86_400_000,
+  );
+  if (to.getTime() - from.getTime() < minutes * 60_000) return null;
   const busy = await busyIntervals(db, userId, from, to, {
     blocks: true,
     derived: true,
@@ -837,22 +922,25 @@ const REVIEW_DAYS = 14;
 
 /**
  * Past blocks (ended before `before`) whose tasks are still open and have no
- * time set aside from `before` on: the work to roll forward.
+ * time set aside from `before` on that counts: a session that ends after a
+ * deadline still ahead doesn't (see `sessionKindFor`), so it can't keep the
+ * work from rolling forward. Once the deadline has passed, later sessions
+ * are catch-up time and do count, so that work isn't offered again every
+ * morning.
  */
 export async function unfinishedBlocks(
   db: Db,
   userId: string,
   before: Date,
+  now = new Date(),
 ): Promise<TimeBlock[]> {
-  return (
+  const blocks = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.end_at < $2 AND b.end_at > $2 - interval '14 days'
          AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}
-         AND NOT EXISTS (SELECT 1 FROM time_blocks f
-                         WHERE f.item_id = b.item_id AND f.user_id = $1 AND f.start_at >= $2)
        ORDER BY b.start_at`,
       [userId, before],
     )
@@ -861,6 +949,25 @@ export async function unfinishedBlocks(
     start_at: new Date(b.start_at).toISOString(),
     end_at: new Date(b.end_at).toISOString(),
   }));
+  if (!blocks.length) return blocks;
+  const ids = [...new Set(blocks.map((b) => b.item_id))];
+  const [series, later] = await Promise.all([
+    seriesOf(db, ids),
+    db.query<{ item_id: string; end_at: Date }>(
+      `SELECT item_id, end_at FROM time_blocks
+       WHERE user_id = $1 AND item_id = ANY($2::uuid[]) AND start_at >= $3`,
+      [userId, ids, before],
+    ),
+  ]);
+  const covered = new Set<string>();
+  for (const id of ids) {
+    const s = series.get(id);
+    if (!s) continue;
+    const kind = sessionKindFor(s, now);
+    if (later.rows.some((f) => f.item_id === id && kind(f) === "planned"))
+      covered.add(id);
+  }
+  return blocks.filter((b) => !covered.has(b.item_id));
 }
 
 /**
@@ -874,7 +981,7 @@ export async function atRiskFor(
 ): Promise<AtRiskTask[]> {
   const horizon = new Date(now.getTime() + REVIEW_DAYS * 86_400_000);
   const [tasks, prefs] = await Promise.all([
-    candidateTasks(db, userId),
+    candidateTasks(db, userId, { now }),
     loadPrefs(db, userId),
   ]);
   const due = tasks.filter((t) => {
@@ -891,8 +998,6 @@ export async function atRiskFor(
   const atRisk: AtRiskTask[] = [];
   for (const t of due) {
     const dueAt = Date.parse(t.deadline_at!);
-    const remaining = Math.max(0, remainingOf(t) - t.scheduled_minutes);
-    if (!remaining) continue;
     const freeMinutes = Math.round(
       free.reduce(
         (sum, s) =>
@@ -900,15 +1005,26 @@ export async function atRiskFor(
         0,
       ),
     );
-    if (remaining > freeMinutes)
+    // The one "does it fit?" rule: only time before the deadline counts, so
+    // a session after it doesn't hide the risk.
+    const fit = deadlineFit({
+      deadline_at: t.deadline_at,
+      needed_minutes: remainingOf(t),
+      planned_minutes: t.scheduled_minutes,
+      late_minutes: t.late_minutes,
+      free_minutes: freeMinutes,
+      estimated: t.estimate_minutes != null,
+      now,
+    });
+    if (fit.status === "at_risk")
       atRisk.push({
         item_id: t.id,
         title: t.title,
         due_at: t.due_at,
         due_all_day: !!t.due_all_day,
         deadline_at: t.deadline_at,
-        reason: `Needs ${hoursLabel(remaining)} more, with ${hoursLabel(freeMinutes)} free before it's due.`,
-        remaining_minutes: remaining,
+        reason: atRiskReason(fit.short_minutes, freeMinutes),
+        remaining_minutes: fit.short_minutes,
         free_minutes: freeMinutes,
       });
   }
@@ -916,7 +1032,8 @@ export async function atRiskFor(
 }
 
 /** Open tasks that need time: yours and team tasks assigned to you. */
-export const openTasks = (db: Db, userId: string) => candidateTasks(db, userId);
+export const openTasks = (db: Db, userId: string, now = new Date()) =>
+  candidateTasks(db, userId, { now });
 
 /** Unfinished blocks, tasks at risk of running late, and blocks that clash with events. */
 export async function reviewFor(
@@ -926,7 +1043,7 @@ export async function reviewFor(
 ): Promise<PlannerReview> {
   const horizon = new Date(now.getTime() + REVIEW_DAYS * 86_400_000);
   const [unfinished, entries, blocks, atRisk] = await Promise.all([
-    unfinishedBlocks(db, userId, now),
+    unfinishedBlocks(db, userId, now, now),
     agendaEntries(db, userId, now, horizon, { hidden: true }),
     timeBlocks(db, userId, now, horizon),
     atRiskFor(db, userId, now),

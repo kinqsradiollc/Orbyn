@@ -99,6 +99,9 @@ import {
   type User,
   type ApiKey,
   type BlockDuplicateInput,
+  type BlockRescheduleInput,
+  type PlanApplied,
+  type PlanApplyInput,
   type BlockInput,
   type BlockUpdate,
   type Booking,
@@ -1238,10 +1241,15 @@ export class OrbynClient {
   deleteBlock(id: string) {
     return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
   }
-  /** Move a block to the next free working time of the same length. */
-  rescheduleBlock(id: string) {
+  /**
+   * Move a block to the next free working time of the same length, one that
+   * ends by its task's deadline when there is one. With `before_deadline`,
+   * only such a time will do (409 when there's none).
+   */
+  rescheduleBlock(id: string, input: BlockRescheduleInput = {}) {
     return this.request<TimeBlock>(`/blocks/${id}/reschedule`, {
       method: "POST",
+      body: input,
     });
   }
   /** Another block for the same task and length, at `start_at` or the next free time after it. */
@@ -1394,11 +1402,16 @@ export class OrbynClient {
   planStale(id: string) {
     return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
   }
-  applyPlan(id: string) {
-    return this.request<{ blocks: TimeBlock[]; skipped: number }>(
-      `/planner/plans/${id}/apply`,
-      { method: "POST" },
-    );
+  /**
+   * Save a plan: its new sessions, and the late sessions to move before
+   * their deadline (`moves`, block ids; the ones the planner ticked when
+   * omitted).
+   */
+  applyPlan(id: string, input: PlanApplyInput = {}) {
+    return this.request<PlanApplied>(`/planner/plans/${id}/apply`, {
+      method: "POST",
+      body: input,
+    });
   }
   /** Unfinished blocks, tasks at risk, and blocks that clash with events. */
   plannerReview() {

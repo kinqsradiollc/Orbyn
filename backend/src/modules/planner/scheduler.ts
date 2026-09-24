@@ -1,9 +1,12 @@
 import {
   addDays,
+  atRiskReason,
   clockMinutes,
   dayTime,
+  DEFAULT_ESTIMATE_MINUTES,
   isClosed,
   priorityScore,
+  remainingOf,
   rhythmFit,
   taskDemand,
   weekdayOf,
@@ -37,8 +40,17 @@ export type SchedulerTask = {
   deadline_at?: string | null;
   estimate_minutes: number | null;
   spent_minutes: number;
-  /** Future time already set aside for this task. */
+  /**
+   * Time still to come already set aside for this task that counts: ending
+   * by its deadline, or any once the deadline has passed (catch-up) or
+   * without one (see `splitSessions`). Time after the deadline doesn't.
+   */
   scheduled_minutes: number;
+  /**
+   * Its sessions that end after a deadline still ahead and haven't started:
+   * the planner offers to move them to free time before the deadline.
+   */
+  late_sessions?: LateSession[];
   list_id: string | null;
   tag_ids: string[];
   team_id: string | null;
@@ -48,6 +60,26 @@ export type SchedulerTask = {
   /** Prerequisites, with a known finish when already completed or fully scheduled. */
   dependencies?: { id: string; ready_at: string | null }[];
   scheduled_end_at?: string | null;
+};
+
+/** A session after its task's deadline, which a plan may move before it. */
+export type LateSession = {
+  id: string;
+  start_at: string;
+  end_at: string;
+  source: "manual" | "planner";
+};
+
+/** A late session the planner would move to free time before the deadline. */
+export type ScheduledMove = {
+  block_id: string;
+  item_id: string;
+  title: string;
+  from_start_at: string;
+  from_end_at: string;
+  start_at: string;
+  end_at: string;
+  source: "manual" | "planner";
 };
 
 export type SchedulerInput = {
@@ -96,41 +128,16 @@ export type SchedulerResult = {
   blocks: PlannedBlock[];
   unplaced: UnplacedTask[];
   at_risk: UnplacedTask[];
+  /** Late sessions moved to free time before their deadline. */
+  moves?: ScheduledMove[];
   capacity_minutes: number;
   planned_minutes: number;
   /** What the learned placement did, in words, for the plan's summary. */
   notes?: string[];
 };
 
-/** A task without an estimate is planned as this long. */
-export const DEFAULT_ESTIMATE_MINUTES = 30;
-
-/**
- * Minutes a task still needs for itself (before time already set aside).
- * A task's estimate covers its subtasks: while it has open subtasks, they
- * are planned on their own, and the parent keeps only what its estimate has
- * beyond theirs (nothing when it has no estimate). So the work counted is
- * the sum of the subtasks' remaining estimates or the parent's own,
- * whichever is more, and never twice.
- */
-export function remainingOf(t: {
-  estimate_minutes: number | null;
-  spent_minutes: number;
-  open_children?: number;
-  children_remaining?: number;
-}) {
-  if (t.open_children)
-    return t.estimate_minutes == null
-      ? 0
-      : Math.max(
-          0,
-          t.estimate_minutes - t.spent_minutes - (t.children_remaining ?? 0),
-        );
-  return Math.max(
-    0,
-    (t.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES) - t.spent_minutes,
-  );
-}
+// One rule for what a task still needs, shared with the apps (core `fit.ts`).
+export { DEFAULT_ESTIMATE_MINUTES, remainingOf };
 const GRID_MINUTES = 5;
 const MAX_SESSIONS = 12;
 /** Rest after a session of 45 minutes or more. */
@@ -384,6 +391,9 @@ export function schedule(input: SchedulerInput): SchedulerResult {
   const blocks: PlannedBlock[] = [];
   const unplaced: UnplacedTask[] = [];
   const atRisk: UnplacedTask[] = [];
+  const moves: ScheduledMove[] = [];
+  /** Moved sessions at their new times, for the day's load and batching. */
+  const movedBlocks: PlannedBlock[] = [];
   const pause = BREAK_MINUTES[input.breakLevel] * MINUTE;
   const lastDay = input.days.at(-1)!;
   const horizonEnd = dayTime(addDays(lastDay, 1), 0, input.timezone).getTime();
@@ -556,6 +566,8 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       continue;
     }
     const estimate = task.estimate_minutes ?? DEFAULT_ESTIMATE_MINUTES;
+    // Only time that ends by the deadline counts as set aside (see
+    // `scheduled_minutes`), so a late session leaves this much still to plan.
     const remaining =
       remainingOf(task) -
       task.scheduled_minutes -
@@ -564,31 +576,39 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       completed.set(task.id, finish());
       continue;
     }
-    const padded = roundUpMinutes(remaining * (1 + input.padPercent / 100));
-    const parts = sessions(
-      padded,
-      input.split,
-      input.splitAfterMinutes,
-      input.minBlockMinutes,
-    );
     const due = deadlineMs(task);
+    const nowMs = input.now.getTime();
+    const accepts = (s: Segment) =>
+      !s.frame || frameAccepts(s.frame, task, estimate);
+    // The free time there is for it before its deadline, as its turn comes:
+    // what "Needs 2 h more, with 45 min free" compares with.
+    const freeBefore = Math.round(
+      freeBetween(free.filter(accepts), Math.max(nowMs, ready), due),
+    );
     const placed: PlannedBlock[] = [];
     let blockedByFrames = input.useFrames && input.frames.length > 0;
     let lateSession = false;
     let ok = true;
-    // Earliest slot that ends by the due time; otherwise the earliest at all.
-    const earliestPlace = (candidates: Segment[], need: number) => {
+    // Earliest slot that ends by the due time; otherwise (unless `onTimeOnly`)
+    // the earliest at all.
+    const earliestPlace = (
+      candidates: Segment[],
+      need: number,
+      onTimeOnly = false,
+    ) => {
       const onTime = candidates.find(
         (s) => Math.max(s.start, ready) + need <= due,
       );
-      const slot = onTime ?? candidates[0];
+      const slot = onTime ?? (onTimeOnly ? undefined : candidates[0]);
       return slot ? { slot, start: Math.max(slot.start, ready) } : null;
     };
-    // The best-scoring start among the free stretches, on time if possible.
+    // The best-scoring start among the free stretches, on time if possible
+    // (and only on time with `onTimeOnly`).
     const bestPlace = (
       candidates: Segment[],
       need: number,
       minutes: number,
+      onTimeOnly = false,
     ) => {
       const options: { slot: Segment; start: number }[] = [];
       for (const slot of candidates) {
@@ -601,7 +621,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         if (last > first) options.push({ slot, start: last });
       }
       const onTime = options.filter((o) => o.start + need <= due);
-      const pool = onTime.length ? onTime : options;
+      const pool = onTime.length || onTimeOnly ? onTime : options;
       if (!pool.length) return null;
       // The earliest option on each day: lateness within a day counts from it.
       const firstOn = new Map<string, number>();
@@ -669,7 +689,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       if (before > 0 && before < unusable) cost += 0.2;
       if (after > 0 && after < unusable) cost += 0.2;
       if (smart?.batch && (task.list_id || task.tag_ids.length)) {
-        const related = [...blocks, ...placed].some((b) => {
+        const related = [...blocks, ...movedBlocks, ...placed].some((b) => {
           if (b.item_id === task.id) return false;
           const other = byId.get(b.item_id);
           if (!other) return false;
@@ -685,7 +705,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         if (related) cost -= 0.3;
       }
       if (smart?.dayMinutes) {
-        const load = [...blocks, ...placed]
+        const load = [...blocks, ...movedBlocks, ...placed]
           .filter((b) => local(Date.parse(b.start_at)).day === here.day)
           .reduce(
             (n, b) =>
@@ -701,10 +721,95 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       }
       return cost;
     };
+    /** Take a session's time (and a break after longer ones) out of what's free. */
+    const take = (
+      slot: Segment,
+      start: number,
+      end: number,
+      minutes: number,
+    ) => {
+      const taken = end + (minutes >= 45 ? pause : 0);
+      free = free.flatMap((s) => {
+        if (s !== slot) return [s];
+        return [
+          ...(s.start < start ? [{ ...s, end: start }] : []),
+          ...(taken < s.end ? [{ ...s, start: ceilToGrid(taken) }] : []),
+        ];
+      });
+    };
+    // At risk: it can't get what it still needs before the deadline. Past
+    // the deadline, time found is catch-up and nothing is flagged.
+    const flagAtRisk = () => {
+      if (!task.due_at || due <= nowMs) return;
+      atRisk.push({
+        item_id: task.id,
+        title: task.title,
+        due_at: task.due_at,
+        reason: atRiskReason(remaining, freeBefore),
+        remaining_minutes: Math.round(remaining),
+        free_minutes: freeBefore,
+      });
+    };
+
+    // Its sessions after the deadline first: each one moved to free time
+    // before the deadline covers its own length. One that can't move stays
+    // where it is (nothing is refused), and doesn't count.
+    let left = remaining;
+    if (due > nowMs)
+      for (const late of task.late_sessions ?? []) {
+        if (left <= 0) break;
+        const from = Date.parse(late.start_at);
+        const length = Date.parse(late.end_at) - from;
+        const minutes = length / MINUTE;
+        const candidates = free.filter(
+          (s) => accepts(s) && s.end - Math.max(s.start, ready) >= length,
+        );
+        const choice = smart
+          ? bestPlace(candidates, length, minutes, true)
+          : earliestPlace(candidates, length, true);
+        if (!choice) continue;
+        const { slot, start } = choice;
+        const move: ScheduledMove = {
+          block_id: late.id,
+          item_id: task.id,
+          title: task.title,
+          from_start_at: new Date(from).toISOString(),
+          from_end_at: new Date(from + length).toISOString(),
+          start_at: new Date(start).toISOString(),
+          end_at: new Date(start + length).toISOString(),
+          source: late.source,
+        };
+        moves.push(move);
+        movedBlocks.push({
+          item_id: task.id,
+          title: task.title,
+          start_at: move.start_at,
+          end_at: move.end_at,
+          frame_id: slot.frame?.id ?? null,
+          frame_name: slot.frame?.name ?? null,
+          part: 1,
+          parts: 1,
+          score,
+        });
+        take(slot, start, start + length, minutes);
+        left -= minutes;
+      }
+    if (left <= 0) {
+      completed.set(task.id, finish());
+      continue;
+    }
+
+    const padded = roundUpMinutes(left * (1 + input.padPercent / 100));
+    const parts = sessions(
+      padded,
+      input.split,
+      input.splitAfterMinutes,
+      input.minBlockMinutes,
+    );
     for (const [index, minutes] of parts.entries()) {
       const need = minutes * MINUTE;
       const fits = (s: Segment) => {
-        if (s.frame && !frameAccepts(s.frame, task, estimate)) return false;
+        if (!accepts(s)) return false;
         blockedByFrames = false;
         return s.end - Math.max(s.start, ready) >= need;
       };
@@ -730,15 +835,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         parts: parts.length,
         score,
       });
-      // Take the time (and a break after longer sessions) out of what's free.
-      const taken = end + (minutes >= 45 ? pause : 0);
-      free = free.flatMap((s) => {
-        if (s !== slot) return [s];
-        return [
-          ...(s.start < start ? [{ ...s, end: start }] : []),
-          ...(taken < s.end ? [{ ...s, start: ceilToGrid(taken) }] : []),
-        ];
-      });
+      take(slot, start, end, minutes);
     }
     if (!ok) {
       unplace(
@@ -750,24 +847,12 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       );
       // A partial placement still helps: keep the sessions that fit.
       blocks.push(...placed);
-      if (task.due_at && due <= horizonEnd)
-        atRisk.push({
-          item_id: task.id,
-          title: task.title,
-          due_at: task.due_at,
-          reason: "Can't get enough time before it's due.",
-        });
+      if (due <= horizonEnd) flagAtRisk();
       continue;
     }
     blocks.push(...placed);
     completed.set(task.id, finish());
-    if (lateSession && task.due_at)
-      atRisk.push({
-        item_id: task.id,
-        title: task.title,
-        due_at: task.due_at,
-        reason: "The time found runs past the due time.",
-      });
+    if (lateSession) flagAtRisk();
   }
 
   blocks.sort((a, b) => a.start_at.localeCompare(b.start_at));
@@ -788,6 +873,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     blocks,
     unplaced,
     at_risk: atRisk,
+    moves,
     capacity_minutes: Math.round(capacity),
     planned_minutes: Math.round(planned),
     ...(smart ? { notes: smartNotes(blocks, byId, smart, local) } : {}),

@@ -4,6 +4,7 @@ import {
   addDays,
   blockDuplicateInput,
   blockInput,
+  blockRescheduleInput,
   blockUpdate,
   calendarFeedCreateInput,
   calendarFeedSettingsInput,
@@ -27,6 +28,7 @@ import {
   placeInput,
   placeUpdate,
   plannerPrefsInput,
+  planApplyInput,
   planPreviewInput,
   planTuneInput,
   rangeQuery,
@@ -44,6 +46,8 @@ import {
   type HabitPlan,
   type Place,
   type Plan,
+  type PlanApplied,
+  type PlanMove,
   type PlannerAnalytics,
   type PlannerPrefs,
   type PlannerReview,
@@ -892,8 +896,9 @@ export async function plannerRoutes(app: FastifyInstance) {
     const d = blockUpdate.parse(r.body);
     return transaction(async (db) => {
       const b = await ownBlock(db, idParam(r), u.id);
+      // Placed by hand now: a later plan offers to move it only unticked.
       await db.query(
-        "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
+        "UPDATE time_blocks SET start_at = $2, end_at = $3, source = 'manual' WHERE id = $1",
         [b.id, d.start_at, d.end_at],
       );
       // A moved block no longer has the conflict it was flagged for.
@@ -945,13 +950,32 @@ export async function plannerRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  // Move a block to the next free working time of the same length.
+  // Move a block to the next free working time of the same length, one that
+  // ends by its task's deadline when there is one (only such a time with
+  // `before_deadline`). Past the deadline, any free time will do.
   app.post("/blocks/:id/reschedule", async (r) => {
     const u = await authenticate(r);
+    const d = blockRescheduleInput.parse(r.body ?? {});
     return transaction(async (db) => {
       const b = await ownBlock(db, idParam(r), u.id);
       const minutes = (b.end_at.getTime() - b.start_at.getTime()) / 60000;
-      const slot = await workingFree(db, u.id, minutes, [b.id]);
+      const now = new Date();
+      const { deadline_at } = await blockById(db, b.id, u.id);
+      const by =
+        deadline_at && Date.parse(deadline_at) > now.getTime()
+          ? new Date(deadline_at)
+          : null;
+      let slot = by
+        ? await workingFree(db, u.id, minutes, [b.id], now, undefined, by)
+        : null;
+      if (!slot && d.before_deadline)
+        fail(
+          409,
+          by
+            ? "There's no free working time for it before the deadline."
+            : "Its deadline has passed, so there's no time before it.",
+        );
+      slot ??= await workingFree(db, u.id, minutes, [b.id], now);
       if (!slot) fail(409, "There's no free working time in the next 7 days.");
       await db.query(
         "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
@@ -1049,18 +1073,24 @@ export async function plannerRoutes(app: FastifyInstance) {
     return { stale: await planStale(pool, idParam(r), u.id) };
   });
 
-  // Save a plan's blocks. Blocks that now clash with something are left out.
-  app.post("/planner/plans/:id/apply", async (r) => {
+  // Save a plan's blocks, and move the late sessions asked for (the ones the
+  // planner ticked when `moves` is omitted) before their deadline. Blocks
+  // that now clash with something are left out, and so is a move whose
+  // session changed or went since the plan was made.
+  app.post("/planner/plans/:id/apply", async (r): Promise<PlanApplied> => {
     const u = await authenticate(r);
+    const d = planApplyInput.parse(r.body ?? {});
     return transaction(async (db) => {
       const plan = (
         await db.query<{
           id: string;
           blocks: Plan["blocks"];
+          moves: PlanMove[] | null;
           applied: boolean;
           expires_at: Date;
         }>(
-          "SELECT id, blocks, applied, expires_at FROM plans WHERE id = $1 AND user_id = $2 FOR UPDATE",
+          `SELECT id, blocks, options->'moves' AS moves, applied, expires_at
+           FROM plans WHERE id = $1 AND user_id = $2 FOR UPDATE`,
           [idParam(r), u.id],
         )
       ).rows[0];
@@ -1068,30 +1098,76 @@ export async function plannerRoutes(app: FastifyInstance) {
       if (plan.applied) fail(409, "This plan was already applied.");
       if (plan.expires_at <= new Date())
         fail(409, "This plan expired. Make a new one.");
-      if (!plan.blocks.length) fail(409, "This plan has no sessions to add.");
+      const offered = plan.moves ?? [];
+      const unknown = (d.moves ?? []).filter(
+        (id) => !offered.some((m) => m.block_id === id),
+      );
+      if (unknown.length)
+        fail(422, "Those sessions aren't among the moves this plan offers.");
+      const moves = d.moves
+        ? offered.filter((m) => d.moves!.includes(m.block_id))
+        : offered.filter((m) => m.selected);
+      if (!plan.blocks.length && !moves.length)
+        fail(409, "This plan has no sessions to add or move.");
       const dependencies = await db.query(
         "SELECT 1 FROM item_dependencies WHERE item_id=ANY($1::uuid[]) LIMIT 1",
-        [plan.blocks.map((b) => b.item_id)],
+        [[...plan.blocks, ...moves].map((b) => b.item_id)],
       );
       if (dependencies.rowCount && (await planStale(db, plan.id, u.id)))
         fail(
           409,
           "The dependency schedule changed. Refresh the plan before applying it.",
         );
-      const starts = plan.blocks.map((b) => Date.parse(b.start_at));
-      const ends = plan.blocks.map((b) => Date.parse(b.end_at));
+      const spans = [...plan.blocks, ...moves];
+      const starts = spans.map((b) => Date.parse(b.start_at));
+      const ends = spans.map((b) => Date.parse(b.end_at));
+      // The sessions being moved don't stand in their own way.
       const busy = await busyIntervals(
         db,
         u.id,
         new Date(Math.min(...starts)),
         new Date(Math.max(...ends)),
+        {
+          blocks: true,
+          derived: true,
+          excludeBlockIds: moves.map((m) => m.block_id),
+        },
       );
+      const clashes = (b: { start_at: string; end_at: string }) =>
+        busy.some((x) => x.start_at < b.end_at && b.start_at < x.end_at);
+
+      // Moves first. Each session is checked again: it's still yours, its
+      // task is still open, and it hasn't been moved since.
+      const moved: TimeBlock[] = [];
+      let movesSkipped = 0;
+      for (const m of moves) {
+        const same = await db.query(
+          `SELECT 1 FROM time_blocks b JOIN items i ON i.id = b.item_id
+           WHERE b.id = $1 AND b.user_id = $2 AND b.item_id = $3
+             AND b.start_at = $4 AND b.end_at = $5
+             AND i.status NOT IN ('done', 'cancelled')
+           FOR UPDATE OF b`,
+          [m.block_id, u.id, m.item_id, m.from_start_at, m.from_end_at],
+        );
+        if (!same.rowCount || clashes(m)) {
+          movesSkipped++;
+          continue;
+        }
+        await db.query(
+          "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
+          [m.block_id, m.start_at, m.end_at],
+        );
+        await db.query(
+          "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
+          [m.block_id],
+        );
+        moved.push(await plainBlockById(db, m.block_id, u.id));
+      }
+
       const created: TimeBlock[] = [];
       let skipped = 0;
       for (const b of plan.blocks) {
-        const clash = busy.some(
-          (x) => x.start_at < b.end_at && b.start_at < x.end_at,
-        );
+        const clash = clashes(b);
         const open = await db.query(
           `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
           [u.id, b.item_id],
@@ -1109,8 +1185,10 @@ export async function plannerRoutes(app: FastifyInstance) {
         ).rows[0];
         created.push(await plainBlockById(db, id, u.id));
       }
-      // Numbered together, once every session of the plan is in.
-      const saved = await withSessionFacts(db, u.id, created);
+      // Numbered together, once every session of the plan is in place.
+      const facts = await withSessionFacts(db, u.id, [...created, ...moved]);
+      const saved = facts.slice(0, created.length);
+      const shifted = facts.slice(created.length);
       await db.query("UPDATE plans SET applied = true WHERE id = $1", [
         plan.id,
       ]);
@@ -1124,7 +1202,20 @@ export async function plannerRoutes(app: FastifyInstance) {
             blocks: saved,
           },
         );
-      return { blocks: saved, skipped };
+      // Other devices and webhooks hear about each moved session.
+      for (const b of shifted)
+        await queueWebhooks(
+          db,
+          "block.updated",
+          { user_id: u.id, team_id: null },
+          b,
+        );
+      return {
+        blocks: saved,
+        skipped,
+        moved: shifted,
+        moves_skipped: movesSkipped,
+      };
     });
   });
 
