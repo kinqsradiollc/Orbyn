@@ -229,3 +229,134 @@ test("clients still can't rename or make calendars", async () => {
   assert.equal((await dav("PROPPATCH", "/dav/cal/default/")).statusCode, 403);
   assert.equal((await dav("MKCALENDAR", "/dav/cal/other/")).statusCode, 403);
 });
+
+test("CalDAV shows the events the app does: your teams' while you're on them", async () => {
+  const asMe = (
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    url: string,
+    payload?: object,
+  ) =>
+    app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${session}` },
+      ...(payload ? { payload } : {}),
+    });
+  const mate = await app.inject({
+    method: "POST",
+    url: "/auth/register",
+    payload: {
+      email: `dav-mate-${randomUUID()}@example.com`,
+      password: "a-long-test-password",
+      name: "Mate",
+    },
+  });
+  const mateToken = mate.json().token as string;
+  const asMate = (
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    url: string,
+    payload?: object,
+  ) =>
+    app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${mateToken}` },
+      ...(payload ? { payload } : {}),
+    });
+  const soon = (days: number) =>
+    new Date(Date.now() + days * 86_400_000).toISOString();
+
+  // A team the teammate runs, with me in it.
+  const team = (await asMate("POST", "/teams", { name: "Crew" })).json();
+  const myId = (await asMe("GET", "/me")).json().id as string;
+  const myEmail = (await asMe("GET", "/me")).json().email as string;
+  assert.equal(
+    (
+      await asMate("POST", `/teams/${team.id}/members`, {
+        email: myEmail,
+        role: "member",
+      })
+    ).statusCode,
+    201,
+  );
+  const tagBefore = (
+    await dav("PROPFIND", "/dav/cal/default/", undefined, "0")
+  ).body.match(/<CS:getctag>([^<]+)</)![1];
+
+  // The teammate's team event reaches my calendar app, as it does the app.
+  const theirs = (
+    await asMate("POST", "/items", {
+      title: "Crew standup",
+      kind: "event",
+      team_id: team.id,
+      due_at: soon(2),
+      end_at: soon(2.01),
+    })
+  ).json();
+  const listed = await dav("PROPFIND", "/dav/cal/default/", undefined, "1");
+  assert.match(listed.body, new RegExp(`${theirs.id}\\.ics`));
+  const tagAfter = listed.body.match(/<CS:getctag>([^<]+)</)![1];
+  assert.notEqual(tagAfter, tagBefore);
+  const report = await dav(
+    "REPORT",
+    "/dav/cal/default/",
+    '<?xml version="1.0"?><C:calendar-query xmlns:C="urn:ietf:params:xml:data:caldav"><C:filter/></C:calendar-query>',
+    "1",
+  );
+  assert.match(report.body, /SUMMARY:Crew standup/);
+
+  // An event I made in the team is the team's: once I leave, it goes.
+  const mine = (
+    await asMe("POST", "/items", {
+      title: "Crew retro",
+      kind: "event",
+      team_id: team.id,
+      due_at: soon(3),
+    })
+  ).json();
+  assert.equal(
+    (await dav("GET", `/dav/cal/default/${mine.id}.ics`)).statusCode,
+    200,
+  );
+  assert.equal(
+    (await asMe("DELETE", `/teams/${team.id}/members/${myId}`)).statusCode,
+    204,
+  );
+  const gone = await dav("PROPFIND", "/dav/cal/default/", undefined, "1");
+  assert.doesNotMatch(gone.body, new RegExp(`${mine.id}|${theirs.id}`));
+  assert.equal(
+    (await dav("GET", `/dav/cal/default/${mine.id}.ics`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await dav("GET", `/dav/cal/default/${theirs.id}.ics`)).statusCode,
+    404,
+  );
+  const afterLeaving = await dav(
+    "REPORT",
+    "/dav/cal/default/",
+    '<?xml version="1.0"?><C:calendar-query xmlns:C="urn:ietf:params:xml:data:caldav"><C:filter/></C:calendar-query>',
+    "1",
+  );
+  assert.doesNotMatch(afterLeaving.body, /Crew (standup|retro)/);
+  // And it can't be changed or removed from there either.
+  assert.equal(
+    (await dav("DELETE", `/dav/cal/default/${mine.id}.ics`)).statusCode,
+    404,
+  );
+  const stillThere = await asMate("GET", `/items/${mine.id}`);
+  assert.equal(stillThere.statusCode, 200);
+  assert.equal(stillThere.json().title, "Crew retro");
+  // A task never shows over CalDAV, even with a date.
+  const task = (
+    await asMe("POST", "/items", {
+      title: "Dated task",
+      kind: "task",
+      due_at: soon(1),
+    })
+  ).json();
+  assert.equal(
+    (await dav("GET", `/dav/cal/default/${task.id}.ics`)).statusCode,
+    404,
+  );
+});

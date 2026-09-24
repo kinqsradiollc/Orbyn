@@ -69,9 +69,8 @@ function OnceSecret({ label, value }: { label: string; value: string }) {
 
 /**
  * API keys, webhooks, the calendar feed and subscribed calendars: how other
- * tools work with Orbyn.
- * Everything is served from this server; nothing is sent anywhere else
- * unless you add a webhook.
+ * tools work with Orbyn. Nothing is sent anywhere else unless the person
+ * connects it here (a webhook, chat delivery or a feed link).
  */
 export function ConnectionsSettings({ report }: Props) {
   return (
@@ -82,9 +81,9 @@ export function ConnectionsSettings({ report }: Props) {
         </h2>
         <p className="muted">
           Connect scripts, automation tools and other calendar apps. Your data
-          stays on this server: keys and links only let those tools reach it
-          here, and webhooks send only the events you pick to the address you
-          give.
+          goes only where you connect it here: a key lets a tool work with your
+          tasks, pages and calendar, and a webhook sends only the events you
+          pick to the address you give. Delete any of them to cut it off.
         </p>
         <p className="muted">
           Building an integration? See the{" "}
@@ -161,8 +160,9 @@ function ApiKeys({ report }: Props) {
         <KeyRound size={16} aria-hidden="true" /> Personal API keys
       </h2>
       <p className="muted">
-        A key acts as you. Send it as <code>Authorization: Bearer …</code> to
-        this server&apos;s API.
+        A key acts as you for your tasks, pages and calendar. Send it as{" "}
+        <code>Authorization: Bearer …</code> to Orbyn&apos;s API. It can&apos;t
+        change your account, sign-in, keys or webhooks.
       </p>
       {fresh && <OnceSecret label="Your new API key" value={fresh} />}
       {keys === null ? (

@@ -1146,10 +1146,11 @@ counts, but never the contents of personal or team items.
 | `GET /admin/database/tables/:name`      | Columns, types, defaults, primary keys and indexes for one table; requires `system:manage`                                                                   |
 | `GET /admin/database/tables/:name/rows` | Read-only, redacted 25-row preview; `?offset=0..10000`; requires `system:manage`                                                                             |
 
-| `GET /admin/users/:id` | One account in full: sessions, sign-in methods, teams, counts, 30 days of activity and its audit history (never item contents) |
+| `GET /admin/users/:id` | One account in full: sessions, sign-in methods, personal API keys (`keys`: name, prefix, created, last used; never the key), teams, counts, 30 days of activity and its audit history, its keys' included (never item contents) |
 | `PUT /admin/users/:id/profile` | `{ "name"?, "email"? }`; a new email must be unused (`409`), and is unverified again when mail is set up |
 | `POST /admin/users/:id/sign-out` | Ends every session → `{ ended }`; not for your own account (`409`) |
 | `DELETE /admin/users/:id/sessions/:sid` | Ends one session → `204` |
+| `DELETE /admin/users/:id/api-keys/:keyId` | Revokes one of their personal API keys → `204`; whatever used it stops at once; `404` for another person's key |
 | `POST /admin/users/:id/reset-link` | A one-hour, single-use password reset link to pass on → `{ link, expires_in_minutes, emailed }` (also emailed when mail is set up) |
 | `POST /admin/users/:id/reset-2fa` | Clears two-step verification for someone locked out → `{ cleared }`; passkeys stay |
 | `GET /admin/users/:id/export` | Everything the account holds, as `/me/export` gives it (a file download) |
@@ -1255,9 +1256,22 @@ Round-robin pages also take `routing`: `[{ question_id, equals, host_user_id }]`
 
 ## Model Context Protocol (MCP)
 
-`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) so a person's own AI tools — Claude, Cursor, ChatGPT — can act on their planner. Authenticate with a personal API key as the `Authorization: Bearer ok_…` header. Point the client at `<APP_URL>/api/mcp`.
+`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) for AI tools that let you add a request header, such as Claude Code, Cursor or VS Code. Send a personal API key as `Authorization: Bearer ok_…` and point the tool at `<APP_URL>/api/mcp`. Only personal API keys sign in here: an app session token is refused (`401`). ChatGPT and claude.ai don't take keys, so they can't connect this way. A key reaches the owner's tasks, pages and calendar (see [API keys](#api-keys-webhooks-and-the-calendar-feed) for what it can't do).
 
-Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools: `search_items` (query, limit?), `add_task` (title, notes?, due_at?, priority?), `get_agenda` (days?). Notifications (no `id`) get `202` with no body. Everything runs as the key's owner, with the same access their API key has.
+Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools:
+
+- `search_items` (query, limit?): open tasks and events whose title or notes hold every word. Each result carries its `id` and a link, `<APP_URL>/app/task/<id>`, that opens it in the web app.
+- `add_task` (title, notes?, due_at?, priority?): the answer carries the new task's `id` and link.
+- `get_agenda` (days?, 1 to 31, default 7): open tasks due and events from the start of today, in the person's time zone, through the next `days` days. Repeating events appear once per occurrence; finished and cancelled ones are left out; subscribed calendars are included.
+
+Rules:
+
+- One JSON-RPC message per request. A batch (a JSON array) is refused whole with `400` and `-32600`, and nothing in it runs.
+- Notifications (no `id`) get `202` with no body.
+- Every failure is a JSON-RPC error with a plain message: `-32700` unreadable JSON, `-32600` not a request, `-32601` unknown method, `-32602` bad `params` (including `null`), an unknown tool or bad `arguments`, `-32000` a change during maintenance, `-32001` sign-in (`401`), `-32003` refused (`403`), `-32029` rate limited (`429`, with `Retry-After`). A tool that fails answers `isError: true` with a message in words, never the database's own.
+- Maintenance mode: reads (`initialize`, `tools/list`, `search_items`, `get_agenda`) still answer; `add_task` gets `-32000` until it ends.
+- `GET` and `DELETE /mcp` are `405` (`Allow: POST`): there are no streams or sessions.
+- A request with an `Origin` header is refused (`403`) unless it's Orbyn's own web app. Desktop and command-line tools send none.
 
 ## AI assistant
 
@@ -1706,7 +1720,7 @@ few more). A bio is up to 300 characters. `GET /me` also carries `handle` and `b
 
 ## API keys, webhooks and the calendar feed
 
-Other tools reach Orbyn through these; nothing is synced out of this server.
+Other tools reach your Orbyn account through these; nothing is sent anywhere you didn't set up here.
 
 | Method and path                               | Body / result                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -1757,7 +1771,15 @@ MCP `get_agenda`, and the iOS widget and Watch "next event". Calendar sets can i
 out each subscription (`subscription_ids`; missing means all). They are never re-exported in your
 own feed or CalDAV, which would duplicate them in the apps they came from.
 
-API keys act as you, except in the admin console (and count against their own rate limit). Webhook
+API keys act as you for items, pages, projects, the calendar and CalDAV, and count against their
+own rate limit. A key is refused (`403`) wherever it could take over the account, send data
+somewhere new or spend the hosted assistant: creating keys (`POST /me/api-keys`; deleting one is
+fine), `/me/webhooks*`, `/me/chat*`, `/me/sessions*`, `/me/2fa*`, `/me/passkeys*`, `/me/export`,
+`DELETE /me`, `POST /me/calendar-feed`, every `/ai/*` route (the assistant, drafts, study help and
+applying proposals), `/docs/:id/assist`, `/docs/:id/ask`, and the admin console. An admin's key
+carries none of an admin's powers: it can't manage teams its owner isn't on, and it doesn't get
+past maintenance mode. Making and deleting a key is in the audit log (`api_key.created`,
+`api_key.deleted`), and admins can see a person's keys and revoke one (`api_key.revoked`). Webhook
 events: `item.created`, `item.updated`, `item.completed`, `item.deleted` (once for each subtask
 too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.rescheduled`,
 `booking.cancelled`, and three the notifier sends on a schedule, each at most once per webhook:
@@ -1776,7 +1798,9 @@ minute late; one that started up to 5 minutes ago still goes.
 Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
 HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried
-with backoff for up to 8 attempts. Webhooks must reach a public address.
+with backoff for up to 8 attempts. Webhooks must be `https://` and reach a public address (checked
+when saved and again before every delivery, and the delivery then connects to the address that
+was checked). Redirects aren't followed.
 
 **The feed** has all-day items as dates, free events and tasks as `TRANSP:TRANSPARENT`, a
 `VALARM` per alert, invitees (`ORGANIZER`, `ATTENDEE` with their answers), repeating items as
@@ -1785,8 +1809,8 @@ RRULEs in their own zone with `EXDATE`s, and occurrences changed on their own as
 and lists nothing but "Busy" intervals: the same busy time teammates see, 30 days back to 180
 ahead.
 
-**Subscribing to other calendars.** Any iCalendar link (`https://` or `webcal://`) that reaches a
-public address: timetables, public holidays, a work calendar. The notifier fetches it soon after
+**Subscribing to other calendars.** Any iCalendar link (`https://` or `webcal://`, never plain
+`http://`) that reaches a public address: timetables, public holidays, a work calendar. The notifier fetches it soon after
 it's added and then hourly (asking only for changes), following up to 3 redirects, each checked
 again, within 15 seconds and 5 MB. A failed fetch keeps the last events and says why in
 `last_error`. Its events show in `GET /calendar` as `external`; they count as busy (for the
@@ -1826,6 +1850,8 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 ## CalDAV
 
 `/dav/` is a CalDAV server so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively — and, for events (`VEVENT`), create, edit and delete them back. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`).
+
+It shows the same events the app's calendar does, by the same rule: your personal events, and your teams' events for as long as you're on the team (an event you made in a team you've since left stays with that team). Viewers can read team events but not change them (`403`).
 
 - `PROPFIND`, `REPORT`, `GET` read the calendar and its events.
 - `PUT` an `.ics` (one `VEVENT`) creates or replaces an event; the client's `UID` becomes the resource's href, so later edits map back to it. → `201` on create, `204` on replace. An unreadable body is `400`.

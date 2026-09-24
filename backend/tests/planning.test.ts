@@ -613,12 +613,24 @@ test("API keys work for scripts but not for the admin console", async () => {
 
 test("webhooks refuse private addresses and queue events for delivery", async () => {
   const me = await newUser();
-  const internal = await call(me.token, "POST", "/me/webhooks", {
-    url: "http://127.0.0.1:5432/steal",
+  for (const url of [
+    "https://127.0.0.1:5432/steal",
+    "https://[::ffff:7f00:1]:5432/steal",
+    "https://[::ffff:10.0.0.1]/steal",
+  ]) {
+    const internal = await call(me.token, "POST", "/me/webhooks", {
+      url,
+      events: ["item.created"],
+    });
+    assert.equal(internal.status, 422, url);
+    assert.match(internal.body.message, /public address/);
+  }
+  const plain = await call(me.token, "POST", "/me/webhooks", {
+    url: "http://93.184.216.34/hooks/orbyn",
     events: ["item.created"],
   });
-  assert.equal(internal.status, 422);
-  assert.match(internal.body.message, /public address/);
+  assert.equal(plain.status, 422);
+  assert.match(plain.body.message, /start with https/);
   const hook = await call(me.token, "POST", "/me/webhooks", {
     url: "https://93.184.216.34/hooks/orbyn",
     events: ["item.created", "item.completed"],

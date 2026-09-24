@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { pool, transaction } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
+import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { eventLines, FEED_COLUMNS, type FeedItem } from "../planner/ics.js";
@@ -47,11 +48,19 @@ const multistatus = (body: string) =>
 const isUuid = (s: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
-/** The calendar's change tag: changes when any of the user's events change. */
+/**
+ * The events CalDAV shows: the same ones the app's calendar does, by the same
+ * rule (VISIBLE_ITEMS): your personal events, and your teams' events for as
+ * long as you're on the team. Not every event you ever created: one made in
+ * a team you've since left stays with that team.
+ */
+const DAV_EVENTS = `${VISIBLE_ITEMS} AND i.kind='event' AND i.due_at IS NOT NULL`;
+
+/** The calendar's change tag: changes when any event the user can see changes. */
 async function ctag(userId: string): Promise<string> {
   const row = (
     await pool.query<{ max: Date | null; n: number }>(
-      "SELECT max(updated_at) AS max, count(*)::int AS n FROM items WHERE user_id=$1 AND due_at IS NOT NULL",
+      `SELECT max(i.updated_at) AS max, count(*)::int AS n FROM items i WHERE ${DAV_EVENTS}`,
       [userId],
     )
   ).rows[0];
@@ -66,7 +75,7 @@ async function events(userId: string) {
   const rows = (
     await pool.query<FeedItem>(
       `SELECT ${FEED_COLUMNS} FROM items i
-         WHERE i.user_id=$1 AND i.kind='event' AND i.due_at IS NOT NULL
+         WHERE ${DAV_EVENTS}
            AND (i.rrule IS NOT NULL OR i.due_at > now() - interval '90 days')
          ORDER BY i.due_at LIMIT 2000`,
       [userId],
@@ -100,7 +109,7 @@ async function events(userId: string) {
 
 const CAL = "/dav/cal/default/";
 
-/** Resolve a `<name>.ics` file to one of the user's items, or null. */
+/** Resolve a `<name>.ics` file to an event the user can see, or null. */
 async function resolveFile(
   userId: string,
   file: string,
@@ -114,8 +123,8 @@ async function resolveFile(
   ).rows[0]?.item_id;
   const row = (
     await pool.query<{ id: string; version: number }>(
-      "SELECT id, version FROM items WHERE id=$1 AND user_id=$2",
-      [id ?? (isUuid(base) ? base : null), userId],
+      `SELECT i.id, i.version FROM items i WHERE i.id=$2 AND ${DAV_EVENTS}`,
+      [userId, id ?? (isUuid(base) ? base : null)],
     )
   ).rows[0];
   return row ?? null;

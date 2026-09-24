@@ -5,14 +5,17 @@ info:
   summary: Tasks, events, time blocks and webhooks, for scripts and automation tools.
   description: |
     The part of Orbyn's API that automation tools (Zapier, Make, n8n, your own
-    scripts) use. Everything is served from your own Orbyn server; nothing is
-    synced anywhere else. The full reference, including planning, teams and
-    booking pages, is docs/api.md.
+    scripts) use. Nothing in your Orbyn account is sent anywhere you didn't
+    set up. The full reference, including planning, teams and booking pages,
+    is docs/api.md.
 
     **Authentication.** Create a personal API key in Settings → Connections
     (or `POST /me/api-keys`) and send it as `Authorization: Bearer ok_…`. A key
-    acts as you, except in the admin console. Session tokens from
-    `POST /auth/login` work the same way.
+    acts as you for items, pages and the calendar. It is refused (`403`) on
+    the admin console and wherever it could take over the account: creating
+    keys, webhooks, chat delivery, sessions, two-step verification, passkeys,
+    export, deleting the account, a new calendar feed link, and the
+    assistant. Session tokens from `POST /auth/login` work everywhere.
 
     **Errors** are `{ "message": "..." }` with the status codes below. `404`
     also covers records that belong to someone else.
@@ -120,7 +123,7 @@ paths:
                 items: { $ref: "#/components/schemas/ApiKey" }
     post:
       tags: [Auth]
-      summary: Create an API key (10 a minute)
+      summary: Create an API key (10 a minute; not with an API key)
       requestBody:
         required: true
         content:
@@ -146,6 +149,7 @@ paths:
                           type: string,
                           description: "ok_…; send as Authorization: Bearer",
                         }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
         "429": { $ref: "#/components/responses/RateLimited" }
   /me/api-keys/{id}:
@@ -705,6 +709,7 @@ paths:
         "204": { description: Deleted }
 
   /me/webhooks:
+    description: Webhooks are managed signed in to the app; an API key gets 403.
     get:
       tags: [Webhooks]
       summary: Your webhooks and their last delivery
@@ -716,6 +721,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Webhook" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Webhooks]
       summary: Add a webhook (10 a minute, up to 10 webhooks)
@@ -753,6 +759,7 @@ paths:
                     required: [secret]
                     properties:
                       secret: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/Invalid" }
   /me/webhooks/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
@@ -778,11 +785,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Webhook" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     delete:
       tags: [Webhooks]
       summary: Remove a webhook
       responses:
         "204": { description: Removed }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /me/webhooks/{id}/test:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     post:
@@ -799,6 +808,7 @@ paths:
                   ok: { type: boolean }
                   status: { type: [integer, "null"] }
                   error: { type: [string, "null"] }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
 webhooks:
   item.created:
@@ -912,6 +922,11 @@ components:
   responses:
     Unauthorized:
       description: Missing, expired or revoked token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Not allowed, for example an API key on a route that manages the account
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

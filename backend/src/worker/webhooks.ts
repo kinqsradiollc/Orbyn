@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { transaction } from "../db/pool.js";
-import { assertPublicUrl } from "../lib/netguard.js";
+import { checkPublicUrl, outbound, type CheckedUrl } from "../lib/netguard.js";
 import { decryptSecret } from "../lib/secrets.js";
 
 const MAX_ATTEMPTS = 8;
@@ -23,8 +23,11 @@ export async function sendWebhook(
   event: string,
   payload: unknown,
 ): Promise<WebhookResult> {
+  // Checked again at every delivery (the name may resolve elsewhere now),
+  // and then called at the address that was checked.
+  let target: CheckedUrl;
   try {
-    await assertPublicUrl(url);
+    target = await checkPublicUrl(url);
   } catch (error) {
     return { ok: false, status: null, error: (error as Error).message };
   }
@@ -34,9 +37,9 @@ export async function sendWebhook(
     .update(`${timestamp}.${body}`)
     .digest("hex");
   try {
-    const response = await fetch(url, {
+    // Redirects are never followed: they count as a failed delivery.
+    const response = await outbound.request(target, {
       method: "POST",
-      redirect: "manual",
       headers: {
         "Content-Type": "application/json",
         "User-Agent": "Orbyn-Webhooks/1",

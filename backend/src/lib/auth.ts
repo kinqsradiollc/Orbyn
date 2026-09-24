@@ -91,33 +91,80 @@ function requireVerified(r: FastifyRequest, u: UserRow) {
 const viaApiKey = new WeakSet<FastifyRequest>();
 
 /**
+ * Users as authenticate() returned them for a signed-in app session (not an
+ * API key). Only these carry a system admin's powers outside the admin
+ * console, such as acting as owner of any team (requireTeam). A copy of the
+ * user, or one resolved from a key, is never in here.
+ */
+const sessionUsers = new WeakSet<object>();
+
+/** Whether `actor` is a user signed in to the app, rather than a key or a copy. */
+export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
+
+/** Whether this request was signed with a personal API key. */
+export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
+
+export const KEY_BLOCKED_MESSAGE =
+  "Personal API keys can't manage your account, its sign-in, keys or webhooks, or use the assistant. Sign in to Orbyn to do that.";
+
+/**
+ * What a personal API key may never do, although it otherwise acts as its
+ * owner: manage the account or how it signs in, mint more access, send data
+ * somewhere new, or spend the hosted assistant. A leaked key must not be
+ * able to lock its owner out. Keys keep items, pages and the calendar over
+ * REST, and CalDAV. Matched on the method and the route pattern.
+ */
+const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
+  { method: "POST", route: /^\/me\/api-keys$/ },
+  { route: /^\/me\/(?:webhooks|chat|sessions|2fa|passkeys)(?:\/|$)/ },
+  { route: /^\/me\/export$/ },
+  { method: "DELETE", route: /^\/me$/ },
+  { method: "POST", route: /^\/me\/calendar-feed$/ },
+  // The hosted assistant: chat, drafts, study help, and applying proposals.
+  { route: /^\/ai\// },
+  { route: /^\/docs\/:id\/(?:assist|ask)$/ },
+];
+
+/** Whether an API key is refused on this request's route. */
+export function keyBlocked(r: FastifyRequest) {
+  const route = r.routeOptions?.url ?? "";
+  return KEY_BLOCKED.some(
+    (b) => (!b.method || b.method === r.method) && b.route.test(route),
+  );
+}
+
+/** The user a personal API key belongs to, or a 401/403. */
+async function keyUser(r: FastifyRequest, token: string): Promise<UserRow> {
+  const u = (
+    await pool.query<UserRow>(
+      "SELECT u.* FROM users u JOIN api_keys k ON k.user_id=u.id WHERE k.key_hash=$1",
+      [digest(token)],
+    )
+  ).rows[0];
+  if (!u) fail(401, "That API key isn't valid. Create a new one in Settings.");
+  if (u.disabled) fail(403, DISABLED_MESSAGE);
+  viaApiKey.add(r);
+  if (keyBlocked(r)) fail(403, KEY_BLOCKED_MESSAGE);
+  // Recorded at most once a minute, so busy scripts don't write on every call.
+  await pool.query(
+    "UPDATE api_keys SET last_used_at=now() WHERE key_hash=$1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')",
+    [digest(token)],
+  );
+  requireVerified(r, u);
+  requestUser.set(r, u.id);
+  if (u.analytics_opt_out) analyticsOptOut.add(r);
+  return u;
+}
+
+/**
  * Resolve the bearer token on a request to its user, or fail with 401/403.
- * The token is a session token, or a personal API key (starting "ok_").
+ * The token is a session token, or a personal API key (starting "ok_"),
+ * which is refused on the routes in KEY_BLOCKED.
  */
 export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
-  if (token.startsWith("ok_")) {
-    const u = (
-      await pool.query<UserRow>(
-        "SELECT u.* FROM users u JOIN api_keys k ON k.user_id=u.id WHERE k.key_hash=$1",
-        [digest(token)],
-      )
-    ).rows[0];
-    if (!u)
-      fail(401, "That API key isn't valid. Create a new one in Settings.");
-    if (u.disabled) fail(403, DISABLED_MESSAGE);
-    // Recorded at most once a minute, so busy scripts don't write on every call.
-    await pool.query(
-      "UPDATE api_keys SET last_used_at=now() WHERE key_hash=$1 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')",
-      [digest(token)],
-    );
-    viaApiKey.add(r);
-    requireVerified(r, u);
-    requestUser.set(r, u.id);
-    if (u.analytics_opt_out) analyticsOptOut.add(r);
-    return u;
-  }
+  if (token.startsWith("ok_")) return keyUser(r, token);
   const u = (
     await pool.query<UserRow>(
       "SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>now()",
@@ -137,7 +184,28 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   );
   requestUser.set(r, u.id);
   if (u.analytics_opt_out) analyticsOptOut.add(r);
+  sessionUsers.add(u);
   return u;
+}
+
+/**
+ * Only a personal API key, never an app session: for endpoints meant for
+ * other tools (MCP). A browser's session token is refused, so a page that
+ * got hold of one can't drive the account through them.
+ */
+export async function authenticateApiKey(r: FastifyRequest): Promise<UserRow> {
+  const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  if (!token)
+    fail(
+      401,
+      "Send a personal API key as Authorization: Bearer ok_… (create one in Settings → Connections).",
+    );
+  if (!token.startsWith("ok_"))
+    fail(
+      401,
+      "This address takes a personal API key, not an app sign-in. Create one in Settings → Connections.",
+    );
+  return keyUser(r, token);
 }
 
 /** Authenticate and require a system permission (admin console routes). */

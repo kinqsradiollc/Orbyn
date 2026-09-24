@@ -41,6 +41,12 @@ http {
   resolver ${RESOLVER} valid=10s ipv6=off;
 
   # Real client addresses when a load balancer sits in front (GATEWAY_TRUSTED_PROXIES).
+  # After this, $remote_addr is the visitor: the connecting address, or the
+  # address a trusted proxy in front says it saw. Only that one address is
+  # passed on (X-Forwarded-For $remote_addr below), never the header as it
+  # arrived: the services trust X-Forwarded-For, so appending to a header a
+  # client wrote would let anyone pick the address their rate limits count
+  # against, sign-in's included.
 ${REAL_IP}
 
   # Per-client limits. Addresses in GATEWAY_RATE_LIMIT_EXEMPT (by default
@@ -116,7 +122,8 @@ ${UPSTREAM_FILES}
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    # The visitor's address alone, replacing whatever the client sent.
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $fwd_proto;
     proxy_set_header X-Request-Id $request_id;
     # Internal connections take milliseconds; a short connect timeout means a
@@ -204,7 +211,7 @@ ${UPSTREAM_FILES}
     proxy_http_version 1.1;
     proxy_set_header Connection "";
     proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $fwd_proto;
     proxy_set_header X-Request-Id $request_id;
     proxy_connect_timeout 1s;
@@ -222,7 +229,7 @@ ${UPSTREAM_FILES}
       # A proxy_set_header here replaces the server's, so all are restated.
       proxy_set_header Connection "";
       proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
       proxy_set_header X-Request-Id $request_id;
       # Links the API builds (the calendar feed) need the /api it sits under.
@@ -234,7 +241,7 @@ ${UPSTREAM_FILES}
     location /api/files/u/ {
       proxy_set_header Connection "";
       proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
       proxy_set_header X-Request-Id $request_id;
       client_max_body_size 52m;
@@ -249,13 +256,14 @@ ${UPSTREAM_FILES}
     location /dav/ {
       proxy_set_header Connection "";
       proxy_set_header Host $host;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
       proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
     location = /.well-known/caldav {
       proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $fwd_proto;
       proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
