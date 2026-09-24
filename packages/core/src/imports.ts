@@ -89,8 +89,10 @@ export type ImportJob = {
   /** Pages that need OCR, and how many of those are done. */
   ocr_pages: number;
   ocr_done: number;
-  /** The page it became, once ready. */
+  /** The page it became, once ready; null while that page is in Trash. */
   doc_id: string | null;
+  /** The page it became is in Trash, so there is nothing to open. */
+  doc_in_trash: boolean;
   /** Why it failed, in words for the person. */
   error: string | null;
   /** What changed on the way in: tables as lists, figures left out. */
@@ -564,6 +566,7 @@ export function importStatusLine(job: ImportJob): string {
       return done + wait;
     }
     case "ready":
+      if (job.doc_in_trash) return "Ready · the page is in Trash";
       return job.notes.length ? `Ready · ${job.notes.join(" · ")}` : "Ready";
     case "failed":
       return job.error ?? "Couldn't be imported.";

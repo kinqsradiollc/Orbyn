@@ -22,7 +22,7 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
 import { announceDocChange } from "./live.js";
-import { studyOverview, VISIBLE_DOC } from "../study/service.js";
+import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
 
 /**
@@ -54,7 +54,7 @@ type Day = {
 async function studyFor(userId: string) {
   // Anyone with cards, or pages with card lines not yet read.
   const has = await pool.query(
-    `SELECT 1 FROM study_cards WHERE user_id = $1
+    `SELECT 1 FROM ${LIVE_CARDS} WHERE c.user_id = $1
      UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '%{{%}}%')
      LIMIT 1`,
     [userId],

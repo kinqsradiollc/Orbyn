@@ -33,6 +33,7 @@ type Row = {
   ocr_pages: number;
   ocr_done: number;
   doc_id: string | null;
+  doc_in_trash: boolean;
   error: string | null;
   notes: string[];
   created_at: string;
@@ -40,8 +41,12 @@ type Row = {
   queue_ahead: string | null;
 };
 
+// A page in Trash is nothing to open: its id is left out, and the job says
+// where it went.
 const JOB = `i.id, i.file_name, i.file_type, i.bytes, i.status, i.pages,
-  i.ocr_pages, i.ocr_done, i.doc_id, i.error, i.notes, i.created_at,
+  i.ocr_pages, i.ocr_done,
+  CASE WHEN t.deleted_at IS NULL THEN i.doc_id END AS doc_id,
+  t.deleted_at IS NOT NULL AS doc_in_trash, i.error, i.notes, i.created_at,
   i.finished_at,
   CASE WHEN i.status = 'ocr' THEN (
     SELECT count(*) FROM import_pages w
@@ -76,6 +81,7 @@ function jobOf(row: Row, perPage: number): ImportJob {
     ocr_pages: row.ocr_pages,
     ocr_done: row.ocr_done,
     doc_id: row.doc_id,
+    doc_in_trash: row.doc_in_trash,
     error: row.error,
     notes: row.notes ?? [],
     queue_ahead: ahead,
@@ -91,7 +97,7 @@ function jobOf(row: Row, perPage: number): ImportJob {
 async function jobs(db: Queryable, userId: string, id?: string) {
   const rows = (
     await db.query<Row>(
-      `SELECT ${JOB} FROM imports i
+      `SELECT ${JOB} FROM imports i LEFT JOIN docs t ON t.id = i.doc_id
         WHERE i.user_id = $1 AND ($2::uuid IS NULL OR i.id = $2)
           AND (i.status IN ('waiting','queued','reading','ocr')
                OR i.created_at > now() - interval '7 days')

@@ -815,7 +815,7 @@ export function DocsView({
                             <RotateCcw size={14} aria-hidden="true" /> Restore
                           </button>
                           <button
-                            className="doc-star"
+                            className="doc-trash-delete"
                             aria-label={`Delete ${page.title || "Untitled"} for good`}
                             title="Delete for good"
                             disabled={busy}

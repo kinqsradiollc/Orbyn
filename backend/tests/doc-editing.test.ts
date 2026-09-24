@@ -551,6 +551,27 @@ test("plain text pastes as Markdown, and ⌘⇧V keeps every line as it is", () 
   ]);
 });
 
+test("the phone tells pasted lines from Return by what changed", () => {
+  const { pastedLines } = core;
+  // Return: at the end, in the middle, at the start, over selected words.
+  assert.equal(pastedLines("- milk", "- milk\n"), false);
+  assert.equal(pastedLines("abcd", "ab\ncd"), false);
+  assert.equal(pastedLines("aa", "a\na"), false);
+  assert.equal(pastedLines("hello world", "hello\nworld"), false);
+  assert.equal(pastedLines("buy the milk", "buy\nmilk"), false);
+  // Autocorrect fixing the word just before Return is still Return.
+  assert.equal(pastedLines("teh", "the\n"), false);
+  assert.equal(pastedLines("see teh world", "see the\n world"), false);
+  // Two lines pasted are a paste, even when the line grows by little or
+  // shrinks because the paste replaced a longer selection.
+  assert.equal(pastedLines("", "- a\n- b"), true);
+  assert.equal(pastedLines("x", "a\nb"), true);
+  assert.equal(pastedLines("a very long sentence to replace", "a\nb\nc"), true);
+  assert.equal(pastedLines("hello", "hx\nyo"), true);
+  // Lines pasted where their last words match what follows the caret.
+  assert.equal(pastedLines("b", "a\nbb"), true);
+});
+
 // ------------------------------------------------------------ show changes --
 
 test("show changes: added, removed and edited lines, in place", () => {
@@ -811,6 +832,197 @@ test("deleting a page moves it to Trash, out of everything else", async () => {
   assert.equal((await call("POST", `/docs/${doc.id}/restore`)).statusCode, 404);
 });
 
+test("cards on a page in Trash leave every study count, and come back", async () => {
+  // Someone new, so the counts are exactly this page's.
+  const learner = await register("Learner");
+  const as = learner.token;
+  const userId = (
+    await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [
+      learner.email,
+    ])
+  ).rows[0].id;
+  const doc = (
+    await call(
+      "POST",
+      "/docs",
+      {
+        title: "Lighthouses",
+        content: [
+          { type: "paragraph", text: "Keeper :: The one who tends it" },
+          { type: "paragraph", text: "Lens :: Fresnel" },
+          { type: "paragraph", text: "Beam :: The light it sends" },
+          { type: "paragraph", text: "Fog signal :: A horn" },
+        ],
+      },
+      as,
+    )
+  ).json() as { id: string };
+  assert.equal((await call("GET", "/study", undefined, as)).statusCode, 200);
+  // Three cards already learnt and due now; one still new.
+  await pool.query(
+    `UPDATE study_cards SET reps = 1, stability = 1, last_review_at = now() - interval '2 days',
+            due_at = now() - interval '1 hour'
+      WHERE user_id = $1 AND question <> 'Fog signal'`,
+    [userId],
+  );
+  // A "Review cards" habit session now, so the morning digest names the cards.
+  const habit = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO habits (user_id, name, cadence, period, duration_minutes)
+       VALUES ($1, 'Review cards', 1, 'day', 20) RETURNING id`,
+      [userId],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO habit_blocks (habit_id, user_id, start_at, end_at, source)
+     VALUES ($1, $2, now() - interval '10 minutes', now() + interval '10 minutes', 'manual')`,
+    [habit, userId],
+  );
+  const { buildMorning } = await import("../src/worker/digest.js");
+  const { studyGlance } = await import("../src/modules/ai/agent/workspace.js");
+  const { rewriteAgenda } = await import("../src/modules/docs/agenda.js");
+  const ctx = {
+    user: { id: userId, role: "member" as const },
+    timezone: "UTC",
+    intentText: "",
+    actions: [],
+    clarification: null,
+  };
+  const agendaText = async () =>
+    ((await rewriteAgenda(userId, { withBrief: false })).content as DocBlock[])
+      .map((b) => b.text)
+      .join("\n");
+  const counts = async () => {
+    const s = (await call("GET", "/study", undefined, as)).json() as {
+      due_today: number;
+      new_cards: number;
+      forecast: { due: number }[];
+    };
+    const morning = await buildMorning(userId, "Learner", new Date(), "UTC");
+    return {
+      due: s.due_today,
+      fresh: s.new_cards,
+      forecast: s.forecast.reduce((n, d) => n + d.due, 0),
+      digest: morning.lines.find((l) => /Review cards/.test(l)) ?? null,
+      glance: (await studyGlance(ctx))?.cards ?? 0,
+      agenda: /3 cards to review · 1 new/.test(await agendaText()),
+    };
+  };
+
+  const first = await counts();
+  assert.equal(first.due, 3);
+  assert.equal(first.fresh, 1);
+  assert.equal(first.forecast, 3);
+  assert.match(first.digest ?? "", /\(3 cards due\)/);
+  assert.equal(first.glance, 4);
+  assert.equal(first.agenda, true);
+
+  assert.equal(
+    (await call("DELETE", `/docs/${doc.id}`, undefined, as)).statusCode,
+    204,
+  );
+  assert.deepEqual(await counts(), {
+    due: 0,
+    fresh: 0,
+    forecast: 0,
+    // With no cards waiting, the review habit isn't listed at all.
+    digest: null,
+    glance: 0,
+    agenda: false,
+  });
+  assert.doesNotMatch(await agendaText(), /to review/);
+  // The queue agrees.
+  const queue = (await call("GET", "/study/queue", undefined, as)).json();
+  assert.equal(queue.length, 0);
+
+  // Restored, everything counts again with its review state.
+  assert.equal(
+    (await call("POST", `/docs/${doc.id}/restore`, undefined, as)).statusCode,
+    200,
+  );
+  const back = await counts();
+  assert.equal(back.due, 3);
+  assert.equal(back.fresh, 1);
+  assert.equal(back.forecast, 3);
+  assert.match(back.digest ?? "", /\(3 cards due\)/);
+  assert.equal(back.glance, 4);
+  assert.equal(back.agenda, true);
+});
+
+test("show changes reads a version, the one before and the ones since in one call", async () => {
+  const doc = await newDoc([{ type: "paragraph", text: "Now" }]);
+  const writer = (
+    await pool.query<{ user_id: string }>(
+      "SELECT user_id FROM docs WHERE id = $1",
+      [doc.id],
+    )
+  ).rows[0].user_id;
+  // Kept versions 1..(MAX_SITTINGS + 3), each saying which it was.
+  const kept = core.MAX_SITTINGS + 3;
+  await pool.query(
+    `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
+     SELECT $1, n, 'Page', jsonb_build_array(jsonb_build_object(
+              'type', 'paragraph', 'text', 'v' || n)), $2
+       FROM generate_series(1, $3::int) n`,
+    [doc.id, writer, kept],
+  );
+  const changes = (v: number | string, as: string | null = token) =>
+    call("GET", `/docs/${doc.id}/versions/${v}/changes`, undefined, as);
+  const textOf = (blocks: DocBlock[]) =>
+    blocks.map((b) => (b as { text: string }).text).join();
+
+  // The newest: the one before it, and it alone since.
+  const last = await changes(kept);
+  assert.equal(last.statusCode, 200);
+  // Under the global per-minute limit like every other read.
+  assert.ok(last.headers["ratelimit-limit"] !== undefined);
+  const body = last.json() as import("@orbyn/core").DocVersionChanges;
+  assert.equal(body.version.version, kept);
+  assert.equal(textOf(body.version.content), `v${kept}`);
+  assert.equal(body.older?.version, kept - 1);
+  assert.equal(textOf(body.older!.content), `v${kept - 1}`);
+  assert.deepEqual(body.sittings, [
+    { content: body.version.content, author: "Writer" },
+  ]);
+
+  // As far back as names can be given: MAX_SITTINGS sittings, oldest first.
+  const edge = kept - core.MAX_SITTINGS + 1;
+  const far = (
+    await changes(edge)
+  ).json() as import("@orbyn/core").DocVersionChanges;
+  assert.equal(far.sittings?.length, core.MAX_SITTINGS);
+  assert.deepEqual(
+    far.sittings!.map((x) => textOf(x.content)),
+    Array.from({ length: core.MAX_SITTINGS }, (_, i) => `v${edge + i}`),
+  );
+  // One further back is too many to name.
+  const beyond = (
+    await changes(edge - 1)
+  ).json() as import("@orbyn/core").DocVersionChanges;
+  assert.equal(beyond.sittings, null);
+  assert.equal(beyond.version.version, edge - 1);
+  // The first has nothing before it.
+  const first = (
+    await changes(1)
+  ).json() as import("@orbyn/core").DocVersionChanges;
+  assert.equal(first.older, null);
+  assert.equal(first.version.version, 1);
+
+  // Signed out, a stranger, a version not kept, and not a version.
+  assert.equal((await changes(kept, null)).statusCode, 401);
+  assert.equal((await changes(kept, otherToken)).statusCode, 404);
+  assert.equal((await changes(kept + 5)).statusCode, 404);
+  assert.equal((await changes("0")).statusCode, 422);
+  assert.equal((await changes("two")).statusCode, 422);
+  assert.equal(
+    (await call("GET", "/docs/not-an-id/versions/1/changes")).statusCode,
+    422,
+  );
+  // Not while the page is in Trash.
+  await call("DELETE", `/docs/${doc.id}`);
+  assert.equal((await changes(kept)).statusCode, 404);
+});
+
 test("Trash routes: signed out, strangers, viewers and bad ids", async () => {
   const doc = await newDoc([{ type: "paragraph", text: "mine" }]);
   await call("DELETE", `/docs/${doc.id}`);
@@ -982,6 +1194,36 @@ test("Trash and restore show in the project's history and reach open editors", a
     await listener.query("UNLISTEN doc_changed");
     listener.release();
   }
+  // Deleted for good from Trash later, it isn't removed a second time.
+  await call("DELETE", `/docs/${doc.id}`);
+  assert.equal(
+    (await call("DELETE", `/docs/${doc.id}/forever`)).statusCode,
+    204,
+  );
+  const purged = (
+    await pool.query<{ summary: string }>(
+      `SELECT summary FROM project_activity
+        WHERE project_id = $1 AND entity_id = $2 ORDER BY event_order`,
+      [project.id, doc.id],
+    )
+  ).rows.map((r) => r.summary);
+  assert.deepEqual(purged.slice(2), [
+    `Note restored: ${doc.title}`,
+    `Note moved to Trash: ${doc.title}`,
+  ]);
+  // A project page deleted outright, not through Trash, is still recorded.
+  const direct = await newDoc([{ type: "paragraph", text: "direct" }], {
+    project_id: project.id,
+  });
+  await pool.query("DELETE FROM docs WHERE id = $1", [direct.id]);
+  const removed = await pool.query<{ summary: string }>(
+    "SELECT summary FROM project_activity WHERE entity_id = $1 AND kind = 'note_removed'",
+    [direct.id],
+  );
+  assert.deepEqual(
+    removed.rows.map((r) => r.summary),
+    [`Note removed: ${direct.title}`],
+  );
   // A page outside any project leaves no project history behind.
   const loose = await newDoc([{ type: "paragraph", text: "loose" }]);
   await call("DELETE", `/docs/${loose.id}`);
@@ -1041,6 +1283,108 @@ test("today's agenda brought back from Trash replaces an untouched copy", async 
   await call("DELETE", `/docs/${written.id}/forever`);
 });
 
+test("a project's brief in Trash reads as no brief, and comes back with it", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Brief in and out" })
+  ).json() as { id: string };
+  const brief = await newDoc([{ type: "paragraph", text: "What we're doing" }]);
+  assert.equal(
+    (await call("PUT", `/projects/${project.id}`, { doc_id: brief.id }))
+      .statusCode,
+    200,
+  );
+  const briefOf = async () => {
+    const one = (await call("GET", `/projects/${project.id}`)).json();
+    const listed = (
+      (await call("GET", "/projects")).json() as {
+        id: string;
+        doc_id: string | null;
+      }[]
+    ).find((p) => p.id === project.id);
+    assert.equal(listed?.doc_id, one.doc_id);
+    return one.doc_id as string | null;
+  };
+  assert.equal(await briefOf(), brief.id);
+  await call("DELETE", `/docs/${brief.id}`);
+  assert.equal(await briefOf(), null);
+  await call("POST", `/docs/${brief.id}/restore`);
+  assert.equal(await briefOf(), brief.id);
+});
+
+test("an event's meeting note brought back from Trash is the one the event opens", async () => {
+  const event = (
+    await call("POST", "/items", {
+      title: "Harbour board",
+      kind: "event",
+      due_at: "2026-09-21T01:00:00.000Z",
+      end_at: "2026-09-21T02:00:00.000Z",
+    })
+  ).json() as { id: string };
+  const note = async () =>
+    (await call("POST", `/items/${event.id}/note`)).json() as {
+      id: string;
+      version: number;
+    };
+  const first = await note();
+  await call("DELETE", `/docs/${first.id}`);
+  // While it is in Trash, the event gets a fresh note.
+  const copy = await note();
+  assert.notEqual(copy.id, first.id);
+  assert.equal(
+    (await call("POST", `/docs/${first.id}/restore`)).statusCode,
+    200,
+  );
+  // The untouched copy is let go; the event opens the one that came back.
+  assert.equal((await call("GET", `/docs/${copy.id}`)).statusCode, 404);
+  assert.equal((await note()).id, first.id);
+
+  // A copy someone wrote in is kept, and is what the event opens: it is
+  // the note written in last.
+  await call("DELETE", `/docs/${first.id}`);
+  const written = await note();
+  await pool.query(
+    "UPDATE docs SET updated_at = now() - interval '1 minute' WHERE id = $1",
+    [first.id],
+  );
+  assert.equal(
+    (
+      await call("PUT", `/docs/${written.id}`, {
+        content: [{ type: "paragraph", text: "Minutes as they happened" }],
+        version: written.version,
+      })
+    ).statusCode,
+    200,
+  );
+  await call("POST", `/docs/${first.id}/restore`);
+  assert.equal((await call("GET", `/docs/${written.id}`)).statusCode, 200);
+  assert.equal((await call("GET", `/docs/${first.id}`)).statusCode, 200);
+  assert.equal((await note()).id, written.id);
+  // Written in again, the restored note is the one the event opens.
+  const back = (await call("GET", `/docs/${first.id}`)).json() as {
+    version: number;
+  };
+  await call("PUT", `/docs/${first.id}`, {
+    content: [{ type: "paragraph", text: "Picked up again" }],
+    version: back.version,
+  });
+  assert.equal((await note()).id, first.id);
+  // Another event's note is never touched by a restore.
+  const other = (
+    await call("POST", "/items", {
+      title: "Lamp room",
+      kind: "event",
+      due_at: "2026-09-22T01:00:00.000Z",
+      end_at: "2026-09-22T02:00:00.000Z",
+    })
+  ).json() as { id: string };
+  const otherNote = (await call("POST", `/items/${other.id}/note`)).json() as {
+    id: string;
+  };
+  await call("DELETE", `/docs/${first.id}`);
+  await call("POST", `/docs/${first.id}/restore`);
+  assert.equal((await call("GET", `/docs/${otherNote.id}`)).statusCode, 200);
+});
+
 test("Trash routes answer 429 past the per-minute limit", async () => {
   const { settings, cachedSettings } = await import("../src/lib/settings.js");
   const doc = await newDoc([{ type: "paragraph", text: "limited" }]);
@@ -1079,7 +1423,12 @@ test("the sweeper empties Trash after 30 days, and not before", async () => {
   const rule = SWEEP_RULES.find((r) => r.key === "doc_trash");
   assert.ok(rule);
   assert.equal(rule.configurable, false);
-  const old = await newDoc([{ type: "paragraph", text: "old" }]);
+  const project = (
+    await call("POST", "/projects", { name: "Emptied from Trash" })
+  ).json();
+  const old = await newDoc([{ type: "paragraph", text: "old" }], {
+    project_id: project.id,
+  });
   const recent = await newDoc([{ type: "paragraph", text: "recent" }]);
   const live = await newDoc([{ type: "paragraph", text: "live" }]);
   await call("DELETE", `/docs/${old.id}`);
@@ -1103,6 +1452,18 @@ test("the sweeper empties Trash after 30 days, and not before", async () => {
   assert.ok(!ids.includes(old.id));
   assert.ok(ids.includes(recent.id));
   assert.ok(ids.includes(live.id));
+  // The project's history said it went to Trash, and says nothing more.
+  const history = (
+    await pool.query<{ summary: string }>(
+      `SELECT summary FROM project_activity
+        WHERE project_id = $1 AND entity_id = $2 ORDER BY event_order`,
+      [project.id, old.id],
+    )
+  ).rows.map((r) => r.summary);
+  assert.deepEqual(history, [
+    `Note added: ${old.title}`,
+    `Note moved to Trash: ${old.title}`,
+  ]);
 });
 
 test("Make task turns just the lines asked for into tasks", async () => {

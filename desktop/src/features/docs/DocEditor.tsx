@@ -1,4 +1,3 @@
-import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -91,6 +90,9 @@ import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
 
 type Kind = (typeof BLOCK_KINDS)[number];
+
+/** How soon after ⌘⇧V a paste counts as the plain paste it asked for. */
+const PLAIN_PASTE_MS = 1_000;
 
 /** How often "Saved 2 min ago" is brought up to date. */
 const CLOCK_MS = 30_000;
@@ -229,7 +231,6 @@ export function DocEditor({
   teamName?: string | null;
   report: (e: unknown) => void;
 }) {
-  const { tell } = useConfirm();
   const toast = useToast();
   /**
    * A page opens the way it was last worked on, and always read-only for
@@ -264,6 +265,10 @@ export function DocEditor({
   const base = useRef<DocBlock[]>(doc.content);
   /** Current state, readable from callbacks that were made earlier. */
   const live = useRef({ title: doc.title, blocks: [] as DocBlock[] });
+  /**
+   * What someone else's edits just did to the page, shown beside Saved as
+   * part of working together. Every other notice goes through the toast.
+   */
   const [note, setNote] = useState("");
   /** Which line is open for editing, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
@@ -322,8 +327,13 @@ export function DocEditor({
   /** When the page was last saved, for the line at its end. */
   const [savedAt, setSavedAt] = useState(doc.updated_at);
   const [now, setNow] = useState(() => new Date());
-  /** The next paste came from ⌘⇧V: take the words exactly as they are. */
-  const plainPaste = useRef(false);
+  /**
+   * When ⌘⇧V was last pressed. The paste it makes follows at once, so only
+   * a paste within PLAIN_PASTE_MS of it is plain: a ⌘⇧V that pasted nothing
+   * (an empty clipboard, a paste the browser blocked) doesn't turn the next
+   * ordinary ⌘V plain.
+   */
+  const plainPaste = useRef(0);
   /** A line made by "New task" in the / menu, waiting for its words. */
   const pendingTask = useRef<string | null>(null);
 
@@ -652,7 +662,7 @@ export function DocEditor({
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
       setSuggestions((list) => [...list, ...made]);
-      setNote("Suggested. It waits for someone to take it.");
+      toast({ text: "Suggested. It waits for someone to take it." });
     } catch (e) {
       report(e);
     }
@@ -725,7 +735,7 @@ export function DocEditor({
     }
     setPicked(null);
     window.getSelection()?.removeAllRanges();
-    setNote("Asking the assistant…");
+    toast({ text: "Asking the assistant…" });
     try {
       const made = await client.assistDoc(doc.id, {
         block_id: words.blockId,
@@ -735,9 +745,8 @@ export function DocEditor({
         instruction,
       });
       setSuggestions((list) => [...list, made]);
-      setNote("Suggested. Take it or leave it.");
+      toast({ text: "Suggested. Take it or leave it." });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
@@ -773,7 +782,7 @@ export function DocEditor({
       linking.url,
     );
     if (!made) {
-      setNote("That doesn't look like a web address.");
+      toast({ text: "That doesn't look like a web address.", tone: "warn" });
       return;
     }
     const next = blocks.slice();
@@ -1130,6 +1139,21 @@ export function DocEditor({
     update(next);
   };
 
+  /** Flip the box of the checklist line being typed, keeping the caret. */
+  const tickLine = (el: HTMLTextAreaElement) => {
+    const box = /^(\s*[-*]\s+\[)( |x|X)\]/.exec(el.value);
+    if (!box) return;
+    const at = box[1].length;
+    typeInto(el, {
+      text:
+        el.value.slice(0, at) +
+        (box[2] === " " ? "x" : " ") +
+        el.value.slice(at + 1),
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    });
+  };
+
   /**
    * Restyle the words selected in the line being typed — bold, italic, a
    * link — through the same path as typing, so it can be undone with ⌘Z and
@@ -1141,7 +1165,7 @@ export function DocEditor({
   ) => {
     const made = change(el.value, el.selectionStart, el.selectionEnd);
     if (!made) {
-      setNote("Those words already have another style.");
+      toast({ text: "Those words already have another style.", tone: "warn" });
       return;
     }
     typeInto(el, made);
@@ -1190,11 +1214,13 @@ export function DocEditor({
         return;
       }
       // ⌘⇧V: the next paste keeps only the words.
-      if (key === "v" && e.shiftKey) plainPaste.current = true;
-      // ⌘⏎ ticks a checklist line, or unticks it.
+      if (key === "v" && e.shiftKey) plainPaste.current = Date.now();
+      // ⌘⏎ ticks a checklist line, or unticks it. The box is flipped in the
+      // line itself, as typing would, so the open line shows it, the next
+      // keystroke keeps it and ⌘Z takes it back.
       if (e.key === "Enter" && blocks[index].type === "todo") {
         e.preventDefault();
-        toggleTodo(index);
+        if (structural) tickLine(e.currentTarget);
         return;
       }
     }
@@ -1231,8 +1257,8 @@ export function DocEditor({
     e: React.ClipboardEvent<HTMLTextAreaElement>,
     index: number,
   ) => {
-    const plain = plainPaste.current;
-    plainPaste.current = false;
+    const plain = Date.now() - plainPaste.current < PLAIN_PASTE_MS;
+    plainPaste.current = 0;
     const block = blocks[index];
     if (block.type === "code" || block.type === "math") return;
     const el = e.currentTarget;
@@ -1408,7 +1434,7 @@ export function DocEditor({
    */
   const download = async (format: ExportFormat) => {
     setDownloadMenu(false);
-    setNote(`Making the ${EXPORT_LABELS[format].name} file…`);
+    toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
       const { blob, name } = await client.exportDoc(doc.id, format);
       const url = URL.createObjectURL(blob);
@@ -1417,9 +1443,8 @@ export function DocEditor({
       a.download = name;
       a.click();
       URL.revokeObjectURL(url);
-      setNote("");
+      toast({ text: `Downloaded “${name}”` });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
@@ -1436,8 +1461,8 @@ export function DocEditor({
         // The server ties each line to its task and hands back the document;
         // adopting it keeps the ids, so the lines now follow their tasks.
         const created = await linesToTasks();
-        await tell({
-          title:
+        toast({
+          text:
             created === 0
               ? "Every item here is already a task."
               : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
@@ -1551,7 +1576,7 @@ export function DocEditor({
             onClick={() =>
               void navigator.clipboard
                 .writeText(`# ${title}\n\n${markdown}`)
-                .then(() => setNote("Copied as Markdown."), report)
+                .then(() => toast({ text: "Copied as Markdown" }), report)
             }
             aria-label="Copy as Markdown"
             title="Copy as Markdown"
@@ -2036,7 +2061,7 @@ export function DocEditor({
                   ? restored.content
                   : [{ type: "paragraph", text: "" }],
               );
-              setNote("Restored an earlier version.");
+              toast({ text: "Restored an earlier version" });
               onChanged(restored);
             }}
           />

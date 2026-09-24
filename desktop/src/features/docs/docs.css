@@ -2332,6 +2332,25 @@ h4.doc-heading {
 .doc-row.is-trashed strong {
   color: var(--color-textSoft);
 }
+/* Delete for good: a small icon button of its own, not the favourite star. */
+.doc-trash-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  line-height: 0;
+}
+.doc-trash-delete:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-hover);
+}
 @media (max-width: 640px) {
   .docs-trash li {
     grid-template-columns: minmax(0, 1fr) auto;

@@ -38,6 +38,7 @@ import {
   type SearchHit,
   type DocSummary,
   type DocVersion,
+  type DocVersionChanges,
   type Favourite,
   type FavouriteKind,
   type Folder,
@@ -1097,6 +1098,15 @@ export class OrbynClient {
   getDocVersion(id: string, version: number) {
     return this.request<Required<DocVersion>>(
       `/docs/${id}/versions/${version}`,
+    );
+  }
+  /**
+   * One past state for "Show changes": the version, the one kept before it,
+   * and the sittings since (null when too many were kept since), in one read.
+   */
+  getDocVersionChanges(id: string, version: number) {
+    return this.request<DocVersionChanges>(
+      `/docs/${id}/versions/${version}/changes`,
     );
   }
   /** Put a past state back; it becomes a new version on top. */

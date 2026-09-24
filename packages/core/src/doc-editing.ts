@@ -9,6 +9,7 @@ import {
   type DocBlock,
   type DocInline,
   type DocKind,
+  type DocVersion,
 } from "./docs.js";
 
 // ---------------------------------------------------------------- styles ---
@@ -538,6 +539,18 @@ export type Sitting = { content: DocBlock[]; author: string | null };
  * version further back than this is compared without names.
  */
 export const MAX_SITTINGS = 20;
+
+/**
+ * Everything "Show changes" needs for one kept version, in one read: the
+ * version, the one kept before it (what that sitting changed), and the
+ * sittings from it to the newest kept, oldest first, to say who changed each
+ * line since. `sittings` is null when more than MAX_SITTINGS were kept since.
+ */
+export type DocVersionChanges = {
+  version: Required<DocVersion>;
+  older: Required<DocVersion> | null;
+  sittings: Sitting[] | null;
+};
 
 /**
  * Who made each change in a comparison of an old version with the page as

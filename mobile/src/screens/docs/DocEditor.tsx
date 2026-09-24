@@ -20,6 +20,7 @@ import {
   keepStart,
   listLayout,
   pageFooter,
+  pastedLines,
   textToBlocks,
   withDepth,
   newBlockId,
@@ -172,6 +173,10 @@ export function DocEditor({
   const [formats, setFormats] = useState(false);
   /** Whether the conversation about this page is open. */
   const [talking, setTalking] = useState(false);
+  /**
+   * What someone else's edits just did to the page, shown under the title
+   * as part of working together. Every other notice goes through the toast.
+   */
   const [note, setNote] = useState("");
   /** The line whose remarks are open, and one waiting to be written on. */
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -253,7 +258,7 @@ export function DocEditor({
     setBlocks(doc.content.length ? doc.content : [EMPTY]);
     live.current = { title: doc.title, blocks: doc.content };
     setFocused(null);
-    setNote("Restored an earlier version.");
+    showToast({ text: "Restored an earlier version" });
   }, [doc.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The note is news, not a state to sit in.
@@ -331,8 +336,11 @@ export function DocEditor({
     [doc.id, onChanged, reconcile, report],
   );
 
-  flushOnClose.current = () => {
-    if (!canWrite || suggesting) return;
+  /**
+   * The page with the open line's words in it, including any typed since
+   * they were last put into the page (that happens after a short pause).
+   */
+  const pageWithDraft = (): DocBlock[] => {
     let next = live.current.blocks.slice();
     if (focused !== null && next[focused]) {
       const parsed = parseDoc(draft);
@@ -343,8 +351,15 @@ export function DocEditor({
       );
       next = keepStart(next, focused);
     }
-    if (dirty.current || JSON.stringify(next) !== JSON.stringify(base.current))
-      void persist(live.current.title, next);
+    return next;
+  };
+  const unsaved = (next: DocBlock[]) =>
+    dirty.current || JSON.stringify(next) !== JSON.stringify(base.current);
+
+  flushOnClose.current = () => {
+    if (!canWrite || suggesting) return;
+    const next = pageWithDraft();
+    if (unsaved(next)) void persist(live.current.title, next);
   };
 
   /**
@@ -431,19 +446,22 @@ export function DocEditor({
     const kind = blocks[focused].type;
     const br = text.indexOf("\n");
     if (br < 0 || MULTILINE.has(kind)) return setDraft(text);
-    // Several lines arriving at once are a paste: each becomes a line of
-    // its own, Markdown read as Markdown, rather than all but the first
-    // being left in the line being typed.
-    if (text.length - draft.length > 1 && structural) {
-      const pasted = carryBlockIds(blocks[focused], textToBlocks(text));
-      if (pasted.length > 1) {
-        const next = blocks.slice();
-        next.splice(focused, 1, ...pasted);
-        const at = focused + pasted.length - 1;
-        update(next);
-        openWith(sourceOf(next, at), at);
-        return;
-      }
+    // Lines arriving at once are a paste: each becomes a line of its own,
+    // Markdown read as Markdown, rather than all but the first being left
+    // in the line being typed. What changed is what tells them apart from
+    // Return (see pastedLines), not how much longer the line got.
+    if (pastedLines(draft, text) && structural) {
+      const read = textToBlocks(text);
+      const pasted = carryBlockIds(
+        blocks[focused],
+        read.length ? read : [EMPTY],
+      );
+      const next = blocks.slice();
+      next.splice(focused, 1, ...pasted);
+      const at = focused + pasted.length - 1;
+      update(next);
+      openWith(sourceOf(next, at), at);
+      return;
     }
     const head = text.slice(0, br);
     const tail = text.slice(br + 1);
@@ -643,7 +661,7 @@ export function DocEditor({
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
       setSuggestions((list) => [...list, ...made]);
-      setNote("Suggested. It waits for someone to take it.");
+      showToast({ text: "Suggested. It waits for someone to take it." });
     } catch (e) {
       report(e);
     }
@@ -668,7 +686,7 @@ export function DocEditor({
         instruction,
       });
       setSuggestions((list) => [...list, made]);
-      setNote("Suggested. Take it or leave it.");
+      showToast({ text: "Suggested. Take it or leave it." });
     } catch (e) {
       report(e);
     } finally {
@@ -778,11 +796,12 @@ export function DocEditor({
           }
         }
         onItemsChanged?.();
-        setNote(
-          created === 0
-            ? "Every item here is already a task."
-            : `Added ${created} task${created === 1 ? "" : "s"} to your planner.`,
-        );
+        showToast({
+          text:
+            created === 0
+              ? "Every item here is already a task."
+              : `Added ${created} task${created === 1 ? "" : "s"} to your planner.`,
+        });
       } catch (e) {
         report(e);
       }
@@ -795,10 +814,12 @@ export function DocEditor({
    */
   const removePage = () => {
     if (timer.current) clearTimeout(timer.current);
+    // What was just typed goes with it — the open line's words too, even
+    // those not yet put into the page — so Undo brings all of it back.
+    const last = canWrite && !suggesting ? pageWithDraft() : null;
     void (async () => {
       try {
-        // What was just typed goes with it, so Undo brings all of it back.
-        if (dirty.current) await persist(title, live.current.blocks);
+        if (last && unsaved(last)) await persist(live.current.title, last);
         await client.deleteDoc(doc.id);
       } catch (e) {
         report(e);

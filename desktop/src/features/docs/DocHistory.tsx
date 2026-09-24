@@ -13,7 +13,6 @@ import {
   diffBlocks,
   diffCounts,
   listLayout,
-  MAX_SITTINGS,
   type Doc,
   type DocBlock,
   type DocDiffLine,
@@ -99,31 +98,17 @@ export function DocHistory({
   }, [doc.id, doc.version, report]);
 
   const open = (v: DocVersion) => {
-    if (!versions) return;
     setBusy(true);
-    const at = versions.findIndex((x) => x.version === v.version);
-    // The version kept before this one, for "what this sitting changed".
-    const older = versions[at + 1];
-    // The ones kept since, newest first, for who changed what since.
-    const since = at < MAX_SITTINGS ? versions.slice(0, at) : null;
-    Promise.all([
-      client.getDocVersion(doc.id, v.version),
-      older ? client.getDocVersion(doc.id, older.version) : null,
-      since
-        ? Promise.all(since.map((x) => client.getDocVersion(doc.id, x.version)))
-        : null,
-    ])
-      .then(([version, before, newer]) =>
+    // One read brings the version, the one before it (what that sitting
+    // changed) and the ones kept since (who changed what since).
+    client
+      .getDocVersionChanges(doc.id, v.version)
+      .then(({ version, older, sittings }) =>
         onView({
           version,
-          older: before,
+          older,
           compare: viewing?.compare ?? "current",
-          sittings: newer
-            ? [version, ...newer.reverse()].map((x) => ({
-                content: x.content,
-                author: x.author,
-              }))
-            : null,
+          sittings,
         }),
       )
       .catch(report)

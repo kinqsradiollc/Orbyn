@@ -22,8 +22,12 @@ import { projectTimeMachineRoutes } from "./time-machine.js";
  * reminders and the calendar keep working untouched.
  */
 
+// A brief page in Trash is no brief: the project reads as having none until
+// the page is restored (the link itself is kept for that).
 const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
-  p.status, p.deadline, p.doc_id, p.created_at, p.updated_at,
+  p.status, p.deadline,
+  (SELECT b.id FROM docs b WHERE b.id = p.doc_id AND b.deleted_at IS NULL) AS doc_id,
+  p.created_at, p.updated_at,
   (SELECT count(*)::int FROM items i WHERE i.project_id = p.id) AS task_count,
   (SELECT count(*)::int FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done_count`;
 

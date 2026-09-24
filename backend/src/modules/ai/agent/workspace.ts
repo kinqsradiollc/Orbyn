@@ -14,6 +14,7 @@ import {
 } from "../../planner/calendar.js";
 import { externalEntries } from "../../planner/subscriptions.js";
 import {
+  LIVE_CARDS,
   studyOverview,
   syncCards,
   upcomingExams,
@@ -597,8 +598,8 @@ export async function studyGlance(ctx: AgentContext) {
   const counts = (
     await pool.query<{ cards: number; due: number }>(
       `SELECT count(*)::int AS cards,
-              count(*) FILTER (WHERE due_at <= now() + interval '12 hours')::int AS due
-         FROM study_cards WHERE user_id = $1`,
+              count(*) FILTER (WHERE c.due_at <= now() + interval '12 hours')::int AS due
+         FROM ${LIVE_CARDS} WHERE c.user_id = $1`,
       [ctx.user.id],
     )
   ).rows[0];

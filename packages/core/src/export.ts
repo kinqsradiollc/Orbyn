@@ -149,6 +149,10 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
     }
   }
   closeList();
+  // The colours below are written out, not theme tokens: the file is opened
+  // on its own, far from the app's stylesheet, so it has no variables to
+  // read. They match the light theme (the highlight is its warnSoft tint),
+  // and the file prints on white either way.
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">

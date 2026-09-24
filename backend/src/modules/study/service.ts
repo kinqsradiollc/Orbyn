@@ -81,10 +81,17 @@ export const cardOf = (r: CardRow, now = new Date()): StudyCard => {
   };
 };
 
+/**
+ * Cards (`c`) whose page (`d`) is not in Trash. A trashed page keeps its cards
+ * so restoring brings them back, so every count and list reads through this.
+ */
+export const LIVE_CARDS =
+  "study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL";
+
 export const CARD_SELECT = `SELECT c.id, c.doc_id, d.title AS doc_title, c.card_key, c.block_id,
     c.question, c.answer, c.stability, c.difficulty, c.reps, c.lapses,
     c.last_review_at, c.due_at
-  FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL`;
+  FROM ${LIVE_CARDS}`;
 
 /**
  * Bring `userId`'s cards in line with the pages they can see: new lines
@@ -193,16 +200,16 @@ export async function studyOverview(
                 count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due,
                 count(*) FILTER (WHERE c.reps = 0)::int AS fresh,
                 count(*) FILTER (WHERE c.reps > 0 AND c.stability >= 7)::int AS known
-           FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL
+           FROM ${LIVE_CARDS}
           WHERE c.user_id = $1
           GROUP BY c.doc_id, d.title, d.team_id, d.updated_at, d.imported_from
           ORDER BY max(d.updated_at) DESC`,
         [userId, todayEnd],
       ),
       pool.query<{ due: number; fresh: number }>(
-        `SELECT count(*) FILTER (WHERE reps > 0 AND due_at < $2)::int AS due,
-                count(*) FILTER (WHERE reps = 0)::int AS fresh
-           FROM study_cards WHERE user_id = $1`,
+        `SELECT count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due,
+                count(*) FILTER (WHERE c.reps = 0)::int AS fresh
+           FROM ${LIVE_CARDS} WHERE c.user_id = $1`,
         [userId, todayEnd],
       ),
       pool.query<{ n: number; new_today: number }>(
@@ -227,7 +234,7 @@ export async function studyOverview(
         lapses: number;
       }>(
         `SELECT c.id, c.question, c.doc_id, d.title AS doc_title, c.lapses
-           FROM study_cards c JOIN docs d ON d.id = c.doc_id AND d.deleted_at IS NULL
+           FROM ${LIVE_CARDS}
           WHERE c.user_id = $1 AND c.lapses > 0
           ORDER BY c.lapses DESC, c.difficulty DESC LIMIT 6`,
         [userId],
@@ -239,10 +246,10 @@ export async function studyOverview(
       ),
       // Reviews due on each of the next seven days (overdue counts today).
       pool.query<{ day: string; n: number }>(
-        `SELECT to_char(greatest(due_at, $3) AT TIME ZONE $2, 'YYYY-MM-DD') AS day,
+        `SELECT to_char(greatest(c.due_at, $3) AT TIME ZONE $2, 'YYYY-MM-DD') AS day,
                 count(*)::int AS n
-           FROM study_cards
-          WHERE user_id = $1 AND reps > 0 AND due_at < $3 + interval '8 days'
+           FROM ${LIVE_CARDS}
+          WHERE c.user_id = $1 AND c.reps > 0 AND c.due_at < $3 + interval '8 days'
           GROUP BY 1`,
         [userId, tz, now],
       ),

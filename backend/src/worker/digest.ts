@@ -16,6 +16,7 @@ import {
 } from "../modules/planner/calendar.js";
 import { habitBlocksIn } from "../modules/planner/habits.js";
 import { reviewFor } from "../modules/planner/plans.js";
+import { LIVE_CARDS } from "../modules/study/service.js";
 import { appLink } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { chatFor, postChat } from "../modules/chat/channel.js";
@@ -94,7 +95,8 @@ export async function buildMorning(
   // Cards due today, which the "Review cards" habit (made by Study) names.
   const cardsDue = (
     await pool.query<{ due: number }>(
-      "SELECT count(*) FILTER (WHERE reps > 0 AND due_at < $2)::int AS due FROM study_cards WHERE user_id = $1",
+      `SELECT count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due
+         FROM ${LIVE_CARDS} WHERE c.user_id = $1`,
       [userId, dayEnd],
     )
   ).rows[0].due;

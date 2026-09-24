@@ -449,7 +449,9 @@ assistant wrote the summary.
 
 The meeting note for an event, created from a template (Agenda, Notes, Decisions, Action items)
 the first time and returned as-is afterwards. → `201` when created, `200` when it already existed.
-A note for a team event belongs to the team, so one shared meeting keeps one shared note.
+A note for a team event belongs to the team, so one shared meeting keeps one shared note. A note in
+Trash doesn't count: the event gets a fresh one. If the old one is restored while the fresh one was
+written in, both are kept and the event opens the one written in last.
 
 ### `POST /docs/:id/tasks` (auth)
 
@@ -620,6 +622,15 @@ content. Empty until the document has been changed at least once.
 ### `GET /docs/:id/versions/:version` (auth)
 
 → the same fields plus `content`, the blocks as they were. `404` when that version is not kept.
+
+### `GET /docs/:id/versions/:version/changes` (auth)
+
+What "Show changes" reads, in one request: →
+`{ "version", "older", "sittings" }`. `version` is that version with `content`; `older` is the
+version kept before it (with `content`), or `null` for the first; `sittings` is
+`[ { "content", "author" } ]` from that version to the newest kept, oldest first, so the apps can
+say who changed each line since — or `null` when more than 20 versions were kept since. `404` when
+that version is not kept, `422` when it is not a version number.
 
 ### `POST /docs/:id/versions/:version/restore` (auth)
 
@@ -926,12 +937,13 @@ moved to Trash" in the project's history, and it isn't measured for semantic sea
 
 Brings a page back from Trash, as it was → the full document. `404` for a page that isn't in
 Trash (or isn't yours to see), `403` for a team viewer. A project page shows as "Note restored" in
-the project's history. Today's agenda brought back replaces a copy that Agenda wrote meanwhile, if
-nobody wrote in that copy.
+the project's history. Today's agenda, or an event's meeting note, brought back replaces a copy
+that Agenda or the event wrote meanwhile, if nobody wrote in that copy.
 
 ### `DELETE /docs/:id/forever` (auth, `items:write`)
 
-Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash.
+Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash. A project
+page purged from Trash (here or by the 30-day sweep) adds nothing more to the project's history.
 
 ## Items
 

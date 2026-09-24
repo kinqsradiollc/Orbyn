@@ -133,17 +133,17 @@ export const dayHeading = (day: Date) =>
   });
 
 /**
- * Motion shared by web and mobile so both apps move alike. Durations are in
- * milliseconds; distances in CSS pixels / React Native points. Both apps must
- * skip these animations when the user asks for reduced motion.
- */
-/**
  * How long a toast stays up: a short sentence and at most one action
  * ("Moved to Trash · Undo"), at the top on phones and bottom-left on the
  * desktop. Long enough to reach Undo, short enough not to linger.
  */
 export const TOAST_MS = 4_000;
 
+/**
+ * Motion shared by web and mobile so both apps move alike. Durations are in
+ * milliseconds; distances in CSS pixels / React Native points. Both apps must
+ * skip these animations when the user asks for reduced motion.
+ */
 export const motion = {
   /** Presses, hovers, checkbox ticks. */
   fast: 140,

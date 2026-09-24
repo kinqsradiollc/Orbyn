@@ -24,6 +24,7 @@ import {
   meetingNoteTemplate,
   serializeDoc,
   TRASH_DAYS,
+  MAX_SITTINGS,
   docTasksInput,
   type TrashedDoc,
   type Doc,
@@ -32,6 +33,7 @@ import {
   type DocSuggestion,
   type DocSummary,
   type DocVersion,
+  type DocVersionChanges,
   type Item,
 } from "@orbyn/core";
 import {
@@ -191,19 +193,27 @@ async function searchTrash(db: Db, docId: string, trashed: boolean) {
 }
 
 /**
- * Today's agenda brought back from Trash is the one Agenda opens. While it
- * was away, opening Agenda wrote a fresh copy under the same title; a copy
+ * A page that stands in for something — today's agenda, an event's meeting
+ * note — brought back from Trash is the one that opens again. While it was
+ * away, opening Agenda or the event wrote a fresh copy in its place; a copy
  * nobody has touched (never saved, nothing said or tasked on it) is let go
- * so the two don't sit side by side. One that was written in is kept.
+ * so the two don't sit side by side. One that was written in is kept (the
+ * event then opens whichever note was written in last).
  */
-async function dropAgendaCopy(db: Queryable, docId: string) {
+async function dropStandInCopy(db: Queryable, docId: string) {
   await db.query(
     `DELETE FROM docs c
       USING docs d
-      WHERE d.id = $1 AND d.kind = 'agenda'
-        AND c.id <> d.id AND c.kind = 'agenda' AND c.user_id = d.user_id
-        AND c.team_id IS NULL AND c.title = d.title
+      WHERE d.id = $1 AND c.id <> d.id AND c.kind = d.kind
         AND c.deleted_at IS NULL AND c.version = 1
+        AND (
+          (d.kind = 'agenda' AND c.user_id = d.user_id
+            AND c.team_id IS NULL AND c.title = d.title)
+          OR (d.kind = 'meeting' AND d.item_id IS NOT NULL
+            AND c.item_id = d.item_id
+            AND c.team_id IS NOT DISTINCT FROM d.team_id
+            AND (d.team_id IS NOT NULL OR c.user_id = d.user_id))
+        )
         AND NOT EXISTS (SELECT 1 FROM doc_comments m WHERE m.doc_id = c.id)
         AND NOT EXISTS (SELECT 1 FROM doc_task_links l WHERE l.doc_id = c.id)
         AND NOT EXISTS (SELECT 1 FROM doc_suggestions g WHERE g.doc_id = c.id)`,
@@ -684,6 +694,49 @@ export async function docRoutes(app: FastifyInstance) {
   });
 
   /**
+   * What "Show changes" reads for one version, in one request rather than
+   * one per version: the version, the one kept before it, and every one
+   * kept since (up to MAX_SITTINGS), each with its content and author.
+   */
+  app.get("/docs/:id/versions/:version/changes", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const n = Number((r.params as { version: string }).version);
+    if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
+    const db = reader(r.headers);
+    await mustSee(db, id, u);
+    // The one before, this one, and one more than can be named since, so
+    // "too many to name" is known without counting them all.
+    const rows = (
+      await db.query<Required<DocVersion>>(
+        `SELECT ${VERSION_COLUMNS}, v.content FROM doc_versions v
+           LEFT JOIN users us ON us.id = v.user_id
+          WHERE v.doc_id = $1
+            AND v.version >= coalesce(
+              (SELECT max(p.version) FROM doc_versions p
+                WHERE p.doc_id = $1 AND p.version < $2), $2)
+          ORDER BY v.version LIMIT $3`,
+        [id, n, MAX_SITTINGS + 2],
+      )
+    ).rows;
+    const at = rows.findIndex((v) => v.version === n);
+    if (at < 0) fail(404, "That version is not kept");
+    const newer = rows.slice(at + 1);
+    const answer: DocVersionChanges = {
+      version: rows[at],
+      older: at > 0 ? rows[at - 1] : null,
+      sittings:
+        newer.length < MAX_SITTINGS
+          ? [rows[at], ...newer].map((v) => ({
+              content: v.content,
+              author: v.author,
+            }))
+          : null,
+    };
+    return answer;
+  });
+
+  /**
    * Put a past state back. It becomes a new version on top, so history is
    * only ever added to; the state being replaced is kept like any other.
    */
@@ -792,7 +845,7 @@ export async function docRoutes(app: FastifyInstance) {
         `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE d.item_id = $2 AND d.kind = 'meeting'
             AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
-          ORDER BY d.created_at LIMIT 1`,
+          ORDER BY d.updated_at DESC, d.created_at LIMIT 1`,
         [u.id, id, event.team_id],
       )
     ).rows[0];
@@ -1348,7 +1401,7 @@ export async function docRoutes(app: FastifyInstance) {
       );
       await noteTrash(db, id, u.id, false);
       await searchTrash(db, id, false);
-      await dropAgendaCopy(db, id);
+      await dropStandInCopy(db, id);
       const doc = (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS} WHERE d.id = $1`,
