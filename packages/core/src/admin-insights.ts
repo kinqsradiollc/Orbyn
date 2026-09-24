@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ApiKey } from "./types.js";
 
 /** What the admin console shows about traffic, usage and one account. */
 
@@ -141,6 +142,8 @@ export type AdminUserDetail = {
   two_factor: boolean;
   passkeys: number;
   api_keys: number;
+  /** Their personal API keys (never the keys themselves), newest first. */
+  keys: ApiKey[];
   teams: { id: string; name: string; role: string }[];
   counts: {
     items: number;

@@ -11,8 +11,14 @@ import {
   type NewWebhook,
   type Webhook,
 } from "@orbyn/core";
-import { pool, reader } from "../../db/pool.js";
-import { authenticate, digest } from "../../lib/auth.js";
+import { pool, reader, transaction } from "../../db/pool.js";
+import { audit } from "../../lib/audit.js";
+import {
+  apiKeyId,
+  authenticate,
+  digest,
+  isApiKeyRequest,
+} from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { assertPublicUrl } from "../../lib/netguard.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
@@ -20,7 +26,8 @@ import { sendWebhook } from "../../worker/webhooks.js";
 
 /**
  * Personal API keys and outgoing webhooks: how other tools (Zapier, Make,
- * scripts) work with Orbyn while the data stays on this server.
+ * scripts) work with your Orbyn account. Webhooks send only the events
+ * someone picked, to the address they gave.
  */
 const MAX_KEYS = 20;
 const MAX_WEBHOOKS = 10;
@@ -88,25 +95,69 @@ export async function accessRoutes(app: FastifyInstance) {
       if (count >= MAX_KEYS)
         fail(409, `You can have up to ${MAX_KEYS} API keys.`);
       const key = `ok_${randomBytes(32).toString("base64url")}`;
-      const row = (
-        await pool.query<ApiKey>(
-          `INSERT INTO api_keys (user_id, name, prefix, key_hash) VALUES ($1, $2, $3, $4)
-         RETURNING id, name, prefix, created_at, last_used_at`,
-          [u.id, d.name, key.slice(0, 10), digest(key)],
-        )
-      ).rows[0];
+      const row = await transaction(async (db) => {
+        const created = (
+          await db.query<ApiKey>(
+            `INSERT INTO api_keys (user_id, name, prefix, key_hash) VALUES ($1, $2, $3, $4)
+           RETURNING id, name, prefix, created_at, last_used_at`,
+            [u.id, d.name, key.slice(0, 10), digest(key)],
+          )
+        ).rows[0];
+        await audit(
+          {
+            actorId: u.id,
+            action: "api_key.created",
+            targetType: "api_key",
+            targetId: created.id,
+            details: {
+              user_id: u.id,
+              name: created.name,
+              prefix: created.prefix,
+            },
+          },
+          db,
+        );
+        return created;
+      });
       reply.code(201);
       return { ...row, key };
     },
   );
 
+  // A key may retire itself, but not the owner's other keys: a leaked key
+  // mustn't be able to cut off everything else they've connected.
   app.delete("/me/api-keys/:id", async (r, reply) => {
     const u = await authenticate(r);
-    const deleted = await pool.query(
-      "DELETE FROM api_keys WHERE id = $1 AND user_id = $2",
-      [idParam(r), u.id],
-    );
-    if (!deleted.rowCount) fail(404, "API key not found");
+    const id = idParam(r);
+    if (isApiKeyRequest(r) && (await apiKeyId(r)) !== id)
+      fail(
+        403,
+        "A personal API key can remove only itself. Sign in to Orbyn to remove other keys.",
+      );
+    await transaction(async (db) => {
+      const gone = (
+        await db.query<{ id: string; name: string; prefix: string }>(
+          "DELETE FROM api_keys WHERE id = $1 AND user_id = $2 RETURNING id, name, prefix",
+          [id, u.id],
+        )
+      ).rows[0];
+      if (!gone) fail(404, "API key not found");
+      await audit(
+        {
+          actorId: u.id,
+          action: "api_key.deleted",
+          targetType: "api_key",
+          targetId: gone.id,
+          details: {
+            user_id: u.id,
+            name: gone.name,
+            prefix: gone.prefix,
+            via: isApiKeyRequest(r) ? "api_key" : "session",
+          },
+        },
+        db,
+      );
+    });
     return reply.code(204).send();
   });
 

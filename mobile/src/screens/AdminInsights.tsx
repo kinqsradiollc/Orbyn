@@ -360,6 +360,12 @@ export function AdminAnalyticsView({ act }: { act: Act }) {
 
 // ---- One account -----------------------------------------------------------
 
+/** A history entry in words: "signed out", "API key revoked". */
+const historyLabel = (action: string) =>
+  action.startsWith("api_key.")
+    ? `API key ${action.slice("api_key.".length).replaceAll("_", " ")}`
+    : action.replace("user.", "").replaceAll("_", " ");
+
 /** One account and what an admin can do for it, each asked first. */
 export function AdminAccount({
   userId,
@@ -627,14 +633,54 @@ export function AdminAccount({
             ))}
           </View>
 
+          <View style={s.list}>
+            <Text style={[shared.eyebrow, s.pad]}>
+              API KEYS · {(d.keys ?? []).length}
+            </Text>
+            {!d.keys?.length && (
+              <Text style={[shared.small, s.logRow]}>
+                No personal API keys.
+              </Text>
+            )}
+            {(d.keys ?? []).map((k, n) => (
+              <View
+                key={k.id}
+                style={[s.logRow, s.rowBetween, n > 0 && s.divided]}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.title} numberOfLines={1}>
+                    {k.name}
+                  </Text>
+                  <Text style={shared.small} numberOfLines={1}>
+                    {k.prefix}… ·{" "}
+                    {k.last_used_at
+                      ? `last used ${when(k.last_used_at)}`
+                      : "never used"}
+                  </Text>
+                </View>
+                <SmallAction
+                  label="Revoke"
+                  destructive
+                  disabled={busy}
+                  onPress={() =>
+                    confirmAction(
+                      `Revoke the key “${k.name}”?`,
+                      "Anything using it stops working at once. They can make a new one in Settings.",
+                      "Revoke",
+                      () => then(() => client.adminRevokeApiKey(d.id, k.id)),
+                    )
+                  }
+                />
+              </View>
+            ))}
+          </View>
+
           {d.audit.length > 0 && (
             <View style={s.list}>
               <Text style={[shared.eyebrow, s.pad]}>HISTORY</Text>
               {d.audit.map((a, n) => (
                 <View key={a.id} style={[s.logRow, n > 0 && s.divided]}>
-                  <Text style={s.title}>
-                    {a.action.replace("user.", "").replaceAll("_", " ")}
-                  </Text>
+                  <Text style={s.title}>{historyLabel(a.action)}</Text>
                   <Text style={shared.small}>
                     {a.actor_email ?? "System"} · {when(a.created_at)}
                   </Text>

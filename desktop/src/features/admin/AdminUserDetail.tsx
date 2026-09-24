@@ -8,7 +8,7 @@ import {
   Pencil,
   ShieldOff,
 } from "lucide-react";
-import type { AdminUserDetail as Detail } from "@orbyn/core";
+import type { AdminUserDetail as Detail, ApiKey } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
 import { useConfirm } from "../../components/Confirm";
@@ -56,11 +56,18 @@ const device = (agent: string) =>
               ? agent.slice(0, 40)
               : "Unknown device";
 
+/** A history entry in words: "signed out", "API key revoked". */
+const historyLabel = (action: string) =>
+  action.startsWith("api_key.")
+    ? `API key ${action.slice("api_key.".length).replaceAll("_", " ")}`
+    : action.replace("user.", "").replaceAll("_", " ");
+
 /**
  * One account in full, and what an admin can do for it: correct the name or
- * email, sign it out everywhere or end one session, give a password reset
- * link, clear two-step verification, and export its data. Each asks first
- * and lands in the audit log. The contents of their items stay private.
+ * email, sign it out everywhere or end one session, revoke a personal API
+ * key, give a password reset link, clear two-step verification, and export
+ * its data. Each asks first and lands in the audit log. The contents of their
+ * items stay private.
  */
 export function AdminUserDetail({
   userId,
@@ -107,6 +114,8 @@ export function AdminUserDetail({
       </section>
     );
   const d: Detail = data;
+  // A server from before key listing sends only the count.
+  const keys = d.keys ?? [];
 
   const saveProfile = async () => {
     if (!editing) return;
@@ -165,6 +174,19 @@ export function AdminUserDetail({
     )
       return;
     await run(() => client.adminEndSession(d.id, id));
+  };
+
+  const revokeKey = async (k: ApiKey) => {
+    if (
+      !(await ask({
+        title: `Revoke the key “${k.name}”?`,
+        body: "Anything using it stops working at once. They can make a new one in Settings → Connections.",
+        confirmLabel: "Revoke key",
+        destructive: true,
+      }))
+    )
+      return;
+    await run(() => client.adminRevokeApiKey(d.id, k.id));
   };
 
   const resetLink = async () => {
@@ -441,6 +463,40 @@ export function AdminUserDetail({
 
       <div className="card">
         <div className="section-heading">
+          <h2>
+            API keys <span>{keys.length}</span>
+          </h2>
+        </div>
+        {keys.length === 0 ? (
+          <p className="db-empty">No personal API keys.</p>
+        ) : (
+          <ul className="admin-sessions admin-keys">
+            {keys.map((k) => (
+              <li key={k.id}>
+                <span>
+                  <strong>{k.name}</strong>
+                  <small className="muted">
+                    <code>{k.prefix}…</code> · created {when(k.created_at)} ·{" "}
+                    {k.last_used_at
+                      ? `last used ${when(k.last_used_at)}`
+                      : "never used"}
+                  </small>
+                </span>
+                <button
+                  className="text-button danger-text"
+                  disabled={busy}
+                  onClick={() => void revokeKey(k)}
+                >
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="section-heading">
           <h2>History</h2>
         </div>
         {d.audit.length === 0 ? (
@@ -450,9 +506,7 @@ export function AdminUserDetail({
             {d.audit.map((a) => (
               <li key={a.id}>
                 <span>
-                  <strong>
-                    {a.action.replace("user.", "").replaceAll("_", " ")}
-                  </strong>
+                  <strong>{historyLabel(a.action)}</strong>
                   <small className="muted">
                     {a.actor_email ?? "System"} · {when(a.created_at)}
                   </small>

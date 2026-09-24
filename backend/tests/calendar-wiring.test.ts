@@ -16,6 +16,7 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { remindSubscribed } = await import("../src/worker/planning.js");
 const { getCalendar } = await import("../src/modules/ai/agent/workspace.js");
+const { outbound } = await import("../src/lib/netguard.js");
 const { addDays, localDateKey, dayTime } = await import("@orbyn/core");
 const app = await buildApp();
 
@@ -96,12 +97,12 @@ const timetable = (lecture = "Algorithms lecture") =>
 
 let feed = timetable();
 let fetches = 0;
-const realFetch = globalThis.fetch;
+const realRequest = outbound.request;
 
 before(async () => {
   await migrate();
   // Every subscription reads the feed above; nothing leaves the machine.
-  globalThis.fetch = (async () => {
+  outbound.request = (async () => {
     fetches++;
     const stamp = new Date()
       .toISOString()
@@ -117,10 +118,10 @@ before(async () => {
       status: 200,
       headers: { "content-type": "text/calendar" },
     });
-  }) as typeof fetch;
+  }) as typeof outbound.request;
 });
 after(async () => {
-  globalThis.fetch = realFetch;
+  outbound.request = realRequest;
   await app.close();
   await pool.end();
 });

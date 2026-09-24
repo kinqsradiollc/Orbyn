@@ -7,12 +7,20 @@ export function McpNote() {
   return (
     <SettingsSection className="card settings-card" aria-labelledby="mcp-title">
       <h2 id="mcp-title">
-        <Bot size={18} aria-hidden="true" /> Connect an AI assistant (MCP)
+        <Bot size={18} aria-hidden="true" /> Connect an AI tool (MCP)
       </h2>
       <p className="muted">
-        Let your own AI tools — Claude, Cursor, ChatGPT — search and add to your
-        planner. Point an MCP client at the address below and sign it in with a
-        personal API key (create one above). It can do only what that key can.
+        Let an AI tool that takes a request header, such as Claude Code, Cursor
+        or VS Code, search your tasks, add tasks and read your agenda. Point it
+        at the address below and send a personal API key (make one above) as{" "}
+        <code>Authorization: Bearer …</code>.
+      </p>
+      <p className="muted">
+        The key reaches all your tasks, pages and calendar, so keep it private
+        and delete it when you stop using the tool. It can&apos;t make or remove
+        other keys, or change your account settings, sign-in or webhooks.
+        ChatGPT and claude.ai don&apos;t take keys, so they can&apos;t connect
+        this way.
       </p>
       <code className="two-factor-secret">{url}</code>
     </SettingsSection>

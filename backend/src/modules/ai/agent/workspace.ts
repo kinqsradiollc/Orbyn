@@ -168,6 +168,12 @@ const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.status, p.deadline, p.
   FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
 const VISIBLE_PROJECTS = `((p.team_id IS NULL AND p.user_id = $1)
   OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+/** Pages `$1` can open (as docs/routes.ts): their own, and their teams'. */
+const VISIBLE_DOCS = `((d.team_id IS NULL AND d.user_id = $1)
+  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+/** Work records `$1` can open (as work-records/routes.ts). */
+const VISIBLE_RECORDS = `((w.team_id IS NULL AND w.created_by = $1)
+  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
 
 const projectView = (p: ProjectRow, timezone: string) => {
   const counts = { task_count: p.task_count, done_count: p.done_count };
@@ -238,11 +244,13 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
         LIMIT 200`,
       [ctx.user.id, a.project_id],
     ),
+    // Each page and record is checked on its own, as the app does: one kept
+    // beside a team project can still be someone's personal page.
     pool.query<{ id: string; title: string; updated_at: Date }>(
-      `SELECT id, title, updated_at FROM docs
-        WHERE project_id = $1 AND deleted_at IS NULL
-        ORDER BY updated_at DESC LIMIT 20`,
-      [a.project_id],
+      `SELECT d.id, d.title, d.updated_at FROM docs d
+        WHERE d.project_id = $2 AND d.deleted_at IS NULL AND ${VISIBLE_DOCS}
+        ORDER BY d.updated_at DESC LIMIT 20`,
+      [ctx.user.id, a.project_id],
     ),
     pool.query<{
       kind: string;
@@ -251,10 +259,10 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       due_at: Date | null;
       linked_item_id: string | null;
     }>(
-      `SELECT kind, title, status, due_at, linked_item_id FROM work_records
-        WHERE project_id = $1 AND status IN ('proposed', 'open')
-        ORDER BY created_at DESC LIMIT 30`,
-      [a.project_id],
+      `SELECT w.kind, w.title, w.status, w.due_at, w.linked_item_id FROM work_records w
+        WHERE w.project_id = $2 AND ${VISIBLE_RECORDS} AND w.status IN ('proposed', 'open')
+        ORDER BY w.created_at DESC LIMIT 30`,
+      [ctx.user.id, a.project_id],
     ),
   ]);
   const task = (t: (typeof tasks.rows)[number]) => ({

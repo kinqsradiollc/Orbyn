@@ -17,9 +17,10 @@ import { exportData } from "../organize/portability.js";
 /**
  * What an admin can do for one account beyond role, disable and delete:
  * see it in full (never the contents of its items), correct its name and
- * email, sign it out everywhere or end one session, issue a password reset
- * link, clear two-step verification for someone locked out, and export its
- * data. Every action is written to the audit log with who did it.
+ * email, sign it out everywhere or end one session, revoke one of its
+ * personal API keys, issue a password reset link, clear two-step
+ * verification for someone locked out, and export its data. Every action is
+ * written to the audit log with who did it.
  */
 export async function adminUserPowerRoutes(app: FastifyInstance) {
   const exists = async (id: string) => {
@@ -44,7 +45,7 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!user) fail(404, "User not found");
-    const [sessions, security, teams, counts, activity, trail] =
+    const [sessions, security, teams, counts, activity, trail, keys] =
       await Promise.all([
         db.query(
           `SELECT id::text, user_agent, last_seen_at, expires_at FROM sessions
@@ -80,11 +81,18 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
             WHERE user_id = $1 AND day > current_date - 30 ORDER BY day`,
           [id],
         ),
+        // The account's own entries, and its API keys' (made, deleted, revoked).
         db.query(
           `SELECT a.id::text, a.action, COALESCE(u.email, a.actor_email) AS actor_email, a.created_at
              FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
-            WHERE a.target_type = 'user' AND a.target_id = $1
+            WHERE (a.target_type = 'user' AND a.target_id = $1)
+               OR (a.target_type = 'api_key' AND a.details->>'user_id' = $1)
             ORDER BY a.created_at DESC LIMIT 15`,
+          [id],
+        ),
+        db.query(
+          `SELECT id, name, prefix, created_at, last_used_at FROM api_keys
+            WHERE user_id = $1 ORDER BY created_at DESC`,
           [id],
         ),
       ]);
@@ -97,6 +105,7 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
       two_factor: sec.two_factor,
       passkeys: sec.passkeys,
       api_keys: sec.api_keys,
+      keys: keys.rows,
       teams: teams.rows,
       counts: counts.rows[0],
       activity: activity.rows,
@@ -197,6 +206,36 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
           targetType: "user",
           targetId: id,
           details: { email },
+        },
+        db,
+      );
+    });
+    return reply.code(204).send();
+  });
+
+  // Revoke one personal API key: a leaked key, or a script that misbehaves.
+  // Whatever used it stops working at once; the owner can make a new one.
+  app.delete("/admin/users/:id/api-keys/:keyId", async (r, reply) => {
+    const actor = await authorize(r, "users:manage");
+    const id = idParam(r);
+    const keyId = (r.params as { keyId: string }).keyId;
+    if (!/^[0-9a-f-]{36}$/i.test(keyId)) fail(404, "API key not found");
+    const { email } = await exists(id);
+    await transaction(async (db) => {
+      const gone = (
+        await db.query<{ id: string; name: string; prefix: string }>(
+          "DELETE FROM api_keys WHERE user_id = $1 AND id = $2 RETURNING id, name, prefix",
+          [id, keyId],
+        )
+      ).rows[0];
+      if (!gone) fail(404, "API key not found");
+      await audit(
+        {
+          actorId: actor.id,
+          action: "api_key.revoked",
+          targetType: "api_key",
+          targetId: gone.id,
+          details: { user_id: id, email, name: gone.name, prefix: gone.prefix },
         },
         db,
       );

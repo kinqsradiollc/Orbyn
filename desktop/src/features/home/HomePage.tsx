@@ -87,7 +87,7 @@ const CONNECTS: Point[] = [
   {
     icon: Bot,
     title: "Your own AI tools",
-    body: "Point Claude, Cursor or ChatGPT at Orbyn over MCP to search and add to your planner.",
+    body: "Connect Claude Code, Cursor or another MCP tool with a personal API key to search your tasks, add new ones and read your agenda.",
   },
   {
     icon: MessageSquare,
