@@ -127,8 +127,8 @@ function Body() {
         <View style={[shared.softCard, s.privacy]}>
           <Icon name="shieldCheck" size={18} color={colors.accent} />
           <Text style={[shared.body, { flex: 1 }]}>
-            Your data goes only to the apps and addresses you connect here, and
-            you can turn each one off at any time.
+            Nothing here sends your data anywhere until you connect it, and you
+            can turn each one off at any time.
           </Text>
         </View>
 
@@ -137,8 +137,8 @@ function Body() {
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
             Let scripts and other apps work with your tasks, pages and calendar
-            as you. A key can’t change your account, sign-in or keys. Treat it
-            like a password.
+            as you. A key can’t make or remove other keys, or change your
+            account settings, sign-in or webhooks. Treat it like a password.
           </Text>
           {newKey && (
             <FadeIn style={s.secret}>

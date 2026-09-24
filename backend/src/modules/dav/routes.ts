@@ -109,25 +109,58 @@ async function events(userId: string) {
 
 const CAL = "/dav/cal/default/";
 
+/** An event a `.ics` file names, with what an edit from a client must keep. */
+type DavEvent = {
+  id: string;
+  version: number;
+  team_id: string | null;
+  status: string;
+  priority: string;
+  meeting_url: string;
+};
+
 /** Resolve a `<name>.ics` file to an event the user can see, or null. */
 async function resolveFile(
   userId: string,
   file: string,
-): Promise<{ id: string; version: number } | null> {
+): Promise<DavEvent | null> {
   const base = file.replace(/\.ics$/i, "");
-  let id: string | undefined = (
+  const id: string | undefined = (
     await pool.query<{ item_id: string }>(
       "SELECT item_id FROM caldav_objects WHERE user_id=$1 AND uid=$2",
       [userId, base],
     )
   ).rows[0]?.item_id;
   const row = (
-    await pool.query<{ id: string; version: number }>(
-      `SELECT i.id, i.version FROM items i WHERE i.id=$2 AND ${DAV_EVENTS}`,
+    await pool.query<DavEvent>(
+      `SELECT i.id, i.version, i.team_id, i.status, i.priority, i.meeting_url
+         FROM items i WHERE i.id=$2 AND ${DAV_EVENTS}`,
       [userId, id ?? (isUuid(base) ? base : null)],
     )
   ).rows[0];
   return row ?? null;
+}
+
+/**
+ * The notes a client sent back, without the meeting link the feed added to
+ * the description (eventLines puts it after the notes), so a round trip
+ * through a calendar app doesn't copy the link into the notes each time.
+ */
+function notesWithoutMeetingLink(notes: string, meeting: string) {
+  if (!meeting) return notes;
+  const text = notes.replace(/\s+$/, "");
+  if (text === meeting) return "";
+  if (!text.endsWith(meeting)) return notes;
+  const before = text.slice(0, -meeting.length);
+  return /\n\s*$/.test(before) ? before.replace(/\s+$/, "") : notes;
+}
+
+/** A write refused by the item rules, as a plain-text CalDAV answer. */
+function refused(reply: FastifyReply, e: unknown, fallback: string) {
+  const status = (e as { statusCode?: number }).statusCode ?? 400;
+  return reply
+    .code(status >= 400 && status < 500 ? status : 400)
+    .send((e as Error).message || fallback);
 }
 
 export async function davRoutes(app: FastifyInstance) {
@@ -271,11 +304,14 @@ export async function davRoutes(app: FastifyInstance) {
       const parsed = parseICalendar(String(r.body ?? ""), tz);
       if (!parsed)
         return reply.code(400).send("Could not read a VEVENT from the body.");
+      const existing = await resolveFile(u.id, file);
       let data;
       try {
         data = itemData.parse({
           title: parsed.title,
-          notes: parsed.notes,
+          notes: existing
+            ? notesWithoutMeetingLink(parsed.notes, existing.meeting_url)
+            : parsed.notes,
           kind: "event",
           location: parsed.location,
           due_at: parsed.due_at,
@@ -283,11 +319,22 @@ export async function davRoutes(app: FastifyInstance) {
           timezone: parsed.timezone,
           ...(parsed.end_at ? { end_at: parsed.end_at } : {}),
           ...(parsed.rrule ? { rrule: parsed.rrule } : {}),
+          // An edit changes only what the .ics carries. The event stays in
+          // its team (a calendar app knows nothing of teams) with its status
+          // and priority; everything else the .ics leaves out (list, tags,
+          // assignee, alerts, people invited, colour, busy, project) is
+          // kept by the write path when it's omitted.
+          ...(existing
+            ? {
+                team_id: existing.team_id,
+                status: existing.status,
+                priority: existing.priority,
+              }
+            : {}),
         });
       } catch (e) {
         return reply.code(400).send((e as Error).message ?? "Invalid event.");
       }
-      const existing = await resolveFile(u.id, file);
       const actor = { id: u.id, role: u.role };
       try {
         if (existing) {
@@ -316,10 +363,7 @@ export async function davRoutes(app: FastifyInstance) {
         });
         return reply.code(item ? 201 : 400).send();
       } catch (e) {
-        const status = (e as { statusCode?: number }).statusCode ?? 400;
-        return reply
-          .code(status >= 400 && status < 500 ? status : 400)
-          .send((e as Error).message ?? "Could not save the event.");
+        return refused(reply, e, "Could not save the event.");
       }
     },
   });
@@ -334,17 +378,21 @@ export async function davRoutes(app: FastifyInstance) {
       const file = String((r.params as { file: string }).file);
       const existing = await resolveFile(u.id, file);
       if (!existing) return reply.code(404).send();
-      await transaction((db) =>
-        mutate(
-          db,
-          { id: u.id, role: u.role },
-          {
-            operation: "delete",
-            item_id: existing.id,
-            version: existing.version,
-          },
-        ),
-      );
+      try {
+        await transaction((db) =>
+          mutate(
+            db,
+            { id: u.id, role: u.role },
+            {
+              operation: "delete",
+              item_id: existing.id,
+              version: existing.version,
+            },
+          ),
+        );
+      } catch (e) {
+        return refused(reply, e, "Could not delete the event.");
+      }
       return reply.code(204).send();
     },
   });

@@ -13,7 +13,12 @@ import {
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
-import { authenticate, digest, isApiKeyRequest } from "../../lib/auth.js";
+import {
+  apiKeyId,
+  authenticate,
+  digest,
+  isApiKeyRequest,
+} from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { assertPublicUrl } from "../../lib/netguard.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
@@ -119,10 +124,16 @@ export async function accessRoutes(app: FastifyInstance) {
     },
   );
 
-  // A key may delete keys too: that retires access, it can't take any.
+  // A key may retire itself, but not the owner's other keys: a leaked key
+  // mustn't be able to cut off everything else they've connected.
   app.delete("/me/api-keys/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
+    if (isApiKeyRequest(r) && (await apiKeyId(r)) !== id)
+      fail(
+        403,
+        "A personal API key can remove only itself. Sign in to Orbyn to remove other keys.",
+      );
     await transaction(async (db) => {
       const gone = (
         await db.query<{ id: string; name: string; prefix: string }>(

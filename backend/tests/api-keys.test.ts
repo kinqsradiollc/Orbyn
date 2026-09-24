@@ -123,7 +123,18 @@ test("a key is refused on every account route, with a reason", async () => {
     ["DELETE", `/me/passkeys/${any}`],
     ["GET", "/me/export"],
     ["DELETE", "/me", { password: "a-long-test-password" }],
+    ["PUT", "/me", { email_reminders: false }],
+    ["PUT", "/me/profile", { bio: "Taken over" }],
+    ["PUT", "/me/privacy", { analytics_opt_out: true }],
+    ["POST", "/me/timezone", { timezone: "Pacific/Kiritimati" }],
+    ["POST", "/me/consent", { terms_version: "any" }],
+    ["POST", "/me/inbox/rotate"],
+    ["DELETE", "/me/inbox"],
     ["POST", "/me/calendar-feed", {}],
+    ["PUT", "/me/calendar-feed", { include_blocks: true }],
+    ["DELETE", "/me/calendar-feed"],
+    ["POST", "/devices", { token: "ExponentPushToken[key-test]" }],
+    ["DELETE", "/devices", { token: "ExponentPushToken[key-test]" }],
     ["POST", `/ai/proposals/${any}/apply`],
     ["POST", "/ai/chat", { message: "hi", timezone: "UTC", history: [] }],
     ["POST", "/ai/chat/start", { message: "hi", timezone: "UTC" }],
@@ -141,10 +152,21 @@ test("a key is refused on every account route, with a reason", async () => {
     assert.equal(r.status, 403, `${method} ${url}: ${r.raw.body}`);
     assert.match(r.body.message, /API keys can't/, `${method} ${url}`);
   }
-  // Nothing happened: the account is still there, with one key and no 2FA.
-  assert.equal((await call(me.token, "GET", "/me")).status, 200);
+  // Nothing happened: the account is still there, with one key and no 2FA,
+  // its settings as they were, and no phone of the key's getting reminders.
+  const account = await call(me.token, "GET", "/me");
+  assert.equal(account.status, 200);
+  assert.equal(account.body.bio, "");
   assert.equal((await call(me.token, "GET", "/me/api-keys")).body.length, 1);
   assert.equal((await call(me.token, "GET", "/me/2fa")).body.enabled, false);
+  assert.equal(
+    (await call(me.token, "GET", "/me/privacy")).body.analytics_opt_out,
+    false,
+  );
+  const devices = await pool.query(
+    "SELECT 1 FROM devices WHERE token = 'ExponentPushToken[key-test]'",
+  );
+  assert.equal(devices.rowCount, 0);
   // The owner's own session can do all of it.
   assert.equal((await call(me.token, "GET", "/me/webhooks")).status, 200);
   assert.equal((await call(me.token, "GET", "/me/sessions")).status, 200);
@@ -176,6 +198,35 @@ test("a key keeps items, pages and the calendar, and can read its account", asyn
   assert.equal((await call(key, "GET", "/me")).status, 200);
   assert.equal((await call(key, "GET", "/me/api-keys")).status, 200);
   assert.equal((await call(key, "GET", "/me/calendar-feed")).status, 200);
+  assert.equal((await call(key, "GET", "/me/profile")).status, 200);
+  assert.equal((await call(key, "GET", "/me/privacy")).status, 200);
+});
+
+test("a key can remove itself, but not its owner's other keys", async () => {
+  const owner = await newUser();
+  const first = await newKey(owner.token, "Zapier");
+  const second = await newKey(owner.token, "Home script");
+  const other = await newUser();
+  const theirs = await newKey(other.token, "Theirs");
+  for (const id of [second.id, theirs.id, randomUUID()]) {
+    const r = await call(first.key, "DELETE", `/me/api-keys/${id}`);
+    assert.equal(r.status, 403, r.raw.body);
+    assert.match(r.body.message, /can remove only itself/);
+  }
+  assert.equal((await call(second.key, "GET", "/items")).status, 200);
+  assert.equal((await call(theirs.key, "GET", "/items")).status, 200);
+  assert.equal((await auditFor(second.id)).length, 1, "only its creation");
+  assert.equal(
+    (await call(first.key, "DELETE", `/me/api-keys/${first.id}`)).status,
+    204,
+  );
+  assert.equal((await call(first.key, "GET", "/items")).status, 401);
+  // Signed in, the owner removes any of theirs.
+  assert.equal(
+    (await call(owner.token, "DELETE", `/me/api-keys/${second.id}`)).status,
+    204,
+  );
+  assert.equal((await call(second.key, "GET", "/items")).status, 401);
 });
 
 test("keys: 401 for a bad or deleted key, 422 for a bad name, 429 past the limit", async () => {

@@ -1720,7 +1720,7 @@ few more). A bio is up to 300 characters. `GET /me` also carries `handle` and `b
 
 ## API keys, webhooks and the calendar feed
 
-Other tools reach your Orbyn account through these; nothing is sent anywhere you didn't set up here.
+Other tools reach your Orbyn account through these. Nothing here sends your data anywhere until you connect it, and each one can be turned off at any time.
 
 | Method and path                               | Body / result                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -1772,11 +1772,15 @@ out each subscription (`subscription_ids`; missing means all). They are never re
 own feed or CalDAV, which would duplicate them in the apps they came from.
 
 API keys act as you for items, pages, projects, the calendar and CalDAV, and count against their
-own rate limit. A key is refused (`403`) wherever it could take over the account, send data
-somewhere new or spend the hosted assistant: creating keys (`POST /me/api-keys`; deleting one is
-fine), `/me/webhooks*`, `/me/chat*`, `/me/sessions*`, `/me/2fa*`, `/me/passkeys*`, `/me/export`,
-`DELETE /me`, `POST /me/calendar-feed`, every `/ai/*` route (the assistant, drafts, study help and
-applying proposals), `/docs/:id/assist`, `/docs/:id/ask`, and the admin console. An admin's key
+own rate limit. A key is refused (`403`) wherever it could take over or change the account, send
+data somewhere new or spend the hosted assistant: creating keys (`POST /me/api-keys`), deleting
+any key but itself (`DELETE /me/api-keys/:id`), `/me/webhooks*`, `/me/chat*`, `/me/sessions*`,
+`/me/2fa*`, `/me/passkeys*`, `/me/export`, `PUT /me`, `DELETE /me`, `PUT /me/profile`,
+`PUT /me/privacy`, `POST /me/timezone`, `POST /me/consent`, `POST /me/inbox/rotate`,
+`DELETE /me/inbox`, `POST`/`PUT`/`DELETE /me/calendar-feed`, `/devices` (a phone added by a key
+would keep getting reminders after the key is gone), every `/ai/*` route (the assistant, drafts,
+study help and applying proposals), `/docs/:id/assist`, `/docs/:id/ask`, and the admin console.
+Reading those settings is fine. An admin's key
 carries none of an admin's powers: it can't manage teams its owner isn't on, and it doesn't get
 past maintenance mode. Making and deleting a key is in the audit log (`api_key.created`,
 `api_key.deleted`), and admins can see a person's keys and revoke one (`api_key.revoked`). Webhook
@@ -1800,7 +1804,9 @@ Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-E
 HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried
 with backoff for up to 8 attempts. Webhooks must be `https://` and reach a public address (checked
 when saved and again before every delivery, and the delivery then connects to the address that
-was checked). Redirects aren't followed.
+was checked). Redirects aren't followed. A webhook saved on `http://` before this rule was turned
+off (`active: false`) with a `last_error` saying to add it again with `https://`; a subscribed
+calendar saved on `http://` moved to `https://` and was read again (migration `071_https_links`).
 
 **The feed** has all-day items as dates, free events and tasks as `TRANSP:TRANSPARENT`, a
 `VALARM` per alert, invitees (`ORGANIZER`, `ATTENDEE` with their answers), repeating items as
@@ -1851,7 +1857,7 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 
 `/dav/` is a CalDAV server so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively — and, for events (`VEVENT`), create, edit and delete them back. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`).
 
-It shows the same events the app's calendar does, by the same rule: your personal events, and your teams' events for as long as you're on the team (an event you made in a team you've since left stays with that team). Viewers can read team events but not change them (`403`).
+It shows the same events the app's calendar does, by the same rule: your personal events, and your teams' events for as long as you're on the team (an event you made in a team you've since left stays with that team). Members can edit and delete team events from their calendar app as they can in Orbyn, and viewers can read them but not change them (`403`). An edit changes only what the `.ics` carries (title, times, repeat rule, notes and place): the event stays in its team, with its creator, status, priority, list, tags, alerts, people invited, colour and meeting link.
 
 - `PROPFIND`, `REPORT`, `GET` read the calendar and its events.
 - `PUT` an `.ics` (one `VEVENT`) creates or replaces an event; the client's `UID` becomes the resource's href, so later edits map back to it. → `201` on create, `204` on replace. An unreadable body is `400`.

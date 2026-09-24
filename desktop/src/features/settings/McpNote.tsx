@@ -17,9 +17,10 @@ export function McpNote() {
       </p>
       <p className="muted">
         The key reaches all your tasks, pages and calendar, so keep it private
-        and delete it when you stop using the tool. It can&apos;t change your
-        account, sign-in or keys. ChatGPT and claude.ai don&apos;t take keys, so
-        they can&apos;t connect this way.
+        and delete it when you stop using the tool. It can&apos;t make or remove
+        other keys, or change your account settings, sign-in or webhooks.
+        ChatGPT and claude.ai don&apos;t take keys, so they can&apos;t connect
+        this way.
       </p>
       <code className="two-factor-secret">{url}</code>
     </SettingsSection>

@@ -105,21 +105,37 @@ export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't manage your account, its sign-in, keys or webhooks, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
- * owner: manage the account or how it signs in, mint more access, send data
- * somewhere new, or spend the hosted assistant. A leaked key must not be
- * able to lock its owner out. Keys keep items, pages and the calendar over
- * REST, and CalDAV. Matched on the method and the route pattern.
+ * owner: change the account's settings or how it signs in, mint more access,
+ * send data somewhere new, agree to anything for its owner, or spend the
+ * hosted assistant. A leaked key must not be able to lock its owner out.
+ * Keys keep items, pages and the calendar over REST, and CalDAV, and may
+ * read the account's settings. Matched on the method and the route pattern.
+ * (Deleting a key is refused in its route unless it's the calling key.)
  */
 const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   { method: "POST", route: /^\/me\/api-keys$/ },
   { route: /^\/me\/(?:webhooks|chat|sessions|2fa|passkeys)(?:\/|$)/ },
   { route: /^\/me\/export$/ },
+  // Account settings: email reminders, deleting the account, the public
+  // profile, privacy choices, the time zone, agreeing to the Terms, the
+  // email-to-task address and the calendar feed link. Reading them is fine.
+  { method: "PUT", route: /^\/me$/ },
   { method: "DELETE", route: /^\/me$/ },
+  { method: "PUT", route: /^\/me\/(?:profile|privacy)$/ },
+  { method: "POST", route: /^\/me\/timezone$/ },
+  { method: "POST", route: /^\/me\/consent$/ },
+  { method: "POST", route: /^\/me\/inbox\/rotate$/ },
+  { method: "DELETE", route: /^\/me\/inbox$/ },
   { method: "POST", route: /^\/me\/calendar-feed$/ },
+  { method: "PUT", route: /^\/me\/calendar-feed$/ },
+  { method: "DELETE", route: /^\/me\/calendar-feed$/ },
+  // Push devices: a phone added by a key would keep getting reminders after
+  // the key is gone. The apps register theirs signed in.
+  { route: /^\/devices$/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },

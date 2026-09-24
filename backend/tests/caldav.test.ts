@@ -360,3 +360,185 @@ test("CalDAV shows the events the app does: your teams' while you're on them", a
     404,
   );
 });
+
+test("editing a team event from a calendar app keeps it in the team, with what the .ics leaves out", async () => {
+  // Three people on one team, each with a key for their calendar app.
+  const person = async (name: string) => {
+    const address = `dav-${name.toLowerCase()}-${randomUUID()}@example.com`;
+    const reg = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: address, password: "a-long-test-password", name },
+    });
+    const token = reg.json().token as string;
+    const made = await app.inject({
+      method: "POST",
+      url: "/me/api-keys",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Calendar" },
+    });
+    const key = made.json().key as string;
+    const auth = "Basic " + Buffer.from(`${address}:${key}`).toString("base64");
+    return {
+      id: reg.json().user.id as string,
+      email: address,
+      api: (
+        method: "GET" | "POST" | "PUT" | "DELETE",
+        url: string,
+        payload?: object,
+      ) =>
+        app.inject({
+          method,
+          url,
+          headers: { authorization: `Bearer ${token}` },
+          ...(payload ? { payload } : {}),
+        }),
+      dav: (method: "GET" | "PUT" | "DELETE", url: string, body?: string) =>
+        app.inject({
+          method,
+          url,
+          headers: {
+            authorization: auth,
+            ...(body ? { "content-type": "text/calendar" } : {}),
+          },
+          ...(body ? { payload: body } : {}),
+        }),
+    };
+  };
+  const owner = await person("Owner");
+  const member = await person("Member");
+  const viewer = await person("Viewer");
+  const team = (await owner.api("POST", "/teams", { name: "Studio" })).json();
+  for (const [who, role] of [
+    [member, "member"],
+    [viewer, "viewer"],
+  ] as const)
+    assert.equal(
+      (
+        await owner.api("POST", `/teams/${team.id}/members`, {
+          email: who.email,
+          role,
+        })
+      ).statusCode,
+      201,
+    );
+  const list = (
+    await owner.api("POST", "/lists", { name: "Studio work", team_id: team.id })
+  ).json();
+  const tag = (
+    await owner.api("POST", "/tags", { name: "client", team_id: team.id })
+  ).json();
+  const start = Date.now() + 4 * 86_400_000;
+  const teamEvent = async (by: typeof owner, title: string) => {
+    const made = await by.api("POST", "/items", {
+      title,
+      kind: "event",
+      team_id: team.id,
+      due_at: new Date(start).toISOString(),
+      end_at: new Date(start + 3_600_000).toISOString(),
+      notes: "Bring the drafts.",
+      location: "Studio",
+      meeting_url: "https://meet.example.com/studio",
+      priority: "high",
+      list_id: list.id,
+      tag_ids: [tag.id],
+      alerts: [10, 60],
+      color: "#376c51",
+      busy: false,
+      attendees: [{ email: "guest@example.com", name: "Guest" }],
+    });
+    assert.equal(made.statusCode, 201, made.body);
+    return made.json() as { id: string; user_id: string };
+  };
+  // What the calendar app sends back: the event as served, one field changed.
+  const edited = async (by: typeof owner, id: string, title: string) => {
+    const got = await by.dav("GET", `/dav/cal/default/${id}.ics`);
+    assert.equal(got.statusCode, 200, got.body);
+    assert.match(got.body, /DESCRIPTION:Bring the drafts\.\\n\\nhttps:/);
+    return got.body.replace(/SUMMARY:[^\r\n]*/, `SUMMARY:${title}`);
+  };
+  const kept = async (id: string, title: string, userId: string) => {
+    // Everyone on the team still has it, as it was apart from the title.
+    for (const who of [owner, member, viewer]) {
+      const r = await who.api("GET", `/items/${id}`);
+      assert.equal(r.statusCode, 200, r.body);
+    }
+    const item = (await member.api("GET", `/items/${id}`)).json();
+    assert.equal(item.title, title);
+    assert.equal(item.team_id, team.id);
+    assert.equal(item.user_id, userId);
+    assert.equal(item.priority, "high");
+    assert.equal(item.status, "todo");
+    assert.equal(item.list_id, list.id);
+    assert.deepEqual(item.tag_ids, [tag.id]);
+    assert.deepEqual(item.alerts, [10, 60]);
+    assert.equal(item.color, "#376c51");
+    assert.equal(item.busy, false);
+    assert.equal(item.location, "Studio");
+    assert.equal(item.meeting_url, "https://meet.example.com/studio");
+    // The link the feed adds to the description isn't copied into the notes.
+    assert.equal(item.notes, "Bring the drafts.");
+    assert.deepEqual(
+      (item.attendees ?? []).map((a: { email: string }) => a.email),
+      ["guest@example.com"],
+    );
+  };
+
+  // A member edits a teammate's team event from Apple Calendar.
+  const owners = await teamEvent(owner, "Client review");
+  const put = await member.dav(
+    "PUT",
+    `/dav/cal/default/${owners.id}.ics`,
+    await edited(member, owners.id, "Client review (moved)"),
+  );
+  assert.equal(put.statusCode, 204, put.body);
+  await kept(owners.id, "Client review (moved)", owner.id);
+  // Twice, so nothing piles up in the notes on a second round trip.
+  assert.equal(
+    (
+      await member.dav(
+        "PUT",
+        `/dav/cal/default/${owners.id}.ics`,
+        await edited(member, owners.id, "Client review (moved again)"),
+      )
+    ).statusCode,
+    204,
+  );
+  await kept(owners.id, "Client review (moved again)", owner.id);
+
+  // The owner edits a member's: it stays the team's, and the member's.
+  const members = await teamEvent(member, "Studio standup");
+  assert.equal(
+    (
+      await owner.dav(
+        "PUT",
+        `/dav/cal/default/${members.id}.ics`,
+        await edited(owner, members.id, "Studio standup (owner)"),
+      )
+    ).statusCode,
+    204,
+  );
+  await kept(members.id, "Studio standup (owner)", member.id);
+
+  // A viewer sees team events but can't change or remove them.
+  const refused = await viewer.dav(
+    "PUT",
+    `/dav/cal/default/${members.id}.ics`,
+    await edited(viewer, members.id, "Taken over"),
+  );
+  assert.equal(refused.statusCode, 403, refused.body);
+  assert.equal(
+    (await viewer.dav("DELETE", `/dav/cal/default/${members.id}.ics`))
+      .statusCode,
+    403,
+  );
+  await kept(members.id, "Studio standup (owner)", member.id);
+
+  // A member may remove a team event, as in the app.
+  assert.equal(
+    (await member.dav("DELETE", `/dav/cal/default/${owners.id}.ics`))
+      .statusCode,
+    204,
+  );
+  assert.equal((await owner.api("GET", `/items/${owners.id}`)).statusCode, 404);
+});
