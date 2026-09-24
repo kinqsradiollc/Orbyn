@@ -9,11 +9,16 @@ import {
 } from "react";
 import {
   ArrowLeft,
+  Bold,
   Check,
   Copy,
   Download,
   GripVertical,
+  Highlighter,
   History,
+  Italic,
+  Link,
+  ListChecks,
   ListPlus,
   Loader2,
   MessageSquarePlus,
@@ -24,17 +29,36 @@ import {
 } from "lucide-react";
 import {
   BLOCK_KINDS,
+  blockDepth,
   blockToType,
   blockText,
+  countWords,
+  diffLine,
+  docStats,
   DOC_AI_ACTIONS,
   DOC_AI_LABELS,
   EXPORT_FORMATS,
   EXPORT_LABELS,
+  htmlToBlocks,
+  indentBlocks,
+  isListBlock,
+  isUrl,
+  linkRange,
+  linkShortcut,
+  listLayout,
+  pageFooter,
+  plainText,
   proposeEdit,
+  restoreLine,
+  styleRange,
+  textToBlocks,
+  withDepth,
   type DocAiAction,
   type ExportFormat,
   type DocMode,
   type DocSuggestion,
+  type InlineStyle,
+  type Restyled,
   carryBlockIds,
   mergeDocs,
   newBlockId,
@@ -44,6 +68,8 @@ import {
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
+import type { CSSProperties } from "react";
+import { useToast } from "../../components/Toast";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
 import { DocViewers } from "./DocViewers";
@@ -53,11 +79,66 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
-import { DocBlockMenu, SlashMenu } from "./DocBlockMenu";
+import {
+  DocBlockMenu,
+  SlashMenu,
+  todayText,
+  type SlashItem,
+} from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
-import { DocHistory } from "./DocHistory";
+import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
 
 type Kind = (typeof BLOCK_KINDS)[number];
+
+/** How often "Saved 2 min ago" is brought up to date. */
+const CLOCK_MS = 30_000;
+
+/** The styles the selection bar and the shortcuts offer, in bar order. */
+const STYLES: { style: InlineStyle; label: string; keys: string }[] = [
+  { style: "bold", label: "Bold", keys: "⌘B" },
+  { style: "italic", label: "Italic", keys: "⌘I" },
+  { style: "highlight", label: "Highlight", keys: "⌘⇧H" },
+];
+
+/**
+ * A numbered line is typed with the number it shows ("3. …"), so reading it
+ * back gives it a `start`. That only means something on the first line of a
+ * list; anywhere else the number is counted, and the start is let go.
+ */
+function keepStart(blocks: DocBlock[], index: number): DocBlock[] {
+  const b = blocks[index];
+  if (b?.type !== "numbered" || b.start === undefined) return blocks;
+  const { start: _start, ...counted } = b;
+  const probe = blocks.slice();
+  probe[index] = counted;
+  return listLayout(probe)[index].number === 1 ? blocks : probe;
+}
+
+/**
+ * Put new words into a line being typed, as typing would: through the
+ * browser's own editing, so ⌘Z takes it back, and falling back to setting
+ * the text where that isn't there. Only the part that changed is replaced.
+ */
+function typeInto(el: HTMLTextAreaElement, made: Restyled): boolean {
+  const change = diffLine(el.value, made.text);
+  el.focus();
+  if (change) {
+    el.setSelectionRange(change.start, change.end);
+    const typed =
+      typeof document.execCommand === "function" &&
+      document.execCommand("insertText", false, change.text);
+    if (!typed || el.value !== made.text) {
+      // React only hears a change made through the element's own setter.
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set?.call(el, made.text);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+  el.setSelectionRange(made.start, made.end);
+  return !!change;
+}
 
 /** Kinds that carry on when you press Enter at the end of a line. */
 const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
@@ -138,12 +219,18 @@ export function DocEditor({
   canWrite = true,
   teamName,
   report,
+  onUndoDelete,
 }: {
   doc: Doc;
   /** Left out for the agenda, which has no list to go back to. */
   onBack?: () => void;
   onChanged: (doc: Doc) => void;
   onDeleted: (id: string) => void;
+  /**
+   * The page came back from Trash through the toast's Undo. Left out, the
+   * toast says it is back and leaves it where it is.
+   */
+  onUndoDelete?: (doc: Doc) => void;
   /** Called after checklist lines are turned into real tasks. */
   onItemsChanged?: () => void;
   /** Whose comments show a remove button. */
@@ -154,7 +241,8 @@ export function DocEditor({
   teamName?: string | null;
   report: (e: unknown) => void;
 }) {
-  const { ask, tell } = useConfirm();
+  const { tell } = useConfirm();
+  const toast = useToast();
   /**
    * A page opens the way it was last worked on, and always read-only for
    * someone who cannot change it — landing in an editor that will refuse
@@ -220,15 +308,36 @@ export function DocEditor({
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
   const pageRef = useRef<HTMLDivElement | null>(null);
+  /** The bar over a selection, kept inside the page's own column. */
+  const barRef = useRef<HTMLDivElement | null>(null);
   /** The lines themselves: the button over a selection stays inside them. */
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const blockEls = useRef(new Map<string, HTMLElement>());
-  /** A line that starts with "/", waiting for a kind to be picked. */
+  /**
+   * A "/" typed in a line, waiting for something to be picked: at the start
+   * of an empty line, any kind of block; partway through, something to put
+   * in the line, from `from` (where the "/" is) to the caret.
+   */
   const [slash, setSlash] = useState<{
     index: number;
     query: string;
     at: DOMRect;
+    insertsOnly: boolean;
+    from: number;
   } | null>(null);
+  /** A version chosen in history, shown on the page with what changed. */
+  const [historyView, setHistoryView] = useState<HistoryView | null>(null);
+  /** Words being made a link: the words, and the address typed so far. */
+  const [linking, setLinking] = useState<{ words: Picked; url: string } | null>(
+    null,
+  );
+  /** When the page was last saved, for the line at its end. */
+  const [savedAt, setSavedAt] = useState(doc.updated_at);
+  const [now, setNow] = useState(() => new Date());
+  /** The next paste came from ⌘⇧V: take the words exactly as they are. */
+  const plainPaste = useRef(false);
+  /** A line made by "New task" in the / menu, waiting for its words. */
+  const pendingTask = useRef<string | null>(null);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -242,7 +351,16 @@ export function DocEditor({
     setSave("idle");
     setNote("");
     setFocused(null);
+    setSavedAt(doc.updated_at);
+    setHistoryView(null);
+    setLinking(null);
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Saved 2 min ago" keeps up with the clock.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), CLOCK_MS);
+    return () => clearInterval(t);
+  }, []);
 
   live.current = { title, blocks };
   focusedRef.current = focused;
@@ -292,6 +410,8 @@ export function DocEditor({
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
           setSave("saved");
+          setSavedAt(saved.updated_at);
+          setNow(new Date());
           onChanged(saved);
         } catch (e) {
           // Someone saved first. Take their copy, fold this edit into it and
@@ -423,7 +543,7 @@ export function DocEditor({
       1,
       ...carryBlockIds(blocks[index], blocksFromSource(source)),
     );
-    update(next);
+    update(keepStart(next, index));
   };
 
   /**
@@ -518,7 +638,12 @@ export function DocEditor({
     suggestDraft.current = null;
     const block = blocks[index];
     if (typed === null || !block?.id) return;
-    const change = proposeEdit(block.id, serializeBlock(block), typed);
+    // Compared with the line as it was shown for typing, number and all.
+    const change = proposeEdit(
+      block.id,
+      serializeBlock(block, layout[index]?.number),
+      typed,
+    );
     if (!change) return;
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
@@ -613,6 +738,120 @@ export function DocEditor({
     }
   };
 
+  /** The line some selected words are in, and where it sits. */
+  const lineOf = (words: Picked) => {
+    const index = blocks.findIndex((b) => b.id === words.blockId);
+    return index < 0 ? null : { index, block: blocks[index] };
+  };
+
+  /** Put a style on the selected words, straight into the page. */
+  const styleWords = (words: Picked, style: InlineStyle) => {
+    const at = lineOf(words);
+    if (!at || at.block.type === "divider") return;
+    const made = styleRange(at.block.text, words.start, words.end, style);
+    if (!made) return;
+    const next = blocks.slice();
+    next[at.index] = { ...at.block, text: made.text };
+    update(next);
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  /** Make the selected words a link to the address typed in the bar. */
+  const linkWords = () => {
+    if (!linking) return;
+    const at = lineOf(linking.words);
+    if (!at || at.block.type === "divider") return setLinking(null);
+    const made = linkRange(
+      at.block.text,
+      linking.words.start,
+      linking.words.end,
+      linking.url,
+    );
+    if (!made) {
+      setNote("That doesn't look like a web address.");
+      return;
+    }
+    const next = blocks.slice();
+    next[at.index] = { ...at.block, text: made.text };
+    update(next);
+    setLinking(null);
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  /**
+   * Make a task of the selected words: a checklist line under the line they
+   * are in, turned into a task at once, so the task knows the page and the
+   * line it came from.
+   */
+  const taskFromWords = (words: Picked) => {
+    const at = lineOf(words);
+    if (!at) return;
+    const title = plainText(words.quote).trim().slice(0, 200);
+    if (!title) return;
+    const id = newBlockId();
+    const next = blocks.slice();
+    next.splice(
+      at.index + 1,
+      0,
+      withDepth(
+        { type: "todo", text: title, done: false, id },
+        blockDepth(at.block),
+      ),
+    );
+    update(next);
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+    void linesToTasks([id]).then(
+      (made) =>
+        toast({
+          text: made ? `Added “${title}” to your tasks` : "Already a task",
+        }),
+      report,
+    );
+  };
+
+  // A press anywhere but the bar puts the link away.
+  useEffect(() => {
+    if (!linking) return;
+    const away = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.(".doc-selection-bar"))
+        setLinking(null);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [linking]);
+
+  // With words selected on the page, the style shortcuts work on them too.
+  useEffect(() => {
+    if (!picked || reading || suggesting || linking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const style: InlineStyle | null =
+        key === "b" && !e.shiftKey
+          ? "bold"
+          : key === "i" && !e.shiftKey
+            ? "italic"
+            : key === "h" && e.shiftKey
+              ? "highlight"
+              : null;
+      if (style) {
+        e.preventDefault();
+        e.stopPropagation();
+        styleWords(picked, style);
+      } else if (key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        setLinking({ words: picked, url: "" });
+      }
+    };
+    // Capture, so ⌘K reaches the words before the command bar.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  });
+
   /** Put a line in view and single it out, for an answer that cites it. */
   const goToBlock = (blockId: string) => {
     const el = blockEls.current.get(blockId);
@@ -631,11 +870,17 @@ export function DocEditor({
   const insertAfter = (index: number) => {
     if (!structural) return;
     const current = blocks[index];
+    settlePendingTask(index);
     const next = blocks.slice();
-    // Enter at the end of a list item makes another; on an empty one it
-    // leaves the list instead, the way every editor since Word has.
+    // Enter at the end of a list item makes another at the same depth; on an
+    // empty one it steps back out a level, and at the left edge it leaves
+    // the list, the way every editor since Word has.
     if (LISTS.has(current.type)) {
       if (!("text" in current) || current.text.trim() === "") {
+        if (blockDepth(current) > 0) {
+          update(indentBlocks(blocks, index, -1));
+          return;
+        }
         next[index] = { type: "paragraph", text: "" };
         update(next);
         return;
@@ -643,11 +888,59 @@ export function DocEditor({
       next.splice(
         index + 1,
         0,
-        blockToType({ type: "paragraph", text: "" }, current.type),
+        withDepth(
+          blockToType({ type: "paragraph", text: "" }, current.type),
+          blockDepth(current),
+        ),
       );
     } else next.splice(index + 1, 0, { type: "paragraph", text: "" });
     update(next);
     setFocused(index + 1);
+  };
+
+  /** Tuck a list line in under the one above, or bring it back out. */
+  const indent = (index: number, by: 1 | -1) => {
+    if (!structural) return;
+    const next = indentBlocks(blocks, index, by);
+    if (next !== blocks) update(next);
+  };
+
+  /**
+   * Turn checklist lines into real tasks: the ones named, or every open one
+   * that isn't a task yet. The page is saved first so the server works from
+   * what is on screen, and the answer ties each line to its task.
+   */
+  const linesToTasks = async (blockIds?: string[]) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (dirty.current) await persist(live.current.title, live.current.blocks);
+    const { created, doc: updated } = await client.docToTasks(doc.id, blockIds);
+    if (updated) {
+      version.current = updated.version;
+      base.current = updated.content;
+      dirty.current = false;
+      setBlocks(updated.content);
+      setSave("saved");
+      setSavedAt(updated.updated_at);
+      onChanged(updated);
+    }
+    onItemsChanged?.();
+    return created;
+  };
+
+  /**
+   * A line made by "New task" becomes a task once it has words and the
+   * writer moves on from it (Enter, or leaving the line).
+   */
+  const settlePendingTask = (index: number) => {
+    const id = pendingTask.current;
+    const block = blocks[index];
+    if (!id || block?.id !== id) return;
+    pendingTask.current = null;
+    if (block.type !== "todo" || !block.text.trim()) return;
+    void linesToTasks([id]).then(
+      (made) => made && toast({ text: "Added to your tasks" }),
+      report,
+    );
   };
 
   /**
@@ -671,7 +964,9 @@ export function DocEditor({
     // proposal like any other. It applies to what has been typed, not to
     // what the page still says.
     if (suggesting) {
-      const typed = suggestDraft.current ?? serializeBlock(blocks[index]);
+      const typed =
+        suggestDraft.current ??
+        serializeBlock(blocks[index], layout[index]?.number);
       const current = blocksFromSource(typed)[0] ?? blocks[index];
       setLineSource(
         serializeBlock(blockToType(current, kind.type, kind.level)),
@@ -702,20 +997,70 @@ export function DocEditor({
     update(next);
   };
 
-  /** A "/" at the start of an empty line asks what the line should be. */
+  /**
+   * A "/" at the start of an empty line asks what the line should be; one
+   * typed after a space partway through a line offers what can go in it.
+   */
   const watchSlash = (
     index: number,
     value: string,
     el: HTMLTextAreaElement,
   ) => {
+    const kind = blocks[index].type;
     const m = /^\/([^\s]*)$/.exec(value);
-    if (m && blocks[index].type === "paragraph")
-      setSlash({ index, query: m[1], at: el.getBoundingClientRect() });
+    const upto = value.slice(0, el.selectionStart);
+    // Partway through, a word after the "/" is needed first, so a slash in
+    // "1 / 2" followed by Enter is still just a new line.
+    const mid = /(?:^|\s)\/(\w+)$/.exec(upto);
+    if (m && kind === "paragraph")
+      setSlash({
+        index,
+        query: m[1],
+        at: el.getBoundingClientRect(),
+        insertsOnly: false,
+        from: 0,
+      });
+    else if (mid && kind !== "code" && kind !== "math")
+      setSlash({
+        index,
+        query: mid[1],
+        at: el.getBoundingClientRect(),
+        insertsOnly: true,
+        from: upto.length - mid[1].length - 1,
+      });
     else if (slash) setSlash(null);
   };
 
-  const pickSlash = (kind: Kind) => {
+  const pickSlash = (item: SlashItem) => {
     if (!slash) return;
+    if (item.kind === "date") {
+      // Today's date goes where the "/" was, and typing carries on after it.
+      const el = areaRef.current;
+      setSlash(null);
+      if (!el) return;
+      const date = todayText();
+      const caret = el.selectionStart;
+      const text = el.value.slice(0, slash.from) + date + el.value.slice(caret);
+      const at = slash.from + date.length;
+      typeInto(el, { text, start: at, end: at });
+      return;
+    }
+    if (item.kind === "task" && !suggesting) {
+      const id = newBlockId();
+      const next = blocks.slice();
+      next[slash.index] = { type: "todo", text: "", done: false, id };
+      pendingTask.current = id;
+      setSlash(null);
+      update(next);
+      setFocused(null);
+      const at = slash.index;
+      requestAnimationFrame(() => setFocused(at));
+      return;
+    }
+    const kind: Kind =
+      item.kind === "block"
+        ? item.block
+        : BLOCK_KINDS.find((k) => k.type === "todo")!;
     if (suggesting) {
       setLineSource(
         serializeBlock(
@@ -756,6 +1101,23 @@ export function DocEditor({
     update(next);
   };
 
+  /**
+   * Restyle the words selected in the line being typed — bold, italic, a
+   * link — through the same path as typing, so it can be undone with ⌘Z and
+   * becomes a proposal like any other edit while suggesting.
+   */
+  const restyle = (
+    el: HTMLTextAreaElement,
+    change: (text: string, start: number, end: number) => Restyled | null,
+  ) => {
+    const made = change(el.value, el.selectionStart, el.selectionEnd);
+    if (!made) {
+      setNote("Those words already have another style.");
+      return;
+    }
+    typeInto(el, made);
+  };
+
   const onKey = (
     e: React.KeyboardEvent<HTMLTextAreaElement>,
     index: number,
@@ -763,6 +1125,50 @@ export function DocEditor({
     const value = e.currentTarget.value;
     const multiline =
       blocks[index].type === "code" || blocks[index].type === "math";
+    const mod = e.metaKey || e.ctrlKey;
+    // Tab tucks a list line under the one above; Shift+Tab brings it out.
+    // Anywhere else Tab still moves on, as it does in any form.
+    if (e.key === "Tab" && isListBlock(blocks[index]) && structural) {
+      e.preventDefault();
+      indent(index, e.shiftKey ? -1 : 1);
+      return;
+    }
+    if (mod && !e.altKey && !multiline) {
+      const key = e.key.toLowerCase();
+      const style: InlineStyle | null =
+        key === "b" && !e.shiftKey
+          ? "bold"
+          : key === "i" && !e.shiftKey
+            ? "italic"
+            : key === "e" && !e.shiftKey
+              ? "code"
+              : key === "h" && e.shiftKey
+                ? "highlight"
+                : null;
+      if (style) {
+        e.preventDefault();
+        e.stopPropagation();
+        restyle(e.currentTarget, (text, start, end) =>
+          styleRange(text, start, end, style),
+        );
+        return;
+      }
+      // ⌘K in a line makes a link, rather than opening the command bar.
+      if (key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        restyle(e.currentTarget, linkShortcut);
+        return;
+      }
+      // ⌘⇧V: the next paste keeps only the words.
+      if (key === "v" && e.shiftKey) plainPaste.current = true;
+      // ⌘⏎ ticks a checklist line, or unticks it.
+      if (e.key === "Enter" && blocks[index].type === "todo") {
+        e.preventDefault();
+        toggleTodo(index);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey && !multiline) {
       e.preventDefault();
       insertAfter(index);
@@ -783,6 +1189,114 @@ export function DocEditor({
       e.currentTarget.blur();
       setFocused(null);
     }
+  };
+
+  /**
+   * Paste into a line. Copied pages, documents and web pages keep their
+   * headings, lists, links and simple tables as lines of their own; several
+   * lines of plain text are read as Markdown; ⌘⇧V takes the words as they
+   * are. A web address pasted over words makes them a link. One line of text
+   * pastes as it would anywhere.
+   */
+  const onPaste = (
+    e: React.ClipboardEvent<HTMLTextAreaElement>,
+    index: number,
+  ) => {
+    const plain = plainPaste.current;
+    plainPaste.current = false;
+    const block = blocks[index];
+    if (block.type === "code" || block.type === "math") return;
+    const el = e.currentTarget;
+    const text = e.clipboardData.getData("text/plain");
+    const html = plain ? "" : e.clipboardData.getData("text/html");
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    if (start !== end && isUrl(text) && !/\n/.test(text.trim())) {
+      const made = linkRange(el.value, start, end, text.trim());
+      if (made) {
+        e.preventDefault();
+        typeInto(el, made);
+        return;
+      }
+    }
+    // A proposal is one line, so a paste while suggesting is only words.
+    if (suggesting) return;
+    let pasted = html ? htmlToBlocks(html) : [];
+    if (!pasted.length) {
+      if (!/\n/.test(text.trim())) return;
+      pasted = textToBlocks(text, plain);
+    }
+    if (!pasted.length) return;
+    e.preventDefault();
+    // One plain paragraph: its words go in at the caret, styles and all.
+    if (pasted.length === 1 && pasted[0].type === "paragraph") {
+      const words = pasted[0].text;
+      const at = start + words.length;
+      typeInto(el, {
+        text: el.value.slice(0, start) + words + el.value.slice(end),
+        start: at,
+        end: at,
+      });
+      return;
+    }
+    spliceLines(index, el.value.slice(0, start), pasted, el.value.slice(end));
+  };
+
+  /**
+   * Put pasted lines into the page where the caret was. Words before the
+   * caret keep their line, and the first pasted line's words join them;
+   * words after the caret end the last pasted line. Plain lines pasted into
+   * a list become items of it, and pasted lists nest under the line they
+   * land in.
+   */
+  const spliceLines = (
+    index: number,
+    before: string,
+    pasted: DocBlock[],
+    after: string,
+  ) => {
+    const current = blocks[index];
+    const line = blocksFromSource(before + after)[0];
+    const depth = blockDepth(current);
+    let lines = pasted;
+    if (isListBlock(line) && lines.every((b) => b.type === "paragraph"))
+      lines = lines.map((b) => withDepth(blockToType(b, line.type), depth));
+    else if (depth)
+      lines = lines.map((b) =>
+        isListBlock(b) ? withDepth(b, blockDepth(b) + depth) : b,
+      );
+    const head = blocksFromSource(before)[0];
+    let made: DocBlock[];
+    if (blockText(head).trim() && lines[0].type !== "divider") {
+      // Words before the caret: the first pasted line joins them.
+      const joined = carryBlockIds(
+        current,
+        blocksFromSource(before + blockText(lines[0])),
+      );
+      made = [...joined, ...lines.slice(1)];
+    } else {
+      const [first, ...rest] = lines;
+      made = [
+        current.id && !first.id ? { ...first, id: current.id } : first,
+        ...rest,
+      ];
+    }
+    if (after.trim()) {
+      const last = made[made.length - 1];
+      if (
+        last.type === "divider" ||
+        last.type === "code" ||
+        last.type === "math"
+      )
+        made.push({ type: "paragraph", text: after.trim() });
+      else made[made.length - 1] = { ...last, text: last.text + after };
+    }
+    const next = blocks.slice();
+    next.splice(index, 1, ...made);
+    update(next);
+    setFocused(null);
+    const to = index + made.length - 1;
+    requestAnimationFrame(() => setFocused(to));
   };
 
   // Keep the open textarea sized to its content.
@@ -817,6 +1331,24 @@ export function DocEditor({
 
   useLayoutEffect(measure, [blocks, focused, showHistory, measure]);
 
+  // The bar is centred over the words; near either edge of the page it is
+  // nudged back so it never covers the library or runs off the window.
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    el.style.marginLeft = "0px";
+    const bar = el.getBoundingClientRect();
+    const page = pageRef.current?.getBoundingClientRect();
+    const min = Math.max(8, page?.left ?? 8);
+    const max = Math.min(
+      window.innerWidth - 8,
+      page?.right ?? window.innerWidth,
+    );
+    const shift =
+      bar.left < min ? min - bar.left : bar.right > max ? max - bar.right : 0;
+    el.style.marginLeft = `${shift}px`;
+  });
+
   // The page reflows as it is typed into and as the window changes shape.
   useEffect(() => {
     const page = pageRef.current;
@@ -827,6 +1359,18 @@ export function DocEditor({
   }, [measure]);
 
   const markdown = useMemo(() => serializeDoc(blocks), [blocks]);
+  /** Where each line sits in its list: its depth and its number. */
+  const layout = useMemo(() => listLayout(blocks), [blocks]);
+  const stats = useMemo(() => docStats(blocks), [blocks]);
+  /** The words selected, with the line they are in and what can be done. */
+  const words = linking?.words ?? picked;
+  const pickedLine = words ? lineOf(words) : null;
+  const canFormat = !reading && !suggesting && !!pickedLine;
+  const styleable = (style: InlineStyle) =>
+    !!words &&
+    !!pickedLine &&
+    pickedLine.block.type !== "divider" &&
+    styleRange(pickedLine.block.text, words.start, words.end, style) !== null;
 
   /**
    * Take the page away as a file. The server decides what the file holds
@@ -859,21 +1403,10 @@ export function DocEditor({
   /** Turn the unticked checklist lines into real tasks. */
   const makeTasks = () =>
     void (async () => {
-      // Save first so the server works from what's on screen.
-      if (timer.current) clearTimeout(timer.current);
-      if (dirty.current) await persist(title, blocks);
       try {
-        const { created, doc: updated } = await client.docToTasks(doc.id);
         // The server ties each line to its task and hands back the document;
         // adopting it keeps the ids, so the lines now follow their tasks.
-        if (updated) {
-          version.current = updated.version;
-          dirty.current = false;
-          setBlocks(updated.content);
-          setSave("saved");
-          onChanged(updated);
-        }
-        onItemsChanged?.();
+        const created = await linesToTasks();
         await tell({
           title:
             created === 0
@@ -885,23 +1418,35 @@ export function DocEditor({
       }
     })();
 
+  /**
+   * Delete the page: it moves to Trash, and a toast offers Undo. Nothing
+   * asks first, because nothing is lost — the page, its history and its
+   * comments wait in Trash for 30 days.
+   */
   const remove = async () => {
-    if (
-      !(await ask({
-        title: `Delete “${title || "Untitled"}”? This can't be undone.`,
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
+    if (timer.current) clearTimeout(timer.current);
+    try {
+      // What was just typed goes with it, so Undo brings back all of it.
+      if (dirty.current) await persist(title, blocks);
+      await client.deleteDoc(doc.id);
+    } catch (e) {
+      report(e);
       return;
-    void client
-      .deleteDoc(doc.id)
-      .then(() => {
-        dirty.current = false;
-        flushOnClose.current = () => {};
-        onDeleted(doc.id);
-      })
-      .catch(report);
+    }
+    dirty.current = false;
+    flushOnClose.current = () => {};
+    onDeleted(doc.id);
+    toast({
+      text: `Moved “${title || "Untitled"}” to Trash`,
+      action: {
+        label: "Undo",
+        run: () =>
+          void client.restoreDoc(doc.id).then((back) => {
+            if (onUndoDelete) onUndoDelete(back);
+            else toast({ text: `“${back.title || "Untitled"}” is back` });
+          }, report),
+      },
+    });
   };
 
   return (
@@ -962,7 +1507,10 @@ export function DocEditor({
           </button>
           <button
             className={"icon-button" + (showHistory ? " is-on" : "")}
-            onClick={() => setShowHistory((v) => !v)}
+            onClick={() => {
+              if (showHistory) setHistoryView(null);
+              setShowHistory((v) => !v);
+            }}
             aria-label="Page history"
             aria-pressed={showHistory}
             title="Page history"
@@ -1011,9 +1559,9 @@ export function DocEditor({
           {!reading && (
             <button
               className="icon-button"
-              onClick={remove}
-              aria-label="Delete document"
-              title="Delete document"
+              onClick={() => void remove()}
+              aria-label="Move to Trash"
+              title="Move to Trash"
             >
               <Trash2 size={15} />
             </button>
@@ -1021,59 +1569,159 @@ export function DocEditor({
         </span>
       </div>
 
-      {/* The button that acts on a selection follows the words themselves,
-          so it reads as belonging to them rather than to the page. */}
-      {picked && !pending && (
+      {/* The bar that acts on a selection follows the words themselves, so
+          it reads as belonging to them rather than to the page. Styles and
+          "Make task" change the page, so they are offered only while
+          editing; commenting and asking work in every mode. */}
+      {words && !pending && (
         <div
+          ref={barRef}
           className="doc-selection-bar"
           style={barPlace(
-            picked.at,
+            words.at,
             bodyRef.current?.getBoundingClientRect().top ?? 0,
           )}
           role="toolbar"
           aria-label="Selected words"
         >
-          <button
-            className="text-button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => commentOnSelection(picked)}
-          >
-            <MessageSquarePlus size={14} aria-hidden="true" /> Comment
-          </button>
-          {/* Asking for words and saying something about them are the two
-              things anyone wants from a selection, so they sit together. */}
-          <button
-            className="text-button"
-            aria-haspopup="menu"
-            aria-expanded={askMenu}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setAskMenu((v) => !v)}
-          >
-            <Sparkles size={14} aria-hidden="true" /> Ask AI
-          </button>
-          {askMenu && (
-            <ul className="doc-ai-menu" role="menu">
-              {DOC_AI_ACTIONS.filter((a) => a !== "custom").map((action) => (
-                <li key={action}>
+          {linking ? (
+            <form
+              className="doc-link-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                linkWords();
+              }}
+            >
+              <Link size={14} aria-hidden="true" />
+              <input
+                autoFocus
+                aria-label="Web address for the link"
+                placeholder="Paste or type a link"
+                value={linking.url}
+                onChange={(e) =>
+                  setLinking({ ...linking, url: e.target.value })
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setLinking(null);
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                className="text-button"
+                disabled={!linking.url.trim()}
+              >
+                Link
+              </button>
+            </form>
+          ) : (
+            <>
+              {canFormat && (
+                <>
+                  {STYLES.map(({ style, label, keys }) => {
+                    const Icon =
+                      style === "bold"
+                        ? Bold
+                        : style === "italic"
+                          ? Italic
+                          : Highlighter;
+                    return (
+                      <button
+                        key={style}
+                        className="icon-button"
+                        aria-label={label}
+                        title={
+                          styleable(style)
+                            ? `${label} (${keys})`
+                            : `${label}: these words already have another style`
+                        }
+                        disabled={!styleable(style)}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => styleWords(words, style)}
+                      >
+                        <Icon size={15} aria-hidden="true" />
+                      </button>
+                    );
+                  })}
                   <button
-                    role="menuitem"
+                    className="icon-button"
+                    aria-label="Link"
+                    title="Link (⌘K)"
+                    disabled={
+                      !pickedLine ||
+                      pickedLine.block.type === "divider" ||
+                      !linkRange(
+                        pickedLine.block.text,
+                        words.start,
+                        words.end,
+                        "https://x.x",
+                      )
+                    }
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => void assist(picked, action)}
+                    onClick={() => setLinking({ words, url: "" })}
                   >
-                    {DOC_AI_LABELS[action].name}
+                    <Link size={15} aria-hidden="true" />
                   </button>
-                </li>
-              ))}
-              <li>
+                  <span className="doc-selection-rule" aria-hidden="true" />
+                </>
+              )}
+              <button
+                className="text-button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => commentOnSelection(words)}
+              >
+                <MessageSquarePlus size={14} aria-hidden="true" /> Comment
+              </button>
+              {/* Asking for words and saying something about them are the
+                  two things anyone wants from a selection, so they sit
+                  together. */}
+              <button
+                className="text-button"
+                aria-haspopup="menu"
+                aria-expanded={askMenu}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setAskMenu((v) => !v)}
+              >
+                <Sparkles size={14} aria-hidden="true" /> Ask assistant
+              </button>
+              {canFormat && (
                 <button
-                  role="menuitem"
+                  className="text-button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => void assist(picked, "custom")}
+                  onClick={() => taskFromWords(words)}
                 >
-                  {DOC_AI_LABELS.custom.name}…
+                  <ListChecks size={14} aria-hidden="true" /> Make task
                 </button>
-              </li>
-            </ul>
+              )}
+              {askMenu && (
+                <ul className="doc-ai-menu" role="menu">
+                  {DOC_AI_ACTIONS.filter((a) => a !== "custom").map(
+                    (action) => (
+                      <li key={action}>
+                        <button
+                          role="menuitem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void assist(words, action)}
+                        >
+                          {DOC_AI_LABELS[action].name}
+                        </button>
+                      </li>
+                    ),
+                  )}
+                  <li>
+                    <button
+                      role="menuitem"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void assist(words, "custom")}
+                    >
+                      {DOC_AI_LABELS.custom.name}…
+                    </button>
+                  </li>
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1088,7 +1736,23 @@ export function DocEditor({
         }
       >
         <div className="doc-main">
-          <div className="doc-page" ref={pageRef}>
+          {historyView && (
+            <DocChanges
+              view={historyView}
+              current={blocks}
+              title={title}
+              canRestore={canWrite && structural}
+              onCompare={(compare) =>
+                setHistoryView({ ...historyView, compare })
+              }
+              onRestoreLine={(source, index) => {
+                update(restoreLine(blocks, source, index));
+                toast({ text: "Line restored" });
+              }}
+              onClose={() => setHistoryView(null)}
+            />
+          )}
+          <div className="doc-page" ref={pageRef} hidden={!!historyView}>
             {doc.kind === "doc" && (
               <PageFreshness doc={doc} canWrite={canWrite} />
             )}
@@ -1125,8 +1789,16 @@ export function DocEditor({
                     id={`doc-block-${index}`}
                     ref={areaRef}
                     className="doc-input"
+                    // A nested line is typed where it reads, stepped in.
+                    data-depth={layout[index].depth || undefined}
+                    style={
+                      layout[index].depth
+                        ? ({ "--depth": layout[index].depth } as CSSProperties)
+                        : undefined
+                    }
                     rows={1}
-                    defaultValue={serializeBlock(block)}
+                    defaultValue={serializeBlock(block, layout[index].number)}
+                    onPaste={(e) => onPaste(e, index)}
                     onChange={(e) => {
                       e.currentTarget.style.height = "auto";
                       e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
@@ -1144,6 +1816,7 @@ export function DocEditor({
                     }}
                     onBlur={() => {
                       if (suggesting) void proposeLine(index);
+                      else settlePendingTask(index);
                       setFocused((f) => (f === index ? null : f));
                     }}
                   />
@@ -1219,6 +1892,8 @@ export function DocEditor({
                         onToggleTodo={
                           structural ? () => toggleTodo(index) : undefined
                         }
+                        number={layout[index].number}
+                        depth={layout[index].depth}
                       />
                     </div>
                   </div>
@@ -1244,6 +1919,9 @@ export function DocEditor({
                   onDuplicate={() => duplicate(menu.index)}
                   onComment={() => commentOn(menu.index)}
                   onDelete={() => removeAt(menu.index)}
+                  onIndent={(by) => indent(menu.index, by)}
+                  canIndent={indentBlocks(blocks, menu.index, 1) !== blocks}
+                  canOutdent={indentBlocks(blocks, menu.index, -1) !== blocks}
                   structural={structural}
                   onClose={() => setMenu(null)}
                 />
@@ -1252,18 +1930,32 @@ export function DocEditor({
                 <SlashMenu
                   anchor={slash.at}
                   query={slash.query}
+                  insertsOnly={slash.insertsOnly}
                   onPick={pickSlash}
                   onClose={() => setSlash(null)}
                 />
               )}
             </div>
 
-            <p className="doc-hint">
-              Click any line to edit it. Start a line with <code>#</code> for a
-              heading, <code>-</code> for a bullet, <code>- [ ]</code> for a
-              checkbox, <code>&gt;</code> to quote, <code>```</code> for code or{" "}
-              <code>$$</code> for a formula. Inline maths goes between single{" "}
-              <code>$</code> signs.
+            {/* One quiet line at the end of the page. The Markdown help
+                shows only while a line is open, when it is useful. */}
+            {focused !== null && !reading && (
+              <p className="doc-hint">
+                Start a line with <code>#</code> for a heading, <code>-</code>{" "}
+                for a bullet, <code>- [ ]</code> for a checkbox or{" "}
+                <code>/</code> for more. <kbd>Tab</kbd> tucks a list item in;
+                select words to style them.
+              </p>
+            )}
+            <p className="doc-footer">
+              {pageFooter({
+                ...stats,
+                selected: words ? countWords(plainText(words.quote)) : 0,
+                savedAt,
+                saving: save === "saving",
+                failed: save === "error",
+                now,
+              })}
             </p>
           </div>
           {!showHistory && (
@@ -1297,7 +1989,12 @@ export function DocEditor({
           <DocHistory
             doc={doc}
             canWrite={canWrite}
-            onClose={() => setShowHistory(false)}
+            onClose={() => {
+              setShowHistory(false);
+              setHistoryView(null);
+            }}
+            viewing={historyView}
+            onView={setHistoryView}
             report={report}
             onRestored={(restored) => {
               // The restored page is the page now: adopt it whole.

@@ -3432,3 +3432,78 @@ input[type="number"]::-webkit-outer-spin-button {
     min-height: 32px;
   }
 }
+
+/* One toast for the whole app (components/Toast.tsx): a short sentence and at
+   most one action. Bottom-left on a desktop, at the top on a phone, above
+   dialogs and menus but never in the way of the page. */
+.toast-region {
+  position: fixed;
+  left: 24px;
+  bottom: 24px;
+  z-index: 1001;
+  max-width: min(440px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 6px 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 12px 34px var(--color-backdrop);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: motion-fade-up var(--motion-base) var(--ease-out) backwards;
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+}
+.toast-action,
+.toast-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.toast-action {
+  padding: 0 10px;
+  font-weight: 600;
+  color: var(--color-accentText);
+}
+.toast-close {
+  width: 32px;
+  color: var(--color-muted);
+}
+.toast-action:hover,
+.toast-close:hover {
+  background: var(--color-hover);
+}
+@media (max-width: 640px) {
+  .toast-region {
+    left: 16px;
+    right: 16px;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    max-width: none;
+  }
+  .toast {
+    animation-name: motion-slide-down;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
+}

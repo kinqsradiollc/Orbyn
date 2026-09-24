@@ -34,6 +34,20 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
     ],
   },
   {
+    title: "Pages",
+    keys: [
+      { keys: [MOD, "B"], label: "Bold the selected words" },
+      { keys: [MOD, "I"], label: "Italic" },
+      { keys: [MOD, "⇧", "H"], label: "Highlight" },
+      { keys: [MOD, "E"], label: "Code" },
+      { keys: [MOD, "K"], label: "Link the selected words" },
+      { keys: ["Tab", "⇧Tab"], label: "Tuck a list item in, or bring it out" },
+      { keys: [MOD, "Enter"], label: "Tick or untick a checklist line" },
+      { keys: [MOD, "⇧", "V"], label: "Paste the words without their styles" },
+      { keys: ["/"], label: "Change a line, or add a date or a task" },
+    ],
+  },
+  {
     title: "Quick add, typed in the command bar",
     keys: [
       { keys: [";"], label: "A place: ;Cafe Roma" },
