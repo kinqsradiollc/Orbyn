@@ -297,6 +297,22 @@ export function fitTone(status: FitStatus): "ok" | "warn" | "muted" {
 // ---- moving a session by hand ------------------------------------------------
 
 /**
+ * A session that ends after its task's deadline while that deadline is still
+ * ahead: the one the apps call late and offer to move before it. Once the
+ * deadline has passed, a session still to come is catch-up time, not late.
+ */
+export function isLateSession(
+  s: { after_deadline?: boolean; deadline_at?: string | null },
+  now = new Date(),
+): boolean {
+  return (
+    !!s.after_deadline &&
+    !!s.deadline_at &&
+    Date.parse(s.deadline_at) > now.getTime()
+  );
+}
+
+/**
  * The warning after a session is dragged, copied or moved past its deadline:
  * "This session ends after the deadline (Fri 5 pm)". Null when it doesn't,
  * or when the deadline has already passed (then it's catch-up time).
@@ -311,8 +327,7 @@ export function lateSessionWarning(
   },
   now = new Date(),
 ): string | null {
-  if (!s.after_deadline || !s.deadline_at) return null;
-  if (Date.parse(s.deadline_at) <= now.getTime()) return null;
+  if (!isLateSession(s, now) || !s.deadline_at) return null;
   return `This session ends after the deadline (${dueWhen(s.deadline_at, !!s.due_all_day, now)})`;
 }
 
@@ -390,7 +405,8 @@ function dayWords(at: Date, now: Date) {
 
 /**
  * What applying a plan did, in one message: "Planned 5 tasks: 3 today, 2
- * tomorrow · Moved 1 session before its deadline · Couldn't fit before the
+ * tomorrow · Moved 1 session before its deadline · 1 session wasn't moved
+ * because it changed or that time is taken now · Couldn't fit before the
  * deadline: Budget review (needs 2h, 45m free)." Tasks are counted on the day
  * of their first new session.
  */
@@ -402,6 +418,8 @@ export function planOutcome(
     moved?: unknown[];
     /** Sessions left out because the time was taken by then. */
     skipped: number;
+    /** Ticked moves left out: the session changed or went, or the time is taken. */
+    moves_skipped?: number;
   },
   atRisk: {
     title: string;
@@ -442,6 +460,13 @@ export function planOutcome(
   if (r.skipped)
     parts.push(
       `${plural(r.skipped, "session")} left out because something else is there now`,
+    );
+  const notMoved = r.moves_skipped ?? 0;
+  if (notMoved)
+    parts.push(
+      notMoved === 1
+        ? "1 session wasn't moved because it changed or that time is taken now"
+        : `${notMoved} sessions weren't moved because they changed or that time is taken now`,
     );
   if (atRisk.length) {
     const named = atRisk

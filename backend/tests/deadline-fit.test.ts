@@ -17,7 +17,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { schedule } = await import("../src/modules/planner/scheduler.js");
-const { candidateTasks, unfinishedBlocks, atRiskFor } =
+const { candidateTasks, computePlan, unfinishedBlocks, atRiskFor } =
   await import("../src/modules/planner/plans.js");
 const { scanPlanningNotices } = await import("../src/worker/planning.js");
 const {
@@ -28,11 +28,13 @@ const {
   deadlineFit,
   fitChipShown,
   fitTone,
+  isLateSession,
   lateSessionWarning,
   localDateKey,
   moveLine,
   moveTimes,
   planOutcome,
+  planPreviewInput,
   remainingOf,
   sessionKindFor,
   shortMinutes,
@@ -442,6 +444,28 @@ test("the plan result says what it did and what didn't fit", () => {
     planOutcome({ blocks: [], moved: [], skipped: 0 }, [], now),
     "Nothing changed on your calendar.",
   );
+  // A ticked move left out says why, even when it was all the plan held.
+  assert.equal(
+    planOutcome(
+      { blocks: [], moved: [], skipped: 0, moves_skipped: 1 },
+      [],
+      now,
+    ),
+    "1 session wasn't moved because it changed or that time is taken now.",
+  );
+  assert.equal(
+    planOutcome(
+      {
+        blocks: [block("a", today)],
+        moved: [{}],
+        skipped: 0,
+        moves_skipped: 2,
+      },
+      [],
+      now,
+    ),
+    "Planned 1 task today · Moved 1 session before its deadline · 2 sessions weren't moved because they changed or that time is taken now.",
+  );
 });
 
 test("moving a session by hand past the deadline warns, never refuses", () => {
@@ -469,6 +493,23 @@ test("moving a session by hand past the deadline warns, never refuses", () => {
       deadline_at: passed,
     }),
     null,
+  );
+  // The session menus offer "Find time before the deadline" by the same rule.
+  assert.equal(
+    isLateSession({ after_deadline: true, deadline_at: soon }),
+    true,
+  );
+  assert.equal(
+    isLateSession({ after_deadline: true, deadline_at: passed }),
+    false,
+  );
+  assert.equal(
+    isLateSession({ after_deadline: false, deadline_at: soon }),
+    false,
+  );
+  assert.equal(
+    isLateSession({ after_deadline: true, deadline_at: null }),
+    false,
   );
 });
 
@@ -662,6 +703,93 @@ test("past the deadline, time found is catch-up: nothing moves, nothing is flagg
   assert.equal(r.blocks.length, 1);
 });
 
+test("days that end before the deadline never say 'at risk', even with a late session that stays", () => {
+  // Due Friday; the plan covers Monday alone, and your session is after Friday.
+  const oneDay = {
+    ...baseInput,
+    days: ["2026-09-28"],
+    tasks: [
+      schedTask({
+        due_at: "2026-10-02T17:00:00.000Z",
+        deadline_at: "2026-10-02T17:00:00.000Z",
+        estimate_minutes: 60,
+        late_minutes: 60,
+        late_sessions: [
+          {
+            id: "late-1",
+            start_at: "2026-10-05T10:00:00.000Z",
+            end_at: "2026-10-05T11:00:00.000Z",
+            source: "manual",
+          },
+        ],
+      }),
+    ],
+  };
+  // Twenty minutes free: the session can't move there and the hour doesn't
+  // fit, but Tuesday to Friday are still to come, so it isn't at risk.
+  const tight = schedule({
+    ...oneDay,
+    busy: [
+      {
+        start_at: "2026-09-28T09:00:00.000Z",
+        end_at: "2026-09-28T16:40:00.000Z",
+      },
+    ],
+  });
+  assert.equal(tight.moves?.length, 0);
+  assert.equal(tight.blocks.length, 0);
+  assert.equal(tight.at_risk.length, 0);
+  assert.deepEqual(
+    tight.unplaced.map((u) => u.reason),
+    ["Not enough free time in the days planned."],
+  );
+  // A day fully booked: the same.
+  const full = schedule({
+    ...oneDay,
+    busy: [
+      {
+        start_at: "2026-09-28T09:00:00.000Z",
+        end_at: "2026-09-28T17:00:00.000Z",
+      },
+    ],
+  });
+  assert.equal(full.at_risk.length, 0);
+  assert.deepEqual(
+    full.unplaced.map((u) => u.reason),
+    ["Not enough free time in the days planned."],
+  );
+  // Room for the hour but not for a longer late session: new time goes in
+  // the day (before the deadline), and nothing is flagged.
+  const longer = schedule({
+    ...oneDay,
+    busy: [
+      {
+        start_at: "2026-09-28T09:00:00.000Z",
+        end_at: "2026-09-28T15:30:00.000Z",
+      },
+    ],
+    tasks: [
+      {
+        ...oneDay.tasks[0],
+        late_minutes: 120,
+        late_sessions: [
+          {
+            id: "late-1",
+            start_at: "2026-10-05T10:00:00.000Z",
+            end_at: "2026-10-05T12:00:00.000Z",
+            source: "manual" as const,
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(longer.moves?.length, 0);
+  assert.equal(longer.blocks.length, 1);
+  assert.equal(longer.blocks[0].start_at, "2026-09-28T15:30:00.000Z");
+  assert.equal(longer.at_risk.length, 0);
+  assert.equal(longer.unplaced.length, 0);
+});
+
 // ---- plans: preview, moves and apply ------------------------------------------
 
 test("a plan offers to move late sessions: the planner's ticked, yours unticked", async () => {
@@ -703,8 +831,13 @@ test("a plan offers to move late sessions: the planner's ticked, yours unticked"
     (plan.tasks as Json[]).find((t) => t.item_id === id)!;
   assert.equal(task(report.id).fit.status, "on_track");
   assert.equal(task(report.id).moved_minutes, 60);
+  assert.equal(task(report.id).planned_minutes, 60);
   assert.equal(task(report.id).reason, null);
   assert.equal(task(slides.id).fit.status, "late_session");
+  // Yours is offered unticked, so as proposed it doesn't move or count.
+  assert.equal(task(slides.id).planned_minutes, 0);
+  assert.equal(task(slides.id).moved_minutes, undefined);
+  assert.equal(task(slides.id).fit.planned_minutes, 0);
   // Reading the plan back keeps its moves.
   const again = await call(me.token, "GET", `/planner/plans/${plan.id}`);
   assert.equal(again.status, 200);
@@ -920,6 +1053,158 @@ test("planning again doesn't add late time twice for a task at risk", async () =
   assert.equal(sessions.body.fit.status, "late_session");
 });
 
+test("a one-day plan before a deadline days away doesn't call the task at risk", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Report",
+    due_at: local(6, 17),
+    estimate_minutes: 60,
+  });
+  // Your session after the deadline, and a planned day with 20 minutes free.
+  await session(me.id, t.id, local(8, 10), 60, "manual");
+  await newTask(me.token, {
+    kind: "event",
+    title: "Workshop",
+    due_at: local(2, 9),
+    end_at: local(2, 16, 40),
+  });
+  const r = await call(me.token, "POST", "/planner/preview", {
+    start_date: day(2),
+    days: 1,
+    pad_percent: 0,
+    timezone: TZ,
+    item_ids: [t.id],
+  });
+  assert.equal(r.status, 200, r.raw.body);
+  const plan = r.body as Json;
+  assert.equal((plan.at_risk as Json[]).length, 0, plan.summary);
+  assert.equal((plan.moves as Json[]).length, 0);
+  assert.equal(plan.blocks.length, 0);
+  assert.equal(
+    (plan.unplaced as Json[]).find((u) => u.item_id === t.id)?.reason,
+    "Not enough free time in the days planned.",
+  );
+  assert.doesNotMatch(plan.summary, /may run late|No more time fits/);
+  const row = (plan.tasks as Json[]).find((x) => x.item_id === t.id)!;
+  assert.equal(row.at_risk, false);
+  assert.equal(row.fit.status, "late_session");
+  // The Sessions card and the review say the same: days are still free.
+  const sessions = await call(me.token, "GET", `/items/${t.id}/sessions`);
+  assert.equal(sessions.body.fit.status, "late_session");
+  const review = await call(me.token, "GET", "/planner/review");
+  assert.equal(review.status, 200);
+  assert.ok(
+    !(review.body.at_risk as Json[]).some((a) => a.item_id === t.id),
+    JSON.stringify(review.body.at_risk),
+  );
+});
+
+test("a plan, the review and the Sessions card measure the same free time: sessions are busy", async () => {
+  const me = await newUser();
+  const t = await newTask(me.token, {
+    title: "Grant report",
+    due_at: local(1, 12),
+    estimate_minutes: 180,
+  });
+  const other = await newTask(me.token, {
+    title: "Workshop prep",
+    due_at: local(9, 17),
+    estimate_minutes: 60,
+  });
+  // Another task's sessions hold today's working hours and tomorrow's until
+  // 11:00: an hour is left before the deadline.
+  await session(me.id, other.id, local(0, 9), 480);
+  await session(me.id, other.id, local(1, 9), 120);
+  const reason = "Needs 3 h more, with 1 h free before it's due.";
+  const card = await call(me.token, "GET", `/items/${t.id}/sessions`);
+  assert.equal(card.status, 200, card.raw.body);
+  assert.equal(card.body.fit.status, "at_risk");
+  assert.equal(card.body.fit.free_minutes, 60);
+  const review = await call(me.token, "GET", "/planner/review");
+  const flagged = (review.body.at_risk as Json[]).find(
+    (a) => a.item_id === t.id,
+  )!;
+  assert.ok(flagged, JSON.stringify(review.body.at_risk));
+  assert.equal(flagged.free_minutes, 60);
+  assert.equal(flagged.reason, reason);
+  const r = await call(me.token, "POST", "/planner/preview", {
+    start_date: day(0),
+    days: 2,
+    timezone: TZ,
+    item_ids: [t.id],
+  });
+  assert.equal(r.status, 200, r.raw.body);
+  const risk = (r.body.at_risk as Json[]).find((a) => a.item_id === t.id)!;
+  assert.ok(risk, r.body.summary);
+  assert.equal(risk.free_minutes, 60);
+  assert.equal(risk.reason, reason);
+});
+
+test("a what-if that moves a deadline splits the sessions again against the new one", async () => {
+  const me = await newUser();
+  const essay = await newTask(me.token, {
+    title: "Essay",
+    due_at: local(3, 17),
+    estimate_minutes: 60,
+  });
+  const notes = await newTask(me.token, {
+    title: "Notes",
+    due_at: local(5, 17),
+    estimate_minutes: 60,
+  });
+  // Essay's session is a day after its deadline; Notes' is before its own.
+  const late = await session(me.id, essay.id, local(4, 10), 60, "manual");
+  const early = await session(me.id, notes.id, local(4, 14), 60, "manual");
+  const input = planPreviewInput.parse({
+    start_date: day(2),
+    days: 4,
+    timezone: TZ,
+    item_ids: [essay.id, notes.id],
+  });
+  const asIs = await computePlan(pool, me.id, input);
+  assert.deepEqual(
+    (asIs.result.moves ?? []).map((m) => m.block_id),
+    [late],
+  );
+  const of = (plan: typeof asIs, id: string) =>
+    plan.tasks.find((t) => t.id === id)!;
+  assert.equal(of(asIs, notes.id).scheduled_minutes, 60);
+
+  // Essay pushed past its session, Notes brought forward before its own.
+  const moved = await computePlan(pool, me.id, input, new Date(), {
+    move_due: [
+      { item_id: essay.id, due_at: local(5, 17) },
+      { item_id: notes.id, due_at: local(3, 17) },
+    ],
+  });
+  // Essay's session now counts: nothing moved or added for it.
+  assert.equal(of(moved, essay.id).scheduled_minutes, 60);
+  assert.equal(of(moved, essay.id).late_minutes, 0);
+  assert.equal(of(moved, essay.id).deadline_at, local(5, 17));
+  assert.ok(!moved.result.blocks.some((b) => b.item_id === essay.id));
+  // Notes' session is now late, and offered to move before the new deadline.
+  assert.equal(of(moved, notes.id).scheduled_minutes, 0);
+  assert.equal(of(moved, notes.id).late_minutes, 60);
+  const offer = (moved.result.moves ?? []).find((m) => m.block_id === early)!;
+  assert.ok(offer, JSON.stringify(moved.result.moves));
+  assert.ok(Date.parse(offer.end_at) <= Date.parse(local(3, 17)));
+  assert.ok(!(moved.result.moves ?? []).some((m) => m.block_id === late));
+  assert.equal(moved.result.at_risk.length, 0);
+
+  // The what-if endpoint gives the same answer, and saves nothing.
+  const r = await call(me.token, "POST", "/planner/what-if", {
+    days: 7,
+    move_due: [{ item_id: essay.id, due_at: local(5, 17) }],
+  });
+  assert.equal(r.status, 200, r.raw.body);
+  assert.ok(
+    !(r.body.after.at_risk as Json[]).some((a) => a.item_id === essay.id),
+  );
+  const saved = await call(me.token, "GET", `/items/${essay.id}`);
+  assert.equal(saved.body.due_at, local(3, 17));
+  assert.equal((await blockTimes(late)).start_at, local(4, 10));
+});
+
 test("a repeating task: next week's session isn't this week's, and isn't offered to move", async () => {
   const me = await newUser();
   const t = await newTask(me.token, {
@@ -1082,7 +1367,8 @@ test("a session after the deadline doesn't silence the at-risk or due-soon notic
     [big.id],
   );
   assert.equal(risks[0].remaining_minutes, 240);
-  assert.equal(risks[0].free_minutes, 120);
+  // 10:00 to noon, less Minutes' session at 11: sessions are busy.
+  assert.equal(risks[0].free_minutes, 60);
 
   await scanPlanningNotices(now, [me.id]);
   const notices = (await call(me.token, "GET", "/notifications"))
@@ -1092,7 +1378,7 @@ test("a session after the deadline doesn't silence the at-risk or due-soon notic
   assert.ok(of("at_risk", big.id));
   assert.match(
     of("at_risk", big.id)!.body,
-    /^Needs 4 h more, with 2 h free before it's due\./,
+    /^Needs 4 h more, with 1 h free before it's due\./,
   );
   assert.match(
     of("deadline", late.id)!.body,

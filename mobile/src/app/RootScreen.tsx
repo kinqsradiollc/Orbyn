@@ -837,6 +837,11 @@ export function RootScreen() {
                         setSheet("note");
                       })
                     }
+                    onShowOnCalendar={(at) => {
+                      setSearch("");
+                      setTab("Calendar");
+                      setCalendarJump({ at, key: Date.now() });
+                    }}
                   />
                 )}
                 {tab === "Inbox" && (

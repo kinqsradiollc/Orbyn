@@ -63,9 +63,14 @@ export const FREE_LOOKAHEAD_DAYS = 14;
 
 /**
  * Free working minutes between `now` and `deadline`: working hours less your
- * events (and the buffers and travel around them), looking at most two
- * weeks ahead. Sessions don't count as busy, as in the daily at-risk check:
- * this is the room there is to plan in. 0 once the deadline has passed.
+ * events (and the buffers and travel around them) and your sessions, looking
+ * at most two weeks ahead. 0 once the deadline has passed.
+ *
+ * Sessions are busy here as they are for the planner, the task's own too:
+ * its sessions before the deadline already count as planned, so their time
+ * isn't free for what's still missing. The daily at-risk check (`atRiskFor`)
+ * measures the same room, so a task's Sessions card, the review, the notice
+ * and a plan whose days reach the deadline agree.
  */
 export async function freeMinutesBefore(
   db: Db,
@@ -82,7 +87,7 @@ export async function freeMinutesBefore(
   );
   const [prefs, busy] = await Promise.all([
     loadPrefs(db, userId),
-    busyIntervals(db, userId, now, to, { blocks: false, derived: true }),
+    busyIntervals(db, userId, now, to, { blocks: true, derived: true }),
   ]);
   return Math.round(
     freeSpans(workingSpans(prefs, now, to), busy).reduce(

@@ -85,6 +85,12 @@ type Candidate = SchedulerTask & {
   due_all_day?: boolean;
   /** Minutes still to come in sessions after a deadline still ahead. */
   late_minutes: number;
+  /**
+   * Its sessions still to come for the occurrence being planned, before the
+   * deadline or after it: a "what if" that moves the deadline splits them
+   * again (see `computePlan`).
+   */
+  upcoming?: LateSessionRow[];
 };
 
 /**
@@ -196,11 +202,11 @@ export async function candidateTasks(
   return rows.map(
     ({ end_at, all_day, timezone, rrule, series_start, exdates, ...t }) => {
       const task = { due_at: t.due_at, end_at, all_day, timezone };
-      const split = splitSessions(
-        { ...task, rrule, series_start, exdates },
-        ahead.get(t.id) ?? [],
-        now,
-      );
+      const series = { ...task, rrule, series_start, exdates };
+      const sessions = ahead.get(t.id) ?? [];
+      const split = splitSessions(series, sessions, now);
+      // A repeating task's sessions for another occurrence aren't this one's.
+      const kind = rrule ? sessionKindFor(series, now) : null;
       return {
         ...t,
         due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
@@ -213,6 +219,7 @@ export async function candidateTasks(
         late_sessions: split.late.filter(
           (b) => Date.parse(b.start_at) > now.getTime(),
         ),
+        upcoming: kind ? sessions.filter((b) => kind(b) !== "other") : sessions,
         scheduled_end_at: t.scheduled_end_at
           ? new Date(t.scheduled_end_at).toISOString()
           : null,
@@ -381,14 +388,31 @@ export async function computePlan(
     (scenario.move_due ?? []).map((m) => [m.item_id, m.due_at]),
   );
   const dropped = new Set(scenario.drop_item_ids ?? []);
+  // A deadline moved: its sessions count again against the new one, so time
+  // between the old deadline and the new counts as planned (or, moved
+  // sooner, becomes late and may move).
+  const redue = (t: Candidate, due: string | null): Candidate => {
+    const split = splitSessions(
+      { due_at: due, end_at: null, all_day: false, timezone: tz },
+      t.upcoming ?? [],
+      now,
+    );
+    return {
+      ...t,
+      due_at: due,
+      deadline_at: due,
+      due_all_day: false,
+      scheduled_minutes: split.planned_minutes,
+      late_minutes: split.late_minutes,
+      late_sessions: split.late.filter(
+        (b) => Date.parse(b.start_at) > now.getTime(),
+      ),
+    };
+  };
   const tasks: Candidate[] = [
     ...inputs.tasks
       .filter((t) => !dropped.has(t.id))
-      .map((t) =>
-        moved.has(t.id)
-          ? { ...t, due_at: moved.get(t.id)!, deadline_at: moved.get(t.id)! }
-          : t,
-      ),
+      .map((t) => (moved.has(t.id) ? redue(t, moved.get(t.id)!) : t)),
     ...(scenario.add_tasks ?? []).map((t): Candidate => ({
       id: t.id,
       title: t.title,
@@ -606,8 +630,11 @@ function planTasks(
   return tasks.map((t) => {
     const own = result.blocks.filter((b) => b.item_id === t.id);
     const minutes = own.reduce((sum, b) => sum + lengthOf(b), 0);
-    const moves = result.moves.filter((m) => m.item_id === t.id);
-    const moved = moves.reduce((sum, m) => sum + lengthOf(m), 0);
+    // As proposed: only the ticked moves happen (the planner's own). One of
+    // your sessions it offers unticked stays where it is unless you tick it.
+    const moved = result.moves
+      .filter((m) => m.item_id === t.id && m.selected)
+      .reduce((sum, m) => sum + lengthOf(m), 0);
     const guess = guessed.get(t.id) ?? null;
     const estimate =
       state.estimates[t.id] ?? t.estimate_minutes ?? guess?.minutes ?? null;
@@ -628,19 +655,16 @@ function planTasks(
       deadline === null ||
       deadline <= now.getTime() ||
       Date.parse(b.end_at) <= deadline;
-    const ticked = moves
-      .filter((m) => m.selected)
-      .reduce((sum, m) => sum + lengthOf(m), 0);
     const fit = included
       ? deadlineFit({
           deadline_at: t.deadline_at,
           needed_minutes: needed,
           planned_minutes:
             t.scheduled_minutes +
-            ticked +
+            moved +
             own.filter(counts).reduce((sum, b) => sum + lengthOf(b), 0),
           late_minutes:
-            Math.max(0, t.late_minutes - ticked) +
+            Math.max(0, t.late_minutes - moved) +
             own
               .filter((b) => !counts(b))
               .reduce((sum, b) => sum + lengthOf(b), 0),
@@ -975,8 +999,10 @@ export async function unfinishedBlocks(
 }
 
 /**
- * Open tasks due in the next two weeks whose remaining estimate is more than
- * the free working time before they're due.
+ * Open tasks due in the next two weeks whose time still missing (what they
+ * need less what's planned before the deadline) is more than the free working
+ * time before they're due. Sessions are busy, as in `freeMinutesBefore` and
+ * the planner, so all three measure the same room.
  */
 export async function atRiskFor(
   db: Db,
@@ -995,7 +1021,7 @@ export async function atRiskFor(
   });
   if (!due.length) return [];
   const busy = await busyIntervals(db, userId, now, horizon, {
-    blocks: false,
+    blocks: true,
     derived: true,
   });
   const free = freeSpans(workingSpans(prefs, now, horizon), busy);

@@ -45,6 +45,8 @@ type Props = {
   onApplyPlan?: (plan: Plan, moves?: string[]) => Promise<string>;
   /** Shows the reply's plan in the calendar's planner. */
   onOpenPlan?: (plan: Plan) => void;
+  /** After the plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
   /** Opens a note once it has been kept. */
@@ -275,6 +277,7 @@ export function ProposalReview({
   onFollowUp,
   onApplyPlan,
   onOpenPlan,
+  onShowOnCalendar,
   onOpenSource,
   onKeptNote,
 }: Props) {
@@ -309,6 +312,7 @@ export function ProposalReview({
           plan={plan}
           onApply={onApplyPlan && ((moves) => onApplyPlan(plan, moves))}
           onOpenInPlanner={onOpenPlan && (() => onOpenPlan(plan))}
+          onShowOnCalendar={onShowOnCalendar}
         />
       )}
       <DraftNotes

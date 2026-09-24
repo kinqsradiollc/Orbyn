@@ -78,6 +78,8 @@ type Props = {
   onJumpToDate: (date: Date) => void;
   onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   onOpenPlan: (plan: Plan) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
   /** Opens a note once it has been kept. */
@@ -170,6 +172,7 @@ export function CommandBar({
   onJumpToDate,
   onApplyPlan,
   onOpenPlan,
+  onShowOnCalendar,
   onOpenSource,
   onKeptNote,
   onApplied,
@@ -637,6 +640,13 @@ export function CommandBar({
                     onClose();
                     onOpenPlan(plan);
                   }}
+                  onShowOnCalendar={
+                    onShowOnCalendar &&
+                    ((at) => {
+                      onClose();
+                      onShowOnCalendar(at);
+                    })
+                  }
                 />
               ) : null}
             </div>

@@ -792,6 +792,7 @@ export function App() {
                   assistant={assistant}
                   onApplyPlan={applyPlan}
                   onOpenPlan={openPlan}
+                  onShowOnCalendar={showOnCalendar}
                   onOpenSource={openSource}
                   onKeptNote={(docId) => openSource({ doc_id: docId })}
                 />
@@ -932,6 +933,7 @@ export function App() {
             onNavigate={navigate}
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
+            onShowOnCalendar={showOnCalendar}
             onOpenSource={openSource}
             onKeptNote={(docId) => openSource({ doc_id: docId })}
             onApplied={refresh}

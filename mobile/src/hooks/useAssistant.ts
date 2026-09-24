@@ -27,6 +27,8 @@ export type Turn =
        * session before its deadline."), once applied here.
        */
       planResult?: string;
+      /** Where the applied plan's first changed session starts, for "Show on calendar". */
+      planAt?: string | null;
     };
 
 type Options = {
@@ -185,10 +187,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     return act(async () => {
       const result = await client.applyPlan(plan.id, moves ? { moves } : {});
       const planResult = planOutcome(result, plan.at_risk);
+      const planAt =
+        [...result.blocks, ...result.moved].map((b) => b.start_at).sort()[0] ??
+        null;
       setTurns((t) =>
         t.map((x) =>
           x.id === turnId && x.role === "assistant"
-            ? { ...x, planApplied: true, planResult }
+            ? { ...x, planApplied: true, planResult, planAt }
             : x,
         ),
       );

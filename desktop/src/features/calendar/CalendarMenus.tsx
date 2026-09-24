@@ -20,6 +20,7 @@ import {
   deadlineLine,
   describeRrule,
   isClosed,
+  isLateSession,
   sessionCount,
   type CalendarEntry,
   type ExternalEntry,
@@ -196,7 +197,9 @@ export function BlockMenu({
   const open = !isClosed(b.status);
   const count = sessionCount(b);
   const deadline = deadlineLine(b);
-  const late = open && !!b.after_deadline;
+  // Late only while the deadline is ahead: after it, it's catch-up time and
+  // there's no time before the deadline left to find.
+  const late = open && isLateSession(b);
   return (
     <Popover anchor={anchor} label={`Session for ${b.title}`} onClose={onClose}>
       <div className="popover-head">

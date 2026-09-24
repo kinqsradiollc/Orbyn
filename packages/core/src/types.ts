@@ -1128,7 +1128,10 @@ export type PlanTask = {
   included: boolean;
   /** Minutes the plan gives it (pinned blocks and ticked moves included). */
   planned_minutes: number;
-  /** Of those, minutes in sessions the plan moves before the deadline. */
+  /**
+   * Of those, minutes in the ticked sessions the plan moves before the
+   * deadline (one of yours it offers unticked isn't counted).
+   */
   moved_minutes?: number;
   /** Why it wasn't (fully) planned, or why it was left out; null when it fits. */
   reason: string | null;

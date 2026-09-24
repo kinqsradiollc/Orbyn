@@ -17,6 +17,7 @@ import {
   describeRrule,
   emptyDay,
   itemBody,
+  isLateSession,
   itemsOnDay,
   lateSessionWarning,
   monthGrid,
@@ -700,7 +701,9 @@ export function CalendarScreen({
 
   const blockMenu = (block: TimeBlock) => {
     const open = block.status !== "done" && block.status !== "cancelled";
-    const late = open && !!block.after_deadline;
+    // Late only while the deadline is ahead: after it, it's catch-up time
+    // and there's no time before the deadline left to find.
+    const late = open && isLateSession(block);
     const actions: MenuAction[] = [
       {
         label: "Open task",

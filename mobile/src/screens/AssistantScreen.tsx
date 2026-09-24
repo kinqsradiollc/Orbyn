@@ -17,6 +17,7 @@ import {
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
+import { SmallAction } from "../components/SmallAction";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion } from "../motion";
@@ -37,6 +38,7 @@ export function AssistantScreen({
   busy,
   onOpenSource,
   onKeptNote,
+  onShowOnCalendar,
 }: {
   assistant: Assistant;
   items: Item[];
@@ -45,6 +47,8 @@ export function AssistantScreen({
   onOpenSource?: (source: DocSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
 }) {
   const { turns, thinking, ask, apply, discard, reset } = assistant;
   const { height } = useWindowDimensions();
@@ -143,6 +147,11 @@ export function AssistantScreen({
                     plan={turn.proposal.plan}
                     applied={turn.planApplied}
                     result={turn.planResult}
+                    onShowOnCalendar={
+                      onShowOnCalendar && turn.planAt
+                        ? () => onShowOnCalendar(turn.planAt!)
+                        : undefined
+                    }
                     busy={locked}
                     onApply={(moves) =>
                       void assistant.applyPlan(turn.id, moves)
@@ -232,6 +241,7 @@ function PlanCard({
   plan,
   applied,
   result,
+  onShowOnCalendar,
   busy,
   onApply,
 }: {
@@ -239,6 +249,8 @@ function PlanCard({
   applied: boolean;
   /** What applying did, in words (when applied here). */
   result?: string;
+  /** Once applied here: the calendar at the first session it changed. */
+  onShowOnCalendar?: () => void;
   busy: boolean;
   onApply: (moves: string[]) => void;
 }) {
@@ -270,9 +282,18 @@ function PlanCard({
             color={colors.accent}
             strokeWidth={2.4}
           />
-          <Text style={s.planDoneText} accessibilityRole="alert">
-            {result ?? "Added to your calendar"}
-          </Text>
+          <View style={s.planDoneBody}>
+            <Text style={s.planDoneText} accessibilityRole="alert">
+              {result ?? "Added to your calendar"}
+            </Text>
+            {onShowOnCalendar && (
+              <SmallAction
+                label="Show on calendar"
+                disabled={false}
+                onPress={onShowOnCalendar}
+              />
+            )}
+          </View>
         </View>
       ) : (
         <Button
@@ -508,8 +529,10 @@ const s = themed(() =>
       gap: 6,
       marginTop: 12,
     },
+    // The message, with "Show on calendar" under it at its own width.
+    planDoneBody: { flex: 1, gap: 8, alignItems: "flex-start" },
     planDoneText: {
-      flex: 1,
+      alignSelf: "stretch",
       fontFamily: fonts.semibold,
       fontSize: 13,
       lineHeight: 18,

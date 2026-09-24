@@ -743,10 +743,14 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         ];
       });
     };
+    // The plan's days reach its deadline: only then can the plan tell that
+    // there isn't room before it. When the deadline is later, the free time
+    // after these days counts too, so nothing here says it's at risk.
+    const dueInPlan = due > nowMs && due <= horizonEnd;
     // At risk: it can't get what it still needs before the deadline. Past
     // the deadline, time found is catch-up and nothing is flagged.
     const flagAtRisk = () => {
-      if (!task.due_at || due <= nowMs) return;
+      if (!task.due_at || !dueInPlan) return;
       atRisk.push({
         item_id: task.id,
         title: task.title,
@@ -809,18 +813,20 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     // The late sessions that stay already hold this much time after the
     // deadline: new time goes before it, and only what they don't hold is
     // added after it. Otherwise each plan would add the same late time again.
-    let heldLate =
-      due > nowMs
-        ? Math.max(
-            0,
-            (task.late_minutes ??
-              (task.late_sessions ?? []).reduce(
-                (n, l) =>
-                  n + (Date.parse(l.end_at) - Date.parse(l.start_at)) / MINUTE,
-                0,
-              )) - movedMinutes,
-          )
-        : 0;
+    // Only when the deadline falls within the plan's days: before a later
+    // deadline, any time these days have is before it, and what doesn't fit
+    // simply isn't placed ("Not enough free time in the days planned").
+    let heldLate = dueInPlan
+      ? Math.max(
+          0,
+          (task.late_minutes ??
+            (task.late_sessions ?? []).reduce(
+              (n, l) =>
+                n + (Date.parse(l.end_at) - Date.parse(l.start_at)) / MINUTE,
+              0,
+            )) - movedMinutes,
+        )
+      : 0;
 
     const padded = roundUpMinutes(left * (1 + input.padPercent / 100));
     const parts = sessions(
@@ -887,7 +893,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       );
       // A partial placement still helps: keep the sessions that fit.
       blocks.push(...placed);
-      if (due <= horizonEnd) flagAtRisk();
+      flagAtRisk();
       continue;
     }
     blocks.push(...placed);

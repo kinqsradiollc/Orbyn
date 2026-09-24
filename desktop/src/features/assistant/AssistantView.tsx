@@ -33,6 +33,8 @@ type Props = {
   onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   /** Shows a plan in the calendar's planner. */
   onOpenPlan: (plan: Plan) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
   /** Opens a note once it has been kept. */
@@ -45,6 +47,7 @@ export function AssistantView({
   assistant,
   onApplyPlan,
   onOpenPlan,
+  onShowOnCalendar,
   onOpenSource,
   onKeptNote,
 }: Props) {
@@ -166,6 +169,7 @@ export function AssistantView({
                   onDismiss={() => dismiss(turn.id)}
                   onApplyPlan={onApplyPlan}
                   onOpenPlan={onOpenPlan}
+                  onShowOnCalendar={onShowOnCalendar}
                   onOpenSource={onOpenSource}
                   onKeptNote={onKeptNote}
                   onFollowUp={

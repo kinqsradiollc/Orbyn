@@ -1611,8 +1611,11 @@ you have no sessions for it):
 parent adds up its subtasks). Only time still to come that ends by the deadline counts in
 `planned_minutes` (for a repeating task, a session after this occurrence's deadline counts toward
 the next one). Without an estimate a task counts as 30 minutes, a guess, so `short` is only said
-within a week of the deadline. `free_minutes` (working hours less your events, up to two weeks
+within a week of the deadline. `free_minutes` (working hours less your events and your sessions, the
+task's own included since those before the deadline already count as planned; up to two weeks
 ahead) is looked up only when the task is short and due within two weeks; otherwise null. The
+review's and the daily notice's at-risk check and a plan whose days reach the deadline measure the
+same room. The
 apps show the status on a task's Sessions card; task rows show it only within a week of the
 deadline or when a session falls after it (`fitChipShown`).
 
@@ -1741,8 +1744,10 @@ becomes new blocks, so a plan may hold only moves. A late session that can't fit
 deadline stays where it is, and the task is `at_risk` with `remaining_minutes` and `free_minutes`
 and the same words as the daily notice ("Needs 2 h more, with 45 min free before it's due.").
 New time goes before the deadline first; the time a late session that stays already holds is never
-added again after the deadline, so planning again doesn't pile up late sessions.
-Nothing is refused and deadlines never move. Once a deadline has passed, time found is catch-up:
+added again after the deadline, so planning again doesn't pile up late sessions. This applies only
+when the deadline falls within the days planned: when it's later, the days after the plan still
+count, so what doesn't fit is `unplaced` ("Not enough free time in the days planned.") and never
+`at_risk`. Nothing is refused and deadlines never move. Once a deadline has passed, time found is catch-up:
 nothing is moved or flagged.
 
 `POST /planner/plans/:id/apply` takes `{ "moves": ["<block id>", …] }`, the sessions to move
@@ -1760,8 +1765,8 @@ planned_minutes, moved_minutes, reason, at_risk, fit, estimate_guess }`, where `
 due by (the end of its day when `due_all_day` is true, its end time when it has one; null without
 a date), `reason` says why a task wasn't (fully) planned or was left out and `estimate_guess`
 (`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set when a task with no
-estimate was planned for a learned length. `planned_minutes` includes the sessions the plan
-offers to move (`moved_minutes`), and `fit` is the task's status once the plan is applied as
+estimate was planned for a learned length. `planned_minutes` includes the ticked sessions the
+plan moves (`moved_minutes`; one of yours it offers unticked isn't counted), and `fit` is the task's status once the plan is applied as
 proposed (ticked moves in). `unplaced` and `at_risk` rows (`{ item_id, title,
 due_at, reason }`) carry `deadline_at` and `due_all_day` too, and `at_risk` rows
 `remaining_minutes` and `free_minutes`; a plan saved before they were added
