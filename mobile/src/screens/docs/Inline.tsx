@@ -41,6 +41,7 @@ export function Inline({
               run.italic && s.italic,
               (run.code || run.math) && s.code,
               !!run.link && s.link,
+              run.highlight && s.highlight,
               lit && s.marked,
             ]}
             onPress={
@@ -64,5 +65,7 @@ const s = themed(() =>
     code: { backgroundColor: colors.surfaceMuted },
     link: { color: colors.accent, textDecorationLine: "underline" },
     marked: { backgroundColor: colors.warningSoft },
+    // ==Highlighted== words, on the same soft tint as the web.
+    highlight: { backgroundColor: colors.warningSoft },
   }),
 );

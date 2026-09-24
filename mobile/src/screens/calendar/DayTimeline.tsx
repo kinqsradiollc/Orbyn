@@ -43,6 +43,7 @@ import {
   timeLabel,
   type Slot,
 } from "./dates";
+import { tap } from "../../lib/haptics";
 
 const GUTTER = 56;
 /** Width of each extra time-zone column in the hour gutter. */
@@ -595,7 +596,10 @@ export function DayTimeline({
   const menuProps = (menu: (() => void) | null) => {
     if (!menu) return {};
     return {
-      onLongPress: menu,
+      onLongPress: () => {
+        tap();
+        menu();
+      },
       accessibilityActions: [MORE],
       onAccessibilityAction: (e: { nativeEvent: { actionName: string } }) => {
         if (e.nativeEvent.actionName === MORE.name) menu();

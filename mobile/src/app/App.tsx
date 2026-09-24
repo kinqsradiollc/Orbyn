@@ -15,6 +15,7 @@ import {
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
 import { RootScreen } from "./RootScreen";
+import { ToastHost } from "../components/Toast";
 import { colors, ThemeContext, useThemeController } from "../theme";
 
 Notifications.setNotificationHandler({
@@ -48,6 +49,7 @@ export default function App() {
         <StatusBar style={theme.scheme === "dark" ? "light" : "dark"} />
         <View style={{ flex: 1, backgroundColor: colors.background }}>
           {(fontsLoaded || fontError) && <RootScreen />}
+          <ToastHost />
         </View>
       </SafeAreaProvider>
     </ThemeContext.Provider>

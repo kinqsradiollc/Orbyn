@@ -101,6 +101,7 @@ import { useTeammates } from "./calendar/teammates";
 import { TeammatesSheet } from "./calendar/TeammatesSheet";
 import { WeekStrip } from "./calendar/WeekStrip";
 import { PlanSheet } from "./PlanSheet";
+import { tap } from "../lib/haptics";
 
 const MODES = ["day", "week", "month", "agenda"] as const;
 type Mode = (typeof MODES)[number];
@@ -620,6 +621,7 @@ export function CalendarScreen({
       const item = await itemFor(itemId);
       assertEditable(item);
       const sent = await outbox.postItemUpdate(item, { status: "done" });
+      tap();
       celebrate(title);
       if (sent && repeats && item.rrule) {
         const next = await client.getItem(item.id).catch(() => null);

@@ -70,6 +70,7 @@ import {
 } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
+import { tap } from "../lib/haptics";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
 /** Line height of the update box; it grows to five lines before scrolling. */
@@ -375,8 +376,10 @@ function Body({
       else setDetail((d) => (d ? { ...d, ...expected } : d));
       const status = answer?.status ?? expected?.status ?? item.status;
       // A status change, an update or the last checklist step can finish it.
-      if (status === "done" && before !== "done")
+      if (status === "done" && before !== "done") {
+        tap();
         celebrate(answer?.title ?? item.title);
+      }
       onChanged();
       return true;
     } catch (e) {

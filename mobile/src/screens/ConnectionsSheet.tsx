@@ -3,11 +3,11 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Switch } from "../components/Switch";
 import {
   WEBHOOK_EVENTS,
   type ApiKey,

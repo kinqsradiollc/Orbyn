@@ -13,7 +13,11 @@ import {
   agendaWeekOf,
   favouriteKey,
   favouriteSet,
+  savedAgo,
   snippetRuns,
+  trashLeft,
+  TRASH_DAYS,
+  type TrashedDoc,
   type Doc,
   type DocKind,
   type DocSummary,
@@ -40,6 +44,7 @@ import { DocEditor } from "./DocEditor";
 import { useDocComments } from "./useDocComments";
 import { PressableScale } from "../../motion";
 import { errorText } from "../../lib/errors";
+import { showToast } from "../../components/Toast";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -111,6 +116,9 @@ export function DocsSheet({
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   /** Uploads: files being imported, and imported pages not filed yet. */
   const [uploadsOnly, setUploadsOnly] = useState(false);
+  /** Trash: deleted pages, kept for `TRASH_DAYS` days. */
+  const [trashOnly, setTrashOnly] = useState(false);
+  const [trash, setTrash] = useState<TrashedDoc[] | null>(null);
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -156,6 +164,12 @@ export function DocsSheet({
    * people their documents were gone whenever the network hiccuped, so a
    * failure says so and offers to try again.
    */
+  const loadTrash = () =>
+    client.listTrash().then(setTrash, (e: Error) => {
+      setTrash([]);
+      setError(errorText(e));
+    });
+
   const loadList = () =>
     client.listDocs().then(
       (list) => {
@@ -239,7 +253,33 @@ export function DocsSheet({
   const backToList = () => {
     setOpen(null);
     void loadList();
+    if (trashOnly) void loadTrash();
   };
+
+  /** Bring a page back from Trash; the toast offers to open it. */
+  const restoreFromTrash = (page: TrashedDoc) =>
+    void run(async () => {
+      const back = await client.restoreDoc(page.id);
+      setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
+      void loadList();
+      showToast({
+        text: `Restored “${back.title || "Untitled"}”`,
+        action: { label: "Open", run: () => setOpen(back) },
+      });
+    });
+
+  /** Delete a page in Trash for good, after asking: this can't be undone. */
+  const destroy = (page: TrashedDoc) =>
+    confirmAction(
+      `Delete “${page.title || "Untitled"}” for good?`,
+      "Its history and comments go with it. This can't be undone.",
+      "Delete for good",
+      () =>
+        void run(async () => {
+          await client.deleteDocForever(page.id);
+          setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
+        }),
+    );
 
   // Leaving a sheet that opened on the agenda should close it, not show a list.
   // A page opened on its own has no list behind it to go back to.
@@ -349,28 +389,33 @@ export function DocsSheet({
           a.id.localeCompare(b.id)
         : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
-  const location = uploadsOnly
-    ? "Uploads"
-    : favoritesOnly
-      ? "Favorites"
-      : folderFilter === "none"
-        ? "Unfiled"
-        : folderFilter
-          ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-          : kindFilter === "agenda"
-            ? "Agendas"
-            : kindFilter === "doc"
-              ? "Pages"
-              : kindFilter === "note"
-                ? "Notes"
-                : "All documents";
+  const location = trashOnly
+    ? "Trash"
+    : uploadsOnly
+      ? "Uploads"
+      : favoritesOnly
+        ? "Favorites"
+        : folderFilter === "none"
+          ? "Unfiled"
+          : folderFilter
+            ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+            : kindFilter === "agenda"
+              ? "Agendas"
+              : kindFilter === "doc"
+                ? "Pages"
+                : kindFilter === "note"
+                  ? "Notes"
+                  : "All documents";
   const selectCollection = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
     month: string | null = null,
     uploads = false,
+    trashed = false,
   ) => {
+    setTrashOnly(trashed);
+    if (trashed) void loadTrash();
     setUploadsOnly(uploads);
     setFolderFilter(folder);
     setKindFilter(kind);
@@ -385,7 +430,7 @@ export function DocsSheet({
     label: string,
     action: () => void,
     selected = false,
-    icon: "fileText" | "folder" | "star" = "fileText",
+    icon: "fileText" | "folder" | "star" | "trash" = "fileText",
     count?: number,
   ) => (
     <Pressable
@@ -479,6 +524,12 @@ export function DocsSheet({
                 uploadsOnly,
                 "fileText",
                 uploadCount || undefined,
+              )}
+              {navRow(
+                "Trash",
+                () => selectCollection(null, null, false, null, false, true),
+                trashOnly,
+                "trash",
               )}
               {agendas.length > 0 && (
                 <>
@@ -610,6 +661,11 @@ export function DocsSheet({
               }}
               onItemsChanged={onItemsChanged}
               onDeleted={backToList}
+              onUndoDelete={(back) => {
+                // Undo from the toast: the page comes back open.
+                setOpen(back);
+                void loadList();
+              }}
               report={report}
             />
           ) : failed ? (
@@ -668,44 +724,63 @@ export function DocsSheet({
                       false,
                     ]),
                     ["Unfiled", "none", null, false],
+                    ["Trash", null, null, false, false, true],
                   ] as [
                     string,
                     string | null,
                     DocKind | null,
                     boolean,
                     boolean?,
+                    boolean?,
                   ][]
-                ).map(([label, folder, kind, favorites, uploads = false]) => {
-                  const selected =
-                    uploadsOnly === uploads &&
-                    favoritesOnly === favorites &&
-                    folderFilter === folder &&
-                    kindFilter === kind;
-                  return (
-                    <Pressable
-                      key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() =>
-                        selectCollection(folder, kind, favorites, null, uploads)
-                      }
-                      style={[
-                        styles.collectionChip,
-                        selected && styles.collectionChipActive,
-                      ]}
-                    >
-                      <Text
+                ).map(
+                  ([
+                    label,
+                    folder,
+                    kind,
+                    favorites,
+                    uploads = false,
+                    trashed = false,
+                  ]) => {
+                    const selected =
+                      trashOnly === trashed &&
+                      uploadsOnly === uploads &&
+                      favoritesOnly === favorites &&
+                      folderFilter === folder &&
+                      kindFilter === kind;
+                    return (
+                      <Pressable
+                        key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}-${trashed}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        onPress={() =>
+                          selectCollection(
+                            folder,
+                            kind,
+                            favorites,
+                            null,
+                            uploads,
+                            trashed,
+                          )
+                        }
                         style={[
-                          styles.collectionChipText,
-                          selected && styles.collectionChipTextActive,
+                          styles.collectionChip,
+                          selected && styles.collectionChipActive,
                         ]}
-                        numberOfLines={1}
                       >
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                        <Text
+                          style={[
+                            styles.collectionChipText,
+                            selected && styles.collectionChipTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  },
+                )}
               </ScrollView>
               <TextInput
                 style={styles.search}
@@ -778,7 +853,7 @@ export function DocsSheet({
                   />
                 </View>
               )}
-              {fading.size > 0 && !hits && (
+              {fading.size > 0 && !hits && !trashOnly && (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityState={{ selected: fadingOnly }}
@@ -792,6 +867,58 @@ export function DocsSheet({
                       : `${fading.size} ${fading.size === 1 ? "page" : "pages"} might be out of date`}
                   </Text>
                 </Pressable>
+              )}
+              {trashOnly && !hits && (
+                <View style={styles.list}>
+                  <Text style={styles.trashNote}>
+                    Pages you delete wait here for {TRASH_DAYS} days, then
+                    they’re deleted for good.
+                  </Text>
+                  {trash === null ? (
+                    <Text style={styles.empty}>Loading…</Text>
+                  ) : trash.length === 0 ? (
+                    <View style={styles.emptyLibrary}>
+                      <Icon name="trash" size={22} color={colors.muted} />
+                      <Text style={styles.empty}>Trash is empty.</Text>
+                    </View>
+                  ) : (
+                    trash.map((page) => (
+                      <View key={page.id} style={styles.row}>
+                        <View style={styles.rowTop}>
+                          <Icon
+                            name="fileText"
+                            size={16}
+                            color={colors.muted}
+                          />
+                          <Text style={styles.rowTitle} numberOfLines={2}>
+                            {page.title || "Untitled"}
+                          </Text>
+                        </View>
+                        <Text style={styles.rowPreview} numberOfLines={2}>
+                          Deleted {savedAgo(page.deleted_at)}
+                          {page.deleted_by ? ` by ${page.deleted_by}` : ""}
+                          {page.team_name ? ` · ${page.team_name}` : ""} ·{" "}
+                          {trashLeft(page.purge_at)}
+                        </Text>
+                        {page.can_restore && (
+                          <View style={styles.trashActions}>
+                            <SmallAction
+                              label="Restore"
+                              disabled={busy}
+                              onPress={() => restoreFromTrash(page)}
+                            />
+                            <SmallAction
+                              label="Delete for good"
+                              destructive
+                              disabled={busy}
+                              onPress={() => destroy(page)}
+                            />
+                          </View>
+                        )}
+                      </View>
+                    ))
+                  )}
+                </View>
               )}
               {uploadsOnly && !hits && (
                 <UploadsList
@@ -811,7 +938,7 @@ export function DocsSheet({
                   caps={imports.caps}
                 />
               )}
-              {!(uploadsOnly && !hits) &&
+              {!((uploadsOnly || trashOnly) && !hits) &&
                 shown.length === 0 &&
                 (docs.length === 0 && !query ? (
                   <View style={styles.emptyLibrary}>
@@ -831,7 +958,7 @@ export function DocsSheet({
                     Nothing here yet. Try another collection or search.
                   </Text>
                 ))}
-              {!(uploadsOnly && !hits) &&
+              {!((uploadsOnly || trashOnly) && !hits) &&
                 shown.map((doc, n) => (
                   <View key={doc.id}>
                     {kindFilter === "agenda" && !hits && doc.created_at && (
@@ -967,6 +1094,7 @@ function OpenDoc({
   onChanged,
   onItemsChanged,
   onDeleted,
+  onUndoDelete,
   report,
 }: {
   doc: Doc;
@@ -975,6 +1103,7 @@ function OpenDoc({
   onChanged: (doc: Doc) => void;
   onItemsChanged?: () => void;
   onDeleted: () => void;
+  onUndoDelete?: (doc: Doc) => void;
   report: (e: unknown) => void;
 }) {
   // The lines as the editor has them, which runs ahead of the saved copy.
@@ -1031,6 +1160,7 @@ function OpenDoc({
         onChanged={onChanged}
         onItemsChanged={onItemsChanged}
         onDeleted={onDeleted}
+        onUndoDelete={onUndoDelete}
         report={report}
       />
       <DocComments state={comments} userId={userId} />
@@ -1236,6 +1366,13 @@ const styles = themed(() =>
       paddingTop: 10,
     },
     empty: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    trashNote: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+    trashActions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      paddingBottom: 10,
+    },
     emptyLibrary: {
       alignItems: "center",
       gap: 10,

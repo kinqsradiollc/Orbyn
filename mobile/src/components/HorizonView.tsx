@@ -27,6 +27,7 @@ import { minutesLabel, rangeLabel } from "../lib/planning";
 import { animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { tap } from "../lib/haptics";
 
 type Lane = { day: string; top: number; bottom: number };
 
@@ -316,6 +317,7 @@ function DragCard({
         disabled={disabled}
         delayLongPress={280}
         onLongPress={() => {
+          tap();
           armed.current = true;
           setLifted(true);
           onStart();
