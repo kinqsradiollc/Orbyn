@@ -39,22 +39,31 @@ const clockText = (at: Date, timezone: string) => {
   return `${String(p.hour).padStart(2, "0")}:${String(p.minute).padStart(2, "0")}`;
 };
 
-/** "today, 17:00", "tomorrow, 09:00", "Fri 26 Sept, 17:00" in the person's zone. */
-export function whenText(iso: string, now: Date, timezone: string) {
-  const at = new Date(iso);
+/**
+ * "today, 17:00", "tomorrow, 09:00", "Fri 26 Sept, 17:00" in the person's
+ * zone; for a whole day just the day ("today", "Fri 26 Sept").
+ */
+export function whenText(
+  iso: string,
+  now: Date,
+  timezone: string,
+  /** A whole day's deadline (the midnight after it): name the day, no time. */
+  allDay = false,
+) {
+  const at = new Date(Date.parse(iso) - (allDay ? 60_000 : 0));
   const day = localDateKey(at, timezone);
   const today = localDateKey(now, timezone);
-  const time = clockText(at, timezone);
-  if (day === today) return `today, ${time}`;
-  if (day === addDays(today, 1)) return `tomorrow, ${time}`;
-  if (day === addDays(today, -1)) return `yesterday, ${time}`;
+  const time = allDay ? "" : `, ${clockText(at, timezone)}`;
+  if (day === today) return `today${time}`;
+  if (day === addDays(today, 1)) return `tomorrow${time}`;
+  if (day === addDays(today, -1)) return `yesterday${time}`;
   const label = new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone,
     weekday: "short",
     day: "numeric",
     month: "short",
   }).format(at);
-  return `${label}, ${time}`;
+  return `${label}${time}`;
 }
 
 const minutesText = (m: number) => {
@@ -206,11 +215,12 @@ export async function upNext(
     if (t.due_at) {
       // Overdue once its deadline has passed: an all-day task isn't overdue
       // during its own day.
-      const due = Date.parse(t.deadline_at ?? t.due_at);
-      if (due < at)
-        reasons.push(`Overdue since ${whenText(t.due_at, now, tz)}`);
-      else if (due - at < 7 * 86_400_000)
-        reasons.push(`Due ${whenText(t.due_at, now, tz)}`);
+      const deadline = t.deadline_at ?? t.due_at;
+      const due = Date.parse(deadline);
+      // Named by the deadline too: an all-day task's day, a span's end.
+      const when = whenText(deadline, now, tz, !!t.due_all_day);
+      if (due < at) reasons.push(`Overdue since ${when}`);
+      else if (due - at < 7 * 86_400_000) reasons.push(`Due ${when}`);
     }
     if (slips >= SLIPS_FOR_SHORT_START && !block)
       reasons.push(

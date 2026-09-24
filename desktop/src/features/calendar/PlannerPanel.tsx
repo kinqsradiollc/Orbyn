@@ -18,6 +18,7 @@ import {
 import {
   BREAK_LEVELS,
   dateLabel,
+  dueDateOf,
   localDateKey,
   planDaysBefore,
   type BreakLevel,
@@ -697,7 +698,7 @@ export function PlannerPanel({
                   <span>
                     {t.title}
                     <small>
-                      {t.due_at ? `Due ${dateLabel(t.due_at)} · ` : ""}
+                      {dueDateOf(t) ? `Due ${dueDateOf(t)} · ` : ""}
                       needs {minutesLabel(t.remaining_minutes)}, free{" "}
                       {minutesLabel(t.free_minutes)}
                     </small>
@@ -740,7 +741,7 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
             {t.included
               ? `${minutesLabel(t.planned_minutes)} planned`
               : "Left out"}
-            {t.due_at && ` · due ${dateLabel(t.due_at)}`}
+            {dueDateOf(t) && ` · due ${dueDateOf(t)}`}
             {t.reason && ` · ${t.reason}`}
           </small>
         </span>

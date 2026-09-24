@@ -1,3 +1,4 @@
+import { deadlineOf } from "./deadlines.js";
 import { clockMinutes, dayTime, zonedParts } from "./time.js";
 
 /**
@@ -155,7 +156,7 @@ export type TimelineBar = {
   left: number;
   width: number;
   done: boolean;
-  /** Due before now and not finished. */
+  /** Its deadline (`deadlineOf`) has passed and it isn't finished. */
   late: boolean;
 };
 
@@ -176,9 +177,12 @@ const MIN_BAR_MINUTES = 60;
 const clampPercent = (n: number) => Math.max(0, Math.min(100, n));
 
 /**
- * Lay a project's dated tasks on one time axis: each bar runs from when the
- * work would have to start (its due time less its estimate) to when it is due.
- * Undated tasks are left out — a timeline can only show what has a date.
+ * Lay a project's dated tasks on one time axis: each bar ends at the task's
+ * deadline (`deadlineOf`: the end of its day for an all-day task, its end
+ * time when it has one) and starts when the work would have to start (the
+ * deadline less its estimate), or earlier when the task's own dates start
+ * earlier (an all-day task covers its day). Undated tasks are left out — a
+ * timeline can only show what has a date.
  */
 export function projectTimeline(
   project: {
@@ -189,6 +193,9 @@ export function projectTimeline(
     id: string;
     title: string;
     due_at?: string | null;
+    end_at?: string | null;
+    all_day?: boolean | null;
+    timezone?: string | null;
     estimate_minutes?: number | null;
     status: string;
     stage_id?: string | null;
@@ -200,9 +207,10 @@ export function projectTimeline(
   if (!dated.length) return null;
 
   const spans = dated.map((t) => {
-    const due = new Date(t.due_at!).getTime();
+    const to = Date.parse(deadlineOf({ ...t, due_at: t.due_at })!);
     const minutes = Math.max(t.estimate_minutes ?? 0, MIN_BAR_MINUTES);
-    return { task: t, from: due - minutes * 60_000, to: due };
+    const from = Math.min(to - minutes * 60_000, Date.parse(t.due_at!));
+    return { task: t, from, to };
   });
 
   let start = Math.min(...spans.map((s) => s.from));
@@ -240,6 +248,8 @@ export function projectTimeline(
           // Keep a sliver visible for very short work.
           width: Math.max(1.5, at(to) - left),
           done: task.status === "done",
+          // Late once its deadline has passed: not during an all-day
+          // task's own day, nor before a task with an end time ends.
           late: task.status !== "done" && to < nowMs,
         };
       }),

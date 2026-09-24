@@ -9,8 +9,9 @@ const day = (iso: string) =>
 /**
  * The project on one time axis.
  *
- * Each bar runs from when a task would have to start — its due time less
- * its estimate — to when it is due, with a mark for today and one for the
+ * Each bar runs from when a task would have to start — its deadline less
+ * its estimate — to its deadline (`deadlineOf`: an all-day task is due by
+ * the end of its day), with a mark for today and one for the project's
  * deadline. It is the same reading of the same numbers the desktop shows;
  * only the drawing is different, because a phone has one column rather
  * than a wide chart.

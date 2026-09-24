@@ -17,17 +17,25 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { schedule } = await import("../src/modules/planner/scheduler.js");
 const { rankTasks } = await import("../src/modules/ai/agent/workspace.js");
+const { upNext } = await import("../src/modules/planner/next.js");
 const { scanPlanningNotices } = await import("../src/worker/planning.js");
 const {
   addDays,
+  buildAgenda,
+  buildGlance,
   dayTime,
   deadlineLine,
   deadlineOf,
   dueBeforeToday,
+  dueDate,
+  dueDateOf,
+  dueDayAt,
+  dueLine,
   dueWhen,
   endsAfterDeadline,
   localDateKey,
   numberSessions,
+  overviewItems,
   planDaysBefore,
   priorityScore,
   sessionCount,
@@ -786,6 +794,201 @@ test("priority and 'overdue' on task lists read the deadline too", () => {
   assert.equal(overdue(days("2026-09-22", "2026-09-23")), true);
 });
 
+test("lists put a task under the day its deadline falls on", () => {
+  // 10 am Thursday 24 September in Melbourne.
+  const now = dayTime("2026-09-24", 10 * 60, TZ);
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, TZ).toISOString();
+  const dayOf = (d: Date | null) => d && localDateKey(d, TZ);
+  const allDay = (first: string, last = first) => ({
+    due_at: at(first, 0),
+    end_at: at(addDays(last, 1), 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  assert.equal(dueDayAt({ due_at: null }), null);
+  assert.equal(dayOf(dueDayAt({ due_at: at("2026-09-24", 9) })), "2026-09-24");
+  // An all-day task is listed on its day (its deadline is the midnight after).
+  assert.equal(
+    dayOf(
+      dueDayAt({ due_at: at("2026-09-24", 0), all_day: true, timezone: TZ }),
+    ),
+    "2026-09-24",
+  );
+  // Over several days: on the last one, the day it's due by.
+  assert.equal(
+    dayOf(dueDayAt(allDay("2026-09-23", "2026-09-25"))),
+    "2026-09-25",
+  );
+  // A span over midnight: the day it ends.
+  const overnight = {
+    due_at: at("2026-09-23", 23),
+    end_at: at("2026-09-24", 1),
+  };
+  assert.equal(dayOf(dueDayAt(overnight)), "2026-09-24");
+  // An event goes by when it starts.
+  assert.equal(dayOf(dueDayAt({ ...overnight, kind: "event" })), "2026-09-23");
+
+  // The widget glance and the daily agenda count the same way.
+  type Row = Parameters<typeof buildGlance>[0][number];
+  const task = (id: string, times: Json): Row =>
+    ({ id, title: id, kind: "task", status: "todo", ...times }) as Row;
+  const items = [
+    task("all day today", allDay("2026-09-24")),
+    task("three days", allDay("2026-09-23", "2026-09-25")),
+    task("overnight", overnight),
+    task("all day yesterday", allDay("2026-09-23")),
+  ];
+  const glance = buildGlance(items, { now, timeZone: TZ });
+  assert.equal(glance.todayOpen, 2, "all day today and overnight");
+  assert.equal(glance.overdue, 1, "all day yesterday only");
+
+  const page = buildAgenda(items, { now, timeZone: TZ });
+  const under = (heading: string) => {
+    const from = page.findIndex(
+      (b) => b.type === "heading" && b.text === heading,
+    );
+    if (from < 0) return [];
+    const next = page.findIndex(
+      (b, n) => n > from && b.type === "heading" && b.level === 2,
+    );
+    return page
+      .slice(from + 1, next < 0 ? undefined : next)
+      .map((b) => ("text" in b ? b.text : ""));
+  };
+  assert.deepEqual(under("Due today").sort(), ["all day today", "overnight"]);
+  assert.deepEqual(under("Carried over"), ["all day yesterday"]);
+  // Coming up names the day it's due by, not the day it starts.
+  const friday = new Date(at("2026-09-25", 12)).toLocaleDateString("en-GB", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  assert.deepEqual(under("Coming up"), [`${friday} · three days`]);
+});
+
+test("Overview and Today agree with the task lists about what's overdue", () => {
+  // The apps' days are the device's: build the times there.
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, zone).toISOString();
+  const now = new Date(at("2026-09-24", 10));
+  const item = (id: string, times: Json) =>
+    ({
+      id,
+      title: id,
+      notes: "",
+      kind: "task",
+      status: "todo",
+      priority: "medium",
+      ...times,
+    }) as Parameters<typeof overviewItems>[0][number];
+  const allDay = (first: string, last = first) => ({
+    due_at: at(first, 0),
+    end_at: at(addDays(last, 1), 0),
+    all_day: true,
+    timezone: zone,
+  });
+  const items = [
+    item("all day today", allDay("2026-09-24")),
+    item("three days", allDay("2026-09-23", "2026-09-25")),
+    item("overnight", {
+      due_at: at("2026-09-23", 23),
+      end_at: at("2026-09-24", 1),
+    }),
+    item("all day yesterday", allDay("2026-09-23")),
+    item("this morning", { due_at: at("2026-09-24", 9) }),
+  ];
+  const view = overviewItems(items, now);
+  assert.deepEqual(
+    view.overdue.map((i) => i.id),
+    ["all day yesterday"],
+  );
+  assert.deepEqual(
+    view.overdue.map((i) => i.id),
+    items.filter((i) => dueBeforeToday(i, now)).map((i) => i.id),
+    "the same rule as the task lists' Overdue",
+  );
+  assert.deepEqual(view.today.map((i) => i.id).sort(), [
+    "all day today",
+    "overnight",
+    "this morning",
+  ]);
+  // Still to come on a later day, not overdue from its first day.
+  assert.deepEqual(
+    view.upcoming.map((i) => i.id),
+    ["three days"],
+  );
+});
+
+test("the task panels say when a task is due by", () => {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, zone).toISOString();
+  assert.equal(dueLine({ due_at: null }), null);
+  assert.equal(
+    dueLine({ due_at: at("2026-10-02", 17) }),
+    `Due ${dueDate(at("2026-10-02", 17))}`,
+  );
+  // All day, as the editors save it (to the midnight after): its day.
+  const oneDay = {
+    due_at: at("2026-10-02", 0),
+    end_at: at("2026-10-03", 0),
+    all_day: true,
+    timezone: zone,
+  };
+  assert.equal(dueLine(oneDay), `Due ${dueDate(at("2026-10-03", 0), true)}`);
+  assert.equal(
+    dueLine({ ...oneDay, end_at: null }),
+    `Due ${dueDate(at("2026-10-03", 0), true)}`,
+  );
+  assert.doesNotMatch(dueLine(oneDay)!, /12:00|→/);
+  // Over several days: the last one.
+  const threeDays = { ...oneDay, end_at: at("2026-10-05", 0) };
+  assert.equal(dueLine(threeDays), `Due ${dueDate(at("2026-10-05", 0), true)}`);
+  assert.notEqual(dueLine(threeDays), dueLine(oneDay));
+  // With an end time: due when it ends, and when it starts.
+  const span = dueLine({
+    due_at: at("2026-10-02", 15),
+    end_at: at("2026-10-02", 17),
+  })!;
+  assert.ok(
+    span.startsWith(`Due ${dueDate(at("2026-10-02", 17))} · starts `),
+    span,
+  );
+  assert.ok(!span.includes(" · starts " + dueDate(at("2026-10-02", 15))), span);
+  assert.equal(
+    dueLine({ due_at: at("2026-10-01", 15), end_at: at("2026-10-02", 17) }),
+    `Due ${dueDate(at("2026-10-02", 17))} · starts ${dueDate(at("2026-10-01", 15))}`,
+  );
+
+  // Planner rows: the deadline they carry, or their due time.
+  assert.equal(
+    dueDateOf({
+      due_at: at("2026-10-02", 0),
+      deadline_at: at("2026-10-03", 0),
+      due_all_day: true,
+    }),
+    dueDate(at("2026-10-03", 0), true),
+  );
+  assert.equal(
+    dueDateOf({ due_at: at("2026-10-02", 9) }),
+    dueDate(at("2026-10-02", 9)),
+  );
+  assert.equal(dueDateOf({ due_at: null }), null);
+  // Named in a zone when given (the server writing for someone).
+  assert.equal(
+    dueDate(dayTime("2026-10-03", 0, TZ).toISOString(), true, TZ),
+    new Date(dayTime("2026-10-02", 12 * 60, TZ)).toLocaleDateString([], {
+      timeZone: TZ,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+    }),
+  );
+});
+
 test("task lists and the assistant don't call an all-day task overdue on its day", async () => {
   const me = await newUser();
   const allDay = (offset: number, title: string) =>
@@ -816,6 +1019,33 @@ test("task lists and the assistant don't call an all-day task overdue on its day
   assert.ok(why(yesterday.id).includes("overdue"), why(yesterday.id).join());
   assert.ok(!why(today.id).includes("overdue"), why(today.id).join());
   assert.ok(why(today.id).includes("due today"), why(today.id).join());
+});
+
+test("Up next says when a task is due by, not when its day or span starts", async () => {
+  const me = await newUser();
+  const today = await newTask(me.token, {
+    title: "Renew licence",
+    due_at: local(0, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const yesterday = await newTask(me.token, {
+    title: "Book venue",
+    due_at: local(-1, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const span = await newTask(me.token, {
+    title: "Run workshop",
+    due_at: local(1, 9),
+    end_at: local(1, 17),
+  });
+  const next = await upNext(pool, me.id, new Date(local(0, 10)));
+  const why = (id: string) =>
+    next.suggestions.find((s) => s.item_id === id)?.reasons.join(" | ") ?? "";
+  assert.match(why(today.id), /(^| \| )Due today($| \| )/, why(today.id));
+  assert.match(why(yesterday.id), /Overdue since yesterday($| \| )/);
+  assert.match(why(span.id), /Due tomorrow, 17:00/);
 });
 
 test("the welcome-back brief says an all-day task due today is due, not overdue", async () => {
@@ -849,6 +1079,38 @@ test("the welcome-back brief says an all-day task due today is due, not overdue"
     (brief.body.due as Json[]).find((d) => d.item_id === id)!.detail as string;
   assert.match(line(today.id), /^Due /);
   assert.match(line(late.id), /^Overdue since /);
+  // Each names its day (in the task's zone), not the midnight it starts.
+  assert.equal(line(today.id), `Due ${dueDate(local(1, 0), true, TZ)}`);
+  assert.equal(
+    line(late.id),
+    `Overdue since ${dueDate(local(0, 0), true, TZ)}`,
+  );
+  assert.doesNotMatch(line(today.id), /12:00/);
+});
+
+test("the welcome-back brief names a task's deadline, in your zone", async () => {
+  const me = await newUser();
+  const span = await newTask(me.token, {
+    title: "Run workshop",
+    due_at: local(1, 9),
+    end_at: local(1, 17),
+  });
+  const beat = () =>
+    call(me.token, "POST", "/presence/heartbeat", {
+      device_id: "due-desk",
+      platform: "web",
+    });
+  await beat();
+  await pool.query(
+    "UPDATE reentry SET last_active_at = now() - interval '3 days' WHERE user_id = $1",
+    [me.id],
+  );
+  await beat();
+  const brief = await call(me.token, "GET", "/me/reentry");
+  assert.equal(brief.status, 200, brief.raw.body);
+  const line = (brief.body.due as Json[]).find((d) => d.item_id === span.id)!;
+  // Due when it ends, named in the planner's zone.
+  assert.equal(line.detail, `Due ${dueDate(local(1, 17), false, TZ)}`);
 });
 
 test("an all-day task due today with nothing planned gets its due-soon notice", async () => {
@@ -892,4 +1154,88 @@ test("an all-day task due today with nothing planned gets its due-soon notice", 
     [big.id],
   );
   assert.match(risk[0].body, new RegExp(`It's due ${day}\\. Plan it\\?$`));
+});
+
+test("at-risk notices, the review and plans name the deadline, not the start", async () => {
+  const me = await newUser();
+  // 9 am to 5 pm tomorrow, far more work than fits: due when it ends.
+  const span = await newTask(me.token, {
+    title: "Build the stand",
+    due_at: local(1, 9),
+    end_at: local(1, 17),
+    estimate_minutes: 5000,
+  });
+  // All day tomorrow, also too much: due by the end of tomorrow.
+  const allDay = await newTask(me.token, {
+    title: "Pack the van",
+    due_at: local(1, 0),
+    all_day: true,
+    timezone: TZ,
+    estimate_minutes: 5000,
+  });
+
+  await scanPlanningNotices(new Date(local(0, 10)), [me.id]);
+  const notices = (await call(me.token, "GET", "/notifications"))
+    .body as Json[];
+  const risk = (id: string) =>
+    notices.find((n) => n.kind === "at_risk" && n.item_id === id)!;
+  const when = new Intl.DateTimeFormat("en-AU", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(local(1, 17)));
+  assert.ok(risk(span.id), JSON.stringify(notices));
+  assert.match(
+    risk(span.id).body,
+    new RegExp(`It's due ${when}\\. Plan it\\?$`),
+  );
+  const day = new Intl.DateTimeFormat("en-AU", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(local(1, 12)));
+  assert.match(
+    risk(allDay.id).body,
+    new RegExp(`It's due ${day}\\. Plan it\\?$`),
+  );
+
+  // The planner's review carries the deadline.
+  const review = await call(me.token, "GET", "/planner/review");
+  assert.equal(review.status, 200, review.raw.body);
+  const reviewed = (id: string) =>
+    (review.body.at_risk as Json[]).find((t) => t.item_id === id)!;
+  assert.equal(reviewed(span.id).deadline_at, local(1, 17));
+  assert.equal(reviewed(span.id).due_all_day, false);
+  assert.equal(reviewed(allDay.id).deadline_at, local(2, 0));
+  assert.equal(reviewed(allDay.id).due_all_day, true);
+
+  // So do a plan's tasks, and those that didn't fit or are at risk.
+  const plan = await call(me.token, "POST", "/planner/preview", {
+    item_ids: [span.id, allDay.id],
+    days: 2,
+    timezone: TZ,
+  });
+  assert.equal(plan.status, 200, plan.raw.body);
+  const flagged = [
+    ...(plan.body.unplaced as Json[]),
+    ...(plan.body.at_risk as Json[]),
+  ];
+  for (const [t, deadline, whole] of [
+    [span, local(1, 17), false],
+    [allDay, local(2, 0), true],
+  ] as const) {
+    const rows = flagged.filter((u) => u.item_id === t.id);
+    assert.ok(rows.length, `${t.title} didn't fit: ${plan.raw.body}`);
+    for (const u of rows) {
+      assert.equal(u.deadline_at, deadline);
+      assert.equal(u.due_all_day, whole);
+    }
+    const listed = (plan.body.tasks as Json[]).find((x) => x.item_id === t.id)!;
+    assert.equal(listed.deadline_at, deadline);
+    assert.equal(listed.due_all_day, whole);
+  }
 });

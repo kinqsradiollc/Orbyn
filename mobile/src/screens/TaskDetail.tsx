@@ -13,8 +13,7 @@ import {
 } from "react-native";
 import {
   dateLabel,
-  deadlineOf,
-  dueDate,
+  dueLine,
   hasTeamPermission,
   isClosed,
   statusLabels,
@@ -512,9 +511,10 @@ function Body({
               <View style={s.metaItem}>
                 <Icon name="clock" size={14} color={colors.muted} />
                 <Text style={s.metaText}>
-                  {item.kind === "task" && item.due_at && !item.end_at
-                    ? // "Due" is the deadline: an all-day task is due by the end of its day.
-                      `Due ${dueDate(deadlineOf(item)!, !!item.all_day)}`
+                  {item.kind === "task" && item.due_at
+                    ? // "Due" is the deadline: an all-day task is due by the end
+                      // of its (last) day, one with an end time when it ends.
+                      dueLine(item)
                     : `${dateLabel(item.due_at)}${
                         item.end_at
                           ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`

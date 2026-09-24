@@ -464,28 +464,37 @@ function Form({
           </Section>
           {allDay && (
             <>
+              {/* A task is due by the end of its day, so "Due" is its last
+                  day. Either way, moving it moves the whole run of days. */}
               <Section label={editing.kind === "event" ? "First day" : "Due"}>
                 <DateField
                   label={editing.kind === "event" ? "First day" : "Due"}
-                  value={keyOf(firstDay)}
+                  value={keyOf(
+                    editing.kind === "event" || lastDay < firstDay
+                      ? firstDay
+                      : lastDay,
+                  )}
                   onChange={(key) => {
                     if (!key) return;
-                    const start = fromKey(key);
-                    const days = Math.round(
-                      (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
-                    );
-                    onChange(
-                      allDayRange(
-                        key,
-                        keyOf(
-                          new Date(
-                            start.getFullYear(),
-                            start.getMonth(),
-                            start.getDate() + Math.max(0, days),
-                          ),
-                        ),
-                        zone,
+                    const days = Math.max(
+                      0,
+                      Math.round(
+                        (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
                       ),
+                    );
+                    const picked = fromKey(key);
+                    const shift = (d: Date, n: number) =>
+                      keyOf(
+                        new Date(
+                          d.getFullYear(),
+                          d.getMonth(),
+                          d.getDate() + n,
+                        ),
+                      );
+                    onChange(
+                      editing.kind === "event"
+                        ? allDayRange(key, shift(picked, days), zone)
+                        : allDayRange(shift(picked, -days), key, zone),
                     );
                   }}
                 />

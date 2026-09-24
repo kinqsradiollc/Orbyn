@@ -1,4 +1,5 @@
 import {
+  dueDayAt,
   formatRrule,
   isClosed,
   parseRrule,
@@ -64,7 +65,8 @@ export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
   if (due === "none") return !i.due_at;
   if (!i.due_at) return false;
   if (due === "overdue") return isOverdue(i, now);
-  const at = new Date(i.due_at);
+  // The day it's due by: an all-day task's last day, a span's end.
+  const at = dueDayAt(i)!;
   /** Local midnight `n` days from today. */
   const day = (n: number) =>
     new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);

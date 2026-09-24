@@ -6,8 +6,9 @@ const day = (iso: string) =>
 
 /**
  * The project on one time axis: each bar runs from when a task would have to
- * start (its due time less its estimate) to when it is due, with markers for
- * today and the deadline. Undated tasks are listed underneath, since a
+ * start (its deadline less its estimate) to its deadline (`deadlineOf`: an
+ * all-day task is due by the end of its day), with markers for today and the
+ * project's deadline. Undated tasks are listed underneath, since a
  * timeline can only place what has a date.
  */
 export function Timeline({

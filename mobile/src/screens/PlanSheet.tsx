@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   BREAK_LEVELS,
-  dateLabel,
+  dueDateOf,
   localDateKey,
   type BreakLevel,
   type Item,
@@ -93,7 +93,7 @@ const dayOption = (n: number) =>
 const toggle = (ids: string[], id: string) =>
   ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
 
-/** "Due Fri, 3 PM · 1h planned of 2h". */
+/** "Due Fri 2 Oct, 3 pm · 1h planned of 2h". */
 function taskLine(t: PlanTask) {
   const estimate = t.estimate_minutes
     ? minutesLabel(t.estimate_minutes) +
@@ -106,7 +106,8 @@ function taskLine(t: PlanTask) {
         : "")
     : "no estimate (counts as 30m)";
   return [
-    t.due_at ? `Due ${dateLabel(t.due_at)}` : "",
+    // The deadline: an all-day task names its day, not its midnight.
+    dueDateOf(t) ? `Due ${dueDateOf(t)}` : "",
     `${minutesLabel(t.planned_minutes) || "Nothing"} planned of ${estimate}${t.estimate_tuned ? ", changed for this plan" : ""}`,
   ]
     .filter(Boolean)

@@ -6,7 +6,7 @@ import {
   CircleX,
   Clock,
 } from "lucide-react";
-import { dateLabel, type Plan, type TimeBlock } from "@orbyn/core";
+import { dueDateOf, type Plan, type TimeBlock } from "@orbyn/core";
 import {
   byDay,
   errorText,
@@ -111,7 +111,7 @@ export function PlanCard({ plan, onApply, onOpenInPlanner, limit = 6 }: Props) {
             {plan.at_risk.map((t) => (
               <li key={t.item_id}>
                 {t.title}
-                {t.due_at && <small> · due {dateLabel(t.due_at)}</small>}
+                {dueDateOf(t) && <small> · due {dueDateOf(t)}</small>}
                 <small> · {t.reason}</small>
               </li>
             ))}

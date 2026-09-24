@@ -195,13 +195,24 @@ const localDay = (d: Date) =>
  * "5 pm" or "5:30 pm" where the device's clock has am and pm, "17:00" where
  * it doesn't (a bare "17" reads oddly).
  */
-function clock(at: Date) {
+function clock(at: Date, timeZone?: string) {
+  const zone = timeZone ? { timeZone } : {};
   const twelve = new Intl.DateTimeFormat([], {
     hour: "numeric",
+    ...zone,
   }).resolvedOptions().hour12;
+  const minutes = timeZone
+    ? Number(
+        new Intl.DateTimeFormat("en-US", {
+          minute: "numeric",
+          timeZone,
+        }).format(at),
+      )
+    : at.getMinutes();
   return at.toLocaleTimeString([], {
     hour: "numeric",
-    ...(at.getMinutes() || !twelve ? { minute: "2-digit" } : {}),
+    ...zone,
+    ...(minutes || !twelve ? { minute: "2-digit" } : {}),
   });
 }
 
@@ -241,30 +252,88 @@ export function dueWhen(
  * Whether a task's deadline fell on a day before today: what "overdue" means
  * on task lists. Days are the device's, or `timeZone`'s when given. A task
  * due earlier today isn't overdue yet, an all-day task becomes overdue the
- * day after its date, and a task with an end time the day after it ends.
+ * day after its date, and a task with an end time the day after it ends
+ * (see `dueDayAt`; an event goes by the day it starts).
  */
 export function dueBeforeToday(
-  item: DeadlineSource,
+  item: DeadlineSource & { kind?: string | null },
   now = new Date(),
   timeZone?: string,
 ): boolean {
-  const deadline = deadlineOf(item);
-  if (!deadline) return false;
-  const at = namedAt(deadline, !!item.all_day);
+  const at = dueDayAt(item);
+  if (!at) return false;
   return timeZone
     ? localDateKey(at, timeZone) < localDateKey(now, timeZone)
     : localDay(at) < localDay(now);
 }
 
-/** "Fri 2 Oct, 5 pm", or "Fri 2 Oct" for an all-day date. */
-export function dueDate(deadline: string, allDay = false): string {
+/**
+ * The moment whose day a task is listed under ("due today", "overdue",
+ * "coming up"): its deadline (`deadlineOf`), or for an all-day task the last
+ * minute of its last day, so a task is listed on the day it's due by and
+ * never on a day before that. Events go by when they start. Null without a
+ * date. Take its day in the viewer's zone (`localDateKey`, `sameDay`).
+ */
+export function dueDayAt(
+  item: DeadlineSource & { kind?: string | null },
+): Date | null {
+  if (!item.due_at) return null;
+  if (item.kind === "event") return new Date(item.due_at);
+  return namedAt(deadlineOf(item)!, !!item.all_day);
+}
+
+/**
+ * "Fri 2 Oct, 5 pm", or "Fri 2 Oct" for an all-day date. In the device's
+ * zone, or `timeZone`'s when given (the server writing for someone).
+ */
+export function dueDate(
+  deadline: string,
+  allDay = false,
+  timeZone?: string,
+): string {
   const at = namedAt(deadline, allDay);
   const day = at.toLocaleDateString([], {
     weekday: "short",
     day: "numeric",
     month: "short",
+    ...(timeZone ? { timeZone } : {}),
   });
-  return allDay ? day : `${day}, ${clock(at)}`;
+  return allDay ? day : `${day}, ${clock(at, timeZone)}`;
+}
+
+/**
+ * "Fri 2 Oct, 5 pm" (or "Fri 2 Oct" for a whole day) from what a planner row
+ * carries: its `deadline_at` and `due_all_day`, or its due time when it has
+ * no deadline worked out (an older saved plan). Null without a date.
+ */
+export function dueDateOf(row: {
+  due_at?: string | null;
+  deadline_at?: string | null;
+  due_all_day?: boolean;
+}): string | null {
+  if (row.deadline_at) return dueDate(row.deadline_at, !!row.due_all_day);
+  return row.due_at ? dueDate(row.due_at) : null;
+}
+
+/**
+ * When a task is due, as its panel shows it: "Due Fri 2 Oct, 5 pm". An
+ * all-day task names the day it's due by (the last day, when it runs over
+ * several): "Due Fri 2 Oct". A task with an end time is due when it ends
+ * and says when it starts: "Due Fri 2 Oct, 5 pm · starts 3 pm" ("starts Thu
+ * 1 Oct, 3 pm" when that's another day). Null without a date.
+ */
+export function dueLine(item: DeadlineSource): string | null {
+  const deadline = deadlineOf(item);
+  if (!deadline || !item.due_at) return null;
+  const allDay = !!item.all_day;
+  const due = `Due ${dueDate(deadline, allDay)}`;
+  if (allDay || !item.end_at) return due;
+  const start = new Date(item.due_at);
+  const startsOn =
+    localDay(start) === localDay(new Date(deadline))
+      ? clock(start)
+      : dueDate(start.toISOString());
+  return `${due} · starts ${startsOn}`;
 }
 
 /**

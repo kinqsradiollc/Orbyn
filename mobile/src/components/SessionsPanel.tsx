@@ -76,9 +76,11 @@ function emptyText(s: ItemSessions | null, item: Item) {
     facts.push(`Due ${dueDate(s.deadline_at, s.due_all_day)}`);
   else if (s?.project_deadline)
     facts.push(`No deadline · project ends ${rowDay(s.project_deadline)}`);
-  if (item.estimate_minutes)
+  const work = item.remaining_minutes ?? item.estimate_minutes;
+  if (item.estimate_minutes && work && work > 0)
+    // "About" when it starts the sentence.
     facts.push(
-      `about ${minutesLabel(item.remaining_minutes ?? item.estimate_minutes)} of work`,
+      `${facts.length ? "about" : "About"} ${minutesLabel(work)} of work`,
     );
   return `No sessions yet.${facts.length ? ` ${facts.join(" · ")}.` : ""}`;
 }

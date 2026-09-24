@@ -24,8 +24,7 @@ import {
 } from "lucide-react";
 import {
   dateLabel,
-  deadlineOf,
-  dueDate,
+  dueLine,
   freshItem,
   isClosed,
   sameDay,
@@ -401,9 +400,10 @@ export function TaskDetail({
           <div className="drawer-facts">
             <span>
               <CalendarClock size={14} aria-hidden="true" />
-              {current.kind === "task" && current.due_at && !current.end_at
-                ? // "Due" is the deadline: an all-day task is due by the end of its day.
-                  `Due ${dueDate(deadlineOf(current)!, !!current.all_day)}`
+              {current.kind === "task" && current.due_at
+                ? // "Due" is the deadline: an all-day task is due by the end of
+                  // its (last) day, one with an end time when it ends.
+                  dueLine(current)
                 : timeRange(current.due_at, current.end_at)}
             </span>
             <span className={"priority " + current.priority}>

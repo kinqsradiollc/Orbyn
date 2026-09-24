@@ -3,6 +3,7 @@ import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
   blockText,
+  dueDayAt,
   estimateModelOf,
   isClosed,
   KINDS,
@@ -82,6 +83,8 @@ type Row = {
   priority: string;
   due_at: Date | null;
   end_at: Date | null;
+  all_day?: boolean;
+  timezone?: string;
   reminder_minutes: number;
   /** Minutes before, from the item's alerts column (ITEM_SELECT is i.*). */
   alerts: number[] | null;
@@ -218,7 +221,12 @@ export async function overview(ctx: AgentContext) {
     new Date(Date.now() + 7 * 86_400_000),
     ctx.timezone,
   );
-  const day = (r: Row) => (r.due_at ? localDate(r.due_at, ctx.timezone) : "");
+  // The day a task is due by (`dueDayAt`): an all-day task is due today
+  // until the day is over, one with an end time on the day it ends.
+  const day = (r: Row) => {
+    const at = dueDayAt(r);
+    return at ? localDate(at, ctx.timezone) : "";
+  };
   const open = rows.filter((r) => !isClosed(r.status));
   const overdue = open.filter((r) => r.due_at && day(r) < today);
   const dueToday = open.filter((r) => day(r) === today);

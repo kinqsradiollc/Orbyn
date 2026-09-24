@@ -1533,9 +1533,13 @@ span) is due when it ends; an all-day task is due at the end of its day (its `du
 local midnight it starts), so sessions on the day itself are on time. Planned time and the
 deadline stay separate: the planner never moves a deadline. Every "is this after the
 deadline?" check, in the planner, the at-risk and due-soon notices, the priority `score`, the
-apps' "Overdue", the welcome-back brief, the assistant's ranking and the fields below, uses this
-rule (`deadlineOf` in `@orbyn/core`). On task lists a task is overdue once its deadline fell on
-a day before today (`dueBeforeToday`), so one due earlier today isn't yet.
+apps' "Overdue", "due today" and due filters (task lists, Overview, Today and the widget
+glance), the daily agenda's "Due today" and "Carried over", the project timeline, the
+welcome-back brief, the assistant's ranking and overview counts and the fields below, uses this
+rule (`deadlineOf` in `@orbyn/core`). Lists put a task under the day its deadline falls on
+(`dueDayAt`): an all-day task over several days under its last day, a span under the day it
+ends. A task is overdue once that day is before today (`dueBeforeToday`), so one due earlier
+today isn't yet. The task panels say "Due Fri 2 Oct, 5 pm" (`dueLine`).
 
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
@@ -1581,7 +1585,7 @@ becomes the task's own.
 | `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                |
 | `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced         |
 | `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
-| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task due on a whole day has `due_all_day: true`                             |
+| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task has its `deadline_at`, and `due_all_day: true` when due on a whole day |
 | `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
 
 Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
@@ -1863,7 +1867,8 @@ too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.resc
 - `block.started`: when one of your sessions starts. `data`: `id`, `item_id`, `title`,
   `start_at`, `end_at`.
 - `task.at_risk`: with the planner's at-risk notice, at most once a day per task. `data`:
-  `item_id`, `title`, `due_at`, `remaining_minutes`, `free_minutes`, `reason`.
+  `item_id`, `title`, `due_at`, `deadline_at` (the moment it's due by), `remaining_minutes`,
+  `free_minutes`, `reason`.
 
 Sessions also send `block.updated` when one is moved, resized or rescheduled (`data`: the
 session, as `GET /blocks` returns it, with its deadline and number) and `block.deleted` when one

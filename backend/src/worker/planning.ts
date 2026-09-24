@@ -236,6 +236,15 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
     const tz = prefs.timezone;
     const today = localDateKey(now, tz);
     const when = whenFormat(tz);
+    /**
+     * A deadline in words, in this person's zone: its day and time, or for
+     * an all-day task the day it's due by (its deadline is the midnight
+     * after, so the minute before names the day).
+     */
+    const dueWords = (deadline: string, allDay: boolean) =>
+      allDay
+        ? dayFormat(tz).format(new Date(Date.parse(deadline) - 60_000))
+        : when.format(new Date(deadline));
 
     const workStart = dayTime(today, clockMinutes(prefs.work_start), tz);
     if (now >= workStart && prefs.work_days.includes(weekdayOf(today))) {
@@ -275,11 +284,10 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           kind: "at_risk",
           ref: today,
           title: `At risk: ${t.title}`,
-          body: `${t.reason} It's due ${
-            t.due_all_day
-              ? dayFormat(prefs.timezone).format(new Date(t.due_at!))
-              : when.format(new Date(t.due_at!))
-          }. Plan it?`,
+          body: `${t.reason} It's due ${dueWords(
+            t.deadline_at ?? t.due_at!,
+            !!t.due_all_day,
+          )}. Plan it?`,
         },
         email,
       );
@@ -292,6 +300,7 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           item_id: t.item_id,
           title: t.title,
           due_at: t.due_at,
+          deadline_at: t.deadline_at ?? null,
           remaining_minutes: t.remaining_minutes,
           free_minutes: t.free_minutes,
           reason: t.reason,
@@ -318,11 +327,10 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           kind: "deadline",
           ref: today,
           title: `Due soon: ${t.title}`,
-          body: `"${t.title}" is due ${
-            t.due_all_day
-              ? dayFormat(prefs.timezone).format(new Date(t.due_at!))
-              : when.format(new Date(due))
-          }, and no session is planned for it yet. Plan it?`,
+          body: `"${t.title}" is due ${dueWords(
+            t.deadline_at,
+            !!t.due_all_day,
+          )}, and no session is planned for it yet. Plan it?`,
         },
         email,
       );

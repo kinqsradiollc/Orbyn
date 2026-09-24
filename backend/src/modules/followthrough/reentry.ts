@@ -1,13 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import {
-  dateLabel,
   deadlineOf,
+  dueDate,
   REENTRY_AWAY_HOURS,
   type ReentryBrief,
   type ReentryLine,
 } from "@orbyn/core";
 import { pool, reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
+import { loadPrefs } from "../planner/calendar.js";
 
 /** A brief stays up for this long after coming back, unless dismissed. */
 const SHOW_DAYS = 3;
@@ -57,8 +58,17 @@ export async function reentryRoutes(app: FastifyInstance) {
     const since = state.away_from;
     const mine = `(i.assignee_id = $1 OR (i.user_id = $1 AND i.assignee_id IS NULL))`;
     const [assigned, changed, asks, mentions, due, pages] = await Promise.all([
-      db.query<{ id: string; title: string; who: string; due_at: Date | null }>(
-        `SELECT i.id, i.title, o.name AS who, i.due_at FROM items i
+      db.query<{
+        id: string;
+        title: string;
+        who: string;
+        due_at: Date | null;
+        end_at: Date | null;
+        all_day: boolean;
+        timezone: string;
+      }>(
+        `SELECT i.id, i.title, o.name AS who, i.due_at, i.end_at, i.all_day, i.timezone
+           FROM items i
            JOIN users o ON o.id = i.user_id
           WHERE i.assignee_id = $1 AND i.user_id <> $1
             AND i.status NOT IN ('done', 'cancelled') AND i.updated_at >= $2
@@ -118,6 +128,29 @@ export async function reentryRoutes(app: FastifyInstance) {
       ),
     ]);
     const now = Date.now();
+    // Your zone, for the times in "due" lines.
+    const zone = [...assigned.rows, ...due.rows].some(
+      (x) => x.due_at && !x.all_day,
+    )
+      ? (await loadPrefs(db, u.id)).timezone
+      : undefined;
+    /**
+     * A task's deadline (`deadlineOf`) and how to say it: an all-day task is
+     * due by the end of its day and names that day (in its own zone, where
+     * the day is kept); a time is named in yours.
+     */
+    const deadlineWords = (x: {
+      due_at: Date;
+      end_at: Date | null;
+      all_day: boolean;
+      timezone: string;
+    }) => {
+      const at = deadlineOf(x)!;
+      return {
+        at,
+        words: dueDate(at, x.all_day, x.all_day ? x.timezone : zone),
+      };
+    };
     const brief: ReentryBrief = {
       away_from: since.toISOString(),
       away_until: state.away_until.toISOString(),
@@ -128,7 +161,11 @@ export async function reentryRoutes(app: FastifyInstance) {
       assigned: assigned.rows.map((x): ReentryLine => ({
         item_id: x.id,
         title: x.title,
-        detail: `From ${x.who}${x.due_at ? ` · due ${dateLabel(x.due_at.toISOString())}` : ""}`,
+        detail: `From ${x.who}${
+          x.due_at
+            ? ` · due ${deadlineWords({ ...x, due_at: x.due_at }).words}`
+            : ""
+        }`,
       })),
       changed: changed.rows.map((x) => ({
         item_id: x.id,
@@ -152,16 +189,19 @@ export async function reentryRoutes(app: FastifyInstance) {
         title: x.title,
         detail: snippet(x.body),
       })),
-      due: due.rows.map((x) => ({
-        item_id: x.id,
-        title: x.title,
-        detail:
-          // Overdue once the deadline has passed (`deadlineOf`): an all-day
-          // task is due by the end of its day.
-          Date.parse(deadlineOf(x)!) < now
-            ? `Overdue since ${dateLabel(x.due_at.toISOString())}`
-            : `Due ${dateLabel(x.due_at.toISOString())}`,
-      })),
+      due: due.rows.map((x) => {
+        // Overdue once the deadline has passed: not during an all-day
+        // task's own day.
+        const deadline = deadlineWords(x);
+        return {
+          item_id: x.id,
+          title: x.title,
+          detail:
+            Date.parse(deadline.at) < now
+              ? `Overdue since ${deadline.words}`
+              : `Due ${deadline.words}`,
+        };
+      }),
       pages: pages.rows.map((x) => ({
         doc_id: x.id,
         title: x.title || "Untitled",

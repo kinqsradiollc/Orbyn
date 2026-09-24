@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Eye, Trash2, X } from "lucide-react";
 import {
   freshItem,
+  addDays,
   allDayRange,
   fromDateTimeLocal,
   hasTeamPermission,
@@ -525,10 +526,33 @@ export function ItemEditor({
                   </small>
                 </label>
               )}
-              {allDay ? (
+              {allDay && kind === "task" ? (
+                // A task is due by the end of its day, so "Due" is its last
+                // day; moving it moves a task that runs over days as a whole.
+                <label>
+                  Due
+                  <DateField
+                    type="date"
+                    required
+                    value={endDay > startDay ? endDay : startDay}
+                    onChange={(e) => {
+                      const due = e.target.value;
+                      const days =
+                        startDay && endDay > startDay
+                          ? Math.round(
+                              (Date.parse(endDay) - Date.parse(startDay)) /
+                                86_400_000,
+                            )
+                          : 0;
+                      setStartDay(due ? addDays(due, -days) : "");
+                      setEndDay(due);
+                    }}
+                  />
+                </label>
+              ) : allDay ? (
                 <>
                   <label>
-                    {kind === "task" ? "Due" : "Starts"}
+                    Starts
                     <DateField
                       type="date"
                       required

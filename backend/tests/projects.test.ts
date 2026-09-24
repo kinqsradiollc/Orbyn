@@ -7,8 +7,13 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { projectProgress, projectAtRisk, projectTimeline, DEFAULT_STAGES } =
-  await import("@orbyn/core");
+const {
+  projectProgress,
+  projectAtRisk,
+  projectTimeline,
+  DEFAULT_STAGES,
+  dayTime,
+} = await import("@orbyn/core");
 
 const app = await buildApp();
 let token = "";
@@ -301,6 +306,89 @@ test("a timeline lays dated tasks on one axis", () => {
     assert.ok(b.left + b.width <= 100.01, `${b.id} ends inside`);
     assert.ok(b.width >= 1.5, `${b.id} is visible`);
   }
+});
+
+test("a timeline bar ends at the task's deadline and is late only once it has passed", () => {
+  const TZ = "Australia/Melbourne";
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, TZ).toISOString();
+  // 10 am Thursday 24 September in Melbourne.
+  const now = new Date(at("2026-09-24", 10));
+  const line = projectTimeline(
+    { deadline: null, stages: [] },
+    [
+      // All day today: due by tonight, so not late this morning.
+      {
+        id: "today",
+        title: "Renew licence",
+        due_at: at("2026-09-24", 0),
+        all_day: true,
+        timezone: TZ,
+        status: "todo",
+      },
+      // All day yesterday: that day is over.
+      {
+        id: "yesterday",
+        title: "Book venue",
+        due_at: at("2026-09-23", 0),
+        all_day: true,
+        timezone: TZ,
+        status: "todo",
+      },
+      // 9 am to noon today: due when it ends.
+      {
+        id: "span",
+        title: "Workshop",
+        due_at: at("2026-09-24", 9),
+        end_at: at("2026-09-24", 12),
+        status: "todo",
+      },
+      // Due at 9 am today: that has passed.
+      {
+        id: "plain",
+        title: "Send notes",
+        due_at: at("2026-09-24", 9),
+        status: "todo",
+      },
+    ],
+    now,
+  )!;
+  const bar = (id: string) => line.bars.find((b) => b.id === id)!;
+  assert.equal(bar("today").late, false, "all day today");
+  assert.equal(bar("yesterday").late, true, "all day yesterday");
+  assert.equal(bar("span").late, false, "before its end time");
+  assert.equal(bar("plain").late, true, "past its due time");
+  // The axis runs to the latest deadline: the end of today's all-day task.
+  assert.equal(line.end, at("2026-09-25", 0));
+  // Bars end at their deadlines: the all-day task's at the end of its day,
+  // the span's at its end time; an all-day bar covers its whole day.
+  const edge = (iso: string) =>
+    ((Date.parse(iso) - Date.parse(line.start)) /
+      (Date.parse(line.end) - Date.parse(line.start))) *
+    100;
+  const close = (a: number, b: number, what: string) =>
+    assert.ok(Math.abs(a - b) < 0.01, `${what}: ${a} vs ${b}`);
+  close(bar("today").left + bar("today").width, 100, "all-day end");
+  close(bar("today").left, edge(at("2026-09-24", 0)), "all-day start");
+  close(
+    bar("span").left + bar("span").width,
+    edge(at("2026-09-24", 12)),
+    "span end",
+  );
+  // Done is never late.
+  const done = projectTimeline(
+    { deadline: null, stages: [] },
+    [
+      {
+        id: "d",
+        title: "Old",
+        due_at: at("2026-09-20", 9),
+        status: "done",
+      },
+    ],
+    now,
+  )!;
+  assert.equal(done.bars[0].late, false);
 });
 
 test("a project with no dated tasks has no timeline", () => {

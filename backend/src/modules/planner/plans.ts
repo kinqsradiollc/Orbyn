@@ -21,6 +21,7 @@ import {
   type PlannerReview,
   type PlanTask,
   type TimeBlock,
+  type UnplacedTask,
   type planPreviewInput,
   type planTuneInput,
 } from "@orbyn/core";
@@ -437,10 +438,24 @@ export async function makePlan(
     guessed,
   } = await computePlan(db, userId, d, now);
   // Numbered among the sessions each task already has, as they'll be once
-  // saved, so the preview and the calendar agree.
+  // saved, so the preview and the calendar agree. Tasks that didn't fit say
+  // when they're due by, so the apps can name an all-day task's day.
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const withDeadline = (u: UnplacedTask): UnplacedTask => {
+    const t = byId.get(u.item_id);
+    return t
+      ? {
+          ...u,
+          deadline_at: t.deadline_at ?? null,
+          due_all_day: !!t.due_all_day,
+        }
+      : u;
+  };
   const result = {
     ...computed,
     blocks: await numberPlanBlocks(db, userId, computed.blocks),
+    unplaced: computed.unplaced.map(withDeadline),
+    at_risk: computed.at_risk.map(withDeadline),
   };
   const summary = describePlan(result, days);
   const checklist = planTasks(tasks, excluded, state, result, guessed);
@@ -517,6 +532,8 @@ function planTasks(
       item_id: t.id,
       title: t.title,
       due_at: t.due_at,
+      deadline_at: t.deadline_at ?? null,
+      due_all_day: !!t.due_all_day,
       priority: t.priority,
       team_id: t.team_id,
       list_id: t.list_id,
@@ -889,6 +906,7 @@ export async function atRiskFor(
         title: t.title,
         due_at: t.due_at,
         due_all_day: !!t.due_all_day,
+        deadline_at: t.deadline_at,
         reason: `Needs ${hoursLabel(remaining)} more, with ${hoursLabel(freeMinutes)} free before it's due.`,
         remaining_minutes: remaining,
         free_minutes: freeMinutes,

@@ -4,6 +4,7 @@ import {
   priorityScore,
   buildAgenda,
   dayTime,
+  dueDayAt,
   localDateKey,
   type AgendaEntry,
   type Doc,
@@ -157,17 +158,15 @@ const clock = (iso: string, tz: string) =>
 /** The day as plain facts for the assistant: times already in the person's zone. */
 function factsOf(day: Day, now: Date) {
   const today = localDateKey(now, day.tz);
+  // The day each task is due by (`dueDayAt`): an all-day task is due today
+  // until the day is over.
+  const dueDay = (i: Item) => localDateKey(dueDayAt(i)!, day.tz);
   const due = day.items.filter(
     (i) =>
-      i.status !== "done" &&
-      i.status !== "cancelled" &&
-      localDateKey(new Date(i.due_at!), day.tz) === today,
+      i.status !== "done" && i.status !== "cancelled" && dueDay(i) === today,
   );
   const slipped = day.items.filter(
-    (i) =>
-      i.status !== "done" &&
-      i.status !== "cancelled" &&
-      localDateKey(new Date(i.due_at!), day.tz) < today,
+    (i) => i.status !== "done" && i.status !== "cancelled" && dueDay(i) < today,
   );
   return {
     now: clock(now.toISOString(), day.tz),

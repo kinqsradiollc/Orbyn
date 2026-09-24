@@ -5,7 +5,7 @@ import { Icon } from "./Icon";
 import { Pill } from "./Pill";
 import { ProgressBar } from "./ProgressBar";
 import { SmallAction } from "./SmallAction";
-import { dateLabel } from "@orbyn/core";
+import { dueDateOf } from "@orbyn/core";
 import { minutesLabel, rangeLabel, shortDay } from "../lib/planning";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -184,7 +184,7 @@ function TaskNotes({
         <View key={t.item_id} style={s.note}>
           <Text style={s.noteTitle}>{t.title}</Text>
           <Text style={shared.small}>
-            {t.due_at ? `Due ${dateLabel(t.due_at)} · ` : ""}
+            {dueDateOf(t) ? `Due ${dueDateOf(t)} · ` : ""}
             {t.reason}
           </Text>
         </View>

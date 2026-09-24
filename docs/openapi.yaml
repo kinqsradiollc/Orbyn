@@ -875,7 +875,8 @@ webhooks:
       summary: A task can't get enough time before it's due
       description: |
         Sent with the planner's at-risk notice, at most once a day per task.
-        `data`: item_id, title, due_at, remaining_minutes, free_minutes, reason.
+        `data`: item_id, title, due_at, deadline_at (the moment it's due by),
+        remaining_minutes, free_minutes, reason.
       requestBody: { $ref: "#/components/requestBodies/Delivery" }
       responses: { "200": { description: Delivered } }
   booking.requested:

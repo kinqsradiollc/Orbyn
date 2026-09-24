@@ -1,3 +1,4 @@
+import { dueDayAt } from "./deadlines.js";
 import type { DocBlock } from "./docs.js";
 import { localDateKey } from "./time.js";
 import type { AgendaEntry, Item } from "./types.js";
@@ -110,7 +111,10 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
 
   for (const item of items) {
     if (!item.due_at) continue;
-    const key = localDateKey(new Date(item.due_at), tz);
+    // A task goes by its deadline's day (an all-day task is due today until
+    // the day is over, one over several days on its last); events by when
+    // they start.
+    const key = localDateKey(dueDayAt(item)!, tz);
     if (item.kind === "event") {
       if (!opts.calendar && key === todayKey && !DONE(item.status))
         events.push(item);
@@ -266,7 +270,8 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
   if (soon.length || comingEvents.length) {
     head("Coming up");
     const coming = [
-      ...soon.map((t) => ({ at: t.due_at!, text: t.title })),
+      // Named on the day each task is due by.
+      ...soon.map((t) => ({ at: dueDayAt(t)!.toISOString(), text: t.title })),
       ...comingEvents.map((e) => ({
         at: e.start_at,
         text: `${e.title}${e.all_day ? "" : ` at ${time(e.start_at, tz)}`}`,

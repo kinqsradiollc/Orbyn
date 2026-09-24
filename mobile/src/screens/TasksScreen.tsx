@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import {
   ITEM_SORTS,
+  dueDayAt,
   isClosed,
   searchItems,
   emptyPlans,
@@ -262,11 +263,13 @@ export function TasksScreen({
   const [layout, setLayout] = useState<Layout>(savedLayout);
   const twoColumns = useWindowDimensions().width >= BOARD_WIDE;
   const now = new Date();
-  /** Whether a due date falls between local midnights `from` and `to` days away. */
+  /**
+   * Whether the day a task is due by (`dueDayAt`: an all-day task's last
+   * day) falls between local midnights `from` and `to` days away.
+   */
   const within = (i: Item, from: number, to: number) => {
-    if (!i.due_at) return false;
-    const due = new Date(i.due_at);
-    return due >= dayStart(from, now) && due < dayStart(to, now);
+    const due = dueDayAt(i);
+    return !!due && due >= dayStart(from, now) && due < dayStart(to, now);
   };
 
   // The assignee filter only means something with team items.

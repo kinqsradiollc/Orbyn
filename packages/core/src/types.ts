@@ -1038,6 +1038,10 @@ export type UnplacedTask = {
   item_id: string;
   title: string;
   due_at: string | null;
+  /** When it's due by (`deadlineOf`): the end of its day when all-day, its end time when it has one. */
+  deadline_at?: string | null;
+  /** Due on a whole day (by the end of it) rather than at a time. */
+  due_all_day?: boolean;
   reason: string;
 };
 
@@ -1048,6 +1052,9 @@ export type PlanTask = {
   item_id: string;
   title: string;
   due_at: string | null;
+  /** When it's due by (`deadlineOf`), and whether that's a whole day. */
+  deadline_at?: string | null;
+  due_all_day?: boolean;
   priority: Priority;
   team_id: string | null;
   list_id: string | null;
@@ -1119,8 +1126,6 @@ export type PlanStaleness = { stale: boolean };
 export type AtRiskTask = UnplacedTask & {
   remaining_minutes: number;
   free_minutes: number;
-  /** Due on a whole day (by the end of it) rather than at a time. */
-  due_all_day?: boolean;
 };
 
 /** What needs attention in the plan. */
