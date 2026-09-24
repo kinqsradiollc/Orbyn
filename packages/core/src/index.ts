@@ -42,3 +42,8 @@ export * from "./omml.js";
 export * from "./learning.js";
 export * from "./page-tags.js";
 export * from "./page-templates.js";
+export * from "./line-toolbar.js";
+export * from "./undo.js";
+export * from "./create-actions.js";
+export * from "./app-links.js";
+export * from "./share.js";

@@ -1910,3 +1910,45 @@ export const webhookUpdate = z
   })
   .strict()
   .refine((d) => Object.keys(d).length > 0, "Nothing to update");
+
+// ---------------------------------------------------- sharing into Orbyn ---
+
+/** A web link shared into Orbyn: http or https only. */
+const sharedUrl = z
+  .string()
+  .trim()
+  .max(2000)
+  .regex(/^https?:\/\/\S+$/i, "Links start with http:// or https://");
+
+/** Where something shared into Orbyn goes. */
+export const captureDestination = z.discriminatedUnion("kind", [
+  /** A task on its own ("Read: <title>" for a link). */
+  z.object({ kind: z.literal("inbox") }).strict(),
+  /** Today's agenda, at the end of its Notes. */
+  z.object({ kind: z.literal("agenda") }).strict(),
+  /** The end of a page. */
+  z.object({ kind: z.literal("page"), doc_id: z.uuid() }).strict(),
+  /** A new page, in a folder or unfiled (null). */
+  z
+    .object({ kind: z.literal("new_page"), folder_id: z.uuid().nullable() })
+    .strict(),
+  /** A task in a project. */
+  z.object({ kind: z.literal("project"), project_id: z.uuid() }).strict(),
+]);
+
+/** A link or some text shared into Orbyn, and where it goes. */
+export const captureInput = z
+  .object({
+    url: sharedUrl.nullable().optional(),
+    text: z.string().max(10000).default(""),
+    /** The linked page's title, when the app already has it. */
+    title: z.string().trim().max(300).nullable().optional(),
+    to: captureDestination,
+    /** The device's zone, for which day "today's agenda" is. */
+    timezone: timeZoneField.optional(),
+  })
+  .strict()
+  .refine((d) => !!d.url || !!d.text.trim(), "Share a link or some text");
+
+/** A link whose title and site to look up. */
+export const linkPreviewInput = z.object({ url: sharedUrl }).strict();

@@ -1,5 +1,12 @@
-import React, { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon } from "./Icon";
 import { colors, controls, fonts, radii, themed, tint } from "../theme";
@@ -20,20 +27,18 @@ export type MoreAction = {
 export function MoreMenu({
   label,
   actions,
+  title,
   disabled = false,
 }: {
   /** What the menu is for, e.g. "Project options". */
   label: string;
   actions: MoreAction[];
+  /** The thing's name, shown at the top of the sheet. */
+  title?: string;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const insets = useSafeAreaInsets();
-  const shown = [
-    ...actions.filter((a) => !a.destructive),
-    ...actions.filter((a) => a.destructive),
-  ];
-  if (!shown.length) return null;
+  if (!actions.length) return null;
   return (
     <>
       <Pressable
@@ -50,66 +55,118 @@ export function MoreMenu({
       >
         <Icon name="more" size={18} color={colors.textSoft} />
       </Pressable>
-      <Modal
+      <ActionSheet
         visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        label={label}
+        title={title}
+        actions={actions}
+        onClose={() => setOpen(false)}
+      />
+    </>
+  );
+}
+
+/**
+ * A menu that rises from the bottom: a list of actions and Cancel. The
+ * chosen action runs once the menu has gone (on iOS a new sheet, or the
+ * share sheet, can't open while this one is still leaving).
+ */
+export function ActionSheet({
+  visible,
+  label,
+  title,
+  actions,
+  onClose,
+}: {
+  visible: boolean;
+  /** What the menu is for, read out to screen readers. */
+  label: string;
+  /** Shown at the top, muted: the thing the actions are for. */
+  title?: string;
+  actions: MoreAction[];
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const chosen = useRef<(() => void) | null>(null);
+  const shown = [
+    ...actions.filter((a) => !a.destructive),
+    ...actions.filter((a) => a.destructive),
+  ];
+  const run = () => {
+    const next = chosen.current;
+    chosen.current = null;
+    next?.();
+  };
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      onDismiss={Platform.OS === "ios" ? run : undefined}
+    >
+      <Pressable
+        style={s.backdrop}
+        accessibilityRole="button"
+        accessibilityLabel="Close menu"
+        onPress={onClose}
       >
-        <Pressable
-          style={s.backdrop}
-          accessibilityRole="button"
-          accessibilityLabel="Close menu"
-          onPress={() => setOpen(false)}
+        <View
+          style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+          accessibilityRole="menu"
+          accessibilityLabel={label}
         >
-          <View
-            style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
-            accessibilityRole="menu"
-            accessibilityLabel={label}
-          >
-            <View style={s.group}>
-              {shown.map((a, n) => (
-                <Pressable
-                  key={a.label}
-                  accessibilityRole="menuitem"
-                  disabled={a.disabled}
-                  onPress={() => {
-                    setOpen(false);
-                    a.onPress();
-                  }}
-                  style={({ pressed }) => [
-                    s.item,
-                    n > 0 && s.divided,
-                    pressed && { backgroundColor: colors.surfaceMuted },
-                    a.disabled && { opacity: 0.45 },
+          <View style={s.group}>
+            {!!title && (
+              <Text style={s.title} numberOfLines={2}>
+                {title}
+              </Text>
+            )}
+            {shown.map((a, n) => (
+              <Pressable
+                key={a.label}
+                accessibilityRole="menuitem"
+                disabled={a.disabled}
+                onPress={() => {
+                  chosen.current = a.onPress;
+                  onClose();
+                  // Only iOS waits for the menu to go before the next thing,
+                  // and not for ever should the dismissal go unreported.
+                  if (Platform.OS !== "ios") run();
+                  else setTimeout(run, 600);
+                }}
+                style={({ pressed }) => [
+                  s.item,
+                  (n > 0 || !!title) && s.divided,
+                  pressed && { backgroundColor: colors.surfaceMuted },
+                  a.disabled && { opacity: 0.45 },
+                ]}
+              >
+                <Text
+                  style={[
+                    s.itemText,
+                    a.destructive && { color: colors.danger },
                   ]}
                 >
-                  <Text
-                    style={[
-                      s.itemText,
-                      a.destructive && { color: colors.danger },
-                    ]}
-                  >
-                    {a.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setOpen(false)}
-              style={({ pressed }) => [
-                s.group,
-                s.item,
-                pressed && { backgroundColor: colors.surfaceMuted },
-              ]}
-            >
-              <Text style={[s.itemText, s.cancel]}>Cancel</Text>
-            </Pressable>
+                  {a.label}
+                </Text>
+              </Pressable>
+            ))}
           </View>
-        </Pressable>
-      </Modal>
-    </>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [
+              s.group,
+              s.item,
+              pressed && { backgroundColor: colors.surfaceMuted },
+            ]}
+          >
+            <Text style={[s.itemText, s.cancel]}>Cancel</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -132,6 +189,14 @@ const s = themed(() =>
       overflow: "hidden",
       borderRadius: radii.card,
       backgroundColor: colors.surface,
+    },
+    title: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      textAlign: "center",
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.muted,
     },
     item: {
       minHeight: controls.tap + 8,

@@ -394,6 +394,160 @@ const ICONS = {
     ["rect", { x: "3", y: "14", width: "9", height: "7", rx: "1" }],
     ["rect", { x: "16", y: "14", width: "5", height: "7", rx: "1" }],
   ],
+  // The phone's keyboard toolbar (lucide "undo-2", "redo-2",
+  // "a-large-small", "bold", "italic", "highlighter", "square-check",
+  // "list-indent-increase", "list-indent-decrease", "message-square",
+  // "keyboard-off").
+  undo: [
+    ["path", { d: "M9 14 4 9l5-5" }],
+    ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" }],
+  ],
+  redo: [
+    ["path", { d: "m15 14 5-5-5-5" }],
+    ["path", { d: "M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" }],
+  ],
+  lineKinds: [
+    ["path", { d: "m15 16 2.536-7.328a1.02 1.02 1 0 1 1.928 0L22 16" }],
+    ["path", { d: "M15.697 14h5.606" }],
+    ["path", { d: "m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16" }],
+    ["path", { d: "M3.304 13h6.392" }],
+  ],
+  bold: [
+    [
+      "path",
+      {
+        d: "M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8",
+      },
+    ],
+  ],
+  italic: [
+    ["path", { d: "M19 4h-9" }],
+    ["path", { d: "M14 20H5" }],
+    ["path", { d: "M15 4 9 20" }],
+  ],
+  highlighter: [
+    ["path", { d: "m9 11-6 6v3h9l3-3" }],
+    [
+      "path",
+      { d: "m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" },
+    ],
+  ],
+  squareCheck: [
+    ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+    ["path", { d: "m9 12 2 2 4-4" }],
+  ],
+  indent: [
+    ["path", { d: "M21 5H11" }],
+    ["path", { d: "M21 12H11" }],
+    ["path", { d: "M21 19H11" }],
+    ["path", { d: "m3 8 4 4-4 4" }],
+  ],
+  outdent: [
+    ["path", { d: "M21 5H11" }],
+    ["path", { d: "M21 12H11" }],
+    ["path", { d: "M21 19H11" }],
+    ["path", { d: "m7 8-4 4 4 4" }],
+  ],
+  comment: [
+    [
+      "path",
+      {
+        d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z",
+      },
+    ],
+  ],
+  keyboardDown: [
+    ["path", { d: "M 20 4 A2 2 0 0 1 22 6" }],
+    ["path", { d: "M 22 6 L 22 16.41" }],
+    ["path", { d: "M 7 16 L 16 16" }],
+    ["path", { d: "M 9.69 4 L 20 4" }],
+    ["path", { d: "M14 8h.01" }],
+    ["path", { d: "M18 8h.01" }],
+    ["path", { d: "m2 2 20 20" }],
+    ["path", { d: "M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2" }],
+    ["path", { d: "M6 8h.01" }],
+    ["path", { d: "M8 12h.01" }],
+  ],
+  // The + sheet, the page header and sharing (lucide "info", "arrow-up",
+  // "arrow-down", "scan-text", "file-plus", "folder-plus", "timer",
+  // "calendar-check", "inbox", "circle-plus", "circle-minus", "copy").
+  info: [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M12 16v-4" }],
+    ["path", { d: "M12 8h.01" }],
+  ],
+  arrowUp: [
+    ["path", { d: "m5 12 7-7 7 7" }],
+    ["path", { d: "M12 19V5" }],
+  ],
+  arrowDown: [
+    ["path", { d: "M12 5v14" }],
+    ["path", { d: "m19 12-7 7-7-7" }],
+  ],
+  scan: [
+    ["path", { d: "M3 7V5a2 2 0 0 1 2-2h2" }],
+    ["path", { d: "M17 3h2a2 2 0 0 1 2 2v2" }],
+    ["path", { d: "M21 17v2a2 2 0 0 1-2 2h-2" }],
+    ["path", { d: "M7 21H5a2 2 0 0 1-2-2v-2" }],
+    ["path", { d: "M7 8h8" }],
+    ["path", { d: "M7 12h10" }],
+    ["path", { d: "M7 16h6" }],
+  ],
+  filePlus: [
+    [
+      "path",
+      {
+        d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+      },
+    ],
+    ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5" }],
+    ["path", { d: "M9 15h6" }],
+    ["path", { d: "M12 18v-6" }],
+  ],
+  folderPlus: [
+    ["path", { d: "M12 10v6" }],
+    ["path", { d: "M9 13h6" }],
+    [
+      "path",
+      {
+        d: "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z",
+      },
+    ],
+  ],
+  timer: [
+    ["path", { d: "M10 2h4" }],
+    ["path", { d: "M12 14l3-3" }],
+    ["circle", { cx: "12", cy: "14", r: "8" }],
+  ],
+  calendarCheck: [
+    ["path", { d: "M8 2v4" }],
+    ["path", { d: "M16 2v4" }],
+    ["rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }],
+    ["path", { d: "M3 10h18" }],
+    ["path", { d: "m9 16 2 2 4-4" }],
+  ],
+  inbox: [
+    ["path", { d: "M22 12h-6l-2 3h-4l-2-3H2" }],
+    [
+      "path",
+      {
+        d: "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
+      },
+    ],
+  ],
+  circlePlus: [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M8 12h8" }],
+    ["path", { d: "M12 8v8" }],
+  ],
+  circleMinus: [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M8 12h8" }],
+  ],
+  copy: [
+    ["rect", { x: "8", y: "8", width: "14", height: "14", rx: "2" }],
+    ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }],
+  ],
 } satisfies Record<string, Shape[]>;
 
 export type IconName = keyof typeof ICONS;

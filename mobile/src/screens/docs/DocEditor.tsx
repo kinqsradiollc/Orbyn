@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,31 +13,41 @@ import {
   blockDepth,
   blockText,
   blockToType,
+  canRedo,
+  canStyleLine,
+  canUndo,
   carryBlockIds,
   carryNewIds,
   docStats,
+  emptyUndo,
+  EXPORT_LABELS,
   indentBlocks,
-  isListBlock,
   keepStart,
   listLayout,
   pageFooter,
   pastedLines,
+  recordUndo,
+  redoStep,
+  stylesAt,
   textToBlocks,
+  toolbarLink,
+  toolbarStyle,
+  undoStep,
   withDepth,
+  wordsRange,
   newBlockId,
   mergeDocs,
   parseDoc,
   serializeBlock,
-  modesFor,
   proposeEdit,
-  MODE_LABELS,
   type Doc,
   type DocBlock,
   type DocMode,
   type DocAiAction,
   type DocSuggestion,
+  type ExportFormat,
+  type UndoStack,
 } from "@orbyn/core";
-import { Icon, type IconName } from "../../components/Icon";
 import { DocBody } from "./DocBody";
 import { DocThread } from "./DocThread";
 import { WordPicker } from "./WordPicker";
@@ -47,40 +57,26 @@ import { DocAsk } from "./DocAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
-import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
-import { Chip, ChipRow } from "../../components/Chip";
+import { downloadDoc, formatsHere } from "../../lib/download";
+import { shareLink, sharePageFile } from "../../lib/share";
+import { setOpenDoc } from "../../lib/live";
 import { SmallAction } from "../../components/SmallAction";
+import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
+import { HeaderButton } from "../../components/Sheet";
+import { SlotFill, type SlotHandle } from "../../components/Slot";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
-import { DocViewers } from "./DocViewers";
-import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
-import { PageTags } from "./PageTags";
 import { SaveTemplatePanel } from "./PageTemplates";
-import { controls, colors, fonts, radii, themed } from "../../theme";
+import { LineToolbar, kindKey, type LineKind } from "./LineToolbar";
+import { PageInfo } from "./PageInfo";
+import { colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
 const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
 /** Kinds whose text may hold line breaks of its own. */
 const MULTILINE = new Set<DocBlock["type"]>(["code", "math"]);
-
-/** Short names for the toolbar, where a phone has no room for "Bulleted list". */
-const SHORT: Record<string, string> = {
-  paragraph: "Text",
-  "heading-1": "H1",
-  "heading-2": "H2",
-  "heading-3": "H3",
-  bullet: "\u2022 List",
-  numbered: "1. List",
-  todo: "\u2610 To-do",
-  quote: "\u201C Quote",
-  code: "Code",
-  math: "\u2211 Maths",
-  divider: "\u2014 Divider",
-};
-const kindKey = (k: (typeof BLOCK_KINDS)[number]) =>
-  k.type === "heading" ? `heading-${k.level}` : k.type;
 
 /** How long to wait after typing stops before saving. */
 const SAVE_AFTER_MS = 900;
@@ -113,9 +109,18 @@ export function DocEditor({
   onDeleted,
   onUndoDelete,
   canWrite = true,
+  headerSlot,
+  toolbarSlot,
+  onShowHistory,
   report,
 }: {
   doc: Doc;
+  /** The sheet's header, for the page's Info and ⋯ buttons. */
+  headerSlot?: SlotHandle;
+  /** The space over the keyboard, for the toolbar of the line being typed. */
+  toolbarSlot?: SlotHandle;
+  /** Open the page's history, below the page. */
+  onShowHistory?: () => void;
   /** The page's comments, so a line can show its own underneath. */
   comments: DocCommentsState;
   userId?: string;
@@ -173,8 +178,6 @@ export function DocEditor({
     const t = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(t);
   }, []);
-  /** Whether the shapes the page can be taken away in are showing. */
-  const [formats, setFormats] = useState(false);
   /** Whether the conversation about this page is open. */
   const [talking, setTalking] = useState(false);
   /**
@@ -209,6 +212,8 @@ export function DocEditor({
   const openWith = (text: string, index: number) => {
     setDraft(text);
     setCaret({ start: text.length, end: text.length });
+    sel.current = { start: text.length, end: text.length };
+    setSelection(sel.current);
     setFocused(index);
   };
 
@@ -222,6 +227,20 @@ export function DocEditor({
   const tagBase = useRef<DocBlock[]>(doc.content);
   /** Whether "Save as template" is open. */
   const [savingTemplate, setSavingTemplate] = useState(false);
+  /** The page's Info, its ⋯ menu, and the two menus ⋯ leads to. */
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
+  /** Where the caret or selection is in the open line. */
+  const sel = useRef({ start: 0, end: 0 });
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const lineInput = useRef<TextInput>(null);
+  /**
+   * Undo and Redo for the page (the keyboard's own undo only knows the line
+   * being typed): the lines, which one is open, and what it holds.
+   */
+  type Snap = { blocks: DocBlock[]; focused: number | null; draft: string };
+  const history = useRef<UndoStack<Snap>>(emptyUndo());
+  const [, setHistoryShown] = useState(0);
 
   const version = useRef(doc.version);
   /** Whether an edit here is waiting to be saved. */
@@ -254,7 +273,14 @@ export function DocEditor({
     setNote("");
     setTags(doc.tags ?? []);
     tagBase.current = doc.content;
+    history.current = emptyUndo();
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // While the page is open, others see this phone is on it.
+  useEffect(() => {
+    setOpenDoc(doc.id);
+    return () => setOpenDoc(null);
+  }, [doc.id]);
 
   /** Add to the page the #tags typed into it since they were last looked at. */
   const settleTags = useRef<() => void>(() => {});
@@ -299,6 +325,7 @@ export function DocEditor({
     setBlocks(doc.content.length ? doc.content : [EMPTY]);
     live.current = { title: doc.title, blocks: doc.content };
     setFocused(null);
+    history.current = emptyUndo();
     showToast({ text: "Restored an earlier version" });
   }, [doc.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -315,6 +342,8 @@ export function DocEditor({
     const next = merge.blocks.length ? merge.blocks : [EMPTY];
     version.current = theirs.version;
     base.current = theirs.content;
+    // Stepping back past someone else's edits would take them away.
+    history.current = emptyUndo();
     setBlocks(next);
     setTitle(theirs.title);
     live.current = { title: theirs.title, blocks: next };
@@ -443,6 +472,7 @@ export function DocEditor({
         setTitle(theirs.title);
         setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
         live.current = { title: theirs.title, blocks: theirs.content };
+        history.current = emptyUndo();
         setNote("Updated with someone else's changes.");
         onChanged(theirs);
         return;
@@ -480,6 +510,88 @@ export function DocEditor({
     queueSave(title, next);
   };
 
+  /**
+   * Keep the page as it stands, before a change, for Undo. Typing (`kind`
+   * "type") joins the step before it until a pause.
+   */
+  const remember = (kind?: string) => {
+    history.current = recordUndo(
+      history.current,
+      { blocks, focused, draft },
+      { kind, now: Date.now() },
+    );
+    setHistoryShown((n) => n + 1);
+  };
+
+  /** Show a state Undo or Redo came back to, and save it. */
+  const restore = (to: Snap) => {
+    const next = to.blocks.length ? to.blocks : [EMPTY];
+    if (next !== blocks) {
+      setBlocks(next);
+      if (structural && canWrite) queueSave(title, next);
+    }
+    if (to.focused !== null && next[to.focused]) {
+      setDraft(to.draft);
+      setCaret({ start: to.draft.length, end: to.draft.length });
+      sel.current = { start: to.draft.length, end: to.draft.length };
+      setSelection(sel.current);
+      setFocused(to.focused);
+    } else setFocused(null);
+    setHistoryShown((n) => n + 1);
+  };
+  const undo = () => {
+    const step = undoStep(history.current, { blocks, focused, draft });
+    if (!step) return;
+    history.current = step.stack;
+    restore(step.state);
+  };
+  const redo = () => {
+    const step = redoStep(history.current, { blocks, focused, draft });
+    if (!step) return;
+    history.current = step.stack;
+    restore(step.state);
+  };
+
+  /** Hand the keyboard back to the open line after a toolbar button. */
+  const refocus = () => requestAnimationFrame(() => lineInput.current?.focus());
+
+  /** The caret or selection moved in the open line. */
+  const onSelect = (range: { start: number; end: number }) => {
+    sel.current = range;
+    setSelection(range);
+    // Placed by the app a moment ago and moved since: the person's wins.
+    if (caret && (caret.start !== range.start || caret.end !== range.end))
+      setCaret(undefined);
+  };
+
+  /** A toolbar change to the open line, with the words it acted on chosen. */
+  const applyEdit = (next: { text: string; start: number; end: number }) => {
+    remember();
+    setDraft(next.text);
+    setCaret({ start: next.start, end: next.end });
+    sel.current = { start: next.start, end: next.end };
+    setSelection(sel.current);
+    refocus();
+  };
+
+  /** Bold, Italic or Highlight on the chosen words, or off them. */
+  const styleLine = (style: "bold" | "italic" | "highlight") => {
+    const next = toolbarStyle(draft, sel.current.start, sel.current.end, style);
+    if (!next) {
+      showToast({ text: "Those words already have another style." });
+      return refocus();
+    }
+    applyEdit(next);
+  };
+
+  /** Link the chosen words, or put the address in as a link. */
+  const linkLine = (url: string): boolean => {
+    const next = toolbarLink(draft, sel.current.start, sel.current.end, url);
+    if (!next) return false;
+    applyEdit(next);
+    return true;
+  };
+
   /** Open a line for editing, showing the Markdown behind it. */
   const openLine = (index: number) => openWith(sourceOf(blocks, index), index);
 
@@ -490,6 +602,8 @@ export function DocEditor({
    * keep their line breaks, since those are part of the text.
    */
   const changeDraft = (text: string) => {
+    // Return and a paste are steps of their own; typing runs together.
+    remember(text.includes("\n") ? undefined : "type");
     // The first keystroke takes over from the placed caret.
     setCaret(undefined);
     if (focused === null) return setDraft(text);
@@ -557,10 +671,14 @@ export function DocEditor({
   /** The open line as another kind of block, keeping its words. */
   const turnInto = (kind: (typeof BLOCK_KINDS)[number]) => {
     if (focused === null) return;
+    remember();
     const current = parseDoc(draft)[0] ?? EMPTY;
     const text = serializeBlock(blockToType(current, kind.type, kind.level));
     setDraft(text);
     setCaret({ start: text.length, end: text.length });
+    sel.current = { start: text.length, end: text.length };
+    setSelection(sel.current);
+    refocus();
   };
 
   /** The open line as it would stand with what has been typed into it. */
@@ -581,7 +699,10 @@ export function DocEditor({
     if (focused === null || !structural) return;
     const current = withDraft();
     const next = indentBlocks(current, focused, by);
-    if (next !== current) update(next);
+    if (next === current) return;
+    remember();
+    update(next);
+    refocus();
   };
 
   const moveLine = (by: -1 | 1) => {
@@ -589,6 +710,7 @@ export function DocEditor({
     if (!structural) return;
     const to = focused + by;
     if (to < 0 || to >= blocks.length) return;
+    remember();
     const next = withDraft().slice();
     [next[focused], next[to]] = [next[to], next[focused]];
     update(next);
@@ -654,6 +776,7 @@ export function DocEditor({
   const deleteLine = () => {
     if (focused === null) return;
     if (!structural) return;
+    remember();
     const next = blocks.slice();
     if (next.length > 1) next.splice(focused, 1);
     else next.splice(focused, 1, EMPTY);
@@ -783,6 +906,7 @@ export function DocEditor({
   const commit = () => {
     if (focused === null) return;
     if (suggesting) return void proposeLine();
+    remember();
     let parsed = parseDoc(draft);
     // A bare "- " or "- [ ] " is an empty line that happens to have a
     // marker; putting it away should not leave a blank bullet on the page.
@@ -800,6 +924,7 @@ export function DocEditor({
 
   const addLine = () => {
     if (!structural) return;
+    remember();
     const next = [...blocks, EMPTY];
     setBlocks(next);
     openWith("", next.length - 1);
@@ -822,14 +947,16 @@ export function DocEditor({
    * Turn the unticked checklist lines into real tasks. The server ties each
    * line to its task and hands the page back, so the lines follow them.
    */
-  const makeTasks = () => {
+  const makeTasks = (only?: string[]) => {
     if (timer.current) clearTimeout(timer.current);
     void (async () => {
       try {
-        if (dirty.current) await persist(title, blocks);
+        if (dirty.current) await persist(title, live.current.blocks);
+        // A line just put away is still saving: the server needs its name.
+        await saveQueue.current;
         // What the server works from; anything typed after this is newer.
         const sent = live.current.blocks;
-        const { created, doc: updated } = await client.docToTasks(doc.id);
+        const { created, doc: updated } = await client.docToTasks(doc.id, only);
         if (updated && updated.version > version.current) {
           version.current = updated.version;
           base.current = updated.content;
@@ -847,8 +974,11 @@ export function DocEditor({
         }
         onItemsChanged?.();
         showToast({
-          text:
-            created === 0
+          text: only
+            ? created === 0
+              ? "That line is already a task."
+              : "Added it to your tasks."
+            : created === 0
               ? "Every item here is already a task."
               : `Added ${created} task${created === 1 ? "" : "s"} to your planner.`,
         });
@@ -856,6 +986,64 @@ export function DocEditor({
         report(e);
       }
     })();
+  };
+
+  /**
+   * The toolbar's To-do: a line becomes a to-do; a to-do with words becomes
+   * a task of its own (the line is put away and tied to it).
+   */
+  const todoLine = () => {
+    if (focused === null) return;
+    const current = parseDoc(draft)[0] ?? EMPTY;
+    if (current.type !== "todo")
+      return turnInto(BLOCK_KINDS.find((k) => k.type === "todo")!);
+    const saved = blocks[focused];
+    if (!structural || !blockText(current).trim()) return;
+    if (saved?.type === "todo" && saved.id) return;
+    const line = settleLine();
+    if (!line) return;
+    Keyboard.dismiss();
+    makeTasks([line.blockId]);
+  };
+
+  /**
+   * Ask the assistant about the chosen words (the whole line with nothing
+   * chosen). The line is put away first, as a remark's is: what comes back
+   * is a proposal about the words as they are saved.
+   */
+  const askLine = () => {
+    if (focused === null) return;
+    const whole = !canStyleLine(draft);
+    const range = whole
+      ? null
+      : wordsRange(draft, sel.current.start, sel.current.end);
+    const line = settleLine();
+    if (!line) return;
+    const start = Math.min(range?.start ?? 0, line.source.length);
+    const end = Math.min(range?.end ?? line.source.length, line.source.length);
+    if (end <= start) return;
+    Keyboard.dismiss();
+    setAsking({
+      blockId: line.blockId,
+      start,
+      end,
+      quote: line.source.slice(start, end),
+    });
+  };
+
+  /** Hide keyboard: the line is put away with it. */
+  const hideKeyboard = () => {
+    commit();
+    Keyboard.dismiss();
+  };
+
+  /** Change how the page is being worked on (Info). */
+  const chooseMode = (m: DocMode) => {
+    // Commit the open line before changing what it is allowed to do.
+    commit();
+    setFocused(null);
+    setMode(m);
+    saveLocal(MODE_KEY + doc.id, m);
   };
 
   /**
@@ -902,8 +1090,102 @@ export function DocEditor({
     (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
   ).length;
 
+  /** The line being typed, as the keyboard toolbar shows it. */
+  const current = focused !== null ? (parseDoc(draft)[0] ?? EMPTY) : null;
+  const saved = focused !== null ? blocks[focused] : undefined;
+  const toolbar =
+    focused !== null && current && (!reading || suggesting) ? (
+      <LineToolbar
+        suggesting={!structural}
+        line={{
+          kind: kindKey(
+            current.type === "heading"
+              ? { type: "heading", level: current.level }
+              : { type: current.type },
+          ),
+          styles: stylesAt(draft, selection.start, selection.end),
+          styleable: canStyleLine(draft),
+          canUndo: canUndo(history.current),
+          canRedo: canRedo(history.current),
+          structural,
+          canIndent: structural && canIndent,
+          canOutdent: structural && blockDepth(openBlocks[focused]) > 0,
+          isTask: saved?.type === "todo" && !!saved.id,
+          hasWords: !!blockText(current).trim(),
+          canMoveUp: focused > 0,
+          canMoveDown: focused < blocks.length - 1,
+        }}
+        onUndo={undo}
+        onRedo={redo}
+        onKind={(kind: LineKind) => turnInto(kind)}
+        onStyle={styleLine}
+        onLink={linkLine}
+        onTodo={todoLine}
+        onIndent={indentLine}
+        onComment={commentOnLine}
+        onAsk={askLine}
+        onMove={moveLine}
+        onCommentWords={commentOnWords}
+        onDelete={deleteLine}
+        onHide={hideKeyboard}
+      />
+    ) : null;
+
+  /** The page's ⋯: Ask, Share, Export, History, template and Trash. */
+  const pageActions: MoreAction[] = [
+    { label: "Ask about this page", onPress: () => setTalking(true) },
+    { label: "Share…", onPress: () => setMenu("share") },
+    { label: "Export…", onPress: () => setMenu("export") },
+    { label: "History", onPress: () => onShowHistory?.() },
+    { label: "Save as template", onPress: () => setSavingTemplate(true) },
+    ...(canWrite
+      ? [{ label: "Move to Trash", destructive: true, onPress: removePage }]
+      : []),
+  ];
+  const shareActions: MoreAction[] = [
+    {
+      label: "Link",
+      onPress: () =>
+        void shareLink({ kind: "doc", id: doc.id }, title || "Untitled").catch(
+          report,
+        ),
+    },
+    {
+      label: "Markdown file",
+      onPress: () => void sharePageFile(doc.id, "md").catch(report),
+    },
+    {
+      label: "PDF file",
+      onPress: () => void sharePageFile(doc.id, "pdf").catch(report),
+    },
+  ];
+  const exportActions: MoreAction[] = formatsHere().map(
+    (format: ExportFormat) => ({
+      label: EXPORT_LABELS[format].name,
+      onPress: () => void downloadDoc(doc.id, format).catch(report),
+    }),
+  );
+  const facts = pageFooter({ ...docStats(blocks), savedAt, saving, now });
+
   return (
     <View style={styles.page}>
+      {/* The page's header holds only Back, its title, Info and ⋯. */}
+      {headerSlot && (
+        <SlotFill slot={headerSlot}>
+          <HeaderButton
+            icon="info"
+            label="Info"
+            on={infoOpen}
+            onPress={() => setInfoOpen(true)}
+          />
+          <HeaderButton
+            icon="more"
+            label="Page options"
+            on={menu !== null}
+            onPress={() => setMenu("page")}
+          />
+        </SlotFill>
+      )}
       {reading ? (
         <Text style={styles.title} accessibilityRole="header">
           {title || "Untitled"}
@@ -931,6 +1213,7 @@ export function DocEditor({
             maxLength={200}
             accessibilityLabel="Document title"
             onChangeText={(text) => {
+              remember("title");
               setTitle(text);
               queueSave(text, blocks);
             }}
@@ -938,14 +1221,30 @@ export function DocEditor({
         </View>
       )}
 
-      <PageTags
-        docId={doc.id}
-        teamId={doc.team_id}
-        tags={tags}
-        canWrite={canWrite && !reading}
-        onChange={setTags}
-        report={report}
-      />
+      {/* The page's tags, quietly under its title; Info changes them. */}
+      {tags.length > 0 && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Tags: ${tags.map((t) => t.name).join(", ")}. Open Info to change them.`}
+          onPress={() => setInfoOpen(true)}
+          style={styles.tags}
+        >
+          {tags.map((t) => (
+            <View key={t.id} style={styles.tag}>
+              <View style={[styles.tagDot, { backgroundColor: t.color }]} />
+              <Text style={styles.tagText} numberOfLines={1}>
+                {t.name}
+              </Text>
+            </View>
+          ))}
+        </Pressable>
+      )}
+
+      {!!note && (
+        <Text style={styles.note} onPress={() => setNote("")}>
+          {note}
+        </Text>
+      )}
 
       <DocSuggestions
         suggestions={suggestions}
@@ -955,73 +1254,6 @@ export function DocEditor({
         onDecide={decide}
         onWithdraw={withdraw}
       />
-
-      {/* The mode you are in is the filled chip, as it is on the desktop and
-          as every other choice on the phone reads. It used to be the one
-          greyed out, with a tick — which said "unavailable", not "here". */}
-      {doc.kind === "doc" && <PageFreshness doc={doc} canWrite={canWrite} />}
-      <View style={styles.statusRow}>
-        <ChipRow label="How you're working on this page">
-          {modesFor(canWrite).map((m) => (
-            <Chip
-              key={m}
-              compact
-              label={MODE_LABELS[m].name}
-              selected={mode === m}
-              accessibilityHint={MODE_LABELS[m].blurb}
-              onPress={() => {
-                // Commit the open line before changing what it is allowed to do.
-                commit();
-                setFocused(null);
-                setMode(m);
-                saveLocal(MODE_KEY + doc.id, m);
-              }}
-            />
-          ))}
-        </ChipRow>
-        <DocViewers docId={doc.id} />
-        <Text style={styles.meta}>
-          {reading ? "" : saving ? "Saving…" : "Saved"}
-        </Text>
-      </View>
-
-      {/* What a page can have done to it, as the icons the desktop's toolbar
-          already uses. Three outlined text buttons stacked down the body read
-          as a pile of unrelated offers; the same three on one row read as the
-          page's own tools. Their own row, because a flex spacer only pushes
-          on a row that has not wrapped. */}
-      <View style={styles.pageTools}>
-        <DocTool
-          icon="sparkles"
-          label="Talk about this page"
-          on={talking}
-          onPress={() => setTalking(true)}
-        />
-        <DocTool
-          icon="share"
-          label="Take this page away"
-          on={formats}
-          onPress={() => setFormats((v) => !v)}
-        />
-        <DocTool
-          icon="layoutTemplate"
-          label="Save as template"
-          on={savingTemplate}
-          onPress={() => setSavingTemplate((v) => !v)}
-        />
-        <DocTool
-          icon="trash"
-          label="Move this page to Trash"
-          destructive
-          onPress={removePage}
-        />
-
-        {!!note && (
-          <Text style={styles.note} onPress={() => setNote("")}>
-            {note}
-          </Text>
-        )}
-      </View>
 
       {savingTemplate && (
         <SaveTemplatePanel
@@ -1044,6 +1276,8 @@ export function DocEditor({
         onCommit={commit}
         onBlurLine={syncDraft}
         selection={caret}
+        onSelectionChange={onSelect}
+        inputRef={lineInput}
         counts={comments.counts}
         marks={markRanges(comments.anchored)}
         onOpenComments={(blockId) =>
@@ -1112,116 +1346,22 @@ export function DocEditor({
         onToggleTodo={reading || !structural ? undefined : toggle}
       />
 
-      {focused !== null && (!reading || suggesting) ? (
-        /* Eleven kinds of line wrapped over three rows and took 374pt of an
-           812pt screen — half the phone, to say what one line is. They ride
-           in one row that scrolls now, the way every phone editor does it,
-           and the line's own actions ride in a second. */
-        <View style={styles.tools}>
-          <ScrollView
-            horizontal
-            keyboardShouldPersistTaps="handled"
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.toolScroll}
-          >
-            <ChipRow label="Kind of line">
-              {BLOCK_KINDS.map((kind) => {
-                const key = kindKey(kind);
-                const current = parseDoc(draft)[0] ?? EMPTY;
-                const selected =
-                  (current.type === "heading"
-                    ? `heading-${current.level}`
-                    : current.type) === key;
-                return (
-                  <Chip
-                    key={key}
-                    label={SHORT[key]}
-                    selected={selected}
-                    onPress={() => turnInto(kind)}
-                    accessibilityLabel={kind.label}
-                    accessibilityHint={kind.hint}
-                  />
-                );
-              })}
-            </ChipRow>
-          </ScrollView>
-          <View style={styles.toolBottom}>
-            <ScrollView
-              horizontal
-              keyboardShouldPersistTaps="handled"
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.toolScroll}
-            >
-              <View style={styles.toolRow}>
-                {structural && isListBlock(parseDoc(draft)[0]) && (
-                  <>
-                    <SmallAction
-                      label="Indent"
-                      disabled={!canIndent}
-                      onPress={() => indentLine(1)}
-                    />
-                    <SmallAction
-                      label="Outdent"
-                      disabled={blockDepth(blocks[focused]) === 0}
-                      onPress={() => indentLine(-1)}
-                    />
-                  </>
-                )}
-                {structural && (
-                  <>
-                    <SmallAction
-                      label="Move up"
-                      disabled={focused === 0}
-                      onPress={() => moveLine(-1)}
-                    />
-                    <SmallAction
-                      label="Move down"
-                      disabled={focused >= blocks.length - 1}
-                      onPress={() => moveLine(1)}
-                    />
-                  </>
-                )}
-                <SmallAction
-                  label="Comment"
-                  disabled={false}
-                  onPress={commentOnLine}
-                />
-                <SmallAction
-                  label="On words"
-                  disabled={!blockText(parseDoc(draft)[0] ?? EMPTY).trim()}
-                  onPress={commentOnWords}
-                />
-                {structural && (
-                  <SmallAction
-                    label="Delete"
-                    destructive
-                    disabled={false}
-                    onPress={deleteLine}
-                  />
-                )}
-              </View>
-            </ScrollView>
-            {/* Out of the scroll, so the way out of the line is always
-                where the thumb left it. */}
-            <SmallAction label="Done" disabled={false} onPress={commit} />
-          </View>
-          {!structural && (
-            <Text style={styles.hint}>
-              While you are suggesting, a line’s words are yours to change.
-              Moving and removing lines are the page’s to keep.
-            </Text>
-          )}
-        </View>
-      ) : (
-        structural && (
-          <Pressable
-            onPress={addLine}
-            accessibilityRole="button"
-            style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
-          >
-            <Text style={styles.addText}>+ Add a block</Text>
-          </Pressable>
-        )
+      {/* The toolbar rides on the keyboard (the sheet docks it there); a
+          page shown anywhere else keeps it under the line. */}
+      {toolbar &&
+        (toolbarSlot ? (
+          <SlotFill slot={toolbarSlot}>{toolbar}</SlotFill>
+        ) : (
+          toolbar
+        ))}
+      {focused === null && structural && (
+        <Pressable
+          onPress={addLine}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
+        >
+          <Text style={styles.addText}>+ Add a block</Text>
+        </Pressable>
       )}
 
       {/* Four lines of instructions sat under every page, every time it was
@@ -1234,34 +1374,14 @@ export function DocEditor({
       )}
 
       {/* One quiet line at the end of the page. */}
-      <Text style={styles.footer}>
-        {pageFooter({
-          ...docStats(blocks),
-          savedAt,
-          saving,
-          now,
-        })}
-      </Text>
-
-      {formats && (
-        <View style={styles.pageActions}>
-          {formatsHere().map((format) => (
-            <SmallAction
-              key={format}
-              label={downloadLabel(format)}
-              disabled={saving}
-              onPress={() => void downloadDoc(doc.id, format).catch(report)}
-            />
-          ))}
-        </View>
-      )}
+      <Text style={styles.footer}>{facts}</Text>
 
       {openTodos > 0 && (
         <View style={styles.pageActions}>
           <SmallAction
             label={`Add ${openTodos} to my tasks`}
             disabled={false}
-            onPress={makeTasks}
+            onPress={() => makeTasks()}
           />
         </View>
       )}
@@ -1276,43 +1396,45 @@ export function DocEditor({
         onNameBlock={nameBlockAt}
         onSuggested={(made) => setSuggestions((list) => [...list, made])}
       />
-    </View>
-  );
-}
-
-/** One of a page's own tools: an icon, a thumb's worth of room, a name. */
-function DocTool({
-  icon,
-  label,
-  on = false,
-  destructive = false,
-  onPress,
-}: {
-  icon: IconName;
-  label: string;
-  /** Whether what it opens is open. */
-  on?: boolean;
-  destructive?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ expanded: on }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.tool,
-        on && styles.toolOn,
-        pressed && styles.toolPressed,
-      ]}
-    >
-      <Icon
-        name={icon}
-        size={17}
-        color={destructive ? colors.danger : colors.muted}
+      <PageInfo
+        visible={infoOpen}
+        doc={doc}
+        tags={tags}
+        mode={mode}
+        canWrite={canWrite}
+        reading={reading}
+        facts={facts}
+        onMode={chooseMode}
+        onTags={setTags}
+        onShowHistory={() => {
+          setInfoOpen(false);
+          onShowHistory?.();
+        }}
+        onClose={() => setInfoOpen(false)}
+        report={report}
       />
-    </Pressable>
+      <ActionSheet
+        visible={menu === "page"}
+        label="Page options"
+        title={title || "Untitled"}
+        actions={pageActions}
+        onClose={() => setMenu((m) => (m === "page" ? null : m))}
+      />
+      <ActionSheet
+        visible={menu === "share"}
+        label="Share this page"
+        title="Share as"
+        actions={shareActions}
+        onClose={() => setMenu((m) => (m === "share" ? null : m))}
+      />
+      <ActionSheet
+        visible={menu === "export"}
+        label="Export this page"
+        title="Export as"
+        actions={exportActions}
+        onClose={() => setMenu((m) => (m === "export" ? null : m))}
+      />
+    </View>
   );
 }
 
@@ -1327,14 +1449,31 @@ const styles = themed(() =>
       fontFamily: fonts.display,
       padding: 0,
     },
-    statusRow: {
+    tags: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      marginTop: -6,
+    },
+    tag: {
       flexDirection: "row",
       alignItems: "center",
-      flexWrap: "wrap",
-      gap: 8,
+      gap: 5,
+      maxWidth: 180,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      borderRadius: radii.pill,
+      backgroundColor: colors.surfaceMuted,
     },
-    meta: { color: colors.muted, fontSize: 12 },
+    tagDot: { width: 7, height: 7, borderRadius: 4 },
+    tagText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 12,
+      color: colors.textSoft,
+    },
     note: {
+      alignSelf: "flex-start",
       color: colors.muted,
       backgroundColor: colors.soft,
       fontSize: 12,
@@ -1342,7 +1481,6 @@ const styles = themed(() =>
       paddingVertical: 3,
       borderRadius: radii.pill,
       overflow: "hidden",
-      flexShrink: 1,
     },
     hint: { color: colors.faint, fontSize: 12, lineHeight: 18 },
     footer: {
@@ -1354,57 +1492,11 @@ const styles = themed(() =>
       borderTopColor: colors.border,
       fontVariant: ["tabular-nums"],
     },
-    tools: {
-      gap: 8,
-      padding: 10,
-      borderRadius: radii.card,
-      backgroundColor: colors.surfaceMuted,
-    },
-    toolRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    /* Rows that scroll rather than wrap, so the toolbar is two rows tall
-       whatever a line can be turned into. */
-    toolScroll: { paddingRight: 4 },
-    toolBottom: { flexDirection: "row", alignItems: "center", gap: 8 },
-    toolFooter: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 2,
-      paddingTop: 10,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    spacer: { flex: 1 },
     pageActions: {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 8,
       marginTop: 4,
-    },
-    pageTools: {
-      flexDirection: "row",
-      justifyContent: "flex-start",
-      flexWrap: "wrap",
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: radii.input,
-      gap: 4,
-      marginTop: -2,
-    },
-    tool: {
-      width: controls.tap,
-      height: controls.tap,
-      borderRadius: controls.tap / 2,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    toolOn: { backgroundColor: colors.accentSoft },
-    toolPressed: { backgroundColor: colors.surfaceMuted },
-    danger: {
-      flexDirection: "row",
-      marginTop: 6,
-      paddingTop: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
     },
     add: {
       minHeight: 44,

@@ -68,14 +68,20 @@ export function DocHistory({
   doc,
   onRestored,
   canWrite = true,
+  openKey = 0,
   report,
 }: {
   doc: Doc;
   canWrite?: boolean;
+  /** Changed to open the history from elsewhere (the page's ⋯ or Info). */
+  openKey?: number;
   onRestored: (doc: Doc) => void;
   report: (e: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (openKey) setOpen(true);
+  }, [openKey]);
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [chosen, setChosen] = useState<Required<DocVersion> | null>(null);
   const [older, setOlder] = useState<Required<DocVersion> | null>(null);

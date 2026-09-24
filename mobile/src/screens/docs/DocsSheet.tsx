@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AppState,
   Pressable,
@@ -52,6 +52,8 @@ import { PressableScale } from "../../motion";
 import { errorText } from "../../lib/errors";
 import { showToast } from "../../components/Toast";
 import { PageTemplatesPanel } from "./PageTemplates";
+import { SlotHost, useSlot, type SlotHandle } from "../../components/Slot";
+import { isReducedMotion } from "../../motion";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -78,12 +80,15 @@ export function DocsSheet({
   onMakeCards,
   startInUploads,
   startInTemplates,
+  startNew,
   onStarted,
 }: {
   /** Open on Uploads (after files were shared to Orbyn). */
   startInUploads?: boolean;
   /** Open on "New page from a template" (the + sheet's From template). */
   startInTemplates?: boolean;
+  /** Start a new page of this kind straight away (the + sheet's New page). */
+  startNew?: DocKind | null;
   onStarted?: () => void;
   /** Suggest study cards from a page (opens Study). */
   onMakeCards?: (docId: string, title: string) => void;
@@ -158,6 +163,14 @@ export function DocsSheet({
   );
   const [agendaGap, setAgendaGap] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
+  /** The page's header buttons and the keyboard toolbar, filled by the page. */
+  const headerSlot = useSlot();
+  const toolbarSlot = useSlot();
+  /** Scrolled past the page's own title: the header shows it instead. */
+  const [scrolledPast, setScrolledPast] = useState(false);
+  /** Bumped to open the page's history from its ⋯ or Info. */
+  const [historyKey, setHistoryKey] = useState(0);
+  const scroller = useRef<ScrollView>(null);
 
   // Left open past midnight, today's page becomes yesterday's: the labels
   // and Rewrite follow the clock whenever the app comes back to the front.
@@ -193,6 +206,10 @@ export function DocsSheet({
     }
     if (startInTemplates) {
       setTemplating(true);
+      onStarted?.();
+    }
+    if (startNew) {
+      create(startNew);
       onStarted?.();
     }
     // Folders and stars are small lists and only matter beside the pages,
@@ -293,6 +310,20 @@ export function DocsSheet({
       setDocs(null);
       setOpen(made);
     });
+
+  useEffect(() => {
+    setScrolledPast(false);
+    setHistoryKey(0);
+  }, [open?.id]);
+
+  /** Open the page's history and bring it into view. */
+  const showHistory = () => {
+    setHistoryKey((k) => k + 1);
+    setTimeout(
+      () => scroller.current?.scrollToEnd({ animated: !isReducedMotion() }),
+      120,
+    );
+  };
 
   // Coming back to the list should show what was just written.
   const backToList = () => {
@@ -564,7 +595,11 @@ export function DocsSheet({
         navigationOpen
           ? "Library"
           : open
-            ? open.title || "Untitled"
+            ? // A page's own title leads the page; the header takes it up
+              // once it has scrolled away.
+              scrolledPast
+              ? open.title || "Untitled"
+              : ""
             : agenda || agendaGap
               ? "Agenda"
               : templating
@@ -572,13 +607,26 @@ export function DocsSheet({
                 : "Documents"
       }
       onClose={onClose}
-      onBack={back}
+      // A page's header is Back, its title, Info and ⋯: with no list
+      // behind it, Back closes.
+      onBack={back ?? (open && !navigationOpen ? onClose : undefined)}
+      centerTitle={!!open && !navigationOpen}
+      hideClose={!!open && !navigationOpen}
+      actions={
+        open && !navigationOpen ? <SlotHost slot={headerSlot} /> : undefined
+      }
       onDismiss={onDismiss}
     >
       <ScrollView
+        ref={scroller}
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        scrollEventThrottle={32}
+        onScroll={(e) => {
+          const past = e.nativeEvent.contentOffset.y > 56;
+          if (past !== scrolledPast) setScrolledPast(past);
+        }}
       >
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
@@ -784,6 +832,10 @@ export function DocsSheet({
                     setOpen(back);
                     void loadList();
                   }}
+                  headerSlot={headerSlot}
+                  toolbarSlot={toolbarSlot}
+                  historyKey={historyKey}
+                  onShowHistory={showHistory}
                   report={report}
                 />
               )}
@@ -1265,6 +1317,8 @@ export function DocsSheet({
           )}
         </View>
       </ScrollView>
+      {/* The line being typed gets its toolbar here, on the keyboard. */}
+      {open && !navigationOpen && <SlotHost slot={toolbarSlot} />}
     </Sheet>
   );
 }
@@ -1283,9 +1337,18 @@ function OpenDoc({
   onItemsChanged,
   onDeleted,
   onUndoDelete,
+  headerSlot,
+  toolbarSlot,
+  historyKey,
+  onShowHistory,
   report,
 }: {
   doc: Doc;
+  headerSlot?: SlotHandle;
+  toolbarSlot?: SlotHandle;
+  /** Bumped to open the history below the page. */
+  historyKey?: number;
+  onShowHistory?: () => void;
   /** For an agenda: whether it is today's, the only one Rewrite writes. */
   isToday?: boolean;
   userId?: string;
@@ -1353,6 +1416,9 @@ function OpenDoc({
         onItemsChanged={onItemsChanged}
         onDeleted={onDeleted}
         onUndoDelete={onUndoDelete}
+        headerSlot={headerSlot}
+        toolbarSlot={toolbarSlot}
+        onShowHistory={onShowHistory}
         report={report}
       />
       <DocComments state={comments} userId={userId} />
@@ -1360,6 +1426,7 @@ function OpenDoc({
         doc={doc}
         canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}
         onRestored={onChanged}
+        openKey={historyKey}
         report={report}
       />
     </>

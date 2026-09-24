@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { ToastHost } from "./Toast";
 import { controls, colors, fonts, spacing, themed } from "../theme";
 
@@ -25,11 +25,20 @@ export function Sheet({
   onBack,
   onDismiss,
   avoidKeyboard = true,
+  actions,
+  hideClose = false,
+  centerTitle = false,
   children,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
+  /** Buttons for the header's right side, before the close button. */
+  actions?: React.ReactNode;
+  /** Leave the close button out, when Back already closes (a page's header). */
+  hideClose?: boolean;
+  /** A short title in the middle of the header rather than after Back. */
+  centerTitle?: boolean;
   /** Shows a back chevron that returns to the previous page in the sheet. */
   onBack?: () => void;
   /** iOS: called once the dismiss animation has finished. */
@@ -67,18 +76,39 @@ export function Sheet({
                 <Icon name="chevronLeft" size={18} color={colors.textSoft} />
               </Pressable>
             )}
-            <Text style={s.title} numberOfLines={1}>
-              {title}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              hitSlop={10}
-              onPress={onClose}
-              style={s.round}
-            >
-              <Icon name="x" size={18} color={colors.textSoft} />
-            </Pressable>
+            {centerTitle ? (
+              <>
+                <View
+                  style={[StyleSheet.absoluteFill, s.centered]}
+                  pointerEvents="none"
+                >
+                  <Text
+                    style={[s.title, s.centeredTitle]}
+                    numberOfLines={1}
+                    accessibilityRole="header"
+                  >
+                    {title}
+                  </Text>
+                </View>
+                <View style={s.spacer} />
+              </>
+            ) : (
+              <Text style={s.title} numberOfLines={1}>
+                {title}
+              </Text>
+            )}
+            {actions}
+            {!hideClose && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={10}
+                onPress={onClose}
+                style={s.round}
+              >
+                <Icon name="x" size={18} color={colors.textSoft} />
+              </Pressable>
+            )}
           </View>
           <View
             ref={area}
@@ -93,6 +123,40 @@ export function Sheet({
         </SafeAreaView>
       </SafeAreaProvider>
     </Modal>
+  );
+}
+
+/** A round icon button for a sheet's header, the same size as Back and Close. */
+export function HeaderButton({
+  icon,
+  label,
+  onPress,
+  on = false,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  /** Whether what it opens is open. */
+  on?: boolean;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ expanded: on }}
+      hitSlop={10}
+      onPress={onPress}
+      style={({ pressed }) => [
+        s.round,
+        (on || pressed) && { backgroundColor: colors.accentSoft },
+      ]}
+    >
+      <Icon
+        name={icon}
+        size={18}
+        color={on ? colors.accent : colors.textSoft}
+      />
+    </Pressable>
   );
 }
 
@@ -113,6 +177,13 @@ const s = themed(() =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
+    spacer: { flex: 1 },
+    centered: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 112,
+    },
+    centeredTitle: { flex: 0, fontSize: 15, textAlign: "center" },
     title: {
       flex: 1,
       fontFamily: fonts.display,

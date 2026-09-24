@@ -11,9 +11,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
 import {
+  createLabel,
   freshItem,
   motion,
   planDayPrompt,
+  readArrangement,
   hasSystemPermission,
   hasTeamPermission,
   itemBody,
@@ -24,6 +26,11 @@ import {
   type Plan,
   type Status,
   type TaskList,
+  type AppLink,
+  type CreateActionId,
+  type CreateArrangement,
+  type DocKind,
+  type SharedContent,
 } from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
@@ -65,7 +72,18 @@ import { TagsSheet } from "../screens/TagsSheet";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { BrowseScreen } from "../screens/BrowseScreen";
 import { DocsSheet } from "../screens/docs/DocsSheet";
-import { sendLocalFile, takeSharedFiles } from "../screens/docs/Uploads";
+import {
+  scanAndSend,
+  sendLocalFile,
+  takeShared,
+} from "../screens/docs/Uploads";
+import { ShareIntoSheet } from "../screens/ShareIntoSheet";
+import { CreateSheet } from "../components/CreateSheet";
+import { showToast } from "../components/Toast";
+import { useAppLinks } from "../hooks/useAppLinks";
+import { readLocal, saveLocal } from "../lib/localPrefs";
+import { deviceTimeZone, nextUp } from "../lib/planning";
+import { tap } from "../lib/haptics";
 import { ProjectsSheet } from "../screens/docs/ProjectsSheet";
 import { TaskDetail } from "../screens/TaskDetail";
 import { TasksScreen } from "../screens/TasksScreen";
@@ -103,8 +121,11 @@ type SheetName =
   | "settings"
   | "sync"
   | "progress";
-/** What to present next: a sheet or the item editor. */
-type Next = { sheet: SheetName } | { edit: Editing };
+/** What to present next: a sheet, the item editor, or "Save to Orbyn". */
+type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
+
+/** Where the + sheet's arrangement is kept, on this device. */
+const ARRANGE_KEY = "orbyn-plus-arrangement";
 
 /**
  * Auth gate, tab switching, the shared item editor modal, the task detail
@@ -236,18 +257,49 @@ export function RootScreen() {
   const routePush = useRef<((data: Record<string, unknown>) => void) | null>(
     null,
   );
-  // Files shared to Orbyn from another app become imports in Uploads. The
-  // check runs when the app opens and each time it comes back to the front.
+  // Files shared to Orbyn from another app become imports in Uploads; text
+  // and links open "Save to Orbyn" to choose where they go. The check runs
+  // when the app opens and each time it comes back to the front.
   const [docsInUploads, setDocsInUploads] = useState(false);
+  /** Something shared into Orbyn, waiting for where it goes. */
+  const [sharedIn, setSharedIn] = useState<SharedContent | null>(null);
+  /** The + sheet (a long press on +), and how it's arranged. */
+  const [creating, setCreating] = useState(false);
+  const [arrangement, setArrangement] = useState<CreateArrangement>(() =>
+    readArrangement(readLocal(ARRANGE_KEY)),
+  );
+  /** How Docs and Projects open from the +: a new page, a template, a project. */
+  const [docsStart, setDocsStart] = useState<{
+    template?: boolean;
+    kind?: DocKind;
+  } | null>(null);
+  const [projectsStart, setProjectsStart] = useState<{
+    new?: boolean;
+    open?: string;
+  } | null>(null);
+  /** Opens a link into the app; set on each signed-in render. */
+  const openLink = useRef<((link: AppLink) => void) | null>(null);
+  /** `present`, for effects set up before it exists; set on each signed-in render. */
+  const presentRef = useRef<((next: Next) => void) | null>(null);
+  const inApp =
+    ready &&
+    !!token &&
+    !(user && !user.email_verified) &&
+    !(user && legal && user.terms_version !== legal.terms_version);
+  useAppLinks(inApp, (link) => openLink.current?.(link));
   useEffect(() => {
     if (!token || Platform.OS === "web") return;
     const check = async () => {
-      const files = await takeSharedFiles();
+      const { files, shared: words } = await takeShared();
+      if (words) {
+        if (presentRef.current) presentRef.current({ share: words });
+        else setSharedIn(words);
+      }
       if (!files.length) return;
       for (const file of files)
         await sendLocalFile(file).catch((e: Error) => setError(errorText(e)));
       setDocsInUploads(true);
-      present({ sheet: "docs" });
+      if (!words) presentRef.current?.({ sheet: "docs" });
     };
     void check();
     const sub = AppState.addEventListener("change", (state) => {
@@ -318,7 +370,11 @@ export function RootScreen() {
     );
 
   const show = (next: Next) =>
-    "sheet" in next ? setSheet(next.sheet) : setEditing(next.edit);
+    "sheet" in next
+      ? setSheet(next.sheet)
+      : "share" in next
+        ? setSharedIn(next.share)
+        : setEditing(next.edit);
   /** Present a sheet or the editor; an open sheet closes first and returns later. */
   const present = (next: Next) => {
     if (sheet) {
@@ -331,6 +387,7 @@ export function RootScreen() {
     }
     show(next);
   };
+  presentRef.current = present;
   const goBack = () => {
     const previous = back.current.pop();
     if (previous) setSheet(previous);
@@ -487,6 +544,100 @@ export function RootScreen() {
         .catch(() => {});
     return start();
   };
+  /** Scan a page of notes: the camera, then Uploads, where it's read. */
+  const runScan = () =>
+    void scanAndSend((m) => setError(m)).then((sent) => {
+      if (!sent) return;
+      setDocsInUploads(true);
+      present({ sheet: "docs" });
+      showToast({ text: "Scanned. It’s being read into a page in Uploads." });
+    });
+
+  /** Focus on what's most worth doing now, as Up next picks it. */
+  const startFocus = () =>
+    void act(async () => {
+      const next = await client.getUpNext().catch(() => null);
+      const id = next?.suggestions[0]?.item_id;
+      const picked =
+        (id &&
+          (items.find((i) => i.id === id) ??
+            (await client.getItem(id).catch(() => null)))) ||
+        nextUp(items)[0];
+      if (!picked)
+        return showToast({ text: "Add a task first, then focus on it." });
+      openFocus(picked);
+    });
+
+  /** What each way of starting something from the + does. */
+  const runCreate = (id: CreateActionId) => {
+    switch (id) {
+      case "task":
+        setEditRepeat(null);
+        return present({ edit: freshItem() });
+      case "page":
+        setDocsStart({ kind: "doc" });
+        return present({ sheet: "docs" });
+      case "template":
+        setDocsStart({ template: true });
+        return present({ sheet: "docs" });
+      case "scan":
+        return runScan();
+      case "project":
+        setProjectsStart({ new: true });
+        return present({ sheet: "projects" });
+      case "plan":
+        return openPlanner(null, "Plan my day");
+      case "focus":
+        return startFocus();
+      case "ask":
+        setTab("AI");
+        setSearch("");
+        return;
+    }
+  };
+
+  /** A link into the app (orbyn://, a quick action, a shared link) opens its thing. */
+  openLink.current = (link) => {
+    switch (link.kind) {
+      case "add":
+        // Words to add go straight in, as a Shortcut expects; a bare link
+        // opens a new task to fill in.
+        if (link.text) {
+          void client
+            .quickAdd(link.text, deviceTimeZone())
+            .then(() => refresh({ animate: true }))
+            .catch(() => {
+              // Offline or a hiccup: it can still be added by hand.
+            });
+          return;
+        }
+        return runCreate("task");
+      case "today":
+        setTab("Today");
+        return;
+      case "agenda":
+        return present({ sheet: "agenda" });
+      case "scan":
+        return runScan();
+      case "assistant":
+        return runCreate("ask");
+      case "share":
+        if (link.url || link.text)
+          present({ share: { url: link.url, text: link.text ?? "" } });
+        return;
+      case "task":
+        return void act(async () => openTask(await client.getItem(link.id)));
+      case "doc":
+        return void act(async () => {
+          setNote(await client.getDoc(link.id));
+          present({ sheet: "note" });
+        });
+      case "project":
+        setProjectsStart({ open: link.id });
+        return present({ sheet: "projects" });
+    }
+  };
+
   routePush.current = (data) => {
     const text = (key: string) =>
       typeof data[key] === "string" ? (data[key] as string) : "";
@@ -616,11 +767,26 @@ export function RootScreen() {
                 />
                 {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
               </PressableScale>
+              {/* One + on every tab: a tap runs the favourite (New task
+                  unless another is chosen), a long press offers the rest. */}
               <PressableScale
                 accessibilityRole="button"
-                accessibilityLabel="New item"
+                accessibilityLabel={createLabel(arrangement.favourite)}
+                accessibilityHint="Hold for every way to start something."
+                accessibilityActions={[
+                  { name: "longpress", label: "Every way to start something" },
+                ]}
+                onAccessibilityAction={(e) => {
+                  if (e.nativeEvent.actionName === "longpress")
+                    setCreating(true);
+                }}
                 hitSlop={8}
-                onPress={openNew}
+                delayLongPress={350}
+                onPress={() => runCreate(arrangement.favourite)}
+                onLongPress={() => {
+                  tap();
+                  setCreating(true);
+                }}
                 style={({ pressed }) => [s.add, pressed && s.addPressed]}
               >
                 <Icon
@@ -893,6 +1059,45 @@ export function RootScreen() {
           }}
         />
         <CelebrationHost bottom={Math.max(insets.bottom, 10) + 64} />
+        <CreateSheet
+          visible={creating}
+          arrangement={arrangement}
+          onArrange={(next) => {
+            setArrangement(next);
+            saveLocal(ARRANGE_KEY, JSON.stringify(next));
+          }}
+          onRun={runCreate}
+          onClose={() => setCreating(false)}
+        />
+        <ShareIntoSheet
+          shared={sharedIn}
+          canWriteIn={canWriteIn}
+          onClose={() => setSharedIn(null)}
+          onSaved={(result) => {
+            setSharedIn(null);
+            void refresh({ animate: true }).catch(() => {});
+            const item = result.item;
+            const doc = result.doc;
+            showToast({
+              text: result.note,
+              action: item
+                ? { label: "Open", run: () => openTask(item) }
+                : doc
+                  ? {
+                      label: "Open",
+                      run: () =>
+                        void client.getDoc(doc.id).then(
+                          (d) => {
+                            setNote(d);
+                            present({ sheet: "note" });
+                          },
+                          () => {},
+                        ),
+                    }
+                  : undefined,
+            });
+          }}
+        />
         <ItemEditor
           editing={editing}
           teams={teams}
@@ -1054,7 +1259,12 @@ export function RootScreen() {
             present({ sheet: "study" });
           }}
           startInUploads={docsInUploads}
-          onStarted={() => setDocsInUploads(false)}
+          startInTemplates={!!docsStart?.template}
+          startNew={docsStart?.kind ?? null}
+          onStarted={() => {
+            setDocsInUploads(false);
+            setDocsStart(null);
+          }}
         />
         <DocsSheet
           visible={sheet === "note"}
@@ -1081,8 +1291,12 @@ export function RootScreen() {
           items={items}
           teams={teams}
           openTemplate={templateToOpen}
+          startNew={!!projectsStart?.new}
+          openProject={projectsStart?.open ?? null}
+          onStarted={() => setProjectsStart(null)}
           onClose={() => {
             setTemplateToOpen(null);
+            setProjectsStart(null);
             closeSheet();
           }}
           onDismiss={onSheetDismissed}

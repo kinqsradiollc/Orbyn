@@ -44,6 +44,7 @@ import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
+import { captureRoutes } from "./modules/capture/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -71,6 +72,7 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    captureRoutes,
     searchRoutes,
     aiDocRoutes,
     folderRoutes,

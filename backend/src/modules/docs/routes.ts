@@ -730,6 +730,81 @@ export async function eventNote(
   ).rows[0];
 }
 
+/**
+ * Keep the state a save is about to replace. Saves come every second or
+ * so while someone types, so a state is kept only when the last kept one
+ * is by someone else or older than a sitting; history then reads as a
+ * list of sittings, not keystrokes.
+ */
+const SITTING = "5 minutes";
+async function snapshot(db: Queryable, docId: string, byUser: string) {
+  const current = (
+    await db.query<{ version: number; title: string; content: unknown }>(
+      "SELECT version, title, content FROM docs WHERE id = $1",
+      [docId],
+    )
+  ).rows[0];
+  if (!current) return;
+  const last = (
+    await db.query<{ user_id: string | null; recent: boolean }>(
+      `SELECT user_id, created_at > now() - $2::interval AS recent
+         FROM doc_versions WHERE doc_id = $1
+         ORDER BY version DESC LIMIT 1`,
+      [docId, SITTING],
+    )
+  ).rows[0];
+  if (last && last.recent && last.user_id === byUser) return;
+  await db.query(
+    `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (doc_id, version) DO NOTHING`,
+    [
+      docId,
+      current.version,
+      current.title,
+      JSON.stringify(current.content),
+      byUser,
+    ],
+  );
+}
+
+/**
+ * Add lines to a page as one save by `u`, under the page's lock: `place`
+ * gets the page's lines and gives back the page with the new ones in. The
+ * state before is kept for history as any save's is, and open editors are
+ * told, so a page open on another device takes the lines in. 404 for a
+ * page the person can't see, 403 for one they may only read.
+ */
+export async function addToPage(
+  u: UserRow,
+  docId: string,
+  place: (content: DocBlock[]) => DocBlock[],
+): Promise<{ id: string; title: string; version: number }> {
+  const saved = await transaction(async (db) => {
+    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await requireDoc(db, docId, u, "items:write");
+    const current = (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [docId],
+      )
+    ).rows[0].content;
+    await snapshot(db, docId, u.id);
+    return (
+      await db.query<{ id: string; title: string; version: number }>(
+        `UPDATE docs SET content = $2::jsonb, version = version + 1,
+           updated_at = now()
+         WHERE id = $1 RETURNING id, title, version`,
+        [docId, JSON.stringify(place(current ?? []))],
+      )
+    ).rows[0];
+  });
+  await announceDocChange(pool, saved.id, saved.version, "share").catch(
+    () => {},
+  );
+  return saved;
+}
+
 export async function docRoutes(app: FastifyInstance) {
   /** The documents someone can see, newest edit first. */
   app.get("/docs", async (r) => {
@@ -935,44 +1010,6 @@ export async function docRoutes(app: FastifyInstance) {
     await announceDocChange(pool, id, saved.version, editorOf(r));
     return saved;
   });
-
-  /**
-   * Keep the state a save is about to replace. Saves come every second or
-   * so while someone types, so a state is kept only when the last kept one
-   * is by someone else or older than a sitting; history then reads as a
-   * list of sittings, not keystrokes.
-   */
-  const SITTING = "5 minutes";
-  async function snapshot(db: Queryable, docId: string, byUser: string) {
-    const current = (
-      await db.query<{ version: number; title: string; content: unknown }>(
-        "SELECT version, title, content FROM docs WHERE id = $1",
-        [docId],
-      )
-    ).rows[0];
-    if (!current) return;
-    const last = (
-      await db.query<{ user_id: string | null; recent: boolean }>(
-        `SELECT user_id, created_at > now() - $2::interval AS recent
-           FROM doc_versions WHERE doc_id = $1
-           ORDER BY version DESC LIMIT 1`,
-        [docId, SITTING],
-      )
-    ).rows[0];
-    if (last && last.recent && last.user_id === byUser) return;
-    await db.query(
-      `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
-         VALUES ($1, $2, $3, $4::jsonb, $5)
-         ON CONFLICT (doc_id, version) DO NOTHING`,
-      [
-        docId,
-        current.version,
-        current.title,
-        JSON.stringify(current.content),
-        byUser,
-      ],
-    );
-  }
 
   const VERSION_COLUMNS = `v.version, v.title, v.created_at, v.user_id,
     us.name AS author, jsonb_array_length(v.content) AS blocks`;

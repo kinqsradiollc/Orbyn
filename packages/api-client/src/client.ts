@@ -1,6 +1,9 @@
 import {
   HttpError,
   type AgendaDay,
+  type CaptureRequest,
+  type CaptureResult,
+  type LinkPreview,
   type DocTag,
   type PageTemplate,
   type PageTemplateFromDoc,
@@ -1946,6 +1949,23 @@ export class OrbynClient {
    * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
    * ;Cafe Roma"), parsed on the server without AI.
    */
+  /** A shared link's title and site, looked up on the server for the share sheet. */
+  linkPreview(url: string) {
+    return this.request<LinkPreview>("/capture/preview", {
+      method: "POST",
+      body: { url },
+    });
+  }
+  /**
+   * Put a link or some text shared into Orbyn where it was sent: an Inbox
+   * task, today's agenda, a page, a new page in a folder, or a project.
+   */
+  capture(input: CaptureRequest) {
+    return this.request<CaptureResult>("/capture", {
+      method: "POST",
+      body: input,
+    });
+  }
   quickAdd(text: string, timezone?: string) {
     return this.request<QuickAddCreated>("/items/quick", {
       method: "POST",

@@ -25,6 +25,7 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { MoreMenu } from "../../components/MoreMenu";
+import { shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
@@ -63,8 +64,17 @@ export function ProjectsSheet({
   onOpenItem,
   onOpenNote,
   onItemsChanged,
+  startNew = false,
+  openProject = null,
+  onStarted,
 }: {
   visible: boolean;
+  /** Open on a new project's name (the + sheet's New project). */
+  startNew?: boolean;
+  /** Open on this project (a link to it). */
+  openProject?: string | null;
+  /** The sheet has taken up `startNew` or `openProject`. */
+  onStarted?: () => void;
   items: Item[];
   /** For starting a template's project in a team. */
   teams?: Team[];
@@ -402,6 +412,22 @@ export function ProjectsSheet({
   useEffect(() => {
     if (!visible) return;
     void reload();
+    if (startNew) {
+      setOpen(null);
+      setAiDraftOpen(false);
+      setTemplatesOpen(false);
+      setDraft("");
+      onStarted?.();
+    }
+    if (openProject) {
+      onStarted?.();
+      void run(async () => {
+        setAiDraftOpen(false);
+        setTemplatesOpen(false);
+        setOpen(await client.getProject(openProject));
+        setSection("tasks");
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -581,20 +607,34 @@ export function ProjectsSheet({
                   {projectAtRisk(open) && (
                     <Text style={styles.chip}>At risk</Text>
                   )}
-                  {canWriteIn(open.team_id) && (
-                    <MoreMenu
-                      label="Project options"
-                      disabled={busy}
-                      actions={[
-                        { label: "Rename", onPress: () => setDraft(open.name) },
-                        {
-                          label: "Delete project",
-                          destructive: true,
-                          onPress: remove,
-                        },
-                      ]}
-                    />
-                  )}
+                  <MoreMenu
+                    label="Project options"
+                    title={open.name}
+                    disabled={busy}
+                    actions={[
+                      {
+                        label: "Share link…",
+                        onPress: () =>
+                          void shareLink(
+                            { kind: "project", id: open.id },
+                            open.name,
+                          ),
+                      },
+                      ...(canWriteIn(open.team_id)
+                        ? [
+                            {
+                              label: "Rename",
+                              onPress: () => setDraft(open.name),
+                            },
+                            {
+                              label: "Delete project",
+                              destructive: true,
+                              onPress: remove,
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
                 </View>
               ) : (
                 <TextInput

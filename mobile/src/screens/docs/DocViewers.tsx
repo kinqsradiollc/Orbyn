@@ -17,13 +17,23 @@ const initials = (name: string) =>
  * Who else has this page open, as small initials beside the save state.
  * Opening the page also tells the server this phone is on it.
  */
-export function DocViewers({ docId }: { docId: string }) {
+export function DocViewers({
+  docId,
+  register = true,
+}: {
+  docId: string;
+  /**
+   * Whether showing this also says this phone has the page open. The page
+   * says so itself while it's open; the Info sheet only shows who's here.
+   */
+  register?: boolean;
+}) {
   const [viewers, setViewers] = useState<DocViewer[]>([]);
   const load = useCallback(() => {
     client.docViewers(docId).then(setViewers, () => {});
   }, [docId]);
   useEffect(() => {
-    setOpenDoc(docId);
+    if (register) setOpenDoc(docId);
     load();
     const stop = onLive((news) => {
       if (
@@ -36,9 +46,9 @@ export function DocViewers({ docId }: { docId: string }) {
     return () => {
       stop();
       clearInterval(id);
-      setOpenDoc(null);
+      if (register) setOpenDoc(null);
     };
-  }, [docId, load]);
+  }, [docId, load, register]);
 
   if (!viewers.length) return null;
   const names = viewers.map((v) => v.name);
