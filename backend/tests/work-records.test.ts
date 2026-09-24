@@ -293,10 +293,25 @@ test("deleting a cited note preserves its record and clears the line link", asyn
     (await call("DELETE", `/docs/${doc.json().id}`)).statusCode,
     204,
   );
+  // In Trash, the note isn't linked to; the record stays.
   const kept = await call("GET", `/work-records/${made.json().id}`);
   assert.equal(kept.statusCode, 200, kept.body);
   assert.equal(kept.json().source_doc_id, null);
   assert.equal(kept.json().source_block_id, null);
+  // Restored, the link comes back.
+  await call("POST", `/docs/${doc.json().id}/restore`);
+  const back = (await call("GET", `/work-records/${made.json().id}`)).json();
+  assert.equal(back.source_doc_id, doc.json().id);
+  assert.equal(back.source_block_id, "decision-line");
+  // Deleted for good, the link is cleared for good and the record stays.
+  await call("DELETE", `/docs/${doc.json().id}`);
+  assert.equal(
+    (await call("DELETE", `/docs/${doc.json().id}/forever`)).statusCode,
+    204,
+  );
+  const after = await call("GET", `/work-records/${made.json().id}`);
+  assert.equal(after.statusCode, 200, after.body);
+  assert.equal(after.json().source_doc_id, null);
 });
 
 test("meeting effort is durable and limited to meeting outcomes", async () => {

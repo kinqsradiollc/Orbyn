@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Switch } from "../../components/Switch";
 import type { LegalDoc, PrivacyView } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";

@@ -25,9 +25,14 @@ type RecordRow = Scope & {
   version: number;
 };
 
+// A source note in Trash is not linked to: the record reads as having no
+// source until the note is restored (these two replace w.*'s own columns).
 const COLUMNS = `w.*, coalesce(owner.name, 'Unassigned') AS owner_name,
-  linked.title AS linked_item_title, linked.status AS linked_item_status`;
-const JOINS = `LEFT JOIN users owner ON owner.id = w.owner_id
+  linked.title AS linked_item_title, linked.status AS linked_item_status,
+  CASE WHEN src.deleted_at IS NULL THEN w.source_doc_id END AS source_doc_id,
+  CASE WHEN src.deleted_at IS NULL THEN w.source_block_id END AS source_block_id`;
+const JOINS = `LEFT JOIN docs src ON src.id = w.source_doc_id
+  LEFT JOIN users owner ON owner.id = w.owner_id
   LEFT JOIN items linked ON linked.id = w.linked_item_id
     AND linked.team_id IS NOT DISTINCT FROM w.team_id
     AND (w.team_id IS NOT NULL OR linked.user_id = w.created_by)`;
@@ -108,7 +113,7 @@ async function checkDoc(
         CASE WHEN $2::text IS NULL THEN true ELSE EXISTS (
           SELECT 1 FROM jsonb_array_elements(content) b WHERE b->>'id' = $2
         ) END AS has_block
-       FROM docs WHERE id = $1`,
+       FROM docs WHERE id = $1 AND deleted_at IS NULL`,
       [docId, blockId],
     )
   ).rows[0];

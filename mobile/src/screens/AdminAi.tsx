@@ -3,11 +3,11 @@ import {
   Alert,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Switch } from "../components/Switch";
 import {
   AI_PROVIDER_KINDS,
   AI_PROVIDERS,

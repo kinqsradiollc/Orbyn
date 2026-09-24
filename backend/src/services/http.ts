@@ -10,7 +10,7 @@ import { env } from "../config/env.js";
 import { HttpError } from "@orbyn/core";
 import { createHash, randomUUID } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
-import { apiKeyId, authenticate } from "../lib/auth.js";
+import { apiKeyId, authenticate, isApiKeyRequest } from "../lib/auth.js";
 import { cachedSettings, settings } from "../lib/settings.js";
 import { versionInfo } from "../lib/version.js";
 import { idempotency } from "../lib/idempotency.js";
@@ -102,6 +102,11 @@ export type ServiceName =
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const OPEN_DURING_MAINTENANCE = ["/auth/", "/admin/", "/devices", "/ai/chat"];
+/**
+ * Paths that answer maintenance mode themselves: MCP lets reads through and
+ * turns writes into a JSON-RPC error its clients understand.
+ */
+const OWN_MAINTENANCE = new Set(["/mcp"]);
 /** Paths anyone with a link can open: booking pages, invites, profiles, RSVPs. */
 const PUBLIC_PAGES = /^\/(book|invite|u|rsvp)(\/|$)/;
 
@@ -211,8 +216,10 @@ export async function createService(
       if (!maintenance.enabled) return;
       const path = request.url.split("?")[0];
       if (OPEN_DURING_MAINTENANCE.some((p) => path.startsWith(p))) return;
+      if (OWN_MAINTENANCE.has(path)) return;
       const user = await authenticate(request).catch(() => null);
-      if (user?.role === "admin") return;
+      // An admin's own session may keep working; an admin's API key may not.
+      if (user?.role === "admin" && !isApiKeyRequest(request)) return;
       return reply.code(503).send({
         message: maintenance.message
           ? `Orbyn is under maintenance: ${maintenance.message}`

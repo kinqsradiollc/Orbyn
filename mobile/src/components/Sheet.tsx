@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon } from "./Icon";
+import { ToastHost } from "./Toast";
 import { controls, colors, fonts, spacing, themed } from "../theme";
 
 /**
@@ -87,6 +88,8 @@ export function Sheet({
           >
             {children}
           </View>
+          {/* A sheet covers the app, so a toast raised in it shows here. */}
+          <ToastHost />
         </SafeAreaView>
       </SafeAreaProvider>
     </Modal>

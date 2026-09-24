@@ -268,6 +268,7 @@ async function existing(userId: string, title: string) {
     await pool.query<{ id: string }>(
       `SELECT d.id FROM docs d
         WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.title = $2
+          AND d.deleted_at IS NULL
         ORDER BY d.created_at DESC LIMIT 1`,
       [userId, title],
     )
@@ -297,7 +298,8 @@ export async function todaysAgenda(
     ]);
     const again = (
       await db.query<{ id: string }>(
-        `SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda' AND title = $2 LIMIT 1`,
+        `SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda' AND title = $2
+           AND deleted_at IS NULL LIMIT 1`,
         [userId, title],
       )
     ).rows[0]?.id;

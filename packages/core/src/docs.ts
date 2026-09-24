@@ -55,14 +55,31 @@ export type DocKind = (typeof DOC_KINDS)[number];
  */
 type Named = { id?: string };
 
+/**
+ * How far a list line is tucked under the list line above it: 1 to
+ * `MAX_DEPTH`, left out at the top level. Only lists nest; every other kind
+ * of line always sits at the left edge. It is stored rather than read from
+ * leading spaces, because an edited line is re-read from its own Markdown
+ * and has no neighbours to measure against.
+ */
+type Nested = { depth?: number };
+
+/** The deepest a list line can be tucked in. */
+export const MAX_DEPTH = 3;
+
 export type DocBlock = Named &
   (
     | { type: "heading"; level: 1 | 2 | 3; text: string }
     | { type: "paragraph"; text: string }
-    | { type: "bullet"; text: string }
-    | { type: "numbered"; text: string }
+    | ({ type: "bullet"; text: string } & Nested)
+    /**
+     * A numbered line. The number shown is counted from where its list
+     * starts; `start` is only kept on a list that begins somewhere other
+     * than 1 ("5. …" after a paragraph), and only means anything there.
+     */
+    | ({ type: "numbered"; text: string; start?: number } & Nested)
     /** A checklist line; `done` is the ticked state. */
-    | { type: "todo"; text: string; done: boolean }
+    | ({ type: "todo"; text: string; done: boolean } & Nested)
     | { type: "quote"; text: string }
     | { type: "code"; text: string; lang: string }
     /**
@@ -86,8 +103,129 @@ export function carryBlockIds(
   previous: DocBlock | undefined,
   fresh: DocBlock[],
 ): DocBlock[] {
-  if (!previous?.id || !fresh.length || fresh[0].id) return fresh;
-  return [{ ...fresh[0], id: previous.id }, ...fresh.slice(1)];
+  if (!previous || !fresh.length) return fresh;
+  let first = fresh[0];
+  if (previous.id && !first.id) first = { ...first, id: previous.id };
+  // A tucked-in line keeps its place under the line above: its Markdown has
+  // no neighbours to measure indentation against, so re-reading it alone
+  // would bring every edited sub-item back to the left edge. Anything typed
+  // or pasted after it on further lines is tucked in by the same amount.
+  const depth = blockDepth(previous);
+  if (!depth) return first === fresh[0] ? fresh : [first, ...fresh.slice(1)];
+  const tuck = (b: DocBlock) =>
+    isListBlock(b) ? withDepth(b, blockDepth(b) + depth) : b;
+  return [tuck(first), ...fresh.slice(1).map(tuck)];
+}
+
+/** The kinds of line that can be tucked under one another. */
+export type ListBlock = Extract<
+  DocBlock,
+  { type: "bullet" | "numbered" | "todo" }
+>;
+
+export const isListBlock = (b: DocBlock | undefined): b is ListBlock =>
+  !!b && (b.type === "bullet" || b.type === "numbered" || b.type === "todo");
+
+/** How far a line is tucked in: 0 for anything that isn't a list line. */
+export const blockDepth = (b: DocBlock | undefined): number =>
+  isListBlock(b) ? Math.max(0, Math.min(MAX_DEPTH, b.depth ?? 0)) : 0;
+
+/** The same line tucked in to `depth`, kept between 0 and `MAX_DEPTH`. */
+export function withDepth<B extends DocBlock>(block: B, depth: number): B {
+  if (!isListBlock(block)) return block;
+  const d = Math.max(0, Math.min(MAX_DEPTH, Math.round(depth)));
+  const { depth: _old, ...rest } = block as ListBlock;
+  return (d ? { ...rest, depth: d } : rest) as B;
+}
+
+/**
+ * Where each line sits in its list: how far in it is drawn, and the number
+ * a numbered line shows.
+ *
+ * A line is never drawn more than one step deeper than the list line above
+ * it, so a sub-item whose parent was deleted comes back out rather than
+ * floating. Numbers count up through a list at one depth; lines tucked
+ * under an item don't break the count, while anything else at the same
+ * depth — a bullet, a paragraph, a heading — ends the list, and the next
+ * numbered line starts again from 1 (or from its own `start`).
+ */
+export function listLayout(
+  blocks: DocBlock[],
+): { depth: number; number: number | null }[] {
+  const out: { depth: number; number: number | null }[] = [];
+  // The count at each depth, or null where the run at that depth has ended.
+  let counts: (number | null)[] = [];
+  let ceiling = 0;
+  for (const b of blocks) {
+    if (!isListBlock(b)) {
+      counts = [];
+      ceiling = 0;
+      out.push({ depth: 0, number: null });
+      continue;
+    }
+    const depth = Math.min(blockDepth(b), ceiling);
+    ceiling = depth + 1;
+    // Coming back out to a depth ends every list deeper than it.
+    counts = counts.slice(0, depth + 1);
+    while (counts.length < depth + 1) counts.push(null);
+    if (b.type === "numbered") {
+      const at = counts[depth];
+      const n = at === null ? (b.start ?? 1) : at + 1;
+      counts[depth] = n;
+      out.push({ depth, number: n });
+    } else {
+      counts[depth] = null;
+      out.push({ depth, number: null });
+    }
+  }
+  return out;
+}
+
+/**
+ * A numbered line is typed with the number it shows ("3. …"), so reading it
+ * back gives it a `start`. That only means something on the first line of a
+ * list; anywhere else the number is counted, and the start is let go.
+ * Returns `blocks` itself when there is nothing to let go.
+ */
+export function keepStart(blocks: DocBlock[], index: number): DocBlock[] {
+  const b = blocks[index];
+  if (b?.type !== "numbered" || b.start === undefined) return blocks;
+  const { start: _start, ...counted } = b;
+  const probe = blocks.slice();
+  probe[index] = counted;
+  return listLayout(probe)[index].number === 1 ? blocks : probe;
+}
+
+/**
+ * Tuck a list line in (`by` 1) or bring it out (`by` -1), taking the lines
+ * tucked under it along so a list keeps its shape. A line can go at most one
+ * step deeper than the list line above it; asking for more, or for a line
+ * that isn't in a list, hands back the same array untouched.
+ */
+export function indentBlocks(
+  blocks: DocBlock[],
+  index: number,
+  by: 1 | -1,
+): DocBlock[] {
+  const block = blocks[index];
+  if (!isListBlock(block)) return blocks;
+  const depth = blockDepth(block);
+  const next = depth + by;
+  if (next < 0 || next > MAX_DEPTH) return blocks;
+  if (by > 0) {
+    const above = blocks[index - 1];
+    if (!isListBlock(above) || next > blockDepth(above) + 1) return blocks;
+  }
+  let end = index + 1;
+  while (end < blocks.length) {
+    const b = blocks[end];
+    if (!isListBlock(b) || blockDepth(b) <= depth) break;
+    end++;
+  }
+  const out = blocks.slice();
+  for (let i = index; i < end; i++)
+    out[i] = withDepth(blocks[i], blockDepth(blocks[i]) + by);
+  return out;
 }
 
 /** A name no other block in this document is using. */
@@ -354,12 +492,15 @@ export type DocInline = {
   code?: boolean;
   math?: boolean;
   link?: string;
+  /** `==words==`, drawn on a soft tint like a highlighter pen. */
+  highlight?: boolean;
 };
 
 // Inline maths first so `$x_1$` isn't mistaken for emphasis, then code (which
-// is literal), then links, then emphasis.
+// is literal), then links, then highlights, then emphasis. A highlight must
+// hug its words (`==this==`), so "a == b" in a note about code stays text.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
+  /\$([^$\n]+?)\$|`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|==([^=\s](?:[^=\n]*[^=\s])?)==|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
 
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
@@ -381,9 +522,11 @@ export function parseDocInline(text: string): DocInline[] {
     else if (m[3] !== undefined)
       out.push({ text: m[3], start: inner(3), link: m[4] });
     else if (m[5] !== undefined)
-      out.push({ text: m[5], start: inner(5), bold: true });
+      out.push({ text: m[5], start: inner(5), highlight: true });
     else if (m[6] !== undefined)
-      out.push({ text: m[6], start: inner(6), italic: true });
+      out.push({ text: m[6], start: inner(6), bold: true });
+    else if (m[7] !== undefined)
+      out.push({ text: m[7], start: inner(7), italic: true });
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), start: at });
@@ -392,14 +535,53 @@ export function parseDocInline(text: string): DocInline[] {
 
 // ----------------------------------------------------------------- parse ---
 
-/** Read Markdown into blocks. Unknown syntax becomes a paragraph, never an error. */
+/** How wide a run of leading spaces and tabs is, a tab counting as four. */
+const indentWidth = (lead: string) =>
+  [...lead].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
+
+/**
+ * Read Markdown into blocks. Unknown syntax becomes a paragraph, never an error.
+ *
+ * Nested lists are read by how far each item is indented compared with the
+ * items above it, not by a fixed number of spaces, so two-space, four-space
+ * and tab-indented lists from anywhere all come in with the same shape.
+ */
 export function parseDoc(markdown: string): DocBlock[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: DocBlock[] = [];
   let i = 0;
+  /** Indentation of each depth in the list being read. */
+  let indents: number[] = [];
+  /** The number each numbered item was written with, by block. */
+  const written = new Map<DocBlock, number>();
+  const depthAt = (width: number): number => {
+    if (!indents.length || width <= indents[0]) {
+      indents = [width];
+      return 0;
+    }
+    let k = indents.length - 1;
+    while (k > 0 && indents[k] > width) k--;
+    if (width === indents[k]) {
+      indents = indents.slice(0, k + 1);
+      return k;
+    }
+    // Deeper than the item at depth k: its child.
+    if (k + 1 > MAX_DEPTH) {
+      indents = indents.slice(0, k + 1);
+      return k;
+    }
+    indents = [...indents.slice(0, k + 1), width];
+    return k + 1;
+  };
+  const listItem = <B extends ListBlock>(lead: string, block: B): B => {
+    const depth = depthAt(indentWidth(lead));
+    return depth ? { ...block, depth } : block;
+  };
 
   while (i < lines.length) {
     const line = lines[i];
+    // Anything but a list item (or a blank line between items) ends a list.
+    if (line.trim() && !/^\s*([-*]|\d+[.)])\s/.test(line)) indents = [];
 
     // Fenced code: ```lang … ```
     const fence = /^```(\w*)\s*$/.exec(line);
@@ -453,27 +635,34 @@ export function parseDoc(markdown: string): DocBlock[] {
       continue;
     }
 
-    const todo = /^\s*[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(line);
+    const todo = /^(\s*)[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(line);
     if (todo) {
-      out.push({
-        type: "todo",
-        done: todo[1].toLowerCase() === "x",
-        text: todo[2].trim(),
-      });
+      out.push(
+        listItem(todo[1], {
+          type: "todo",
+          done: todo[2].toLowerCase() === "x",
+          text: todo[3].trim(),
+        }),
+      );
       i++;
       continue;
     }
 
-    const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+    const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
     if (bullet) {
-      out.push({ type: "bullet", text: bullet[1].trim() });
+      out.push(listItem(bullet[1], { type: "bullet", text: bullet[2].trim() }));
       i++;
       continue;
     }
 
-    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+    const numbered = /^(\s*)(\d{1,9})[.)]\s+(.*)$/.exec(line);
     if (numbered) {
-      out.push({ type: "numbered", text: numbered[1].trim() });
+      const block = listItem(numbered[1], {
+        type: "numbered",
+        text: numbered[3].trim(),
+      });
+      written.set(block, Number(numbered[2]));
+      out.push(block);
       i++;
       continue;
     }
@@ -489,20 +678,39 @@ export function parseDoc(markdown: string): DocBlock[] {
     i++;
   }
 
+  // A list that was written starting somewhere other than 1 keeps its start.
+  // Only the first item of a list says where it starts; the numbers written
+  // on the rest are counted afresh, as any Markdown reader does.
+  if (written.size) {
+    const layout = listLayout(out);
+    out.forEach((b, n) => {
+      if (b.type !== "numbered") return;
+      const typed = written.get(b);
+      const first = layout[n].number === (b.start ?? 1);
+      if (first && typed !== undefined && typed !== 1)
+        out[n] = { ...b, start: Math.min(typed, 99_999) };
+    });
+  }
+
   return out.length ? out : emptyDoc();
 }
 
 // ------------------------------------------------------------- serialize ---
 
-/** Write one block back to Markdown. */
-export function serializeBlock(b: DocBlock): string {
+/**
+ * Write one block back to Markdown, as the line an editor shows: without the
+ * indentation of a nested list item, which belongs to the page around it
+ * (see `serializeDoc`). `number` is what a numbered line should be written
+ * with, when the caller knows where it sits in its list.
+ */
+export function serializeBlock(b: DocBlock, number?: number | null): string {
   switch (b.type) {
     case "heading":
       return `${"#".repeat(b.level)} ${b.text}`;
     case "bullet":
       return `- ${b.text}`;
     case "numbered":
-      return `1. ${b.text}`;
+      return `${number ?? b.start ?? 1}. ${b.text}`;
     case "todo":
       return `- [${b.done ? "x" : " "}] ${b.text}`;
     case "quote":
@@ -518,9 +726,23 @@ export function serializeBlock(b: DocBlock): string {
   }
 }
 
-/** Write a whole document back to Markdown, LaTeX included. */
+/**
+ * Write a whole document back to Markdown, LaTeX included. Numbered lists
+ * are written with the numbers they show, and nested items are indented by
+ * four spaces a step, which every Markdown reader takes as nesting under a
+ * bullet or a numbered item alike.
+ */
 export function serializeDoc(blocks: DocBlock[]): string {
-  return blocks.map(serializeBlock).join("\n\n").trim() + "\n";
+  const layout = listLayout(blocks);
+  return (
+    blocks
+      .map(
+        (b, i) =>
+          "    ".repeat(layout[i].depth) + serializeBlock(b, layout[i].number),
+      )
+      .join("\n\n")
+      .trim() + "\n"
+  );
 }
 
 /** Plain text of a document, for previews and search. */
@@ -822,22 +1044,27 @@ export function blockToType(
   level: 1 | 2 | 3 = 2,
 ): DocBlock {
   const text = blockText(block);
+  // A list line turned into another kind of list line stays where it was.
+  const nested = (made: DocBlock) => withDepth(made, blockDepth(block));
   switch (type) {
     case "heading":
       return { type, level, text };
     case "todo":
-      return {
+      return nested({
         type,
         text,
         done: block.type === "todo" ? block.done : false,
         ...(block.id ? { id: block.id } : {}),
-      };
+      });
+    case "bullet":
+    case "numbered":
+      return nested({ type, text });
     case "code":
       return { type, text, lang: block.type === "code" ? block.lang : "" };
     case "divider":
       return { type };
     default:
-      return { type, text };
+      return { type, text } as DocBlock;
   }
 }
 

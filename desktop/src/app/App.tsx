@@ -21,6 +21,7 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
+import { rememberTaskLink, takeTaskLink, taskLinkId } from "./task-link";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -191,6 +192,23 @@ export function App() {
       navigatePath("/app", true);
     if (!token && path === "/app") navigatePath("/login", true);
   }, [token, path]);
+  // A link to one task (/app/task/<id>) opens it over the app; signed out,
+  // it waits until sign-in.
+  const linkedTask = taskLinkId(path);
+  useEffect(() => {
+    if (!linkedTask) return;
+    if (!token) {
+      rememberTaskLink(linkedTask);
+      navigatePath("/login", true);
+      return;
+    }
+    navigatePath("/app", true);
+    openItemById(linkedTask);
+  }, [token, linkedTask]);
+  useEffect(() => {
+    const waiting = token ? takeTaskLink() : null;
+    if (waiting) openItemById(waiting);
+  }, [token]);
   useEffect(() => {
     // Public booking pages set their own titles and say noindex themselves.
     if (isPublicBooking) return;

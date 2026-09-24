@@ -31,6 +31,7 @@ import {
 } from "../lib/progress";
 import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
+import { tap } from "../lib/haptics";
 
 /** Every status a task can move to, closed ones last. */
 const MOVE_STATUSES: Status[] = [...statusOrder, "cancelled"];
@@ -118,6 +119,7 @@ export function ItemCard({
   const canReorder = !!onMoveBy && !readOnly;
   /** Status changes and, in manual order, moving up or down. */
   const menu = () => {
+    tap();
     const buttons: AlertButton[] = [];
     if (canReorder && onMoveBy.up)
       buttons.push({ text: "Move up", onPress: () => onMoveBy.move(-1) });
@@ -173,7 +175,11 @@ export function ItemCard({
         accessibilityLabel={(done ? "Reopen " : "Complete ") + item.title}
         disabled={busy || readOnly}
         hitSlop={12}
-        onPress={() => onToggle(item)}
+        onPress={() => {
+          // A light tap under the thumb as a task is ticked off.
+          if (!done) tap();
+          onToggle(item);
+        }}
         style={[s.check, done && s.checked, readOnly && s.checkLocked]}
       >
         {done && (

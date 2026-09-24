@@ -78,7 +78,8 @@ export async function searchRoutes(app: FastifyInstance) {
                FROM docs d
                LEFT JOIN projects p ON p.id = d.project_id
                CROSS JOIN q
-              WHERE ((d.team_id IS NULL AND d.user_id = $1)
+              WHERE d.deleted_at IS NULL
+                AND ((d.team_id IS NULL AND d.user_id = $1)
                      OR d.team_id IN (SELECT team_id FROM team_members
                                        WHERE user_id = $1))
                 AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
@@ -146,7 +147,7 @@ export async function searchRoutes(app: FastifyInstance) {
               `SELECT d.id, 'doc' AS type, d.title, d.kind, d.team_id,
                       d.project_id, p.name AS project_name, d.updated_at
                  FROM docs d LEFT JOIN projects p ON p.id = d.project_id
-                WHERE d.id = $1
+                WHERE d.id = $1 AND d.deleted_at IS NULL
                   AND ($2::text IS NULL OR d.kind = $2)`,
               [hit.id, q.kind ?? null],
             )

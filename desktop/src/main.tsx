@@ -2,6 +2,7 @@ import { colors, motion, statusTones } from "@orbyn/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { ConfirmProvider } from "./components/Confirm";
+import { ToastProvider } from "./components/Toast";
 import { applyTheme, followSystemTheme, savedTheme } from "./lib/theme";
 import "katex/dist/katex.min.css";
 import "./styles/global.css";
@@ -41,6 +42,8 @@ root.setProperty("--ease-in-out", bezier(motion.easeInOut));
 
 createRoot(document.getElementById("root")!).render(
   <ConfirmProvider>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </ConfirmProvider>,
 );

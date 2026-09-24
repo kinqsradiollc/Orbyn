@@ -41,6 +41,7 @@ export function Inline({
               run.italic && s.italic,
               (run.code || run.math) && s.code,
               !!run.link && s.link,
+              run.highlight && s.highlight,
               lit && s.marked,
             ]}
             onPress={
@@ -63,6 +64,15 @@ const s = themed(() =>
     // ground rather than by its letterforms.
     code: { backgroundColor: colors.surfaceMuted },
     link: { color: colors.accent, textDecorationLine: "underline" },
-    marked: { backgroundColor: colors.warningSoft },
+    // Words with a remark: the soft tint with an accent line under them, as
+    // on the web, so they don't read as ==highlighted== words.
+    marked: {
+      backgroundColor: colors.warningSoft,
+      textDecorationLine: "underline",
+      textDecorationStyle: "solid",
+      textDecorationColor: colors.accent,
+    },
+    // ==Highlighted== words, on the same soft tint as the web.
+    highlight: { backgroundColor: colors.warningSoft },
   }),
 );

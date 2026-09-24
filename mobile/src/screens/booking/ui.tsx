@@ -2,11 +2,11 @@ import React, { useState } from "react";
 import {
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   View,
   type LayoutChangeEvent,
 } from "react-native";
+import { Switch } from "../../components/Switch";
 import { Chip, ChipRow } from "../../components/Chip";
 import { NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";

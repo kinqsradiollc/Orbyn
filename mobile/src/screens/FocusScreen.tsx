@@ -41,6 +41,7 @@ import {
 import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
+import { tap } from "../lib/haptics";
 
 /** Runs shorter than this (a stray tap) aren't logged. */
 const MIN_RUN_MS = 5000;
@@ -244,6 +245,7 @@ function Body({
   const markDone = async () => {
     if (!(await settle())) return;
     let queued = false;
+    tap();
     const saved = await run(async () => {
       const answer = await outbox.postItemUpdate(seed, { status: "done" });
       queued = answer === null;

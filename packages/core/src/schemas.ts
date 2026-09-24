@@ -269,6 +269,8 @@ export const itemData = z
  * the next save and everything hanging on it came loose.
  */
 const named = { id: z.string().max(64).optional() };
+/** How far a list line is tucked in; left out at the top level. */
+const nested = { depth: z.number().int().min(0).max(3).optional() };
 
 const docBlock = z.discriminatedUnion("type", [
   z.object({
@@ -282,14 +284,23 @@ const docBlock = z.discriminatedUnion("type", [
     type: z.literal("paragraph"),
     text: z.string().max(10000),
   }),
-  z.object({ ...named, type: z.literal("bullet"), text: z.string().max(4000) }),
   z.object({
     ...named,
-    type: z.literal("numbered"),
+    ...nested,
+    type: z.literal("bullet"),
     text: z.string().max(4000),
   }),
   z.object({
     ...named,
+    ...nested,
+    type: z.literal("numbered"),
+    text: z.string().max(4000),
+    /** Where a list begins, when it isn't at 1. */
+    start: z.number().int().min(0).max(99_999).optional(),
+  }),
+  z.object({
+    ...named,
+    ...nested,
     type: z.literal("todo"),
     text: z.string().max(4000),
     done: z.boolean(),
@@ -324,6 +335,16 @@ export const docInput = z
     project_id: z.uuid().nullable().default(null),
     /** Tags, by id, from the vocabulary this person or team already has. */
     tags: z.array(z.uuid()).max(20).default([]),
+  })
+  .strict();
+
+/**
+ * Which checklist lines to turn into tasks. Left out, every open line that
+ * isn't a task yet; given, only those lines ("Make task" on one line).
+ */
+export const docTasksInput = z
+  .object({
+    block_ids: z.array(z.string().min(1).max(64)).min(1).max(200).optional(),
   })
   .strict();
 

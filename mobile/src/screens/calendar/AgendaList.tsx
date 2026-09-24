@@ -22,6 +22,7 @@ import { FadeIn } from "../../motion";
 import { colors, fonts, radii, statusTones, themed } from "../../theme";
 import { shared } from "../../styles";
 import { covers, startOfDay, timeLabel } from "./dates";
+import { tap } from "../../lib/haptics";
 
 type Timed = { start_at: string; end_at: string | null; all_day?: boolean };
 
@@ -266,7 +267,14 @@ function AgendaRow({
         accessibilityLabel={`${when}, ${title}, ${detail}`}
         accessibilityHint={onLongPress ? "Hold for options" : undefined}
         onPress={onPress}
-        onLongPress={onLongPress}
+        onLongPress={
+          onLongPress
+            ? () => {
+                tap();
+                onLongPress!();
+              }
+            : undefined
+        }
         style={({ pressed }) => [s.rowMain, pressed && s.pressed]}
       >
         <View

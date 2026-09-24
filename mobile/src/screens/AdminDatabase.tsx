@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Switch } from "../components/Switch";
 import {
   SYSTEM_ROLES,
   type AdminDatabaseRows,

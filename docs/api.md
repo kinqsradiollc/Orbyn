@@ -454,8 +454,14 @@ A note for a team event belongs to the team, so one shared meeting keeps one sha
 ### `POST /docs/:id/tasks` (auth)
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
-team, if it has one). → `{ "created": 2, "items": [ … ] }`. Blank and already-ticked lines are
-skipped.
+team, if it has one). → `{ "created": 2, "items": [ … ], "doc": { … } }`. Blank and
+already-ticked lines, and lines that are already tasks, are skipped. The page is read and written
+back under its lock, so a save that arrives meanwhile waits and then merges (`409`) rather than
+being overwritten.
+
+An optional body `{ "block_ids": ["b1"] }` (1–200 line ids) turns only those lines into tasks:
+"Make task" on selected words and "New task" in the `/` menu use it. Anything else in the body
+answers `422`; a page in Trash answers `404`.
 
 ## Projects
 
@@ -638,6 +644,9 @@ data: {"docId":"…","version":7,"by":"e4f1c2ab"}
 
 The reader then re-reads the document and folds the new copy into what is on screen. Keeping the
 payload to a version number means a reader that misses an event still catches up on the next one.
+
+When the page is moved to Trash the event also carries `"trashed": true`; an editor that has it
+open lets it go and says where it went, rather than finding out from a save that fails.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
 request. A tab is never told about its own save. `404` when the document isn't yours to read.
@@ -857,6 +866,13 @@ signs inside any text block, so a document always round-trips to Markdown with i
 intact. Personal documents belong to their author; team documents follow the same team roles
 as team items (viewers read, members and above write).
 
+List lines nest: `bullet`, `numbered` and `todo` blocks take an optional `depth` (1–3; left out
+at the top level). A numbered line shows its place in its list, counted from 1 — or from
+`start`, kept only on the first line of a list that begins elsewhere (`{ "type": "numbered",
+"text": "…", "start": 5 }`). Markdown exports write the real numbers and indent nested items by
+four spaces a level; reading Markdown back takes nesting from relative indentation, so two-space,
+four-space and tab-indented lists all come in the same. Inline, `==words==` is a highlight.
+
 ### `GET /docs` (auth)
 
 → `[ { "id", "title", "kind", "team_id", "team_name", "preview", "version", "updated_at", … } ]`,
@@ -892,9 +908,30 @@ meeting note to its event. → `201` with the full document.
 `version` is the version the edit was made against; a mismatch answers `409` rather than
 overwriting, so two open tabs can't clobber each other. `title` and `content` are each optional.
 
-### `DELETE /docs/:id` (auth)
+### `DELETE /docs/:id` (auth, `items:write`)
 
-→ `204`.
+Moves the page to **Trash** → `204`. It is kept for 30 days with its history, comments and task
+links, and meanwhile every other route (lists, search, comments, history, exports, study, the
+assistant, presence) answers as if it didn't exist. The sweeper deletes it for good after 30 days.
+Anyone with it open is told on its live stream (`"trashed": true`); a project page shows as "Note
+moved to Trash" in the project's history, and it isn't measured for semantic search while there.
+
+### `GET /docs/trash` (auth)
+
+→ `[ { "id", "title", "kind", "team_id", "team_name", "deleted_at", "deleted_by", "purge_at",
+"preview", "can_restore" } ]`, most recently deleted first: your own pages and your teams'.
+`deleted_by` is a name; `can_restore` is false for a team viewer.
+
+### `POST /docs/:id/restore` (auth, `items:write`)
+
+Brings a page back from Trash, as it was → the full document. `404` for a page that isn't in
+Trash (or isn't yours to see), `403` for a team viewer. A project page shows as "Note restored" in
+the project's history. Today's agenda brought back replaces a copy that Agenda wrote meanwhile, if
+nobody wrote in that copy.
+
+### `DELETE /docs/:id/forever` (auth, `items:write`)
+
+Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash.
 
 ## Items
 
@@ -1146,10 +1183,11 @@ counts, but never the contents of personal or team items.
 | `GET /admin/database/tables/:name`      | Columns, types, defaults, primary keys and indexes for one table; requires `system:manage`                                                                   |
 | `GET /admin/database/tables/:name/rows` | Read-only, redacted 25-row preview; `?offset=0..10000`; requires `system:manage`                                                                             |
 
-| `GET /admin/users/:id` | One account in full: sessions, sign-in methods, teams, counts, 30 days of activity and its audit history (never item contents) |
+| `GET /admin/users/:id` | One account in full: sessions, sign-in methods, personal API keys (`keys`: name, prefix, created, last used; never the key), teams, counts, 30 days of activity and its audit history, its keys' included (never item contents) |
 | `PUT /admin/users/:id/profile` | `{ "name"?, "email"? }`; a new email must be unused (`409`), and is unverified again when mail is set up |
 | `POST /admin/users/:id/sign-out` | Ends every session → `{ ended }`; not for your own account (`409`) |
 | `DELETE /admin/users/:id/sessions/:sid` | Ends one session → `204` |
+| `DELETE /admin/users/:id/api-keys/:keyId` | Revokes one of their personal API keys → `204`; whatever used it stops at once; `404` for another person's key |
 | `POST /admin/users/:id/reset-link` | A one-hour, single-use password reset link to pass on → `{ link, expires_in_minutes, emailed }` (also emailed when mail is set up) |
 | `POST /admin/users/:id/reset-2fa` | Clears two-step verification for someone locked out → `{ cleared }`; passkeys stay |
 | `GET /admin/users/:id/export` | Everything the account holds, as `/me/export` gives it (a file download) |
@@ -1255,9 +1293,22 @@ Round-robin pages also take `routing`: `[{ question_id, equals, host_user_id }]`
 
 ## Model Context Protocol (MCP)
 
-`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) so a person's own AI tools — Claude, Cursor, ChatGPT — can act on their planner. Authenticate with a personal API key as the `Authorization: Bearer ok_…` header. Point the client at `<APP_URL>/api/mcp`.
+`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) for AI tools that let you add a request header, such as Claude Code, Cursor or VS Code. Send a personal API key as `Authorization: Bearer ok_…` and point the tool at `<APP_URL>/api/mcp`. Only personal API keys sign in here: an app session token is refused (`401`). ChatGPT and claude.ai don't take keys, so they can't connect this way. A key reaches the owner's tasks, pages and calendar (see [API keys](#api-keys-webhooks-and-the-calendar-feed) for what it can't do).
 
-Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools: `search_items` (query, limit?), `add_task` (title, notes?, due_at?, priority?), `get_agenda` (days?). Notifications (no `id`) get `202` with no body. Everything runs as the key's owner, with the same access their API key has.
+Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools:
+
+- `search_items` (query, limit?): open tasks and events whose title or notes hold every word. Each result carries its `id` and a link, `<APP_URL>/app/task/<id>`, that opens it in the web app.
+- `add_task` (title, notes?, due_at?, priority?): the answer carries the new task's `id` and link.
+- `get_agenda` (days?, 1 to 31, default 7): open tasks due and events from the start of today, in the person's time zone, through the next `days` days. Repeating events appear once per occurrence; finished and cancelled ones are left out; subscribed calendars are included.
+
+Rules:
+
+- One JSON-RPC message per request. A batch (a JSON array) is refused whole with `400` and `-32600`, and nothing in it runs.
+- Notifications (no `id`) get `202` with no body.
+- Every failure is a JSON-RPC error with a plain message: `-32700` unreadable JSON, `-32600` not a request, `-32601` unknown method, `-32602` bad `params` (including `null`), an unknown tool or bad `arguments`, `-32000` a change during maintenance, `-32001` sign-in (`401`), `-32003` refused (`403`), `-32029` rate limited (`429`, with `Retry-After`). A tool that fails answers `isError: true` with a message in words, never the database's own.
+- Maintenance mode: reads (`initialize`, `tools/list`, `search_items`, `get_agenda`) still answer; `add_task` gets `-32000` until it ends.
+- `GET` and `DELETE /mcp` are `405` (`Allow: POST`): there are no streams or sessions.
+- A request with an `Origin` header is refused (`403`) unless it's Orbyn's own web app. Desktop and command-line tools send none.
 
 ## AI assistant
 
@@ -1706,7 +1757,7 @@ few more). A bio is up to 300 characters. `GET /me` also carries `handle` and `b
 
 ## API keys, webhooks and the calendar feed
 
-Other tools reach Orbyn through these; nothing is synced out of this server.
+Other tools reach your Orbyn account through these. Nothing here sends your data anywhere until you connect it, and each one can be turned off at any time.
 
 | Method and path                               | Body / result                                                                                             |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -1757,7 +1808,19 @@ MCP `get_agenda`, and the iOS widget and Watch "next event". Calendar sets can i
 out each subscription (`subscription_ids`; missing means all). They are never re-exported in your
 own feed or CalDAV, which would duplicate them in the apps they came from.
 
-API keys act as you, except in the admin console (and count against their own rate limit). Webhook
+API keys act as you for items, pages, projects, the calendar and CalDAV, and count against their
+own rate limit. A key is refused (`403`) wherever it could take over or change the account, send
+data somewhere new or spend the hosted assistant: creating keys (`POST /me/api-keys`), deleting
+any key but itself (`DELETE /me/api-keys/:id`), `/me/webhooks*`, `/me/chat*`, `/me/sessions*`,
+`/me/2fa*`, `/me/passkeys*`, `/me/export`, `PUT /me`, `DELETE /me`, `PUT /me/profile`,
+`PUT /me/privacy`, `POST /me/timezone`, `POST /me/consent`, `POST /me/inbox/rotate`,
+`DELETE /me/inbox`, `POST`/`PUT`/`DELETE /me/calendar-feed`, `/devices` (a phone added by a key
+would keep getting reminders after the key is gone), every `/ai/*` route (the assistant, drafts,
+study help and applying proposals), `/docs/:id/assist`, `/docs/:id/ask`, and the admin console.
+Reading those settings is fine. An admin's key
+carries none of an admin's powers: it can't manage teams its owner isn't on, and it doesn't get
+past maintenance mode. Making and deleting a key is in the audit log (`api_key.created`,
+`api_key.deleted`), and admins can see a person's keys and revoke one (`api_key.revoked`). Webhook
 events: `item.created`, `item.updated`, `item.completed`, `item.deleted` (once for each subtask
 too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.rescheduled`,
 `booking.cancelled`, and three the notifier sends on a schedule, each at most once per webhook:
@@ -1776,7 +1839,11 @@ minute late; one that started up to 5 minutes ago still goes.
 Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
 HMAC-SHA256 of `"<timestamp>.<body>"` with your webhook secret. Failed deliveries are retried
-with backoff for up to 8 attempts. Webhooks must reach a public address.
+with backoff for up to 8 attempts. Webhooks must be `https://` and reach a public address (checked
+when saved and again before every delivery, and the delivery then connects to the address that
+was checked). Redirects aren't followed. A webhook saved on `http://` before this rule was turned
+off (`active: false`) with a `last_error` saying to add it again with `https://`; a subscribed
+calendar saved on `http://` moved to `https://` and was read again (migration `071_https_links`).
 
 **The feed** has all-day items as dates, free events and tasks as `TRANSP:TRANSPARENT`, a
 `VALARM` per alert, invitees (`ORGANIZER`, `ATTENDEE` with their answers), repeating items as
@@ -1785,8 +1852,8 @@ RRULEs in their own zone with `EXDATE`s, and occurrences changed on their own as
 and lists nothing but "Busy" intervals: the same busy time teammates see, 30 days back to 180
 ahead.
 
-**Subscribing to other calendars.** Any iCalendar link (`https://` or `webcal://`) that reaches a
-public address: timetables, public holidays, a work calendar. The notifier fetches it soon after
+**Subscribing to other calendars.** Any iCalendar link (`https://` or `webcal://`, never plain
+`http://`) that reaches a public address: timetables, public holidays, a work calendar. The notifier fetches it soon after
 it's added and then hourly (asking only for changes), following up to 3 redirects, each checked
 again, within 15 seconds and 5 MB. A failed fetch keeps the last events and says why in
 `last_error`. Its events show in `GET /calendar` as `external`; they count as busy (for the
@@ -1826,6 +1893,8 @@ curl -s $API/items -H "Authorization: Bearer $TOKEN"
 ## CalDAV
 
 `/dav/` is a CalDAV server so Apple Calendar, Thunderbird and DAVx5 can subscribe to a person's events natively — and, for events (`VEVENT`), create, edit and delete them back. Clients authenticate with **HTTP Basic**, username = your email, password = a **personal API key** (`ok_…`). Point the client at `<APP_URL>/dav/` (or the well-known `/.well-known/caldav`).
+
+It shows the same events the app's calendar does, by the same rule: your personal events, and your teams' events for as long as you're on the team (an event you made in a team you've since left stays with that team). Members can edit and delete team events from their calendar app as they can in Orbyn, and viewers can read them but not change them (`403`). An edit changes only what the `.ics` carries (title, times, repeat rule, notes and place): the event stays in its team, with its creator, status, priority, list, tags, alerts, people invited, colour and meeting link.
 
 - `PROPFIND`, `REPORT`, `GET` read the calendar and its events.
 - `PUT` an `.ics` (one `VEVENT`) creates or replaces an event; the client's `UID` becomes the resource's href, so later edits map back to it. → `201` on create, `204` on replace. An unreadable body is `400`.

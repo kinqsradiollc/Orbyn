@@ -7,6 +7,7 @@ import {
   calendarSubscriptionUpdate,
   dayTime,
   fail,
+  HttpError,
   localDateKey,
   localDaysBetween,
   occurrencesBetween,
@@ -21,7 +22,7 @@ import {
   type Queryable as Db,
 } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
-import { assertPublicUrl } from "../../lib/netguard.js";
+import { assertPublicUrl, publicFetch } from "../../lib/netguard.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { announceTo } from "../presence/live.js";
 import { parseIcs, type IcsEvent } from "./icsParse.js";
@@ -70,22 +71,28 @@ export async function fetchCalendar(
 ): Promise<Fetched> {
   let current = url;
   for (let hop = 0; ; hop++) {
-    await assertPublicUrl(current, "calendar");
     let response: Response;
     try {
-      response = await fetch(current, {
-        redirect: "manual",
-        headers: {
-          Accept: "text/calendar, text/plain;q=0.9, */*;q=0.5",
-          "User-Agent": "Orbyn-Calendar/1",
-          ...(cache.etag ? { "If-None-Match": cache.etag } : {}),
-          ...(cache.last_modified
-            ? { "If-Modified-Since": cache.last_modified }
-            : {}),
+      // Checked (https, public addresses only) and called at the checked
+      // address; a redirect comes back here to be checked in turn.
+      response = await publicFetch(
+        current,
+        {
+          headers: {
+            Accept: "text/calendar, text/plain;q=0.9, */*;q=0.5",
+            "User-Agent": "Orbyn-Calendar/1",
+            ...(cache.etag ? { "If-None-Match": cache.etag } : {}),
+            ...(cache.last_modified
+              ? { "If-Modified-Since": cache.last_modified }
+              : {}),
+          },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
         },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
+        "calendar",
+      );
     } catch (error) {
+      // A link refused by the check says why in its own words.
+      if (error instanceof HttpError) throw error;
       throw new Error(
         (error as Error).name === "TimeoutError"
           ? "The calendar didn't answer within 15 seconds."

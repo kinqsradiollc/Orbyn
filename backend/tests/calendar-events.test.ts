@@ -18,6 +18,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { enqueue } = await import("../src/worker/scheduler.js");
 const { parseIcs } = await import("../src/modules/planner/icsParse.js");
+const { outbound } = await import("../src/lib/netguard.js");
 const { addDays, localDateKey, dayTime } = await import("@orbyn/core");
 const app = await buildApp();
 
@@ -968,7 +969,11 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
     "https://10.1.2.3/cal.ics",
     "webcal://192.168.1.10/cal.ics",
     "http://[::1]/cal.ics",
+    "https://[::ffff:7f00:1]/cal.ics",
+    "https://[::ffff:169.254.169.254]/cal.ics",
     "ftp://example.com/cal.ics",
+    // Public, but plain http.
+    "http://93.184.216.34/cal.ics",
   ]) {
     const refused = await call(me.token, "POST", "/me/calendar-subscriptions", {
       url,
@@ -1002,17 +1007,27 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
   const source = (await call(null, "GET", await feedPath(other.token))).raw
     .body;
   const seen: string[] = [];
-  let answer: (url: string, init?: RequestInit) => Response = () =>
+  const pinned: (string | undefined)[] = [];
+  let answer: (
+    url: string,
+    init?: { headers?: HeadersInit },
+  ) => Response = () =>
     new Response(source, {
       status: 200,
       headers: { etag: '"v1"', "content-type": "text/calendar" },
     });
+  // Stands in for the network: every call arrives already checked, with the
+  // address it will connect to.
   t.mock.method(
-    globalThis,
-    "fetch",
-    async (url: string | URL, init?: RequestInit) => {
-      seen.push(String(url));
-      return answer(String(url), init);
+    outbound,
+    "request",
+    async (
+      checked: { url: URL; pinned: { address: string } | null },
+      init?: { headers?: HeadersInit },
+    ) => {
+      seen.push(checked.url.toString());
+      pinned.push(checked.pinned?.address);
+      return answer(checked.url.toString(), init);
     },
   );
 
@@ -1038,6 +1053,8 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
     "https://93.184.216.34/team.ics",
     "https://93.184.216.34/team.ics",
   ]);
+  // Each call connects to the address that was checked.
+  assert.deepEqual(pinned, ["93.184.216.34", "93.184.216.34"]);
 
   const shown = async () =>
     ((await entries(me.token, 1, 4)).external as Json[]).map((e) => [
@@ -1087,16 +1104,27 @@ test("calendars from other apps: public links only, fetched, shown, and busy onl
   assert.equal(again.body.event_count, 3);
   assert.equal(again.body.last_error, null);
 
-  // A redirect to a private address is refused, and the last events stay.
+  // A redirect to a private address is refused, however it's written, and
+  // the last events stay.
+  for (const location of [
+    "https://127.0.0.1/steal",
+    "https://[::ffff:127.0.0.1]/steal",
+    "https://[::ffff:7f00:1]/steal",
+    "https://2130706433/steal",
+  ]) {
+    answer = () => new Response(null, { status: 302, headers: { location } });
+    const redirected = await refresh();
+    assert.match(redirected.body.last_error, /public address/, location);
+    assert.equal(redirected.body.event_count, 3);
+  }
+  // So is one that drops to plain http.
   answer = () =>
     new Response(null, {
       status: 302,
-      headers: { location: "http://127.0.0.1/steal" },
+      headers: { location: "http://93.184.216.34/team.ics" },
     });
-  const redirected = await refresh();
-  assert.match(redirected.body.last_error, /public address/);
-  assert.equal(redirected.body.event_count, 3);
-  assert.ok(!seen.includes("http://127.0.0.1/steal"));
+  assert.match((await refresh()).body.last_error, /start with https/);
+  assert.ok(!seen.some((url) => /127\.0\.0\.1|\[::ffff|^http:/.test(url)));
   assert.equal((await shown()).length, 4);
   answer = () => new Response("<html>Not a calendar</html>", { status: 200 });
   assert.match((await refresh()).body.last_error, /iCalendar/);

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { blockText, mathToText, type DocBlock } from "@orbyn/core";
+import { blockText, listLayout, mathToText, type DocBlock } from "@orbyn/core";
 import { Inline } from "./Inline";
 import { Icon } from "../../components/Icon";
 import type { Mark } from "./marks";
@@ -126,6 +126,11 @@ export function DocBody({
       ),
     );
 
+  // Numbers count through each list, and nested items step in.
+  const layout = listLayout(content);
+  const inset = (index: number) =>
+    layout[index].depth ? { marginLeft: layout[index].depth * NEST } : null;
+
   return (
     <View style={styles.body}>
       {content.map((block, index) => {
@@ -133,7 +138,7 @@ export function DocBody({
         // made a heading or a checkbox is there to change.
         if (index === editing)
           return (
-            <View key={index} style={styles.editing}>
+            <View key={index} style={[styles.editing, inset(index)]}>
               <TextInput
                 style={styles.input}
                 value={draft}
@@ -165,9 +170,16 @@ export function DocBody({
           case "numbered":
             return line(
               index,
-              <View style={styles.row}>
-                <Text style={styles.marker}>
-                  {block.type === "bullet" ? "•" : "1."}
+              <View style={[styles.row, inset(index)]}>
+                <Text
+                  style={[
+                    styles.marker,
+                    block.type === "numbered" && styles.number,
+                  ]}
+                >
+                  {block.type === "bullet"
+                    ? BULLETS[layout[index].depth % BULLETS.length]
+                    : `${layout[index].number ?? 1}.`}
                 </Text>
                 <Text style={styles.text}>
                   <Inline text={block.text} marks={marks[block.id ?? ""]} />
@@ -180,7 +192,7 @@ export function DocBody({
             // instead.
             return decorate(
               index,
-              <View style={[styles.row, styles.line]}>
+              <View style={[styles.row, styles.line, inset(index)]}>
                 {/* A checkbox, as on task rows and on the web: a switch reads
                     as a setting, and is twice the size of a line. */}
                 <Pressable
@@ -270,6 +282,11 @@ export function DocBody({
   );
 }
 
+/** How far each level of a nested list steps in. */
+const NEST = 20;
+/** Bullets change shape as a list nests, as they do on the web. */
+const BULLETS = ["•", "◦", "▪", "•"];
+
 const styles = themed(() =>
   StyleSheet.create({
     body: { gap: 10 },
@@ -337,6 +354,8 @@ const styles = themed(() =>
     tag: { color: colors.muted, fontSize: 12, fontFamily: fonts.semibold },
     row: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
     marker: { color: colors.muted, fontSize: 15, lineHeight: 22, width: 16 },
+    // Room for two digits, lined up on their dots.
+    number: { width: 24, textAlign: "right", fontVariant: ["tabular-nums"] },
     check: {
       width: 22,
       height: 22,
