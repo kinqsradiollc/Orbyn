@@ -206,7 +206,9 @@ metadata:
     app.kubernetes.io/name: orbyn
     app.kubernetes.io/component: mcp
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod # placeholder
+    # No cert-manager annotation: orbyn-api owns and issues orbyn-api-tls,
+    # and this Ingress only reuses that secret. Two owners of one
+    # Certificate make cert-manager refuse one and log it on every sync.
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     # Per address, and generous (see the note on orbyn-mcp for phase A2).
     nginx.ingress.kubernetes.io/limit-rps: "50"

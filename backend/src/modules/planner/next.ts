@@ -71,11 +71,20 @@ const minutesText = (m: number) => {
  * free time, when they're demanding and this hour usually goes well for the
  * person, and when they keep slipping (offered as a short first session:
  * starting is the hard part).
+ *
+ * A caller that sees only part of the person's work (an agent's
+ * connection) passes `window`, the free time it worked out from what it
+ * can see (null for none), and `reach`, which teams' tasks it may suggest;
+ * then no minutes, reason or order depends on anything outside it.
  */
 export async function upNext(
   db: Db,
   userId: string,
   now = new Date(),
+  scope: {
+    window?: UpNext["window"];
+    reach?: (teamId: string | null) => boolean;
+  } = {},
 ): Promise<UpNext> {
   const prefs = await loadPrefs(db, userId);
   const tz = prefs.timezone;
@@ -87,11 +96,12 @@ export async function upNext(
     now >= dayStart &&
     now < dayEnd;
 
+  const given = "window" in scope;
   const [busy, agenda, current, tasks, learning, slips] = await Promise.all([
-    working
+    working && !given
       ? busyIntervals(db, userId, now, dayEnd, { blocks: false, derived: true })
       : Promise.resolve([]),
-    working
+    working && !given
       ? agendaEntries(
           db,
           userId,
@@ -112,12 +122,12 @@ export async function upNext(
   ]);
 
   // The free stretch from now: none while an event is on.
-  let window: UpNext["window"] = null;
+  let window: UpNext["window"] = scope.window ?? null;
   const at = now.getTime();
   const sorted = busy
     .map((b) => ({ start: Date.parse(b.start_at), end: Date.parse(b.end_at) }))
     .sort((a, b) => a.start - b.start);
-  if (working && !sorted.some((b) => b.start <= at && b.end > at)) {
+  if (!given && working && !sorted.some((b) => b.start <= at && b.end > at)) {
     const next = sorted.find((b) => b.start > at);
     const end = Math.min(next?.start ?? Infinity, dayEnd.getTime());
     const minutes = Math.floor((end - at) / 60_000);
@@ -169,6 +179,7 @@ export async function upNext(
 
   const ranked: (UpNextSuggestion & { score: number })[] = [];
   for (const t of tasks) {
+    if (scope.reach && !scope.reach(t.team_id)) continue;
     if (t.status === "blocked") continue;
     if (!(t.dependencies ?? []).every(ready)) continue;
     let estimate = t.estimate_minutes;

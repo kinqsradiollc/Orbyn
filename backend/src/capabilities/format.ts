@@ -41,21 +41,39 @@ const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
  */
 const HIDDEN_ELEMENTS =
   /<(script|style|template|iframe|object|noscript|svg)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
-/** Elements that load something from an address as soon as they're shown. */
-const EMBEDS =
-  /<\/?(?:img|image|picture|iframe|embed|object|link|meta|source|video|audio|track|input|frame|frameset|applet|base|use|feimage|svg)\b[^>]*>/gi;
-/** Any other tag that loads a picture through its style or a background. */
-const LOADING_TAGS =
-  /<[a-z][^>]*(?:url\s*\(|\bbackground\s*=|\bsrcset\s*=|\bposter\s*=)[^>]*>/gi;
 /** A span or div styled invisible, with what it hides. */
 const INVISIBLE_ELEMENT =
   /<(span|div|p)\b[^>]*style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi;
 /**
+ * Elements that load something from an address as soon as they're shown,
+ * and the hidden ones above (whose tags alone may be left).
+ */
+const EMBED_NAMES =
+  "img|image|picture|iframe|embed|object|link|meta|source|video|audio|track|input|frame|frameset|applet|base|use|feimage|svg|mglyph|bgsound|portal|script|style|template|noscript";
+const EMBED_SET = new Set(EMBED_NAMES.split("|"));
+/** Such an element's tag, read the quick way (up to the first `>`). */
+const EMBEDS = new RegExp(`<\\/?(?:${EMBED_NAMES})\\b[^>]*>`, "gi");
+/** The start of such a tag, wherever one is still left: escaped at the end. */
+const EMBED_OPENER = new RegExp(`<(?=\\/?(?:${EMBED_NAMES})\\b)`, "gi");
+/**
+ * Attributes that load a picture (a style, a background, a poster) or run
+ * a script, on any element.
+ */
+const ACTIVE_ATTRIBUTE =
+  /^(?:style|background|srcset|poster|lowsrc|dynsrc|icon|manifest|on.+)$/i;
+/** Anything in a tag that loads from an address wherever it's used. */
+const LOADING_VALUE = /url\s*\(|image-set\s*\(|@import/i;
+/** The `<` of a tag. */
+const TAG_START = /<(?=\/?[A-Za-z])/g;
+/**
  * A Markdown link reference definition (`[x]: https://…`), which a
- * reference image (`![x]` or `![a][x]`) would load from.
+ * reference image would load from; also inside a quote or a list item
+ * (`> [x]: …`, `- [x]: …`), which CommonMark counts too.
  */
 const REFERENCE_DEFINITION =
-  /^ {0,3}\[((?:\\.|[^\\\]])+)\]:[ \t]*\n?[ \t]*(<[^>\n]*>|\S+)[^\n]*$/gm;
+  /^((?:[ \t>*+-]|\d{1,9}[.)])*)\[((?:\\.|[^\\\]])+)\]:[ \t]*(?:\n[ \t>]*)?(<[^>\n]*>|\S+)[^\n]*$/gm;
+/** Times cleaning runs again on text whose removals rebuild what they removed. */
+const MAX_ROUNDS = 8;
 
 /** The web app's own host: images there are Orbyn's and may stay. */
 function ownHost(): string | null {
@@ -164,10 +182,23 @@ function inlineTarget(
 }
 
 /**
+ * `out`, ready to be followed by `[`: a `!` at its end (not itself escaped)
+ * would make what follows an image again, so it is escaped.
+ */
+function unbang(out: string): string {
+  if (!out.endsWith("!")) return out;
+  let slashes = 0;
+  for (let k = out.length - 2; k >= 0 && out[k] === "\\"; k--) slashes++;
+  return slashes % 2 === 0 ? `${out.slice(0, -1)}\\!` : out;
+}
+
+/**
  * Every Markdown image in `s` that would load from somewhere other than the
  * web app becomes its description, `[image: …]`, whatever its form: inline
  * (brackets inside the description, escapes, `<…>` addresses), reference or
- * shortcut. Afterwards no `![` is left but the web app's own images.
+ * shortcut. A `!` just before the description is escaped, so it can't be
+ * read as an image itself. Afterwards no unescaped `![` is left but the web
+ * app's own inline images.
  */
 function neutraliseImages(s: string, own: string | null): string {
   let out = "";
@@ -199,7 +230,7 @@ function neutraliseImages(s: string, own: string | null): string {
       const target = inlineTarget(s, close + 1);
       if (target) {
         const keep = ownImageUrl(target.url, own);
-        out += keep ? `![${alt}](${keep})` : placeholder;
+        out = keep ? `${out}![${alt}](${keep})` : unbang(out) + placeholder;
         i = target.end;
         continue;
       }
@@ -210,10 +241,108 @@ function neutraliseImages(s: string, own: string | null): string {
       const label = closingBracket(s, end);
       if (label > 0) end = label + 1;
     }
-    out += placeholder;
+    out = unbang(out) + placeholder;
     i = end;
   }
   return out;
+}
+
+const isSpace = (c: string | undefined) =>
+  c === " " || c === "\n" || c === "\t" || c === "\r" || c === "\f";
+
+type Tag = { end: number; name: string; attributes: string[] };
+
+/**
+ * The HTML tag starting at the `<` at `i`, read the way a browser reads it:
+ * a quoted attribute value may hold `>`, and a quote anywhere else is part
+ * of a name. null when that `<` doesn't start a tag; "open" when the tag
+ * runs to the end of the text, so whatever comes after the text (a fence,
+ * the next line of an answer) could close it.
+ */
+function readTag(s: string, i: number): Tag | "open" | null {
+  let j = i + 1;
+  if (s[j] === "/") j++;
+  if (!/[A-Za-z]/.test(s[j] ?? "")) return null;
+  const from = j;
+  while (j < s.length && !isSpace(s[j]) && s[j] !== "/" && s[j] !== ">") j++;
+  const name = s.slice(from, j).toLowerCase();
+  const attributes: string[] = [];
+  for (;;) {
+    while (j < s.length && (isSpace(s[j]) || s[j] === "/")) j++;
+    if (j >= s.length) return "open";
+    if (s[j] === ">") return { end: j + 1, name, attributes };
+    // An attribute's name; its first character belongs to it even if "=".
+    const start = j++;
+    while (
+      j < s.length &&
+      !isSpace(s[j]) &&
+      s[j] !== "/" &&
+      s[j] !== ">" &&
+      s[j] !== "="
+    )
+      j++;
+    attributes.push(s.slice(start, j));
+    while (isSpace(s[j])) j++;
+    if (s[j] !== "=") continue;
+    j++;
+    while (isSpace(s[j])) j++;
+    const quote = s[j];
+    if (quote === '"' || quote === "'") {
+      const close = s.indexOf(quote, j + 1);
+      if (close < 0) return "open";
+      j = close + 1;
+    } else while (j < s.length && !isSpace(s[j]) && s[j] !== ">") j++;
+  }
+}
+
+/**
+ * Every tag read as a browser would, and those that load something dropped:
+ * embeds, and any tag with a loading or script attribute. A tag that never
+ * closes could be closed by what follows the text and take attributes from
+ * there, so from its `<` on, every tag's `<` is escaped and it's all text.
+ */
+function dropLoadingTags(s: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const lt = s.indexOf("<", i);
+    if (lt < 0) return out + s.slice(i);
+    out += s.slice(i, lt);
+    const tag = readTag(s, lt);
+    if (tag === null) {
+      out += "<";
+      i = lt + 1;
+      continue;
+    }
+    if (tag === "open") return out + s.slice(lt).replace(TAG_START, "&lt;");
+    const raw = s.slice(lt, tag.end);
+    const loads =
+      EMBED_SET.has(tag.name) ||
+      LOADING_VALUE.test(raw) ||
+      tag.attributes.some((a) => ACTIVE_ATTRIBUTE.test(a));
+    if (!loads) out += raw;
+    i = tag.end;
+  }
+}
+
+/**
+ * One round of cleaning: comments, hidden elements and whatever loads from
+ * an address removed, reference definitions pointing elsewhere dropped and
+ * images from other hosts replaced by their description.
+ */
+function scrub(s: string, own: string | null): string {
+  const markup = dropLoadingTags(
+    s
+      .replace(HTML_COMMENT, "")
+      .replace(HIDDEN_ELEMENTS, "")
+      .replace(INVISIBLE_ELEMENT, "")
+      .replace(EMBEDS, ""),
+  ).replace(
+    REFERENCE_DEFINITION,
+    (line: string, container: string, _label: string, dest: string) =>
+      ownImageUrl(dest.replace(/^<|>$/g, ""), own) ? line : container,
+  );
+  return neutraliseImages(markup, own);
 }
 
 /**
@@ -221,38 +350,48 @@ function neutraliseImages(s: string, own: string | null): string {
  * removed, HTML comments, hidden elements and anything that loads from an
  * address gone, images from other hosts replaced by their description (and
  * reference definitions pointing elsewhere dropped), and cut to `max`
- * characters.
+ * characters. A removal can join the halves of another tag or image around
+ * it (`<im<img>g src=…>`), so cleaning runs again until nothing changes;
+ * and a tag left open at the end (or by the cut) is escaped, so text that
+ * follows can't close it.
  */
 export function clean(text: unknown, max = MAX_RESULT_CHARS): string {
   const own = ownHost();
-  let out = String(text ?? "")
-    .replace(INVISIBLE, "")
-    .replace(BIDI, "")
-    .replace(TAGS, "")
-    .replace(HTML_COMMENT, "")
-    .replace(HIDDEN_ELEMENTS, "")
-    .replace(INVISIBLE_ELEMENT, "")
-    .replace(EMBEDS, "")
-    .replace(LOADING_TAGS, "")
-    .replace(
-      REFERENCE_DEFINITION,
-      (line: string, _label: string, dest: string) =>
-        ownImageUrl(dest.replace(/^<|>$/g, ""), own) ? line : "",
-    );
-  out = neutraliseImages(out, own);
-  // Control characters other than newlines and tabs.
-  out = Array.from(out)
+  let out = Array.from(
+    String(text ?? "")
+      .replace(INVISIBLE, "")
+      .replace(BIDI, "")
+      .replace(TAGS, ""),
+  )
+    // Control characters other than newlines and tabs.
     .map((c) => (c < " " && c !== "\n" && c !== "\t" ? " " : c))
     .join("");
-  return out.length > max ? out.slice(0, max) : out;
+  for (let round = 0; ; round++) {
+    const next = scrub(out, own);
+    if (next === out) break;
+    if (round === MAX_ROUNDS) {
+      // Built to rebuild itself without end: no tag or image is left.
+      out = next.replace(/</g, "&lt;").replace(/!\[/g, "!\\[");
+      break;
+    }
+    out = next;
+  }
+  out = out.replace(EMBED_OPENER, "&lt;");
+  return dropLoadingTags(out.length > max ? out.slice(0, max) : out);
 }
 
-/** A title: one line, cleaned, at most 200 characters. */
+/**
+ * A title: one line, cleaned, at most 200 characters. Spaces of every kind
+ * become plain ones before cleaning, so the tags read then are the tags a
+ * reader sees.
+ */
 export const cleanTitle = (text: unknown) =>
-  clean(text, MAX_TITLE_CHARS * 2)
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_TITLE_CHARS);
+  dropLoadingTags(
+    clean(String(text ?? "").replace(/\s+/g, " "), MAX_TITLE_CHARS * 2)
+      .replace(/ {2,}/g, " ")
+      .trim()
+      .slice(0, MAX_TITLE_CHARS),
+  );
 
 const FENCE_OPEN = /<\s*\/?\s*untrusted-content/gi;
 
@@ -308,10 +447,18 @@ export const labelled = (
       ? hiddenText(source)
       : fence(source === "booking_guest" ? maskEmails(text) : text, source);
 
-/** A title as an agent sees it: cleaned, and without a guest's email address. */
-export const titleFor = (title: unknown, source: Provenance | string) => {
-  const t = cleanTitle(title);
-  return source === "booking_guest" ? maskEmails(t) : t;
+/**
+ * A title as an agent sees it: cleaned, and without a guest's email address.
+ * A booking's title is made from what its guest typed (their name, say), so
+ * it is only "Booking" when the connection hides outside content.
+ */
+export const titleFor = (
+  title: unknown,
+  source: Provenance | string,
+  hideOutside = false,
+) => {
+  if (source !== "booking_guest") return cleanTitle(title);
+  return hideOutside ? "Booking" : maskEmails(cleanTitle(title)) || "Booking";
 };
 
 /** Outside sources an item's text can come from (see sources.ts). */

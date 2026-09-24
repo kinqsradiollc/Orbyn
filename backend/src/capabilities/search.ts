@@ -283,7 +283,7 @@ async function runSearch(
           : null;
       return {
         id: r0.id,
-        title: titleFor(r.title, provenance) || "Untitled",
+        title: titleFor(r.title, provenance, hideOutside) || "Untitled",
         url: r0.url,
         type: r.type,
         // Left out when it came from outside and the connection hides that.
@@ -545,7 +545,12 @@ export const findPassages = defineCapability({
           source: {
             id: at.id,
             type: r.type,
-            title: titleFor(r.title, provenance) || "Untitled",
+            title:
+              titleFor(
+                r.title,
+                provenance,
+                ctx.principal.flags.hide_outside_content,
+              ) || "Untitled",
             url: at.url,
           },
           rank: Number(r.rank),

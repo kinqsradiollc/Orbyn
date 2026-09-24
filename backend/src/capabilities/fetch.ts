@@ -15,6 +15,7 @@ import {
   both,
   clean,
   cleanTitle,
+  fence,
   labelled,
   mdLink,
   provenanceOf,
@@ -181,9 +182,13 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     (m, b) => m + (b.end_at.getTime() - b.start_at.getTime()) / 60_000,
     0,
   );
-  const title = titleFor(t.title, provenance) || "Untitled";
+  const title = titleFor(t.title, provenance, hide(ctx)) || "Untitled";
+  // A booking's title is made from what its guest typed: it goes in the
+  // fence (or is left out), never in the heading.
+  const guest = provenance === "booking_guest";
   const lines = [
-    `# ${title}`,
+    `# ${guest ? "Booking" : title}`,
+    ...(guest && !hide(ctx) ? [fence(title, provenance)] : []),
     `- ${event ? "Event" : t.kind === "reminder" ? "Reminder" : "Task"} · ${t.status} · ${t.priority} priority · ${spaceName(t.team_id, ctx.principal.teams)}`,
   ];
   if (start)

@@ -90,7 +90,7 @@ export const searchItems = defineCapability({
       ? rows
           .map(
             (r) =>
-              `- ${titleFor(r.title, r.source ?? "you")} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
+              `- ${titleFor(r.title, r.source ?? "you", ctx.principal.flags.hide_outside_content)} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
               `  id: ${r.id} · open: ${refUrl({ type: "task", id: r.id })}`,
           )
           .join("\n")
@@ -198,7 +198,9 @@ export const getAgenda = defineCapability({
         e.status !== "done" &&
         e.status !== "cancelled",
     );
-    // A booking's event never shows its guest's email address.
+    // A booking's event never shows its guest's email address, and is
+    // only "Booking" when the connection hides outside content.
+    const hideOutside = ctx.principal.flags.hide_outside_content;
     const bookings = await bookingItemIds(
       ctx.db,
       events.map((e) => e.item_id),
@@ -207,12 +209,15 @@ export const getAgenda = defineCapability({
       ...events.map((e) => ({
         at: e.start_at,
         text:
-          `${when(new Date(e.start_at), tz, !!e.all_day)} · ${titleFor(e.title, bookings.has(e.item_id) ? "booking_guest" : "you")} (event)\n` +
+          `${when(new Date(e.start_at), tz, !!e.all_day)} · ${titleFor(e.title, bookings.has(e.item_id) ? "booking_guest" : "you", hideOutside)} (event)\n` +
           `  id: ${e.item_id} · open: ${refUrl({ type: "task", id: e.item_id })}`,
       })),
       ...subscribed.map((e) => ({
         at: e.start_at,
-        text: `${when(new Date(e.start_at), tz, e.all_day)} · ${cleanTitle(e.title)} (from "${cleanTitle(e.name) || "a subscribed calendar"}")`,
+        // Busy time only, when the connection hides outside content.
+        text: hideOutside
+          ? `${when(new Date(e.start_at), tz, e.all_day)} · Busy (subscribed calendar)`
+          : `${when(new Date(e.start_at), tz, e.all_day)} · ${cleanTitle(e.title)} (from "${cleanTitle(e.name) || "a subscribed calendar"}")`,
       })),
       ...tasks.rows.map((t) => ({
         at: t.due_at.toISOString(),

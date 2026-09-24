@@ -172,9 +172,7 @@ export const getCalendar = defineCapability({
           kind: event ? ("event" as const) : ("deadline" as const),
           id: r.id,
           title: booked
-            ? hideOutside
-              ? "Booking"
-              : titleFor(e.title, "booking_guest") || "Booking"
+            ? titleFor(e.title, "booking_guest", hideOutside)
             : cleanTitle(e.title) || "Untitled",
           url: r.url,
           start: both(e.start_at, tz)!,

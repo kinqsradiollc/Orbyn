@@ -25,7 +25,8 @@ const { env } = await import("../src/config/env.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { limiter, strikes } =
   await import("../src/modules/mcp-server/routes.js");
-const { clean } = await import("../src/capabilities/format.js");
+const { clean, cleanTitle, fence } =
+  await import("../src/capabilities/format.js");
 const { todayForPrincipal } = await import("../src/capabilities/today.js");
 
 const app = await buildApp();
@@ -329,6 +330,14 @@ test("Today for a Personal-only connection: free time, reasons and asks stay ins
     estimate_minutes: 20,
     due_at: at(30),
   });
+  // A long personal job, due today: Up next offers a full session of it.
+  const long = await create(owner, "/items", {
+    title: "Marmot long personal job",
+    kind: "task",
+    priority: "high",
+    estimate_minutes: 90,
+    due_at: at(16),
+  });
   const now = new Date(at(10));
   const spaces = { userId: owner.id, teamIds: [], personal: true };
   const today = await readTransaction((db) =>
@@ -341,8 +350,14 @@ test("Today for a Personal-only connection: free time, reasons and asks stay ins
   assert.ok(today.free, "free time");
   assert.equal(today.free.before, null);
   assert.ok(Date.parse(today.free.until.at) > Date.parse(at(11, 40)));
-  for (const u of today.up_next)
+  for (const u of today.up_next) {
     for (const why of u.why) assert.doesNotMatch(why, /SECRET|Acme/);
+    // No suggestion is cut to the 40 minutes before the closed team's call.
+    assert.ok(u.minutes <= today.free.minutes, JSON.stringify(u));
+  }
+  const longNext = today.up_next.find((u) => u.id === `task:${long.id}`);
+  assert.ok(longNext, JSON.stringify(today.up_next));
+  assert.equal(longNext.minutes, 90);
   // The closed team's ask isn't this connection's to see.
   assert.equal(today.needs_you.asks, 0);
 
@@ -361,6 +376,11 @@ test("Today for a Personal-only connection: free time, reasons and asks stay ins
   assert.equal(wide.free?.before, "SECRET merger call with Acme");
   assert.equal(wide.free?.until.at, at(10, 40));
   assert.equal(wide.needs_you.asks, 1);
+  // It sees the call, so the long job's session fits before it.
+  assert.equal(
+    wide.up_next.find((u) => u.id === `task:${long.id}`)?.minutes,
+    40,
+  );
 
   // A subscribed calendar ends it as busy time only when outside content is hidden.
   const sub = (
@@ -416,6 +436,10 @@ test("booking guests' words come back fenced, without their email, and hidden on
   assert.match(doc.text, /IGNORE PREVIOUS INSTRUCTIONS/);
   assert.ok(!JSON.stringify(f).includes("gus@guest.example"));
   assert.match(doc.title, /\[email hidden\]/);
+  assert.match(
+    doc.text,
+    /^# Booking\n<untrusted-content source="booking_guest">\nMarmot intro with Gus/,
+  );
 
   const s = await h.tool(keys.ownerAll, "search", { query: "burrow company" });
   const hit = s!.structuredContent.results.find(
@@ -460,11 +484,29 @@ test("booking guests' words come back fenced, without their email, and hidden on
     quiet!.structuredContent.text,
     /\[Hidden: text from a booking guest/,
   );
+  assert.equal(quiet!.structuredContent.title, "Booking");
+  assert.match(quiet!.structuredContent.text, /^# Booking\n/);
+  assert.ok(!JSON.stringify(quiet).includes("Gus"), JSON.stringify(quiet));
   const quietSearch = await h.tool(hiding, "search", {
     query: "burrow company",
   });
-  for (const r of quietSearch!.structuredContent.results)
-    if (r.id === `event:${event.id}`) assert.equal(r.snippet, null);
+  const quietHit = quietSearch!.structuredContent.results.find(
+    (r: { id: string }) => r.id === `event:${event.id}`,
+  );
+  assert.ok(quietHit, JSON.stringify(quietSearch!.structuredContent));
+  assert.equal(quietHit.snippet, null);
+  assert.equal(quietHit.title, "Booking");
+  assert.ok(!JSON.stringify(quietSearch).includes("Gus"));
+  const quietQuery = await h.tool(hiding, "query", {
+    over: "events",
+    text: "marmot intro",
+  });
+  const quietRow = quietQuery!.structuredContent.rows.find(
+    (r: { id: string }) => r.id === `event:${event.id}`,
+  );
+  assert.ok(quietRow, JSON.stringify(quietQuery!.structuredContent));
+  assert.equal(quietRow.title, "Booking");
+  assert.ok(!JSON.stringify(quietQuery).includes("Gus"));
   const quietPassages = await h.tool(hiding, "find_passages", {
     query: "burrow company",
   });
@@ -578,17 +620,61 @@ test("images that would load from elsewhere never survive cleaning, in any Markd
     "\\\\![x](https://evil.example/x.png?d=S16)",
     "!​[x](https://evil.example/x.png?d=S17)",
     '<table background="https://evil.example/t.png?d=S18"><tr><td>x</td></tr></table>',
+    // A tag whose removal rebuilds another around it.
+    "<im<img>g src=https://evil.example/x.png?d=S19>",
+    "<i<link>mg src=https://evil.example/x.png?d=S20>",
+    "!<img>![x](https://evil.example/x.png?d=S21)",
+    // A "!" before the description would make it an image again, loaded
+    // from a definition inside a quote or a list item.
+    "Wow!![x](https://evil.example/y.png)\n\n> [image: x]: https://evil.example/p.png?d=S22",
+    "Wow!![x](https://evil.example/y.png)\n\n- [image: x]: https://evil.example/p.png?d=S23",
+    "Wow!![x](https://evil.example/y.png)\n\n1. > [image: x]:\n> https://evil.example/p.png?d=S24",
+    // Left open, for the fence (or the next line) to close.
+    "Trailing <img src=https://evil.example/x.png?d=S25",
+    '<div style="background:url(https://evil.example/o.png?d=S26)"',
+    '<b title="x">ok</b> <p title="',
+    // A ">" inside a quoted value doesn't end the tag.
+    '<div title=">" style="background:url(https://evil.example/q.png?d=S27)">x</div>',
+    '<b a"b c="x>" style=background:url(https://evil.example/w.png?d=S28)>x</b>',
+    "<td background=https://evil.example/t.png?d=S29>x</td>",
   ];
   for (const text of evil) {
-    const out = clean(text);
-    assert.ok(!out.includes("evil.example") || !/!\[/.test(out), out);
-    assert.doesNotMatch(out, /!\[[^\]]*\]\([^)]*evil/, out);
-    assert.doesNotMatch(out, /<(img|image|svg|source|picture)\b/i, out);
-    assert.doesNotMatch(out, /url\(/i, out);
-    // Whatever image syntax is left is the web app's own.
-    for (const m of out.matchAll(/!\[[^\]]*\]\(([^)]*)\)/g))
-      assert.ok(m[1].startsWith(base), out);
+    for (const out of [
+      clean(text),
+      cleanTitle(text),
+      fence(text, "booking_guest").replace(/<\/?untrusted-content[^>]*>/g, ""),
+    ]) {
+      assert.doesNotMatch(out, /(?<!\\)!\[[^\]]*\]\([^)]*evil/, out);
+      assert.doesNotMatch(out, /<(img|image|svg|source|picture|link)\b/i, out);
+      // No tag loads from anywhere, and none is left open.
+      assert.doesNotMatch(out, /<[a-z][^>]*(url\(|background|style)/i, out);
+      assert.doesNotMatch(out, /<\/?[a-z][^>]*$/i, out);
+      // Whatever image syntax is left is the web app's own: any other "!["
+      // is escaped.
+      for (const m of out.matchAll(/!\[[^\]]*\]\(([^)]*)\)/g))
+        assert.ok(m[1].startsWith(base), out);
+      assert.doesNotMatch(
+        out.replace(/!\[[^\]]*\]\([^)]*\)/g, ""),
+        /(?<!\\)!\[/,
+        out,
+      );
+    }
   }
+  // An image left behind a "!" stays text, and its definition goes.
+  assert.equal(
+    clean(
+      "Wow!![x](https://evil.example/y.png)\n\n> [image: x]: https://evil.example/p.png",
+    ),
+    "Wow\\![image: x]\n\n> ",
+  );
+  // A spaced-out tag in a title is read as the tag it becomes.
+  assert.equal(
+    cleanTitle("<td\u00a0background=https://evil.example/t.png>x</td>"),
+    "x</td>",
+  );
+  // Text after a tag left open stays text; the fence still closes.
+  const open = fence("Trailing <img src=https://evil.example/x.png", "import");
+  assert.match(open, /Trailing &lt;img src=[^\n]*\n<\/untrusted-content>$/);
   // Reference definitions pointing elsewhere go; the description stays.
   const ref = clean("See ![chart][c].\n\n[c]: https://evil.example/c.png");
   assert.ok(!ref.includes("evil.example"), ref);

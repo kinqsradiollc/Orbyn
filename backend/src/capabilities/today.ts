@@ -216,7 +216,6 @@ export async function todayForPrincipal(
     due,
     late,
     lateTotal,
-    next,
     asks,
   ] = await Promise.all([
     loadPrefs(db, userId),
@@ -233,7 +232,6 @@ export async function todayForPrincipal(
     db.query<DueRow>(dueToday.sql, dueToday.values),
     db.query<DueRow>(lateQ.sql, lateQ.values),
     db.query<{ n: number }>(lateCount.sql, lateCount.values),
-    upNext(db, userId, now),
     db.query<{ n: number }>(asksQuery.sql, asksQuery.values),
   ]);
 
@@ -257,9 +255,7 @@ export async function todayForPrincipal(
   );
   const eventTitle = (e: { item_id: string; title: string }) =>
     bookings.has(e.item_id)
-      ? who.hideOutside
-        ? "Booking"
-        : titleFor(e.title, "booking_guest") || "Booking"
+      ? titleFor(e.title, "booking_guest", who.hideOutside)
       : cleanTitle(e.title) || "Untitled";
   const subscribedTitle = (title: string) =>
     who.hideOutside
@@ -396,8 +392,21 @@ export async function todayForPrincipal(
     };
   };
 
-  // Up next may name a task outside this principal's spaces: keep only
-  // those it can see.
+  // Up next from this principal's free time and its spaces' tasks only, so
+  // no suggestion's minutes, reasons or order time or name an event out of
+  // reach (Up next on its own looks at every team).
+  const next = await upNext(db, userId, now, {
+    window: free
+      ? {
+          start_at: now.toISOString(),
+          end_at: free.until.at,
+          minutes: free.minutes,
+          until: free.before,
+        }
+      : null,
+    reach: (teamId) => inSpaces(spaces, teamId),
+  });
+  // And only tasks it can see, checked as every other read is.
   const suggested = next.suggestions.map((s) => s.item_id);
   const allowed = new Set<string>();
   if (suggested.length) {
@@ -411,14 +420,6 @@ export async function todayForPrincipal(
     ).rows)
       allowed.add(r.id);
   }
-  // Its "fits the free time" reason is about its own free time, which may
-  // end at (and name) an event out of reach: said again from ours instead.
-  const FITS = /^Fits the /;
-  const fitsText = free
-    ? free.before
-      ? `Fits the ${minutesText(free.minutes)} before ${free.before}`
-      : `Fits the ${minutesText(free.minutes)} you have free`
-    : null;
 
   return {
     day,
@@ -434,11 +435,7 @@ export async function todayForPrincipal(
       .filter((s) => allowed.has(s.item_id))
       .map((s) => {
         const r = refs({ type: "task", id: s.item_id });
-        const fits = s.reasons.some((x) => FITS.test(x));
-        const why = s.reasons
-          .filter((x) => !FITS.test(x))
-          .map((x) => cleanTitle(x));
-        if (fits && fitsText) why.push(fitsText);
+        const why = s.reasons.map((x) => cleanTitle(x));
         return {
           id: r.id,
           title: cleanTitle(s.title) || "Untitled",

@@ -306,8 +306,14 @@ export const query = defineCapability({
       const at2 = refs({ type: type as RefType, id: r.id }, r.project_id);
       return {
         id: at2.id,
-        // A booking's event never shows its guest's email address.
-        title: titleFor(r.title, r.source ?? "you") || "Untitled",
+        // A booking's event never shows its guest's email address, and is
+        // only "Booking" when the connection hides outside content.
+        title:
+          titleFor(
+            r.title,
+            r.source ?? "you",
+            ctx.principal.flags.hide_outside_content,
+          ) || "Untitled",
         url: at2.url,
         type,
         status: r.status,
