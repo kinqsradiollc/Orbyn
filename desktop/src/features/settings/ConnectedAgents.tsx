@@ -3,6 +3,7 @@ import { Bot, Copy, KeyRound, Plus, Terminal } from "lucide-react";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
+  AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
   AGENT_SETUP_LABELS,
   AGENT_SOON_CLIENTS,
@@ -530,12 +531,7 @@ function ConnectAgent({
                 />
                 <span>
                   Hide outside content
-                  <small>
-                    Leave out text from outside Orbyn: subscribed calendars,
-                    imported files, tasks sent by email and what booking guests
-                    typed. The agent sees that something is there, not what it
-                    says.
-                  </small>
+                  <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
                 </span>
               </label>
               <div className="settings-field">

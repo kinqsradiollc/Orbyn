@@ -353,16 +353,20 @@ export async function todayForPrincipal(
     const minutes = Math.floor((end - at) / 60_000);
     if (minutes >= 5) {
       // Name what ends it (buffers and travel come just before an event).
+      // Only the person's own events are named: text from outside (what a
+      // booking guest typed, a subscribed calendar's titles) goes only in
+      // the fenced list of what's planned, never here or in Up next's
+      // reasons, which aren't fenced.
       const named = [
         ...timed.map((e) => ({
           start: Date.parse(e.start_at),
-          title: eventTitle(e),
+          title: bookings.has(e.item_id) ? "a booking" : eventTitle(e),
         })),
         ...subscribed
           .filter((e) => e.busy && !e.all_day)
           .map((e) => ({
             start: Date.parse(e.start_at),
-            title: subscribedTitle(e.title),
+            title: "a subscribed calendar event",
           })),
       ]
         .filter((e) => e.start >= end && e.start <= end + 90 * 60_000)

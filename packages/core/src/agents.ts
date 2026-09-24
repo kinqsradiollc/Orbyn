@@ -68,6 +68,13 @@ export type AgentGrantKind = (typeof AGENT_GRANT_KINDS)[number];
 export const TEAM_AGENT_ACCESS = ["role", "suggest", "read", "off"] as const;
 export type TeamAgentAccess = (typeof TEAM_AGENT_ACCESS)[number];
 
+/**
+ * What "Hide outside content" leaves out, in the words every screen uses:
+ * the text of things from outside Orbyn. Imported pages keep their titles.
+ */
+export const AGENT_HIDE_OUTSIDE_TEXT =
+  "Leave out text from outside Orbyn: events from subscribed calendars (shown as busy), what imported files say, tasks sent by email (shown as “Task from email”) and what booking guests typed (shown as “Booking”). The agent sees that something is there, not what it says. Imported pages keep their titles.";
+
 /** Agent keys last this long unless another length is picked. */
 export const AGENT_KEY_DEFAULT_DAYS = 30;
 /** The longest any connection may last (admins can lower it). */
@@ -91,11 +98,7 @@ export const agentKeyInput = z
       .min(1)
       .max(AGENT_KEY_MAX_DAYS)
       .default(AGENT_KEY_DEFAULT_DAYS),
-    /**
-     * Leave out text from outside Orbyn (subscribed calendars, imported
-     * files, emails and booking answers): the agent sees that something is
-     * there, not what it says.
-     */
+    /** Leave out text from outside Orbyn (see AGENT_HIDE_OUTSIDE_TEXT). */
     hide_outside_content: z.boolean().default(false),
   })
   .strict()

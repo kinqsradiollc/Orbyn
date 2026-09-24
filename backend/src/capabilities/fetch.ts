@@ -18,6 +18,7 @@ import {
   fence,
   labelled,
   mdLink,
+  outsideHeading,
   provenanceOf,
   titleFor,
 } from "./format.js";
@@ -183,12 +184,12 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     0,
   );
   const title = titleFor(t.title, provenance, hide(ctx)) || "Untitled";
-  // A booking's title is made from what its guest typed: it goes in the
-  // fence (or is left out), never in the heading.
-  const guest = provenance === "booking_guest";
+  // A title made from outside text (what a booking guest typed, an email's
+  // subject) goes in the fence (or is left out), never in the heading.
+  const heading = outsideHeading(provenance);
   const lines = [
-    `# ${guest ? "Booking" : title}`,
-    ...(guest && !hide(ctx) ? [fence(title, provenance)] : []),
+    `# ${heading ?? title}`,
+    ...(heading && !hide(ctx) ? [fence(title, provenance)] : []),
     `- ${event ? "Event" : t.kind === "reminder" ? "Reminder" : "Task"} · ${t.status} · ${t.priority} priority · ${spaceName(t.team_id, ctx.principal.teams)}`,
   ];
   if (start)

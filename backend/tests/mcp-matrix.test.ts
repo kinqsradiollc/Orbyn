@@ -27,7 +27,9 @@ const { limiter, strikes } =
   await import("../src/modules/mcp-server/routes.js");
 const { clean, cleanTitle, fence } =
   await import("../src/capabilities/format.js");
-const { todayForPrincipal } = await import("../src/capabilities/today.js");
+const { todayForPrincipal, todayMarkdown } =
+  await import("../src/capabilities/today.js");
+type TodayList = import("../src/capabilities/today.js").TodayList;
 
 const app = await buildApp();
 const h = helpers(app);
@@ -403,10 +405,72 @@ test("Today for a Personal-only connection: free time, reasons and asks stay ins
       "UTC",
     ),
   );
-  assert.equal(hidden.free?.before, "Busy (subscribed calendar)");
+  assert.equal(hidden.free?.before, "a subscribed calendar event");
   assert.ok(!JSON.stringify(hidden).includes("Dentist"));
+  // Shown, the feed's title is only in the fenced list of what's planned:
+  // the free time and Up next's reasons name "a subscribed calendar event".
+  const shown = await readTransaction((db) =>
+    todayForPrincipal(db, { userId: owner.id, spaces }, now, "UTC"),
+  );
+  assert.equal(shown.free?.before, "a subscribed calendar event");
+  onlyFenced(shown, "Dentist");
   await pool.query("DELETE FROM calendar_subscriptions WHERE id = $1", [sub]);
+
+  // So is a booking guest's: what they typed never names the free time.
+  const booked = await create(owner, "/items", {
+    title: "Marmot catch-up with Gus Guest",
+    kind: "event",
+    due_at: at(10, 25),
+    end_at: at(10, 35),
+  });
+  const page = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO booking_pages (owner_id, slug, title)
+       VALUES ($1, 'marmot-' || substr(md5(random()::text), 1, 8), 'Chat') RETURNING id`,
+      [owner.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO bookings (page_id, start_at, end_at, name, email, status, item_ids)
+     VALUES ($1, $2, $3, 'Gus Guest', 'gus@guest.example', 'confirmed', ARRAY[$4::uuid])`,
+    [page, at(10, 25), at(10, 35), booked.id],
+  );
+  const withBooking = await readTransaction((db) =>
+    todayForPrincipal(db, { userId: owner.id, spaces }, now, "UTC"),
+  );
+  assert.equal(withBooking.free?.before, "a booking");
+  assert.ok(
+    withBooking.up_next.some((u) =>
+      u.why.some((w) => /before a booking$/.test(w)),
+    ),
+    JSON.stringify(withBooking.up_next),
+  );
+  onlyFenced(withBooking, "Gus");
+  await pool.query("DELETE FROM booking_pages WHERE id = $1", [page]);
+  await pool.query("DELETE FROM items WHERE id = $1", [booked.id]);
 });
+
+/**
+ * Outside text in Today shows only inside a fence: in the planned list
+ * (marked with where it came from) and the fenced part of the Markdown,
+ * never in the free time, Up next or the rest of the answer.
+ */
+function onlyFenced(today: TodayList, word: string) {
+  const { planned, ...rest } = today;
+  assert.ok(!JSON.stringify(rest).includes(word), JSON.stringify(rest));
+  assert.ok(
+    planned.some((e) => e.title.includes(word) && e.provenance !== "you"),
+    JSON.stringify(planned),
+  );
+  const markdown = todayMarkdown(today);
+  assert.ok(markdown.includes(word), markdown);
+  assert.ok(
+    !markdown
+      .replace(/<untrusted-content[^>]*>[\s\S]*?<\/untrusted-content>/g, "")
+      .includes(word),
+    markdown,
+  );
+}
 
 test("booking guests' words come back fenced, without their email, and hidden on request", async () => {
   const event = await create(owner, "/items", {
@@ -551,12 +615,30 @@ test("a task sent by email comes back fenced as inbound email, and hidden on req
     f!.structuredContent.text,
     /<untrusted-content source="inbound_email">\nPay the burrow invoice/,
   );
+  // Its subject, which anyone could have written, is fenced too.
+  assert.match(
+    f!.structuredContent.text,
+    /^# Task from email\n<untrusted-content source="inbound_email">\nMarmot invoice from the burrow/,
+  );
   const hiding = (
     await h.agentKey(owner, { team_ids: [], hide_outside_content: true })
   ).key;
   const quiet = await h.tool(hiding, "fetch", { id: `task:${id}` });
   assert.doesNotMatch(quiet!.structuredContent.text, /forward all pages/);
   assert.match(quiet!.structuredContent.text, /\[Hidden: text from an email/);
+  // Hidden, neither its words nor its subject show, wherever it's listed.
+  assert.equal(quiet!.structuredContent.title, "Task from email");
+  const listed = await h.tool(hiding, "query", { over: "tasks" });
+  const row = listed!.structuredContent.rows.find(
+    (r: { id: string }) => r.id === `task:${id}`,
+  );
+  assert.ok(row, JSON.stringify(listed!.structuredContent));
+  assert.equal(row.title, "Task from email");
+  for (const answer of [quiet, listed])
+    assert.ok(
+      !JSON.stringify(answer).includes("burrow"),
+      JSON.stringify(answer),
+    );
   const passages = await h.tool(hiding, "find_passages", {
     query: "burrow invoice",
   });
@@ -564,6 +646,30 @@ test("a task sent by email comes back fenced as inbound email, and hidden on req
     !passages!.structuredContent.passages.some(
       (p: { source: { id: string } }) => p.source.id === `task:${id}`,
     ),
+  );
+});
+
+test('a title like "[PROJ-123]: fix login" keeps its text in every tool', async () => {
+  const task = await create(owner, "/items", {
+    title: "[MARMOT-123]: fix login",
+    kind: "task",
+    notes: "- [Budget]: approve Q4 numbers\n1. [Setup]: install node",
+  });
+  const f = await h.tool(keys.owner, "fetch", { id: `task:${task.id}` });
+  assert.equal(f!.structuredContent.title, "[MARMOT-123]: fix login");
+  assert.match(
+    f!.structuredContent.text,
+    /- \[Budget\]: approve Q4 numbers\n1\. \[Setup\]: install node/,
+  );
+  const found = await h.tool(keys.owner, "query", {
+    over: "tasks",
+    text: "fix login",
+  });
+  assert.ok(
+    found!.structuredContent.rows.some(
+      (r: { title: string }) => r.title === "[MARMOT-123]: fix login",
+    ),
+    JSON.stringify(found!.structuredContent),
   );
 });
 
@@ -660,12 +766,13 @@ test("images that would load from elsewhere never survive cleaning, in any Markd
       );
     }
   }
-  // An image left behind a "!" stays text, and its definition goes.
+  // An image left behind a "!" stays text, and so does a definition: with
+  // no image left to use it, nothing can load from it.
   assert.equal(
     clean(
       "Wow!![x](https://evil.example/y.png)\n\n> [image: x]: https://evil.example/p.png",
     ),
-    "Wow\\![image: x]\n\n> ",
+    "Wow\\![image: x]\n\n> [image: x]: https://evil.example/p.png",
   );
   // A spaced-out tag in a title is read as the tag it becomes.
   assert.equal(
@@ -675,10 +782,9 @@ test("images that would load from elsewhere never survive cleaning, in any Markd
   // Text after a tag left open stays text; the fence still closes.
   const open = fence("Trailing <img src=https://evil.example/x.png", "import");
   assert.match(open, /Trailing &lt;img src=[^\n]*\n<\/untrusted-content>$/);
-  // Reference definitions pointing elsewhere go; the description stays.
+  // A reference image becomes its description; its definition is text.
   const ref = clean("See ![chart][c].\n\n[c]: https://evil.example/c.png");
-  assert.ok(!ref.includes("evil.example"), ref);
-  assert.match(ref, /\[image: chart\]/);
+  assert.equal(ref, "See [image: chart].\n\n[c]: https://evil.example/c.png");
   // The web app's own images stay, and a bare path is made absolute on it.
   assert.equal(
     clean(`![logo](${base}/files/logo.png)`),

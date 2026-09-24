@@ -3,6 +3,7 @@ import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
+  AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
   AGENT_SETUP_LABELS,
   AGENT_SOON_CLIENTS,
@@ -378,12 +379,7 @@ export function ConnectedAgentsCard({
             <View style={s.switchRow}>
               <View style={s.flex}>
                 <Text style={shared.label}>Hide outside content</Text>
-                <Text style={shared.small}>
-                  Leave out text from outside Orbyn: subscribed calendars,
-                  imported files, tasks sent by email and what booking guests
-                  typed. The agent sees that something is there, not what it
-                  says.
-                </Text>
+                <Text style={shared.small}>{AGENT_HIDE_OUTSIDE_TEXT}</Text>
               </View>
               <Switch
                 value={hideOutside}

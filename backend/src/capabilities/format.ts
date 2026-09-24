@@ -36,14 +36,16 @@ const BIDI = /[\u202a-\u202e\u2066-\u2069]/g;
 const TAGS = /[\u{e0000}-\u{e007f}]/gu;
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
 /**
- * Elements whose content never shows, and drawings (SVG) that can
- * load pictures from elsewhere: removed with everything inside them.
+ * Elements whose content never shows, and drawings (SVG) that can load
+ * pictures from elsewhere: removed with everything inside them.
  */
-const HIDDEN_ELEMENTS =
-  /<(script|style|template|iframe|object|noscript|svg)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
-/** A span or div styled invisible, with what it hides. */
-const INVISIBLE_ELEMENT =
-  /<(span|div|p)\b[^>]*style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi;
+const HIDDEN_OPEN = /<(script|style|template|iframe|object|noscript|svg)\b/gi;
+/** Elements that can be styled invisible, hiding what's inside them. */
+const STYLED_OPEN = /<(span|div|p)\b/gi;
+/** A style attribute's opening, up to its quote. */
+const STYLE_ATTRIBUTE = /style\s*=\s*["']/gi;
+/** A declaration that hides what it styles. */
+const HIDING = /display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0/i;
 /**
  * Elements that load something from an address as soon as they're shown,
  * and the hidden ones above (whose tags alone may be left).
@@ -51,8 +53,8 @@ const INVISIBLE_ELEMENT =
 const EMBED_NAMES =
   "img|image|picture|iframe|embed|object|link|meta|source|video|audio|track|input|frame|frameset|applet|base|use|feimage|svg|mglyph|bgsound|portal|script|style|template|noscript";
 const EMBED_SET = new Set(EMBED_NAMES.split("|"));
-/** Such an element's tag, read the quick way (up to the first `>`). */
-const EMBEDS = new RegExp(`<\\/?(?:${EMBED_NAMES})\\b[^>]*>`, "gi");
+/** The start of such an element's tag (opening or closing). */
+const EMBED_START = new RegExp(`<\\/?(?:${EMBED_NAMES})\\b`, "gi");
 /** The start of such a tag, wherever one is still left: escaped at the end. */
 const EMBED_OPENER = new RegExp(`<(?=\\/?(?:${EMBED_NAMES})\\b)`, "gi");
 /**
@@ -65,15 +67,147 @@ const ACTIVE_ATTRIBUTE =
 const LOADING_VALUE = /url\s*\(|image-set\s*\(|@import/i;
 /** The `<` of a tag. */
 const TAG_START = /<(?=\/?[A-Za-z])/g;
-/**
- * A Markdown link reference definition (`[x]: https://…`), which a
- * reference image would load from; also inside a quote or a list item
- * (`> [x]: …`, `- [x]: …`), which CommonMark counts too.
- */
-const REFERENCE_DEFINITION =
-  /^((?:[ \t>*+-]|\d{1,9}[.)])*)\[((?:\\.|[^\\\]])+)\]:[ \t]*(?:\n[ \t>]*)?(<[^>\n]*>|\S+)[^\n]*$/gm;
 /** Times cleaning runs again on text whose removals rebuild what they removed. */
 const MAX_ROUNDS = 8;
+
+/*
+ * Every pass below reads the text once from left to right, whatever it
+ * holds: text built to make a pass look far ahead again and again (a
+ * thousand `![a](` or `<img` with nothing to close them) costs no more
+ * than ordinary text of the same length. So nothing an agent can be made
+ * to read can hold the service up.
+ */
+
+/**
+ * The first place at or after `from` where `needle` is, or -1. Remembers
+ * its last answer, so asking from positions that only move forward reads
+ * the text once.
+ */
+function finder(s: string, needle: string | RegExp) {
+  let asked = -1;
+  let found = -1;
+  const search =
+    typeof needle === "string"
+      ? (from: number) => s.indexOf(needle, from)
+      : (from: number) => {
+          needle.lastIndex = from;
+          return needle.exec(s)?.index ?? -1;
+        };
+  return (from: number): number => {
+    if (asked >= 0 && from >= asked && (found < 0 || found >= from))
+      return found;
+    asked = from;
+    found = search(from);
+    return found;
+  };
+}
+
+/**
+ * Where an element closes: the first `</name>` at or after a point, for
+ * points that only move forward.
+ */
+function closers(s: string) {
+  const byName = new Map<
+    string,
+    { re: RegExp; find: (from: number) => number }
+  >();
+  return (name: string, from: number): { at: number; end: number } | null => {
+    let c = byName.get(name);
+    if (!c) {
+      const re = new RegExp(`<\\/${name}\\s*>`, "gi");
+      c = { re, find: finder(s, re) };
+      byName.set(name, c);
+    }
+    const at = c.find(from);
+    if (at < 0) return null;
+    c.re.lastIndex = at;
+    return { at, end: at + c.re.exec(s)![0].length };
+  };
+}
+
+/**
+ * Elements whose content never shows (script, style, …), each removed with
+ * everything up to its closing tag, or to the end when it never closes.
+ */
+function dropHiddenElements(s: string): string {
+  const gt = finder(s, ">");
+  const close = closers(s);
+  let out = "";
+  let from = 0;
+  HIDDEN_OPEN.lastIndex = 0;
+  for (let m; (m = HIDDEN_OPEN.exec(s));) {
+    // The tag runs to the first ">"; with none after it, no element opens.
+    const tagEnd = gt(m.index + m[0].length);
+    if (tagEnd < 0) break;
+    out += s.slice(from, m.index);
+    from = close(m[1].toLowerCase(), tagEnd + 1)?.end ?? s.length;
+    HIDDEN_OPEN.lastIndex = from;
+  }
+  return out + s.slice(from);
+}
+
+/** Whether a tag's text styles its element invisible. */
+function hidesItself(tag: string): boolean {
+  STYLE_ATTRIBUTE.lastIndex = 0;
+  for (let m; (m = STYLE_ATTRIBUTE.exec(tag));) {
+    const from = m.index + m[0].length;
+    const dq = tag.indexOf('"', from);
+    const sq = tag.indexOf("'", from);
+    const end = dq < 0 ? sq : sq < 0 ? dq : Math.min(dq, sq);
+    // A value that never closes (nor does any after it) hides nothing.
+    if (end < 0) return false;
+    if (HIDING.test(tag.slice(from, end))) return true;
+  }
+  return false;
+}
+
+/**
+ * Spans, divs and paragraphs styled invisible, removed with what they hide
+ * (up to their closing tag). Every tag that shares a ">" with one already
+ * read is part of the same text, so it is read once.
+ */
+function dropInvisibleElements(s: string): string {
+  const gt = finder(s, ">");
+  const close = closers(s);
+  let out = "";
+  let from = 0;
+  // The last tag end read and found not to hide anything: its suffixes don't.
+  let plainUntil = -1;
+  STYLED_OPEN.lastIndex = 0;
+  for (let m; (m = STYLED_OPEN.exec(s));) {
+    const tagEnd = gt(m.index + m[0].length);
+    if (tagEnd < 0) break;
+    const closing = close(m[1].toLowerCase(), tagEnd + 1);
+    if (!closing || tagEnd === plainUntil) continue;
+    if (!hidesItself(s.slice(m.index, tagEnd))) {
+      plainUntil = tagEnd;
+      continue;
+    }
+    out += s.slice(from, m.index);
+    from = closing.end;
+    STYLED_OPEN.lastIndex = from;
+  }
+  return out + s.slice(from);
+}
+
+/**
+ * The tags of elements that load from an address, read the quick way (up
+ * to the first `>`), removed wherever they are, even inside another tag.
+ */
+function dropEmbedTags(s: string): string {
+  const gt = finder(s, ">");
+  let out = "";
+  let from = 0;
+  EMBED_START.lastIndex = 0;
+  for (let m; (m = EMBED_START.exec(s));) {
+    const tagEnd = gt(m.index + m[0].length);
+    if (tagEnd < 0) break;
+    out += s.slice(from, m.index);
+    from = tagEnd + 1;
+    EMBED_START.lastIndex = from;
+  }
+  return out + s.slice(from);
+}
 
 /** The web app's own host: images there are Orbyn's and may stay. */
 function ownHost(): string | null {
@@ -116,19 +250,91 @@ const altText = (alt: string) =>
     .trim()
     .slice(0, 200);
 
-/** Where the `]` that closes the `[` at `i` is, counting nesting and escapes; -1 if none. */
-function closingBracket(s: string, i: number): number {
-  let depth = 0;
-  for (let j = i; j < s.length; j++) {
-    const c = s[j];
-    if (c === "\\") {
-      j++;
-      continue;
+const isSpace = (c: string | undefined) =>
+  c === " " || c === "\n" || c === "\t" || c === "\r" || c === "\f";
+const isMarkdownSpace = (c: string | undefined) =>
+  c !== undefined && /\s/.test(c);
+
+/**
+ * Where things are in Markdown text, worked out once per text (and only
+ * the parts asked for): which characters a backslash escapes, the bracket
+ * and parenthesis that close each one opened, and the next space, quote,
+ * `>` or line break from any point.
+ */
+class Marks {
+  private escapes?: Uint8Array;
+  private pairs = new Map<string, Int32Array>();
+  private nexts = new Map<string, Int32Array>();
+  constructor(private readonly s: string) {}
+
+  /** Whether the character at `k` follows a backslash that isn't itself escaped. */
+  escaped(k: number): boolean {
+    if (!this.escapes) {
+      const e = new Uint8Array(this.s.length + 1);
+      for (let i = 0; i < this.s.length; i++)
+        if (this.s[i] === "\\" && !e[i]) e[i + 1] = 1;
+      this.escapes = e;
     }
-    if (c === "[") depth++;
-    else if (c === "]" && --depth === 0) return j;
+    return this.escapes[k] === 1;
   }
-  return -1;
+
+  /** The unescaped `close` that closes the `open` at `i` (nesting counted), or -1. */
+  closing(open: "[" | "(", i: number): number {
+    let match = this.pairs.get(open);
+    if (!match) {
+      const close = open === "[" ? "]" : ")";
+      match = new Int32Array(this.s.length).fill(-1);
+      const stack: number[] = [];
+      for (let k = 0; k < this.s.length; k++) {
+        const c = this.s[k];
+        if ((c !== open && c !== close) || this.escaped(k)) continue;
+        if (c === open) stack.push(k);
+        else if (stack.length) match[stack.pop()!] = k;
+      }
+      this.pairs.set(open, match);
+    }
+    return match[i] ?? -1;
+  }
+
+  /** The first place at or after `from` that `test` picks, or -1. */
+  private next(
+    key: string,
+    from: number,
+    test: (c: string, k: number) => boolean,
+  ): number {
+    let next = this.nexts.get(key);
+    if (!next) {
+      next = new Int32Array(this.s.length + 1);
+      let found = -1;
+      for (let k = this.s.length; k >= 0; k--) {
+        if (k < this.s.length && test(this.s[k], k)) found = k;
+        next[k] = found;
+      }
+      this.nexts.set(key, next);
+    }
+    return from > this.s.length ? -1 : next[from];
+  }
+
+  /** The first unescaped white space at or after `from`, or -1. */
+  space(from: number) {
+    return this.next(
+      "space",
+      from,
+      (c, k) => isMarkdownSpace(c) && !this.escaped(k),
+    );
+  }
+  /** The first character at or after `from` that isn't white space, or -1. */
+  text(from: number) {
+    return this.next("text", from, (c) => !isMarkdownSpace(c));
+  }
+  /** The first unescaped `c` at or after `from`, or -1. */
+  unescaped(c: '"' | "'" | ")", from: number) {
+    return this.next(`u${c}`, from, (x, k) => x === c && !this.escaped(k));
+  }
+  /** The first `c` at or after `from`, escaped or not, or -1. */
+  plain(c: ">" | "\n", from: number) {
+    return this.next(`p${c}`, from, (x) => x === c);
+  }
 }
 
 /**
@@ -138,58 +344,38 @@ function closingBracket(s: string, i: number): number {
  */
 function inlineTarget(
   s: string,
+  marks: Marks,
   i: number,
 ): { url: string; end: number } | null {
-  let j = i + 1;
-  const space = () => {
-    while (j < s.length && /\s/.test(s[j])) j++;
+  const skip = (from: number) => {
+    const at = marks.text(from);
+    return at < 0 ? s.length : at;
   };
-  space();
+  let j = skip(i + 1);
   let url: string;
   if (s[j] === "<") {
-    const close = s.indexOf(">", j + 1);
-    if (close < 0 || s.slice(j + 1, close).includes("\n")) return null;
+    const close = marks.plain(">", j + 1);
+    const line = marks.plain("\n", j + 1);
+    if (close < 0 || (line >= 0 && line < close)) return null;
     url = s.slice(j + 1, close);
     j = close + 1;
   } else {
+    // The run ends at white space or at the ")" that closes the "(" at i.
     const start = j;
-    let depth = 0;
-    for (; j < s.length; j++) {
-      const c = s[j];
-      if (c === "\\") {
-        j++;
-        continue;
-      }
-      if (/\s/.test(c)) break;
-      if (c === "(") depth++;
-      else if (c === ")") {
-        if (depth === 0) break;
-        depth--;
-      }
-    }
+    const space = marks.space(j);
+    const paren = marks.closing("(", i);
+    const stop = space < 0 ? s.length : space;
+    j = paren >= 0 && paren < stop ? paren : stop;
     url = s.slice(start, j);
   }
-  space();
+  j = skip(j);
   const opener = s[j];
   if (opener === '"' || opener === "'" || opener === "(") {
-    const closer = opener === "(" ? ")" : opener;
-    for (j++; j < s.length && s[j] !== closer; j++) if (s[j] === "\\") j++;
-    if (j >= s.length) return null;
-    j++;
-    space();
+    const closer = marks.unescaped(opener === "(" ? ")" : opener, j + 1);
+    if (closer < 0) return null;
+    j = skip(closer + 1);
   }
   return s[j] === ")" ? { url, end: j + 1 } : null;
-}
-
-/**
- * `out`, ready to be followed by `[`: a `!` at its end (not itself escaped)
- * would make what follows an image again, so it is escaped.
- */
-function unbang(out: string): string {
-  if (!out.endsWith("!")) return out;
-  let slashes = 0;
-  for (let k = out.length - 2; k >= 0 && out[k] === "\\"; k--) slashes++;
-  return slashes % 2 === 0 ? `${out.slice(0, -1)}\\!` : out;
 }
 
 /**
@@ -198,39 +384,66 @@ function unbang(out: string): string {
  * (brackets inside the description, escapes, `<…>` addresses), reference or
  * shortcut. A `!` just before the description is escaped, so it can't be
  * read as an image itself. Afterwards no unescaped `![` is left but the web
- * app's own inline images.
+ * app's own inline images, so no definition elsewhere in the text (`[x]:
+ * https://…`) can feed one: definitions stay, as the text they are.
  */
 function neutraliseImages(s: string, own: string | null): string {
-  let out = "";
+  if (!s.includes("![")) return s;
+  const marks = new Marks(s);
+  // The answer in pieces, joined once at the end.
+  const out: string[] = [];
+  /**
+   * Before a `[`: a `!` at the end of the answer so far (not itself
+   * escaped) would make what follows an image again, so it is escaped.
+   */
+  const unbang = () => {
+    const p = out.length - 1;
+    if (p < 0 || !out[p].endsWith("!")) return;
+    // Backslashes just before that "!", across pieces.
+    let slashes = 0;
+    scan: for (let q = p; q >= 0; q--) {
+      const piece = out[q];
+      for (let k = piece.length - (q === p ? 2 : 1); k >= 0; k--) {
+        if (piece[k] !== "\\") break scan;
+        slashes++;
+      }
+    }
+    if (slashes % 2 === 0) out[p] = `${out[p].slice(0, -1)}\\!`;
+  };
+  const put = (text: string) => {
+    if (text) out.push(text);
+  };
   let i = 0;
   while (i < s.length) {
     const at = s.indexOf("![", i);
     if (at < 0) {
-      out += s.slice(i);
+      put(s.slice(i));
       break;
     }
     // "\![" is an escaped "!" followed by a link, not an image.
-    let slashes = 0;
-    for (let k = at - 1; k >= i && s[k] === "\\"; k--) slashes++;
-    if (slashes % 2 === 1) {
-      out += s.slice(i, at + 1);
+    if (marks.escaped(at)) {
+      put(s.slice(i, at + 1));
       i = at + 1;
       continue;
     }
-    out += s.slice(i, at);
-    const close = closingBracket(s, at + 1);
+    put(s.slice(i, at));
+    const close = marks.closing("[", at + 1);
     if (close < 0) {
-      out += "!\\[";
+      put("!\\[");
       i = at + 2;
       continue;
     }
     const alt = altText(s.slice(at + 2, close));
     const placeholder = alt ? `[image: ${alt}]` : "[image removed]";
     if (s[close + 1] === "(") {
-      const target = inlineTarget(s, close + 1);
+      const target = inlineTarget(s, marks, close + 1);
       if (target) {
         const keep = ownImageUrl(target.url, own);
-        out = keep ? `${out}![${alt}](${keep})` : unbang(out) + placeholder;
+        if (keep) put(`![${alt}](${keep})`);
+        else {
+          unbang();
+          put(placeholder);
+        }
         i = target.end;
         continue;
       }
@@ -238,17 +451,15 @@ function neutraliseImages(s: string, own: string | null): string {
     // A reference image: ![alt][label] or ![alt][] (the label goes too).
     let end = close + 1;
     if (s[end] === "[") {
-      const label = closingBracket(s, end);
+      const label = marks.closing("[", end);
       if (label > 0) end = label + 1;
     }
-    out = unbang(out) + placeholder;
+    unbang();
+    put(placeholder);
     i = end;
   }
-  return out;
+  return out.join("");
 }
-
-const isSpace = (c: string | undefined) =>
-  c === " " || c === "\n" || c === "\t" || c === "\r" || c === "\f";
 
 type Tag = { end: number; name: string; attributes: string[] };
 
@@ -327,20 +538,14 @@ function dropLoadingTags(s: string): string {
 
 /**
  * One round of cleaning: comments, hidden elements and whatever loads from
- * an address removed, reference definitions pointing elsewhere dropped and
- * images from other hosts replaced by their description.
+ * an address removed, and images from other hosts replaced by their
+ * description.
  */
 function scrub(s: string, own: string | null): string {
   const markup = dropLoadingTags(
-    s
-      .replace(HTML_COMMENT, "")
-      .replace(HIDDEN_ELEMENTS, "")
-      .replace(INVISIBLE_ELEMENT, "")
-      .replace(EMBEDS, ""),
-  ).replace(
-    REFERENCE_DEFINITION,
-    (line: string, container: string, _label: string, dest: string) =>
-      ownImageUrl(dest.replace(/^<|>$/g, ""), own) ? line : container,
+    dropEmbedTags(
+      dropInvisibleElements(dropHiddenElements(s.replace(HTML_COMMENT, ""))),
+    ),
   );
   return neutraliseImages(markup, own);
 }
@@ -348,12 +553,12 @@ function scrub(s: string, own: string | null): string {
 /**
  * Text as an agent may see it: control, invisible and direction characters
  * removed, HTML comments, hidden elements and anything that loads from an
- * address gone, images from other hosts replaced by their description (and
- * reference definitions pointing elsewhere dropped), and cut to `max`
- * characters. A removal can join the halves of another tag or image around
- * it (`<im<img>g src=…>`), so cleaning runs again until nothing changes;
- * and a tag left open at the end (or by the cut) is escaped, so text that
- * follows can't close it.
+ * address gone, images from other hosts replaced by their description, and
+ * cut to `max` characters. Ordinary text is left as it was written. A
+ * removal can join the halves of another tag or image around it
+ * (`<im<img>g src=…>`), so cleaning runs again until nothing changes; and a
+ * tag left open at the end (or by the cut) is escaped, so text that follows
+ * can't close it. Each round reads the text once (see above).
  */
 export function clean(text: unknown, max = MAX_RESULT_CHARS): string {
   const own = ownHost();
@@ -393,7 +598,8 @@ export const cleanTitle = (text: unknown) =>
       .slice(0, MAX_TITLE_CHARS),
   );
 
-const FENCE_OPEN = /<\s*\/?\s*untrusted-content/gi;
+/** A fence's tag inside text (spaces allowed), read without looking back. */
+const FENCE_OPEN = /<\s*(?:\/\s*)?untrusted-content/gi;
 
 /**
  * Text from someone other than the person, fenced and labelled, so the agent
@@ -423,13 +629,38 @@ export const isOutside = (source: string) => source in OUTSIDE;
 export const hiddenText = (source: string) =>
   `[Hidden: text from ${OUTSIDE[source] ?? "outside Orbyn"}. This connection leaves out outside content.]`;
 
-/** Email addresses, so a booking guest's contact details stay out. */
-const EMAIL =
-  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+/** Characters an email address's local part (before the @) is made of. */
+const LOCAL_PART = /[A-Za-z0-9._%+-]/;
+/** An email address's domain, read from just after its @. */
+const EMAIL_DOMAIN = /[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/y;
 
-/** `text` with every email address hidden. */
-export const maskEmails = (text: string) =>
-  text.replace(EMAIL, "[email hidden]");
+/**
+ * `text` with every email address hidden, so a booking guest's contact
+ * details stay out. Found from each @, reading back over the local part
+ * and forward over the domain, so every character is read a few times at
+ * most, however the text is built (a pattern tried from every position
+ * would read a long run of letters once per letter).
+ */
+export function maskEmails(text: string): string {
+  let out = "";
+  let from = 0;
+  for (let at = text.indexOf("@"); at >= 0;) {
+    let start = at;
+    while (start > from && LOCAL_PART.test(text[start - 1])) start--;
+    if (start < at) {
+      EMAIL_DOMAIN.lastIndex = at + 1;
+      const domain = EMAIL_DOMAIN.exec(text);
+      if (domain) {
+        out += `${text.slice(from, start)}[email hidden]`;
+        from = at + 1 + domain[0].length;
+        at = text.indexOf("@", from);
+        continue;
+      }
+    }
+    at = text.indexOf("@", at + 1);
+  }
+  return out + text.slice(from);
+}
 
 /**
  * Text from `source`: as it is when the person wrote it, fenced otherwise,
@@ -449,17 +680,29 @@ export const labelled = (
 
 /**
  * A title as an agent sees it: cleaned, and without a guest's email address.
- * A booking's title is made from what its guest typed (their name, say), so
- * it is only "Booking" when the connection hides outside content.
+ * Titles made from outside text are left out when the connection hides
+ * outside content: a booking's (from what its guest typed, their name, say)
+ * is only "Booking", and a task sent by email (its subject, which anyone
+ * could have written) is only "Task from email".
  */
 export const titleFor = (
   title: unknown,
   source: Provenance | string,
   hideOutside = false,
 ) => {
+  if (source === "inbound_email")
+    return hideOutside ? "Task from email" : cleanTitle(title);
   if (source !== "booking_guest") return cleanTitle(title);
   return hideOutside ? "Booking" : maskEmails(cleanTitle(title)) || "Booking";
 };
+
+/** The heading an item with a title from outside shows instead of it. */
+export const outsideHeading = (source: Provenance | string) =>
+  source === "booking_guest"
+    ? "Booking"
+    : source === "inbound_email"
+      ? "Task from email"
+      : null;
 
 /** Outside sources an item's text can come from (see sources.ts). */
 const ITEM_SOURCES = new Set(["booking_guest", "inbound_email"]);
