@@ -14,6 +14,82 @@ export const META_KEYS = {
 
 export const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
+/**
+ * Nothing on the MCP path may reach the network: every outbound request
+ * (globalThis.fetch, and the guarded client feeds and webhooks use) is
+ * refused and recorded. Call at the top of an MCP test file; check `calls`
+ * is empty at the end and `restore()`.
+ */
+export async function trapNetwork() {
+  const { outbound } = await import("../src/lib/netguard.js");
+  const calls: string[] = [];
+  const realFetch = globalThis.fetch;
+  const realRequest = outbound.request;
+  globalThis.fetch = (async (input: unknown) => {
+    calls.push(`fetch ${String(input instanceof Request ? input.url : input)}`);
+    throw new Error("The MCP tests never reach the network.");
+  }) as typeof fetch;
+  outbound.request = (async (checked: { url: URL }) => {
+    calls.push(`outbound ${String(checked.url)}`);
+    throw new Error("The MCP tests never reach the network.");
+  }) as unknown as typeof outbound.request;
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = realFetch;
+      outbound.request = realRequest;
+    },
+  };
+}
+
+/**
+ * Watches the database pools for queries made from inside a read-only
+ * transaction's work (an R-tier call): they bypass its client, and with it
+ * the read-only guarantee and the replica choice. Each lands in `stray`.
+ */
+export async function spyPool() {
+  const { pool, readPool, insideReadTransaction } =
+    await import("../src/db/pool.js");
+  const stray: string[] = [];
+  const pools = [...new Set([pool, readPool])];
+  type Loose = Record<"query" | "connect", (...args: unknown[]) => unknown>;
+  // pool.query() takes a client with pool.connect() as it starts: that one
+  // is the same stray, not a second.
+  let inQuery = false;
+  for (const p of pools as unknown as Loose[]) {
+    const query = p.query;
+    const connect = p.connect;
+    p.query = function (this: unknown, ...args: unknown[]) {
+      if (insideReadTransaction.getStore()) {
+        const text = args[0] as string | { text?: string };
+        stray.push(
+          String(typeof text === "string" ? text : text?.text).slice(0, 160),
+        );
+      }
+      inQuery = true;
+      try {
+        return query.apply(this, args);
+      } finally {
+        inQuery = false;
+      }
+    };
+    p.connect = function (this: unknown, ...args: unknown[]) {
+      if (insideReadTransaction.getStore() && !inQuery)
+        stray.push("pool.connect()");
+      return connect.apply(this, args);
+    };
+  }
+  return {
+    stray,
+    restore: () => {
+      for (const p of pools as unknown as Record<string, unknown>[]) {
+        delete p.query;
+        delete p.connect;
+      }
+    },
+  };
+}
+
 export type Person = { token: string; id: string; email: string; name: string };
 
 export function helpers(app: FastifyInstance) {
@@ -30,11 +106,16 @@ export function helpers(app: FastifyInstance) {
       ...(payload === undefined ? {} : { payload: payload as object }),
     });
 
+  // Each sign-up from its own address, so the per-address sign-up limit
+  // never decides how many people a test file can make.
+  let signups = 0;
   const register = async (prefix: string, name = prefix): Promise<Person> => {
     const email = `${prefix}-${randomUUID()}@example.com`;
+    signups++;
     const r = await app.inject({
       method: "POST",
       url: "/auth/register",
+      remoteAddress: `10.66.${Math.floor(signups / 250) % 250}.${signups % 250}`,
       payload: { email, password: "a-long-test-password", name },
     });
     const body = r.json() as { token: string; user: { id: string } };

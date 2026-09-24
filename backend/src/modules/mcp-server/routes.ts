@@ -68,6 +68,44 @@ const rpcError = (
 /** Methods served here; anything else is -32601 before the SDK. */
 const NO_SUBSCRIPTIONS = new Set(["subscriptions/listen"]);
 
+/** Methods named in the request log; any other method is logged as mcp:other. */
+const LOGGED_METHODS = new Set([
+  "initialize",
+  "ping",
+  "server/discover",
+  "tools/list",
+  "tools/call",
+  "resources/list",
+  "resources/read",
+  "resources/templates/list",
+  "prompts/list",
+  "prompts/get",
+  "completion/complete",
+  "logging/setLevel",
+  "subscriptions/listen",
+  "notifications/initialized",
+  "notifications/cancelled",
+]);
+
+/**
+ * The request log's route for a call: a known tool's own name, or a known
+ * method; never text the client chose, so a caller can't fill the log with
+ * routes of its own.
+ */
+export function routeLabel(
+  method: string,
+  toolName: string | null,
+  capName: string | undefined,
+): string {
+  if (method === "tools/call")
+    return capName
+      ? `mcp:${capName}`
+      : toolName
+        ? "mcp:unknown-tool"
+        : "mcp:tools/call";
+  return LOGGED_METHODS.has(method) ? `mcp:${method}` : "mcp:other";
+}
+
 /** Headers from the client the SDK needs to see. */
 const PASSED =
   /^(content-type|mcp-protocol-version|mcp-method|mcp-name|mcp-param-.+|last-event-id)$/i;
@@ -298,10 +336,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
           rpcError(id, ERR.invalidParams, '"arguments" must be an object.'),
         );
       const cap = toolName ? registry.get(toolName) : undefined;
-      routeLabels.set(
-        r,
-        toolName ? `mcp:${toolName}` : `mcp:${method}`.slice(0, 80),
-      );
+      routeLabels.set(r, routeLabel(method, toolName, cap?.name));
 
       // Maintenance: reads go on; changes get a JSON-RPC error.
       if (cap && cap.mode !== "read" && s.maintenance.enabled)

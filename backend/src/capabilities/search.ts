@@ -22,10 +22,13 @@ import {
   cleanTitle,
   fence,
   isOutside,
+  maskEmails,
   provenanceOf,
+  titleFor,
   type Provenance,
 } from "./format.js";
 import { refs, type RefType } from "./refs.js";
+import { docEditorsSql, itemSourceSql } from "./sources.js";
 import { defineCapability, type CapabilityContext } from "./registry.js";
 
 /**
@@ -105,6 +108,10 @@ type SearchRow = {
   snippet: string | null;
   block_id: string | null;
   imported: boolean;
+  /** An item's outside source (a booking guest, an email). */
+  source?: string | null;
+  /** Other people who changed a team page. */
+  editors?: string[] | null;
   rank: string;
 };
 
@@ -155,6 +162,7 @@ async function runSearch(
       `WITH q AS (SELECT websearch_to_tsquery('english', ${q}) AS tsq)
        SELECT i.id, i.kind, i.title, i.team_id, i.user_id, u.name AS author_name,
               i.updated_at, false AS imported, NULL AS block_id,
+              ${itemSourceSql("i")} AS source,
               CASE WHEN i.notes <> '' THEN ts_headline('english', i.notes, q.tsq, '${MARKS}') END AS snippet,
               ${rank("i.search", "i.title", "i.updated_at", q)} AS rank
          FROM items i JOIN users u ON u.id = i.user_id CROSS JOIN q
@@ -185,6 +193,7 @@ async function runSearch(
       `WITH q AS (SELECT websearch_to_tsquery('english', ${q}) AS tsq)
        SELECT d.id, d.kind, d.title, d.team_id, d.user_id, u.name AS author_name,
               d.updated_at, d.imported_from IS NOT NULL AS imported,
+              ${docEditorsSql("d", scope.user)} AS editors,
               ts_headline('english', doc_words(d.content, NULL), q.tsq, '${MARKS}') AS snippet,
               (SELECT b->>'id' FROM jsonb_array_elements(d.content) b
                 WHERE b->>'text' IS NOT NULL AND b->>'id' IS NOT NULL
@@ -265,17 +274,23 @@ async function runSearch(
         user_id: r.user_id,
         author_name: r.author_name,
         imported: r.imported,
+        source: r.source,
+        editors: r.editors,
       });
+      const snippet =
+        r.snippet && !(hideOutside && isOutside(provenance))
+          ? clean(r.snippet, 400)
+          : null;
       return {
         id: r0.id,
-        title: cleanTitle(r.title) || "Untitled",
+        title: titleFor(r.title, provenance) || "Untitled",
         url: r0.url,
         type: r.type,
         // Left out when it came from outside and the connection hides that.
         snippet:
-          r.snippet && !(hideOutside && isOutside(provenance))
-            ? clean(r.snippet, 400)
-            : null,
+          snippet && provenance === "booking_guest"
+            ? maskEmails(snippet)
+            : snippet,
         block_id: r.block_id,
         provenance,
         team_id: r.team_id,
@@ -438,13 +453,15 @@ export const findPassages = defineCapability({
               user_id: string;
               author_name: string | null;
               imported: boolean;
+              editors: string[] | null;
               content: DocBlock[];
             }>(
               `SELECT d.id, d.title, d.user_id, u.name AS author_name,
-                      d.imported_from IS NOT NULL AS imported, d.content
+                      d.imported_from IS NOT NULL AS imported, d.content,
+                      ${docEditorsSql("d", "$2")} AS editors
                  FROM docs d JOIN users u ON u.id = d.user_id
                 WHERE d.id = ANY ($1::uuid[])`,
-              [docIds],
+              [docIds, ctx.principal.user.id],
             )
           ).rows
         : []
@@ -491,12 +508,13 @@ export const findPassages = defineCapability({
         project_id: string | null;
         user_id: string;
         author_name: string | null;
+        source: string | null;
         quote: string;
         rank: string;
       }>(
         `WITH q AS (SELECT websearch_to_tsquery('english', ${q2}) AS tsq)
          SELECT 'task' AS type, x.id, x.title, x.project_id, x.user_id,
-                u.name AS author_name,
+                u.name AS author_name, ${itemSourceSql("x")} AS source,
                 ts_headline('english', x.notes, q.tsq, 'MaxWords=60, MinWords=20, MaxFragments=1, StartSel="", StopSel=""') AS quote,
                 0.6 * ts_rank_cd(to_tsvector('english', x.notes), q.tsq) AS rank
            FROM items x JOIN users u ON u.id = x.user_id CROSS JOIN q
@@ -504,7 +522,7 @@ export const findPassages = defineCapability({
             AND to_tsvector('english', x.notes) @@ q.tsq${and}
          UNION ALL
          SELECT 'record' AS type, x.id, x.title, x.project_id, x.created_by AS user_id,
-                u.name AS author_name,
+                u.name AS author_name, NULL AS source,
                 ts_headline('english', x.title || '. ' || x.details || ' ' || x.outcome, q.tsq, 'MaxWords=60, MinWords=20, MaxFragments=1, StartSel="", StopSel=""') AS quote,
                 0.6 * ts_rank_cd(to_tsvector('english', x.title || ' ' || x.details || ' ' || x.outcome), q.tsq) AS rank
            FROM work_records x JOIN users u ON u.id = x.created_by CROSS JOIN q
@@ -516,16 +534,18 @@ export const findPassages = defineCapability({
       for (const r of more.rows) {
         const ref = { type: r.type, id: r.id } as const;
         const at = refs(ref, r.project_id);
+        const provenance = provenanceOf(ctx.principal.user.id, r);
+        const quote = clean(r.quote, QUOTE_MAX);
         out.push({
-          quote: clean(r.quote, QUOTE_MAX),
+          quote: provenance === "booking_guest" ? maskEmails(quote) : quote,
           heading_path: [],
           block_id: null,
           citation_url: at.url,
-          provenance: provenanceOf(ctx.principal.user.id, r),
+          provenance,
           source: {
             id: at.id,
             type: r.type,
-            title: cleanTitle(r.title) || "Untitled",
+            title: titleFor(r.title, provenance) || "Untitled",
             url: at.url,
           },
           rank: Number(r.rank),

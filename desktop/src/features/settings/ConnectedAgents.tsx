@@ -531,8 +531,9 @@ function ConnectAgent({
                 <span>
                   Hide outside content
                   <small>
-                    Leave out text from subscribed calendars, imported files and
-                    emails. The agent sees that something is there, not what it
+                    Leave out text from outside Orbyn: subscribed calendars,
+                    imported files, tasks sent by email and what booking guests
+                    typed. The agent sees that something is there, not what it
                     says.
                   </small>
                 </span>

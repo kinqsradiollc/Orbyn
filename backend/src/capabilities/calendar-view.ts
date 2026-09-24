@@ -2,7 +2,8 @@ import { z } from "zod";
 import { addDays, dayTime, localDateKey } from "@orbyn/core";
 import { inSpaces } from "../lib/visibility.js";
 import {
-  busyIntervals,
+  DEFAULT_EVENT_MINUTES,
+  blocksTime,
   calendarEntries,
   derivedBlocks,
   loadPlaces,
@@ -12,9 +13,17 @@ import {
 import { freeSpans, workingSpans } from "../modules/planner/plans.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
 import { READ, minutesText } from "./common.js";
-import { both, cleanTitle, fence, mdLink } from "./format.js";
+import {
+  both,
+  cleanTitle,
+  fence,
+  mdLink,
+  titleFor,
+  type Provenance,
+} from "./format.js";
 import { refs } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
+import { bookingItemIds } from "./sources.js";
 
 /**
  * The calendar for up to 31 days, as the person sees it: events (repeats
@@ -53,7 +62,7 @@ export const getCalendar = defineCapability({
   name: "get_calendar",
   title: "Calendar",
   description:
-    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. With free_minutes, also lists free stretches of at least that long inside working hours.',
+    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Events a booking guest made are marked "booking_guest". With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
   input: z
     .object({
       from: z
@@ -102,23 +111,35 @@ export const getCalendar = defineCapability({
       throw new CapabilityError("INVALID", "from isn't a real date.");
     const from = dayTime(first, 0, tz);
     const to = dayTime(addDays(first, a.days), 0, tz);
-    const [prefs, events, sessions, habits, subscribed, places] =
-      await Promise.all([
-        loadPrefs(ctx.db, userId),
-        calendarEntries(ctx.db, userId, from, to),
-        timeBlocks(ctx.db, userId, from, to),
-        ctx.db.query<{ start_at: Date; end_at: Date; name: string }>(
-          `SELECT b.start_at, b.end_at, h.name FROM habit_blocks b
+    const personal = ctx.spaces.personal;
+    const [
+      prefs,
+      events,
+      sessions,
+      habits,
+      subscribed,
+      subscribedBusy,
+      places,
+    ] = await Promise.all([
+      loadPrefs(ctx.db, userId),
+      calendarEntries(ctx.db, userId, from, to),
+      timeBlocks(ctx.db, userId, from, to),
+      ctx.db.query<{ start_at: Date; end_at: Date; name: string }>(
+        `SELECT b.start_at, b.end_at, h.name FROM habit_blocks b
              JOIN habits h ON h.id = b.habit_id
             WHERE b.user_id = $1 AND b.end_at > $2 AND b.start_at < $3
             ORDER BY b.start_at LIMIT 200`,
-          [userId, from, to],
-        ),
-        ctx.spaces.personal
-          ? externalEntries(ctx.db, userId, from, to, { visible: true })
-          : Promise.resolve([]),
-        loadPlaces(ctx.db, userId),
-      ]);
+        [userId, from, to],
+      ),
+      personal
+        ? externalEntries(ctx.db, userId, from, to, { visible: true })
+        : Promise.resolve([]),
+      // Hidden calendars still make the person busy (as in the planner).
+      personal && a.free_minutes
+        ? externalEntries(ctx.db, userId, from, to, { busy: true })
+        : Promise.resolve([]),
+      loadPlaces(ctx.db, userId),
+    ]);
     const teamName = (id: string | null) =>
       id ? (ctx.principal.teams.find((t) => t.id === id)?.name ?? null) : null;
     const visible = events.filter(
@@ -131,6 +152,13 @@ export const getCalendar = defineCapability({
     const derived = derivedBlocks(visible, prefs, places, (at) =>
       day.format(new Date(at)),
     );
+    // A booking's event holds what its guest typed: marked, without their
+    // email address, and only "Booking" when outside content is hidden.
+    const bookings = await bookingItemIds(
+      ctx.db,
+      visible.filter((e) => e.kind === "event").map((e) => e.item_id),
+    );
+    const hideOutside = ctx.principal.flags.hide_outside_content;
     const entries: z.output<typeof item>[] = [
       ...visible.map((e) => {
         const event = e.kind === "event";
@@ -139,17 +167,22 @@ export const getCalendar = defineCapability({
           id: e.item_id,
           ...(e.occurrence && event ? { occurrence: e.occurrence } : {}),
         });
+        const booked = event && bookings.has(e.item_id);
         return {
           kind: event ? ("event" as const) : ("deadline" as const),
           id: r.id,
-          title: cleanTitle(e.title) || "Untitled",
+          title: booked
+            ? hideOutside
+              ? "Booking"
+              : titleFor(e.title, "booking_guest") || "Booking"
+            : cleanTitle(e.title) || "Untitled",
           url: r.url,
           start: both(e.start_at, tz)!,
           end: event ? both(e.end_at, tz) : null,
           all_day: !!e.all_day,
           busy: !!e.busy,
           team: teamName(e.team_id),
-          provenance: "you",
+          provenance: booked ? "booking_guest" : "you",
         };
       }),
       ...sessions
@@ -169,7 +202,7 @@ export const getCalendar = defineCapability({
             provenance: "you",
           };
         }),
-      ...(ctx.spaces.personal
+      ...(personal
         ? habits.rows.map((h) => ({
             kind: "habit" as const,
             id: null,
@@ -205,7 +238,7 @@ export const getCalendar = defineCapability({
         kind: "calendar" as const,
         id: null,
         // Busy time only, when the connection hides outside content.
-        title: ctx.principal.flags.hide_outside_content
+        title: hideOutside
           ? "Busy (subscribed calendar)"
           : cleanTitle(e.title) || "Untitled",
         url: null,
@@ -236,11 +269,36 @@ export const getCalendar = defineCapability({
         }[]
       | null = null;
     if (a.free_minutes) {
+      // Free time around what this connection can see only: events in its
+      // spaces with their buffers and travel, its sessions, and (with
+      // Personal) habit sessions and subscribed calendars. Busy time in a
+      // space out of reach would say when something there happens.
       const start = new Date(Math.max(from.getTime(), ctx.now.getTime()));
-      const busy = await busyIntervals(ctx.db, userId, start, to, {
-        blocks: true,
-        derived: true,
-      });
+      const iso = (t: string | Date) => new Date(t).toISOString();
+      const busy = [
+        ...visible.filter(blocksTime).map((e) => ({
+          start_at: e.start_at,
+          end_at:
+            e.end_at ??
+            iso(
+              new Date(Date.parse(e.start_at) + DEFAULT_EVENT_MINUTES * 60_000),
+            ),
+        })),
+        ...derived.map((d) => ({ start_at: d.start_at, end_at: d.end_at })),
+        ...sessions
+          .filter((s) => inSpaces(ctx.spaces, s.team_id))
+          .map((s) => ({ start_at: s.start_at, end_at: s.end_at })),
+        ...(personal
+          ? habits.rows.map((h) => ({
+              start_at: iso(h.start_at),
+              end_at: iso(h.end_at),
+            }))
+          : []),
+        ...subscribedBusy.map((e) => ({
+          start_at: e.start_at,
+          end_at: e.end_at,
+        })),
+      ];
       free = freeSpans(workingSpans(prefs, start, to), busy)
         .filter((s) => s.end - s.start >= a.free_minutes! * 60_000)
         .slice(0, 50)
@@ -262,13 +320,22 @@ export const getCalendar = defineCapability({
           )
         : ["Nothing on the calendar."]),
     ];
-    if (outside.length)
+    const OUTSIDE_HEADINGS: Record<string, string> = {
+      subscribed_feed: "From subscribed calendars:",
+      booking_guest: "Booked by guests (their words):",
+    };
+    for (const source of [...new Set(outside.map((e) => e.provenance))])
       md.push(
         "",
-        "From subscribed calendars:",
+        OUTSIDE_HEADINGS[source] ?? "From outside Orbyn:",
         fence(
-          outside.map((e) => `- ${e.start.local} ${e.title}`).join("\n"),
-          "subscribed_feed",
+          outside
+            .filter((e) => e.provenance === source)
+            .map(
+              (e) => `- ${e.start.local} ${e.title}${e.id ? ` · ${e.id}` : ""}`,
+            )
+            .join("\n"),
+          source as Provenance,
         ),
       );
     if (free)

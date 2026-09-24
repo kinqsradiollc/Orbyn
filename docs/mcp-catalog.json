@@ -479,7 +479,7 @@
               },
               { "type": "null" }
             ],
-            "description": "Free time from now until the next commitment, within working hours."
+            "description": "Free time from now until the next commitment this connection can see, within working hours."
           },
           "planned": {
             "type": "array",
@@ -698,7 +698,7 @@
     {
       "name": "get_calendar",
       "title": "Calendar",
-      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked \"calendar\", outside content). Filter by words in the title with query. With free_minutes, also lists free stretches of at least that long inside working hours.",
+      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked \"calendar\", outside content). Filter by words in the title with query. Events a booking guest made are marked \"booking_guest\". With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.",
       "kind": "read",
       "access": "read",
       "toolset": "core",

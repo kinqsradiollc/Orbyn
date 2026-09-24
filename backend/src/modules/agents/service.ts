@@ -85,7 +85,17 @@ const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
   created_at: g.created_at.toISOString(),
 });
 
-/** The person's connections that haven't been revoked, newest first. */
+/**
+ * Connections still listed: not revoked, and not expired for more than 30
+ * days (as long as their credentials are kept, the list says they expired).
+ */
+const LISTED = `g.revoked_at IS NULL
+  AND (g.expires_at IS NULL OR g.expires_at > now() - interval '30 days')`;
+
+/** Connections that count against MAX_GRANTS: not revoked and not expired. */
+const LIVE = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`;
+
+/** The person's connections that haven't ended, newest first. */
 export async function listGrants(
   db: Queryable,
   userId: string,
@@ -93,7 +103,7 @@ export async function listGrants(
   const [rows, names] = await Promise.all([
     db.query<GrantRow>(
       `SELECT ${GRANT_COLUMNS} FROM agent_grants g
-        WHERE g.user_id = $1 AND g.revoked_at IS NULL
+        WHERE g.user_id = $1 AND ${LISTED}
           AND (g.kind <> 'legacy' OR EXISTS (SELECT 1 FROM api_keys k WHERE k.id = g.api_key_id))
         ORDER BY g.created_at DESC LIMIT 100`,
       [userId],
@@ -124,7 +134,7 @@ export async function createAgentKey(
   const grant = await transaction(async (db) => {
     const live = (
       await db.query<{ n: number }>(
-        "SELECT count(*)::int AS n FROM agent_grants WHERE user_id = $1 AND revoked_at IS NULL",
+        `SELECT count(*)::int AS n FROM agent_grants WHERE user_id = $1 AND ${LIVE}`,
         [userId],
       )
     ).rows[0].n;

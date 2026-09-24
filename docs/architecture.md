@@ -70,7 +70,14 @@ no sessions, JSON answers.
   and output, MCP annotations, a risk tier, and the access and toolset it needs. Reads run in a
   `BEGIN READ ONLY` transaction, with the `lib/visibility.ts` builders. They go to the replica,
   or to the primary for 10 s after the connection wrote (read-your-writes). Text by others is
-  cleaned and fenced as untrusted content. No MCP path calls an AI provider or semantic search.
+  cleaned and fenced as untrusted content, labelled with where it came from: a teammate (also
+  when a teammate edited a team page, from `doc_versions`), a subscribed calendar, an imported
+  file, a booking guest (events in `bookings.item_ids`, with email addresses hidden) or an email
+  (`item_sources`). Images that would load from another host are removed. No MCP path calls an
+  AI provider or semantic search.
+- **Rate limits by credential.** The general limit counts an agent's requests against its
+  connection only at the MCP address and only once the credential is a live connection's; a
+  made-up one counts per address, like any other request, so it can't skip sign-in limits.
 - **Limits and switches.** Limits are per connection, never per address: calls, searches, writes
   and a daily quota (`agent_usage_daily`). The gateway also caps calls in flight per credential.
   Kill switches: revoke a connection (L1); block an app, `blocked_client_ids` (L2); pause

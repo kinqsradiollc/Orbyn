@@ -200,6 +200,21 @@ export function argsDigest(args: unknown): string {
     .slice(0, 22);
 }
 
+let cursorKeyLoad: Promise<Buffer> | null = null;
+
+/**
+ * The key cursors are sealed with, loaded once per process. Loading it the
+ * first time can write the server's key, so callers load it before opening
+ * a read-only transaction (execute() does), never from inside one.
+ */
+export function cursorKey(): Promise<Buffer> {
+  cursorKeyLoad ??= derivedKey("mcp-cursor").catch((error) => {
+    cursorKeyLoad = null;
+    throw error;
+  });
+  return cursorKeyLoad;
+}
+
 /**
  * Cursors that page one call's results. Each is signed with a key derived
  * from Orbyn's secrets and bound to the connection, the tool and the other
@@ -214,7 +229,7 @@ export function cursorCodec(
   const { cursor: _ignored, ...rest } = args;
   const bound = `${p.user.id}|${p.grant_id ?? "-"}|${tool}|${argsDigest(rest)}`;
   const mac = async (offset: number) =>
-    createHmac("sha256", await derivedKey("mcp-cursor"))
+    createHmac("sha256", await cursorKey())
       .update(`${bound}|${offset}`)
       .digest("base64url")
       .slice(0, 22);

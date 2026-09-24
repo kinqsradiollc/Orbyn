@@ -20,6 +20,7 @@ const { pool } = await import("../src/db/pool.js");
 const { COVERED, EXCLUDED, EXCLUSION_REASONS, PENDING, PUBLIC } =
   await import("../src/capabilities/exclusions.js");
 const { registry } = await import("../src/capabilities/index.js");
+const { keyBlockedRoute } = await import("../src/lib/auth.js");
 
 /**
  * The most routes that may wait for a capability. Lower it when a phase
@@ -161,6 +162,20 @@ test("agents are refused on the routes the safety list names", () => {
     "GET /admin/users",
   ])
     assert.ok(key in EXCLUDED, key);
+  // And a personal API key (which otherwise acts as its person) can't mint
+  // more access for agents or reopen a team to them.
+  for (const key of [
+    "PUT /teams/:id/agent-access",
+    "POST /me/agent-keys",
+    "GET /me/agents",
+    "DELETE /me/agents/:id",
+    "POST /me/agents/:id/restore",
+    "POST /me/api-keys",
+  ]) {
+    assert.ok(classes.get(key) === "signed-in", `${key} is a signed-in route`);
+    const [method, route] = key.split(" ");
+    assert.ok(keyBlockedRoute(method, route), `${key} refuses API keys`);
+  }
 });
 
 test("audience isolation: every signed-in route refuses agent credentials", async () => {

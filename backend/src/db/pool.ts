@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { env } from "../config/env.js";
 
@@ -73,6 +74,14 @@ export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 }
 
 /**
+ * Set while a read-only transaction's work runs. Everything in it should go
+ * through the transaction's own client; tests watch the pools for a query
+ * made from inside one (a helper that reached for the pool directly), which
+ * would escape the read-only guarantee.
+ */
+export const insideReadTransaction = new AsyncLocalStorage<true>();
+
+/**
  * Run `fn` in a read-only transaction (BEGIN READ ONLY), on the replica
  * unless `primary` is asked for. Postgres itself then refuses any write, so
  * a read that turns out to write (a sync hidden in a helper) fails loudly
@@ -89,7 +98,7 @@ export async function readTransaction<T>(
       await db.query(
         `SET LOCAL statement_timeout = ${Math.max(100, Math.round(options.timeoutMs))}`,
       );
-    const result = await fn(db);
+    const result = await insideReadTransaction.run(true, () => fn(db));
     await db.query("COMMIT");
     return result;
   } catch (error) {

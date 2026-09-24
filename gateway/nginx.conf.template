@@ -345,6 +345,9 @@ ${UPSTREAM_MCP}
     location = /mcp {
       ${MCP_GATE}
       # A high ceiling per address; the real limits are per credential.
+      # Review in phase A2: hosted agents (claude.ai, ChatGPT) share their
+      # providers' egress addresses, so raise this for those ranges (or
+      # exempt them through LIMIT_EXEMPT) before they connect.
       limit_req zone=per_client burst=200 nodelay;
       limit_req zone=mcp_token burst=60 nodelay;
       limit_conn mcp_conn 8;

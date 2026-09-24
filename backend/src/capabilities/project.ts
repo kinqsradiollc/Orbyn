@@ -19,6 +19,7 @@ import {
   type Provenance,
 } from "./format.js";
 import { refs } from "./refs.js";
+import { docEditorsSql } from "./sources.js";
 import {
   CapabilityError,
   defineCapability,
@@ -170,7 +171,7 @@ export async function projectHub(
       s,
       p,
     ) => `SELECT d.id, d.title, d.updated_at, d.user_id, u.name AS author_name,
-        d.imported_from IS NOT NULL AS imported
+        d.imported_from IS NOT NULL AS imported, ${docEditorsSql("d", s.user)} AS editors
       FROM docs d JOIN users u ON u.id = d.user_id
      WHERE d.project_id = ${p.add(id)} AND ${visibleDocs("d", s)}
      ORDER BY d.updated_at DESC LIMIT 30`,
@@ -220,6 +221,7 @@ export async function projectHub(
       user_id: string;
       author_name: string | null;
       imported: boolean;
+      editors: string[] | null;
     }>(docsQ.sql, docsQ.values),
     ctx.db.query<{
       id: string;

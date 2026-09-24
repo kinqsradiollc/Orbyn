@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
+import { spyPool, trapNetwork } from "./mcp-helpers.js";
 
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
@@ -17,6 +18,9 @@ const { env } = await import("../src/config/env.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 
 const app = await buildApp();
+// Nothing leaves the machine, and reads never step outside their transaction.
+const network = await trapNetwork();
+const pools = await spyPool();
 let session = "";
 let apiKey = "";
 let admin = "";
@@ -91,6 +95,8 @@ before(async () => {
   admin = boss.token;
 });
 after(async () => {
+  network.restore();
+  pools.restore();
   await app.close();
   await pool.end();
 });
@@ -453,4 +459,10 @@ test("past the rate limit the answer is a 429 in JSON-RPC shape", async () => {
     );
     invalidateSettings();
   }
+});
+
+// Last: everything above ran with the network and the pools watched.
+test("the old endpoint never reached the network or the pool from inside a read", () => {
+  assert.deepEqual(network.calls, []);
+  assert.deepEqual(pools.stray, []);
 });

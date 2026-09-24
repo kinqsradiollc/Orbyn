@@ -17,9 +17,10 @@ import {
   teamFilter,
   teamInput,
 } from "./common.js";
-import { both, cleanTitle, mdLink } from "./format.js";
+import { both, cleanTitle, mdLink, titleFor } from "./format.js";
 import { refs, type RefType } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
+import { itemSourceSql } from "./sources.js";
 
 /**
  * Lists with filters, as a saved view would show them (saved views arrive
@@ -164,7 +165,7 @@ export const query = defineCapability({
       if (a.kind) where.push(`i.kind = ${p.add(a.kind)}`);
       if (a.folder) unsupported("folder");
       select = `i.id, i.kind AS type, i.title, i.status, i.due_at, i.priority, i.team_id,
-        i.project_id, a.name AS assignee, i.updated_at`;
+        i.project_id, a.name AS assignee, i.updated_at, ${itemSourceSql("i")} AS source`;
       from = "items i LEFT JOIN users a ON a.id = i.assignee_id";
       order = {
         due: "i.due_at NULLS LAST, i.id",
@@ -196,7 +197,8 @@ export const query = defineCapability({
       }))
         if (v !== undefined) unsupported(k);
       select = `d.id, 'doc' AS type, d.title, d.kind AS status, NULL::timestamptz AS due_at,
-        NULL AS priority, d.team_id, d.project_id, NULL AS assignee, d.updated_at`;
+        NULL AS priority, d.team_id, d.project_id, NULL AS assignee, d.updated_at,
+        NULL AS source`;
       from = "docs d";
       order = {
         due: "d.updated_at DESC, d.id",
@@ -228,7 +230,8 @@ export const query = defineCapability({
       }))
         if (v !== undefined) unsupported(k);
       select = `p.id, 'project' AS type, p.name AS title, p.status, p.deadline AS due_at,
-        NULL AS priority, p.team_id, p.id AS project_id, NULL AS assignee, p.updated_at`;
+        NULL AS priority, p.team_id, p.id AS project_id, NULL AS assignee, p.updated_at,
+        NULL AS source`;
       from = "projects p";
       order = {
         due: "p.deadline NULLS LAST, p.id",
@@ -266,7 +269,7 @@ export const query = defineCapability({
       }))
         if (v !== undefined) unsupported(k);
       select = `w.id, 'record' AS type, w.title, w.status, w.due_at, NULL AS priority,
-        w.team_id, w.project_id, o.name AS assignee, w.updated_at`;
+        w.team_id, w.project_id, o.name AS assignee, w.updated_at, NULL AS source`;
       from = "work_records w LEFT JOIN users o ON o.id = w.owner_id";
       order = {
         due: "w.due_at NULLS LAST, w.id",
@@ -288,6 +291,7 @@ export const query = defineCapability({
       project_id: string | null;
       assignee: string | null;
       updated_at: Date;
+      source: string | null;
     }>(
       `SELECT ${select} FROM ${from}
         WHERE ${where.map((w) => `(${w})`).join(" AND ")}
@@ -302,7 +306,8 @@ export const query = defineCapability({
       const at2 = refs({ type: type as RefType, id: r.id }, r.project_id);
       return {
         id: at2.id,
-        title: cleanTitle(r.title) || "Untitled",
+        // A booking's event never shows its guest's email address.
+        title: titleFor(r.title, r.source ?? "you") || "Untitled",
         url: at2.url,
         type,
         status: r.status,

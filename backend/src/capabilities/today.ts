@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { addDays, dayTime, localDateKey } from "@orbyn/core";
+import {
+  addDays,
+  clockMinutes,
+  dayTime,
+  localDateKey,
+  weekdayOf,
+} from "@orbyn/core";
 import type { Queryable } from "../db/pool.js";
 import {
   Params,
@@ -8,13 +14,30 @@ import {
   visibleItems,
   type Spaces,
 } from "../lib/visibility.js";
-import { calendarEntries, timeBlocks } from "../modules/planner/calendar.js";
+import {
+  DEFAULT_EVENT_MINUTES,
+  blocksTime,
+  calendarEntries,
+  derivedBlocks,
+  loadPlaces,
+  loadPrefs,
+  timeBlocks,
+} from "../modules/planner/calendar.js";
 import { upNext } from "../modules/planner/next.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
 import { READ, minutesText } from "./common.js";
-import { both, cleanTitle, fence, localTime, mdLink } from "./format.js";
+import {
+  both,
+  cleanTitle,
+  fence,
+  localTime,
+  mdLink,
+  titleFor,
+  type Provenance,
+} from "./format.js";
 import { refs, todayUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
+import { bookingItemIds } from "./sources.js";
 
 /**
  * The Today list for an agent: what's planned (sessions and events), what's
@@ -81,7 +104,7 @@ export const todayOutput = z.object({
     .object({ minutes: z.number(), until: when, before: z.string().nullable() })
     .nullable()
     .describe(
-      "Free time from now until the next commitment, within working hours.",
+      "Free time from now until the next commitment this connection can see, within working hours.",
     ),
   planned: z
     .array(entry)
@@ -172,22 +195,47 @@ export async function todayForPrincipal(
   const dueToday = dueQuery("today");
   const lateQ = dueQuery("late");
 
-  const [events, subscribed, sessions, due, late, lateTotal, next, asks] =
-    await Promise.all([
-      calendarEntries(db, userId, from, to),
-      spaces.personal
-        ? externalEntries(db, userId, from, to, { visible: true })
-        : Promise.resolve([]),
-      timeBlocks(db, userId, from, to),
-      db.query<DueRow>(dueToday.sql, dueToday.values),
-      db.query<DueRow>(lateQ.sql, lateQ.values),
-      db.query<{ n: number }>(lateCount.sql, lateCount.values),
-      upNext(db, userId, now),
-      db.query<{ n: number }>(
-        "SELECT count(*)::int AS n FROM task_asks WHERE asked_of = $1 AND status IN ('open', 'countered')",
-        [userId],
-      ),
-    ]);
+  const asksQuery = (() => {
+    const p = new Params();
+    const scope = scopeFor(spaces, p);
+    return {
+      sql: `SELECT count(*)::int AS n FROM task_asks a JOIN items i ON i.id = a.item_id
+             WHERE a.asked_of = ${scope.user} AND a.status IN ('open', 'countered')
+               AND ${visibleItems("i", scope)}`,
+      values: p.values,
+    };
+  })();
+
+  const [
+    prefs,
+    places,
+    events,
+    subscribed,
+    subscribedBusy,
+    sessions,
+    due,
+    late,
+    lateTotal,
+    next,
+    asks,
+  ] = await Promise.all([
+    loadPrefs(db, userId),
+    loadPlaces(db, userId),
+    calendarEntries(db, userId, from, to),
+    spaces.personal
+      ? externalEntries(db, userId, from, to, { visible: true })
+      : Promise.resolve([]),
+    // Hidden calendars still make the person busy (as in the planner).
+    spaces.personal
+      ? externalEntries(db, userId, from, to, { busy: true })
+      : Promise.resolve([]),
+    timeBlocks(db, userId, from, to),
+    db.query<DueRow>(dueToday.sql, dueToday.values),
+    db.query<DueRow>(lateQ.sql, lateQ.values),
+    db.query<{ n: number }>(lateCount.sql, lateCount.values),
+    upNext(db, userId, now),
+    db.query<{ n: number }>(asksQuery.sql, asksQuery.values),
+  ]);
 
   const deadlines = new Map<string, Date | null>();
   const sessionIds = [...new Set(sessions.map((s) => s.item_id))];
@@ -199,6 +247,24 @@ export async function todayForPrincipal(
       )
     ).rows)
       deadlines.set(r.id, r.due_at);
+
+  // Only what this principal reaches: events in its spaces, and the
+  // person's subscribed calendars when it reaches Personal.
+  const reach = events.filter((e) => inSpaces(spaces, e.team_id));
+  const bookings = await bookingItemIds(
+    db,
+    reach.filter((e) => e.kind === "event").map((e) => e.item_id),
+  );
+  const eventTitle = (e: { item_id: string; title: string }) =>
+    bookings.has(e.item_id)
+      ? who.hideOutside
+        ? "Booking"
+        : titleFor(e.title, "booking_guest") || "Booking"
+      : cleanTitle(e.title) || "Untitled";
+  const subscribedTitle = (title: string) =>
+    who.hideOutside
+      ? "Busy (subscribed calendar)"
+      : cleanTitle(title) || "Untitled";
 
   const planned: z.output<typeof entry>[] = [
     ...sessions
@@ -220,8 +286,8 @@ export async function todayForPrincipal(
           provenance: "you",
         };
       }),
-    ...events
-      .filter((e) => e.kind === "event" && inSpaces(spaces, e.team_id))
+    ...reach
+      .filter((e) => e.kind === "event")
       .filter((e) => e.status !== "done" && e.status !== "cancelled")
       .map((e) => {
         const r = refs({
@@ -232,21 +298,19 @@ export async function todayForPrincipal(
         return {
           kind: "event" as const,
           id: r.id,
-          title: cleanTitle(e.title) || "Untitled",
+          title: eventTitle(e),
           url: r.url,
           start: both(e.start_at, tz)!,
           end: both(e.end_at, tz),
           all_day: !!e.all_day,
           after_deadline: false,
-          provenance: "you",
+          provenance: bookings.has(e.item_id) ? "booking_guest" : "you",
         };
       }),
     ...subscribed.map((e) => ({
       kind: "calendar" as const,
       id: null,
-      title: who.hideOutside
-        ? "Busy (subscribed calendar)"
-        : cleanTitle(e.title) || "Untitled",
+      title: subscribedTitle(e.title),
       url: null,
       start: both(e.start_at, tz)!,
       end: both(e.end_at, tz),
@@ -255,6 +319,68 @@ export async function todayForPrincipal(
       provenance: "subscribed_feed",
     })),
   ].sort((a, b) => a.start.at.localeCompare(b.start.at));
+
+  // Free time from now until the next commitment in reach, inside working
+  // hours; worked out here rather than taken from Up next, which looks at
+  // every team and would name (and time) events this principal can't see.
+  const workStart = dayTime(day, clockMinutes(prefs.work_start), tz);
+  const workEnd = dayTime(day, clockMinutes(prefs.work_end), tz);
+  const at = now.getTime();
+  const working =
+    prefs.work_days.includes(weekdayOf(day)) &&
+    at >= workStart.getTime() &&
+    at < workEnd.getTime();
+  const localDay = new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+  const timed = reach.filter(blocksTime);
+  const endOf = (start: string, end: string | null) =>
+    end ? Date.parse(end) : Date.parse(start) + DEFAULT_EVENT_MINUTES * 60_000;
+  const busy = [
+    ...timed.map((e) => ({
+      start: Date.parse(e.start_at),
+      end: endOf(e.start_at, e.end_at),
+    })),
+    ...derivedBlocks(reach, prefs, places, (t) =>
+      localDay.format(new Date(t)),
+    ).map((d) => ({
+      start: Date.parse(d.start_at),
+      end: Date.parse(d.end_at),
+    })),
+    ...subscribedBusy.map((e) => ({
+      start: Date.parse(e.start_at),
+      end: Date.parse(e.end_at),
+    })),
+  ].sort((a, b) => a.start - b.start);
+  let free: TodayList["free"] = null;
+  if (working && !busy.some((b) => b.start <= at && b.end > at)) {
+    const nextBusy = busy.find((b) => b.start > at);
+    const end = Math.min(nextBusy?.start ?? Infinity, workEnd.getTime());
+    const minutes = Math.floor((end - at) / 60_000);
+    if (minutes >= 5) {
+      // Name what ends it (buffers and travel come just before an event).
+      const named = [
+        ...timed.map((e) => ({
+          start: Date.parse(e.start_at),
+          title: eventTitle(e),
+        })),
+        ...subscribed
+          .filter((e) => e.busy && !e.all_day)
+          .map((e) => ({
+            start: Date.parse(e.start_at),
+            title: subscribedTitle(e.title),
+          })),
+      ]
+        .filter((e) => e.start >= end && e.start <= end + 90 * 60_000)
+        .sort((a, b) => a.start - b.start)[0];
+      free = {
+        minutes,
+        until: both(new Date(end), tz)!,
+        before:
+          nextBusy && nextBusy.start < workEnd.getTime() && named
+            ? named.title
+            : null,
+      };
+    }
+  }
 
   const taskOf = (t: DueRow): z.output<typeof task> => {
     const r = refs({ type: "task", id: t.id });
@@ -285,19 +411,21 @@ export async function todayForPrincipal(
     ).rows)
       allowed.add(r.id);
   }
+  // Its "fits the free time" reason is about its own free time, which may
+  // end at (and name) an event out of reach: said again from ours instead.
+  const FITS = /^Fits the /;
+  const fitsText = free
+    ? free.before
+      ? `Fits the ${minutesText(free.minutes)} before ${free.before}`
+      : `Fits the ${minutesText(free.minutes)} you have free`
+    : null;
 
   return {
     day,
     timezone: tz,
     now: both(now, tz)!,
     url: todayUrl(),
-    free: next.window
-      ? {
-          minutes: next.window.minutes,
-          until: both(next.window.end_at, tz)!,
-          before: next.window.until ? cleanTitle(next.window.until) : null,
-        }
-      : null,
+    free,
     planned,
     due: due.rows.map(taskOf),
     late: late.rows.map(taskOf),
@@ -306,12 +434,17 @@ export async function todayForPrincipal(
       .filter((s) => allowed.has(s.item_id))
       .map((s) => {
         const r = refs({ type: "task", id: s.item_id });
+        const fits = s.reasons.some((x) => FITS.test(x));
+        const why = s.reasons
+          .filter((x) => !FITS.test(x))
+          .map((x) => cleanTitle(x));
+        if (fits && fitsText) why.push(fitsText);
         return {
           id: r.id,
           title: cleanTitle(s.title) || "Untitled",
           url: r.url,
           minutes: s.minutes,
-          why: s.reasons.map((x) => cleanTitle(x)),
+          why: why.length ? why : ["Next on your list"],
         };
       }),
     needs_you: { asks: asks.rows[0]?.n ?? 0 },
@@ -339,16 +472,19 @@ export function todayMarkdown(t: TodayList): string {
       `- ${time} ${e.kind === "session" ? "Session: " : ""}${e.url ? mdLink(e.title, e.url) : e.title}${e.after_deadline ? " (after the deadline)" : ""}${e.id ? ` · ${e.id}` : ""}`,
     );
   }
-  if (outside.length)
+  // Outside text (subscribed calendars, what booking guests typed), fenced
+  // by where it came from.
+  for (const source of [...new Set(outside.map((e) => e.provenance))])
     out.push(
       fence(
         outside
+          .filter((e) => e.provenance === source)
           .map(
             (e) =>
-              `- ${e.all_day ? "all day" : e.start.local.slice(-5)} ${e.title}`,
+              `- ${e.all_day ? "all day" : e.start.local.slice(-5)} ${e.title}${e.id ? ` · ${e.id}` : ""}`,
           )
           .join("\n"),
-        "subscribed_feed",
+        source as Provenance,
       ),
     );
   out.push("", "## Due today");

@@ -11,10 +11,11 @@ import { HttpError } from "@orbyn/core";
 import { createHash, randomUUID } from "node:crypto";
 import { closeDatabase, pool } from "../db/pool.js";
 import {
-  agentTokenKey,
+  agentLimitKey,
   apiKeyId,
   authenticate,
   isApiKeyRequest,
+  isMcpPath,
 } from "../lib/auth.js";
 import { mcpOriginAllowed } from "../lib/mcp-origins.js";
 import { cachedSettings, settings } from "../lib/settings.js";
@@ -139,20 +140,16 @@ export async function createService(
   };
   await app.register(cors, {
     delegator: (req, cb) => {
-      const path = (req.url ?? "").split("?")[0];
-      cb(
-        null,
-        path === "/mcp" ||
-          path.startsWith("/.well-known/oauth-protected-resource")
-          ? mcpCors
-          : appCors,
-      );
+      cb(null, isMcpPath(req.url) ? mcpCors : appCors);
     },
   });
   // Sign-in and AI routes set their own stricter limits, which always apply.
   // The general per-client limit can be left to the gateway (0). Requests
   // signed with a personal API key count against that key, wherever they
-  // come from; everything else counts per address. Every response says
+  // come from, and on the MCP address an agent's requests count against its
+  // connection; both only once the credential is known to be real, so a
+  // made-up one counts per address. Everything else counts per address
+  // (the key a route's own stricter limit uses too). Every response says
   // where the client stands (RateLimit-Limit, -Remaining, -Reset), and a
   // 429 says when to try again (Retry-After, in seconds).
   await app.register(rateLimit, {
@@ -164,8 +161,8 @@ export async function createService(
     timeWindow: "1 minute",
     enableDraftSpec: true,
     keyGenerator: async (request) => {
-      // Agents count against their own credential, never an address.
-      const agent = agentTokenKey(request);
+      // Agents count against their own connection, never an address.
+      const agent = await agentLimitKey(request).catch(() => null);
       if (agent) return agent;
       const key = await apiKeyId(request).catch(() => null);
       return key ? `key:${key}` : request.ip;

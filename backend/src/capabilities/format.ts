@@ -35,18 +35,27 @@ const BIDI = /[\u202a-\u202e\u2066-\u2069]/g;
 /** Unicode tag characters (U+E0000-U+E007F) hide text from people entirely. */
 const TAGS = /[\u{e0000}-\u{e007f}]/gu;
 const HTML_COMMENT = /<!--[\s\S]*?(?:-->|$)/g;
-/** Elements whose content never shows, and embeds that load from elsewhere. */
+/**
+ * Elements whose content never shows, and drawings (SVG) that can
+ * load pictures from elsewhere: removed with everything inside them.
+ */
 const HIDDEN_ELEMENTS =
-  /<(script|style|template|iframe|object|noscript)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
+  /<(script|style|template|iframe|object|noscript|svg)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi;
+/** Elements that load something from an address as soon as they're shown. */
 const EMBEDS =
-  /<(?:img|iframe|embed|object|link|meta|source|video|audio)\b[^>]*>/gi;
+  /<\/?(?:img|image|picture|iframe|embed|object|link|meta|source|video|audio|track|input|frame|frameset|applet|base|use|feimage|svg)\b[^>]*>/gi;
+/** Any other tag that loads a picture through its style or a background. */
+const LOADING_TAGS =
+  /<[a-z][^>]*(?:url\s*\(|\bbackground\s*=|\bsrcset\s*=|\bposter\s*=)[^>]*>/gi;
 /** A span or div styled invisible, with what it hides. */
 const INVISIBLE_ELEMENT =
   /<(span|div|p)\b[^>]*style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0)[^"']*["'][^>]*>[\s\S]*?<\/\1\s*>/gi;
-/** Markdown images: ![alt](url "title"). */
-const MD_IMAGE = /!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+["'][^"']*["'])?\s*\)/g;
-/** Reference-style image definitions pointing anywhere. */
-const MD_IMAGE_REF = /!\[([^\]]*)\]\[[^\]]*\]/g;
+/**
+ * A Markdown link reference definition (`[x]: https://…`), which a
+ * reference image (`![x]` or `![a][x]`) would load from.
+ */
+const REFERENCE_DEFINITION =
+  /^ {0,3}\[((?:\\.|[^\\\]])+)\]:[ \t]*\n?[ \t]*(<[^>\n]*>|\S+)[^\n]*$/gm;
 
 /** The web app's own host: images there are Orbyn's and may stay. */
 function ownHost(): string | null {
@@ -58,9 +67,161 @@ function ownHost(): string | null {
 }
 
 /**
+ * The address an image may keep: one on the web app's own host, written
+ * plainly (no escapes, entities, credentials or spaces that a Markdown
+ * renderer and a URL parser could read differently). A path on its own is
+ * made absolute on the web app. null for everything else.
+ */
+function ownImageUrl(raw: string, own: string | null): string | null {
+  if (!own || !/^[A-Za-z0-9\-._~:/?#[\]!$'()*+,;=%]+$/.test(raw)) return null;
+  if (raw.includes("@") || raw.includes("\\")) return null;
+  if (raw.startsWith("/") && !raw.startsWith("//"))
+    return `${env.APP_URL.replace(/\/+$/, "")}${raw}`;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.host === own
+        ? raw
+        : null
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** An image's description as plain words: no brackets, links or markup. */
+const altText = (alt: string) =>
+  alt
+    .replace(/\\(.)/g, "$1")
+    .replace(/[[\]()<>!`*_]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+
+/** Where the `]` that closes the `[` at `i` is, counting nesting and escapes; -1 if none. */
+function closingBracket(s: string, i: number): number {
+  let depth = 0;
+  for (let j = i; j < s.length; j++) {
+    const c = s[j];
+    if (c === "\\") {
+      j++;
+      continue;
+    }
+    if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) return j;
+  }
+  return -1;
+}
+
+/**
+ * An inline link's `(destination "title")` starting at the `(` at `i`, as
+ * CommonMark reads it: `<…>` (which may hold spaces) or a run with balanced
+ * brackets and escapes, then an optional title. null when it isn't one.
+ */
+function inlineTarget(
+  s: string,
+  i: number,
+): { url: string; end: number } | null {
+  let j = i + 1;
+  const space = () => {
+    while (j < s.length && /\s/.test(s[j])) j++;
+  };
+  space();
+  let url: string;
+  if (s[j] === "<") {
+    const close = s.indexOf(">", j + 1);
+    if (close < 0 || s.slice(j + 1, close).includes("\n")) return null;
+    url = s.slice(j + 1, close);
+    j = close + 1;
+  } else {
+    const start = j;
+    let depth = 0;
+    for (; j < s.length; j++) {
+      const c = s[j];
+      if (c === "\\") {
+        j++;
+        continue;
+      }
+      if (/\s/.test(c)) break;
+      if (c === "(") depth++;
+      else if (c === ")") {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+    url = s.slice(start, j);
+  }
+  space();
+  const opener = s[j];
+  if (opener === '"' || opener === "'" || opener === "(") {
+    const closer = opener === "(" ? ")" : opener;
+    for (j++; j < s.length && s[j] !== closer; j++) if (s[j] === "\\") j++;
+    if (j >= s.length) return null;
+    j++;
+    space();
+  }
+  return s[j] === ")" ? { url, end: j + 1 } : null;
+}
+
+/**
+ * Every Markdown image in `s` that would load from somewhere other than the
+ * web app becomes its description, `[image: …]`, whatever its form: inline
+ * (brackets inside the description, escapes, `<…>` addresses), reference or
+ * shortcut. Afterwards no `![` is left but the web app's own images.
+ */
+function neutraliseImages(s: string, own: string | null): string {
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const at = s.indexOf("![", i);
+    if (at < 0) {
+      out += s.slice(i);
+      break;
+    }
+    // "\![" is an escaped "!" followed by a link, not an image.
+    let slashes = 0;
+    for (let k = at - 1; k >= i && s[k] === "\\"; k--) slashes++;
+    if (slashes % 2 === 1) {
+      out += s.slice(i, at + 1);
+      i = at + 1;
+      continue;
+    }
+    out += s.slice(i, at);
+    const close = closingBracket(s, at + 1);
+    if (close < 0) {
+      out += "!\\[";
+      i = at + 2;
+      continue;
+    }
+    const alt = altText(s.slice(at + 2, close));
+    const placeholder = alt ? `[image: ${alt}]` : "[image removed]";
+    if (s[close + 1] === "(") {
+      const target = inlineTarget(s, close + 1);
+      if (target) {
+        const keep = ownImageUrl(target.url, own);
+        out += keep ? `![${alt}](${keep})` : placeholder;
+        i = target.end;
+        continue;
+      }
+    }
+    // A reference image: ![alt][label] or ![alt][] (the label goes too).
+    let end = close + 1;
+    if (s[end] === "[") {
+      const label = closingBracket(s, end);
+      if (label > 0) end = label + 1;
+    }
+    out += placeholder;
+    i = end;
+  }
+  return out;
+}
+
+/**
  * Text as an agent may see it: control, invisible and direction characters
- * removed, HTML comments and hidden elements gone, images from other hosts
- * replaced by their description, and cut to `max` characters.
+ * removed, HTML comments, hidden elements and anything that loads from an
+ * address gone, images from other hosts replaced by their description (and
+ * reference definitions pointing elsewhere dropped), and cut to `max`
+ * characters.
  */
 export function clean(text: unknown, max = MAX_RESULT_CHARS): string {
   const own = ownHost();
@@ -72,18 +233,13 @@ export function clean(text: unknown, max = MAX_RESULT_CHARS): string {
     .replace(HIDDEN_ELEMENTS, "")
     .replace(INVISIBLE_ELEMENT, "")
     .replace(EMBEDS, "")
-    .replace(MD_IMAGE, (_m, alt: string, url: string) => {
-      try {
-        const host = new URL(url, env.APP_URL).host;
-        if (own && host === own) return `![${alt}](${url})`;
-      } catch {
-        // Not a URL at all: dropped like any other outside image.
-      }
-      return alt ? `[image: ${alt}]` : "[image removed]";
-    })
-    .replace(MD_IMAGE_REF, (_m, alt: string) =>
-      alt ? `[image: ${alt}]` : "[image removed]",
+    .replace(LOADING_TAGS, "")
+    .replace(
+      REFERENCE_DEFINITION,
+      (line: string, _label: string, dest: string) =>
+        ownImageUrl(dest.replace(/^<|>$/g, ""), own) ? line : "",
     );
+  out = neutraliseImages(out, own);
   // Control characters other than newlines and tabs.
   out = Array.from(out)
     .map((c) => (c < " " && c !== "\n" && c !== "\t" ? " " : c))
@@ -128,10 +284,18 @@ export const isOutside = (source: string) => source in OUTSIDE;
 export const hiddenText = (source: string) =>
   `[Hidden: text from ${OUTSIDE[source] ?? "outside Orbyn"}. This connection leaves out outside content.]`;
 
+/** Email addresses, so a booking guest's contact details stay out. */
+const EMAIL =
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+
+/** `text` with every email address hidden. */
+export const maskEmails = (text: string) =>
+  text.replace(EMAIL, "[email hidden]");
+
 /**
  * Text from `source`: as it is when the person wrote it, fenced otherwise,
  * and left out when it came from outside Orbyn and the connection hides
- * outside content.
+ * outside content. A booking guest's email address never shows.
  */
 export const labelled = (
   text: string,
@@ -142,11 +306,23 @@ export const labelled = (
     ? clean(text)
     : hideOutside && isOutside(source)
       ? hiddenText(source)
-      : fence(text, source);
+      : fence(source === "booking_guest" ? maskEmails(text) : text, source);
+
+/** A title as an agent sees it: cleaned, and without a guest's email address. */
+export const titleFor = (title: unknown, source: Provenance | string) => {
+  const t = cleanTitle(title);
+  return source === "booking_guest" ? maskEmails(t) : t;
+};
+
+/** Outside sources an item's text can come from (see sources.ts). */
+const ITEM_SOURCES = new Set(["booking_guest", "inbound_email"]);
 
 /**
  * Who wrote something, from the person's point of view: themselves, a
- * teammate by name, or an outside source.
+ * teammate by name, or an outside source. `source` is an item's outside
+ * source (a booking guest, an email), and `editors` the other people who
+ * changed a team page after it was made: text anyone else touched isn't
+ * the person's own.
  */
 export function provenanceOf(
   viewerId: string,
@@ -155,13 +331,24 @@ export function provenanceOf(
     author_name?: string | null;
     imported?: boolean;
     subscribed?: boolean;
+    source?: string | null;
+    editors?: (string | null)[] | null;
   },
 ): Provenance {
   if (row.subscribed) return "subscribed_feed";
   if (row.imported) return "import";
-  if (!row.user_id || row.user_id === viewerId) return "you";
-  const name = cleanTitle(row.author_name ?? "").slice(0, 60) || "someone";
-  return `teammate:${name}`;
+  if (row.source && ITEM_SOURCES.has(row.source))
+    return row.source as Provenance;
+  const names = [
+    ...(row.user_id && row.user_id !== viewerId
+      ? [row.author_name ?? "someone"]
+      : []),
+    ...(row.editors ?? []).map((e) => e ?? "someone"),
+  ]
+    .map((n) => cleanTitle(n).slice(0, 60) || "someone")
+    .filter((n, i, all) => all.indexOf(n) === i);
+  if (!names.length) return "you";
+  return `teammate:${names.join(", ").slice(0, 60)}`;
 }
 
 /**

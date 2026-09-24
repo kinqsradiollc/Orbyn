@@ -8,6 +8,7 @@ import { policy, type Principal } from "./policy.js";
 import {
   CapabilityError,
   cursorCodec,
+  cursorKey,
   type Capability,
   type CapabilityContext,
   type Registry,
@@ -149,6 +150,7 @@ export async function withReadContext<T>(
   fn: (ctx: CapabilityContext) => Promise<T>,
   options: { primary?: boolean; now?: Date } = {},
 ): Promise<T> {
+  await cursorKey();
   return readTransaction(
     async (db) => {
       const prefs = await loadPrefs(db, p.user.id);
@@ -225,6 +227,7 @@ export async function execute(
     return cap.run(ctx, input as z.output<typeof cap.input>);
   };
   try {
+    await cursorKey();
     const answer =
       cap.mode === "read"
         ? await readTransaction(run, {

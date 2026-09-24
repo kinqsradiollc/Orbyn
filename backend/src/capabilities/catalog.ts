@@ -125,8 +125,8 @@ export function catalogMarkdown(catalog: Catalog): string {
     `- **Access levels.** ${Object.values(AGENT_ACCESS_LABELS)
       .map((l) => `${l.name}: ${l.blurb}`)
       .join(" ")} In phase A1 every tool reads; changes arrive in phase A3.`,
-    "- **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off.",
-    "- **Hide outside content.** A key can leave out text from outside Orbyn: subscribed calendars (shown as busy time), imported files, emails and booking answers. The agent sees that something is there, not what it says.",
+    "- **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off (only when signed in; a personal API key can't change it). Leaving a team takes it off your agent keys, and joining again doesn't give it back to them.",
+    '- **Hide outside content.** A key can leave out text from outside Orbyn: subscribed calendars (shown as busy time), imported files, tasks sent by email, and what booking guests typed (their events show as "Booking"). The agent sees that something is there, not what it says. Without it, that text comes back fenced as untrusted content and labelled with where it came from; a booking guest\'s email address never shows.',
     "- **Personal API keys (`ok_`).** They keep working here as a legacy connection for 90 days from this release. Answers carry `Deprecation` and `Sunset` headers. After that they work only with the REST API and CalDAV.",
     "- **Signing in from claude.ai and ChatGPT (OAuth)** is coming in phase A2. Until then, those apps can't connect. A request with no credential gets `401` and a `WWW-Authenticate` challenge that points to the protected-resource metadata (`/.well-known/oauth-protected-resource/mcp`).",
     "- Agent credentials work only here. The REST API and CalDAV refuse them. An app sign-in (a browser session) is refused here.",

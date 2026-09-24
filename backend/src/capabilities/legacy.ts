@@ -6,7 +6,8 @@ import { mutate } from "../modules/items/service.js";
 import { calendarEntries } from "../modules/planner/calendar.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
 import { READ } from "./common.js";
-import { cleanTitle, localTime } from "./format.js";
+import { cleanTitle, localTime, titleFor } from "./format.js";
+import { bookingItemIds, itemSourceSql } from "./sources.js";
 import { policy } from "./policy.js";
 import { refUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
@@ -74,8 +75,10 @@ export const searchItems = defineCapability({
         kind: string;
         status: string;
         due_at: Date | null;
+        source: string | null;
       }>(
-        `SELECT i.id, i.title, i.kind, i.status, i.due_at FROM items i
+        `SELECT i.id, i.title, i.kind, i.status, i.due_at, ${itemSourceSql("i")} AS source
+           FROM items i
           WHERE ${visibleItems("i", scope)} AND i.status NOT IN ('done','cancelled')
             AND NOT EXISTS (SELECT 1 FROM unnest(${p.add(words)}::text[]) w
                             WHERE (i.title || ' ' || i.notes) NOT ILIKE '%' || w || '%')
@@ -87,7 +90,7 @@ export const searchItems = defineCapability({
       ? rows
           .map(
             (r) =>
-              `- ${cleanTitle(r.title)} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
+              `- ${titleFor(r.title, r.source ?? "you")} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
               `  id: ${r.id} · open: ${refUrl({ type: "task", id: r.id })}`,
           )
           .join("\n")
@@ -188,21 +191,25 @@ export const getAgenda = defineCapability({
         p.values,
       ),
     ]);
+    const events = entries.filter(
+      (e) =>
+        e.kind === "event" &&
+        inSpaces(ctx.spaces, e.team_id) &&
+        e.status !== "done" &&
+        e.status !== "cancelled",
+    );
+    // A booking's event never shows its guest's email address.
+    const bookings = await bookingItemIds(
+      ctx.db,
+      events.map((e) => e.item_id),
+    );
     const lines = [
-      ...entries
-        .filter(
-          (e) =>
-            e.kind === "event" &&
-            inSpaces(ctx.spaces, e.team_id) &&
-            e.status !== "done" &&
-            e.status !== "cancelled",
-        )
-        .map((e) => ({
-          at: e.start_at,
-          text:
-            `${when(new Date(e.start_at), tz, !!e.all_day)} · ${cleanTitle(e.title)} (event)\n` +
-            `  id: ${e.item_id} · open: ${refUrl({ type: "task", id: e.item_id })}`,
-        })),
+      ...events.map((e) => ({
+        at: e.start_at,
+        text:
+          `${when(new Date(e.start_at), tz, !!e.all_day)} · ${titleFor(e.title, bookings.has(e.item_id) ? "booking_guest" : "you")} (event)\n` +
+          `  id: ${e.item_id} · open: ${refUrl({ type: "task", id: e.item_id })}`,
+      })),
       ...subscribed.map((e) => ({
         at: e.start_at,
         text: `${when(new Date(e.start_at), tz, e.all_day)} · ${cleanTitle(e.title)} (from "${cleanTitle(e.name) || "a subscribed calendar"}")`,

@@ -2,7 +2,14 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
-import { MODERN, bearer, helpers, type Person } from "./mcp-helpers.js";
+import {
+  MODERN,
+  bearer,
+  helpers,
+  spyPool,
+  trapNetwork,
+  type Person,
+} from "./mcp-helpers.js";
 
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
@@ -14,6 +21,9 @@ const { env } = await import("../src/config/env.js");
 
 const app = await buildApp();
 const h = helpers(app);
+// Nothing leaves the machine, and reads never step outside their transaction.
+const network = await trapNetwork();
+const pools = await spyPool();
 let me: Person;
 let key = "";
 
@@ -23,6 +33,8 @@ before(async () => {
   key = (await h.agentKey(me, { access: "read" })).key;
 });
 after(async () => {
+  network.restore();
+  pools.restore();
   await app.close();
   await pool.end();
 });
@@ -382,4 +394,10 @@ test("429 past a connection's limit, with Retry-After and a JSON-RPC body", asyn
     invalidateSettings();
     limiter.reset();
   }
+});
+
+// Last: everything above ran with the network and the pools watched.
+test("the MCP path never reached the network or the pool from inside a read", () => {
+  assert.deepEqual(network.calls, []);
+  assert.deepEqual(pools.stray, []);
 });

@@ -379,8 +379,9 @@ export function ConnectedAgentsCard({
               <View style={s.flex}>
                 <Text style={shared.label}>Hide outside content</Text>
                 <Text style={shared.small}>
-                  Leave out text from subscribed calendars, imported files and
-                  emails. The agent sees that something is there, not what it
+                  Leave out text from outside Orbyn: subscribed calendars,
+                  imported files, tasks sent by email and what booking guests
+                  typed. The agent sees that something is there, not what it
                   says.
                 </Text>
               </View>

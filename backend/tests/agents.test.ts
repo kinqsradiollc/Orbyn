@@ -196,6 +196,8 @@ test("audience isolation: agent credentials only work at the MCP address", async
   const ctx = await h.tool(oat, "get_context");
   assert.equal(ctx!.structuredContent.connection.kind, "oauth");
 
+  // Each probe from its own address: refused credentials count per address.
+  let probe = 0;
   for (const token of [key, oat, "ort_refresh_token"])
     for (const [method, url] of [
       ["GET", "/items"],
@@ -212,12 +214,13 @@ test("audience isolation: agent credentials only work at the MCP address", async
       ["GET", "/admin/users"],
       ["GET", "/docs"],
     ] as const) {
-      const r = await h.call(
-        token,
+      const r = await app.inject({
         method,
         url,
-        method === "GET" ? undefined : {},
-      );
+        remoteAddress: `10.56.0.${++probe}`,
+        headers: { authorization: `Bearer ${token}` },
+        ...(method === "GET" ? {} : { payload: {} }),
+      });
       assert.equal(r.statusCode, 401, `${token.slice(0, 4)} ${method} ${url}`);
     }
   const rest = await h.call(key, "GET", "/items");
@@ -748,5 +751,192 @@ test("the sweeper clears old agent activity, usage and long-expired credentials"
     (await pool.query("SELECT 1 FROM agent_grants WHERE id = $1", [id]))
       .rowCount,
     1,
+  );
+});
+
+test("a made-up agent credential counts against its address: sign-in limits still hold", async () => {
+  const { randomBytes } = await import("node:crypto");
+  const fresh = (prefix: string) =>
+    `${prefix}${randomBytes(32).toString("base64url")}`;
+  let n = 0;
+  for (const prefix of ["oak_", "oat_", "ort_", "ok_"]) {
+    // One address, a different random credential on every attempt.
+    const address = `10.55.1.${++n}`;
+    const codes: number[] = [];
+    for (let i = 0; i < 15; i++) {
+      const r = await app.inject({
+        method: "POST",
+        url: "/auth/login",
+        remoteAddress: address,
+        headers: { authorization: `Bearer ${fresh(prefix)}` },
+        payload: {
+          email: `nobody-${prefix}@example.com`,
+          password: "not-the-password",
+        },
+      });
+      codes.push(r.statusCode);
+    }
+    assert.ok(
+      codes.slice(0, 10).every((c) => c !== 429),
+      `${prefix}: ${codes.join(",")}`,
+    );
+    assert.ok(
+      codes.slice(10).every((c) => c === 429),
+      `${prefix}: ${codes.join(",")}`,
+    );
+  }
+});
+
+test("the general limit counts a real agent key against its connection, only at the MCP address", async () => {
+  const { agentLimitKey } = await import("../src/lib/auth.js");
+  const { key, id } = await h.agentKey(me);
+  const req = (url: string, token: string) =>
+    ({ url, headers: { authorization: `Bearer ${token}` } }) as never;
+  assert.equal(await agentLimitKey(req("/mcp", key)), `agent:${id}`);
+  assert.equal(
+    await agentLimitKey(req("/.well-known/oauth-protected-resource/mcp", key)),
+    `agent:${id}`,
+  );
+  // Anywhere else, or a key nobody made: per address, like everyone.
+  assert.equal(await agentLimitKey(req("/auth/login", key)), null);
+  assert.equal(await agentLimitKey(req("/items", key)), null);
+  assert.equal(await agentLimitKey(req("/mcp", `oak_${"x".repeat(43)}`)), null);
+  assert.equal(await agentLimitKey(req("/mcp", apiKey)), null);
+});
+
+test("a personal API key can't change what agents reach in a team", async () => {
+  const r = await h.call(apiKey, "PUT", `/teams/${teamId}/agent-access`, {
+    agent_access: "role",
+  });
+  assert.equal(r.statusCode, 403, r.body);
+  assert.match(r.json().message, /outside agents/);
+  const { keyBlockedRoute } = await import("../src/lib/auth.js");
+  for (const [method, route] of [
+    ["PUT", "/teams/:id/agent-access"],
+    ["POST", "/me/agent-keys"],
+    ["GET", "/me/agents"],
+    ["DELETE", "/me/agents/:id"],
+    ["POST", "/me/agents/:id/restore"],
+  ])
+    assert.ok(keyBlockedRoute(method, route), `${method} ${route}`);
+  // The owner, signed in, still can.
+  assert.equal(
+    (
+      await h.call(me.token, "PUT", `/teams/${teamId}/agent-access`, {
+        agent_access: "role",
+      })
+    ).statusCode,
+    200,
+  );
+});
+
+test("deleting a personal API key ends its legacy connection but keeps it and what it did", async () => {
+  const made = (
+    await h.call(me.token, "POST", "/me/api-keys", { name: "Retiring script" })
+  ).json();
+  assert.equal((await h.legacy(made.key, "ping")).status, 200);
+  const grant = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM agent_grants WHERE api_key_id = $1",
+      [made.id],
+    )
+  ).rows[0];
+  assert.ok(grant, "the legacy connection was made");
+  await pool.query(
+    `INSERT INTO agent_activity (user_id, grant_id, tool, outcome, summary)
+     VALUES ($1, $2, 'search', 'ok', 'Kept after the key went')`,
+    [me.id, grant.id],
+  );
+  assert.equal(
+    (await h.call(me.token, "DELETE", `/me/api-keys/${made.id}`)).statusCode,
+    204,
+  );
+  const after = (
+    await pool.query(
+      "SELECT revoked_at, api_key_id FROM agent_grants WHERE id = $1",
+      [grant.id],
+    )
+  ).rows[0];
+  assert.ok(after, "the connection is kept");
+  assert.ok(after.revoked_at, "and ended");
+  assert.equal(after.api_key_id, null);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM agent_activity WHERE grant_id = $1",
+        [grant.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+  const listed = (await h.call(me.token, "GET", "/me/agents")).json().grants;
+  assert.ok(!listed.some((g: { id: string }) => g.id === grant.id));
+});
+
+test("expired connections don't count against the limit, and leave the list a month after", async () => {
+  const { MAX_GRANTS } = await import("../src/modules/agents/service.js");
+  const someone = await h.register("agents-many", "Many");
+  const ids: string[] = [];
+  for (let i = 0; i < MAX_GRANTS; i++)
+    ids.push((await h.agentKey(someone, { name: `Key ${i}` })).id);
+  await assert.rejects(h.agentKey(someone), /up to 50 connected agents/);
+  // Expired ones make room.
+  await pool.query(
+    "UPDATE agent_grants SET expires_at = now() - interval '1 day' WHERE id = ANY ($1::uuid[])",
+    [ids.slice(0, 2)],
+  );
+  await h.agentKey(someone, { name: "After expiry" });
+  let listed = (await h.call(someone.token, "GET", "/me/agents")).json()
+    .grants as { id: string }[];
+  assert.ok(
+    listed.some((g) => g.id === ids[0]),
+    "shown as expired for now",
+  );
+  await pool.query(
+    "UPDATE agent_grants SET expires_at = now() - interval '31 days' WHERE id = $1",
+    [ids[0]],
+  );
+  listed = (await h.call(someone.token, "GET", "/me/agents")).json().grants;
+  assert.ok(!listed.some((g) => g.id === ids[0]));
+});
+
+test("leaving a team takes it off agent keys; joining again doesn't give it back", async () => {
+  const joiner = await h.register("agents-joiner", "Jo");
+  await h.call(me.token, "POST", `/teams/${teamId}/members`, {
+    email: joiner.email,
+    role: "member",
+  });
+  const { id } = await h.agentKey(joiner, { team_ids: [teamId] });
+  await h.call(me.token, "DELETE", `/teams/${teamId}/members/${joiner.id}`);
+  const teams = async () =>
+    (
+      await pool.query<{ team_ids: string[] }>(
+        "SELECT team_ids FROM agent_grants WHERE id = $1",
+        [id],
+      )
+    ).rows[0].team_ids;
+  assert.deepEqual(await teams(), []);
+  await h.call(me.token, "POST", `/teams/${teamId}/members`, {
+    email: joiner.email,
+    role: "member",
+  });
+  assert.deepEqual(await teams(), []);
+});
+
+test("the request log names known tools and methods only, never text a caller chose", async () => {
+  const { routeLabel } = await import("../src/modules/mcp-server/routes.js");
+  assert.equal(routeLabel("tools/call", "search", "search"), "mcp:search");
+  assert.equal(
+    routeLabel("tools/call", "x".repeat(100_000), undefined),
+    "mcp:unknown-tool",
+  );
+  assert.equal(routeLabel("tools/call", null, undefined), "mcp:tools/call");
+  assert.equal(
+    routeLabel("resources/read", null, undefined),
+    "mcp:resources/read",
+  );
+  assert.equal(
+    routeLabel(`made/up/${"y".repeat(500)}`, null, undefined),
+    "mcp:other",
   );
 });

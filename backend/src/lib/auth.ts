@@ -105,7 +105,7 @@ export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
@@ -137,20 +137,24 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // the key is gone. The apps register theirs signed in.
   { route: /^\/devices$/ },
   // Outside agents: a key can't make agent keys or see and revoke
-  // connections; only a signed-in person can.
+  // connections, or reopen a team to agents (a team's agent policy); only a
+  // signed-in person can.
   { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
+  { method: "PUT", route: /^\/teams\/:id\/agent-access$/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
 ];
 
-/** Whether an API key is refused on this request's route. */
-export function keyBlocked(r: FastifyRequest) {
-  const route = r.routeOptions?.url ?? "";
-  return KEY_BLOCKED.some(
-    (b) => (!b.method || b.method === r.method) && b.route.test(route),
+/** Whether an API key is refused on `method` + route pattern (`/teams/:id`). */
+export const keyBlockedRoute = (method: string, route: string) =>
+  KEY_BLOCKED.some(
+    (b) => (!b.method || b.method === method) && b.route.test(route),
   );
-}
+
+/** Whether an API key is refused on this request's route. */
+export const keyBlocked = (r: FastifyRequest) =>
+  keyBlockedRoute(r.method, r.routeOptions?.url ?? "");
 
 /**
  * The user and key behind a personal API key, for the MCP service's legacy
@@ -202,16 +206,46 @@ async function keyUser(r: FastifyRequest, token: string): Promise<UserRow> {
  */
 export const AGENT_TOKEN = /^(?:oat|ort|oak)_/;
 
+/** The MCP address and its protected-resource metadata: where agent credentials belong. */
+export function isMcpPath(url: string | undefined): boolean {
+  const path = (url ?? "").split("?")[0];
+  return (
+    path === "/mcp" || path.startsWith("/.well-known/oauth-protected-resource")
+  );
+}
+
+/** Live connections by credential hash (null: not a live one), for rate limiting. */
+const grantIds = new Map<string, { id: string | null; at: number }>();
+
 /**
- * What an agent credential's requests count against in the general rate
- * limit: the credential itself (a hash of it), never the address it comes
- * from. null for anything else.
+ * What an agent's requests count against in the general rate limit: its
+ * connection, never the address it comes from. Only on the MCP address, and
+ * only once the credential is known to belong to a live connection, so a
+ * made-up oak_… (a fresh one per request) counts against its address like
+ * any other request and can't slip past per-address limits such as the
+ * sign-in one. null otherwise.
  */
-export function agentTokenKey(r: FastifyRequest): string | null {
+export async function agentLimitKey(r: FastifyRequest): Promise<string | null> {
+  if (!isMcpPath(r.url)) return null;
   const token = r.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
-  return token && AGENT_TOKEN.test(token)
-    ? `agent:${digest(token).slice(0, 32)}`
-    : null;
+  if (!token || !AGENT_TOKEN.test(token)) return null;
+  const hash = digest(token);
+  const hit = grantIds.get(hash);
+  if (hit && Date.now() - hit.at < KEY_CACHE_MS)
+    return hit.id ? `agent:${hit.id}` : null;
+  const id =
+    (
+      await pool.query<{ grant_id: string }>(
+        `SELECT t.grant_id FROM agent_tokens t
+           JOIN agent_grants g ON g.id = t.grant_id
+          WHERE t.token_hash = $1 AND t.kind <> 'refresh' AND g.revoked_at IS NULL
+            AND (t.expires_at IS NULL OR t.expires_at > now())`,
+        [hash],
+      )
+    ).rows[0]?.grant_id ?? null;
+  if (grantIds.size > 5000) grantIds.clear();
+  grantIds.set(hash, { id, at: Date.now() });
+  return id ? `agent:${id}` : null;
 }
 
 export const AGENT_TOKEN_MESSAGE =

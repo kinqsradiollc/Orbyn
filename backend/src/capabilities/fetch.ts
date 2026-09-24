@@ -18,9 +18,11 @@ import {
   labelled,
   mdLink,
   provenanceOf,
+  titleFor,
 } from "./format.js";
 import { projectHub, projectMarkdown } from "./project.js";
 import { parseRef, refs, type Ref, type RefType } from "./refs.js";
+import { docEditorsSql, itemSourceSql } from "./sources.js";
 import {
   CapabilityError,
   defineCapability,
@@ -117,6 +119,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     version: number;
     updated_at: Date;
     attendee_count: number;
+    source: string | null;
   };
   const t = await visibleRow<Row>(
     ctx,
@@ -125,7 +128,8 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
         i.spent_minutes, i.progress, i.team_id, i.user_id, u.name AS author_name,
         i.project_id, p.name AS project_name, st.name AS stage_name,
         l.name AS list_name, a.name AS assignee, i.version, i.updated_at,
-        (SELECT count(*)::int FROM item_attendees x WHERE x.item_id = i.id) AS attendee_count
+        (SELECT count(*)::int FROM item_attendees x WHERE x.item_id = i.id) AS attendee_count,
+        ${itemSourceSql("i")} AS source
       FROM items i JOIN users u ON u.id = i.user_id
       LEFT JOIN projects p ON p.id = i.project_id
       LEFT JOIN project_stages st ON st.id = i.stage_id
@@ -177,8 +181,9 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     (m, b) => m + (b.end_at.getTime() - b.start_at.getTime()) / 60_000,
     0,
   );
+  const title = titleFor(t.title, provenance) || "Untitled";
   const lines = [
-    `# ${cleanTitle(t.title) || "Untitled"}`,
+    `# ${title}`,
     `- ${event ? "Event" : t.kind === "reminder" ? "Reminder" : "Task"} · ${t.status} · ${t.priority} priority · ${spaceName(t.team_id, ctx.principal.teams)}`,
   ];
   if (start)
@@ -219,7 +224,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     lines.push("", "## Notes", labelled(t.notes, provenance, hide(ctx)));
   return {
     id: r.id,
-    title: cleanTitle(t.title) || "Untitled",
+    title,
     text: lines.join("\n"),
     url: r.url,
     metadata: {
@@ -265,11 +270,13 @@ async function fetchDoc(
     folder_name: string | null;
     version: number;
     updated_at: Date;
+    editors: string[] | null;
   }>(
     ctx,
     (s, id) => `SELECT d.id, d.title, d.kind, d.content, d.team_id, d.user_id,
         u.name AS author_name, d.imported_from IS NOT NULL AS imported,
-        d.project_id, f.name AS folder_name, d.version, d.updated_at
+        d.project_id, f.name AS folder_name, d.version, d.updated_at,
+        ${docEditorsSql("d", s.user)} AS editors
       FROM docs d JOIN users u ON u.id = d.user_id
       LEFT JOIN folders f ON f.id = d.folder_id
      WHERE d.id = ${id} AND ${visibleDocs("d", s)}`,
