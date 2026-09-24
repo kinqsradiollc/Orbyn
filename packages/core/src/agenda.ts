@@ -126,9 +126,34 @@ function yoursAt(blocks: DocBlock[]): { at: number; after: number } {
  */
 const CALENDAR_LINE =
   /^(All day|\d{1,2}:\d{2}(–\d{1,2}:\d{2})?|[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2,3}) · /;
-const calendarLine = (b: DocBlock) =>
-  (b.type === "bullet" && CALENDAR_LINE.test(b.text)) ||
-  (b.type === "paragraph" && b.text.startsWith("Free: "));
+
+/**
+ * A line shaped like the ones under Study: the cards to review ("3 cards
+ * to review · 2 new", or "2 new" alone) and the exams coming ("Physics in
+ * 3 days · 60% known well").
+ */
+const STUDY_LINE =
+  /^(\d+ cards? to review( · \d+ new)?|\d+ new|.+ in \d+ days?( · \d+% known well)?)$/;
+
+/** The sections whose lines are to-dos: one per task. */
+const TODO_SECTIONS = new Set(["top priorities", "due today", "carried over"]);
+
+/**
+ * Whether a line under the calendar's section `section` (its heading, lower
+ * case) is one the calendar wrote there: an unticked to-do under the task
+ * sections, a card or exam line under Study, and a time or day line (or
+ * the free time) under the rest.
+ */
+function calendarLine(section: string | null, b: DocBlock) {
+  if (section !== null && TODO_SECTIONS.has(section))
+    return b.type === "todo" && !b.done;
+  if (section === "study")
+    return b.type === "bullet" && STUDY_LINE.test(b.text.trim());
+  return (
+    (b.type === "bullet" && CALENDAR_LINE.test(b.text)) ||
+    (b.type === "paragraph" && b.text.startsWith("Free: "))
+  );
+}
 
 const hasWords = (b: DocBlock) => b.type !== "divider" && !!b.text.trim();
 const sameLine = (a: DocBlock, b: DocBlock) =>
@@ -177,10 +202,12 @@ export function keepAgendaNotes(
     // Without its Notes heading, lines of yours can sit under the
     // calendar's last section, above the heading kept from: they go under
     // a Notes heading of their own, in front of it. The calendar's own
-    // lines at the top of that section stay the calendar's.
+    // lines at the top of that section, told by the section they're in,
+    // stay the calendar's.
     const under = current.slice(found.after + 1, found.at);
+    const section = headingText(current[found.after]);
     let from = 0;
-    while (from < under.length && calendarLine(under[from])) from++;
+    while (from < under.length && calendarLine(section, under[from])) from++;
     const stray = yours(under.slice(from));
     if (stray.length) return [...top, notes, ...stray, ...kept];
     // A heading with no name yet takes the Notes name, so the next rewrite

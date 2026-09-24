@@ -266,6 +266,85 @@ test("nothing you wrote is lost when the Notes heading is gone", () => {
   assert.ok(!texts(tail).includes(""));
 });
 
+test("the calendar's to-dos and study lines aren't taken for yours", () => {
+  const fresh = buildAgenda([], { timeZone: TZ, now: new Date() });
+  const top = fresh.slice(0, agendaNotesAt(fresh));
+  const tail = (current: DocBlock[]) =>
+    texts(keepAgendaNotes(current, fresh).slice(top.length));
+  const endOfDay: DocBlock[] = [
+    { type: "heading", level: 2, text: "End of day" },
+    { type: "bullet", text: "What went well: lots" },
+  ];
+  // Notes deleted with your words left under Carried over, whose to-do has
+  // since been done (the fresh page no longer lists it): the to-do was the
+  // calendar's and goes; your words stay, under Notes.
+  assert.deepEqual(
+    tail([
+      { type: "paragraph", text: "Today: 1 carried over." },
+      { type: "heading", level: 2, text: "Carried over" },
+      { type: "todo", done: false, text: "Write essay" },
+      { type: "paragraph", text: "my private thoughts" },
+      ...endOfDay,
+    ]),
+    ["Notes", "my private thoughts", "End of day", "What went well: lots"],
+  );
+  // The same under Due today and Top priorities, however many to-dos; a
+  // to-do of yours after your own words is yours.
+  for (const section of ["Due today", "Top priorities"])
+    assert.deepEqual(
+      tail([
+        { type: "paragraph", text: "Today: 2 tasks due." },
+        { type: "heading", level: 2, text: section },
+        { type: "todo", done: false, text: "Hand in the lab" },
+        { type: "todo", done: false, text: "Read chapter 4" },
+        { type: "paragraph", text: "remember the form" },
+        { type: "todo", done: false, text: "ring the office" },
+        ...endOfDay,
+      ]),
+      [
+        "Notes",
+        "remember the form",
+        "ring the office",
+        "End of day",
+        "What went well: lots",
+      ],
+      section,
+    );
+  // Under Study: the cards to review and the exams coming are the
+  // calendar's; the line you added is yours.
+  assert.deepEqual(
+    tail([
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Study" },
+      { type: "bullet", text: "3 cards to review · 2 new" },
+      { type: "bullet", text: "Physics exam in 4 days · 60% known well" },
+      { type: "bullet", text: "Chemistry quiz in 1 day" },
+      { type: "bullet", text: "revise chapter 3 tonight" },
+      ...endOfDay,
+    ]),
+    ["Notes", "revise chapter 3 tonight", "End of day", "What went well: lots"],
+  );
+  assert.deepEqual(
+    tail([
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Study" },
+      { type: "bullet", text: "2 new" },
+      ...endOfDay,
+    ]),
+    ["End of day", "What went well: lots"],
+  );
+  // A card line under another section isn't taken for the calendar's.
+  assert.deepEqual(
+    tail([
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Coming up" },
+      { type: "bullet", text: "3 cards to review" },
+      ...endOfDay,
+    ]),
+    ["Notes", "3 cards to review", "End of day", "What went well: lots"],
+  );
+});
+
 test("another day's opening line names the day, not today", () => {
   const blocks = buildAgenda([], {
     timeZone: TZ,

@@ -919,12 +919,18 @@ export function RootScreen() {
           }}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
-          onOpenNote={(event: Item) =>
+          occurrence={
+            task && taskOccurrence?.itemId === task.id
+              ? taskOccurrence.occurrence
+              : null
+          }
+          onOpenNote={(event: Item, series?: boolean) =>
             void client
-              // Opened on one class of a repeating event: that class's note.
+              // Opened on one class of a repeating event: that class's
+              // note, unless the series' own was asked for.
               .itemNote(
                 event.id,
-                event.rrule && taskOccurrence?.itemId === event.id
+                !series && event.rrule && taskOccurrence?.itemId === event.id
                   ? taskOccurrence.occurrence
                   : null,
               )

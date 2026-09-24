@@ -8,6 +8,7 @@ import {
   fillTitle,
   hasTeamPermission,
   localDateKey,
+  seriesNoteFor,
   templateTodos,
   type CalendarEntry,
   type Doc,
@@ -154,6 +155,12 @@ export function PageTemplatesPanel({
   const noted = (e: CalendarEntry) => !!eventNoteFor(notes, e);
   /** The note the chosen event already has: choosing it opens that note. */
   const opens = event ? eventNoteFor(notes, event) : undefined;
+  /**
+   * On one class of a repeating event, the note the whole series keeps
+   * (a running note, or one written before classes had their own): the
+   * class gets a page of its own, and this says the series' is still there.
+   */
+  const seriesNote = event && !opens ? seriesNoteFor(notes, event) : undefined;
   const project = projects.find((p) => p.id === projectId && inSpace(p));
   const usesEvent = picked ? blanksIn(picked).includes("event") : false;
   const todos = picked ? templateTodos(picked.content) : 0;
@@ -432,6 +439,12 @@ export function PageTemplatesPanel({
                   This event already has a note
                   {event?.occurrence ? " for this day" : ""}, “
                   {opens.title || "Untitled"}”. It opens instead of a new page.
+                </Text>
+              )}
+              {!!seriesNote && (
+                <Text style={[shared.small, s.noted]}>
+                  The series has a note of its own too, “
+                  {seriesNote.title || "Untitled"}”. This page is for this day.
                 </Text>
               )}
             </View>

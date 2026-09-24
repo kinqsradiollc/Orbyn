@@ -318,6 +318,31 @@ export function eventNoteFor(
   );
 }
 
+/**
+ * The note a repeating event keeps for the whole series, to point to when
+ * one class of it is open (a calendar entry with an `occurrence`): that
+ * class opens its own note, so the series' — the running note of a weekly
+ * one-to-one, and every note written before classes had their own — would
+ * otherwise go unseen from the calendar. Undefined for an event that
+ * doesn't repeat, or with no class given (the series' note opens then).
+ */
+export function seriesNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  if (!entry.occurrence) return undefined;
+  return notes.find(
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      n.occurrence === null,
+  );
+}
+
 /** Where an imported page came from. The file itself is not kept. */
 export type DocImportSource = {
   file_name: string;

@@ -15,8 +15,10 @@ import {
   dateLabel,
   hasTeamPermission,
   isClosed,
+  seriesNoteFor,
   statusLabels,
   statusOrder,
+  type EventNoteRef,
   type Item,
   type ItemDetail,
   type Project,
@@ -108,6 +110,7 @@ export function TaskDetail({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
 }: {
   visible: boolean;
@@ -127,8 +130,13 @@ export function TaskDetail({
   onFocus: (item: Item) => void;
   /** Called after every change so lists and counts refresh. */
   onChanged: () => void;
-  /** Open (or start) the meeting note for an event. */
-  onOpenNote?: (event: Item) => void;
+  /**
+   * Open (or start) the meeting note for an event: the class it was opened
+   * on for a repeating one, or with `series`, the whole series'.
+   */
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  /** The class of a repeating event the sheet was opened on (its first start). */
+  occurrence?: string | null;
 }) {
   return (
     <Sheet
@@ -148,6 +156,7 @@ export function TaskDetail({
           onFocus={onFocus}
           onChanged={onChanged}
           onOpenNote={onOpenNote}
+          occurrence={occurrence}
           onOpenItem={onOpenItem}
         />
       )}
@@ -164,6 +173,7 @@ function Body({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
 }: {
   seed: Item;
@@ -172,7 +182,8 @@ function Body({
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
-  onOpenNote?: (event: Item) => void;
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  occurrence?: string | null;
   onOpenItem: (item: Item) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
@@ -224,6 +235,29 @@ function Body({
   ]);
 
   const item: Item = detail ?? seed;
+  // Opened on one class of a repeating event: that class opens its own
+  // note, so a note the series keeps for every class is pointed to here.
+  const [seriesNote, setSeriesNote] = useState<EventNoteRef | null>(null);
+  const noteKind = seed.kind === "event" && !!seed.rrule && !!onOpenNote;
+  useEffect(() => {
+    if (!noteKind || !occurrence) return;
+    let alive = true;
+    client.eventNotes([seed.id]).then(
+      (notes) =>
+        alive &&
+        setSeriesNote(
+          seriesNoteFor(notes, {
+            item_id: seed.id,
+            occurrence,
+            team_id: seed.team_id,
+          }) ?? null,
+        ),
+      () => alive && setSeriesNote(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [seed.id, seed.team_id, noteKind, occurrence]);
   const team = item.team_id
     ? teams.find((t) => t.id === item.team_id)
     : undefined;
@@ -1008,6 +1042,19 @@ function Body({
               onPress={() => onOpenNote(item)}
             />
           )}
+          {item.kind === "event" &&
+            !readOnly &&
+            !!onOpenNote &&
+            !!occurrence &&
+            !!seriesNote && (
+              <Button
+                secondary
+                title={`Series note: “${seriesNote.title || "Untitled"}”`}
+                icon="fileText"
+                disabled={busy}
+                onPress={() => onOpenNote(item, true)}
+              />
+            )}
           {item.kind === "task" && !readOnly && !isClosed(item.status) && (
             <Button
               destructive

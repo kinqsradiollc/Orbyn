@@ -612,15 +612,17 @@ export type EventRow = {
 /**
  * Which time of an event a note is for. A repeating event keeps a note per
  * class, known by the class's first start (`occurrence`, as the calendar
- * gives it); `start` is when that class now starts, and `title` what it's
- * called, for the note's first lines. An event that doesn't repeat, or a
- * whole series (no time given), keeps one note: `occurrence` is null.
+ * gives it); `start` is when that class now starts, and `title` and
+ * `location` what it's called and where, for the note's first lines (a
+ * class moved on its own can have its own). An event that doesn't repeat,
+ * or a whole series (no time given), keeps one note: `occurrence` is null.
  */
 export type EventTime = {
   repeats: boolean;
   occurrence: Date | null;
   start: Date | null;
   title: string;
+  location: string;
 };
 
 /**
@@ -640,9 +642,16 @@ export async function eventTime(
       occurrence: null,
       start: event.due_at,
       title: event.title,
+      location: event.location,
     };
   if (!at)
-    return { repeats: true, occurrence: null, start: null, title: event.title };
+    return {
+      repeats: true,
+      occurrence: null,
+      start: null,
+      title: event.title,
+      location: event.location,
+    };
   const series = { ...event, due_at: event.due_at } as SeriesRow;
   const when = new Date(at);
   const changes = (
@@ -658,6 +667,7 @@ export async function eventTime(
     occurrence,
     start: c?.due_at ? new Date(c.due_at) : occurrence,
     title: c?.title?.trim() || event.title,
+    location: c?.location ?? event.location,
   });
   if (isOccurrence(series, when)) return classAt(when);
   const moved = changes.find(
@@ -1192,7 +1202,7 @@ export async function docRoutes(app: FastifyInstance) {
     const content = meetingNoteTemplate({
       title: when.title,
       due_at: when.start ? when.start.toISOString() : null,
-      location: event.location,
+      location: when.location,
       timeZone,
     });
     // A class's note says which class in its name, so a term of them reads

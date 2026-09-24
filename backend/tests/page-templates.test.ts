@@ -17,6 +17,7 @@ const {
   PAGE_TEMPLATE_STARTERS,
   blankDate,
   eventNoteFor,
+  seriesNoteFor,
   blanksIn,
   fillBlanks,
   fillTemplate,
@@ -28,6 +29,10 @@ type DocBlock = import("@orbyn/core").DocBlock;
 
 const app = await buildApp();
 type Json = Record<string, any>;
+// Each call comes from its own address, so the file's many calls stay
+// under the per-minute limit (which the 429 test checks on its own).
+let caller = 0;
+const address = () => `10.73.${Math.floor(++caller / 250)}.${caller % 250}`;
 const call = (
   token: string | null,
   method: "GET" | "POST" | "PUT" | "DELETE",
@@ -37,6 +42,7 @@ const call = (
   app.inject({
     method,
     url,
+    remoteAddress: address(),
     headers: token ? { authorization: `Bearer ${token}` } : {},
     ...(payload === undefined ? {} : { payload: payload as object }),
   });
@@ -479,6 +485,37 @@ test("an event on the calendar is marked with the note it opens", () => {
     undefined,
   );
   assert.equal(eventNoteFor([], { item_id: "review" }), undefined);
+
+  // One class open: the series' own note is pointed to beside it, whether
+  // or not the class has one of its own; never for a whole event.
+  for (const occurrence of [
+    "2026-09-24T09:00:00.000Z",
+    "2026-09-25T09:00:00.000Z",
+  ])
+    assert.equal(
+      seriesNoteFor(notes, { item_id: "standup", occurrence })?.doc_id,
+      "standup-series",
+    );
+  assert.equal(seriesNoteFor(notes, { item_id: "standup" }), undefined);
+  assert.equal(
+    seriesNoteFor(notes, { item_id: "review", occurrence: null }),
+    undefined,
+  );
+  assert.equal(
+    seriesNoteFor(notes, {
+      item_id: "sync",
+      occurrence: "2026-09-24T09:00:00.000Z",
+    }),
+    undefined,
+  );
+  assert.equal(
+    seriesNoteFor(notes, {
+      item_id: "sync",
+      team_id: "team-1",
+      occurrence: "2026-09-24T09:00:00.000Z",
+    })?.doc_id,
+    "team-sync",
+  );
 });
 
 test("each class of a repeating event keeps its own note", async () => {
@@ -490,6 +527,7 @@ test("each class of a repeating event keeps its own note", async () => {
       due_at: "2026-09-24T09:00:00.000Z",
       end_at: "2026-09-24T10:00:00.000Z",
       rrule: "FREQ=DAILY;COUNT=5",
+      location: "Room 1",
     })
   ).json();
   const at = (day: number) =>
@@ -553,7 +591,7 @@ test("each class of a repeating event keeps its own note", async () => {
   const second = await open(at(1));
   assert.equal(second.statusCode, 201, second.body);
   assert.equal(second.json().title, "Physics lecture · 25 September 2026");
-  assert.equal(texts(second.json().content)[0], "2026-09-25 at 10:00");
+  assert.equal(texts(second.json().content)[0], "2026-09-25 at 10:00 · Room 1");
   assert.equal(second.json().occurrence, at(1));
   const secondAgain = await open(at(1));
   assert.equal(secondAgain.statusCode, 200);
@@ -602,19 +640,21 @@ test("each class of a repeating event keeps its own note", async () => {
   );
 
   // A class moved on its own keeps its note, found by its first time or
-  // its new one, and a page made for it carries its own title and day.
+  // its new one, and a page made for it carries its own title, day and
+  // room.
   const moved = await call(
     owner.token,
     "PUT",
     `/items/${series.id}?scope=this&occurrence=${encodeURIComponent(at(3))}`,
     {
-      title: "Physics lecture (Room 2)",
+      title: "Physics lecture (Room 9)",
       notes: series.notes,
       kind: "event",
       status: series.status,
       priority: series.priority,
       due_at: "2026-09-27T13:00:00.000Z",
       end_at: "2026-09-27T14:00:00.000Z",
+      location: "Room 9",
       team_id: null,
       version: series.version,
     },
@@ -625,9 +665,9 @@ test("each class of a repeating event keeps its own note", async () => {
   assert.equal(fourth.json().occurrence, at(3));
   assert.equal(
     fourth.json().title,
-    "Physics lecture (Room 2) · 27 September 2026",
+    "Physics lecture (Room 9) · 27 September 2026",
   );
-  assert.equal(texts(fourth.json().content)[0], "2026-09-27 at 14:00");
+  assert.equal(texts(fourth.json().content)[0], "2026-09-27 at 14:00 · Room 9");
   assert.equal((await open(at(3))).json().id, fourth.json().id);
   const fourthPage = await call(
     owner.token,
@@ -747,6 +787,329 @@ test("each class of a repeating event keeps its own note", async () => {
     (await call(owner.token, "GET", `/docs/event-notes?items=${many}`))
       .statusCode,
     422,
+  );
+});
+
+test("a class's note stays with its class when the series changes", async () => {
+  const hour = 3_600_000;
+  const plus = (iso: string, ms: number) =>
+    new Date(Date.parse(iso) + ms).toISOString();
+  const openNote = (id: string, occurrence?: string) =>
+    call(
+      owner.token,
+      "POST",
+      `/items/${id}/note`,
+      occurrence ? { occurrence } : undefined,
+    );
+  const noteId = async (id: string, occurrence?: string) => {
+    const r = await openNote(id, occurrence);
+    assert.ok([200, 201].includes(r.statusCode), r.body);
+    return r.json().id as string;
+  };
+  const getItem = async (id: string) =>
+    (await call(owner.token, "GET", `/items/${id}`)).json();
+  const body = (item: Json, patch: Json = {}) => ({
+    title: item.title,
+    notes: item.notes ?? "",
+    kind: item.kind,
+    status: item.status,
+    priority: item.priority,
+    due_at: item.due_at,
+    end_at: item.end_at,
+    team_id: null,
+    version: item.version,
+    ...patch,
+  });
+  const put = (
+    id: string,
+    data: Json,
+    scope?: { scope: "this" | "following"; occurrence: string },
+  ) =>
+    call(
+      owner.token,
+      "PUT",
+      `/items/${id}${
+        scope
+          ? `?scope=${scope.scope}&occurrence=${encodeURIComponent(scope.occurrence)}`
+          : ""
+      }`,
+      data,
+    );
+  const lecture = async (title: string, start: string, rrule: string) =>
+    (
+      await call(owner.token, "POST", "/items", {
+        title,
+        kind: "event",
+        due_at: start,
+        end_at: plus(start, hour),
+        rrule,
+        timezone: TZ,
+        location: "Room 1",
+      })
+    ).json() as Json;
+  /**
+   * What the calendar marks each class of these events with, by the notes
+   * the server lists for them: class start → note id.
+   */
+  const marks = async (ids: string[], from: string, to: string) => {
+    const view = (
+      await call(
+        owner.token,
+        "GET",
+        `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      )
+    ).json();
+    const refs = (
+      await call(owner.token, "GET", `/docs/event-notes?items=${ids.join(",")}`)
+    ).json();
+    const out: Record<string, string> = {};
+    for (const e of view.entries.filter((x: Json) => ids.includes(x.item_id))) {
+      const found = eventNoteFor(refs, e);
+      if (found) out[e.occurrence] = found.doc_id;
+    }
+    return out;
+  };
+
+  // A daily lecture, eight classes from 5 October at 10:00 in London, with
+  // notes made ahead for some of them and one for the whole series.
+  const day = (n: number, h = 9) =>
+    new Date(Date.UTC(2026, 9, 5 + n, h)).toISOString();
+  const chem = await lecture("Chemistry lecture", day(0), "FREQ=DAILY;COUNT=8");
+  const n0 = await noteId(chem.id, day(0));
+  const n2 = await noteId(chem.id, day(2));
+  const n4 = await noteId(chem.id, day(4));
+  const n6 = await noteId(chem.id, day(6));
+  const whole = await noteId(chem.id);
+
+  // "This and following" from the third class, to another room at the same
+  // time: the notes from there on go with their classes to the new series.
+  const split = await put(
+    chem.id,
+    body(await getItem(chem.id), {
+      due_at: day(2),
+      end_at: day(2, 10),
+      location: "Room 9",
+    }),
+    { scope: "following", occurrence: day(2) },
+  );
+  assert.equal(split.statusCode, 200, split.body);
+  const next = split.json();
+  assert.notEqual(next.id, chem.id);
+  const prepped = await openNote(next.id, day(4));
+  assert.equal(prepped.statusCode, 200, prepped.body);
+  assert.equal(prepped.json().id, n4);
+  assert.equal(await noteId(next.id, day(2)), n2);
+  assert.equal(await noteId(next.id, day(6)), n6);
+  // What stays with the old series stays: its first class, and its own note.
+  assert.equal(await noteId(chem.id, day(0)), n0);
+  assert.equal(await noteId(chem.id), whole);
+  assert.equal((await openNote(chem.id, day(4))).statusCode, 422);
+  assert.deepEqual(await marks([chem.id, next.id], day(-1), day(9)), {
+    [day(0)]: n0,
+    [day(2)]: n2,
+    [day(4)]: n4,
+    [day(6)]: n6,
+  });
+
+  // Again from the seventh class, an hour later this time: each note moves
+  // to its class's new time.
+  const n7 = await noteId(next.id, day(7));
+  const later = await put(
+    next.id,
+    body(await getItem(next.id), { due_at: day(6, 10), end_at: day(6, 11) }),
+    { scope: "following", occurrence: day(6) },
+  );
+  assert.equal(later.statusCode, 200, later.body);
+  const third = later.json();
+  assert.equal(await noteId(third.id, day(6, 10)), n6);
+  assert.equal(await noteId(third.id, day(7, 10)), n7);
+  assert.equal(await noteId(next.id, day(4)), n4);
+  assert.deepEqual(await marks([chem.id, next.id, third.id], day(-1), day(9)), {
+    [day(0)]: n0,
+    [day(2)]: n2,
+    [day(4)]: n4,
+    [day(6, 10)]: n6,
+    [day(7, 10)]: n7,
+  });
+
+  // The whole series moved an hour later: every class, past ones too, still
+  // opens its own note at its new time, and the old times are gone.
+  const sept = (n: number) =>
+    new Date(Date.UTC(2026, 8, 1 + n, 9)).toISOString();
+  const bio = await lecture("Biology lecture", sept(0), "FREQ=DAILY;COUNT=6");
+  const bioNotes = new Map<number, string>();
+  for (const n of [0, 1, 3, 5]) bioNotes.set(n, await noteId(bio.id, sept(n)));
+  const bioWhole = await noteId(bio.id);
+  const bioItem = await getItem(bio.id);
+  const moved = await put(
+    bio.id,
+    body(bioItem, {
+      due_at: plus(bioItem.due_at, hour),
+      end_at: plus(bioItem.end_at, hour),
+    }),
+  );
+  assert.equal(moved.statusCode, 200, moved.body);
+  for (const [n, id] of bioNotes) {
+    const r = await openNote(bio.id, plus(sept(n), hour));
+    assert.equal(r.statusCode, 200, `class ${n}: ${r.body}`);
+    assert.equal(r.json().id, id, `class ${n}`);
+    assert.equal((await openNote(bio.id, sept(n))).statusCode, 422);
+  }
+  assert.equal(await noteId(bio.id), bioWhole);
+  assert.deepEqual(
+    await marks([bio.id], sept(-1), sept(7)),
+    Object.fromEntries(
+      [...bioNotes].map(([n, id]) => [plus(sept(n), hour), id]),
+    ),
+  );
+
+  // Once the series has moved on to a later class (as it does when a class
+  // has passed), "this and following" from its first class moves all of
+  // it: each note still follows its own class.
+  const lab = await lecture("Physics lab", sept(10), "FREQ=DAILY;COUNT=4");
+  const labNotes: string[] = [];
+  for (const n of [10, 11, 12, 13])
+    labNotes.push(await noteId(lab.id, sept(n)));
+  await pool.query("UPDATE items SET due_at = $2, end_at = $3 WHERE id = $1", [
+    lab.id,
+    sept(12),
+    plus(sept(12), hour),
+  ]);
+  const fromFirst = await put(
+    lab.id,
+    body(await getItem(lab.id), {
+      due_at: plus(sept(10), hour),
+      end_at: plus(sept(10), 2 * hour),
+    }),
+    { scope: "following", occurrence: sept(10) },
+  );
+  assert.equal(fromFirst.statusCode, 200, fromFirst.body);
+  assert.equal(fromFirst.json().id, lab.id);
+  for (const [i, n] of [10, 11, 12, 13].entries())
+    assert.equal(
+      await noteId(lab.id, plus(sept(n), hour)),
+      labNotes[i],
+      `${n}`,
+    );
+
+  // Moved a day later across the clocks going back (25 October): a weekly
+  // Saturday class becomes a Sunday one at the same 10:00, and each note
+  // follows its class, not a fixed 24 hours.
+  const sat = await lecture(
+    "Seminar",
+    "2026-10-17T09:00:00.000Z",
+    "FREQ=WEEKLY;COUNT=3",
+  );
+  const was = [
+    "2026-10-17T09:00:00.000Z",
+    "2026-10-24T09:00:00.000Z",
+    "2026-10-31T10:00:00.000Z",
+  ];
+  const now = [
+    "2026-10-18T09:00:00.000Z",
+    "2026-10-25T10:00:00.000Z",
+    "2026-11-01T10:00:00.000Z",
+  ];
+  const satNotes = [];
+  for (const t of was) satNotes.push(await noteId(sat.id, t));
+  const satItem = await getItem(sat.id);
+  const sunday = await put(
+    sat.id,
+    body(satItem, {
+      due_at: plus(satItem.due_at, 24 * hour),
+      end_at: plus(satItem.end_at, 24 * hour),
+    }),
+  );
+  assert.equal(sunday.statusCode, 200, sunday.body);
+  for (const [i, t] of now.entries())
+    assert.equal(await noteId(sat.id, t), satNotes[i], t);
+  assert.deepEqual(
+    await marks(
+      [sat.id],
+      "2026-10-16T00:00:00.000Z",
+      "2026-11-03T00:00:00.000Z",
+    ),
+    Object.fromEntries(now.map((t, i) => [t, satNotes[i]])),
+  );
+
+  // A new pattern keeps the notes of the classes it still has; a class it
+  // doesn't have any more leaves its note to the whole event, not to a
+  // time nothing opens.
+  const nov = (n: number) =>
+    new Date(Date.UTC(2026, 10, 2 + n, 10)).toISOString();
+  const prac = await lecture("Practical", nov(0), "FREQ=DAILY;COUNT=5");
+  const prac0 = await noteId(prac.id, nov(0));
+  const prac2 = await noteId(prac.id, nov(2));
+  const weekly = await put(
+    prac.id,
+    body(await getItem(prac.id), { rrule: "FREQ=WEEKLY;COUNT=5" }),
+  );
+  assert.equal(weekly.statusCode, 200, weekly.body);
+  assert.equal(await noteId(prac.id, nov(0)), prac0);
+  assert.equal((await openNote(prac.id, nov(2))).statusCode, 422);
+  const kept = await openNote(prac.id);
+  assert.equal(kept.statusCode, 200, kept.body);
+  assert.equal(kept.json().id, prac2);
+  assert.equal(kept.json().occurrence, null);
+
+  // Classes deleted (from one on, or one alone) leave their notes to the
+  // whole event too.
+  const prac14 = await noteId(prac.id, nov(14));
+  const prac28 = await noteId(prac.id, nov(28));
+  const prac7 = await noteId(prac.id, nov(7));
+  const cut = await call(
+    owner.token,
+    "DELETE",
+    `/items/${prac.id}?version=${(await getItem(prac.id)).version}&scope=following&occurrence=${encodeURIComponent(nov(14))}`,
+  );
+  assert.ok([200, 204].includes(cut.statusCode), cut.body);
+  const skip = await call(
+    owner.token,
+    "DELETE",
+    `/items/${prac.id}?version=${(await getItem(prac.id)).version}&scope=this&occurrence=${encodeURIComponent(nov(7))}`,
+  );
+  assert.ok([200, 204].includes(skip.statusCode), skip.body);
+  const left = new Map(
+    (
+      await pool.query<{ id: string; occurrence: Date | null }>(
+        "SELECT id, occurrence FROM docs WHERE item_id = $1 AND kind = 'meeting'",
+        [prac.id],
+      )
+    ).rows.map((r) => [r.id, r.occurrence?.toISOString() ?? null]),
+  );
+  assert.deepEqual(Object.fromEntries(left), {
+    [prac0]: nov(0),
+    [prac2]: null,
+    [prac7]: null,
+    [prac14]: null,
+    [prac28]: null,
+  });
+
+  // A repeat taken off: the one event keeps every note, none of them tied
+  // to a time.
+  const single = await put(
+    bio.id,
+    body(await getItem(bio.id), { rrule: null }),
+  );
+  assert.equal(single.statusCode, 200, single.body);
+  assert.equal(
+    (
+      await pool.query(
+        `SELECT 1 FROM docs WHERE item_id = $1 AND kind = 'meeting'
+            AND occurrence IS NOT NULL`,
+        [bio.id],
+      )
+    ).rowCount,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM docs WHERE item_id = $1 AND kind = 'meeting'",
+        [bio.id],
+      )
+    ).rowCount,
+    5,
   );
 });
 

@@ -889,12 +889,18 @@ export function App() {
             onOpenItem={(i) => openItem(i)}
             onChanged={refresh}
             onError={report}
-            onOpenNote={(event) => {
+            occurrence={
+              openOccurrence?.itemId === shownTask.id
+                ? openOccurrence.occurrence
+                : null
+            }
+            onOpenNote={(event, series) => {
               void client
-                // Opened on one class of a repeating event: that class's note.
+                // Opened on one class of a repeating event: that class's
+                // note, unless the series' own was asked for.
                 .itemNote(
                   event.id,
-                  event.rrule && openOccurrence?.itemId === event.id
+                  !series && event.rrule && openOccurrence?.itemId === event.id
                     ? openOccurrence.occurrence
                     : null,
                 )

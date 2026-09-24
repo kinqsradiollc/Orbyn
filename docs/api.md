@@ -485,8 +485,24 @@ one and a page made from a template for the same event) still make only one note
 A repeating event keeps a note per time (each lecture of a term, each standup): the body
 `{ "occurrence": "<start>" }` — a calendar entry's `occurrence`, or the new start of a time moved
 on its own — opens that time's note, titled with its day ("Physics lecture · 25 September 2026")
-and carrying `occurrence`. Without a body the note is the whole series' own. `422` for a time the
-event doesn't have. A note's `occurrence` is `null` for any other page.
+and carrying `occurrence`, with that time's own title, start and location. Without a body the
+note is the whole series' own. `422` for a time the event doesn't have. A note's `occurrence` is
+`null` for any other page.
+
+A series' own note (`occurrence` `null`) is what the event opens from anywhere that doesn't name a
+time: Overview, ⌘K, notices. Every note written before times had their own is one, and so is a
+one-off event's note after the event starts repeating. Opening one time of the event from the
+calendar never opens it (that time gets its own note), so the apps point to it instead: the task
+panel shows "Series note: “…”" beside Meeting note, and New page from a template says so when a
+time is chosen (`seriesNoteFor(notes, entry)` in `packages/core/src/docs.ts`).
+
+Notes stay with their times when the series changes. A "this and following" edit moves the notes
+of the times from there on to the new series, each to the matching time (the n-th time after the
+edit is the n-th of the new series, so a move to another hour or day, or across a clock change,
+keeps them lined up). Moving or re-timing the whole series (`all`, a new start or time zone) moves
+each note to its time's new start the same way; with a new pattern (say weekly to daily) each moves
+by as much as the series did. A note whose time no longer exists (deleted, skipped, or not in the
+new pattern) becomes the series' own note, rather than pointing at a time nothing opens.
 
 ### `GET /docs/event-notes?items=<id,id,…>&from=&to=` (auth)
 
