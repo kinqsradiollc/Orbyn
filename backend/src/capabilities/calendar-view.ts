@@ -23,7 +23,7 @@ import {
 } from "./format.js";
 import { refs } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
-import { bookingItemIds } from "./sources.js";
+import { itemSources } from "./sources.js";
 
 /**
  * The calendar for up to 31 days, as the person sees it: events (repeats
@@ -62,7 +62,7 @@ export const getCalendar = defineCapability({
   name: "get_calendar",
   title: "Calendar",
   description:
-    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Events a booking guest made are marked "booking_guest". With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
+    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry\'s provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
   input: z
     .object({
       from: z
@@ -152,13 +152,19 @@ export const getCalendar = defineCapability({
     const derived = derivedBlocks(visible, prefs, places, (at) =>
       day.format(new Date(at)),
     );
-    // A booking's event holds what its guest typed: marked, without their
-    // email address, and only "Booking" when outside content is hidden.
-    const bookings = await bookingItemIds(
-      ctx.db,
-      visible.filter((e) => e.kind === "event").map((e) => e.item_id),
-    );
+    // Titles from outside (what a booking guest typed, an email's subject)
+    // are marked, fenced, without a guest's email address, and only their
+    // neutral name ("Booking", "Task from email") when outside content is
+    // hidden. A session carries its task's.
+    const inReach = sessions.filter((s) => inSpaces(ctx.spaces, s.team_id));
+    const sources = await itemSources(ctx.db, [
+      ...visible.map((e) => e.item_id),
+      ...inReach.map((s) => s.item_id),
+    ]);
+    const sourceOf = (id: string) => sources.get(id) ?? "you";
     const hideOutside = ctx.principal.flags.hide_outside_content;
+    const titled = (id: string, title: string, kind: string) =>
+      titleFor(title, sourceOf(id), hideOutside, kind) || "Untitled";
     const entries: z.output<typeof item>[] = [
       ...visible.map((e) => {
         const event = e.kind === "event";
@@ -167,39 +173,34 @@ export const getCalendar = defineCapability({
           id: e.item_id,
           ...(e.occurrence && event ? { occurrence: e.occurrence } : {}),
         });
-        const booked = event && bookings.has(e.item_id);
         return {
           kind: event ? ("event" as const) : ("deadline" as const),
           id: r.id,
-          title: booked
-            ? titleFor(e.title, "booking_guest", hideOutside)
-            : cleanTitle(e.title) || "Untitled",
+          title: titled(e.item_id, e.title, event ? "event" : "task"),
           url: r.url,
           start: both(e.start_at, tz)!,
           end: event ? both(e.end_at, tz) : null,
           all_day: !!e.all_day,
           busy: !!e.busy,
           team: teamName(e.team_id),
-          provenance: booked ? "booking_guest" : "you",
+          provenance: sourceOf(e.item_id),
         };
       }),
-      ...sessions
-        .filter((s) => inSpaces(ctx.spaces, s.team_id))
-        .map((s) => {
-          const r = refs({ type: "task", id: s.item_id });
-          return {
-            kind: "session" as const,
-            id: r.id,
-            title: cleanTitle(s.title) || "Untitled",
-            url: r.url,
-            start: both(s.start_at, tz)!,
-            end: both(s.end_at, tz),
-            all_day: false,
-            busy: true,
-            team: teamName(s.team_id),
-            provenance: "you",
-          };
-        }),
+      ...inReach.map((s) => {
+        const r = refs({ type: "task", id: s.item_id });
+        return {
+          kind: "session" as const,
+          id: r.id,
+          title: titled(s.item_id, s.title, "task"),
+          url: r.url,
+          start: both(s.start_at, tz)!,
+          end: both(s.end_at, tz),
+          all_day: false,
+          busy: true,
+          team: teamName(s.team_id),
+          provenance: sourceOf(s.item_id),
+        };
+      }),
       ...(personal
         ? habits.rows.map((h) => ({
             kind: "habit" as const,
@@ -221,9 +222,14 @@ export const getCalendar = defineCapability({
         .map((d) => ({
           kind: d.kind,
           id: null,
-          title: cleanTitle(
-            d.label ?? (d.kind === "travel" ? "Travel" : "Buffer"),
-          ),
+          // "Travel to" names the event's location, which an email's
+          // subject can set: only "Travel" for an event from outside.
+          title:
+            sources.has(d.item_id) && d.label.startsWith("Travel to ")
+              ? "Travel"
+              : cleanTitle(
+                  d.label || (d.kind === "travel" ? "Travel" : "Buffer"),
+                ),
           url: null,
           start: both(d.start_at, tz)!,
           end: both(d.end_at, tz),
@@ -283,9 +289,7 @@ export const getCalendar = defineCapability({
             ),
         })),
         ...derived.map((d) => ({ start_at: d.start_at, end_at: d.end_at })),
-        ...sessions
-          .filter((s) => inSpaces(ctx.spaces, s.team_id))
-          .map((s) => ({ start_at: s.start_at, end_at: s.end_at })),
+        ...inReach.map((s) => ({ start_at: s.start_at, end_at: s.end_at })),
         ...(personal
           ? habits.rows.map((h) => ({
               start_at: iso(h.start_at),
@@ -321,6 +325,7 @@ export const getCalendar = defineCapability({
     const OUTSIDE_HEADINGS: Record<string, string> = {
       subscribed_feed: "From subscribed calendars:",
       booking_guest: "Booked by guests (their words):",
+      inbound_email: "Sent in by email:",
     };
     for (const source of [...new Set(outside.map((e) => e.provenance))])
       md.push(
@@ -330,7 +335,8 @@ export const getCalendar = defineCapability({
           outside
             .filter((e) => e.provenance === source)
             .map(
-              (e) => `- ${e.start.local} ${e.title}${e.id ? ` · ${e.id}` : ""}`,
+              (e) =>
+                `- ${e.all_day ? `${e.start.local.slice(0, 10)} all day` : e.start.local} ${e.kind === "event" || e.kind === "calendar" ? "" : `${e.kind}: `}${e.title}${e.team ? ` (${e.team})` : ""}${e.id ? ` · ${e.id}` : ""}`,
             )
             .join("\n"),
           source as Provenance,

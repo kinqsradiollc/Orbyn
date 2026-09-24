@@ -6,8 +6,14 @@ import { mutate } from "../modules/items/service.js";
 import { calendarEntries } from "../modules/planner/calendar.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
 import { READ } from "./common.js";
-import { cleanTitle, localTime, titleFor } from "./format.js";
-import { bookingItemIds, itemSourceSql } from "./sources.js";
+import {
+  cleanTitle,
+  fencedTitle,
+  lineTitle,
+  localTime,
+  titleFor,
+} from "./format.js";
+import { itemSourceSql, itemSources } from "./sources.js";
 import { policy } from "./policy.js";
 import { refUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
@@ -21,6 +27,24 @@ import { defineCapability } from "./registry.js";
  */
 
 const LEGACY = "Kept for older connections; ";
+
+/**
+ * An item's title for a line of the older tools' text: its neutral name
+ * with the text fenced after it when it came from outside Orbyn, or only
+ * that name when the connection hides outside content.
+ */
+const outsideLine = (
+  title: string,
+  source: string | null,
+  kind: string,
+  hideOutside: boolean,
+) =>
+  lineTitle(
+    titleFor(title, source ?? "you", hideOutside, kind) || "Untitled",
+    null,
+    source ?? "you",
+    kind,
+  );
 
 /** "Thu 25 Sep 09:00 (2026-09-24T23:00:00.000Z)": local first, exact after. */
 const when = (at: Date, tz: string, allDay = false) =>
@@ -90,7 +114,7 @@ export const searchItems = defineCapability({
       ? rows
           .map(
             (r) =>
-              `- ${titleFor(r.title, r.source ?? "you", ctx.principal.flags.hide_outside_content)} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
+              `- ${outsideLine(r.title, r.source, r.kind, ctx.principal.flags.hide_outside_content)} (${r.kind}, ${r.status}${r.due_at ? `, due ${when(r.due_at, ctx.timezone)}` : ""})\n` +
               `  id: ${r.id} · open: ${refUrl({ type: "task", id: r.id })}`,
           )
           .join("\n")
@@ -182,8 +206,13 @@ export const getAgenda = defineCapability({
             visible: true,
           })
         : Promise.resolve([]),
-      ctx.db.query<{ id: string; title: string; due_at: Date }>(
-        `SELECT i.id, i.title, i.due_at FROM items i
+      ctx.db.query<{
+        id: string;
+        title: string;
+        due_at: Date;
+        source: string | null;
+      }>(
+        `SELECT i.id, i.title, i.due_at, ${itemSourceSql("i")} AS source FROM items i
           WHERE ${visibleItems("i", scope)} AND i.kind <> 'event'
             AND i.status NOT IN ('done','cancelled')
             AND i.due_at >= ${p.add(from)} AND i.due_at < ${p.add(to)}
@@ -198,10 +227,11 @@ export const getAgenda = defineCapability({
         e.status !== "done" &&
         e.status !== "cancelled",
     );
-    // A booking's event never shows its guest's email address, and is
-    // only "Booking" when the connection hides outside content.
+    // A title from outside (what a booking guest typed, an email's
+    // subject) is fenced, never shows a guest's email address, and is only
+    // its neutral name when the connection hides outside content.
     const hideOutside = ctx.principal.flags.hide_outside_content;
-    const bookings = await bookingItemIds(
+    const sources = await itemSources(
       ctx.db,
       events.map((e) => e.item_id),
     );
@@ -209,7 +239,7 @@ export const getAgenda = defineCapability({
       ...events.map((e) => ({
         at: e.start_at,
         text:
-          `${when(new Date(e.start_at), tz, !!e.all_day)} · ${titleFor(e.title, bookings.has(e.item_id) ? "booking_guest" : "you", hideOutside)} (event)\n` +
+          `${when(new Date(e.start_at), tz, !!e.all_day)} · ${outsideLine(e.title, sources.get(e.item_id) ?? null, "event", hideOutside)} (event)\n` +
           `  id: ${e.item_id} · open: ${refUrl({ type: "task", id: e.item_id })}`,
       })),
       ...subscribed.map((e) => ({
@@ -217,12 +247,12 @@ export const getAgenda = defineCapability({
         // Busy time only, when the connection hides outside content.
         text: hideOutside
           ? `${when(new Date(e.start_at), tz, e.all_day)} · Busy (subscribed calendar)`
-          : `${when(new Date(e.start_at), tz, e.all_day)} · ${cleanTitle(e.title)} (from "${cleanTitle(e.name) || "a subscribed calendar"}")`,
+          : `${when(new Date(e.start_at), tz, e.all_day)} · ${fencedTitle(e.title, "subscribed_feed")} (from "${cleanTitle(e.name) || "a subscribed calendar"}")`,
       })),
       ...tasks.rows.map((t) => ({
         at: t.due_at.toISOString(),
         text:
-          `${when(t.due_at, tz)} · ${cleanTitle(t.title)} (task, due)\n` +
+          `${when(t.due_at, tz)} · ${outsideLine(t.title, t.source, "task", hideOutside)} (task, due)\n` +
           `  id: ${t.id} · open: ${refUrl({ type: "task", id: t.id })}`,
       })),
     ]

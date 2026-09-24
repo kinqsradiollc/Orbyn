@@ -22,6 +22,7 @@ import {
   cleanTitle,
   fence,
   isOutside,
+  lineTitle,
   maskEmails,
   provenanceOf,
   titleFor,
@@ -283,7 +284,7 @@ async function runSearch(
           : null;
       return {
         id: r0.id,
-        title: titleFor(r.title, provenance, hideOutside) || "Untitled",
+        title: titleFor(r.title, provenance, hideOutside, r.type) || "Untitled",
         url: r0.url,
         type: r.type,
         // Left out when it came from outside and the connection hides that.
@@ -572,7 +573,10 @@ export const findPassages = defineCapability({
     const markdown = passages.length
       ? passages
           .map((p, n) => {
-            const where = [p.source.title, ...p.heading_path].join(" › ");
+            const where = [
+              lineTitle(p.source.title, null, p.provenance),
+              ...p.heading_path,
+            ].join(" › ");
             const body =
               p.provenance === "you"
                 ? `> ${p.quote.replace(/\n/g, "\n> ")}`

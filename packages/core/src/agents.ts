@@ -73,7 +73,7 @@ export type TeamAgentAccess = (typeof TEAM_AGENT_ACCESS)[number];
  * the text of things from outside Orbyn. Imported pages keep their titles.
  */
 export const AGENT_HIDE_OUTSIDE_TEXT =
-  "Leave out text from outside Orbyn: events from subscribed calendars (shown as busy), what imported files say, tasks sent by email (shown as “Task from email”) and what booking guests typed (shown as “Booking”). The agent sees that something is there, not what it says. Imported pages keep their titles.";
+  "Leave out text from outside Orbyn: events from subscribed calendars (shown as busy), what imported files say, tasks and events sent by email (shown as “Task from email” or “Event from email”) and what booking guests typed (shown as “Booking”). The agent sees that something is there, not what it says. Imported pages keep their titles.";
 
 /** Agent keys last this long unless another length is picked. */
 export const AGENT_KEY_DEFAULT_DAYS = 30;

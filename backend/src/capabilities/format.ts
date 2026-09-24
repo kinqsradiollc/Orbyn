@@ -146,25 +146,32 @@ function dropHiddenElements(s: string): string {
   return out + s.slice(from);
 }
 
-/** Whether a tag's text styles its element invisible. */
+/**
+ * Whether a tag's text styles its element invisible. Each style value runs
+ * to the quote that opened it, and the search goes on after it, so the tag
+ * is read once.
+ */
 function hidesItself(tag: string): boolean {
   STYLE_ATTRIBUTE.lastIndex = 0;
   for (let m; (m = STYLE_ATTRIBUTE.exec(tag));) {
     const from = m.index + m[0].length;
-    const dq = tag.indexOf('"', from);
-    const sq = tag.indexOf("'", from);
-    const end = dq < 0 ? sq : sq < 0 ? dq : Math.min(dq, sq);
-    // A value that never closes (nor does any after it) hides nothing.
+    const end = tag.indexOf(m[0][m[0].length - 1], from);
+    // A value that never closes leaves the tag open: it hides nothing.
     if (end < 0) return false;
     if (HIDING.test(tag.slice(from, end))) return true;
+    STYLE_ATTRIBUTE.lastIndex = end + 1;
   }
   return false;
 }
 
 /**
  * Spans, divs and paragraphs styled invisible, removed with what they hide
- * (up to their closing tag). Every tag that shares a ">" with one already
- * read is part of the same text, so it is read once.
+ * (up to their closing tag). A tag is first read the quick way, up to its
+ * first ">"; one with a quote in it is read again as a browser reads it,
+ * since a quoted value may hold ">" (`<p style="a:b;>;display:none">`).
+ * Every tag that shares a ">" with one already read is part of the same
+ * text, and a tag read the long way is skipped whole, so each part of the
+ * text is read once.
  */
 function dropInvisibleElements(s: string): string {
   const gt = finder(s, ">");
@@ -173,19 +180,38 @@ function dropInvisibleElements(s: string): string {
   let from = 0;
   // The last tag end read and found not to hide anything: its suffixes don't.
   let plainUntil = -1;
+  const drop = (start: number, end: number) => {
+    out += s.slice(from, start);
+    from = end;
+    STYLED_OPEN.lastIndex = end;
+  };
   STYLED_OPEN.lastIndex = 0;
   for (let m; (m = STYLED_OPEN.exec(s));) {
     const tagEnd = gt(m.index + m[0].length);
     if (tagEnd < 0) break;
-    const closing = close(m[1].toLowerCase(), tagEnd + 1);
+    const name = m[1].toLowerCase();
+    // An element that never closes is left as it is.
+    const closing = close(name, tagEnd + 1);
     if (!closing || tagEnd === plainUntil) continue;
-    if (!hidesItself(s.slice(m.index, tagEnd))) {
-      plainUntil = tagEnd;
+    const quick = s.slice(m.index, tagEnd);
+    if (hidesItself(quick)) {
+      drop(m.index, closing.end);
       continue;
     }
-    out += s.slice(from, m.index);
-    from = closing.end;
-    STYLED_OPEN.lastIndex = from;
+    if (/["']/.test(quick)) {
+      const tag = readTag(s, m.index);
+      // Open to the end of the text: nothing after it is an element (and
+      // dropLoadingTags turns it all into text).
+      if (tag === "open") break;
+      if (tag && tag.end > tagEnd + 1) {
+        const closing = close(name, tag.end);
+        if (closing && hidesItself(s.slice(m.index, tag.end - 1)))
+          drop(m.index, closing.end);
+        else STYLED_OPEN.lastIndex = tag.end;
+        continue;
+      }
+    }
+    plainUntil = tagEnd;
   }
   return out + s.slice(from);
 }
@@ -679,30 +705,70 @@ export const labelled = (
       : fence(source === "booking_guest" ? maskEmails(text) : text, source);
 
 /**
+ * The neutral name an item whose title came from outside goes by: a
+ * booking's event (its title made from what the guest typed) is "Booking",
+ * and a task or event sent in by email (its subject, which anyone could
+ * have written) is "Task from email" or "Event from email". null for other
+ * sources.
+ */
+export const outsideHeading = (source: Provenance | string, kind?: string) =>
+  source === "booking_guest"
+    ? "Booking"
+    : source === "inbound_email"
+      ? kind === "event"
+        ? "Event from email"
+        : "Task from email"
+      : null;
+
+/**
  * A title as an agent sees it: cleaned, and without a guest's email address.
- * Titles made from outside text are left out when the connection hides
- * outside content: a booking's (from what its guest typed, their name, say)
- * is only "Booking", and a task sent by email (its subject, which anyone
- * could have written) is only "Task from email".
+ * Titles made from outside text are only their neutral name (see
+ * outsideHeading) when the connection hides outside content. `kind` is the
+ * item's kind ("event", "task", …).
  */
 export const titleFor = (
   title: unknown,
   source: Provenance | string,
   hideOutside = false,
+  kind?: string,
 ) => {
-  if (source === "inbound_email")
-    return hideOutside ? "Task from email" : cleanTitle(title);
-  if (source !== "booking_guest") return cleanTitle(title);
-  return hideOutside ? "Booking" : maskEmails(cleanTitle(title)) || "Booking";
+  const heading = outsideHeading(source, kind);
+  if (!heading) return cleanTitle(title);
+  if (hideOutside) return heading;
+  const text = cleanTitle(title);
+  return (source === "booking_guest" ? maskEmails(text) : text) || heading;
 };
 
-/** The heading an item with a title from outside shows instead of it. */
-export const outsideHeading = (source: Provenance | string) =>
-  source === "booking_guest"
-    ? "Booking"
-    : source === "inbound_email"
-      ? "Task from email"
-      : null;
+/**
+ * A title fenced on its line of Markdown: for a title from outside Orbyn in
+ * a list, where a fence of its own lines would break the list.
+ */
+export function fencedTitle(title: string, source: Provenance | string) {
+  const body = cleanTitle(title).replace(FENCE_OPEN, "&lt;untrusted-content");
+  const label = source.replace(/["<>\n]/g, "");
+  return `<untrusted-content source="${label}">${body}</untrusted-content>`;
+}
+
+/**
+ * An item's title (linked when there's a url) for one line of Markdown.
+ * The person's own, or a teammate's, is as it is. One made from outside
+ * text (see outsideHeading) goes by its neutral name, and the text itself
+ * follows, fenced; when the connection hides outside content, the title
+ * already is that name and nothing follows.
+ */
+export function lineTitle(
+  title: string,
+  url: string | null,
+  source: Provenance | string,
+  kind?: string,
+): string {
+  const link = (text: string) => (url ? mdLink(text, url) : text);
+  const name = outsideHeading(source, kind);
+  if (!name) return link(title);
+  return title === name
+    ? link(name)
+    : `${link(name)} ${fencedTitle(title, source)}`;
+}
 
 /** Outside sources an item's text can come from (see sources.ts). */
 const ITEM_SOURCES = new Set(["booking_guest", "inbound_email"]);

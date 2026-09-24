@@ -30,6 +30,7 @@ import {
   both,
   cleanTitle,
   fence,
+  lineTitle,
   localTime,
   mdLink,
   titleFor,
@@ -37,7 +38,7 @@ import {
 } from "./format.js";
 import { refs, todayUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
-import { bookingItemIds } from "./sources.js";
+import { itemSourceSql, itemSources } from "./sources.js";
 
 /**
  * The Today list for an agent: what's planned (sessions and events), what's
@@ -75,7 +76,11 @@ const entry = z.object({
   after_deadline: z
     .boolean()
     .describe("A session that ends after its task's deadline."),
-  provenance: z.string().describe('"you", or where the text came from.'),
+  provenance: z
+    .string()
+    .describe(
+      '"you", or where the title came from (a session carries its task\'s).',
+    ),
 });
 
 const task = z.object({
@@ -89,6 +94,7 @@ const task = z.object({
     .number()
     .describe("Minutes of the person's sessions that end before the deadline."),
   estimate_minutes: z.number().nullable(),
+  provenance: z.string().describe('"you", or where the title came from.'),
 });
 
 /**
@@ -122,6 +128,7 @@ export const todayOutput = z.object({
         url: z.string(),
         minutes: z.number(),
         why: z.array(z.string()),
+        provenance: z.string().describe('"you", or where the title came from.'),
       }),
     )
     .describe("What to do next, with the reasons."),
@@ -141,12 +148,15 @@ type DueRow = {
   status: string;
   estimate_minutes: number | null;
   planned_minutes: number;
+  source: string | null;
 };
 
 /**
  * Today for one principal: events, sessions, what's due and what's late,
- * in the person's local day, reaching only the principal's spaces.
- * `hideOutside` shows subscribed calendars' events as busy time only.
+ * in the person's local day, reaching only the principal's spaces. Every
+ * title carries where it came from; `hideOutside` shows subscribed
+ * calendars' events as busy time only, and titles from outside (a booking
+ * guest's, an email's subject) only by their neutral name.
  */
 export async function todayForPrincipal(
   db: Queryable,
@@ -170,6 +180,7 @@ export async function todayForPrincipal(
         : `i.due_at < ${a}`;
     return {
       sql: `SELECT i.id, i.title, i.due_at, i.priority, i.status, i.estimate_minutes,
+                   ${itemSourceSql("i")} AS source,
                    coalesce((SELECT sum(extract(epoch FROM b.end_at - b.start_at) / 60)
                                FROM time_blocks b
                               WHERE b.item_id = i.id AND b.user_id = ${scope.user}
@@ -249,14 +260,15 @@ export async function todayForPrincipal(
   // Only what this principal reaches: events in its spaces, and the
   // person's subscribed calendars when it reaches Personal.
   const reach = events.filter((e) => inSpaces(spaces, e.team_id));
-  const bookings = await bookingItemIds(
-    db,
-    reach.filter((e) => e.kind === "event").map((e) => e.item_id),
-  );
-  const eventTitle = (e: { item_id: string; title: string }) =>
-    bookings.has(e.item_id)
-      ? titleFor(e.title, "booking_guest", who.hideOutside)
-      : cleanTitle(e.title) || "Untitled";
+  // Where each event's and session's title came from: a booking guest, an
+  // email, or the person.
+  const sources = await itemSources(db, [
+    ...reach.filter((e) => e.kind === "event").map((e) => e.item_id),
+    ...sessions.map((s) => s.item_id),
+  ]);
+  const sourceOf = (id: string) => sources.get(id) ?? "you";
+  const titled = (id: string, title: string, kind: string) =>
+    titleFor(title, sourceOf(id), who.hideOutside, kind) || "Untitled";
   const subscribedTitle = (title: string) =>
     who.hideOutside
       ? "Busy (subscribed calendar)"
@@ -272,14 +284,14 @@ export async function todayForPrincipal(
         return {
           kind: "session" as const,
           id: r.id,
-          title: cleanTitle(s.title) || "Untitled",
+          title: titled(s.item_id, s.title, "task"),
           url: r.url,
           start: both(s.start_at, tz)!,
           end: both(s.end_at, tz),
           all_day: false,
           after_deadline:
             !!deadline && Date.parse(s.end_at) > deadline.getTime(),
-          provenance: "you",
+          provenance: sourceOf(s.item_id),
         };
       }),
     ...reach
@@ -294,13 +306,13 @@ export async function todayForPrincipal(
         return {
           kind: "event" as const,
           id: r.id,
-          title: eventTitle(e),
+          title: titled(e.item_id, e.title, "event"),
           url: r.url,
           start: both(e.start_at, tz)!,
           end: both(e.end_at, tz),
           all_day: !!e.all_day,
           after_deadline: false,
-          provenance: bookings.has(e.item_id) ? "booking_guest" : "you",
+          provenance: sourceOf(e.item_id),
         };
       }),
     ...subscribed.map((e) => ({
@@ -354,13 +366,18 @@ export async function todayForPrincipal(
     if (minutes >= 5) {
       // Name what ends it (buffers and travel come just before an event).
       // Only the person's own events are named: text from outside (what a
-      // booking guest typed, a subscribed calendar's titles) goes only in
-      // the fenced list of what's planned, never here or in Up next's
-      // reasons, which aren't fenced.
+      // booking guest typed, an email's subject, a subscribed calendar's
+      // titles) goes only in the fenced list of what's planned, never here
+      // or in Up next's reasons, which aren't fenced.
+      const NEUTRAL: Record<string, string> = {
+        booking_guest: "a booking",
+        inbound_email: "an event from email",
+      };
       const named = [
         ...timed.map((e) => ({
           start: Date.parse(e.start_at),
-          title: bookings.has(e.item_id) ? "a booking" : eventTitle(e),
+          title:
+            NEUTRAL[sourceOf(e.item_id)] ?? titled(e.item_id, e.title, "event"),
         })),
         ...subscribed
           .filter((e) => e.busy && !e.all_day)
@@ -386,13 +403,15 @@ export async function todayForPrincipal(
     const r = refs({ type: "task", id: t.id });
     return {
       id: r.id,
-      title: cleanTitle(t.title) || "Untitled",
+      title:
+        titleFor(t.title, t.source ?? "you", who.hideOutside) || "Untitled",
       url: r.url,
       due: both(t.due_at, tz)!,
       priority: t.priority,
       status: t.status,
       planned_minutes: Number(t.planned_minutes),
       estimate_minutes: t.estimate_minutes,
+      provenance: t.source ?? "you",
     };
   };
 
@@ -411,18 +430,20 @@ export async function todayForPrincipal(
     reach: (teamId) => inSpaces(spaces, teamId),
   });
   // And only tasks it can see, checked as every other read is.
+  // (With where each one's title came from.)
   const suggested = next.suggestions.map((s) => s.item_id);
-  const allowed = new Set<string>();
+  const allowed = new Map<string, string>();
   if (suggested.length) {
     const p = new Params();
     const scope = scopeFor(spaces, p);
     for (const r of (
-      await db.query<{ id: string }>(
-        `SELECT i.id FROM items i WHERE i.id = ANY (${p.add(suggested)}::uuid[]) AND ${visibleItems("i", scope)}`,
+      await db.query<{ id: string; source: string | null }>(
+        `SELECT i.id, ${itemSourceSql("i")} AS source FROM items i
+          WHERE i.id = ANY (${p.add(suggested)}::uuid[]) AND ${visibleItems("i", scope)}`,
         p.values,
       )
     ).rows)
-      allowed.add(r.id);
+      allowed.set(r.id, r.source ?? "you");
   }
 
   return {
@@ -440,12 +461,14 @@ export async function todayForPrincipal(
       .map((s) => {
         const r = refs({ type: "task", id: s.item_id });
         const why = s.reasons.map((x) => cleanTitle(x));
+        const source = allowed.get(s.item_id)!;
         return {
           id: r.id,
-          title: cleanTitle(s.title) || "Untitled",
+          title: titleFor(s.title, source, who.hideOutside) || "Untitled",
           url: r.url,
           minutes: s.minutes,
           why: why.length ? why : ["Next on your list"],
+          provenance: source,
         };
       }),
     needs_you: { asks: asks.rows[0]?.n ?? 0 },
@@ -473,8 +496,8 @@ export function todayMarkdown(t: TodayList): string {
       `- ${time} ${e.kind === "session" ? "Session: " : ""}${e.url ? mdLink(e.title, e.url) : e.title}${e.after_deadline ? " (after the deadline)" : ""}${e.id ? ` · ${e.id}` : ""}`,
     );
   }
-  // Outside text (subscribed calendars, what booking guests typed), fenced
-  // by where it came from.
+  // Outside text (subscribed calendars, what booking guests typed, emails'
+  // subjects), fenced by where it came from.
   for (const source of [...new Set(outside.map((e) => e.provenance))])
     out.push(
       fence(
@@ -482,7 +505,7 @@ export function todayMarkdown(t: TodayList): string {
           .filter((e) => e.provenance === source)
           .map(
             (e) =>
-              `- ${e.all_day ? "all day" : e.start.local.slice(-5)} ${e.title}${e.id ? ` · ${e.id}` : ""}`,
+              `- ${e.all_day ? "all day" : e.start.local.slice(-5)} ${e.kind === "session" ? "Session: " : ""}${e.title}${e.after_deadline ? " (after the deadline)" : ""}${e.id ? ` · ${e.id}` : ""}`,
           )
           .join("\n"),
         source as Provenance,
@@ -492,12 +515,14 @@ export function todayMarkdown(t: TodayList): string {
   if (!t.due.length) out.push("Nothing due today.");
   for (const d of t.due)
     out.push(
-      `- ${d.due.local.slice(-5)} ${mdLink(d.title, d.url)} (${d.priority}; ${d.planned_minutes} min planned${d.estimate_minutes ? ` of ${d.estimate_minutes}` : ""}) · ${d.id}`,
+      `- ${d.due.local.slice(-5)} ${lineTitle(d.title, d.url, d.provenance)} (${d.priority}; ${d.planned_minutes} min planned${d.estimate_minutes ? ` of ${d.estimate_minutes}` : ""}) · ${d.id}`,
     );
   if (t.late.length) {
     out.push("", `## Late (${t.late_total})`);
     for (const d of t.late)
-      out.push(`- was due ${d.due.local} ${mdLink(d.title, d.url)} · ${d.id}`);
+      out.push(
+        `- was due ${d.due.local} ${lineTitle(d.title, d.url, d.provenance)} · ${d.id}`,
+      );
     if (t.late_total > t.late.length)
       out.push(`- …and ${t.late_total - t.late.length} more.`);
   }
@@ -505,7 +530,7 @@ export function todayMarkdown(t: TodayList): string {
     out.push("", "## Up next");
     for (const u of t.up_next)
       out.push(
-        `- ${mdLink(u.title, u.url)}, ${u.minutes} min: ${u.why.join("; ")}`,
+        `- ${lineTitle(u.title, u.url, u.provenance)}, ${u.minutes} min: ${u.why.join("; ")}`,
       );
   }
   if (t.needs_you.asks)

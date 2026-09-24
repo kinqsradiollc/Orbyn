@@ -5,7 +5,8 @@ import type { Queryable } from "../db/pool.js";
  *
  * - a booking's event on its host's calendar holds what the guest typed
  *   (their name, email address, note and answers): "booking_guest";
- * - a task sent in by email holds the email: "inbound_email";
+ * - a task or event sent in by email holds the email (its subject is the
+ *   title, and can set the place): "inbound_email";
  * - a team page may have been written by teammates after whoever made it.
  *
  * The SQL here is added to the queries that read such rows, so provenance
@@ -40,20 +41,27 @@ export function docEditorsSql(alias: string, viewer: string): string {
   ) END`;
 }
 
-/** Which of `ids` are the events a booking put on its host's calendar. */
-export async function bookingItemIds(
+/** An item's outside source (see itemSourceSql). */
+export type ItemSource = "booking_guest" | "inbound_email";
+
+/**
+ * The outside source of each of `ids` that has one: the events a booking
+ * put on its host's calendar, and the tasks and events sent in by email.
+ * An id not in the map is the person's own (or a teammate's).
+ */
+export async function itemSources(
   db: Queryable,
   ids: string[],
-): Promise<Set<string>> {
+): Promise<Map<string, ItemSource>> {
   const unique = [...new Set(ids)];
-  if (!unique.length) return new Set();
-  return new Set(
+  if (!unique.length) return new Map();
+  return new Map(
     (
-      await db.query<{ id: string }>(
-        `SELECT DISTINCT x.id FROM unnest($1::uuid[]) AS x(id)
-          WHERE EXISTS (SELECT 1 FROM bookings bk WHERE bk.item_ids @> ARRAY[x.id])`,
+      await db.query<{ id: string; source: ItemSource }>(
+        `SELECT x.id, ${itemSourceSql("x")} AS source
+           FROM unnest($1::uuid[]) AS x(id)`,
         [unique],
       )
-    ).rows.map((r) => r.id),
+    ).rows.flatMap((r) => (r.source ? [[r.id, r.source] as const] : [])),
   );
 }

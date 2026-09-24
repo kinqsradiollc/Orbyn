@@ -17,10 +17,16 @@ import {
   teamFilter,
   teamInput,
 } from "./common.js";
-import { both, cleanTitle, mdLink, titleFor } from "./format.js";
+import {
+  both,
+  cleanTitle,
+  lineTitle,
+  provenanceOf,
+  titleFor,
+} from "./format.js";
 import { refs, type RefType } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
-import { itemSourceSql } from "./sources.js";
+import { docEditorsSql, itemSourceSql } from "./sources.js";
 
 /**
  * Lists with filters, as a saved view would show them (saved views arrive
@@ -51,6 +57,11 @@ const row = z.object({
   project_id: z.string().nullable(),
   assignee: z.string().nullable(),
   updated_at: z.string(),
+  provenance: z
+    .string()
+    .describe(
+      'Who wrote it: "you", "teammate:<name>", or where it came from (booking_guest, inbound_email, import).',
+    ),
 });
 
 export const query = defineCapability({
@@ -165,8 +176,10 @@ export const query = defineCapability({
       if (a.kind) where.push(`i.kind = ${p.add(a.kind)}`);
       if (a.folder) unsupported("folder");
       select = `i.id, i.kind AS type, i.title, i.status, i.due_at, i.priority, i.team_id,
-        i.project_id, a.name AS assignee, i.updated_at, ${itemSourceSql("i")} AS source`;
-      from = "items i LEFT JOIN users a ON a.id = i.assignee_id";
+        i.project_id, a.name AS assignee, i.updated_at, ${itemSourceSql("i")} AS source,
+        i.user_id, au.name AS author_name`;
+      from = `items i LEFT JOIN users a ON a.id = i.assignee_id
+        JOIN users au ON au.id = i.user_id`;
       order = {
         due: "i.due_at NULLS LAST, i.id",
         updated: "i.updated_at DESC, i.id",
@@ -198,8 +211,9 @@ export const query = defineCapability({
         if (v !== undefined) unsupported(k);
       select = `d.id, 'doc' AS type, d.title, d.kind AS status, NULL::timestamptz AS due_at,
         NULL AS priority, d.team_id, d.project_id, NULL AS assignee, d.updated_at,
-        NULL AS source`;
-      from = "docs d";
+        NULL AS source, d.user_id, au.name AS author_name,
+        d.imported_from IS NOT NULL AS imported, ${docEditorsSql("d", scope.user)} AS editors`;
+      from = "docs d JOIN users au ON au.id = d.user_id";
       order = {
         due: "d.updated_at DESC, d.id",
         updated: "d.updated_at DESC, d.id",
@@ -231,8 +245,8 @@ export const query = defineCapability({
         if (v !== undefined) unsupported(k);
       select = `p.id, 'project' AS type, p.name AS title, p.status, p.deadline AS due_at,
         NULL AS priority, p.team_id, p.id AS project_id, NULL AS assignee, p.updated_at,
-        NULL AS source`;
-      from = "projects p";
+        NULL AS source, p.user_id, au.name AS author_name`;
+      from = "projects p JOIN users au ON au.id = p.user_id";
       order = {
         due: "p.deadline NULLS LAST, p.id",
         updated: "p.updated_at DESC, p.id",
@@ -269,8 +283,10 @@ export const query = defineCapability({
       }))
         if (v !== undefined) unsupported(k);
       select = `w.id, 'record' AS type, w.title, w.status, w.due_at, NULL AS priority,
-        w.team_id, w.project_id, o.name AS assignee, w.updated_at, NULL AS source`;
-      from = "work_records w LEFT JOIN users o ON o.id = w.owner_id";
+        w.team_id, w.project_id, o.name AS assignee, w.updated_at, NULL AS source,
+        w.created_by AS user_id, au.name AS author_name`;
+      from = `work_records w LEFT JOIN users o ON o.id = w.owner_id
+        LEFT JOIN users au ON au.id = w.created_by`;
       order = {
         due: "w.due_at NULLS LAST, w.id",
         updated: "w.updated_at DESC, w.id",
@@ -292,6 +308,10 @@ export const query = defineCapability({
       assignee: string | null;
       updated_at: Date;
       source: string | null;
+      user_id: string | null;
+      author_name: string | null;
+      imported?: boolean;
+      editors?: string[] | null;
     }>(
       `SELECT ${select} FROM ${from}
         WHERE ${where.map((w) => `(${w})`).join(" AND ")}
@@ -304,6 +324,7 @@ export const query = defineCapability({
         itemLike ? (r.type === "event" ? "event" : "task") : r.type
       ) as z.output<typeof row>["type"];
       const at2 = refs({ type: type as RefType, id: r.id }, r.project_id);
+      const provenance = provenanceOf(ctx.principal.user.id, r);
       return {
         id: at2.id,
         // A booking's event never shows its guest's email address, and is
@@ -311,8 +332,9 @@ export const query = defineCapability({
         title:
           titleFor(
             r.title,
-            r.source ?? "you",
+            provenance,
             ctx.principal.flags.hide_outside_content,
+            type,
           ) || "Untitled",
         url: at2.url,
         type,
@@ -323,6 +345,7 @@ export const query = defineCapability({
         project_id: r.project_id,
         assignee: r.assignee ? cleanTitle(r.assignee) : null,
         updated_at: r.updated_at.toISOString(),
+        provenance,
       };
     });
     const next =
@@ -334,7 +357,7 @@ export const query = defineCapability({
           `${rows.length} ${a.over}${next ? " (more with next_cursor)" : ""}:`,
           ...rows.map(
             (r) =>
-              `- ${mdLink(r.title, r.url)}${r.status ? ` (${r.status}${r.due ? `, due ${r.due.local}` : ""})` : ""} · ${r.team} · ${r.id}`,
+              `- ${lineTitle(r.title, r.url, r.provenance, r.type)}${r.status ? ` (${r.status}${r.due ? `, due ${r.due.local}` : ""})` : ""} · ${r.team} · ${r.id}`,
           ),
         ].join("\n")
       : `No ${a.over} match.`;

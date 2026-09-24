@@ -16,7 +16,9 @@ import {
   clean,
   cleanTitle,
   fence,
+  fencedTitle,
   labelled,
+  lineTitle,
   mdLink,
   outsideHeading,
   provenanceOf,
@@ -142,8 +144,15 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   );
   if (!t) throw notFound();
   const [steps, sessions, tags] = await Promise.all([
-    ctx.db.query<{ id: string; title: string; status: string }>(
-      "SELECT id, title, status FROM items WHERE parent_id = $1 ORDER BY position, created_at LIMIT 100",
+    ctx.db.query<{
+      id: string;
+      title: string;
+      status: string;
+      source: string | null;
+    }>(
+      `SELECT c.id, c.title, c.status, ${itemSourceSql("c")} AS source
+         FROM items c WHERE c.parent_id = $1
+        ORDER BY c.position, c.created_at LIMIT 100`,
       [t.id],
     ),
     ctx.db.query<{ start_at: Date; end_at: Date }>(
@@ -183,10 +192,10 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     (m, b) => m + (b.end_at.getTime() - b.start_at.getTime()) / 60_000,
     0,
   );
-  const title = titleFor(t.title, provenance, hide(ctx)) || "Untitled";
+  const title = titleFor(t.title, provenance, hide(ctx), t.kind) || "Untitled";
   // A title made from outside text (what a booking guest typed, an email's
   // subject) goes in the fence (or is left out), never in the heading.
-  const heading = outsideHeading(provenance);
+  const heading = outsideHeading(provenance, t.kind);
   const lines = [
     `# ${heading ?? title}`,
     ...(heading && !hide(ctx) ? [fence(title, provenance)] : []),
@@ -206,7 +215,12 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
       `- Tags: ${tags.rows.map((g) => cleanTitle(g.name)).join(", ")}`,
     );
   if (t.assignee) lines.push(`- Assigned to ${cleanTitle(t.assignee)}`);
-  if (t.location) lines.push(`- Where: ${clean(t.location, 300)}`);
+  // An email's subject can set the place too: fenced like the title, and
+  // left out with it.
+  if (t.location && provenance !== "inbound_email")
+    lines.push(`- Where: ${clean(t.location, 300)}`);
+  else if (t.location && !hide(ctx))
+    lines.push(`- Where: ${fencedTitle(t.location, provenance)}`);
   if (event && t.attendee_count) lines.push(`- ${t.attendee_count} invited`);
   if (!event && (t.estimate_minutes || t.spent_minutes))
     lines.push(
@@ -223,7 +237,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     lines.push("", "## Steps");
     for (const s of steps.rows)
       lines.push(
-        `- [${s.status === "done" ? "x" : " "}] ${cleanTitle(s.title)} · task:${s.id}`,
+        `- [${s.status === "done" ? "x" : " "}] ${lineTitle(titleFor(s.title, s.source ?? "you", hide(ctx)) || "Untitled", null, s.source ?? "you")} · task:${s.id}`,
       );
   }
   if (t.notes.trim())
@@ -564,14 +578,16 @@ async function byTitle(ctx: CapabilityContext, title: string): Promise<Ref> {
     type: RefType;
     id: string;
     title: string;
+    source: string | null;
   }>(
-    `(SELECT CASE WHEN i.kind = 'event' THEN 'event' ELSE 'task' END AS type, i.id, i.title
+    `(SELECT CASE WHEN i.kind = 'event' THEN 'event' ELSE 'task' END AS type, i.id, i.title,
+             ${itemSourceSql("i")} AS source
         FROM items i WHERE lower(i.title) = lower(${t}) AND ${visibleItems("i", scope)} LIMIT 6)
      UNION ALL
-     (SELECT 'doc', d.id, d.title FROM docs d
+     (SELECT 'doc', d.id, d.title, NULL FROM docs d
        WHERE lower(d.title) = lower(${t}) AND ${visibleDocs("d", scope)} LIMIT 6)
      UNION ALL
-     (SELECT 'project', p.id, p.name FROM projects p
+     (SELECT 'project', p.id, p.name, NULL FROM projects p
        WHERE lower(p.name) = lower(${t}) AND ${visibleProjects("p", scope)} LIMIT 6)`,
     p.values,
   );
@@ -585,7 +601,7 @@ async function byTitle(ctx: CapabilityContext, title: string): Promise<Ref> {
     );
   const candidates = found.rows.slice(0, 5).map((r) => ({
     id: refs({ type: r.type, id: r.id }).id,
-    title: cleanTitle(r.title),
+    title: titleFor(r.title, r.source ?? "you", hide(ctx), r.type),
   }));
   throw new CapabilityError(
     "AMBIGUOUS",

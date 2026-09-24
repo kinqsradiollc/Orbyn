@@ -541,7 +541,7 @@
                 },
                 "provenance": {
                   "type": "string",
-                  "description": "\"you\", or where the text came from."
+                  "description": "\"you\", or where the title came from (a session carries its task's)."
                 }
               },
               "required": [
@@ -589,7 +589,11 @@
                   "type": "number",
                   "description": "Minutes of the person's sessions that end before the deadline."
                 },
-                "estimate_minutes": { "type": ["number", "null"] }
+                "estimate_minutes": { "type": ["number", "null"] },
+                "provenance": {
+                  "type": "string",
+                  "description": "\"you\", or where the title came from."
+                }
               },
               "required": [
                 "id",
@@ -599,7 +603,8 @@
                 "priority",
                 "status",
                 "planned_minutes",
-                "estimate_minutes"
+                "estimate_minutes",
+                "provenance"
               ],
               "additionalProperties": false
             },
@@ -635,7 +640,11 @@
                   "type": "number",
                   "description": "Minutes of the person's sessions that end before the deadline."
                 },
-                "estimate_minutes": { "type": ["number", "null"] }
+                "estimate_minutes": { "type": ["number", "null"] },
+                "provenance": {
+                  "type": "string",
+                  "description": "\"you\", or where the title came from."
+                }
               },
               "required": [
                 "id",
@@ -645,7 +654,8 @@
                 "priority",
                 "status",
                 "planned_minutes",
-                "estimate_minutes"
+                "estimate_minutes",
+                "provenance"
               ],
               "additionalProperties": false
             },
@@ -664,9 +674,20 @@
                 "title": { "type": "string" },
                 "url": { "type": "string" },
                 "minutes": { "type": "number" },
-                "why": { "type": "array", "items": { "type": "string" } }
+                "why": { "type": "array", "items": { "type": "string" } },
+                "provenance": {
+                  "type": "string",
+                  "description": "\"you\", or where the title came from."
+                }
               },
-              "required": ["id", "title", "url", "minutes", "why"],
+              "required": [
+                "id",
+                "title",
+                "url",
+                "minutes",
+                "why",
+                "provenance"
+              ],
               "additionalProperties": false
             },
             "description": "What to do next, with the reasons."
@@ -698,7 +719,7 @@
     {
       "name": "get_calendar",
       "title": "Calendar",
-      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked \"calendar\", outside content). Filter by words in the title with query. Events a booking guest made are marked \"booking_guest\". With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.",
+      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked \"calendar\", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: \"you\", \"booking_guest\" (an event a booking guest made) or \"inbound_email\" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -981,7 +1002,11 @@
                 "team": { "type": "string" },
                 "project_id": { "type": ["string", "null"] },
                 "assignee": { "type": ["string", "null"] },
-                "updated_at": { "type": "string" }
+                "updated_at": { "type": "string" },
+                "provenance": {
+                  "type": "string",
+                  "description": "Who wrote it: \"you\", \"teammate:<name>\", or where it came from (booking_guest, inbound_email, import)."
+                }
               },
               "required": [
                 "id",
@@ -994,7 +1019,8 @@
                 "team",
                 "project_id",
                 "assignee",
-                "updated_at"
+                "updated_at",
+                "provenance"
               ],
               "additionalProperties": false
             }
@@ -1122,7 +1148,11 @@
                         ]
                       },
                       "assignee": { "type": ["string", "null"] },
-                      "estimate_minutes": { "type": ["number", "null"] }
+                      "estimate_minutes": { "type": ["number", "null"] },
+                      "provenance": {
+                        "type": "string",
+                        "description": "\"you\", or where the title came from."
+                      }
                     },
                     "required": [
                       "id",
@@ -1132,7 +1162,8 @@
                       "priority",
                       "due",
                       "assignee",
-                      "estimate_minutes"
+                      "estimate_minutes",
+                      "provenance"
                     ],
                     "additionalProperties": false
                   }
@@ -1167,9 +1198,20 @@
                   "required": ["at", "local"],
                   "additionalProperties": false
                 },
-                "minutes": { "type": "number" }
+                "minutes": { "type": "number" },
+                "provenance": {
+                  "type": "string",
+                  "description": "\"you\", or where the task's title came from."
+                }
               },
-              "required": ["task_id", "task_title", "start", "end", "minutes"],
+              "required": [
+                "task_id",
+                "task_title",
+                "start",
+                "end",
+                "minutes",
+                "provenance"
+              ],
               "additionalProperties": false
             }
           },
@@ -1225,9 +1267,13 @@
                 "at": { "type": "string" },
                 "summary": { "type": "string" },
                 "by": { "type": ["string", "null"] },
-                "via_agent": { "type": ["string", "null"] }
+                "via_agent": { "type": ["string", "null"] },
+                "provenance": {
+                  "type": "string",
+                  "description": "\"you\", or where the title in the summary came from."
+                }
               },
-              "required": ["at", "summary", "by", "via_agent"],
+              "required": ["at", "summary", "by", "via_agent", "provenance"],
               "additionalProperties": false
             }
           },
