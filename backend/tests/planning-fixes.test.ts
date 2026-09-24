@@ -17,11 +17,14 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const {
   addDays,
+  adoptTaskTicks,
   changeProjectDeadline,
   dayTime,
   localDateKey,
   projectDeadlineAt,
   projectDeadlineParts,
+  setTodoSource,
+  WEBHOOK_EVENTS,
 } = await import("@orbyn/core");
 const app = await buildApp();
 
@@ -528,6 +531,255 @@ test("ticking a line tied to a repeating task moves the task on", async () => {
   assert.equal(page.body.content[0].done, false);
 });
 
+/** Make a linked line's task repeat daily from the day after tomorrow. */
+async function makeDaily(token: string, itemId: string) {
+  const current = await call(token, "GET", `/items/${itemId}`);
+  const repeating = await call(token, "PUT", `/items/${itemId}`, {
+    ...baseBody(current.body),
+    due_at: local(2, 17),
+    rrule: "FREQ=DAILY",
+    timezone: TZ,
+  });
+  assert.equal(repeating.status, 200, repeating.raw.body);
+}
+
+/** How many occurrences of a repeating task have been completed. */
+const completions = async (itemId: string) =>
+  (
+    await pool.query(
+      `SELECT 1 FROM item_updates
+        WHERE item_id = $1 AND body LIKE 'Completed the occurrence%'`,
+      [itemId],
+    )
+  ).rowCount;
+
+/** Forget when the page's history was last kept, so the next save keeps it. */
+const newSitting = (docId: string) =>
+  pool.query(
+    "UPDATE doc_versions SET created_at = now() - interval '1 hour' WHERE doc_id = $1",
+    [docId],
+  );
+
+test("a ticked repeating line moves its task on once, however the page is saved again", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Water the plants");
+  await makeDaily(me.token, item.id);
+  const nextOne = await session(me.token, item.id, local(3, 8));
+  const line = doc.content[0];
+
+  const ticked = await tick(me.token, doc, true);
+  assert.equal(ticked.status, 200, ticked.raw.body);
+  assert.equal(await completions(item.id), 1);
+  // The save answers, and the page is kept, with the task as it now stands:
+  // open again, for the next day.
+  assert.equal(ticked.body.content[0].done, false);
+  const stored = await pool.query("SELECT content FROM docs WHERE id = $1", [
+    doc.id,
+  ]);
+  assert.equal(stored.rows[0].content[0].done, false);
+
+  // An app that still shows the old tick saves an unrelated edit, twice.
+  await newSitting(doc.id);
+  let version = ticked.body.version;
+  for (const text of ["Balcony first", "Balcony first, then the hall"]) {
+    const stale = await call(me.token, "PUT", `/docs/${doc.id}`, {
+      version,
+      content: [
+        { ...line, done: true },
+        { type: "paragraph", text, id: "b-more" },
+      ],
+    });
+    assert.equal(stale.status, 200, stale.raw.body);
+    assert.equal(stale.body.content[0].done, false);
+    version = stale.body.version;
+  }
+  // And one that took the answer's tick saves again.
+  await newSitting(doc.id);
+  const read = await call(me.token, "GET", `/docs/${doc.id}`);
+  const fresh = await call(me.token, "PUT", `/docs/${doc.id}`, {
+    version: read.body.version,
+    content: [
+      ...read.body.content,
+      { type: "paragraph", text: "Then the kitchen", id: "b-kitchen" },
+    ],
+  });
+  assert.equal(fresh.status, 200, fresh.raw.body);
+
+  // A proposal taken on the page changes words, never a tick.
+  const proposed = await call(me.token, "POST", `/docs/${doc.id}/suggestions`, {
+    changes: [
+      {
+        block_id: "b-more",
+        kind: "replace",
+        range_start: 0,
+        range_end: "Balcony".length,
+        text: "Garden",
+        quote: "Balcony",
+      },
+    ],
+  });
+  assert.equal(proposed.status, 201, proposed.raw.body);
+  const taken = await call(
+    me.token,
+    "POST",
+    `/docs/${doc.id}/suggestions/${proposed.body[0].id}`,
+    { take: true },
+  );
+  assert.equal(taken.status, 200, taken.raw.body);
+  assert.equal(taken.body.doc.content[0].done, false);
+  assert.equal(taken.body.doc.content[1].text, "Garden first, then the hall");
+
+  // Every version the page kept, restored one after another.
+  const kept = await call(me.token, "GET", `/docs/${doc.id}/versions`);
+  assert.ok(kept.body.length >= 3, "the page kept its sittings");
+  for (const v of kept.body) {
+    const restored = await call(
+      me.token,
+      "POST",
+      `/docs/${doc.id}/versions/${v.version}/restore`,
+    );
+    assert.equal(restored.status, 200, restored.raw.body);
+    assert.equal(restored.body.content[0].done, false);
+  }
+
+  assert.equal(await completions(item.id), 1);
+  const after = await call(me.token, "GET", `/items/${item.id}`);
+  assert.equal(after.body.status, "todo");
+  assert.equal(new Date(after.body.due_at).toISOString(), local(3, 17));
+  assert.deepEqual(await sessionsOf(item.id), [nextOne]);
+
+  // Ticking it again is a new tick, and finishes the next occurrence.
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.content[0].done, false);
+  const second = await tick(me.token, page.body, true);
+  assert.equal(second.status, 200, second.raw.body);
+  assert.equal(await completions(item.id), 2);
+  const later = await call(me.token, "GET", `/items/${item.id}`);
+  assert.equal(new Date(later.body.due_at).toISOString(), local(4, 17));
+});
+
+test("a line starts again from its task when the task changes elsewhere", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Send the invoice");
+  const ticked = await tick(me.token, doc, true);
+  assert.equal(ticked.status, 200, ticked.raw.body);
+  // Reopened in the planner, the line reads unticked, and ticking it there
+  // finishes the task again.
+  const reopened = await call(me.token, "POST", `/items/${item.id}/updates`, {
+    status: "todo",
+  });
+  assert.equal(reopened.status, 201, reopened.raw.body);
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.content[0].done, false);
+  const again = await tick(me.token, page.body, true);
+  assert.equal(again.status, 200, again.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
+});
+
+test("a link made before pages kept their ticks goes by the task", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Renew the lease");
+  await makeDaily(me.token, item.id);
+  await pool.query("UPDATE doc_task_links SET done = NULL WHERE doc_id = $1", [
+    doc.id,
+  ]);
+  const ticked = await tick(me.token, doc, true);
+  assert.equal(ticked.status, 200, ticked.raw.body);
+  assert.equal(await completions(item.id), 1);
+  // From then on it remembers, so the same tick sent again does nothing.
+  const link = await pool.query(
+    "SELECT done FROM doc_task_links WHERE doc_id = $1",
+    [doc.id],
+  );
+  assert.equal(link.rows[0].done, true);
+  const stale = await call(me.token, "PUT", `/docs/${doc.id}`, {
+    version: ticked.body.version,
+    content: [{ ...doc.content[0], done: true }],
+  });
+  assert.equal(stale.status, 200, stale.raw.body);
+  assert.equal(await completions(item.id), 1);
+});
+
+test("a real failure while ticking a line fails the save", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Back up the laptop");
+  // The database refuses to change this one task, as a broken disk might.
+  const fn = `refuse_${randomUUID().replace(/-/g, "")}`;
+  await pool.query(
+    `CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS
+       $$ BEGIN RAISE EXCEPTION 'storage unavailable'; END $$`,
+  );
+  await pool.query(
+    `CREATE TRIGGER ${fn} BEFORE UPDATE ON items FOR EACH ROW
+       WHEN (OLD.id = '${item.id}') EXECUTE FUNCTION ${fn}()`,
+  );
+  try {
+    const saved = await tick(me.token, doc, true);
+    assert.equal(saved.status, 500, saved.raw.body);
+    assert.doesNotMatch(saved.raw.body, /storage unavailable/);
+  } finally {
+    await pool.query(`DROP TRIGGER ${fn} ON items`);
+    await pool.query(`DROP FUNCTION ${fn}()`);
+  }
+  // Nothing was half-saved: the page, the task and the link are as before.
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.version, doc.version);
+  assert.equal(page.body.content[0].done, false);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "todo",
+  );
+  // Once it's fixed, the same tick goes through.
+  const retried = await tick(me.token, doc, true);
+  assert.equal(retried.status, 200, retried.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
+});
+
+test("an editor takes the ticks a save came back with", () => {
+  const sent = [
+    { type: "todo" as const, text: "Stretch", done: true, id: "a" },
+    { type: "todo" as const, text: "Read", done: true, id: "b" },
+    { type: "todo" as const, text: "Walk", done: false, id: "c" },
+    { type: "paragraph" as const, text: "Notes", id: "d" },
+  ];
+  const saved = {
+    // "a" repeats and moved on; "b" was ticked again here since; "c" isn't
+    // a task, so its tick is the page's own.
+    content: [
+      { ...sent[0], done: false },
+      { ...sent[1], done: false },
+      { ...sent[2], done: true },
+      sent[3],
+    ],
+    linked_block_ids: ["a", "b"],
+  };
+  const local = [sent[0], { ...sent[1], done: false }, sent[2], sent[3]];
+  const took = adoptTaskTicks(local, sent, saved);
+  assert.deepEqual(took.changed, ["a"]);
+  assert.equal(took.blocks[0].type === "todo" && took.blocks[0].done, false);
+  assert.equal(took.blocks[1], local[1]);
+  assert.equal(took.blocks[2], local[2]);
+  // Nothing to take: the same array back, so nothing re-renders or re-saves.
+  const none = adoptTaskTicks(took.blocks, took.blocks, saved);
+  assert.deepEqual(none.changed, []);
+  assert.equal(none.blocks, took.blocks);
+  assert.equal(
+    adoptTaskTicks(local, sent, { content: saved.content }).blocks,
+    local,
+  );
+
+  assert.equal(setTodoSource("- [x] Stretch", false), "- [ ] Stretch");
+  assert.equal(setTodoSource("  * [ ] Read", true), "  * [x] Read");
+  assert.equal(setTodoSource("- [ ] Walk", false), "- [ ] Walk");
+  assert.equal(setTodoSource("Just words [x]", false), "Just words [x]");
+});
+
 test("a line whose task can't be changed here doesn't stop the save", async () => {
   const owner = await newUser();
   const me = await newUser();
@@ -548,6 +800,45 @@ test("a line whose task can't be changed here doesn't stop the save", async () =
   assert.equal(saved.status, 200, saved.raw.body);
   const after = await call(owner.token, "GET", `/items/${item.id}`);
   assert.equal(after.body.status, "todo");
+  // The page reads, and keeps, the task as it really is, so the refused tick
+  // isn't tried again with every save.
+  assert.equal(saved.body.content[0].done, false);
+  const stored = await pool.query("SELECT content FROM docs WHERE id = $1", [
+    doc.id,
+  ]);
+  assert.equal(stored.rows[0].content[0].done, false);
+  // Allowed again, the page's own tick hasn't changed: nothing happens
+  // until the line is ticked again.
+  await pool.query(
+    "UPDATE team_members SET role = 'member' WHERE team_id = $1 AND user_id = $2",
+    [teamId, me.id],
+  );
+  const again = await call(me.token, "PUT", `/docs/${doc.id}`, {
+    version: saved.body.version,
+    content: [{ ...doc.content[0], done: true }],
+  });
+  assert.equal(again.status, 200, again.raw.body);
+  const still = await call(owner.token, "GET", `/items/${item.id}`);
+  assert.equal(still.body.status, "todo");
+  const untick = await tick(me.token, again.body, false);
+  const retick = await tick(me.token, untick.body, true);
+  assert.equal(retick.status, 200, retick.raw.body);
+  const done = await call(owner.token, "GET", `/items/${item.id}`);
+  assert.equal(done.body.status, "done");
+});
+
+test("the OpenAPI description lists every webhook, sessions included", async () => {
+  const r = await call(null, "GET", "/openapi.yaml");
+  assert.equal(r.status, 200);
+  const { parse } = await import("yaml");
+  const spec = parse(r.raw.body);
+  assert.deepEqual(
+    [...spec.components.schemas.WebhookEvent.enum].sort(),
+    [...WEBHOOK_EVENTS].sort(),
+  );
+  for (const event of WEBHOOK_EVENTS)
+    assert.ok(spec.webhooks[event], `documents ${event}`);
+  assert.doesNotMatch(r.raw.body, /time blocks?/i);
 });
 
 // ---- which lines are tasks --------------------------------------------------

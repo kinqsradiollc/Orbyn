@@ -911,7 +911,7 @@ function Body({
               strokeWidth={2.4}
             />
             <Text style={s.savedText} accessibilityRole="alert">
-              Plan saved. {saved.blocks} block{saved.blocks === 1 ? "" : "s"}{" "}
+              Plan saved. {saved.blocks} session{saved.blocks === 1 ? "" : "s"}{" "}
               added to your calendar
               {saved.skipped
                 ? `; ${saved.skipped} skipped because the time is taken.`

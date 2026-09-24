@@ -876,6 +876,14 @@ export async function mutate(
       reorder,
     ],
   );
+  // A page line tied to this task now reads ticked or not with it, and a
+  // tick there counts from what it shows (see syncTicks in docs/routes.ts).
+  // A page's own tick puts its line's state back afterwards.
+  if ((status === "done") !== (current.status === "done"))
+    await db.query("UPDATE doc_task_links SET done = $2 WHERE item_id = $1", [
+      current.id,
+      status === "done",
+    ]);
   await setTags(db, current.id, tagIds);
   if (d.kind === "task") await setMeasure(db, current.id, d);
   else

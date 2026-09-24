@@ -35,12 +35,14 @@ import {
   type ExportFormat,
   type DocMode,
   type DocSuggestion,
+  adoptTaskTicks,
   carryBlockIds,
   mergeDocs,
   newBlockId,
   parseDoc,
   serializeBlock,
   serializeDoc,
+  setTodoSource,
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
@@ -281,6 +283,46 @@ export function DocEditor({
     return next;
   }, []);
 
+  /**
+   * Take the ticks a save came back with for the lines tied to tasks. A
+   * repeating task ticked here has moved on to its next occurrence and reads
+   * unticked again; showing the old tick would send it back with the next
+   * save. A line ticked or unticked again since keeps what was done here.
+   * Whatever it took is saved straight away: the page has to have said a
+   * line is unticked before ticking it again counts as a new tick.
+   */
+  const adoptTicks = useCallback((sent: DocBlock[], saved: Doc): boolean => {
+    const { blocks: next, changed } = adoptTaskTicks(
+      live.current.blocks,
+      sent,
+      saved,
+    );
+    if (!changed.length) return false;
+    // A line open for editing holds its own copy of its Markdown.
+    const at = focusedRef.current;
+    const open = at === null ? undefined : next[at];
+    if (
+      areaRef.current &&
+      open?.type === "todo" &&
+      open.id &&
+      changed.includes(open.id)
+    )
+      areaRef.current.value = setTodoSource(areaRef.current.value, open.done);
+    live.current = { ...live.current, blocks: next };
+    setBlocks(next);
+    return true;
+  }, []);
+
+  /** The latest `persist`, for a save that has to follow the one running. */
+  const persistRef = useRef<
+    (nextTitle: string, nextBlocks: DocBlock[]) => Promise<void>
+  >(async () => {});
+  /** Queue a save of what is on screen now, behind the one running. */
+  const saveAgain = useCallback(() => {
+    dirty.current = true;
+    void persistRef.current(live.current.title, live.current.blocks);
+  }, []);
+
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
       const write = async () => {
@@ -296,6 +338,7 @@ export function DocEditor({
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
+          if (adoptTicks(nextBlocks, saved)) saveAgain();
           setSave("saved");
           onChanged(saved);
         } catch (e) {
@@ -315,6 +358,7 @@ export function DocEditor({
               dirty.current =
                 live.current.title !== nextTitle ||
                 live.current.blocks !== nextBlocks;
+              if (adoptTicks(merged, saved)) saveAgain();
               setSave("saved");
               onChanged(saved);
               return;
@@ -331,8 +375,9 @@ export function DocEditor({
       saveQueue.current = saveQueue.current.then(write, write);
       return saveQueue.current;
     },
-    [doc.id, onChanged, reconcile, report],
+    [doc.id, onChanged, reconcile, report, adoptTicks, saveAgain],
   );
+  persistRef.current = persist;
 
   flushOnClose.current = () => {
     if (!canWrite || !dirty.current) return;
@@ -345,8 +390,10 @@ export function DocEditor({
       dirty.current = true;
       live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
+      // What is on screen when the clock runs out, not when it started: a
+      // save or a merge that landed meanwhile may have changed it.
       timer.current = setTimeout(
-        () => void persist(nextTitle, nextBlocks),
+        () => void persist(live.current.title, live.current.blocks),
         SAVE_AFTER_MS,
       );
     },
@@ -883,6 +930,7 @@ export function DocEditor({
         // adopting it keeps the ids, so the lines now follow their tasks.
         if (updated) {
           version.current = updated.version;
+          base.current = updated.content;
           dirty.current = false;
           setBlocks(updated.content);
           setSave("saved");

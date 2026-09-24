@@ -69,7 +69,7 @@ export function PlanView({
 
       {shown.length === 0 ? (
         <Text style={[shared.small, s.gap]}>
-          No blocks to place. Tasks need to be open, and an estimate helps the
+          No sessions to place. Tasks need to be open, and an estimate helps the
           planner size them.
         </Text>
       ) : (
@@ -135,7 +135,7 @@ export function PlanView({
       )}
       {hidden > 0 && (
         <Text style={[shared.small, s.gap]}>
-          And {hidden} more block{hidden === 1 ? "" : "s"}.
+          And {hidden} more session{hidden === 1 ? "" : "s"}.
         </Text>
       )}
 

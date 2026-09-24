@@ -734,6 +734,54 @@ export function mergeDocs(
 }
 
 /**
+ * Take the ticks a save came back with for the lines tied to tasks.
+ *
+ * The server stores such a line as its task now stands, which isn't always
+ * how it was sent: a repeating task that was just ticked has moved on to its
+ * next occurrence and reads unticked again, and a tick the task refused
+ * reads as the task really is. The page takes that state for every such line
+ * whose tick hasn't changed again here since the save went out (`sent` is
+ * what was sent, `local` is what is on screen now), so the next save doesn't
+ * carry the old tick back. Other lines are left as they are.
+ *
+ * Returns `local` itself when nothing changes, and the ids of the lines that
+ * took a new tick.
+ */
+export function adoptTaskTicks(
+  local: DocBlock[],
+  sent: DocBlock[],
+  saved: Pick<Doc, "content" | "linked_block_ids">,
+): { blocks: DocBlock[]; changed: string[] } {
+  const linked = new Set(saved.linked_block_ids ?? []);
+  if (!linked.size) return { blocks: local, changed: [] };
+  const now = new Map<string, boolean>();
+  for (const b of saved.content)
+    if (b.type === "todo" && b.id && linked.has(b.id)) now.set(b.id, b.done);
+  const was = new Map<string, boolean>();
+  for (const b of sent) if (b.type === "todo" && b.id) was.set(b.id, b.done);
+  const changed: string[] = [];
+  const blocks = local.map((b) => {
+    if (b.type !== "todo" || !b.id) return b;
+    const server = now.get(b.id);
+    if (server === undefined || server === b.done) return b;
+    // Ticked or unticked again since the save: that's a new change of its own.
+    if (was.get(b.id) !== b.done) return b;
+    changed.push(b.id);
+    return { ...b, done: server };
+  });
+  return changed.length ? { blocks, changed } : { blocks: local, changed };
+}
+
+/**
+ * A checklist line's Markdown with its box set to `done`, for a line open
+ * for editing whose tick changed underneath it. Anything that isn't a
+ * checklist line comes back as it was.
+ */
+export function setTodoSource(source: string, done: boolean): string {
+  return source.replace(/^(\s*[-*]\s+\[)[ xX](\])/, `$1${done ? "x" : " "}$2`);
+}
+
+/**
  * The kinds of block a person can ask for by name — in a slash menu, a
  * "turn into" menu, or a toolbar. One list, so every surface offers the same
  * things in the same order and with the same words. `shorthand` is what you

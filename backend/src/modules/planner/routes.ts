@@ -1049,7 +1049,7 @@ export async function plannerRoutes(app: FastifyInstance) {
       if (plan.applied) fail(409, "This plan was already applied.");
       if (plan.expires_at <= new Date())
         fail(409, "This plan expired. Make a new one.");
-      if (!plan.blocks.length) fail(409, "This plan has no blocks to add.");
+      if (!plan.blocks.length) fail(409, "This plan has no sessions to add.");
       const dependencies = await db.query(
         "SELECT 1 FROM item_dependencies WHERE item_id=ANY($1::uuid[]) LIMIT 1",
         [plan.blocks.map((b) => b.item_id)],

@@ -92,7 +92,7 @@ export function PlanCard({ plan, onApply, onOpenInPlanner, limit = 6 }: Props) {
                 ))}
                 {blocks.length > limit && (
                   <li className="plan-more">
-                    and {plural(blocks.length - limit, "more block")}
+                    and {plural(blocks.length - limit, "more session")}
                   </li>
                 )}
               </ul>

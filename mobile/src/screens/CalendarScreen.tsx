@@ -690,7 +690,7 @@ export function CalendarScreen({
               const copy = await client.duplicateBlock(block.id);
               reload();
               showNote(
-                `Another block for ${block.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
+                `Another session for ${block.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
               );
             }),
         },

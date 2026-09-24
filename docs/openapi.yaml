@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Orbyn API
   version: "1"
-  summary: Tasks, events, time blocks and webhooks, for scripts and automation tools.
+  summary: Tasks, events, sessions and webhooks, for scripts and automation tools.
   description: |
     The part of Orbyn's API that automation tools (Zapier, Make, n8n, your own
     scripts) use. Everything is served from your own Orbyn server; nothing is
@@ -48,7 +48,8 @@ tags:
   - name: Items
   - name: Lists and tags
   - name: Calendar
-  - name: Time blocks
+  - name: Sessions
+    description: Time planned for working on a task. The API calls a session a block.
   - name: Webhooks
 paths:
   /auth/register:
@@ -566,7 +567,7 @@ paths:
           }
       responses:
         "200":
-          description: Entries (one per occurrence), blocks, buffers and travel, frames and subscribed events
+          description: Entries (one per occurrence), sessions (`blocks`), buffers and travel, frames and subscribed events
           content:
             application/json:
               schema:
@@ -634,8 +635,8 @@ paths:
 
   /blocks:
     get:
-      tags: [Time blocks]
-      summary: Your time blocks in a range
+      tags: [Sessions]
+      summary: Your sessions in a range
       parameters:
         - {
             name: from,
@@ -651,15 +652,15 @@ paths:
           }
       responses:
         "200":
-          description: Blocks
+          description: Sessions
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/TimeBlock" }
     post:
-      tags: [Time blocks]
-      summary: Set time aside for a task (24 hours at most)
+      tags: [Sessions]
+      summary: Plan a session for a task (24 hours at most)
       requestBody:
         required: true
         content:
@@ -680,8 +681,9 @@ paths:
   /blocks/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     put:
-      tags: [Time blocks]
-      summary: Move or resize a block
+      tags: [Sessions]
+      summary: Move or resize a session
+      description: Sends `block.updated` to your webhooks.
       requestBody:
         required: true
         content:
@@ -694,13 +696,14 @@ paths:
                 end_at: { type: string, format: date-time }
       responses:
         "200":
-          description: The block
+          description: The session
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TimeBlock" }
     delete:
-      tags: [Time blocks]
-      summary: Delete a block
+      tags: [Sessions]
+      summary: Delete a session
+      description: Sends `block.deleted` to your webhooks. `404` when the session isn't yours.
       responses:
         "204": { description: Deleted }
 
@@ -824,12 +827,23 @@ webhooks:
       responses: { "200": { description: Delivered } }
   block.scheduled:
     post:
-      summary: A plan's time blocks were saved
+      summary: A plan's sessions were saved
       requestBody: { $ref: "#/components/requestBodies/Delivery" }
       responses: { "200": { description: Delivered } }
   block.started:
     post:
-      summary: "A time block started (`data`: id, item_id, title, start_at, end_at)"
+      summary: "A session started (`data`: id, item_id, title, start_at, end_at)"
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  block.updated:
+    post:
+      summary: A session was moved, resized or rescheduled
+      description: "`data` is the session, as `GET /blocks` returns it."
+      requestBody: { $ref: "#/components/requestBodies/Delivery" }
+      responses: { "200": { description: Delivered } }
+  block.deleted:
+    post:
+      summary: "A session was removed (`data`: id, item_id, start_at, end_at)"
       requestBody: { $ref: "#/components/requestBodies/Delivery" }
       responses: { "200": { description: Delivered } }
   event.starting:
@@ -1136,6 +1150,7 @@ components:
         busy: { type: boolean }
         team_id: { type: [string, "null"], format: uuid }
     TimeBlock:
+      description: A session, time planned for working on a task.
       type: object
       properties:
         id: { type: string, format: uuid }
@@ -1158,6 +1173,8 @@ components:
         - booking.cancelled
         - event.starting
         - block.started
+        - block.updated
+        - block.deleted
         - task.at_risk
     Webhook:
       type: object

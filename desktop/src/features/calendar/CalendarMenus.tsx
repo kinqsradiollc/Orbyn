@@ -226,7 +226,7 @@ export function BlockMenu({
         </button>
         {open && (
           <small className="popover-note">
-            Tip: hold Alt (Option on a Mac) while dragging to copy a block.
+            Tip: hold Alt (Option on a Mac) while dragging to copy a session.
           </small>
         )}
       </div>

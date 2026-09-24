@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import {
   docCommentInput,
   docCommentUpdate,
@@ -17,6 +17,7 @@ import {
   EXPORT_LABELS,
   exportName,
   fail,
+  HttpError,
   applySuggestion,
   overlaps,
   reanchorComments,
@@ -184,57 +185,114 @@ async function withTaskState(
 }
 
 /**
+ * A page as a save hands it back: everything a single-page read gives,
+ * with each line tied to a task showing that task as it now stands. An
+ * editor takes the ticks from here, so a repeating task it just finished
+ * shows unticked for its next occurrence.
+ */
+async function readDoc(db: Queryable, id: string): Promise<Doc> {
+  const doc = (
+    await db.query<Doc>(
+      `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
+         ${JOINS} WHERE d.id = $1`,
+      [id],
+    )
+  ).rows[0];
+  return { ...doc, content: await withTaskState(db, id, doc.content ?? []) };
+}
+
+/**
+ * The answers that mean "this person can't change that task here" rather
+ * than that something broke: gone, not theirs to change, changed meanwhile,
+ * or a saved task the usual checks won't pass.
+ */
+const REFUSALS = new Set([403, 404, 409, 422]);
+const isRefusal = (e: unknown) =>
+  e instanceof ZodError ||
+  (e instanceof HttpError && REFUSALS.has(e.statusCode));
+
+/**
  * Ticking a linked line in a document finishes its task, and unticking one
- * reopens it. Only lines whose state actually changed are written, so an
- * ordinary edit doesn't touch the planner. The change goes through the same
- * path as ticking the task anywhere else (see setItemStatus): its future
+ * reopens it, the same way as anywhere else (see setItemStatus): its future
  * sessions go, a repeating task moves on to its next occurrence, and other
- * devices hear about it. A line whose task this person can no longer change
- * is left alone rather than failing the save — the page still reads its
- * task's real state.
+ * devices hear about it.
+ *
+ * What counts is the line's own change. A line's tick is a tick only when it
+ * differs from its task and from the tick this page last sent for the line
+ * (kept on the link; a change to the task anywhere else starts it again from
+ * the task, see mutate). So saving the page again can't finish a task twice:
+ * a repeating task moves on and reads unticked again, but an app that still
+ * shows the old tick, a second save with the same content, or a version
+ * restored with it, says only what the page already said. Once the page has
+ * said the line is unticked (the editors save that as soon as they hear it),
+ * ticking it again finishes the next occurrence.
+ *
+ * A line whose task this person can't change is left alone rather than
+ * failing the save; anything else that goes wrong fails it.
+ *
+ * Gives back the content to store: every line tied to a task reads as its
+ * task now stands, so what is kept and what the editors are sent agree.
  */
 async function syncTicks(
   db: Db,
   u: UserRow,
   docId: string,
   content: DocBlock[],
-): Promise<void> {
+): Promise<DocBlock[]> {
   const ticks = new Map(
     content.flatMap((b) =>
       b.type === "todo" && b.id ? [[b.id, b.done] as const] : [],
     ),
   );
-  if (!ticks.size) return;
+  if (!ticks.size) return content;
   const rows = (
-    await db.query<{ block_id: string; item_id: string; status: string }>(
-      `SELECT l.block_id, l.item_id, i.status FROM doc_task_links l
+    await db.query<{
+      block_id: string;
+      item_id: string;
+      status: string;
+      done: boolean | null;
+    }>(
+      `SELECT l.block_id, l.item_id, l.done, i.status FROM doc_task_links l
          JOIN items i ON i.id = l.item_id
         WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[])
+        ORDER BY l.item_id
         FOR UPDATE OF i`,
       [docId, [...ticks.keys()]],
     )
   ).rows;
+  if (!rows.length) return content;
   for (const row of rows) {
-    const wanted = ticks.get(row.block_id);
-    if (wanted === undefined) continue;
-    const isDone = row.status === "done";
-    if (wanted === isDone) continue;
-    await db.query("SAVEPOINT tick");
-    try {
-      await setItemStatus(
-        db,
-        u,
-        row.item_id,
-        wanted ? "done" : "todo",
-        wanted ? 100 : 0,
-      );
-      // Reopened with a checklist, progress follows its steps again.
-      if (!wanted) await recomputeProgress(db, row.item_id);
-      await db.query("RELEASE SAVEPOINT tick");
-    } catch {
-      await db.query("ROLLBACK TO SAVEPOINT tick");
+    const wanted = ticks.get(row.block_id)!;
+    // A link made before pages kept their ticks (null) goes by the task.
+    if (wanted !== (row.status === "done") && wanted !== row.done) {
+      await db.query("SAVEPOINT tick");
+      try {
+        await setItemStatus(
+          db,
+          u,
+          row.item_id,
+          wanted ? "done" : "todo",
+          wanted ? 100 : 0,
+        );
+        // Reopened with a checklist, progress follows its steps again.
+        if (!wanted) await recomputeProgress(db, row.item_id);
+        await db.query("RELEASE SAVEPOINT tick");
+      } catch (e) {
+        // Only "you can't change that task" is shrugged off; anything else
+        // is a real failure and fails the save.
+        if (!isRefusal(e)) throw e;
+        await db.query("ROLLBACK TO SAVEPOINT tick");
+      }
     }
+    // What the page said, even when the task wouldn't follow: a refused tick
+    // isn't tried again with every save, only when the line changes again.
+    await db.query(
+      `UPDATE doc_task_links SET done = $3
+        WHERE doc_id = $1 AND block_id = $2 AND done IS DISTINCT FROM $3`,
+      [docId, row.block_id, wanted],
+    );
   }
+  return withTaskState(db, docId, content);
 }
 
 /**
@@ -425,7 +483,12 @@ export async function docRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!doc) fail(404, "Document not found");
     const title = doc.title || "Untitled";
-    const blocks = doc.content ?? [];
+    // Ticks as the tasks stand, the same as the page reads.
+    const blocks = await withTaskState(
+      reader(r.headers),
+      id,
+      doc.content ?? [],
+    );
     const body =
       format === "docx"
         ? docToDocx(title, blocks)
@@ -458,9 +521,14 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    const blocks = await withTaskState(
+      reader(r.headers),
+      id,
+      doc.content ?? [],
+    );
     return reply
       .type("text/markdown; charset=utf-8")
-      .send(`# ${doc.title}\n\n${serializeDoc(doc.content ?? [])}`);
+      .send(`# ${doc.title}\n\n${serializeDoc(blocks)}`);
   });
 
   // Let go of the listening connection when the server stops.
@@ -491,9 +559,12 @@ export async function docRoutes(app: FastifyInstance) {
           409,
           "This document changed somewhere else. Refresh and try again.",
         );
-      if (body.content) await syncTicks(db, u, id, body.content);
-      if (body.content) await followComments(db, id, body.content);
-      if (body.content) await followSuggestions(db, id, body.content);
+      // Lines tied to tasks are stored as their tasks now stand.
+      const content = body.content
+        ? await syncTicks(db, u, id, body.content)
+        : undefined;
+      if (content) await followComments(db, id, content);
+      if (content) await followSuggestions(db, id, content);
       await snapshot(db, id, u.id);
       await db.query(
         `UPDATE docs SET
@@ -510,7 +581,7 @@ export async function docRoutes(app: FastifyInstance) {
         [
           id,
           body.title ?? null,
-          body.content === undefined ? null : JSON.stringify(body.content),
+          content === undefined ? null : JSON.stringify(content),
           body.folder_id !== undefined,
           body.folder_id ?? null,
           body.project_id !== undefined,
@@ -518,13 +589,7 @@ export async function docRoutes(app: FastifyInstance) {
         ],
       );
       if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [id],
-        )
-      ).rows[0];
+      return readDoc(db, id);
     });
     // Announced after the transaction commits, so anyone who comes running
     // to re-read the document finds the new version already there.
@@ -637,12 +702,12 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!past) fail(404, "That version is not kept");
-      await syncTicks(db, u, id, past.content);
+      const content = await syncTicks(db, u, id, past.content);
       // Going back in time moves the words a remark points at, so the same
       // pass a save makes runs here too — a remark left behind by a restore
       // comes loose rather than pointing at the wrong sentence.
-      await followComments(db, id, past.content);
-      await followSuggestions(db, id, past.content);
+      await followComments(db, id, content);
+      await followSuggestions(db, id, content);
       // A restore is a sitting of its own: always keep what it replaces.
       const current = (
         await db.query<{ version: number; title: string; content: unknown }>(
@@ -664,15 +729,9 @@ export async function docRoutes(app: FastifyInstance) {
       await db.query(
         `UPDATE docs SET title = $2, content = $3::jsonb, version = version + 1,
            updated_at = now() WHERE id = $1`,
-        [id, past.title, JSON.stringify(past.content)],
+        [id, past.title, JSON.stringify(content)],
       );
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [id],
-        )
-      ).rows[0];
+      return readDoc(db, id);
     });
     await announceDocChange(pool, id, restored.version, editorOf(r));
     return restored;
@@ -731,7 +790,11 @@ export async function docRoutes(app: FastifyInstance) {
         [u.id, id, event.team_id],
       )
     ).rows[0];
-    if (existing) return existing;
+    if (existing)
+      return {
+        ...existing,
+        content: await withTaskState(pool, existing.id, existing.content ?? []),
+      };
 
     const prefs = await loadPrefs(pool, u.id);
     const content = meetingNoteTemplate({
@@ -811,9 +874,10 @@ export async function docRoutes(app: FastifyInstance) {
         });
         if (!item) continue;
         await db.query(
-          `INSERT INTO doc_task_links (doc_id, block_id, item_id)
-             VALUES ($1,$2,$3)
-             ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
+          // Only unticked lines become tasks, so each starts unticked.
+          `INSERT INTO doc_task_links (doc_id, block_id, item_id, done)
+             VALUES ($1,$2,$3,false)
+             ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3, done = false`,
           [id, ids.get(line), item.id],
         );
         out.push(item);
@@ -1151,10 +1215,13 @@ export async function docRoutes(app: FastifyInstance) {
       if (at === -1) fail(409, "That line has gone from the page.");
       const block = doc.content[at];
       if (block.type === "divider") fail(409, "That line has no words.");
-      const next = doc.content.slice();
-      next[at] = { ...block, text: applySuggestion(block.text, s) };
+      const edited = doc.content.slice();
+      edited[at] = { ...block, text: applySuggestion(block.text, s) };
       await snapshot(db, id, u.id);
-      await syncTicks(db, u, id, next);
+      // Taking a proposal changes words, never a tick, so no task is
+      // finished or reopened here; the lines tied to tasks are stored as
+      // their tasks now stand, as every save stores them.
+      const next = await withTaskState(db, id, edited);
       await db.query(
         `UPDATE docs SET content = $2::jsonb, version = version + 1,
            updated_at = now() WHERE id = $1`,
@@ -1182,13 +1249,7 @@ export async function docRoutes(app: FastifyInstance) {
             "UPDATE doc_suggestions SET detached = true WHERE id = $1",
             [rival.id],
           );
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [id],
-        )
-      ).rows[0];
+      return readDoc(db, id);
     });
     if (out) await announceDocChange(pool, id, out.version, editorOf(r));
     return { doc: out };

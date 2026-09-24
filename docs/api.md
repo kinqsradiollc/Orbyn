@@ -38,7 +38,7 @@ burst limit in front.
 
 `GET /openapi.yaml` (no sign-in) serves a hand-maintained OpenAPI 3.1 description
 ([`docs/openapi.yaml`](openapi.yaml)) of what automation tools use: auth and API keys, items
-(with quick add, manual order and incremental sync), lists, tags, time blocks, the calendar and
+(with quick add, manual order and incremental sync), lists, tags, sessions, the calendar and
 event search, and webhooks with every event's payload. The usual recipes:
 
 - **Triggers:** webhooks such as `item.created`, `item.completed` and `event.starting`.
@@ -276,7 +276,7 @@ and the others in days. At most 20 new cards are introduced a day.
 | `POST /study/cards/:id/review`            | `{ "rating": "again" \| "hard" \| "good" \| "easy" }` → the card, rescheduled                                  |
 | `PUT /study/exams`                        | `{ key, title, starts_at, doc_ids }`: the pages you're revising for an exam → the overview                     |
 | `POST /study/revision/plan`               | `{ key, minutes?, timezone }` → proposed sessions in free working time before the exam (nothing saved)         |
-| `POST /study/revision/apply`              | `{ key, sessions[] }` → `201`: a "Revise for …" task due at the exam, with the sessions as time blocks         |
+| `POST /study/revision/apply`              | `{ key, sessions[] }` → `201`: a "Revise for …" task due at the exam, with the sessions on your calendar       |
 | `POST /ai/study/pages/:id/cards` (10/min) | → `{ cards: [{ question, answer, source }] }` suggested from the page alone; the apps add only the ticked ones |
 | `POST /ai/study/grade` (10/min)           | `{ card_id, answer }` → `{ verdict, feedback, suggested_rating }`, judged against the card and its page        |
 | `POST /ai/study/cards/:id/explain`        | → `{ explanation, beyond_notes }`; `beyond_notes` is true when it needed more than the page                    |
@@ -903,8 +903,19 @@ overwriting, so two open tabs can't clobber each other. `title` and `content` ar
 
 Ticking or unticking a line tied to a task finishes or reopens the task the same way as anywhere
 else: its future sessions are removed, a repeating task moves on to its next occurrence, and
-webhooks and your other devices hear about it. A line whose task you can no longer change is left
-alone rather than failing the save; the page always reads its task's real state.
+webhooks and your other devices hear about it. What counts is the line's own change: a line's
+`done` is a tick only when it differs from its task and from the tick the page last sent for that
+line (which starts again from the task whenever the task is finished or reopened anywhere else).
+So saving the page again, from an app that still shows an old tick or by restoring a version,
+never finishes a task twice. A line whose task you can no longer change is left alone rather than
+failing the save.
+
+The response, like every route that returns one page, shows each line tied to a task as its task
+now stands, and the page is stored that way: a repeating task that moved on reads unticked for its
+next occurrence. An editor should take `done` for those lines from the response (unless the line
+was ticked again meanwhile; `adoptTaskTicks` in `@orbyn/core`) and save once it has, since ticking
+the line again finishes the next occurrence only after the page has said it is unticked. Accepting
+a suggestion changes words only and never finishes or reopens a task.
 
 ### `DELETE /docs/:id` (auth)
 
@@ -974,17 +985,17 @@ it as the smallest alert, or null when there are none.
 
 A repeating item's `due_at` is its current occurrence and `series_start` its first. Completing a
 repeating task moves it to the next occurrence (its checklist resets and the timeline notes the
-completed one) instead of closing it. Completing any task removes its future time blocks.
+completed one) instead of closing it. Completing any task removes its future sessions.
 
 **Done or cancelled.** Both close a task: it leaves the planner, at-risk and due-soon notices,
-workload and the score (null), its reminders stop, and its future time blocks are removed.
+workload and the score (null), its reminders stop, and its future sessions are removed.
 Completing (`done`) also sets progress to 100, sends `item.completed`, moves a repeating task to
 its next occurrence and, with `count_blocks_as_spent` on, counts its blocks' time as spent.
 Cancelling (`cancelled`) does none of those: progress stays, no `item.completed`, and a repeating
 task stops for good. Reopening either re-arms its reminders. Cancelled events don't count as busy.
 
 **Blocks as time spent.** With the planner preference `count_blocks_as_spent` on (off by
-default), completing a task adds the past part of each of its time blocks (up to now) to
+default), completing a task adds the past part of each of its sessions (up to now) to
 `spent_minutes`. Each block counts once, even if the task is reopened and completed again.
 
 ### Subtasks
@@ -1288,7 +1299,7 @@ Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "
 
 ### `GET /planner/analytics` (auth)
 
-`?days=` (default 30). Where your set-aside time went: `{ from, to, days, planned_minutes, completed, by_list: [{name, minutes}], by_tag: [{name, minutes}] }`, from your own time blocks and finished tasks. Private to you.
+`?days=` (default 30). Where your set-aside time went: `{ from, to, days, planned_minutes, completed, by_list: [{name, minutes}], by_tag: [{name, minutes}] }`, from your own sessions and finished tasks. Private to you.
 
 ### `GET /planner/estimates` (auth)
 
@@ -1451,7 +1462,7 @@ above change them). Deleting a list or tag keeps its items.
 | `POST /tags`                        | `{ "name", "color"?, "team_id"? }` → `201`; `409` if the name exists |
 | `PUT /tags/:id`, `DELETE /tags/:id` | Rename or recolor; delete                                            |
 
-## Calendar and time blocks
+## Calendar and sessions
 
 ### `GET /calendar?from=&to=` (auth)
 
@@ -1461,7 +1472,7 @@ At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
   occurrence with `occurrence` set, and `overridden: true` on one changed on its own. Each also
   has `all_day`, `busy` (false for free events, all-day items and tasks), `color`, `alerts` and
   `attendee_count`.
-- `blocks`: your time blocks, with their task's title and status.
+- `blocks`: your sessions, with their task's title and status.
 - `derived`: buffers and travel time around events, worked out from your planner settings and
   places (never stored, so they always follow the events).
 - `frames`: each occurrence of your frames in the range:
@@ -1742,7 +1753,7 @@ Other tools reach Orbyn through these; nothing is synced out of this server.
 | `DELETE /me/webhooks/:id`                     | `204`                                                                                                     |
 | `POST /me/webhooks/:id/test`                  | Sends a `ping` now → `{ ok, status, error }`                                                              |
 | `GET /me/calendar-feed`                       | `{ enabled, busy_enabled, include_blocks }`                                                               |
-| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your time blocks as "Focus: {task}"                                           |
+| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Focus: {task}"                                              |
 | `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
 | `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
 | `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |
