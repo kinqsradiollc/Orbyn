@@ -215,29 +215,43 @@ const isRefusal = (e: unknown) =>
  * Ticking a linked line in a document finishes its task, and unticking one
  * reopens it, the same way as anywhere else (see setItemStatus): its future
  * sessions go, a repeating task moves on to its next occurrence, and other
- * devices hear about it.
+ * devices and pages hear about it.
  *
- * What counts is the line's own change. A line's tick is a tick only when it
- * differs from its task and from the tick this page last sent for the line
- * (kept on the link; a change to the task anywhere else starts it again from
- * the task, see mutate). So saving the page again can't finish a task twice:
- * a repeating task moves on and reads unticked again, but an app that still
- * shows the old tick, a second save with the same content, or a version
- * restored with it, says only what the page already said. Once the page has
- * said the line is unticked (the editors save that as soon as they hear it),
- * ticking it again finishes the next occurrence.
+ * What counts is a tick the person made, not one the page is still carrying.
+ * A repeating task moves on and reads unticked again, and a refused tick
+ * reads as the task really is, so a page can go on sending a tick after it
+ * has counted. How that is told apart:
+ *
+ * - An editor says which version of the page its ticks were taken from
+ *   (`ticksFrom`, the X-Orbyn-Ticks-From header). The link keeps the first
+ *   version showing the line as its task now stands (`done_version`: the
+ *   version given by the save whose tick counted, or the one the page moved
+ *   on to when the task changed elsewhere). A line that differs from its
+ *   task counts when its ticks were taken from that version or later: the
+ *   person saw the line as it stands and changed it. A tick sent from an
+ *   older copy (a save queued before the answer came back) is one already
+ *   made. So ticking again after the save that took the page's answer was
+ *   lost, or on a page opened afresh, finishes the next occurrence.
+ * - A save that doesn't say (an app from before this, a restored version)
+ *   goes by what the page last said for the line (`done`, kept on the
+ *   link): a line counts only when it differs from its task and from that.
+ *   Such a page has to say the line is unticked before ticking it again
+ *   counts. A task changed anywhere else starts it again from the task.
  *
  * A line whose task this person can't change is left alone rather than
  * failing the save; anything else that goes wrong fails it.
  *
  * Gives back the content to store: every line tied to a task reads as its
  * task now stands, so what is kept and what the editors are sent agree.
+ * Must run with the page locked (requireDoc), so the version this save gives
+ * it is the one after its current version.
  */
 async function syncTicks(
   db: Db,
   u: UserRow,
   docId: string,
   content: DocBlock[],
+  ticksFrom: number | null,
 ): Promise<DocBlock[]> {
   const ticks = new Map(
     content.flatMap((b) =>
@@ -251,9 +265,14 @@ async function syncTicks(
       item_id: string;
       status: string;
       done: boolean | null;
+      done_version: number | null;
+      version: number;
     }>(
-      `SELECT l.block_id, l.item_id, l.done, i.status FROM doc_task_links l
+      `SELECT l.block_id, l.item_id, l.done, l.done_version, i.status,
+              d.version
+         FROM doc_task_links l
          JOIN items i ON i.id = l.item_id
+         JOIN docs d ON d.id = l.doc_id
         WHERE l.doc_id = $1 AND l.block_id = ANY($2::text[])
         ORDER BY l.item_id
         FOR UPDATE OF i`,
@@ -261,10 +280,17 @@ async function syncTicks(
     )
   ).rows;
   if (!rows.length) return content;
+  // A tick here never moves this page's own version (see followTaskState).
+  const saving = rows[0].version + 1;
   for (const row of rows) {
     const wanted = ticks.get(row.block_id)!;
-    // A link made before pages kept their ticks (null) goes by the task.
-    if (wanted !== (row.status === "done") && wanted !== row.done) {
+    const counts =
+      wanted !== (row.status === "done") &&
+      (ticksFrom !== null
+        ? row.done_version === null || ticksFrom >= row.done_version
+        : // A link made before pages kept their ticks (null) goes by the task.
+          wanted !== row.done);
+    if (counts) {
       await db.query("SAVEPOINT tick");
       try {
         await setItemStatus(
@@ -273,6 +299,7 @@ async function syncTicks(
           row.item_id,
           wanted ? "done" : "todo",
           wanted ? 100 : 0,
+          { fromDoc: docId },
         );
         // Reopened with a checklist, progress follows its steps again.
         if (!wanted) await recomputeProgress(db, row.item_id);
@@ -285,12 +312,15 @@ async function syncTicks(
       }
     }
     // What the page said, even when the task wouldn't follow: a refused tick
-    // isn't tried again with every save, only when the line changes again.
-    await db.query(
-      `UPDATE doc_task_links SET done = $3
-        WHERE doc_id = $1 AND block_id = $2 AND done IS DISTINCT FROM $3`,
-      [docId, row.block_id, wanted],
-    );
+    // isn't tried again with every save, only when the line is ticked again.
+    // A tick that counted is shown as its task now stands from this save on.
+    if (counts || row.done !== wanted)
+      await db.query(
+        `UPDATE doc_task_links SET done = $3,
+           done_version = CASE WHEN $4::boolean THEN $5::int ELSE done_version END
+          WHERE doc_id = $1 AND block_id = $2`,
+        [docId, row.block_id, wanted, counts, saving],
+      );
   }
   return withTaskState(db, docId, content);
 }
@@ -543,6 +573,20 @@ export async function docRoutes(app: FastifyInstance) {
       ? (r.headers["x-orbyn-editor"] as string).slice(0, 64)
       : "";
 
+  /**
+   * The version of the page an editor's ticks were taken from (see
+   * syncTicks), or null when it doesn't say. Never later than the version
+   * the save is based on.
+   */
+  const ticksFrom = (
+    r: { headers: Record<string, unknown> },
+    base: number,
+  ): number | null => {
+    const raw = r.headers["x-orbyn-ticks-from"];
+    const n = typeof raw === "string" && /^\d{1,9}$/.test(raw) ? +raw : 0;
+    return n > 0 ? Math.min(n, base) : null;
+  };
+
   app.put("/docs/:id", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
@@ -561,7 +605,7 @@ export async function docRoutes(app: FastifyInstance) {
         );
       // Lines tied to tasks are stored as their tasks now stand.
       const content = body.content
-        ? await syncTicks(db, u, id, body.content)
+        ? await syncTicks(db, u, id, body.content, ticksFrom(r, body.version))
         : undefined;
       if (content) await followComments(db, id, content);
       if (content) await followSuggestions(db, id, content);
@@ -702,7 +746,8 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!past) fail(404, "That version is not kept");
-      const content = await syncTicks(db, u, id, past.content);
+      // A restored version's ticks are ones the page said before.
+      const content = await syncTicks(db, u, id, past.content, null);
       // Going back in time moves the words a remark points at, so the same
       // pass a save makes runs here too — a remark left behind by a restore
       // comes loose rather than pointing at the wrong sentence.

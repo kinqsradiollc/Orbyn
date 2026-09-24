@@ -264,6 +264,8 @@ export type RequestOptions = {
   raw?: boolean;
   /** Send once: a retry with the same key gets the first answer back. */
   idempotencyKey?: string;
+  /** Extra request headers. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -365,6 +367,7 @@ export class OrbynClient {
             ? { "Idempotency-Key": idempotencyKey }
             : {}),
           "X-Orbyn-Editor": this.editorId,
+          ...options.headers,
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -1047,6 +1050,12 @@ export class OrbynClient {
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
+  /**
+   * Save a page. An editor passes `ticksFrom`, the version of the page its
+   * checklist ticks were taken from (the version it last read or saved when
+   * the content was put together), so a tick made on a line as it now stands
+   * counts, and one carried over from before doesn't count twice.
+   */
   updateDoc(
     id: string,
     input: {
@@ -1057,8 +1066,15 @@ export class OrbynClient {
       tags?: string[];
       version: number;
     },
+    options: { ticksFrom?: number } = {},
   ) {
-    return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
+    return this.request<Doc>(`/docs/${id}`, {
+      method: "PUT",
+      body: input,
+      ...(options.ticksFrom
+        ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
+        : {}),
+    });
   }
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });

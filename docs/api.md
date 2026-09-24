@@ -903,19 +903,33 @@ overwriting, so two open tabs can't clobber each other. `title` and `content` ar
 
 Ticking or unticking a line tied to a task finishes or reopens the task the same way as anywhere
 else: its future sessions are removed, a repeating task moves on to its next occurrence, and
-webhooks and your other devices hear about it. What counts is the line's own change: a line's
-`done` is a tick only when it differs from its task and from the tick the page last sent for that
-line (which starts again from the task whenever the task is finished or reopened anywhere else).
-So saving the page again, from an app that still shows an old tick or by restoring a version,
-never finishes a task twice. A line whose task you can no longer change is left alone rather than
-failing the save.
+webhooks, your other devices and the other pages showing the task hear about it. What counts is a
+tick the person made, not one the page is still carrying (a repeating task that moved on reads
+unticked again, and a refused tick reads as the task really is), so saving the page again never
+finishes a task twice:
+
+- An editor sends `X-Orbyn-Ticks-From: <version>`, the version of the page its ticks were taken
+  from: the version it had read or saved when it put the content together. A save queued behind
+  one still running sends the version from before that one's answer. A line whose `done` differs
+  from its task counts when its ticks were taken from the first version that shows the line as
+  the task now stands, or a later one. So ticking a line on a page opened afresh, or again after
+  the save that took the last answer was lost, finishes the next occurrence.
+- Without the header (older apps), a line's `done` counts only when it differs from its task and
+  from the tick the page last sent for that line, which starts again from the task whenever the
+  task is finished or reopened anywhere else. Restoring a version goes by this rule too.
+
+A line whose task you can no longer change is left alone rather than failing the save.
 
 The response, like every route that returns one page, shows each line tied to a task as its task
 now stands, and the page is stored that way: a repeating task that moved on reads unticked for its
 next occurrence. An editor should take `done` for those lines from the response (unless the line
-was ticked again meanwhile; `adoptTaskTicks` in `@orbyn/core`) and save once it has, since ticking
-the line again finishes the next occurrence only after the page has said it is unticked. Accepting
-a suggestion changes words only and never finishes or reopens a task.
+was ticked again meanwhile; `adoptTaskTicks` in `@orbyn/core`) and save once it has. Accepting a
+suggestion changes words only and never finishes or reopens a task.
+
+When a task tied to a page's line is finished or reopened anywhere else (the planner, another
+page, the assistant), every page showing it moves on a version (without changing `updated_at`) and
+open copies hear about it on the live stream. An editor still showing the old tick gets `409` on
+its next save, re-reads, and merges, so it can't save the old tick back over the change.
 
 ### `DELETE /docs/:id` (auth)
 

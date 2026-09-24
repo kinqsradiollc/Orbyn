@@ -39,12 +39,16 @@ async function call(
   url: string,
   payload?: unknown,
   from = address(),
+  headers: Record<string, string> = {},
 ) {
   const r = await app.inject({
     method,
     url,
     remoteAddress: from,
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...headers,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     ...(payload === undefined ? {} : { payload: payload as Json }),
   });
   let body: any = null;
@@ -173,6 +177,8 @@ before(async () => {
 });
 
 after(async () => {
+  const { closeLive } = await import("../src/modules/docs/live.js");
+  await closeLive();
   await app.close();
   await pool.end();
 });
@@ -825,6 +831,466 @@ test("a line whose task can't be changed here doesn't stop the save", async () =
   assert.equal(retick.status, 200, retick.raw.body);
   const done = await call(owner.token, "GET", `/items/${item.id}`);
   assert.equal(done.body.status, "done");
+});
+
+// ---- repeating tasks due on a day or over a span ------------------------------
+
+/** A session from `start` to `end`. */
+async function sessionUntil(
+  token: string,
+  itemId: string,
+  start: string,
+  end: string,
+) {
+  const r = await call(token, "POST", "/blocks", {
+    item_id: itemId,
+    start_at: start,
+    end_at: end,
+  });
+  assert.equal(r.status, 201, r.raw.body);
+  return r.body.id as string;
+}
+
+type Finish = "edit" | "quick tick" | "page tick";
+
+/**
+ * A linked line whose task repeats daily with `when` (all-day, or with an
+ * end time), finished the given way once `sessions` are placed.
+ */
+async function finishRepeating(
+  how: Finish,
+  when: Json,
+  sessions: (itemId: string, token: string) => Promise<string[]>,
+) {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, `Daily check (${how})`);
+  const current = await call(me.token, "GET", `/items/${item.id}`);
+  const repeating = await call(me.token, "PUT", `/items/${item.id}`, {
+    ...baseBody(current.body),
+    ...when,
+    rrule: "FREQ=DAILY",
+    timezone: TZ,
+  });
+  assert.equal(repeating.status, 200, repeating.raw.body);
+  const placed = await sessions(item.id, me.token);
+
+  let finished: Json;
+  if (how === "edit") {
+    const r = await call(me.token, "PUT", `/items/${item.id}`, {
+      ...baseBody(repeating.body),
+      ...when,
+      rrule: "FREQ=DAILY",
+      timezone: TZ,
+      status: "done",
+    });
+    assert.equal(r.status, 200, r.raw.body);
+    finished = r.body;
+  } else if (how === "quick tick") {
+    const r = await call(me.token, "POST", `/items/${item.id}/updates`, {
+      status: "done",
+    });
+    assert.equal(r.status, 201, r.raw.body);
+    finished = r.body;
+  } else {
+    const page = await call(me.token, "GET", `/docs/${doc.id}`);
+    const r = await tick(me.token, page.body, true);
+    assert.equal(r.status, 200, r.raw.body);
+    finished = (await call(me.token, "GET", `/items/${item.id}`)).body;
+  }
+  // It moved on to the next day rather than closing.
+  assert.equal(finished.status, "todo");
+  assert.equal(await completions(item.id), 1);
+  const shown = await call(me.token, "GET", `/items/${item.id}/sessions`);
+  assert.equal(shown.status, 200, shown.raw.body);
+  return {
+    placed,
+    finished,
+    left: await sessionsOf(item.id),
+    shown: shown.body as Json,
+  };
+}
+
+const WAYS: Finish[] = ["edit", "quick tick", "page tick"];
+
+test("finishing an all-day repeating task takes that day's sessions, whichever way", async () => {
+  for (const how of WAYS) {
+    // Due tomorrow, all day: its deadline is the end of tomorrow.
+    const { placed, finished, left, shown } = await finishRepeating(
+      how,
+      { due_at: local(1, 0), end_at: null, all_day: true },
+      async (id, token) => [
+        // Tomorrow morning and tomorrow afternoon: for tomorrow's occurrence.
+        await sessionUntil(token, id, local(1, 10), local(1, 10, 45)),
+        await sessionUntil(token, id, local(1, 15), local(1, 16)),
+        // Running past midnight: it ends after tomorrow, so it's for the next.
+        await sessionUntil(token, id, local(1, 23, 30), local(2, 0, 15)),
+        // The day after: for the next occurrence.
+        await sessionUntil(token, id, local(2, 10), local(2, 10, 45)),
+      ],
+    );
+    assert.equal(
+      new Date(finished.due_at).toISOString(),
+      local(2, 0),
+      `${how}: moved on a day`,
+    );
+    assert.deepEqual(left, [placed[2], placed[3]], `${how}: sessions kept`);
+    // Nothing is left over for the finished day: every session still there
+    // is shown on the task, for the occurrence it's now due.
+    assert.equal(shown.sessions.length, 2, how);
+    for (const s of shown.sessions)
+      assert.equal(new Date(s.due_at).toISOString(), local(2, 0), how);
+  }
+});
+
+test("finishing a repeating task with an end time takes the sessions up to its end", async () => {
+  for (const how of WAYS) {
+    // Due tomorrow 9 am to 5 pm: its deadline is 5 pm.
+    const { placed, finished, left, shown } = await finishRepeating(
+      how,
+      { due_at: local(1, 9), end_at: local(1, 17) },
+      async (id, token) => [
+        // Within the span, and one ending right at 5 pm: for tomorrow.
+        await sessionUntil(token, id, local(1, 11), local(1, 11, 45)),
+        await sessionUntil(token, id, local(1, 16, 15), local(1, 17)),
+        // Running past 5 pm: for the next occurrence.
+        await sessionUntil(token, id, local(1, 16, 30), local(1, 17, 15)),
+        await sessionUntil(token, id, local(2, 11), local(2, 11, 45)),
+      ],
+    );
+    assert.equal(new Date(finished.due_at).toISOString(), local(2, 9), how);
+    assert.equal(new Date(finished.end_at).toISOString(), local(2, 17), how);
+    assert.deepEqual(left, [placed[2], placed[3]], `${how}: sessions kept`);
+    assert.equal(shown.sessions.length, 2, how);
+    for (const s of shown.sessions)
+      assert.equal(new Date(s.due_at).toISOString(), local(2, 9), how);
+  }
+});
+
+// ---- pages hear when their task changes elsewhere ------------------------------
+
+test("a task finished elsewhere moves its pages on, so an old copy can't reopen it", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Pay the rent");
+  // An old copy of the page, from before the task was finished.
+  const stale = doc;
+
+  const done = await call(me.token, "POST", `/items/${item.id}/updates`, {
+    status: "done",
+  });
+  assert.equal(done.status, 201, done.raw.body);
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.version, stale.version + 1);
+  assert.equal(page.body.content[0].done, true);
+  // Moving the version isn't an edit: the page wasn't written on.
+  assert.equal(page.body.updated_at, stale.updated_at);
+
+  // The old copy saves a typed line with the old tick: refused as stale, so
+  // the editor re-reads and merges instead of reopening the task.
+  const typed = await call(me.token, "PUT", `/docs/${doc.id}`, {
+    version: stale.version,
+    content: [
+      ...stale.content,
+      { type: "paragraph", text: "Paid by transfer", id: "b-typed" },
+    ],
+  });
+  assert.equal(typed.status, 409, typed.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
+
+  // The same the other way: reopened elsewhere, an old ticked copy can't
+  // finish it again.
+  const reopened = await call(me.token, "POST", `/items/${item.id}/updates`, {
+    status: "todo",
+  });
+  assert.equal(reopened.status, 201, reopened.raw.body);
+  const again = await tick(me.token, page.body, true);
+  assert.equal(again.status, 409, again.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "todo",
+  );
+
+  // Read afresh, unticking and ticking there work as usual.
+  const fresh = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(fresh.body.content[0].done, false);
+  const ticked = await tick(me.token, fresh.body, true);
+  assert.equal(ticked.status, 200, ticked.raw.body);
+  // The page doing the tick moves on once, by its own save.
+  assert.equal(ticked.body.version, fresh.body.version + 1);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
+});
+
+test("a tick on one page moves the other pages showing the task, and they hear it", async () => {
+  const { streamDocChanges, watcherCount } =
+    await import("../src/modules/docs/live.js");
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Book the venue");
+  // A second page with a line tied to the same task.
+  const other = await call(me.token, "POST", "/docs", {
+    title: "Plans",
+    content: [{ type: "todo", text: "Book the venue", done: false, id: "v" }],
+  });
+  assert.equal(other.status, 201, other.raw.body);
+  await pool.query(
+    "INSERT INTO doc_task_links (doc_id, block_id, item_id, done) VALUES ($1, 'v', $2, false)",
+    [other.body.id, item.id],
+  );
+
+  const written: string[] = [];
+  const reply = {
+    getHeaders: () => ({}),
+    raw: { writeHead: () => {}, write: (c: string) => written.push(c) },
+  } as never;
+  const stop = await streamDocChanges(reply, other.body.id, "tab-other");
+  try {
+    const ticked = await tick(me.token, doc, true);
+    assert.equal(ticked.status, 200, ticked.raw.body);
+    assert.equal(ticked.body.version, doc.version + 1);
+
+    const moved = await call(me.token, "GET", `/docs/${other.body.id}`);
+    assert.equal(moved.body.version, other.body.version + 1);
+    assert.equal(moved.body.content[0].done, true);
+
+    const deadline = Date.now() + 5000;
+    while (!written.some((c) => c.startsWith("data:")) && Date.now() < deadline)
+      await new Promise((r) => setTimeout(r, 25));
+    const events = written
+      .filter((c) => c.startsWith("data:"))
+      .map((c) => JSON.parse(c.slice(5)) as Json);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].version, moved.body.version);
+  } finally {
+    stop();
+  }
+  assert.equal(watcherCount(other.body.id), 0);
+
+  // Saving the other page as it stands changes no task, so moves no page.
+  const quiet = await call(me.token, "GET", `/docs/${other.body.id}`);
+  const unchanged = await call(me.token, "PUT", `/docs/${other.body.id}`, {
+    version: quiet.body.version,
+    content: quiet.body.content,
+  });
+  assert.equal(unchanged.status, 200, unchanged.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/docs/${doc.id}`)).body.version,
+    doc.version + 1,
+  );
+});
+
+test("a page being saved at that moment isn't waited for, and its old tick doesn't count", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Renew the insurance");
+  // Another request holds the page, as a save in progress does.
+  const holder = await pool.connect();
+  let finished: { status: number; raw: { body: string } } | undefined;
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT 1 FROM docs WHERE id = $1 FOR UPDATE", [doc.id]);
+    const quick = call(me.token, "POST", `/items/${item.id}/updates`, {
+      status: "done",
+    });
+    finished = await Promise.race([
+      quick,
+      new Promise<undefined>((r) => setTimeout(() => r(undefined), 5000)),
+    ]);
+  } finally {
+    await holder.query("ROLLBACK");
+    holder.release();
+  }
+  assert.ok(finished, "the tick didn't wait for the page");
+  assert.equal(finished.status, 201, finished.raw.body);
+  // The page kept its version (its save gives the next one), and a save
+  // made from before the change doesn't reopen the task, even one claiming
+  // its ticks are from a later version than it's based on.
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.version, doc.version);
+  const saved = await call(
+    me.token,
+    "PUT",
+    `/docs/${doc.id}`,
+    {
+      version: doc.version,
+      content: [
+        ...doc.content,
+        { type: "paragraph", text: "Called them", id: "b" },
+      ],
+    },
+    address(),
+    { "x-orbyn-ticks-from": String(doc.version + 5) },
+  );
+  assert.equal(saved.status, 200, saved.raw.body);
+  assert.equal(saved.body.content[0].done, true);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
+  // From that save on, the page shows it done, and unticking it reopens it.
+  const untick = await call(
+    me.token,
+    "PUT",
+    `/docs/${doc.id}`,
+    {
+      version: saved.body.version,
+      content: saved.body.content.map((b: Json) =>
+        b.type === "todo" ? { ...b, done: false } : b,
+      ),
+    },
+    address(),
+    { "x-orbyn-ticks-from": String(saved.body.version) },
+  );
+  assert.equal(untick.status, 200, untick.raw.body);
+  assert.equal(
+    (await call(me.token, "GET", `/items/${item.id}`)).body.status,
+    "todo",
+  );
+});
+
+// ---- where an editor's ticks came from -----------------------------------------
+
+/** A save that says which version its ticks were taken from. */
+const saveFrom = (
+  token: string,
+  docId: string,
+  version: number,
+  from: number | string,
+  content: Json[],
+) =>
+  call(token, "PUT", `/docs/${docId}`, { version, content }, address(), {
+    "x-orbyn-ticks-from": String(from),
+  });
+
+test("ticking a repeating line again counts once the page has shown it unticked", async () => {
+  const me = await newUser();
+  const { doc, item } = await linkedLine(me.token, "Feed the fish");
+  await makeDaily(me.token, item.id);
+  const line = doc.content[0];
+  const ticked = (d: boolean) => [{ ...line, done: d }];
+
+  const first = await saveFrom(
+    me.token,
+    doc.id,
+    doc.version,
+    doc.version,
+    ticked(true),
+  );
+  assert.equal(first.status, 200, first.raw.body);
+  assert.equal(await completions(item.id), 1);
+  assert.equal(first.body.content[0].done, false);
+
+  // A save queued before that answer came back still carries the tick.
+  const queued = await saveFrom(
+    me.token,
+    doc.id,
+    first.body.version,
+    doc.version,
+    [...ticked(true), { type: "paragraph", text: "Flakes", id: "b" }],
+  );
+  assert.equal(queued.status, 200, queued.raw.body);
+  assert.equal(await completions(item.id), 1);
+
+  // The save that would have taken the answer never arrived (the app was
+  // closed). Opened afresh, the line reads unticked, and ticking it
+  // finishes the next occurrence.
+  const page = await call(me.token, "GET", `/docs/${doc.id}`);
+  assert.equal(page.body.content[0].done, false);
+  const second = await saveFrom(
+    me.token,
+    doc.id,
+    page.body.version,
+    page.body.version,
+    page.body.content.map((b: Json) =>
+      b.type === "todo" ? { ...b, done: true } : b,
+    ),
+  );
+  assert.equal(second.status, 200, second.raw.body);
+  assert.equal(await completions(item.id), 2);
+  assert.equal(
+    new Date(
+      (await call(me.token, "GET", `/items/${item.id}`)).body.due_at,
+    ).toISOString(),
+    local(4, 17),
+  );
+
+  // An app that doesn't say where its ticks came from, still showing the
+  // tick, goes by what the page last said: nothing more.
+  const older = await call(me.token, "PUT", `/docs/${doc.id}`, {
+    version: second.body.version,
+    content: ticked(true),
+  });
+  assert.equal(older.status, 200, older.raw.body);
+  // Nor does one whose header isn't a version.
+  const odd = await saveFrom(
+    me.token,
+    doc.id,
+    older.body.version,
+    "soon",
+    ticked(true),
+  );
+  assert.equal(odd.status, 200, odd.raw.body);
+  assert.equal(await completions(item.id), 2);
+});
+
+test("a refused tick is tried again only when the line is ticked again", async () => {
+  const owner = await newUser();
+  const me = await newUser();
+  const teamId = await newTeam(owner.id, [me.id]);
+  const { doc, item } = await linkedLine(me.token, "Order chairs");
+  const current = await call(me.token, "GET", `/items/${item.id}`);
+  const moved = await call(me.token, "PUT", `/items/${item.id}`, {
+    ...baseBody(current.body),
+    team_id: teamId,
+  });
+  assert.equal(moved.status, 200, moved.raw.body);
+  await pool.query(
+    "UPDATE team_members SET role = 'viewer' WHERE team_id = $1 AND user_id = $2",
+    [teamId, me.id],
+  );
+  const ticked = doc.content.map((b: Json) => ({ ...b, done: true }));
+  const refused = await saveFrom(
+    me.token,
+    doc.id,
+    doc.version,
+    doc.version,
+    ticked,
+  );
+  assert.equal(refused.status, 200, refused.raw.body);
+  assert.equal(refused.body.content[0].done, false);
+  await pool.query(
+    "UPDATE team_members SET role = 'member' WHERE team_id = $1 AND user_id = $2",
+    [teamId, me.id],
+  );
+  // A save queued before the answer still carries the refused tick: not
+  // tried again.
+  const queued = await saveFrom(
+    me.token,
+    doc.id,
+    refused.body.version,
+    doc.version,
+    ticked,
+  );
+  assert.equal(queued.status, 200, queued.raw.body);
+  assert.equal(
+    (await call(owner.token, "GET", `/items/${item.id}`)).body.status,
+    "todo",
+  );
+  // Ticked again on the line as it's shown, it's tried again.
+  const retried = await saveFrom(
+    me.token,
+    doc.id,
+    queued.body.version,
+    queued.body.version,
+    ticked,
+  );
+  assert.equal(retried.status, 200, retried.raw.body);
+  assert.equal(
+    (await call(owner.token, "GET", `/items/${item.id}`)).body.status,
+    "done",
+  );
 });
 
 test("the OpenAPI description lists every webhook, sessions included", async () => {

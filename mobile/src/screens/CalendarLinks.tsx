@@ -103,7 +103,7 @@ export function CalendarFeedCard() {
         <View style={s.divider} />
         <FeedLink
           title="Busy times only"
-          detail="Just “Busy” blocks, with no details. Safe to share with others."
+          detail="Just “Busy” times, with no details. Safe to share with others."
           on={!!settings?.busy_enabled}
           url={links.busy}
           busy={busy}

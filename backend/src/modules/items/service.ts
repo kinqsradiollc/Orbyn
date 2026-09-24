@@ -1,6 +1,7 @@
 import {
   addDays,
   dayTime,
+  deadlineOf,
   fail,
   isClosed,
   isLocalMidnight,
@@ -17,6 +18,7 @@ import {
 import type { Db } from "../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
+import { followTaskState } from "../docs/task-lines.js";
 import { openAsk } from "../followthrough/asks.js";
 import {
   isOccurrence,
@@ -565,6 +567,14 @@ function alertsFor(
   return saved ?? defaults;
 }
 
+export type MutateOptions = {
+  /**
+   * The page whose checklist tick this change is: that page's own save
+   * deals with its line, so only the other pages showing the task are told.
+   */
+  fromDoc?: string;
+};
+
 /**
  * The single write path for planner items, used by the REST routes, AI
  * proposal application, and bookings. Enforces RBAC and optimistic locking on
@@ -578,6 +588,7 @@ export async function mutate(
   action: Action,
   /** For a create: the id the device already gave it (made offline). */
   createId?: string,
+  options: MutateOptions = {},
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
   await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
@@ -778,6 +789,8 @@ export async function mutate(
     seriesStart = dueAt;
   let exdates = rrule ? current.exdates.map((x) => iso(x)!) : [];
   let completedOccurrence: string | null = null;
+  /** When the finished occurrence was due by (see `deadlineOf`). */
+  let completedDeadline: string | null = null;
 
   // Completing a repeating task moves it to its next occurrence instead.
   if (
@@ -797,6 +810,12 @@ export async function mutate(
     );
     if (next) {
       completedOccurrence = dueAt;
+      completedDeadline = deadlineOf({
+        due_at: dueAt,
+        end_at: endAt,
+        all_day: allDay,
+        timezone,
+      });
       const series: SeriesRow = {
         id: current.id,
         kind: d.kind,
@@ -876,14 +895,12 @@ export async function mutate(
       reorder,
     ],
   );
-  // A page line tied to this task now reads ticked or not with it, and a
-  // tick there counts from what it shows (see syncTicks in docs/routes.ts).
-  // A page's own tick puts its line's state back afterwards.
+  // A page line tied to this task now reads ticked or not with it: the
+  // pages showing it move on a version, so an editor still showing the old
+  // tick re-reads rather than saving it back (see followTaskState). The page
+  // doing the tick, if any, sorts out its own line (syncTicks).
   if ((status === "done") !== (current.status === "done"))
-    await db.query("UPDATE doc_task_links SET done = $2 WHERE item_id = $1", [
-      current.id,
-      status === "done",
-    ]);
+    await followTaskState(db, current.id, status === "done", options.fromDoc);
   await setTags(db, current.id, tagIds);
   if (d.kind === "task") await setMeasure(db, current.id, d);
   else
@@ -990,13 +1007,16 @@ export async function mutate(
   if (d.status === "done" && current.status !== "done")
     await countBlocksAsSpent(db, actor.id, current.id);
   // Sessions for work that's finished or cancelled aren't needed any more. A
-  // repeating task that moved on keeps the sessions meant for its next
-  // occurrence: only those before the finished one's deadline go.
-  if (completedOccurrence)
+  // repeating task that moved on keeps the sessions meant for its later
+  // occurrences. A session is for the first occurrence whose deadline it
+  // ends by (sessionDueFor in @orbyn/core), so the finished occurrence's are
+  // the ones ending by its deadline: the end of its day when it's all-day,
+  // its end time when it has one, otherwise its due time.
+  if (completedDeadline)
     await db.query(
       `DELETE FROM time_blocks
-        WHERE item_id = $1 AND start_at > now() AND start_at < $2`,
-      [current.id, completedOccurrence],
+        WHERE item_id = $1 AND start_at > now() AND end_at <= $2`,
+      [current.id, completedDeadline],
     );
   else if (isClosed(status) && !isClosed(current.status))
     await db.query(
@@ -1036,24 +1056,31 @@ export async function setItemStatus(
   itemId: string,
   status: Status,
   progress?: number,
+  options: MutateOptions = {},
 ): Promise<Item> {
   const row = await lockItem(db, itemId);
   const iso = (v: Date | string | null) =>
     v ? new Date(v).toISOString() : null;
-  return (await mutate(db, actor, {
-    operation: "update",
-    item_id: itemId,
-    version: row.version,
-    data: itemData.parse({
-      title: row.title,
-      notes: row.notes,
-      kind: row.kind,
-      status,
-      priority: row.priority,
-      due_at: iso(row.due_at),
-      end_at: iso(row.end_at),
-      team_id: row.team_id,
-      ...(progress === undefined ? {} : { progress }),
-    }),
-  }))!;
+  return (await mutate(
+    db,
+    actor,
+    {
+      operation: "update",
+      item_id: itemId,
+      version: row.version,
+      data: itemData.parse({
+        title: row.title,
+        notes: row.notes,
+        kind: row.kind,
+        status,
+        priority: row.priority,
+        due_at: iso(row.due_at),
+        end_at: iso(row.end_at),
+        team_id: row.team_id,
+        ...(progress === undefined ? {} : { progress }),
+      }),
+    },
+    undefined,
+    options,
+  ))!;
 }

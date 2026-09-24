@@ -288,8 +288,8 @@ export function DocEditor({
    * repeating task ticked here has moved on to its next occurrence and reads
    * unticked again; showing the old tick would send it back with the next
    * save. A line ticked or unticked again since keeps what was done here.
-   * Whatever it took is saved straight away: the page has to have said a
-   * line is unticked before ticking it again counts as a new tick.
+   * Whatever it took is saved straight away, so the page also says it to
+   * anything that saves it without saying where its ticks came from.
    */
   const adoptTicks = useCallback((sent: DocBlock[], saved: Doc): boolean => {
     const { blocks: next, changed } = adoptTaskTicks(
@@ -325,14 +325,22 @@ export function DocEditor({
 
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
+      // The version these lines' ticks were taken from. A save queued behind
+      // one still running goes out after that one's answer, but its ticks are
+      // still the ones from before it: the server mustn't count them again.
+      const ticksFrom = version.current;
       const write = async () => {
         setSave("saving");
         try {
-          const saved = await client.updateDoc(doc.id, {
-            title: nextTitle,
-            content: nextBlocks,
-            version: version.current,
-          });
+          const saved = await client.updateDoc(
+            doc.id,
+            {
+              title: nextTitle,
+              content: nextBlocks,
+              version: version.current,
+            },
+            { ticksFrom },
+          );
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
@@ -348,11 +356,15 @@ export function DocEditor({
             try {
               const theirs = await client.getDoc(doc.id);
               const merged = reconcile(theirs);
-              const saved = await client.updateDoc(doc.id, {
-                title: live.current.title,
-                content: merged,
-                version: version.current,
-              });
+              const saved = await client.updateDoc(
+                doc.id,
+                {
+                  title: live.current.title,
+                  content: merged,
+                  version: version.current,
+                },
+                { ticksFrom: version.current },
+              );
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
