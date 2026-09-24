@@ -26,6 +26,7 @@ import {
   type AdminDatabaseTableDetail,
   type AdminDatabaseRows,
   type Doc,
+  type TrashedDoc,
   type DocBlock,
   type DocKind,
   type DocComment,
@@ -199,6 +200,12 @@ export type LiveNews = {
   doc?: string;
   by?: string;
 };
+
+/**
+ * What a document's stream says beyond its version: `trashed` when someone
+ * moved it to Trash, so an editor that has it open can let it go.
+ */
+export type DocNews = { trashed: boolean };
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
 const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
@@ -754,14 +761,20 @@ export class OrbynClient {
   itemNote(itemId: string) {
     return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
   }
-  /** Turn a document's unticked checklist lines into tasks. */
-  docToTasks(id: string) {
+  /**
+   * Turn a page's open checklist lines into tasks: every one that isn't a
+   * task yet, or only the lines named in `blockIds` ("Make task").
+   */
+  docToTasks(id: string, blockIds?: string[]) {
     return this.request<{
       created: number;
       items: Item[];
       /** The document as it now stands, with the new lines tied to tasks. */
       doc: Doc | null;
-    }>(`/docs/${id}/tasks`, { method: "POST" });
+    }>(`/docs/${id}/tasks`, {
+      method: "POST",
+      ...(blockIds?.length ? { body: { block_ids: blockIds } } : {}),
+    });
   }
 
   // Projects
@@ -1059,8 +1072,21 @@ export class OrbynClient {
   ) {
     return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
   }
+  /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });
+  }
+  /** Pages in Trash, most recently deleted first. */
+  listTrash() {
+    return this.request<TrashedDoc[]>("/docs/trash");
+  }
+  /** Bring a page back from Trash, as it was. */
+  restoreDoc(id: string) {
+    return this.request<Doc>(`/docs/${id}/restore`, { method: "POST" });
+  }
+  /** Delete a page in Trash for good. There is no undo. */
+  deleteDocForever(id: string) {
+    return this.request<void>(`/docs/${id}/forever`, { method: "DELETE" });
   }
 
   /** Past states of a document, newest first, without their content. */
@@ -1089,7 +1115,10 @@ export class OrbynClient {
    * cannot carry an Authorization header and would force the token into the
    * URL, where proxies and logs would keep it.
    */
-  watchDoc(id: string, onChange: (version: number) => void): () => void {
+  watchDoc(
+    id: string,
+    onChange: (version: number, news: DocNews) => void,
+  ): () => void {
     const abort = new AbortController();
     let stopped = false;
     const run = async () => {
@@ -1135,8 +1164,11 @@ export class OrbynClient {
               try {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
+                  trashed?: boolean;
                 };
-                onChange(payload.version ?? 0);
+                onChange(payload.version ?? 0, {
+                  trashed: payload.trashed === true,
+                });
               } catch {
                 // A half-written event: the next one will bring us up to date.
               }

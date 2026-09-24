@@ -18,8 +18,12 @@ import {
   Sigma,
   Code,
   Type,
+  CalendarDays,
+  ListChecks,
+  ListIndentDecrease,
+  ListIndentIncrease,
 } from "lucide-react";
-import { BLOCK_KINDS, type DocBlock } from "@orbyn/core";
+import { BLOCK_KINDS, isListBlock, type DocBlock } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 
 /** One icon per kind, so the menu reads at a glance. */
@@ -60,6 +64,9 @@ export function DocBlockMenu({
   onComment,
   onDelete,
   onClose,
+  onIndent,
+  canIndent = false,
+  canOutdent = false,
   structural = true,
 }: {
   anchor: DOMRect;
@@ -72,6 +79,10 @@ export function DocBlockMenu({
   onComment: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** Tuck a list line in under the one above, or bring it back out. */
+  onIndent?: (by: 1 | -1) => void;
+  canIndent?: boolean;
+  canOutdent?: boolean;
   /**
    * Whether the page itself may change. While suggesting it may not: a
    * proposal is a stretch of one line, so a line moved, copied or taken
@@ -135,6 +146,32 @@ export function DocBlockMenu({
             <MessageSquarePlus size={15} aria-hidden="true" /> Comment
           </button>
         </div>
+        {structural && onIndent && isListBlock(block) && (
+          <div className="doc-menu-row">
+            <button
+              className="doc-menu-item"
+              disabled={!canIndent}
+              onClick={() => {
+                onIndent(1);
+                onClose();
+              }}
+            >
+              <ListIndentIncrease size={15} aria-hidden="true" /> Indent
+              <kbd>Tab</kbd>
+            </button>
+            <button
+              className="doc-menu-item"
+              disabled={!canOutdent}
+              onClick={() => {
+                onIndent(-1);
+                onClose();
+              }}
+            >
+              <ListIndentDecrease size={15} aria-hidden="true" /> Outdent
+              <kbd>⇧Tab</kbd>
+            </button>
+          </div>
+        )}
         <div className="doc-menu-row" hidden={!structural}>
           <button
             className="doc-menu-item"
@@ -181,31 +218,97 @@ export function DocBlockMenu({
 }
 
 /**
+ * What the "/" menu can do: turn the line into a kind of block, or put
+ * something in it — today's date, or a new task. Only what works today is
+ * offered; links, tables, images, callouts and templates come later.
+ */
+export type SlashItem =
+  | { kind: "block"; block: (typeof BLOCK_KINDS)[number] }
+  | { kind: "task" }
+  | { kind: "date" };
+
+type SlashEntry = {
+  item: SlashItem;
+  key: string;
+  label: string;
+  hint: string;
+  shorthand?: string;
+  icon: LucideIcon;
+  /** Extra words it answers to when typed after the "/". */
+  words: string;
+};
+
+/** Today, as it's written in a page: "Thursday 24 September 2026". */
+export const todayText = (now = new Date()) =>
+  now.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+const slashEntries = (): SlashEntry[] => {
+  const blocks: SlashEntry[] = BLOCK_KINDS.map((block) => ({
+    item: { kind: "block", block },
+    key: kindKey(block),
+    label: block.label,
+    hint: block.hint,
+    shorthand: block.shorthand.trim() || undefined,
+    icon: ICONS[kindKey(block)],
+    words: block.type,
+  }));
+  const task: SlashEntry = {
+    item: { kind: "task" },
+    key: "task",
+    label: "New task",
+    hint: "A checklist line that goes straight into your tasks",
+    icon: ListChecks,
+    words: "task todo make",
+  };
+  const date: SlashEntry = {
+    item: { kind: "date" },
+    key: "date",
+    label: "Date",
+    hint: todayText(),
+    icon: CalendarDays,
+    words: "date today day",
+  };
+  // "New task" sits with the checklist it is a kind of; the date comes last.
+  const at = blocks.findIndex((e) => e.key === "todo") + 1;
+  return [...blocks.slice(0, at), task, ...blocks.slice(at), date];
+};
+
+/**
  * The menu that opens when a line starts with "/": pick a kind of block by
- * name. Typing narrows it; Enter takes the highlighted one; Escape leaves
- * the slash as ordinary text.
+ * name, or something to put in the line. Typing narrows it; Enter takes the
+ * highlighted one; Escape leaves the slash as ordinary text. Partway through
+ * a line only what goes into a line is offered (the date).
  */
 export function SlashMenu({
   anchor,
   query,
   onPick,
   onClose,
+  insertsOnly = false,
 }: {
   anchor: DOMRect;
   query: string;
-  onPick: (kind: (typeof BLOCK_KINDS)[number]) => void;
+  onPick: (item: SlashItem) => void;
   onClose: () => void;
+  /** Partway through a line: only what can go into the line. */
+  insertsOnly?: boolean;
 }) {
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return BLOCK_KINDS.filter(
-      (k) =>
-        !q ||
-        k.label.toLowerCase().includes(q) ||
-        k.type.includes(q) ||
-        k.hint.toLowerCase().includes(q),
+    return slashEntries().filter(
+      (e) =>
+        (!insertsOnly || e.item.kind === "date") &&
+        (!q ||
+          e.label.toLowerCase().includes(q) ||
+          e.words.includes(q) ||
+          e.hint.toLowerCase().includes(q)),
     );
-  }, [query]);
+  }, [query, insertsOnly]);
   const [highlight, setHighlight] = useState(0);
   useEffect(() => setHighlight(0), [query]);
 
@@ -221,7 +324,7 @@ export function SlashMenu({
       } else if (e.key === "Enter" && matches[highlight]) {
         e.preventDefault();
         e.stopPropagation();
-        onPick(matches[highlight]);
+        onPick(matches[highlight].item);
       }
     };
     document.addEventListener("keydown", onKey, true);
@@ -239,15 +342,14 @@ export function SlashMenu({
     >
       <div className="doc-menu">
         <span className="doc-menu-label">
-          {query ? `Blocks matching “${query}”` : "Add a block"}
+          {query ? `Matching “${query}”` : "Add a block"}
         </span>
         <div className="doc-menu-kinds" role="listbox" aria-label="Block kinds">
-          {matches.map((kind, i) => {
-            const key = kindKey(kind);
-            const Icon = ICONS[key];
+          {matches.map((entry, i) => {
+            const Icon = entry.icon;
             return (
               <button
-                key={key}
+                key={entry.key}
                 role="option"
                 aria-selected={i === highlight}
                 className={
@@ -255,14 +357,14 @@ export function SlashMenu({
                 }
                 onMouseEnter={() => setHighlight(i)}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onPick(kind)}
+                onClick={() => onPick(entry.item)}
               >
                 <Icon size={15} aria-hidden="true" />
                 <span className="doc-menu-text">
-                  <strong>{kind.label}</strong>
-                  <small>{kind.hint}</small>
+                  <strong>{entry.label}</strong>
+                  <small>{entry.hint}</small>
                 </span>
-                {kind.shorthand && <kbd>{kind.shorthand.trim()}</kbd>}
+                {entry.shorthand && <kbd>{entry.shorthand}</kbd>}
               </button>
             );
           })}

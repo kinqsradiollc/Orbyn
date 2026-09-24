@@ -1313,32 +1313,6 @@
   cursor: row-resize;
 }
 
-/* A note under the toolbar: a skipped frame day, a copied block. */
-.calendar-note {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0 20px 12px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--color-selected);
-  color: var(--color-selectedText);
-  font-size: 12px;
-}
-.calendar-note span {
-  flex: 1;
-  min-width: 0;
-}
-.calendar-note .text-button {
-  padding: 0;
-  color: inherit;
-  font-weight: 650;
-  text-decoration: underline;
-}
-.calendar-note .icon-button {
-  color: inherit;
-}
-
 /* Planner: what to plan for, stale plans, the task checklist, keep-free. */
 .planner-scope {
   display: grid;

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Switch } from "../components/Switch";
 import {
   BREAK_LEVELS,
   dateLabel,

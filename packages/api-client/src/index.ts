@@ -4,5 +4,6 @@ export type {
   RequestOptions,
   TokenSource,
   LiveNews,
+  DocNews,
 } from "./client.js";
 export { HttpError } from "@orbyn/core";

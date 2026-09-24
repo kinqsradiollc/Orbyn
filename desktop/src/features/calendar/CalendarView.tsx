@@ -1,5 +1,6 @@
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
+import { useToast } from "../../components/Toast";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
@@ -8,7 +9,6 @@ import {
   SlidersHorizontal,
   Users,
   Wand2,
-  X,
 } from "lucide-react";
 import {
   addMonths,
@@ -89,8 +89,6 @@ const MODES: { id: CalendarMode; label: string; key: string }[] = [
 ];
 const AGENDA_DAYS = 14;
 const SET_KEY = "orbyn-calendar-set";
-/** How long a note under the toolbar stays. */
-const NOTE_MS = 8000;
 
 type Props = {
   items: Item[];
@@ -138,8 +136,6 @@ type Dialog =
   | { kind: "sets" }
   | { kind: "frame"; frameId: string }
   | null;
-/** A short message under the toolbar, sometimes with Undo. */
-type Note = { text: string; undo?: () => void; tone?: "warn" };
 
 const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString([], {
@@ -247,13 +243,8 @@ export function CalendarView({
   const [matesMenu, setMatesMenu] = useState<DOMRect | null>(null);
   const itemMap = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
-  // ---- notes under the toolbar ----
-  const [note, setNote] = useState<Note | null>(null);
-  useEffect(() => {
-    if (!note) return;
-    const id = setTimeout(() => setNote(null), NOTE_MS);
-    return () => clearTimeout(id);
-  }, [note]);
+  // ---- notes: the app's one toast, with Undo where there is one ----
+  const toast = useToast();
 
   // ---- the planner ----
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -353,7 +344,7 @@ export function CalendarView({
   const reschedule = async (block: TimeBlock) => {
     try {
       const moved = await client.rescheduleBlock(block.id);
-      setNote({
+      toast({
         text: `Moved to ${shortDay(moved.start_at)}, ${new Date(
           moved.start_at,
         ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
@@ -371,7 +362,7 @@ export function CalendarView({
         start ? { start_at: start.toISOString() } : {},
       );
       if (!start)
-        setNote({
+        toast({
           text: `Copied to ${shortDay(copy.start_at)}, ${new Date(
             copy.start_at,
           ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
@@ -471,7 +462,7 @@ export function CalendarView({
     } catch (e) {
       if ((e as HttpError).status === 401) report(e);
       else
-        setNote({
+        toast({
           tone: "warn",
           text:
             (e as HttpError).status === 409
@@ -486,7 +477,6 @@ export function CalendarView({
   const unskipFrame = async (f: FrameOccurrence) => {
     try {
       await client.unskipFrame(f.frame_id, f.date);
-      setNote(null);
     } catch (e) {
       report(e);
     }
@@ -495,9 +485,9 @@ export function CalendarView({
   const skipFrame = async (f: FrameOccurrence) => {
     try {
       await client.skipFrame(f.frame_id, f.date);
-      setNote({
+      toast({
         text: `Skipped ${f.name} on ${shortDay(f.start_at)}.`,
-        undo: () => void unskipFrame(f),
+        action: { label: "Undo", run: () => void unskipFrame(f) },
       });
     } catch (e) {
       report(e);
@@ -563,7 +553,7 @@ export function CalendarView({
       celebrate();
       // A repeating task moves on to its next occurrence instead of closing.
       if (repeating && next.status !== "done" && next.due_at)
-        setNote({ text: `Done — next on ${dateLabel(next.due_at)}.` });
+        toast({ text: `Done — next on ${dateLabel(next.due_at)}.` });
     } catch (e) {
       report(e);
     }
@@ -811,36 +801,6 @@ export function CalendarView({
             </div>
           </div>
         </div>
-
-        {note && (
-          <div
-            className={
-              "calendar-note" + (note.tone === "warn" ? " is-warn" : "")
-            }
-            role={note.tone === "warn" ? "alert" : "status"}
-          >
-            <span>{note.text}</span>
-            {note.undo && (
-              <button
-                className="text-button"
-                onClick={() => {
-                  const undo = note.undo!;
-                  setNote(null);
-                  undo();
-                }}
-              >
-                Undo
-              </button>
-            )}
-            <button
-              className="icon-button"
-              aria-label="Dismiss"
-              onClick={() => setNote(null)}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
 
         {gridMode && (
           <TeammatesLegend shown={mates.shown} onClear={mates.clear} />
@@ -1116,7 +1076,7 @@ export function CalendarView({
           frameId={dialog.frameId}
           onDeleted={() => {
             setDialog(null);
-            setNote({ text: "Frame deleted." });
+            toast({ text: "Frame deleted." });
             void reload();
           }}
           teams={teams}
@@ -1124,7 +1084,7 @@ export function CalendarView({
           onClose={() => setDialog(null)}
           onSaved={() => {
             setDialog(null);
-            setNote({ text: "Frame saved." });
+            toast({ text: "Frame saved." });
             void reload();
           }}
         />

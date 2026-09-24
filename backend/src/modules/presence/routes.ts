@@ -18,9 +18,13 @@ import { requireTeam } from "../../lib/teams.js";
 import { announceTo } from "./live.js";
 import { noteActive } from "../followthrough/reentry.js";
 
-/** Documents `$1` can see: their own, and their teams'. */
-const VISIBLE_DOC = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+/**
+ * Documents `$1` can see: their own, and their teams', leaving out pages in
+ * Trash, which nobody can have open.
+ */
+const VISIBLE_DOC = `(d.deleted_at IS NULL AND
+  ((d.team_id IS NULL AND d.user_id = $1)
+    OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)))`;
 
 /** A device unseen this long is forgotten. */
 const FORGET_DAYS = 90;

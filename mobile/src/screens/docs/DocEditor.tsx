@@ -9,9 +9,19 @@ import {
 } from "react-native";
 import {
   BLOCK_KINDS,
+  blockDepth,
   blockText,
   blockToType,
   carryBlockIds,
+  carryNewIds,
+  docStats,
+  indentBlocks,
+  isListBlock,
+  keepStart,
+  listLayout,
+  pageFooter,
+  textToBlocks,
+  withDepth,
   newBlockId,
   mergeDocs,
   parseDoc,
@@ -41,7 +51,8 @@ import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { DocViewers } from "./DocViewers";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
-import { confirmAction } from "../../lib/confirm";
+import { showToast } from "../../components/Toast";
+import { tap } from "../../lib/haptics";
 import { controls, colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -72,6 +83,13 @@ const SAVE_AFTER_MS = 900;
 const EMPTY: DocBlock = { type: "paragraph", text: "" };
 
 /**
+ * A line as it is typed: its Markdown, with the number it shows on the
+ * page, so the third item of a list opens as "3. …" and not "1. …".
+ */
+const sourceOf = (list: DocBlock[], index: number): string =>
+  serializeBlock(list[index] ?? EMPTY, listLayout(list)[index]?.number);
+
+/**
  * Writing a document on the phone. A line is edited as the Markdown behind
  * it — "# " makes a heading, "- [ ] " a checkbox — which is the same thing
  * the desktop editor does, so a page written on either reads the same on the
@@ -88,6 +106,7 @@ export function DocEditor({
   onChanged,
   onItemsChanged,
   onDeleted,
+  onUndoDelete,
   canWrite = true,
   report,
 }: {
@@ -102,6 +121,8 @@ export function DocEditor({
   onItemsChanged?: () => void;
   /** Called once the page has been deleted, to leave the editor. */
   onDeleted?: () => void;
+  /** The page came back from Trash through the toast's Undo. */
+  onUndoDelete?: (doc: Doc) => void;
   /** False for a team page this reader may read but not change. */
   canWrite?: boolean;
   report: (e: unknown) => void;
@@ -139,6 +160,14 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  /** When the page was last saved, for the line at its end. */
+  const [savedAt, setSavedAt] = useState(doc.updated_at);
+  const [now, setNow] = useState(() => new Date());
+  // "Saved 2 min ago" keeps up with the clock.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
   /** Whether the shapes the page can be taken away in are showing. */
   const [formats, setFormats] = useState(false);
   /** Whether the conversation about this page is open. */
@@ -268,6 +297,8 @@ export function DocEditor({
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
+          setSavedAt(saved.updated_at);
+          setNow(new Date());
           onChanged(saved);
         } catch (e) {
           // Someone saved first: take their copy, fold this edit into it and
@@ -302,7 +333,7 @@ export function DocEditor({
 
   flushOnClose.current = () => {
     if (!canWrite || suggesting) return;
-    const next = live.current.blocks.slice();
+    let next = live.current.blocks.slice();
     if (focused !== null && next[focused]) {
       const parsed = parseDoc(draft);
       next.splice(
@@ -310,6 +341,7 @@ export function DocEditor({
         1,
         ...carryBlockIds(next[focused], parsed.length ? parsed : [EMPTY]),
       );
+      next = keepStart(next, focused);
     }
     if (dirty.current || JSON.stringify(next) !== JSON.stringify(base.current))
       void persist(live.current.title, next);
@@ -321,8 +353,20 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every render,
    * which on a phone is a request storm rather than a nuisance.
    */
-  const onEvent = useRef<(version: number) => void>(() => {});
-  onEvent.current = (remote: number) => {
+  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
+  onEvent.current = (remote: number, trashed: boolean) => {
+    // Moved to Trash somewhere else: let the page go, rather than keep
+    // typing into something every save will now refuse.
+    if (trashed) {
+      if (timer.current) clearTimeout(timer.current);
+      dirty.current = false;
+      flushOnClose.current = () => {};
+      onDeleted?.();
+      showToast({
+        text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
+      });
+      return;
+    }
     if (remote && remote <= version.current) return;
     void client.getDoc(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
@@ -347,7 +391,11 @@ export function DocEditor({
    * Follow the document while it is open, so a page being written on a
    * desktop at the same time does not go stale in your hand.
    */
-  useEffect(() => client.watchDoc(doc.id, (v) => onEvent.current(v)), [doc.id]);
+  useEffect(
+    () =>
+      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    [doc.id],
+  );
 
   const queueSave = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
@@ -368,8 +416,7 @@ export function DocEditor({
   };
 
   /** Open a line for editing, showing the Markdown behind it. */
-  const openLine = (index: number) =>
-    openWith(serializeBlock(blocks[index]), index);
+  const openLine = (index: number) => openWith(sourceOf(blocks, index), index);
 
   /**
    * Typing into the open line. A line break means Return was pressed: the
@@ -384,33 +431,59 @@ export function DocEditor({
     const kind = blocks[focused].type;
     const br = text.indexOf("\n");
     if (br < 0 || MULTILINE.has(kind)) return setDraft(text);
+    // Several lines arriving at once are a paste: each becomes a line of
+    // its own, Markdown read as Markdown, rather than all but the first
+    // being left in the line being typed.
+    if (text.length - draft.length > 1 && structural) {
+      const pasted = carryBlockIds(blocks[focused], textToBlocks(text));
+      if (pasted.length > 1) {
+        const next = blocks.slice();
+        next.splice(focused, 1, ...pasted);
+        const at = focused + pasted.length - 1;
+        update(next);
+        openWith(sourceOf(next, at), at);
+        return;
+      }
+    }
     const head = text.slice(0, br);
     const tail = text.slice(br + 1);
     const parsed = parseDoc(head);
     const current = parsed[0] ?? EMPTY;
     const next = blocks.slice();
-    // Return on an empty list item leaves the list rather than adding one.
+    // Return on an empty list item steps it back out a level; at the left
+    // edge it leaves the list rather than adding another item.
     if (
       LISTS.has(current.type) &&
       !("text" in current && current.text.trim())
     ) {
+      if (blockDepth(blocks[focused]) > 0) {
+        const out = indentBlocks(blocks, focused, -1);
+        update(out);
+        openWith(
+          serializeBlock(current, listLayout(out)[focused]?.number),
+          focused,
+        );
+        return;
+      }
       next.splice(focused, 1, EMPTY);
       setDraft("");
       update(next);
       return;
     }
-    const fresh: DocBlock = LISTS.has(current.type)
-      ? blockToType(EMPTY, current.type)
-      : EMPTY;
-    next.splice(
-      focused,
-      1,
-      ...carryBlockIds(blocks[focused], parsed.length ? parsed : [EMPTY]),
-      fresh,
+    const kept = carryBlockIds(
+      blocks[focused],
+      parsed.length ? parsed : [EMPTY],
     );
+    // A new item goes in at the depth of the one Return was pressed on.
+    const fresh: DocBlock = LISTS.has(current.type)
+      ? withDepth(blockToType(EMPTY, current.type), blockDepth(kept[0]))
+      : EMPTY;
+    next.splice(focused, 1, ...kept, fresh);
     const at = focused + Math.max(parsed.length, 1);
-    update(next);
-    openWith(serializeBlock(fresh) + tail, at);
+    const placed = keepStart(next, focused);
+    update(placed);
+    // The new item opens with the number it will show.
+    openWith(sourceOf(placed, at) + tail, at);
   };
 
   /** The open line as another kind of block, keeping its words. */
@@ -422,15 +495,33 @@ export function DocEditor({
     setCaret({ start: text.length, end: text.length });
   };
 
+  /** The open line as it would stand with what has been typed into it. */
+  const withDraft = (): DocBlock[] => {
+    if (focused === null) return blocks;
+    const next = blocks.slice();
+    next[focused] = carryBlockIds(blocks[focused], [
+      parseDoc(draft)[0] ?? EMPTY,
+    ])[0];
+    return keepStart(next, focused);
+  };
+
+  /**
+   * Tuck the open list line in under the one above, or bring it out, with
+   * the lines under it. It stays open, so typing carries on.
+   */
+  const indentLine = (by: 1 | -1) => {
+    if (focused === null || !structural) return;
+    const current = withDraft();
+    const next = indentBlocks(current, focused, by);
+    if (next !== current) update(next);
+  };
+
   const moveLine = (by: -1 | 1) => {
     if (focused === null) return;
     if (!structural) return;
     const to = focused + by;
     if (to < 0 || to >= blocks.length) return;
-    const next = blocks.slice();
-    next[focused] = carryBlockIds(blocks[focused], [
-      parseDoc(draft)[0] ?? EMPTY,
-    ])[0];
+    const next = withDraft().slice();
     [next[focused], next[to]] = [next[to], next[focused]];
     update(next);
     setFocused(to);
@@ -467,13 +558,14 @@ export function DocEditor({
     const blockId = blocks[focused].id ?? newBlockId();
     const next = blocks.slice();
     next.splice(focused, 1, { ...parsed, id: blockId });
+    const placed = keepStart(next, focused);
     setFocused(null);
-    setBlocks(next);
+    setBlocks(placed);
     // Saved at once rather than on the usual delay: the remark about to be
     // written points at this name, and a name that is not saved is a remark
     // with nothing to hang on.
     if (timer.current) clearTimeout(timer.current);
-    void persist(title, next);
+    void persist(title, placed);
     return { blockId, source: blockText(parsed) };
   };
 
@@ -521,13 +613,13 @@ export function DocEditor({
       ...carryBlockIds(blocks[focused], parsed.length ? parsed : [EMPTY]),
     );
     if (parsed.length > 1) setFocused(focused + parsed.length - 1);
-    update(next);
+    update(keepStart(next, focused));
   };
 
   // Save a paused edit while the keyboard stays open, not only after blur.
   useEffect(() => {
     if (focused === null || suggesting || reading) return;
-    if (serializeBlock(blocks[focused] ?? EMPTY) === draft) return;
+    if (sourceOf(blocks, focused) === draft) return;
     const pending = setTimeout(syncDraft, 300);
     return () => clearTimeout(pending);
     // The draft is the source of this debounce; syncing blocks must not restart it.
@@ -545,7 +637,8 @@ export function DocEditor({
     const block = blocks[focused];
     setFocused(null);
     if (!block?.id) return;
-    const change = proposeEdit(block.id, serializeBlock(block), draft);
+    // Compared with the line as it was shown for typing, number and all.
+    const change = proposeEdit(block.id, sourceOf(blocks, focused), draft);
     if (!change) return;
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
@@ -634,7 +727,7 @@ export function DocEditor({
       else next.splice(focused, 1, EMPTY);
     } else next.splice(focused, 1, ...carryBlockIds(blocks[focused], parsed));
     setFocused(null);
-    update(next);
+    update(parsed.length ? keepStart(next, focused) : next);
   };
 
   const addLine = () => {
@@ -646,6 +739,8 @@ export function DocEditor({
 
   const toggle = (index: number) => {
     if (!structural) return;
+    const line = blocks[index];
+    if (line?.type === "todo" && !line.done) tap();
     const next = blocks.map((b, i) =>
       i === index && b.type === "todo" ? { ...b, done: !b.done } : b,
     );
@@ -664,13 +759,23 @@ export function DocEditor({
     void (async () => {
       try {
         if (dirty.current) await persist(title, blocks);
+        // What the server works from; anything typed after this is newer.
+        const sent = live.current.blocks;
         const { created, doc: updated } = await client.docToTasks(doc.id);
-        if (updated) {
+        if (updated && updated.version > version.current) {
           version.current = updated.version;
           base.current = updated.content;
-          dirty.current = false;
-          setBlocks(updated.content);
           onChanged(updated);
+          if (!dirty.current && live.current.blocks === sent)
+            setBlocks(updated.content);
+          else {
+            // Typed into meanwhile: what is on screen stands, with the
+            // names the server gave the lines it made tasks of.
+            const now = live.current.blocks;
+            const next = carryNewIds(sent, updated.content, now);
+            if (next !== now) setBlocks(next);
+            queueSave(live.current.title, next);
+          }
         }
         onItemsChanged?.();
         setNote(
@@ -684,19 +789,41 @@ export function DocEditor({
     })();
   };
 
-  const removePage = () =>
-    confirmAction(
-      `Delete “${title || "Untitled"}”?`,
-      "This cannot be undone.",
-      "Delete",
-      () => {
-        if (timer.current) clearTimeout(timer.current);
-        client.deleteDoc(doc.id).then(() => {
-          flushOnClose.current = () => {};
-          onDeleted?.();
-        }, report);
-      },
-    );
+  /**
+   * Delete the page: it moves to Trash for 30 days, and a toast offers Undo,
+   * so nothing asks first.
+   */
+  const removePage = () => {
+    if (timer.current) clearTimeout(timer.current);
+    void (async () => {
+      try {
+        // What was just typed goes with it, so Undo brings all of it back.
+        if (dirty.current) await persist(title, live.current.blocks);
+        await client.deleteDoc(doc.id);
+      } catch (e) {
+        report(e);
+        return;
+      }
+      flushOnClose.current = () => {};
+      onDeleted?.();
+      showToast({
+        text: `Moved “${title || "Untitled"}” to Trash`,
+        action: {
+          label: "Undo",
+          run: () =>
+            void client.restoreDoc(doc.id).then((back) => {
+              if (onUndoDelete) onUndoDelete(back);
+              else showToast({ text: `“${back.title || "Untitled"}” is back` });
+            }, report),
+        },
+      });
+    })();
+  };
+
+  // Whether the open line can be tucked under the line above it.
+  const openBlocks = focused !== null ? withDraft() : blocks;
+  const canIndent =
+    focused !== null && indentBlocks(openBlocks, focused, 1) !== openBlocks;
 
   // Lines already tied to a task are not offered again.
   const openTodos = blocks.filter(
@@ -797,7 +924,7 @@ export function DocEditor({
         />
         <DocTool
           icon="trash"
-          label="Delete this page"
+          label="Move this page to Trash"
           destructive
           onPress={removePage}
         />
@@ -926,6 +1053,20 @@ export function DocEditor({
               contentContainerStyle={styles.toolScroll}
             >
               <View style={styles.toolRow}>
+                {structural && isListBlock(parseDoc(draft)[0]) && (
+                  <>
+                    <SmallAction
+                      label="Indent"
+                      disabled={!canIndent}
+                      onPress={() => indentLine(1)}
+                    />
+                    <SmallAction
+                      label="Outdent"
+                      disabled={blockDepth(blocks[focused]) === 0}
+                      onPress={() => indentLine(-1)}
+                    />
+                  </>
+                )}
                 {structural && (
                   <>
                     <SmallAction
@@ -991,6 +1132,16 @@ export function DocEditor({
           Return starts a new line; on an empty list item it ends the list.
         </Text>
       )}
+
+      {/* One quiet line at the end of the page. */}
+      <Text style={styles.footer}>
+        {pageFooter({
+          ...docStats(blocks),
+          savedAt,
+          saving,
+          now,
+        })}
+      </Text>
 
       {formats && (
         <View style={styles.pageActions}>
@@ -1094,6 +1245,15 @@ const styles = themed(() =>
       flexShrink: 1,
     },
     hint: { color: colors.faint, fontSize: 12, lineHeight: 18 },
+    footer: {
+      color: colors.muted,
+      fontSize: 11,
+      lineHeight: 16,
+      paddingTop: 10,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      fontVariant: ["tabular-nums"],
+    },
     tools: {
       gap: 8,
       padding: 10,

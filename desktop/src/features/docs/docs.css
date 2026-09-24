@@ -160,6 +160,12 @@
   color: var(--color-muted);
 }
 
+/* An element's own display would otherwise win over the hidden attribute. */
+.doc-page[hidden],
+.doc-menu-row[hidden] {
+  display: none;
+}
+
 .doc-body {
   display: grid;
   gap: 2px;
@@ -209,6 +215,173 @@
   outline: none;
   border-color: var(--color-focus);
 }
+/* A nested list line is typed where it reads, stepped in by its depth. */
+.doc-input[data-depth] {
+  margin-left: calc(var(--depth) * 24px - 8px);
+  width: calc(100% + 16px - var(--depth) * 24px);
+}
+
+/* One quiet line at the end of a page: words, reading time, when saved. */
+.doc-footer {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.doc-hint + .doc-footer {
+  margin-top: 0;
+  padding-top: 6px;
+  border-top: 0;
+}
+.doc-hint kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 0 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xs);
+}
+
+/* "Show changes": a version of the page beside the page as it is now. */
+.doc-changes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.doc-changes-compare {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+}
+.doc-changes-compare .muted {
+  padding: 0 6px;
+  font-size: 13px;
+}
+.doc-history-note {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.doc-history-preview {
+  justify-items: start;
+}
+.doc-changes-compare button {
+  min-height: var(--control-h-sm);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--color-textSoft);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.doc-changes-compare button.is-on {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px var(--color-backdrop);
+}
+.doc-changes-compare button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.doc-changes-summary {
+  margin: -4px 0 4px;
+}
+.doc-diff-line {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  padding: 0 8px 0 4px;
+  margin-inline: -8px;
+}
+.doc-diff-line > .doc-block {
+  flex: 1;
+  margin-inline: 0;
+  cursor: default;
+}
+.doc-diff-line > .doc-block:hover {
+  background: none;
+}
+.doc-diff-line.is-added {
+  background: var(--color-accentSoft);
+}
+.doc-diff-line.is-removed {
+  background: var(--color-dangerSoft);
+}
+.doc-diff-line.is-removed > .doc-block {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.doc-diff-sign {
+  flex: none;
+  width: 12px;
+  padding-top: 5px;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.doc-initials {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.doc-diff-line > .doc-initials {
+  margin-top: 5px;
+}
+/* "Restore this line" shows on the line you point at, or reach by keyboard. */
+.doc-diff-restore {
+  flex: none;
+  align-self: center;
+  padding: 2px 8px;
+  opacity: 0;
+}
+.doc-diff-line:hover .doc-diff-restore,
+.doc-diff-restore:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .doc-diff-restore {
+    opacity: 1;
+  }
+}
+.doc-changes-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  margin: 2px 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.doc-changes-fold:hover {
+  background: var(--color-hover);
+}
 
 .doc-heading {
   margin: 10px 0 2px;
@@ -236,11 +409,26 @@ h4.doc-heading {
   gap: 8px;
   align-items: baseline;
   line-height: 1.7;
+  /* A nested item steps in by its depth (see BlockView). */
+  margin-left: calc(var(--depth, 0) * 24px);
 }
 .doc-marker {
   color: var(--color-muted);
   flex: none;
   min-width: 1em;
+}
+/* Numbers line up on their dots however many digits they have. */
+.doc-marker.is-number {
+  min-width: 1.4em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* ==Highlighted== words, on a soft tint like a highlighter pen. */
+.doc-highlight {
+  background: var(--color-warnSoft);
+  color: inherit;
+  border-radius: var(--radius-xs);
+  padding: 0 1px;
 }
 .doc-check {
   accent-color: var(--color-accent);
@@ -987,6 +1175,33 @@ h4.doc-heading {
 }
 .doc-selection-bar .text-button {
   padding: 4px 8px;
+}
+/* Styles, a link and "Make task" make the bar wider while editing. */
+.doc-selection-bar {
+  max-width: min(calc(100vw - 16px), 620px);
+  flex-wrap: wrap;
+}
+.doc-selection-bar .icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.doc-selection-rule {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--color-border);
+}
+.doc-link-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 6px;
+  color: var(--color-muted);
+}
+.doc-link-form input {
+  width: min(280px, 60vw);
+  min-height: var(--control-h-sm);
+  font-size: 13px;
 }
 
 /* A thread: the remark that started it, the answers, and a way in. */
@@ -2092,4 +2307,39 @@ h4.doc-heading {
   color: var(--color-warn);
   font-size: 11px;
   font-weight: 650;
+}
+
+/* Trash: deleted pages, waiting 30 days before they go for good. */
+.docs-navigation .docs-nav-trash {
+  margin-top: 12px;
+}
+.docs-trash-note {
+  margin: -4px 0 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.docs-trash li {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.doc-row.is-trashed {
+  grid-template-columns: auto minmax(0, 1fr);
+  cursor: default;
+}
+.doc-row.is-trashed:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+}
+.doc-row.is-trashed strong {
+  color: var(--color-textSoft);
+}
+@media (max-width: 640px) {
+  .docs-trash li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .docs-trash li > .doc-row {
+    grid-column: 1 / -1;
+  }
+  .docs-trash li > .text-button {
+    justify-self: start;
+  }
 }

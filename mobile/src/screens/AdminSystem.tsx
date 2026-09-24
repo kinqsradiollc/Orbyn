@@ -4,11 +4,11 @@ import {
   Linking,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Switch } from "../components/Switch";
 import type {
   Maintenance,
   SystemSettingKey,

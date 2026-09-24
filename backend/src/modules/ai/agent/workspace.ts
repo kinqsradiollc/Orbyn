@@ -238,7 +238,8 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       [ctx.user.id, a.project_id],
     ),
     pool.query<{ id: string; title: string; updated_at: Date }>(
-      `SELECT id, title, updated_at FROM docs WHERE project_id = $1
+      `SELECT id, title, updated_at FROM docs
+        WHERE project_id = $1 AND deleted_at IS NULL
         ORDER BY updated_at DESC LIMIT 20`,
       [a.project_id],
     ),

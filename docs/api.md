@@ -454,8 +454,14 @@ A note for a team event belongs to the team, so one shared meeting keeps one sha
 ### `POST /docs/:id/tasks` (auth)
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
-team, if it has one). → `{ "created": 2, "items": [ … ] }`. Blank and already-ticked lines are
-skipped.
+team, if it has one). → `{ "created": 2, "items": [ … ], "doc": { … } }`. Blank and
+already-ticked lines, and lines that are already tasks, are skipped. The page is read and written
+back under its lock, so a save that arrives meanwhile waits and then merges (`409`) rather than
+being overwritten.
+
+An optional body `{ "block_ids": ["b1"] }` (1–200 line ids) turns only those lines into tasks:
+"Make task" on selected words and "New task" in the `/` menu use it. Anything else in the body
+answers `422`; a page in Trash answers `404`.
 
 ## Projects
 
@@ -638,6 +644,9 @@ data: {"docId":"…","version":7,"by":"e4f1c2ab"}
 
 The reader then re-reads the document and folds the new copy into what is on screen. Keeping the
 payload to a version number means a reader that misses an event still catches up on the next one.
+
+When the page is moved to Trash the event also carries `"trashed": true`; an editor that has it
+open lets it go and says where it went, rather than finding out from a save that fails.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
 request. A tab is never told about its own save. `404` when the document isn't yours to read.
@@ -857,6 +866,13 @@ signs inside any text block, so a document always round-trips to Markdown with i
 intact. Personal documents belong to their author; team documents follow the same team roles
 as team items (viewers read, members and above write).
 
+List lines nest: `bullet`, `numbered` and `todo` blocks take an optional `depth` (1–3; left out
+at the top level). A numbered line shows its place in its list, counted from 1 — or from
+`start`, kept only on the first line of a list that begins elsewhere (`{ "type": "numbered",
+"text": "…", "start": 5 }`). Markdown exports write the real numbers and indent nested items by
+four spaces a level; reading Markdown back takes nesting from relative indentation, so two-space,
+four-space and tab-indented lists all come in the same. Inline, `==words==` is a highlight.
+
 ### `GET /docs` (auth)
 
 → `[ { "id", "title", "kind", "team_id", "team_name", "preview", "version", "updated_at", … } ]`,
@@ -892,9 +908,30 @@ meeting note to its event. → `201` with the full document.
 `version` is the version the edit was made against; a mismatch answers `409` rather than
 overwriting, so two open tabs can't clobber each other. `title` and `content` are each optional.
 
-### `DELETE /docs/:id` (auth)
+### `DELETE /docs/:id` (auth, `items:write`)
 
-→ `204`.
+Moves the page to **Trash** → `204`. It is kept for 30 days with its history, comments and task
+links, and meanwhile every other route (lists, search, comments, history, exports, study, the
+assistant, presence) answers as if it didn't exist. The sweeper deletes it for good after 30 days.
+Anyone with it open is told on its live stream (`"trashed": true`); a project page shows as "Note
+moved to Trash" in the project's history, and it isn't measured for semantic search while there.
+
+### `GET /docs/trash` (auth)
+
+→ `[ { "id", "title", "kind", "team_id", "team_name", "deleted_at", "deleted_by", "purge_at",
+"preview", "can_restore" } ]`, most recently deleted first: your own pages and your teams'.
+`deleted_by` is a name; `can_restore` is false for a team viewer.
+
+### `POST /docs/:id/restore` (auth, `items:write`)
+
+Brings a page back from Trash, as it was → the full document. `404` for a page that isn't in
+Trash (or isn't yours to see), `403` for a team viewer. A project page shows as "Note restored" in
+the project's history. Today's agenda brought back replaces a copy that Agenda wrote meanwhile, if
+nobody wrote in that copy.
+
+### `DELETE /docs/:id/forever` (auth, `items:write`)
+
+Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash.
 
 ## Items
 

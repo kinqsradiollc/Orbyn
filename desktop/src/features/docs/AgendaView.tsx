@@ -31,14 +31,19 @@ export function AgendaView({
   const [note, setNote] = useState("");
   /** Bumped on a rewrite, so the editor starts again from the new page. */
   const [edition, setEdition] = useState(0);
+  /** Today's page went to Trash from here; Undo on the toast brings it back. */
+  const [trashed, setTrashed] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
+    setTrashed(false);
+    setFailed(false);
     // The page says it couldn't load; the details go to the console.
     client.agendaToday(deviceTimeZone()).then(setDoc, (e) => {
       setFailed(true);
       errorText(e, "Today's agenda");
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rewrite = async () => {
     if (
@@ -73,6 +78,17 @@ export function AgendaView({
         Today's agenda couldn't be loaded. Try again in a moment.
       </p>
     );
+  // Nothing is written again until asked: a fresh copy now would sit beside
+  // the one in Trash if that were brought back.
+  if (trashed)
+    return (
+      <div className="agenda-bar">
+        <span className="muted">Today's agenda is in Trash.</span>
+        <button type="button" className="secondary" onClick={load}>
+          <RefreshCw size={14} /> Write a new one
+        </button>
+      </div>
+    );
   if (!doc) return <p className="muted">Writing today's agenda…</p>;
 
   return (
@@ -101,7 +117,14 @@ export function AgendaView({
         onChanged={setDoc}
         onItemsChanged={onItemsChanged}
         // The agenda is always today's page; there is no list to go back to.
-        onDeleted={() => setDoc(null)}
+        onDeleted={() => {
+          setDoc(null);
+          setTrashed(true);
+        }}
+        onUndoDelete={(back) => {
+          setTrashed(false);
+          setDoc(back);
+        }}
       />
     </>
   );

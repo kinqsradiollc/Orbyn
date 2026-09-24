@@ -3,11 +3,11 @@ import {
   Alert,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Switch } from "../components/Switch";
 import {
   CALENDAR_KINDS,
   CALENDAR_KIND_DEFAULTS,

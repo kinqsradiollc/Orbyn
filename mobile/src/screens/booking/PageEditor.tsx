@@ -4,11 +4,11 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Switch } from "../../components/Switch";
 import {
   DEFAULT_BOOKER_REMINDERS,
   SLOT_INTERVALS,

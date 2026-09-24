@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { parseDocInline, type DocBlock, type DocInline } from "@orbyn/core";
 import { Math } from "./Math";
 import { cut, touches, type Mark } from "./marks";
@@ -98,11 +98,20 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               <Pieces run={run} marks={marks} />
             </em>
           );
+        if (run.highlight)
+          return (
+            <mark key={i} className="doc-highlight">
+              <Pieces run={run} marks={marks} />
+            </mark>
+          );
         return <Pieces key={i} run={run} marks={marks} />;
       })}
     </>
   );
 }
+
+/** Bullets change shape as a list nests, as they do on paper. */
+const BULLETS = ["•", "◦", "▪", "•"];
 
 /**
  * A block as it reads. The editor swaps this for an input on the focused
@@ -112,12 +121,20 @@ export function BlockView({
   block,
   marks = [],
   onToggleTodo,
+  number,
+  depth = 0,
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
   marks?: Mark[];
   onToggleTodo?: () => void;
+  /** What a numbered line shows, counted from where its list starts. */
+  number?: number | null;
+  /** How far a list line is tucked in (see `listLayout`). */
+  depth?: number;
 }) {
+  // A nested list line steps in from the left by its depth.
+  const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
   switch (block.type) {
     case "heading": {
       const H = (["h2", "h3", "h4"] as const)[block.level - 1];
@@ -129,9 +146,9 @@ export function BlockView({
     }
     case "bullet":
       return (
-        <div className="doc-li">
+        <div className="doc-li" data-depth={depth || undefined} style={nest}>
           <span className="doc-marker" aria-hidden="true">
-            •
+            {BULLETS[depth % BULLETS.length]}
           </span>
           <span>
             <Inline text={block.text} marks={marks} />
@@ -140,9 +157,9 @@ export function BlockView({
       );
     case "numbered":
       return (
-        <div className="doc-li">
-          <span className="doc-marker" aria-hidden="true">
-            1.
+        <div className="doc-li" data-depth={depth || undefined} style={nest}>
+          <span className="doc-marker is-number" aria-hidden="true">
+            {number ?? block.start ?? 1}.
           </span>
           <span>
             <Inline text={block.text} marks={marks} />
@@ -151,7 +168,7 @@ export function BlockView({
       );
     case "todo":
       return (
-        <div className="doc-li">
+        <div className="doc-li" data-depth={depth || undefined} style={nest}>
           <input
             type="checkbox"
             className="doc-check"

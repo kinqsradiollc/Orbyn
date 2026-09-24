@@ -21,6 +21,7 @@ import { requireTeam } from "../../lib/teams.js";
 /** Selects a folder; `$1` must be the reader's id (docs they can't see aren't counted). */
 const COLUMNS = `f.id, f.user_id, f.team_id, f.name, f.position, f.created_at,
   (SELECT count(*)::int FROM docs d WHERE d.folder_id = f.id
+     AND d.deleted_at IS NULL
      AND ((d.team_id IS NULL AND d.user_id = $1)
        OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))) AS doc_count`;
 
@@ -136,6 +137,7 @@ export async function folderRoutes(app: FastifyInstance) {
       const visible = (
         await pool.query(
           `SELECT 1 FROM ${table} x WHERE x.id = $2
+             ${table === "docs" ? "AND x.deleted_at IS NULL" : ""}
              AND ((x.team_id IS NULL AND x.user_id = $1)
                OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
           [u.id, body.target_id],

@@ -1,5 +1,6 @@
 import {
   blockText,
+  listLayout,
   mathToText,
   parseDocInline,
   type DocBlock,
@@ -204,7 +205,10 @@ function layout(title: string, blocks: DocBlock[]): Line[] {
   };
 
   add(title, { size: 24, font: "F2", after: 14 });
-  for (const block of blocks) {
+  const lists = listLayout(blocks);
+  for (const [index, block] of blocks.entries()) {
+    // Nested list items step in a little further for each level.
+    const inset = 18 + 18 * lists[index].depth;
     switch (block.type) {
       case "heading":
         add(block.text, {
@@ -215,13 +219,19 @@ function layout(title: string, blocks: DocBlock[]): Line[] {
         });
         break;
       case "bullet":
-        add(block.text, { indent: 18, prefix: "•  " });
+        add(block.text, { indent: inset, prefix: "•  " });
         break;
       case "numbered":
-        add(block.text, { indent: 18, prefix: "–  " });
+        add(block.text, {
+          indent: inset,
+          prefix: `${lists[index].number ?? 1}.  `,
+        });
         break;
       case "todo":
-        add(block.text, { indent: 18, prefix: block.done ? "[x]  " : "[ ]  " });
+        add(block.text, {
+          indent: inset,
+          prefix: block.done ? "[x]  " : "[ ]  ",
+        });
         break;
       case "quote":
         add(block.text, { font: "F3", indent: 22, before: 4, after: 6 });

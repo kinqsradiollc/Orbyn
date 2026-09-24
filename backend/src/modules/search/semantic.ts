@@ -78,6 +78,9 @@ export async function measureQueued(limit = 5): Promise<number> {
     await pool.query<{ doc_id: string; content: DocBlock[] }>(
       `SELECT q.doc_id, d.content FROM doc_embedding_queue q
          JOIN docs d ON d.id = q.doc_id
+        -- A page in Trash can't be searched: measuring it would be a call
+        -- to the provider for nothing. It is queued again when restored.
+        WHERE d.deleted_at IS NULL
         ORDER BY q.queued_at LIMIT $1`,
       [limit],
     )
@@ -152,7 +155,8 @@ export async function nearest(
         `SELECT e.doc_id AS id, e.block_id, e.quote,
                 1 - (e.embedding <=> $2::vector) AS nearness
            FROM doc_embeddings e JOIN docs d ON d.id = e.doc_id
-          WHERE ((d.team_id IS NULL AND d.user_id = $1)
+          WHERE d.deleted_at IS NULL
+            AND ((d.team_id IS NULL AND d.user_id = $1)
                  OR d.team_id IN (SELECT team_id FROM team_members
                                    WHERE user_id = $1))
           ORDER BY e.embedding <=> $2::vector

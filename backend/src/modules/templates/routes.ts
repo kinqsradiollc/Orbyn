@@ -360,7 +360,7 @@ export async function templateRoutes(app: FastifyInstance) {
       const doc = project.doc_id
         ? (
             await pool.query<{ title: string; content: DocBlock[] }>(
-              "SELECT title, content FROM docs WHERE id = $1",
+              "SELECT title, content FROM docs WHERE id = $1 AND deleted_at IS NULL",
               [project.doc_id],
             )
           ).rows[0]

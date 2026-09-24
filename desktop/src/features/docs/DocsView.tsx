@@ -14,12 +14,18 @@ import {
   Hourglass,
   CalendarDays,
   Inbox,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import {
   agendaGroups,
   agendaMonthKey,
   favouriteKey,
   favouriteSet,
+  savedAgo,
+  trashLeft,
+  TRASH_DAYS,
+  type TrashedDoc,
   type Doc,
   type DocKind,
   type DocSummary,
@@ -28,6 +34,8 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
+import { useConfirm } from "../../components/Confirm";
+import { useToast } from "../../components/Toast";
 import { Select } from "../../components/Select";
 import { Popover } from "../../components/Popover";
 import { DocEditor } from "./DocEditor";
@@ -78,6 +86,11 @@ export function DocsView({
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   /** Uploads: files being imported, and imported pages not filed yet. */
   const [uploadsOnly, setUploadsOnly] = useState(false);
+  /** Trash: deleted pages, kept for `TRASH_DAYS` days. */
+  const [trashOnly, setTrashOnly] = useState(false);
+  const [trash, setTrash] = useState<TrashedDoc[] | null>(null);
+  const { ask } = useConfirm();
+  const toast = useToast();
   const [dropping, setDropping] = useState(false);
   const [making, setMaking] = useState<DocSummary | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
@@ -119,8 +132,15 @@ export function DocsView({
   }, []);
   const [busy, setBusy] = useState(false);
 
+  const loadTrash = () =>
+    client.listTrash().then(setTrash, (e) => {
+      setTrash([]);
+      report(e);
+    });
+
   const load = () => {
     void client.listFolders().then(setFolders, () => setFolders([]));
+    void client.listTrash().then(setTrash, () => {});
     void client.listFavourites().then(setStars, () => setStars([]));
     return client.listDocs().then(
       (rows) => {
@@ -232,8 +252,51 @@ export function DocsView({
         setDocs((current) => current?.filter((d) => d.id !== id) ?? current);
         void load();
       }}
+      onUndoDelete={(back) => {
+        // Undo from the toast: the page comes back open, where it was.
+        setOpen(back);
+        void load();
+      }}
     />
   ) : null;
+
+  /** Bring a page back from Trash, and say where it went. */
+  const restore = (page: TrashedDoc) => {
+    setBusy(true);
+    client
+      .restoreDoc(page.id)
+      .then((back) => {
+        setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
+        void load();
+        toast({
+          text: `Restored “${back.title || "Untitled"}”`,
+          action: { label: "Open", run: () => setOpen(back) },
+        });
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
+
+  /** Delete a page in Trash for good, after asking: this one can't be undone. */
+  const destroy = async (page: TrashedDoc) => {
+    if (
+      !(await ask({
+        title: `Delete “${page.title || "Untitled"}” for good?`,
+        body: "Its history and comments go with it. This can't be undone.",
+        confirmLabel: "Delete for good",
+        destructive: true,
+      }))
+    )
+      return;
+    setBusy(true);
+    client
+      .deleteDocForever(page.id)
+      .then(() =>
+        setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all),
+      )
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
 
   const starred = favouriteSet(stars);
   const uploadCount =
@@ -293,38 +356,43 @@ export function DocsView({
           ),
         )
       : [{ key: "all", month: "", label: "", docs: ordered }];
-  const location = uploadsOnly
-    ? "Uploads"
-    : fadingOnly
-      ? "Might be out of date"
-      : favoritesOnly
-        ? "Favorites"
-        : folderFilter === "none"
-          ? "Unfiled"
-          : folderFilter
-            ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-            : kindFilter === "agenda"
-              ? agendaMonth
-                ? `Agendas · ${
-                    agendas
-                      .flatMap((y) =>
-                        y.months.map((m) => ({ ...m, year: y.year })),
-                      )
-                      .find((m) => m.key === agendaMonth)?.label ?? ""
-                  } ${agendaMonth.slice(0, 4)}`
-                : "Agendas"
-              : kindFilter === "doc"
-                ? "Pages"
-                : kindFilter === "note"
-                  ? "Notes"
-                  : "All documents";
+  const location = trashOnly
+    ? "Trash"
+    : uploadsOnly
+      ? "Uploads"
+      : fadingOnly
+        ? "Might be out of date"
+        : favoritesOnly
+          ? "Favorites"
+          : folderFilter === "none"
+            ? "Unfiled"
+            : folderFilter
+              ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+              : kindFilter === "agenda"
+                ? agendaMonth
+                  ? `Agendas · ${
+                      agendas
+                        .flatMap((y) =>
+                          y.months.map((m) => ({ ...m, year: y.year })),
+                        )
+                        .find((m) => m.key === agendaMonth)?.label ?? ""
+                    } ${agendaMonth.slice(0, 4)}`
+                  : "Agendas"
+                : kindFilter === "doc"
+                  ? "Pages"
+                  : kindFilter === "note"
+                    ? "Notes"
+                    : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
     favorites = false,
     month: string | null = null,
     uploads = false,
+    trashed = false,
   ) => {
+    setTrashOnly(trashed);
+    if (trashed) void loadTrash();
     setUploadsOnly(uploads);
     setFolderFilter(folder);
     setKindFilter(kind);
@@ -455,6 +523,7 @@ export function DocsView({
               !open &&
               !favoritesOnly &&
               !uploadsOnly &&
+              !trashOnly &&
               folderFilter === null &&
               kindFilter === kind
                 ? "page"
@@ -640,6 +709,18 @@ export function DocsView({
               .map(pageLink)}
           </div>
         </details>
+        <button
+          className="docs-nav-trash"
+          aria-current={!open && trashOnly ? "page" : undefined}
+          title={`Deleted pages, kept for ${TRASH_DAYS} days`}
+          onClick={() => select(null, null, false, null, false, true)}
+        >
+          <Trash2 size={16} />
+          <span>Trash</span>
+          {!!trash?.length && (
+            <small className="docs-nav-count">{trash.length}</small>
+          )}
+        </button>
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
         {libraryHidden && (
@@ -672,7 +753,13 @@ export function DocsView({
                 </button>
               </div>
             </div>
-            {!uploadsOnly && (
+            {trashOnly && (
+              <p className="docs-trash-note">
+                Pages you delete wait here for {TRASH_DAYS} days, then they’re
+                deleted for good.
+              </p>
+            )}
+            {!uploadsOnly && !trashOnly && (
               <div className="docs-library-tools">
                 <input
                   aria-label="Search document titles and previews"
@@ -691,7 +778,58 @@ export function DocsView({
                 </Select>
               </div>
             )}
-            {uploadsOnly ? (
+            {trashOnly ? (
+              trash === null ? (
+                <p className="muted">Loading…</p>
+              ) : trash.length === 0 ? (
+                <EmptyState
+                  icon={Trash2}
+                  title="Trash is empty"
+                  body={`Deleted pages wait here for ${TRASH_DAYS} days.`}
+                />
+              ) : (
+                <ul className="docs-list docs-trash">
+                  {trash.map((page) => (
+                    <li key={page.id}>
+                      <div className="doc-row is-trashed">
+                        <FileText size={16} aria-hidden="true" />
+                        <span className="doc-row-main">
+                          <strong>{page.title || "Untitled"}</strong>
+                          <small>{page.preview || "Empty document"}</small>
+                          <span className="doc-row-location">
+                            Deleted {savedAgo(page.deleted_at)}
+                            {page.deleted_by ? ` by ${page.deleted_by}` : ""}
+                            {page.team_name
+                              ? ` · ${page.team_name}`
+                              : ""} · {trashLeft(page.purge_at)}
+                          </span>
+                        </span>
+                      </div>
+                      {page.can_restore && (
+                        <>
+                          <button
+                            className="text-button"
+                            disabled={busy}
+                            onClick={() => restore(page)}
+                          >
+                            <RotateCcw size={14} aria-hidden="true" /> Restore
+                          </button>
+                          <button
+                            className="doc-star"
+                            aria-label={`Delete ${page.title || "Untitled"} for good`}
+                            title="Delete for good"
+                            disabled={busy}
+                            onClick={() => void destroy(page)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : uploadsOnly ? (
               <UploadsPanel
                 jobs={imports.jobs}
                 docs={docs ?? []}

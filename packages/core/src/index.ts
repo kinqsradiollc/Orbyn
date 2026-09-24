@@ -13,6 +13,8 @@ export * from "./offline.js";
 export * from "./quickcapture.js";
 export * from "./glance.js";
 export * from "./docs.js";
+export * from "./doc-editing.js";
+export * from "./paste.js";
 export * from "./projects.js";
 export * from "./agenda.js";
 export * from "./folders.js";
