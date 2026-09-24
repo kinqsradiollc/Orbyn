@@ -452,7 +452,7 @@ export function TeamTime({
       {analytics && analytics.total_planned_minutes > 0 && (
         <>
           <Text style={[shared.eyebrow, s.eyebrow]}>
-            SET-ASIDE TIME · LAST 30 DAYS
+            SESSIONS · LAST 30 DAYS
           </Text>
           <View style={shared.card}>
             {analytics.members

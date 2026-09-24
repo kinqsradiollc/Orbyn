@@ -372,7 +372,7 @@ function Body({
         </Field>
         <Field
           label="Starts at"
-          hint="A block you move stays where you put it; the rest of the plan fits around it."
+          hint="A session you move stays where you put it; the rest of the plan fits around it."
         >
           <TimeField
             label="Start time"
@@ -471,9 +471,11 @@ function Body({
           <Text style={[shared.small, s.hint]}>
             Extra time for the unexpected, 0 to 100%.
           </Text>
-          <Text style={[shared.label, s.labelTop]}>Breaks between blocks</Text>
+          <Text style={[shared.label, s.labelTop]}>
+            Breaks between sessions
+          </Text>
           <Segmented
-            accessibilityLabel="Breaks between blocks"
+            accessibilityLabel="Breaks between sessions"
             options={BREAK_LEVELS}
             labels={BREAK_LABELS}
             value={breakLevel}

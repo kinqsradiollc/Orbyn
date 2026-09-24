@@ -221,7 +221,7 @@ export function SchedulePanel({
 
       {booked.length > 0 && (
         <View style={s.booked}>
-          <Text style={shared.label}>Booked time</Text>
+          <Text style={shared.label}>Sessions</Text>
           {booked.map((b, n) => (
             <View key={b.id} style={[s.bookedRow, n > 0 && s.divider]}>
               <Text style={s.bookedText}>

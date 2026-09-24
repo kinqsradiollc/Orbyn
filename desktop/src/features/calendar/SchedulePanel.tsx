@@ -28,7 +28,7 @@ export function SchedulePanel({ items, onSchedule }: Props) {
         </h2>
       </div>
       <p className="panel-hint">
-        Drag a task onto the calendar to set time aside, or choose Schedule.
+        Drag a task onto the calendar to plan a session, or choose Schedule.
       </p>
       {shown.length ? (
         <ul className="schedule-list">

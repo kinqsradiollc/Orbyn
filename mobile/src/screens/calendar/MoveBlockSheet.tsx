@@ -40,7 +40,7 @@ const dayKey = (d: Date) =>
  */
 export function MoveBlockSheet({
   block,
-  title = "Move block",
+  title = "Move session",
   duplicate = false,
   onClose,
   onSave,
@@ -139,7 +139,7 @@ function Body({
               !timed
                 ? undefined
                 : duplicate
-                  ? `The copy ends at ${clockLabel(end)}, the same ${minutesLabel(was)} as this block.`
+                  ? `The copy ends at ${clockLabel(end)}, the same ${minutesLabel(was)} as this session.`
                   : lengthOk
                     ? `Ends at ${clockLabel(end)}.`
                     : undefined

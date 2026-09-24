@@ -806,7 +806,7 @@ export function TaskDetail({
             <section className="drawer-section" aria-labelledby="booked-title">
               <div className="drawer-section-head">
                 <h3 id="booked-title">
-                  <CalendarClock size={16} aria-hidden="true" /> Booked time
+                  <CalendarClock size={16} aria-hidden="true" /> Sessions
                 </h3>
                 {current.status !== "done" && (
                   <button
@@ -820,7 +820,7 @@ export function TaskDetail({
                 )}
               </div>
               {booked === null ? (
-                <p className="drawer-hint">Loading booked time…</p>
+                <p className="drawer-hint">Loading sessions…</p>
               ) : booked.length ? (
                 <ul className="booked-list">
                   {booked.map((b) => (
@@ -844,7 +844,7 @@ export function TaskDetail({
                   ))}
                 </ul>
               ) : (
-                <p className="drawer-hint">No time set aside yet.</p>
+                <p className="drawer-hint">No sessions yet.</p>
               )}
             </section>
           )}
@@ -990,7 +990,7 @@ export function TaskDetail({
         </div>
         {scheduling && (
           <BlockDialog
-            heading="Set time aside"
+            heading="Plan a session"
             subject={current.title}
             start={nextQuarter()}
             minutes={Math.min(current.estimate_minutes ?? 30, 1440)}

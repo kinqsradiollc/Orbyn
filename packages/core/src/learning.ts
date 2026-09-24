@@ -533,7 +533,7 @@ export function learningSummary(l: PlannerLearning | null) {
   const r = l?.rhythm;
   const rhythm =
     !r || !r.confidence
-      ? "Learns which hours go well from your planned blocks and focus sessions. Nothing to go on yet."
+      ? "Learns which hours go well from your sessions and focus time. Nothing to go on yet."
       : !r.peak
         ? `Learning from ${hoursText(r.evidence_minutes)} of planned and focus time; no clear best hours yet.`
         : `Your best hours are usually ${hourText(r.peak.start_hour)}–${hourText(r.peak.end_hour)}, from ${hoursText(r.evidence_minutes)} of planned and focus time.`;

@@ -12,6 +12,7 @@ import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
+import { PROJECT_COUNTS } from "./counts.js";
 import { projectTimeMachineRoutes } from "./time-machine.js";
 
 /**
@@ -24,8 +25,7 @@ import { projectTimeMachineRoutes } from "./time-machine.js";
 
 const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
   p.status, p.deadline, p.doc_id, p.created_at, p.updated_at,
-  (SELECT count(*)::int FROM items i WHERE i.project_id = p.id) AS task_count,
-  (SELECT count(*)::int FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done_count`;
+  ${PROJECT_COUNTS}`;
 
 /** Projects `$1` can see: their own, and their teams'. */
 const VISIBLE = `((p.team_id IS NULL AND p.user_id = $1)

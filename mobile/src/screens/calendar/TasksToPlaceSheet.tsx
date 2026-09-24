@@ -116,7 +116,7 @@ function Body({
       });
       animateLayout();
       setOpen(null);
-      setDone(`Time set aside for ${task.title}: ${slotLabel(start, end)}.`);
+      setDone(`Session planned for ${task.title}: ${slotLabel(start, end)}.`);
       onBooked(start);
     });
 
@@ -130,8 +130,8 @@ function Body({
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
-          Set time aside for a task. It shows on the calendar as a block you can
-          move later.
+          Plan a session for a task. It shows on the calendar, and you can move
+          it later.
         </Text>
         {!!done && (
           <Text style={s.done} accessibilityRole="alert">

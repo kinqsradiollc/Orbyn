@@ -1023,7 +1023,7 @@ export function CalendarView({
           onDelete={async () => {
             if (
               await ask({
-                title: `Delete this time block for “${menu.block.title}”?`,
+                title: `Delete this session for “${menu.block.title}”?`,
                 confirmLabel: "Delete",
                 destructive: true,
               })
@@ -1059,7 +1059,7 @@ export function CalendarView({
       )}
       {dialog?.kind === "schedule" && (
         <BlockDialog
-          heading="Set time aside"
+          heading="Plan a session"
           subject={dialog.item.title}
           start={nextQuarter(date)}
           minutes={Math.min(dialog.item.estimate_minutes ?? 30, 1440)}

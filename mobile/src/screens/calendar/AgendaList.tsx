@@ -237,7 +237,7 @@ function AgendaRow({
     color = listColor(b.list_id) ?? colors.accent;
     title = b.title;
     when = timeLabel(new Date(b.start_at));
-    detail = `Time block · ${rangeLabel(b.start_at, b.end_at)}`;
+    detail = `Session · ${rangeLabel(b.start_at, b.end_at)}`;
     dashed = true;
     done = b.status === "done";
     onPress = () => onOpen(b.item_id);

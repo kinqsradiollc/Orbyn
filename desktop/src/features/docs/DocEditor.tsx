@@ -173,6 +173,11 @@ export function DocEditor({
   const [deciding, setDeciding] = useState(false);
   /** What a line being suggested on has been typed into, before it is sent. */
   const suggestDraft = useRef<string | null>(null);
+  /** The lines tied to a task, as the server last said. */
+  const linked = useMemo(
+    () => new Set(doc.linked_block_ids ?? []),
+    [doc.linked_block_ids],
+  );
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -851,10 +856,20 @@ export function DocEditor({
     }
   };
 
-  // Lines already tied to a task are not offered again.
-  const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
-  ).length;
+  // Lines already tied to a task are not offered again. The server says
+  // which: every line gets an id once it's remarked on, so an id alone
+  // doesn't make a line a task. An agenda's lines copy tasks you already
+  // have, so it offers none.
+  const openTodos =
+    doc.kind === "agenda"
+      ? 0
+      : blocks.filter(
+          (b) =>
+            b.type === "todo" &&
+            !b.done &&
+            !(b.id && linked.has(b.id)) &&
+            b.text.trim().length > 0,
+        ).length;
 
   /** Turn the unticked checklist lines into real tasks. */
   const makeTasks = () =>
@@ -1219,6 +1234,7 @@ export function DocEditor({
                         onToggleTodo={
                           structural ? () => toggleTodo(index) : undefined
                         }
+                        isTask={!!block.id && linked.has(block.id)}
                       />
                     </div>
                   </div>

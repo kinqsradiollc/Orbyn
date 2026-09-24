@@ -956,7 +956,7 @@ export function DayTimeline({
                   lifted={lifted}
                   gripColor={color ?? colors.accent}
                   badge={dayBadge(b.id)}
-                  accessibilityLabel={`Time block for ${b.title}, ${range}. Opens task details`}
+                  accessibilityLabel={`Session for ${b.title}, ${range}. Opens task details`}
                   onTap={() => onOpen(b.item_id)}
                   onMenu={() => onBlockMenu(b)}
                   onBegin={() => begin(b)}

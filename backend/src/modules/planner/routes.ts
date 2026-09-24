@@ -129,7 +129,7 @@ async function ownBlock(db: Db, id: string, userId: string) {
       [id, userId],
     )
   ).rows[0];
-  if (!row) fail(404, "Block not found");
+  if (!row) fail(404, "Session not found");
   return row;
 }
 
@@ -848,8 +848,7 @@ export async function plannerRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!item) fail(404, "Item not found");
-      if (item.kind !== "task")
-        fail(422, "Only tasks can be given time blocks.");
+      if (item.kind !== "task") fail(422, "Only tasks can have sessions.");
       const { id } = (
         await db.query<{ id: string }>(
           `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -883,17 +882,47 @@ export async function plannerRoutes(app: FastifyInstance) {
         "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
         [b.id],
       );
-      return blockById(db, b.id, u.id);
+      const moved = await blockById(db, b.id, u.id);
+      // Other devices and webhooks hear about it, so a "Planned" time
+      // shown elsewhere doesn't go stale.
+      await queueWebhooks(
+        db,
+        "block.updated",
+        { user_id: u.id, team_id: null },
+        moved,
+      );
+      return moved;
     });
   });
 
   app.delete("/blocks/:id", async (r, reply) => {
     const u = await authenticate(r);
-    const deleted = await pool.query(
-      "DELETE FROM time_blocks WHERE id = $1 AND user_id = $2",
-      [idParam(r), u.id],
-    );
-    if (!deleted.rowCount) fail(404, "Block not found");
+    await transaction(async (db) => {
+      const gone = (
+        await db.query<{
+          id: string;
+          item_id: string;
+          start_at: Date;
+          end_at: Date;
+        }>(
+          `DELETE FROM time_blocks WHERE id = $1 AND user_id = $2
+           RETURNING id, item_id, start_at, end_at`,
+          [idParam(r), u.id],
+        )
+      ).rows[0];
+      if (!gone) fail(404, "Session not found");
+      await queueWebhooks(
+        db,
+        "block.deleted",
+        { user_id: u.id, team_id: null },
+        {
+          id: gone.id,
+          item_id: gone.item_id,
+          start_at: gone.start_at.toISOString(),
+          end_at: gone.end_at.toISOString(),
+        },
+      );
+    });
     return reply.code(204).send();
   });
 
@@ -913,7 +942,14 @@ export async function plannerRoutes(app: FastifyInstance) {
         "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
         [b.id],
       );
-      return blockById(db, b.id, u.id);
+      const moved = await blockById(db, b.id, u.id);
+      await queueWebhooks(
+        db,
+        "block.updated",
+        { user_id: u.id, team_id: null },
+        moved,
+      );
+      return moved;
     });
   });
 

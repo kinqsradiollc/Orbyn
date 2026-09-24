@@ -1,3 +1,5 @@
+import { clockMinutes, dayTime, zonedParts } from "./time.js";
+
 /**
  * Projects: a named piece of work with ordered stages and the tasks that make
  * it up. Tasks stay ordinary planner items — a project only groups them — so
@@ -84,6 +86,60 @@ export function projectAtRisk(
   if (due < now.getTime()) return true;
   const days = (due - now.getTime()) / 86_400_000;
   return days <= soonDays && projectProgress(p) < 50;
+}
+
+// ---------------------------------------------------------- deadline ---
+
+/**
+ * A project's deadline is a moment: the day picked, at 5 pm in the zone of
+ * whoever picked it, unless they picked a time too. Creating and editing
+ * use this one rule, and the day and time are always shown in the viewer's
+ * own zone, so nobody sees the day before or after the one that was meant.
+ */
+export const DEADLINE_CLOCK = "17:00";
+
+/** The instant for a deadline on `day` ("YYYY-MM-DD") at `clock` ("HH:mm"). */
+export function projectDeadlineAt(
+  day: string,
+  clock: string | null | undefined,
+  timeZone: string,
+): string {
+  return dayTime(
+    day,
+    clockMinutes(clock || DEADLINE_CLOCK),
+    timeZone,
+  ).toISOString();
+}
+
+/** A saved deadline as the day and time ("HH:mm") it falls on in `timeZone`. */
+export function projectDeadlineParts(
+  deadline: string,
+  timeZone: string,
+): { day: string; clock: string } {
+  const p = zonedParts(new Date(deadline), timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    day: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    clock: `${pad(p.hour)}:${pad(p.minute)}`,
+  };
+}
+
+/**
+ * The deadline after one part of it changes: a new day keeps the time that
+ * was saved (5 pm for a first deadline), and a new time keeps the day. No
+ * day means no deadline.
+ */
+export function changeProjectDeadline(
+  saved: string | null,
+  change: { day?: string | null; clock?: string | null },
+  timeZone: string,
+): string | null {
+  const was = saved ? projectDeadlineParts(saved, timeZone) : null;
+  const day = change.day === undefined ? (was?.day ?? null) : change.day;
+  if (!day) return null;
+  const clock =
+    change.clock === undefined ? (was?.clock ?? DEADLINE_CLOCK) : change.clock;
+  return projectDeadlineAt(day, clock, timeZone);
 }
 
 /** The stages a new project starts with, so a board is never empty. */

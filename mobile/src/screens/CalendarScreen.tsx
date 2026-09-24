@@ -701,7 +701,7 @@ export function CalendarScreen({
         },
       );
     actions.push({
-      label: "Delete block",
+      label: "Delete session",
       icon: "trash",
       destructive: true,
       run: () =>
@@ -712,7 +712,7 @@ export function CalendarScreen({
     });
     setMenu({
       title: block.title,
-      detail: `${slotLabel(block.start_at, block.end_at)} · time set aside`,
+      detail: `${slotLabel(block.start_at, block.end_at)} · session`,
       actions,
     });
   };
@@ -1050,7 +1050,7 @@ export function CalendarScreen({
       onChanged();
       const n = result.blocks.length;
       AccessibilityInfo.announceForAccessibility(
-        `Plan saved. ${n} block${n === 1 ? "" : "s"} added${result.skipped ? `; ${result.skipped} skipped because the time is taken` : ""}.`,
+        `Plan saved. ${n} session${n === 1 ? "" : "s"} added${result.skipped ? `; ${result.skipped} skipped because the time is taken` : ""}.`,
       );
     });
 
@@ -1238,9 +1238,9 @@ export function CalendarScreen({
             />
           </View>
           <Text style={[shared.small, s.previewText]}>
-            {planned} block{planned === 1 ? "" : "s"} proposed
+            {planned} session{planned === 1 ? "" : "s"} proposed
             {preview.days > 1 ? ` over ${preview.days} days` : ""}. Hold a faint
-            block to move it (sideways for another day; it stays where you put
+            session to move it (sideways for another day; it stays where you put
             it), or for options. Hold empty time and drag to keep it free.
             Nothing is saved until you apply the plan.
           </Text>
@@ -1581,7 +1581,7 @@ export function CalendarScreen({
         }}
       />
       <MoveBlockSheet
-        title="Duplicate block"
+        title="Duplicate session"
         duplicate
         block={duplicating}
         onClose={() => setDuplicating(null)}
@@ -1594,7 +1594,7 @@ export function CalendarScreen({
           select(start);
           reload();
           showNote(
-            `Another block for ${copy.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
+            `Another session for ${copy.title} added at ${slotLabel(copy.start_at, copy.end_at)}.`,
           );
         }}
       />

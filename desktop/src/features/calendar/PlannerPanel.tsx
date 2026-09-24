@@ -578,7 +578,7 @@ export function PlannerPanel({
           )}
           <p className="panel-hint">
             Drag across empty time in week or day view to keep it free. Drag a
-            planned block to pin it; × leaves it out.
+            planned session to pin it; × leaves it out.
           </p>
         </div>
       )}
@@ -603,7 +603,7 @@ export function PlannerPanel({
         {unfinished.length > 0 && (
           <div className="review-group">
             <div className="review-group-head">
-              <strong>Unfinished blocks</strong>
+              <strong>Unfinished sessions</strong>
               <button
                 className="secondary"
                 disabled={pending}

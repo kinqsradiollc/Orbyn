@@ -454,8 +454,9 @@ A note for a team event belongs to the team, so one shared meeting keeps one sha
 ### `POST /docs/:id/tasks` (auth)
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
-team, if it has one). → `{ "created": 2, "items": [ … ] }`. Blank and already-ticked lines are
-skipped.
+team, if it has one). → `{ "created": 2, "items": [ … ], "doc": { … } }`. Blank, already-ticked
+and already-linked lines are skipped. An agenda answers `422`: its lines copy tasks you already
+have, so making them would only make each one twice.
 
 ## Projects
 
@@ -467,7 +468,12 @@ creator; team projects follow the same team roles as team items.
 ### `GET /projects` (auth)
 
 → `[ { "id", "name", "summary", "status", "deadline", "doc_id", "stages": [...], "task_count",
-"done_count", … } ]`. Archived projects sort last.
+"done_count", … } ]`. Archived projects sort last. The counts are the project's open and done
+tasks: cancelled tasks and events filed in it aren't counted.
+
+A `deadline` is one moment. The apps save a picked day as 5 pm in the picker's own time zone
+unless a time is picked too (`projectDeadlineAt` and `changeProjectDeadline` in `@orbyn/core`),
+and always show it in the viewer's zone.
 
 ### `POST /projects` (auth)
 
@@ -877,7 +883,10 @@ meeting note to its event. → `201` with the full document.
 
 ### `GET /docs/:id` (auth)
 
-→ the full document, including `content`. `404` when it isn't yours.
+→ the full document, including `content` and `linked_block_ids`: the checklist lines tied to a
+task, by block id. Any line can carry an id (a remark needs one), so only these are tasks.
+`PUT /docs/:id` and the other routes that return one page include it too; `GET /docs` doesn't.
+`404` when it isn't yours.
 
 ### `GET /docs/:id/markdown` (auth)
 
@@ -891,6 +900,11 @@ meeting note to its event. → `201` with the full document.
 
 `version` is the version the edit was made against; a mismatch answers `409` rather than
 overwriting, so two open tabs can't clobber each other. `title` and `content` are each optional.
+
+Ticking or unticking a line tied to a task finishes or reopens the task the same way as anywhere
+else: its future sessions are removed, a repeating task moves on to its next occurrence, and
+webhooks and your other devices hear about it. A line whose task you can no longer change is left
+alone rather than failing the save; the page always reads its task's real state.
 
 ### `DELETE /docs/:id` (auth)
 
@@ -1104,7 +1118,10 @@ Body: item fields without `id`, `version`, timestamps. Only `title` is required.
 ### `PUT /items/:id` (auth)
 
 Body: **all** item fields plus the current `version`. → `200` item with `version + 1`, or `409` if
-the version is stale. Planning fields you leave out keep their saved values.
+the version is stale. Planning fields you leave out keep their saved values. Moving it to another
+space (a different `team_id`) takes it out of its project and stage. Completing a repeating task
+moves it on to its next occurrence; only the sessions before the finished occurrence's deadline
+are removed, so the next one's stay.
 
 ### `DELETE /items/:id?version=N` (auth)
 
@@ -1206,9 +1223,13 @@ responses also include `steps_total`, `steps_done`, `updates_count`, and `last_u
 
 When a task has steps, its progress is the share of steps done, and ticking the first step moves a
 `todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a
-task done sets progress to 100; reopening it re-arms its reminder. Steps and updates do not change
-the item's `version`, so an open editor never conflicts because of them, and `PUT /items/:id`
-without `progress` keeps the saved value. Viewers can read steps and updates but not change them.
+task done sets progress to 100; reopening it re-arms its reminder. A `status` sent with an update
+is saved the same way as `PUT /items/:id`: a finished task's future sessions are removed, a
+repeating task moves on to its next occurrence (keeping the sessions planned for it, and saying so
+in its timeline), and `item.updated` and `item.completed` webhooks fire. Steps, notes and progress
+do not change the item's `version`, so an open editor never conflicts because of them (a status
+change does, like any edit), and `PUT /items/:id` without `progress` keeps the saved value.
+Viewers can read steps and updates but not change them.
 
 ## Devices (mobile push)
 
@@ -1235,11 +1256,11 @@ Up to 100 most recent in-app notices:
 | ------------- | ---------------------------------------------------------------------- | ------------------- | ---------------- |
 | `reminder`    | An item's reminder; the due time is in your planner time zone          | the alert (minutes) | Open the item    |
 | `rsvp`        | Someone you invited answered (one notice per person, updated)          | the attendee        | Open the event   |
-| `conflict`    | An event now overlaps a future time block                              | the block           | Reschedule       |
+| `conflict`    | An event now overlaps a future session                                 | the session         | Reschedule       |
 | `booking`     | A booking was made, requested, moved or cancelled                      | the booking         | Open the booking |
-| `rollforward` | Blocks from earlier days are unfinished (from your working start)      | the local date      | Roll forward     |
+| `rollforward` | Sessions from earlier days are unfinished (from your working start)    | the local date      | Roll forward     |
 | `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date      | Plan it          |
-| `deadline`    | A task is due within `deadline_notice_days` with no time set aside     | the local date      | Plan it          |
+| `deadline`    | A task is due within `deadline_notice_days` with no session planned    | the local date      | Plan it          |
 
 Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) come at most once a day per
 task (once per block for conflicts, once per day for roll-forward). They also go to push and email
@@ -1463,16 +1484,18 @@ Busy intervals of up to 10 people you share a team with (or yourself), to lay ov
 31 days at most: `[{ user_id, name, timezone, busy }]`. Anyone else is left out. Like team
 availability, only the times are shared, never what they're for.
 
-### Time blocks
+### Sessions (`/blocks`)
 
-Time you set aside to work on a task. Each person has their own.
+A session is time planned for working on a task; the API calls it a block. Each person has their
+own. Moving, rescheduling or deleting one sends `block.updated` or `block.deleted` to your
+webhooks and refreshes your other devices, like any other change.
 
 | Method and path               | Body / result                                                                                                                                                                              |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /blocks?from=&to=`       | Your blocks in the range                                                                                                                                                                   |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                 |
 | `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                               |
 | `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                                                                                                                                 |
-| `DELETE /blocks/:id`          | `204`                                                                                                                                                                                      |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                  |
 | `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days                                                                                                        |
 | `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days |
 
@@ -1766,12 +1789,16 @@ too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.resc
   you can see (team events too; not free, all-day or closed ones), once per occurrence and again
   if it's moved. `data`: `item_id`, `title`, `start_at`, `end_at`, `occurrence`, `location`,
   `meeting_url`, `team_id`, `lead_minutes`.
-- `block.started`: when one of your time blocks starts. `data`: `id`, `item_id`, `title`,
+- `block.started`: when one of your sessions starts. `data`: `id`, `item_id`, `title`,
   `start_at`, `end_at`.
 - `task.at_risk`: with the planner's at-risk notice, at most once a day per task. `data`:
   `item_id`, `title`, `due_at`, `remaining_minutes`, `free_minutes`, `reason`.
 
-The notifier looks for starting events and blocks every minute, so a delivery can come up to a
+Sessions also send `block.updated` when one is moved, resized or rescheduled (`data`: the
+session, as `GET /blocks` returns it) and `block.deleted` when one is removed (`data`: `id`,
+`item_id`, `start_at`, `end_at`).
+
+The notifier looks for starting events and sessions every minute, so a delivery can come up to a
 minute late; one that started up to 5 minutes ago still goes.
 Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is

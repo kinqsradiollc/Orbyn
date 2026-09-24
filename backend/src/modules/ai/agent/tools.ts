@@ -814,7 +814,7 @@ async function planSchedule(
       title: clean(u.title, 200),
       reason: u.reason,
     })),
-    note: "Proposed only: the user reviews this plan and applies it to add the blocks to their calendar.",
+    note: "Proposed only: the user reviews this plan and applies it to add the sessions to their calendar.",
     as_markdown: planMarkdown(plan, ctx.timezone),
   };
 }
@@ -1166,7 +1166,7 @@ export const TOOLS: Tool[] = [
             : "Not enough finished tasks with an estimate and logged time yet.",
         best_hours: l.rhythm.peak
           ? `${clock(l.rhythm.peak.start_hour)}–${clock(l.rhythm.peak.end_hour)}`
-          : "Not enough planned blocks or focus sessions yet.",
+          : "Not enough sessions or focus time yet.",
         hours_that_slip: l.rhythm.confidence
           ? l.rhythm.hours
               .map((v, h) => ({ v, h }))
@@ -1224,7 +1224,7 @@ export const TOOLS: Tool[] = [
     {
       name: "find_free_time",
       description:
-        "Free stretches in the user's working hours over the coming days, around events and booked time. Use for 'when am I free', 'do I have time for X'. Read only; to place tasks use plan_schedule.",
+        "Free stretches in the user's working hours over the coming days, around events and sessions. Use for 'when am I free', 'do I have time for X'. Read only; to place tasks use plan_schedule.",
       parameters: {
         type: "object",
         additionalProperties: false,

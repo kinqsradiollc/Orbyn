@@ -112,11 +112,14 @@ export function BlockView({
   block,
   marks = [],
   onToggleTodo,
+  isTask = false,
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
   marks?: Mark[];
   onToggleTodo?: () => void;
+  /** A checklist line tied to a task in the planner. */
+  isTask?: boolean;
 }) {
   switch (block.type) {
     case "heading": {
@@ -165,7 +168,7 @@ export function BlockView({
             <Inline text={block.text} marks={marks} />
             {/* A line tied to a task says so, so ticking it here is clearly
                 the same as ticking it in the planner. */}
-            {block.id && (
+            {isTask && (
               <span
                 className="doc-linked"
                 title="This is a task in your planner"

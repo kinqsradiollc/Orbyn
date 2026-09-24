@@ -12,6 +12,7 @@ import {
   type Item,
   type ItemInput,
   type Kind,
+  type Status,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
@@ -716,7 +717,11 @@ export async function mutate(
   const tagIds = keep(d.tag_ids, moved ? [] : savedTags);
   const assignee = keep(d.assignee_id, moved ? null : current.assignee_id);
   await checkPlacement(db, owner, d.team_id, listId, tagIds);
-  await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
+  // A saved assignee who has since left the team doesn't stop other changes,
+  // such as ticking the task off; a new one, or one taken to another space,
+  // has to be a member.
+  if (moved || assignee !== current.assignee_id)
+    await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
   // A subtask moved to another space leaves its parent, like its list.
   const parentId =
     d.kind === "task"
@@ -833,6 +838,12 @@ export async function mutate(
          OR (status IN ('done', 'cancelled') AND $4 NOT IN ('done', 'cancelled'))
          OR team_id IS DISTINCT FROM $9::uuid
          THEN reminder_version + 1 ELSE reminder_version END,
+       -- A project belongs to one space: moved to another, the task leaves
+       -- the project and its stage, which the new space can't see.
+       project_id = CASE WHEN team_id IS DISTINCT FROM $9::uuid
+         THEN NULL ELSE project_id END,
+       stage_id = CASE WHEN team_id IS DISTINCT FROM $9::uuid
+         THEN NULL ELSE stage_id END,
        updated_at = now()
      WHERE id = $11`,
     [
@@ -970,8 +981,16 @@ export async function mutate(
   // Completing counts the blocks' past time as spent (when asked to).
   if (d.status === "done" && current.status !== "done")
     await countBlocksAsSpent(db, actor.id, current.id);
-  // Time set aside for work that's finished or cancelled isn't needed any more.
-  if (isClosed(d.status) && !isClosed(current.status))
+  // Sessions for work that's finished or cancelled aren't needed any more. A
+  // repeating task that moved on keeps the sessions meant for its next
+  // occurrence: only those before the finished one's deadline go.
+  if (completedOccurrence)
+    await db.query(
+      `DELETE FROM time_blocks
+        WHERE item_id = $1 AND start_at > now() AND start_at < $2`,
+      [current.id, completedOccurrence],
+    );
+  else if (isClosed(status) && !isClosed(current.status))
     await db.query(
       "DELETE FROM time_blocks WHERE item_id = $1 AND start_at > now()",
       [current.id],
@@ -990,4 +1009,43 @@ export async function mutate(
   if (d.status === "done" && current.status !== "done")
     await queueWebhooks(db, "item.completed", audience, result);
   return result;
+}
+
+/**
+ * Change a task's status the way any other edit does: through `mutate`, so
+ * finishing it clears its future sessions, a repeating task moves on to its
+ * next occurrence, and webhooks and open apps hear about it. Used by the
+ * quick tick (a progress update) and by ticking a page's checklist line.
+ * No version is needed: a tick is never a stale edit. Only the core fields
+ * are sent, so every planning field keeps its saved value and isn't checked
+ * again (a tick shouldn't fail over a tag or a prerequisite). Progress
+ * follows the usual rule (100 when done, otherwise kept) unless one is
+ * given. Must run inside a transaction.
+ */
+export async function setItemStatus(
+  db: Db,
+  actor: Actor,
+  itemId: string,
+  status: Status,
+  progress?: number,
+): Promise<Item> {
+  const row = await lockItem(db, itemId);
+  const iso = (v: Date | string | null) =>
+    v ? new Date(v).toISOString() : null;
+  return (await mutate(db, actor, {
+    operation: "update",
+    item_id: itemId,
+    version: row.version,
+    data: itemData.parse({
+      title: row.title,
+      notes: row.notes,
+      kind: row.kind,
+      status,
+      priority: row.priority,
+      due_at: iso(row.due_at),
+      end_at: iso(row.end_at),
+      team_id: row.team_id,
+      ...(progress === undefined ? {} : { progress }),
+    }),
+  }))!;
 }

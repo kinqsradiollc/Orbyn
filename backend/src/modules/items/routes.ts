@@ -40,7 +40,6 @@ import {
   skipOccurrence,
 } from "./occurrences.js";
 import {
-  countBlocksAsSpent,
   ITEM_COLUMNS,
   ITEM_FROM,
   loadItem,
@@ -49,6 +48,7 @@ import {
   mutate,
   recomputeProgress,
   requireItemAccess,
+  setItemStatus,
   type ItemRow,
 } from "./service.js";
 
@@ -563,28 +563,31 @@ export async function itemRoutes(app: FastifyInstance) {
         ).rows[0].n;
         if (steps > 0) fail(409, "This task's progress follows its checklist.");
       }
-      await db.query(
-        "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
-        [id, u.id, d.body, d.status ?? null, d.progress ?? null],
-      );
-      await db.query(
-        "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
-        [id],
-      );
-      if (d.status) {
+      // A new status goes the way every edit does (see setItemStatus): a
+      // finished task loses its future sessions, a repeating one moves on to
+      // its next occurrence, and webhooks and open apps hear about it.
+      const changed =
+        d.status && d.status !== item.status
+          ? await setItemStatus(db, u, id, d.status)
+          : null;
+      // A repeating task that moved on has already said so in its timeline,
+      // so a bare tick doesn't add a second, empty entry.
+      const movedOn = !!changed && changed.status !== d.status;
+      if (d.body || d.progress !== undefined || !movedOn) {
         await db.query(
-          `UPDATE items SET
-             status = $1::text,
-             progress = CASE WHEN $1::text = 'done' THEN 100 ELSE progress END,
-             reminder_version = CASE WHEN status IN ('done', 'cancelled')
-               AND $1::text NOT IN ('done', 'cancelled')
-               THEN reminder_version + 1 ELSE reminder_version END,
-             updated_at = now()
-           WHERE id = $2`,
-          [d.status, id],
+          "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
+          [
+            id,
+            u.id,
+            d.body,
+            movedOn ? null : (d.status ?? null),
+            d.progress ?? null,
+          ],
         );
-        if (d.status === "done" && item.status !== "done")
-          await countBlocksAsSpent(db, u.id, id);
+        await db.query(
+          "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
+          [id],
+        );
       }
       if (d.progress !== undefined)
         await db.query(

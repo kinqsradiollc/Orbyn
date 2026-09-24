@@ -133,6 +133,11 @@ export type Doc = {
   imported_from?: DocImportSource | null;
   /** Imported and not filed yet: it shows in Uploads until it's moved. */
   in_uploads?: boolean;
+  /**
+   * The checklist lines tied to a task, by block id (one page at a time,
+   * not in lists). Any line can carry an id, so only these are tasks.
+   */
+  linked_block_ids?: string[];
 };
 
 /** Where an imported page came from. The file itself is not kept. */

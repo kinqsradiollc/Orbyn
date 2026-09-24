@@ -14,6 +14,7 @@ import { colors, fonts, radii, themed } from "../../theme";
  */
 export function DocBody({
   content,
+  tasks,
   onToggleTodo,
   editing = null,
   draft = "",
@@ -28,6 +29,8 @@ export function DocBody({
   onEditBlock,
 }: {
   content: DocBlock[];
+  /** The checklist lines tied to a task, by id; only these say "task". */
+  tasks?: ReadonlySet<string>;
   /** Stretches of each line carrying a remark, to tint the words they name. */
   marks?: Record<string, Mark[]>;
   onToggleTodo?: (index: number) => void;
@@ -220,7 +223,9 @@ export function DocBody({
                   <Text style={[styles.text, block.done && styles.done]}>
                     <Inline text={block.text} marks={marks[block.id ?? ""]} />
                   </Text>
-                  {block.id ? <Text style={styles.tag}>task</Text> : null}
+                  {block.id && tasks?.has(block.id) ? (
+                    <Text style={styles.tag}>task</Text>
+                  ) : null}
                 </Pressable>
               </View>,
             );

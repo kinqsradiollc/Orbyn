@@ -186,7 +186,7 @@ export function BlockMenu({
   return (
     <Popover anchor={anchor} label={`Time for ${b.title}`} onClose={onClose}>
       <div className="popover-head">
-        <small className="eyebrow">TIME BLOCK</small>
+        <small className="eyebrow">SESSION</small>
         <strong>{b.title}</strong>
         <small>
           <CalendarClock size={12} aria-hidden="true" /> {shortDay(b.start_at)},{" "}
@@ -222,7 +222,7 @@ export function BlockMenu({
           <CalendarClock size={14} /> Change time…
         </button>
         <button className="is-danger" onClick={act(onDelete)}>
-          <Trash2 size={14} /> Delete block
+          <Trash2 size={14} /> Delete session
         </button>
         {open && (
           <small className="popover-note">

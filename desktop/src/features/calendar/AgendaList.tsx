@@ -199,7 +199,7 @@ export function AgendaList({
                   <span className="agenda-main">
                     <strong>{r.block.title}</strong>
                     <small>
-                      <Timer size={11} aria-hidden="true" /> Time block ·{" "}
+                      <Timer size={11} aria-hidden="true" /> Session ·{" "}
                       {spanLabel(r.block.start_at, r.block.end_at)}
                     </small>
                   </span>

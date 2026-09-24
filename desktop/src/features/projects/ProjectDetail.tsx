@@ -15,7 +15,9 @@ import {
   LayoutTemplate,
 } from "lucide-react";
 import {
+  changeProjectDeadline,
   projectAtRisk,
+  projectDeadlineParts,
   projectProgress,
   projectTimeline,
   projectReentry,
@@ -27,6 +29,7 @@ import {
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
 import { DateField } from "../../components/DateField";
+import { deviceTimeZone } from "../../lib/planning";
 
 const HISTORY_FIELDS: Record<string, string> = {
   name: "Name",
@@ -263,9 +266,15 @@ export function ProjectDetail({
     client.deleteProject(project.id).then(onDeleted).catch(report);
   };
 
-  const deadlineValue = project.deadline
-    ? new Date(project.deadline).toISOString().slice(0, 10)
-    : "";
+  // The deadline's day and time where the viewer is, never the UTC date.
+  const zone = deviceTimeZone();
+  const deadline = project.deadline
+    ? projectDeadlineParts(project.deadline, zone)
+    : null;
+  const setDeadline = (change: { day?: string | null; clock?: string }) =>
+    save({
+      deadline: changeProjectDeadline(project.deadline, change, zone),
+    });
 
   return (
     <div className="project-detail">
@@ -370,22 +379,27 @@ export function ProjectDetail({
           <span className="muted">
             {project.done_count} of {project.task_count} done · {percent}%
           </span>
-          <label className="project-deadline">
-            Deadline
+          <div className="project-deadline">
+            <label htmlFor="project-deadline">Deadline</label>
             <DateField
               id="project-deadline"
               type="date"
-              value={deadlineValue}
+              value={deadline?.day ?? ""}
               disabled={busy}
-              onChange={(e) =>
-                save({
-                  deadline: e.target.value
-                    ? new Date(`${e.target.value}T12:00:00`).toISOString()
-                    : null,
-                })
-              }
+              onChange={(e) => setDeadline({ day: e.target.value || null })}
             />
-          </label>
+            {/* 5 pm unless another time is picked; clearing it goes back
+                to 5 pm. */}
+            {deadline && (
+              <DateField
+                type="time"
+                value={deadline.clock}
+                disabled={busy}
+                aria-label="Deadline time"
+                onChange={(e) => setDeadline({ clock: e.target.value })}
+              />
+            )}
+          </div>
         </div>
       </header>
 

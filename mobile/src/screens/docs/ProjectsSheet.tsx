@@ -9,7 +9,10 @@ import {
   View,
 } from "react-native";
 import {
+  changeProjectDeadline,
   projectAtRisk,
+  projectDeadlineAt,
+  projectDeadlineParts,
   projectProgress,
   projectReentry,
   type Item,
@@ -22,7 +25,7 @@ import { Segmented } from "../../components/Segmented";
 import { ScreenIntro } from "../../components/ScreenIntro";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
-import { DateField } from "../../components/Field";
+import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
@@ -40,6 +43,7 @@ import { ProjectTimeMachine } from "./ProjectTimeMachine";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { deviceTimeZone } from "../../lib/planning";
 
 const dueLabel = (iso: string | null) =>
   iso
@@ -183,6 +187,11 @@ export function ProjectsSheet({
       await reload();
     });
 
+  /** The open project's deadline as the day and time it is here. */
+  const openDeadline = open?.deadline
+    ? projectDeadlineParts(open.deadline, deviceTimeZone())
+    : null;
+
   /** The stages as the API wants them back: every one, named. */
   const stagesOf = (project: Project) =>
     project.stages.map((st) => ({ id: st.id, name: st.name }));
@@ -262,7 +271,10 @@ export function ProjectsSheet({
         name,
         summary: newSummary.trim(),
         team_id: newTeam,
-        deadline: newDue ? new Date(`${newDue}T17:00:00`).toISOString() : null,
+        // 5 pm on the day, where you are (the same rule as editing it).
+        deadline: newDue
+          ? projectDeadlineAt(newDue, null, deviceTimeZone())
+          : null,
       });
       setDraft(null);
       setNewSummary("");
@@ -317,10 +329,10 @@ export function ProjectsSheet({
         </ChipRow>
       )}
       <DateField
-        label="Due date"
+        label="Deadline"
         value={newDue}
         clearable
-        placeholder="Due (optional)"
+        placeholder="No deadline (optional)"
         onChange={setNewDue}
       />
       <View style={styles.createMore}>
@@ -661,23 +673,40 @@ export function ProjectsSheet({
               {/* The desktop has a date field beside the progress bar; the
                   phone only ever said what the deadline was. */}
               {canWriteIn(open.team_id) && (
-                <DateField
-                  label="Deadline"
-                  clearable
-                  placeholder="No deadline"
-                  value={
-                    open.deadline
-                      ? new Date(open.deadline).toISOString().slice(0, 10)
-                      : null
-                  }
-                  onChange={(day) =>
-                    save({
-                      deadline: day
-                        ? new Date(`${day}T12:00:00`).toISOString()
-                        : null,
-                    })
-                  }
-                />
+                <>
+                  <DateField
+                    label="Deadline"
+                    clearable
+                    placeholder="No deadline"
+                    value={openDeadline?.day ?? null}
+                    onChange={(day) =>
+                      save({
+                        deadline: changeProjectDeadline(
+                          open.deadline,
+                          { day },
+                          deviceTimeZone(),
+                        ),
+                      })
+                    }
+                  />
+                  {/* 5 pm unless another time is picked. */}
+                  {openDeadline && (
+                    <ClockField
+                      label="Deadline time"
+                      value={openDeadline.clock}
+                      disabled={busy}
+                      onChange={(clock) =>
+                        save({
+                          deadline: changeProjectDeadline(
+                            open.deadline,
+                            { clock },
+                            deviceTimeZone(),
+                          ),
+                        })
+                      }
+                    />
+                  )}
+                </>
               )}
 
               <Segmented

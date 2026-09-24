@@ -42,7 +42,7 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
-import { mutate } from "../items/service.js";
+import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { todaysAgenda } from "./agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
@@ -63,6 +63,14 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
                                               'color', tg.color) ORDER BY tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
              WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
+
+/**
+ * The lines of a page that are tied to a task, by block id. Every line gets
+ * an id once someone remarks on it, so an id alone doesn't make a line a
+ * task: clients show the "task" tag, and offer "Add to my tasks", from this.
+ */
+export const LINKED = `coalesce((SELECT array_agg(l.block_id ORDER BY l.block_id)
+    FROM doc_task_links l WHERE l.doc_id = d.id), '{}') AS linked_block_ids`;
 
 /** Joined wherever `COLUMNS` is selected, for the project a note hangs off. */
 export const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
@@ -178,10 +186,16 @@ async function withTaskState(
 /**
  * Ticking a linked line in a document finishes its task, and unticking one
  * reopens it. Only lines whose state actually changed are written, so an
- * ordinary edit doesn't touch the planner.
+ * ordinary edit doesn't touch the planner. The change goes through the same
+ * path as ticking the task anywhere else (see setItemStatus): its future
+ * sessions go, a repeating task moves on to its next occurrence, and other
+ * devices hear about it. A line whose task this person can no longer change
+ * is left alone rather than failing the save — the page still reads its
+ * task's real state.
  */
 async function syncTicks(
   db: Db,
+  u: UserRow,
   docId: string,
   content: DocBlock[],
 ): Promise<void> {
@@ -205,11 +219,21 @@ async function syncTicks(
     if (wanted === undefined) continue;
     const isDone = row.status === "done";
     if (wanted === isDone) continue;
-    await db.query(
-      `UPDATE items SET status = $2, progress = $3, updated_at = now()
-        WHERE id = $1`,
-      [row.item_id, wanted ? "done" : "todo", wanted ? 100 : 0],
-    );
+    await db.query("SAVEPOINT tick");
+    try {
+      await setItemStatus(
+        db,
+        u,
+        row.item_id,
+        wanted ? "done" : "todo",
+        wanted ? 100 : 0,
+      );
+      // Reopened with a checklist, progress follows its steps again.
+      if (!wanted) await recomputeProgress(db, row.item_id);
+      await db.query("RELEASE SAVEPOINT tick");
+    } catch {
+      await db.query("ROLLBACK TO SAVEPOINT tick");
+    }
   }
 }
 
@@ -355,7 +379,7 @@ export async function docRoutes(app: FastifyInstance) {
       await setTags(db, id, u, data.team_id, data.tags);
       return (
         await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
              ${JOINS} WHERE d.id = $1`,
           [id],
         )
@@ -371,7 +395,7 @@ export async function docRoutes(app: FastifyInstance) {
     const db = reader(r.headers);
     const doc = (
       await db.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
+        `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
           WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
@@ -467,7 +491,7 @@ export async function docRoutes(app: FastifyInstance) {
           409,
           "This document changed somewhere else. Refresh and try again.",
         );
-      if (body.content) await syncTicks(db, id, body.content);
+      if (body.content) await syncTicks(db, u, id, body.content);
       if (body.content) await followComments(db, id, body.content);
       if (body.content) await followSuggestions(db, id, body.content);
       await snapshot(db, id, u.id);
@@ -496,7 +520,7 @@ export async function docRoutes(app: FastifyInstance) {
       if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
       return (
         await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
              ${JOINS} WHERE d.id = $1`,
           [id],
         )
@@ -613,7 +637,7 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!past) fail(404, "That version is not kept");
-      await syncTicks(db, id, past.content);
+      await syncTicks(db, u, id, past.content);
       // Going back in time moves the words a remark points at, so the same
       // pass a save makes runs here too — a remark left behind by a restore
       // comes loose rather than pointing at the wrong sentence.
@@ -644,7 +668,7 @@ export async function docRoutes(app: FastifyInstance) {
       );
       return (
         await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
              ${JOINS} WHERE d.id = $1`,
           [id],
         )
@@ -700,7 +724,7 @@ export async function docRoutes(app: FastifyInstance) {
 
     const existing = (
       await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
+        `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
           WHERE d.item_id = $2 AND d.kind = 'meeting'
             AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
           ORDER BY d.created_at LIMIT 1`,
@@ -726,7 +750,7 @@ export async function docRoutes(app: FastifyInstance) {
       ).rows[0].id;
       return (
         await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
              ${JOINS} WHERE d.id = $1`,
           [newId],
         )
@@ -745,12 +769,20 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const doc = (
-      await pool.query<{ content: DocBlock[]; team_id: string | null }>(
-        `SELECT d.content, d.team_id FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+      await pool.query<{
+        content: DocBlock[];
+        team_id: string | null;
+        kind: string;
+      }>(
+        `SELECT d.content, d.team_id, d.kind FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    // An agenda's lines are copies of tasks you already have; making them
+    // into tasks would only make each one twice.
+    if (doc.kind === "agenda")
+      fail(422, "This agenda lists tasks you already have.");
     const content = doc.content ?? [];
     const wanted = content.filter(
       (b): b is Extract<DocBlock, { type: "todo" }> =>
@@ -800,7 +832,7 @@ export async function docRoutes(app: FastifyInstance) {
     });
     const updated = (
       await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d
+        `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
            ${JOINS} WHERE d.id = $1`,
         [id],
       )
@@ -1122,7 +1154,7 @@ export async function docRoutes(app: FastifyInstance) {
       const next = doc.content.slice();
       next[at] = { ...block, text: applySuggestion(block.text, s) };
       await snapshot(db, id, u.id);
-      await syncTicks(db, id, next);
+      await syncTicks(db, u, id, next);
       await db.query(
         `UPDATE docs SET content = $2::jsonb, version = version + 1,
            updated_at = now() WHERE id = $1`,
@@ -1152,7 +1184,7 @@ export async function docRoutes(app: FastifyInstance) {
           );
       return (
         await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
              ${JOINS} WHERE d.id = $1`,
           [id],
         )

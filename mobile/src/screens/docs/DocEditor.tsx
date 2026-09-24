@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Pressable,
   ScrollView,
@@ -133,6 +139,11 @@ export function DocEditor({
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
   const [title, setTitle] = useState(doc.title);
+  /** The lines tied to a task, as the server last said. */
+  const linked = useMemo(
+    () => new Set(doc.linked_block_ids ?? []),
+    [doc.linked_block_ids],
+  );
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [EMPTY],
   );
@@ -698,10 +709,20 @@ export function DocEditor({
       },
     );
 
-  // Lines already tied to a task are not offered again.
-  const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
-  ).length;
+  // Lines already tied to a task are not offered again. The server says
+  // which: a line gets an id once it's remarked on, so an id alone doesn't
+  // make it a task. An agenda's lines copy tasks you already have, so it
+  // offers none.
+  const openTodos =
+    doc.kind === "agenda"
+      ? 0
+      : blocks.filter(
+          (b) =>
+            b.type === "todo" &&
+            !b.done &&
+            !(b.id && linked.has(b.id)) &&
+            b.text.trim().length > 0,
+        ).length;
 
   return (
     <View style={styles.page}>
@@ -811,6 +832,7 @@ export function DocEditor({
 
       <DocBody
         content={blocks}
+        tasks={linked}
         editing={focused}
         draft={draft}
         onDraftChange={changeDraft}

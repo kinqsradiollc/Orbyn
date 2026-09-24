@@ -80,7 +80,7 @@ export async function buildMorning(
     lines.push(...dueTasks.slice(0, 12).map((t) => bullet(t.title)));
   }
   if (blocks.length) {
-    lines.push("Time you’ve set aside:");
+    lines.push("Your sessions:");
     lines.push(
       ...blocks
         .sort((a, b) => a.start_at.localeCompare(b.start_at))

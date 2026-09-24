@@ -16,9 +16,9 @@ import {
   spanLabel,
 } from "../lib/planning";
 
-/** "Added 4 blocks · 1 skipped because that time is taken now." */
+/** "Added 4 sessions · 1 skipped because that time is taken now." */
 export const appliedText = (r: { blocks: TimeBlock[]; skipped: number }) =>
-  `Added ${plural(r.blocks.length, "block")} to your calendar` +
+  `Added ${plural(r.blocks.length, "session")} to your calendar` +
   (r.skipped
     ? ` · ${r.skipped} skipped because something else is there now.`
     : ".");

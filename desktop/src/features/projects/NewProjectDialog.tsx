@@ -3,6 +3,7 @@ import { LayoutTemplate, Plus, Sparkles, X } from "lucide-react";
 import {
   DEFAULT_STAGES,
   hasTeamPermission,
+  projectDeadlineAt,
   type Item,
   type Project,
   type Proposal,
@@ -14,6 +15,7 @@ import { Select } from "../../components/Select";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { TurnState } from "../../hooks/useAssistant";
 import { errorText } from "../../lib/errors";
+import { deviceTimeZone } from "../../lib/planning";
 
 type Mode = "manual" | "assistant";
 
@@ -75,8 +77,9 @@ export function NewProjectDialog({
         name: trimmed,
         summary: summary.trim(),
         team_id: teamId || null,
+        // 5 pm on the day, where you are (the same rule as editing it).
         deadline: deadline
-          ? new Date(`${deadline}T17:00:00`).toISOString()
+          ? projectDeadlineAt(deadline, null, deviceTimeZone())
           : null,
         stages,
       });
@@ -231,7 +234,7 @@ export function NewProjectDialog({
                   </Select>
                 </label>
                 <label>
-                  Due (optional)
+                  Deadline (optional)
                   <DateField
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
@@ -352,7 +355,7 @@ export function NewProjectDialog({
                   </Select>
                 </label>
                 <label>
-                  Due (optional)
+                  Deadline (optional)
                   <DateField
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}

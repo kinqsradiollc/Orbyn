@@ -344,8 +344,8 @@ function Body({
     Alert.alert(
       "Cancel this task?",
       subtasks.length
-        ? "It leaves your plans and its time blocks are removed. Its subtasks stay as they are. You can reopen it later."
-        : "It leaves your plans and its time blocks are removed. You can reopen it later.",
+        ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
+        : "It leaves your plans and its sessions are removed. You can reopen it later.",
       [
         { text: "Keep it", style: "cancel" },
         {

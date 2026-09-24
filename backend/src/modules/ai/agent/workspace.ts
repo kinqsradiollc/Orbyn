@@ -24,6 +24,7 @@ import {
   workingSpans,
 } from "../../planner/plans.js";
 import { planReality } from "../../followthrough/reality.js";
+import { PROJECT_COUNTS } from "../../projects/counts.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 
@@ -162,8 +163,7 @@ type ProjectRow = {
 
 const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.status, p.deadline, p.updated_at,
     t.name AS team_name,
-    (SELECT count(*)::int FROM items i WHERE i.project_id = p.id) AS task_count,
-    (SELECT count(*)::int FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done_count
+    ${PROJECT_COUNTS}
   FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
 const VISIBLE_PROJECTS = `((p.team_id IS NULL AND p.user_id = $1)
   OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
@@ -458,7 +458,7 @@ export async function followThrough(ctx: AgentContext) {
       project: d.project_name ? clean(d.project_name, 80) : null,
     })),
     plans_kept_lately: reality.enough
-      ? `${Math.round((reality.rate ?? 0) * 100)}% of time set aside for tasks went into them over the last ${reality.window_days} days`
+      ? `${Math.round((reality.rate ?? 0) * 100)}% of session time went into its task over the last ${reality.window_days} days`
       : "Not enough planned time yet to say how plans hold up.",
   };
 }

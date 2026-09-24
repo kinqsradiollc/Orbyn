@@ -164,7 +164,7 @@ export async function scanConflicts(now = new Date()) {
           kind: "conflict",
           ref: b.id,
           title: `Conflict: ${b.title}`,
-          body: `"${clash.title}" now overlaps the time set aside for "${b.title}" on ${when.format(new Date(b.start_at))}. Reschedule it to your next free time?`,
+          body: `"${clash.title}" now overlaps your session for "${b.title}" on ${when.format(new Date(b.start_at))}. Reschedule it to your next free time?`,
         },
         email,
       );
@@ -245,7 +245,7 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
               kind: "rollforward",
               ref: today,
               title: "Unfinished work to roll forward",
-              body: `${plural(blocks.length, "block")} from earlier didn't get finished: ${quoted(titles)}. Roll forward to plan time for ${titles.length === 1 ? "it" : "them"}?`,
+              body: `${plural(blocks.length, "session")} from earlier didn't get finished: ${quoted(titles)}. Roll forward to plan time for ${titles.length === 1 ? "it" : "them"}?`,
             },
             email,
           );
@@ -300,7 +300,7 @@ export async function scanPlanningNotices(now = new Date(), only?: string[]) {
           kind: "deadline",
           ref: today,
           title: `Due soon: ${t.title}`,
-          body: `"${t.title}" is due ${when.format(new Date(due))}, and there's no time set aside for it yet. Plan it?`,
+          body: `"${t.title}" is due ${when.format(new Date(due))}, and no session is planned for it yet. Plan it?`,
         },
         email,
       );

@@ -169,7 +169,7 @@ export function describePlan(result: SchedulerResult, days: number) {
       ? `Nothing fits yet. ${notes.join(" ")}`
       : "There's nothing to plan: no open task needs time.";
   return [
-    `${plural(tasks, "task")} in ${plural(result.blocks.length, "block")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
+    `${plural(tasks, "task")} in ${plural(result.blocks.length, "session")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
     ...notes,
     ...(result.notes ?? []),
   ].join(" ");
@@ -317,7 +317,7 @@ export async function computePlan(
       Date.parse(p.start_at) < from.getTime() ||
       Date.parse(p.end_at) > to.getTime()
     )
-      fail(422, "Pinned blocks must be inside the days planned.");
+      fail(422, "Pinned sessions must be inside the days planned.");
   const excluded = new Set(
     state.exclude_item_ids.filter((id) => !include.includes(id)),
   );
@@ -485,7 +485,7 @@ function planTasks(
     if (!included) reason = "Left out of this plan.";
     else if (unplaced) reason = unplaced.reason;
     else if (!minutes && remaining <= 0)
-      reason = "It already has time set aside.";
+      reason = "It already has sessions planned.";
     return {
       item_id: t.id,
       title: t.title,

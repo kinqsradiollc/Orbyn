@@ -169,7 +169,7 @@ export function TeamCapacity({
                           : d.free_minutes === null
                             ? `${LEVEL_WORDS[d.level]} free`
                             : `${hoursLabel(d.free_minutes)} free`
-                      }${d.over ? ", booked over working hours" : ""}`}
+                      }${d.over ? ", planned over working hours" : ""}`}
                       onPress={() => {
                         animateLayout();
                         setPicked(on ? null : { member: m, day: d });
@@ -210,7 +210,7 @@ export function TeamCapacity({
             {picked.day.off
               ? "Not a working day."
               : picked.day.free_minutes === null
-                ? `${LEVEL_WORDS[picked.day.level]} free${picked.day.over ? ", booked past working hours" : ""}.`
+                ? `${LEVEL_WORDS[picked.day.level]} free${picked.day.over ? ", planned past working hours" : ""}.`
                 : `${hoursLabel(picked.day.free_minutes)} free of ${hoursLabel(picked.day.working_minutes ?? 0)}${
                     picked.day.team_minutes
                       ? `, ${hoursLabel(picked.day.team_minutes)} planned for this team`

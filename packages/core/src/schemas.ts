@@ -909,7 +909,7 @@ const blockSpan = (d: { start_at: string; end_at: string }) => {
   const ms = Date.parse(d.end_at) - Date.parse(d.start_at);
   return ms > 0 && ms <= 86_400_000;
 };
-const BLOCK_SPAN = "A block ends after it starts and lasts 24 hours at most";
+const BLOCK_SPAN = "A session ends after it starts and lasts 24 hours at most";
 
 /** Time set aside to work on a task. */
 export const blockInput = z
@@ -1822,6 +1822,8 @@ export const WEBHOOK_EVENTS = [
   "item.completed",
   "item.deleted",
   "block.scheduled",
+  "block.updated",
+  "block.deleted",
   "booking.requested",
   "booking.confirmed",
   "booking.rescheduled",
