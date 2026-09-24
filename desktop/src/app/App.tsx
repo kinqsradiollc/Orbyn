@@ -21,7 +21,15 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
-import { rememberTaskLink, takeTaskLink, taskLinkId } from "./task-link";
+import {
+  deepLinkKey,
+  deepLinkOf,
+  deepLinkPath,
+  focusDocBlock,
+  rememberDeepLink,
+  takeDeepLink,
+  type DeepLink,
+} from "./deep-link";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -158,6 +166,8 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
+  /** A project to open, from a link (/app/project/<id>). */
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
@@ -192,22 +202,45 @@ export function App() {
       navigatePath("/app", true);
     if (!token && path === "/app") navigatePath("/login", true);
   }, [token, path]);
-  // A link to one task (/app/task/<id>) opens it over the app; signed out,
-  // it waits until sign-in.
-  const linkedTask = taskLinkId(path);
+  // A link to one thing (/app/task/<id>, /app/doc/<id>#<line>,
+  // /app/project/<id>, /app/today) opens it over the app. Signed out, it
+  // waits through every sign-in step (two-step and passkeys included), kept
+  // for this tab and in the sign-in page's ?next=, and opens after.
+  const linked = deepLinkOf(path, nativeDesktop ? "" : location.hash);
+  // Read now: the sign-in redirect below replaces the address before effects.
+  const signInSearch = nativeDesktop ? "" : location.search;
+  const openDeepLink = (link: DeepLink) => {
+    if (link.kind === "task") openItemById(link.id);
+    else if (link.kind === "doc")
+      void client.getDoc(link.id).then((doc) => {
+        setNoteDoc(doc);
+        setView("Docs");
+        if (link.block) focusDocBlock(link.block);
+      }, report);
+    else if (link.kind === "project") {
+      setProjectToOpen(link.id);
+      setView("Projects");
+    } else setView("Overview");
+  };
   useEffect(() => {
-    if (!linkedTask) return;
+    if (!linked) return;
     if (!token) {
-      rememberTaskLink(linkedTask);
+      rememberDeepLink(linked);
       navigatePath("/login", true);
+      if (!nativeDesktop)
+        window.history.replaceState(
+          {},
+          "",
+          `/login?next=${encodeURIComponent(deepLinkPath(linked))}`,
+        );
       return;
     }
     navigatePath("/app", true);
-    openItemById(linkedTask);
-  }, [token, linkedTask]);
+    openDeepLink(linked);
+  }, [token, deepLinkKey(linked)]);
   useEffect(() => {
-    const waiting = token ? takeTaskLink() : null;
-    if (waiting) openItemById(waiting);
+    const waiting = token ? takeDeepLink(signInSearch) : null;
+    if (waiting) openDeepLink(waiting);
   }, [token]);
   useEffect(() => {
     // Public booking pages set their own titles and say noindex themselves.
@@ -740,6 +773,8 @@ export function App() {
                   teams={teams}
                   openTemplate={templateToOpen}
                   onTemplateOpened={() => setTemplateToOpen(null)}
+                  openProject={projectToOpen}
+                  onProjectOpened={() => setProjectToOpen(null)}
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}

@@ -136,6 +136,9 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // Push devices: a phone added by a key would keep getting reminders after
   // the key is gone. The apps register theirs signed in.
   { route: /^\/devices$/ },
+  // Outside agents: a key can't make agent keys or see and revoke
+  // connections; only a signed-in person can.
+  { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
@@ -147,6 +150,27 @@ export function keyBlocked(r: FastifyRequest) {
   return KEY_BLOCKED.some(
     (b) => (!b.method || b.method === r.method) && b.route.test(route),
   );
+}
+
+/**
+ * The user and key behind a personal API key, for the MCP service's legacy
+ * grant (no route checks: MCP decides what a legacy key may do). null when
+ * it isn't a valid key.
+ */
+export async function apiKeyOwner(
+  token: string,
+): Promise<{ user: UserRow; key_id: string; key_name: string } | null> {
+  const row = (
+    await pool.query<UserRow & { key_id: string; key_name: string }>(
+      `SELECT u.*, k.id AS key_id, k.name AS key_name
+         FROM users u JOIN api_keys k ON k.user_id = u.id
+        WHERE k.key_hash = $1`,
+      [digest(token)],
+    )
+  ).rows[0];
+  if (!row) return null;
+  const { key_id, key_name, ...user } = row;
+  return { user: user as UserRow, key_id, key_name };
 }
 
 /** The user a personal API key belongs to, or a 401/403. */
@@ -173,13 +197,37 @@ async function keyUser(r: FastifyRequest, token: string): Promise<UserRow> {
 }
 
 /**
+ * Credentials made for outside agents: access tokens (oat_), refresh tokens
+ * (ort_) and agent keys (oak_). They belong to the MCP address alone.
+ */
+export const AGENT_TOKEN = /^(?:oat|ort|oak)_/;
+
+/**
+ * What an agent credential's requests count against in the general rate
+ * limit: the credential itself (a hash of it), never the address it comes
+ * from. null for anything else.
+ */
+export function agentTokenKey(r: FastifyRequest): string | null {
+  const token = r.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
+  return token && AGENT_TOKEN.test(token)
+    ? `agent:${digest(token).slice(0, 32)}`
+    : null;
+}
+
+export const AGENT_TOKEN_MESSAGE =
+  "Agent keys and agent sign-ins work only with Orbyn's MCP address, not the API.";
+
+/**
  * Resolve the bearer token on a request to its user, or fail with 401/403.
  * The token is a session token, or a personal API key (starting "ok_"),
- * which is refused on the routes in KEY_BLOCKED.
+ * which is refused on the routes in KEY_BLOCKED. Agent credentials (oat_,
+ * ort_, oak_) are refused everywhere here: their audience is the MCP
+ * service, which has its own authenticator.
  */
 export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
+  if (AGENT_TOKEN.test(token)) fail(401, AGENT_TOKEN_MESSAGE);
   if (token.startsWith("ok_")) return keyUser(r, token);
   const u = (
     await pool.query<UserRow>(
@@ -204,31 +252,12 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   return u;
 }
 
-/**
- * Only a personal API key, never an app session: for endpoints meant for
- * other tools (MCP). A browser's session token is refused, so a page that
- * got hold of one can't drive the account through them.
- */
-export async function authenticateApiKey(r: FastifyRequest): Promise<UserRow> {
-  const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
-  if (!token)
-    fail(
-      401,
-      "Send a personal API key as Authorization: Bearer ok_… (create one in Settings → Connections).",
-    );
-  if (!token.startsWith("ok_"))
-    fail(
-      401,
-      "This address takes a personal API key, not an app sign-in. Create one in Settings → Connections.",
-    );
-  return keyUser(r, token);
-}
-
 /** Authenticate and require a system permission (admin console routes). */
 export async function authorize(
   r: FastifyRequest,
   permission: SystemPermission,
 ): Promise<UserRow> {
+  // authenticate() already refuses agent credentials; keys are refused here.
   const u = await authenticate(r);
   if (viaApiKey.has(r))
     fail(

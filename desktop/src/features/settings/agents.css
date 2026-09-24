@@ -1,0 +1,255 @@
+/* Settings → Connections → Connected agents. Theme tokens only. */
+.agents-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.agents-head p {
+  flex: 1 1 280px;
+  margin: 0;
+}
+.agents-head .primary {
+  flex: none;
+}
+
+.agents-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.agents-row {
+  display: grid;
+  grid-template-columns: 76px 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-divider);
+}
+.agents-row:first-child {
+  border-top: 0;
+}
+.agents-client {
+  padding-top: 5px;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.agents-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+.agents-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.agents-main strong {
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.agents-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agents-tag {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.agents-tag.is-read {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+.agents-tag.is-write {
+  background: var(--color-infoSoft);
+  color: var(--color-info);
+}
+.agents-tag.is-due {
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
+}
+.agents-tag.is-late {
+  background: var(--color-dangerSoft);
+  color: var(--color-danger);
+}
+.agents-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.agents-acts button {
+  padding: 0;
+  font-size: 12px;
+}
+.agents-activity {
+  padding: 10px 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+}
+.agents-activity p {
+  margin: 0;
+}
+.agents-activity ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+.agents-activity li {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--color-text);
+}
+.agents-activity-time {
+  flex: none;
+  width: 64px;
+  color: var(--color-muted);
+}
+.agents-empty,
+.agents-note {
+  margin: 12px 0 0;
+}
+.agents-paused {
+  margin: 0;
+  font-size: 12px;
+}
+
+.agents-connect {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+.agents-connect h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.agents-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.agents-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-h-sm);
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-textSoft);
+  font-size: 12px;
+  font-weight: 550;
+}
+.agents-tabs button.active {
+  border-color: transparent;
+  background: var(--color-accentSoft);
+  color: var(--color-accent);
+}
+.agents-tabs button:disabled {
+  color: var(--color-faint);
+  cursor: default;
+}
+.agents-soon {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-muted);
+  font-size: 10px;
+}
+.agents-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 16px;
+}
+.agents-steps > li {
+  display: grid;
+  gap: 8px;
+}
+.agents-step-title {
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.agents-steps > li > .secondary {
+  justify-self: start;
+}
+.agents-form {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+}
+.agents-form .primary {
+  justify-self: start;
+}
+.agents-another {
+  justify-self: start;
+  padding: 0;
+  font-size: 12px;
+}
+.agents-snippet {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+}
+.agents-snippet pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* The snippet is plain text in its box, not an inline code chip. */
+.agents-snippet pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+.agents-snippet .secondary {
+  flex: none;
+}
+
+@media (max-width: 560px) {
+  .agents-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .agents-client {
+    display: none;
+  }
+  /* The snippet gets the whole width; Copy sits under it. */
+  .agents-snippet {
+    flex-direction: column;
+  }
+  .agents-snippet pre {
+    align-self: stretch;
+  }
+}

@@ -87,7 +87,7 @@ const CONNECTS: Point[] = [
   {
     icon: Bot,
     title: "Your own AI tools",
-    body: "Connect Claude Code, Cursor or another MCP tool with a personal API key to search your tasks, add new ones and read your agenda.",
+    body: "Connect Claude Code, Codex, Cursor or another MCP agent with an agent key. It can search and read your tasks, calendar, projects and pages, only in the spaces you choose.",
   },
   {
     icon: MessageSquare,

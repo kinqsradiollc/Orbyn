@@ -72,6 +72,34 @@ export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Run `fn` in a read-only transaction (BEGIN READ ONLY), on the replica
+ * unless `primary` is asked for. Postgres itself then refuses any write, so
+ * a read that turns out to write (a sync hidden in a helper) fails loudly
+ * instead of changing data. Used for every read an outside agent makes.
+ */
+export async function readTransaction<T>(
+  fn: (db: Db) => Promise<T>,
+  options: { primary?: boolean; timeoutMs?: number } = {},
+): Promise<T> {
+  const db = await (options.primary ? pool : readPool).connect();
+  try {
+    await db.query("BEGIN READ ONLY");
+    if (options.timeoutMs)
+      await db.query(
+        `SET LOCAL statement_timeout = ${Math.max(100, Math.round(options.timeoutMs))}`,
+      );
+    const result = await fn(db);
+    await db.query("COMMIT");
+    return result;
+  } catch (error) {
+    await db.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    db.release();
+  }
+}
+
 /** Run a query on a transaction client when given one, otherwise on the primary. */
 export const query = <R extends pg.QueryResultRow = any>(
   text: string,

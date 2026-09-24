@@ -18,8 +18,12 @@ info:
     sessions, two-step verification, passkeys, export, deleting the account,
     account settings (`PUT /me`, the public profile, privacy, time zone,
     consent, the email-to-task address and the calendar feed link), push
-    devices, and the assistant. Session tokens from `POST /auth/login` work
-    everywhere except `/mcp`, which takes only personal API keys.
+    devices, agent keys, and the assistant. Session tokens from
+    `POST /auth/login` work everywhere except `/mcp`.
+
+    **Agents.** AI agents connect to the MCP address (docs/mcp.md) with an
+    agent key (`oak_…`, made with `POST /me/agent-keys`). Agent credentials
+    are refused (`401`) by every route described here.
 
     **Errors** are `{ "message": "..." }` with the status codes below. `404`
     also covers records that belong to someone else.
@@ -163,6 +167,76 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents:
+    get:
+      tags: [Auth]
+      summary: Your connected agents and the MCP address (not with an API key)
+      responses:
+        "200":
+          description: "{ mcp_url, legacy_keys_until, grants }"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /me/agent-keys:
+    post:
+      tags: [Auth]
+      summary: Make an agent key for an AI agent (10 a minute; not with an API key)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 80 }
+                access: { type: string, enum: [read, suggest, write] }
+                personal: { type: boolean }
+                team_ids: { type: array, items: { type: string, format: uuid } }
+                expires_in_days: { type: integer, minimum: 1, maximum: 365 }
+                hide_outside_content: { type: boolean }
+      responses:
+        "201":
+          description: "{ grant, key }: the key (oak_…) is shown once"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /me/agents/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revoke a connected agent
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents/{id}/restore:
+    post:
+      tags: [Auth]
+      summary: Restore a connected agent Orbyn paused for misbehaving
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Restored }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents/{id}/activity:
+    get:
+      tags: [Auth]
+      summary: What one connected agent did
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Activity, newest first
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /items:

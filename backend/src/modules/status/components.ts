@@ -89,6 +89,13 @@ export function components(): Component[] {
       probe: () => http((env.STATUS_REALTIME_URL || self()) + "/health"),
     },
     {
+      id: "mcp",
+      name: "Agent connections",
+      description:
+        "The MCP address AI agents such as Claude Code, Codex and Cursor connect to.",
+      probe: () => http((env.STATUS_MCP_URL || self()) + "/health"),
+    },
+    {
       id: "notifier",
       name: "Reminders",
       description: "In-app, email, and push reminders.",

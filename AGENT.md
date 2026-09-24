@@ -73,6 +73,7 @@ npm run dev:web
 | `status`    | Probes every 30s, `GET /status`                                                   |
 | `notifier`  | Reminder scheduling & delivery                                                    |
 | `realtime`  | Live streams (`/events`, doc presence), fanned out through Postgres LISTEN/NOTIFY |
+| `mcp`       | Outside AI agents over MCP (`/mcp`): stateless, limits per connection             |
 | `files`     | File store for imports: one-time signed uploads, encrypted, deleted within a day  |
 | `converter` | Turns imported PDFs/Word/photos into pages in Docs → Uploads                      |
 | `formula`   | pix2tex for equations on scans (`formula/`), Compose profile `formula`, optional  |

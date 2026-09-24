@@ -18,17 +18,21 @@
     "dev:status": "tsx watch src/services/status.ts",
     "dev:notifier": "tsx watch src/services/notifier.ts",
     "dev:converter": "tsx watch src/services/converter.ts",
+    "dev:mcp": "tsx watch src/services/mcp.ts",
     "start:ai": "node dist/services/ai.js",
     "start:status": "node dist/services/status.js",
     "start:notifier": "node dist/services/notifier.js",
     "start:files": "node dist/services/files.js",
     "start:converter": "node dist/services/converter.js",
+    "start:mcp": "node dist/services/mcp.js",
     "start:all": "node dist/server.js",
-    "load": "tsx scripts/load.ts"
+    "load": "tsx scripts/load.ts",
+    "mcp:catalog": "tsx scripts/mcp-catalog.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
+    "@modelcontextprotocol/server": "2.1.0",
     "@orbyn/core": "1.0.0",
     "@simplewebauthn/server": "^13.3.3",
     "argon2": "^0.44.0",

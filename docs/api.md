@@ -1256,22 +1256,28 @@ Round-robin pages also take `routing`: `[{ question_id, equals, host_user_id }]`
 
 ## Model Context Protocol (MCP)
 
-`POST /mcp` is a small MCP server (JSON-RPC 2.0 over HTTP) for AI tools that let you add a request header, such as Claude Code, Cursor or VS Code. Send a personal API key as `Authorization: Bearer ok_…` and point the tool at `<APP_URL>/api/mcp`. Only personal API keys sign in here: an app session token is refused (`401`). ChatGPT and claude.ai don't take keys, so they can't connect this way. A key reaches the owner's tasks, pages and calendar (see [API keys](#api-keys-webhooks-and-the-calendar-feed) for what it can't do).
+Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp service** at `MCP_PUBLIC_URL` (`https://mcp.orbyn.dev/mcp`). Older setups that use `<APP_URL>/api/mcp` reach the same server. The full reference is generated from the tools themselves: [mcp.md](mcp.md) (and [mcp-catalog.json](mcp-catalog.json)). In short:
 
-Handled methods: `initialize`, `ping`, `tools/list`, `tools/call`. Tools:
+- Sign in with an **agent key** (`Authorization: Bearer oak_…`) made in Settings → Connected agents ([below](#connected-agents)). Old personal API keys (`ok_`) still work here for 90 days as a legacy connection, with `Deprecation` and `Sunset` headers, and keep the first endpoint's `search_items`, `add_task` and `get_agenda`. After that they work only with the REST API and CalDAV. App session tokens are refused (`401`). Signing in from claude.ai and ChatGPT (OAuth) comes in phase A2.
+- Agent credentials (`oak_`, `oat_`, `ort_`) are refused (`401`) by every REST route and by CalDAV: they work only at the MCP address.
+- The protocol is `2026-07-28`, served statelessly, plus `initialize` and `ping` for the 2025-11-25, 2025-06-18 and 2025-03-26 revisions. There are no sessions. `GET`/`DELETE` get `405`, batches get `400`, and a page not on the Origin list gets `403`. A missing or wrong credential gets `401` with `WWW-Authenticate: Bearer resource_metadata=…`.
+- Read tools: `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`. Every result carries typed ids, `orbyn://` URIs and links to `/app/task/<id>`, `/app/doc/<id>#<line>`, `/app/project/<id>` and `/app/today`. Text written by someone else arrives fenced as untrusted content.
+- Limits are per connection, never per address. A `429` carries `Retry-After` and a JSON-RPC body.
+- `GET /.well-known/oauth-protected-resource[/mcp]` is the protected-resource metadata (RFC 9728). Other `/.well-known/*` paths are `404`.
 
-- `search_items` (query, limit?): open tasks and events whose title or notes hold every word. Each result carries its `id` and a link, `<APP_URL>/app/task/<id>`, that opens it in the web app.
-- `add_task` (title, notes?, due_at?, priority?): the answer carries the new task's `id` and link.
-- `get_agenda` (days?, 1 to 31, default 7): open tasks due and events from the start of today, in the person's time zone, through the next `days` days. Repeating events appear once per occurrence; finished and cancelled ones are left out; subscribed calendars are included.
+## Connected agents
 
-Rules:
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/agents`              | `{ mcp_url, legacy_keys_until, grants }`: your connections (agent keys, old keys used over MCP), each with `access`, `personal`, `teams`, `toolsets`, `hide_outside_content`, `prefix`, `expires_at`, `last_used_at`, `suspended_at`                                                                                                                      |
+| `POST /me/agent-keys`         | `{ "name", "access"?: "read"\|"suggest"\|"write", "personal"?, "team_ids"?, "toolsets"?, "expires_in_days"?, "hide_outside_content"? }` → `201` `{ grant, key }` (the key is shown once). 30 days by default, never past the admin's limit. `hide_outside_content` leaves out text from subscribed calendars, imported files, emails and booking answers. |
+| `DELETE /me/agents/:id`       | Revokes it: `204`. It stops working on its next call. For an old API key, this removes only its MCP access.                                                                                                                                                                                                                                               |
+| `POST /me/agents/:id/restore` | Restores a connection Orbyn paused (`suspended_at`) after it kept going over its limits or being refused: `204`. Audited.                                                                                                                                                                                                                                 |
+| `GET /me/agents/:id/activity` | What it did, newest first. Each change is one line, and reads are counted per minute: `[{ at, tool, outcome, summary, calls, target_ids }]`                                                                                                                                                                                                               |
+| `PUT /teams/:id/agent-access` | Owners and admins: `{ "agent_access": "role"\|"suggest"\|"read"\|"off" }`. This caps every agent in the team. `off` hides the team from agents.                                                                                                                                                                                                           |
+| `GET` / `PUT /admin/agents`   | Admins: `agents_enabled`, `agents_writes_enabled`, `blocked_client_ids`, `allowed_client_hosts`, `dcr_enabled`, `max_grant_days` and `agent_limits`. They apply within 10 s, with no deploy. Changes are audited.                                                                                                                                         |
 
-- One JSON-RPC message per request. A batch (a JSON array) is refused whole with `400` and `-32600`, and nothing in it runs.
-- Notifications (no `id`) get `202` with no body.
-- Every failure is a JSON-RPC error with a plain message: `-32700` unreadable JSON, `-32600` not a request, `-32601` unknown method, `-32602` bad `params` (including `null`), an unknown tool or bad `arguments`, `-32000` a change during maintenance, `-32001` sign-in (`401`), `-32003` refused (`403`), `-32029` rate limited (`429`, with `Retry-After`). A tool that fails answers `isError: true` with a message in words, never the database's own.
-- Maintenance mode: reads (`initialize`, `tools/list`, `search_items`, `get_agenda`) still answer; `add_task` gets `-32000` until it ends.
-- `GET` and `DELETE /mcp` are `405` (`Allow: POST`): there are no streams or sessions.
-- A request with an `Origin` header is refused (`403`) unless it's Orbyn's own web app. Desktop and command-line tools send none.
+Only a person signed in to Orbyn can use these: personal API keys get `403`, and agent credentials get `401`. Making and revoking a key is in the audit log (`agent_key.created`, `agent_key.revoked`), with the request id. A connection that goes over its limits more than 5 times, or is refused more than 50 times, within ten minutes is paused until you restore it (`agent_grant.suspended`, `agent_grant.restored`).
 
 ## AI assistant
 
@@ -1767,7 +1773,7 @@ and `RANGE=THISANDFUTURE` changes.
 Subscribed events reach every part of Orbyn that reads your day: busy time (planner, booking
 pages, team availability and capacity, the busy-only feed — times only, never titles), the clash
 review and clash notices, the morning and evening digests, the assistant's `get_calendar` tool,
-MCP `get_agenda`, and the iOS widget and Watch "next event". Calendar sets can include or leave
+MCP `get_today`, `get_calendar` and `get_agenda` (marked as outside content), and the iOS widget and Watch "next event". Calendar sets can include or leave
 out each subscription (`subscription_ids`; missing means all). They are never re-exported in your
 own feed or CalDAV, which would duplicate them in the apps they came from.
 
@@ -1775,7 +1781,7 @@ API keys act as you for items, pages, projects, the calendar and CalDAV, and cou
 own rate limit. A key is refused (`403`) wherever it could take over or change the account, send
 data somewhere new or spend the hosted assistant: creating keys (`POST /me/api-keys`), deleting
 any key but itself (`DELETE /me/api-keys/:id`), `/me/webhooks*`, `/me/chat*`, `/me/sessions*`,
-`/me/2fa*`, `/me/passkeys*`, `/me/export`, `PUT /me`, `DELETE /me`, `PUT /me/profile`,
+`/me/2fa*`, `/me/passkeys*`, `/me/agents*`, `/me/agent-keys`, `/me/export`, `PUT /me`, `DELETE /me`, `PUT /me/profile`,
 `PUT /me/privacy`, `POST /me/timezone`, `POST /me/consent`, `POST /me/inbox/rotate`,
 `DELETE /me/inbox`, `POST`/`PUT`/`DELETE /me/calendar-feed`, `/devices` (a phone added by a key
 would keep getting reminders after the key is gone), every `/ai/*` route (the assistant, drafts,

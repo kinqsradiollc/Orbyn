@@ -4,7 +4,8 @@ import { createService } from "./services/http.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
-import { mcpRoutes } from "./modules/mcp/routes.js";
+import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
+import { agentRoutes } from "./modules/agents/routes.js";
 import { davRoutes } from "./modules/dav/routes.js";
 import { itemRoutes } from "./modules/items/routes.js";
 import { deviceRoutes } from "./modules/devices/routes.js";
@@ -49,7 +50,7 @@ import { filesRoutes } from "./modules/imports/store.js";
  * service that owns it (gateway/nginx.conf); keep the two in step.
  */
 export const serviceModules: Record<
-  "api" | "ai" | "status" | "realtime" | "files",
+  "api" | "ai" | "status" | "realtime" | "files" | "mcp",
   FastifyPluginAsync[]
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
@@ -61,7 +62,7 @@ export const serviceModules: Record<
     studyRoutes,
     importRoutes,
     inboundRoutes,
-    mcpRoutes,
+    agentRoutes,
     davRoutes,
     itemRoutes,
     deviceRoutes,
@@ -107,6 +108,11 @@ export const serviceModules: Record<
    * upload streams, so it runs apart from the API.
    */
   files: [filesRoutes],
+  /**
+   * The MCP address for outside agents: stateless, short calls, scaled on
+   * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
+   */
+  mcp: [mcpServerRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);
@@ -117,13 +123,20 @@ export const buildRealtimeService = () =>
   createService("realtime", serviceModules.realtime);
 export const buildFilesService = () =>
   createService("files", serviceModules.files);
+export const buildMcpService = () => createService("mcp", serviceModules.mcp);
 
-/** Every module in one process: tests and quick local development. */
-export const buildApp = () =>
+/**
+ * Every module in one process: tests and quick local development. `first`
+ * plugins register before the modules (the route inventory test uses one to
+ * hook every route as it is added).
+ */
+export const buildApp = (first: FastifyPluginAsync[] = []) =>
   createService("all", [
+    ...first,
     ...serviceModules.api,
     ...serviceModules.ai,
     ...serviceModules.status,
     ...serviceModules.files,
+    ...serviceModules.mcp,
     realtimeRoutes,
   ]);

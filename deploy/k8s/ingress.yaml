@@ -4,6 +4,8 @@
 #                      /status   -> status  (public status report)
 #                      /*        -> api     (everything else)
 #   app.orbyn.example  /*        -> web     (static app; its nginx proxies /api/*)
+#   mcp.orbyn.example  /mcp and /.well-known/oauth-protected-resource[/mcp]
+#                                -> mcp     (outside AI agents; nothing else)
 #
 # Keep the path split in step with serviceModules in backend/src/app.ts and
 # with the web nginx config in web.yaml.
@@ -132,5 +134,54 @@ spec:
             backend:
               service:
                 name: web
+                port:
+                  name: http
+---
+# The MCP host for outside AI agents: only the MCP address and its
+# protected-resource metadata. Limits here are per address and generous; the
+# mcp service limits each connection (per credential, never per address).
+# MCP_PUBLIC_URL in config.yaml must name this host.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-mcp
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: mcp
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # placeholder
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "4"
+    nginx.ingress.kubernetes.io/limit-connections: "200"
+    # The mcp service takes JSON-RPC bodies up to 1 MB.
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "100"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "100"
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "2"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mcp.orbyn.example
+      secretName: orbyn-mcp-tls
+  rules:
+    - host: mcp.orbyn.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          - path: /.well-known/oauth-protected-resource
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp
                 port:
                   name: http

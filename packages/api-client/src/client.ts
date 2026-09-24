@@ -97,6 +97,13 @@ import {
   type TeamRole,
   type User,
   type ApiKey,
+  type AgentActivity,
+  type AgentKeyInput,
+  type AgentSettings,
+  type AgentSettingsUpdate,
+  type AgentsOverview,
+  type NewAgentKey,
+  type TeamAgentAccess,
   type BlockDuplicateInput,
   type BlockInput,
   type BlockUpdate,
@@ -1768,6 +1775,37 @@ export class OrbynClient {
   deleteApiKey(id: string) {
     return this.request<void>(`/me/api-keys/${id}`, { method: "DELETE" });
   }
+  // ---- Connected agents (MCP) ----
+  /** Your connected agents, the MCP address, and until when old keys work there. */
+  agents() {
+    return this.request<AgentsOverview>("/me/agents");
+  }
+  /** A new agent key; the returned `key` is shown once. */
+  createAgentKey(input: AgentKeyInput) {
+    return this.request<NewAgentKey>("/me/agent-keys", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Revoke a connection (an agent key, or an old key's MCP access). */
+  revokeAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}`, { method: "DELETE" });
+  }
+  /** Restore a connection Orbyn paused for misbehaving. */
+  restoreAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}/restore`, { method: "POST" });
+  }
+  /** What one connection did, newest first. */
+  agentActivity(id: string) {
+    return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+  }
+  /** A team's cap on outside agents (owners and admins). */
+  setTeamAgentAccess(teamId: string, agent_access: TeamAgentAccess) {
+    return this.request<{ id: string; agent_access: TeamAgentAccess }>(
+      `/teams/${teamId}/agent-access`,
+      { method: "PUT", body: { agent_access } },
+    );
+  }
   listWebhooks() {
     return this.request<Webhook[]>("/me/webhooks");
   }
@@ -2035,6 +2073,16 @@ export class OrbynClient {
   adminRevokeApiKey(id: string, keyId: string) {
     return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
       method: "DELETE",
+    });
+  }
+  /** Admin: the switches and limits for outside agents. */
+  adminAgentSettings() {
+    return this.request<AgentSettings>("/admin/agents");
+  }
+  adminUpdateAgentSettings(input: AgentSettingsUpdate) {
+    return this.request<AgentSettings>("/admin/agents", {
+      method: "PUT",
+      body: input,
     });
   }
   /** A one-hour password reset link to pass on (also emailed when mail is set up). */

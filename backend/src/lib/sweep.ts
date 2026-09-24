@@ -174,7 +174,70 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: true,
     min: 30,
   },
+  {
+    key: "agent_activity",
+    label: "Agent activity",
+    detail:
+      "What each connected AI agent did (Settings → Connected agents → Activity).",
+    table: "agent_activity",
+    where: olderThan("at"),
+    days: 180,
+    configurable: true,
+    min: 30,
+  },
+  {
+    key: "agent_usage_daily",
+    label: "Agent usage",
+    detail: "Calls per connected agent per day, for its daily limits.",
+    table: "agent_usage_daily",
+    where: "day < current_date - $1::int",
+    days: 90,
+    configurable: true,
+    min: 7,
+  },
+  // Ended agent connections themselves are kept (a row each): project
+  // timelines and page history name the agent through them.
   // Always cleared: nothing reads these once they have expired.
+  {
+    key: "agent_tokens",
+    label: "Expired agent credentials",
+    detail:
+      "Agent keys and sign-in tokens a month past their expiry (the connection says it expired until then).",
+    table: "agent_tokens",
+    where: "expires_at < now() - interval '30 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "oauth_codes",
+    label: "Agent sign-in codes",
+    detail: "One-time codes from agent sign-ins, past their expiry.",
+    table: "oauth_codes",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "mcp_request_state",
+    label: "Agent request seals",
+    detail: "Single-use handles and replay records for agent calls.",
+    table: "mcp_request_state",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "oauth_clients",
+    label: "Unused registered apps",
+    detail:
+      "Apps that registered for agent sign-in themselves and weren't used for a week.",
+    table: "oauth_clients",
+    where: `kind = 'dcr' AND coalesce(last_used_at, created_at) < now() - interval '7 days'
+      AND NOT EXISTS (SELECT 1 FROM agent_grants g
+                       WHERE g.client_id = oauth_clients.id AND g.revoked_at IS NULL)`,
+    days: 0,
+    configurable: false,
+  },
   {
     key: "sessions",
     label: "Expired sessions",

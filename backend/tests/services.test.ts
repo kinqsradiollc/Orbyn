@@ -9,6 +9,7 @@ const {
   buildAiService,
   buildStatusService,
   buildRealtimeService,
+  buildMcpService,
 } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -20,14 +21,16 @@ let api: FastifyInstance;
 let ai: FastifyInstance;
 let status: FastifyInstance;
 let realtime: FastifyInstance;
+let mcp: FastifyInstance;
 
 before(async () => {
   await migrate();
-  [api, ai, status, realtime] = await Promise.all([
+  [api, ai, status, realtime, mcp] = await Promise.all([
     buildApiService(),
     buildAiService(),
     buildStatusService(),
     buildRealtimeService(),
+    buildMcpService(),
   ]);
   await pool.query("DELETE FROM status_checks");
 });
@@ -39,6 +42,7 @@ after(async () => {
     ai.close(),
     status.close(),
     realtime.close(),
+    mcp.close(),
   ]);
   await pool.end();
 });
@@ -49,6 +53,7 @@ test("each service exposes only the routes it owns", async () => {
     [ai, "ai"],
     [status, "status"],
     [realtime, "realtime"],
+    [mcp, "mcp"],
   ] as const) {
     const health = await app.inject({ url: "/health" });
     assert.equal(health.statusCode, 200);
@@ -71,6 +76,24 @@ test("each service exposes only the routes it owns", async () => {
   assert.equal((await realtime.inject({ url: "/events" })).statusCode, 401);
   assert.equal((await api.inject({ url: "/events" })).statusCode, 404);
   assert.equal((await realtime.inject({ url: "/items" })).statusCode, 404);
+  // The MCP address lives on the mcp service alone (the web app's /api/mcp
+  // reaches it through the gateway), and serves nothing else.
+  const rpc = {
+    method: "POST" as const,
+    url: "/mcp",
+    payload: { jsonrpc: "2.0", id: 1, method: "ping" },
+  };
+  assert.equal((await mcp.inject(rpc)).statusCode, 401);
+  assert.equal((await api.inject(rpc)).statusCode, 404);
+  assert.equal((await mcp.inject({ url: "/items" })).statusCode, 404);
+  assert.equal(
+    (await mcp.inject({ url: "/.well-known/oauth-protected-resource/mcp" }))
+      .statusCode,
+    200,
+  );
+  // Connected agents (keys, activity, revoke) are the API's.
+  assert.equal((await api.inject({ url: "/me/agents" })).statusCode, 401);
+  assert.equal((await mcp.inject({ url: "/me/agents" })).statusCode, 404);
 });
 
 test("the status report computes state, uptime, history, and incidents", async () => {

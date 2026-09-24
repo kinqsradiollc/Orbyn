@@ -25,11 +25,12 @@ gateway, and a managed Postgres replaces the `postgres` container.
 | `secrets.example.yaml`               | Example `orbyn-secrets`, **never applied or committed with real values**  |
 | `migrate-job.yaml`                   | One-shot migrations Job, run before each rollout                          |
 | `api.yaml`, `ai.yaml`, `status.yaml` | Deployment + Service for each HTTP service                                |
+| `mcp.yaml`                           | MCP service for outside AI agents (Deployment + Service)                  |
 | `notifier.yaml`                      | Reminder worker Deployment (no Service)                                   |
 | `imports.yaml`                       | File store (Deployment, volume, Service, upload Ingress) and converter    |
 | `web.yaml`                           | Web app nginx config, Deployment, Service, HPA, PDB                       |
-| `autoscaling.yaml`                   | HPAs and PDBs for api, ai, status, notifier                               |
-| `ingress.yaml`                       | `api.orbyn.example` and `app.orbyn.example`                               |
+| `autoscaling.yaml`                   | HPAs and PDBs for api, mcp, ai, status, notifier                          |
+| `ingress.yaml`                       | `api.orbyn.example`, `app.orbyn.example` and `mcp.orbyn.example`          |
 | `pgbouncer.yaml`                     | Optional PgBouncer (commented out in the kustomization)                   |
 | `networkpolicy.yaml`                 | Default deny, plus the allowed flows                                      |
 | `kustomization.yaml`                 | Everything above except the Secret example, the migrate Job and PgBouncer |
