@@ -13,6 +13,7 @@ import {
 import {
   customRhythmId,
   dateLabel,
+  dueLine,
   FOCUS_RHYTHMS,
   focusRhythm,
   type HttpError,
@@ -274,7 +275,7 @@ export function FocusMode({
         <main className="focus-main">
           <h1 id="focus-title">{current.title}</h1>
           <p className="focus-facts">
-            {current.due_at && <span>Due {dateLabel(current.due_at)}</span>}
+            {current.due_at && <span>{dueLine(current)}</span>}
             {current.estimate_minutes && (
               <span>Estimate {minutesLabel(current.estimate_minutes)}</span>
             )}

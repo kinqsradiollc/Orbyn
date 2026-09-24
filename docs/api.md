@@ -1535,11 +1535,13 @@ deadline stay separate: the planner never moves a deadline. Every "is this after
 deadline?" check, in the planner, the at-risk and due-soon notices, the priority `score`, the
 apps' "Overdue", "due today" and due filters (task lists, Overview, Today and the widget
 glance), the daily agenda's "Due today" and "Carried over", the project timeline, the
-welcome-back brief, the assistant's ranking and overview counts and the fields below, uses this
-rule (`deadlineOf` in `@orbyn/core`). Lists put a task under the day its deadline falls on
-(`dueDayAt`): an all-day task over several days under its last day, a span under the day it
-ends. A task is overdue once that day is before today (`dueBeforeToday`), so one due earlier
-today isn't yet. The task panels say "Due Fri 2 Oct, 5 pm" (`dueLine`).
+welcome-back brief, the assistant's ranking and overview counts, the team workload's at-risk
+check and the fields below, uses this rule (`deadlineOf` in `@orbyn/core`). Lists put a task
+under the day its deadline falls on (`dueDayAt`): an all-day task over several days under its
+last day, a span under the day it ends. A task is overdue once that day is before today
+(`dueBeforeToday`), so one due earlier today isn't yet. The task panels and Focus mode say "Due
+Fri 2 Oct, 5 pm" (`dueLine`); list lines (Tasks to place, plans, the team's at-risk list) say
+"due Fri 2 Oct, 5 pm", or "due Fri 2 Oct" for a whole day (`dueDateOf`).
 
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
@@ -1645,7 +1647,16 @@ teams named (all your teams when `team_ids` is omitted, none when it's empty) an
       "score": 13.4
     }
   ],
-  "unplaced": [],
+  "unplaced": [
+    {
+      "item_id": "uuid",
+      "title": "Tax return",
+      "due_at": "2026-09-15T14:00:00.000Z",
+      "deadline_at": "2026-09-16T14:00:00.000Z",
+      "due_all_day": true,
+      "reason": "Not enough free time in the days planned."
+    }
+  ],
   "at_risk": [],
   "capacity_minutes": 420,
   "planned_minutes": 150,
@@ -1664,10 +1675,14 @@ Plans also carry `options` (what the plan was made with: `start_date`, `days`, `
 `split`, `break_level`, `use_frames`, `timezone`, `scope`, `keep_free`, `item_ids`,
 `include_item_ids`, `exclude_item_ids`, `estimates`, `pinned_blocks`), `superseded_by`,
 `estimates_saved`, and `tasks`, a checklist of every task considered: `{ item_id, title, due_at,
-priority, team_id, list_id, estimate_minutes, estimate_tuned, included, planned_minutes, reason,
-at_risk, estimate_guess }`, where `reason` says why a task wasn't (fully) planned or was left out
-and `estimate_guess` (`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set
-when a task with no estimate was planned for a learned length. Blocks are placed at the best time
+deadline_at, due_all_day, priority, team_id, list_id, estimate_minutes, estimate_tuned, included,
+planned_minutes, reason, at_risk, estimate_guess }`, where `deadline_at` is the moment the task is
+due by (the end of its day when `due_all_day` is true, its end time when it has one; null without
+a date), `reason` says why a task wasn't (fully) planned or was left out and `estimate_guess`
+(`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set when a task with no
+estimate was planned for a learned length. `unplaced` and `at_risk` rows (`{ item_id, title,
+due_at, reason }`) carry `deadline_at` and `due_all_day` too; a plan saved before they were added
+may leave them out, so name `due_at` then. Blocks are placed at the best time
 rather than simply the earliest (see [Planning in the architecture notes](architecture.md#planning)),
 and `summary` says so when learning moved something ("Thesis chapter is in your best hours
 (10:00–12:00).") or a day asks for more than you usually get through.
@@ -1692,7 +1707,10 @@ The answer is a new plan with a new id; the old one expires and points at it (`s
 Teammates see each other's busy intervals only, never what the time is for. Busy frames count as
 busy in availability and meeting suggestions. `at_risk_items` lists each member's tasks that can't
 get enough time before they're due (tasks due soonest take the free time first):
-`{ id, title, assignee_id, assignee_name, due_at, remaining_minutes }`.
+`{ id, title, assignee_id, assignee_name, due_at, deadline_at, due_all_day, remaining_minutes }`.
+"Due" is the deadline, as everywhere: only free time before `deadline_at` (the end of the day for
+an all-day task, when it ends for a task with an end time) counts, and the list is in deadline
+order.
 
 | Method and path                                        | Result                                                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |

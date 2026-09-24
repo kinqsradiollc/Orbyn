@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   availabilityQuery,
+  deadlineOf,
   fail,
   rangeQuery,
   suggestQuery,
@@ -219,34 +220,41 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
             id: string;
             title: string;
             due_at: Date | null;
+            end_at: Date | null;
+            all_day: boolean;
+            timezone: string;
             estimate_minutes: number | null;
             spent_minutes: number;
             open_children: number;
             children_remaining: number;
           }>(
-            `SELECT i.id, i.title, i.due_at, i.estimate_minutes, i.spent_minutes, ${CHILD_COLUMNS}
+            `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone,
+                    i.estimate_minutes, i.spent_minutes, ${CHILD_COLUMNS}
              FROM items i
              WHERE i.team_id = $1 AND i.assignee_id = $2 AND i.kind = 'task'
                AND i.status NOT IN ('done', 'cancelled')
                AND (i.due_at IS NULL OR i.due_at < $3)`,
             [teamId, m.user_id, to],
           )
-        ).rows;
+        ).rows.map((t) => ({
+          ...t,
+          // "Due" is the deadline: the end of an all-day task's day, or when
+          // a task with an end time ends. Free time before it counts.
+          deadline: t.due_at ? Date.parse(deadlineOf(t)!) : null,
+        }));
         let assigned = 0;
         let atRisk = 0;
         // Tasks due soonest take the free time first.
         const sorted = [...tasks].sort(
-          (a, b) =>
-            (a.due_at?.getTime() ?? Infinity) -
-            (b.due_at?.getTime() ?? Infinity),
+          (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity),
         );
         let used = 0;
         const atRiskItems: TeamAtRiskItem[] = [];
         for (const t of sorted) {
           const remaining = remainingOf(t);
           assigned += remaining;
-          if (!t.due_at) continue;
-          const due = t.due_at.getTime();
+          if (!t.due_at || t.deadline === null) continue;
+          const due = t.deadline;
           const before = free.reduce(
             (sum, s) =>
               sum + Math.max(0, Math.min(s.end, due) - s.start) / 60_000,
@@ -261,6 +269,8 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
               assignee_id: m.user_id,
               assignee_name: m.name,
               due_at: t.due_at.toISOString(),
+              deadline_at: new Date(due).toISOString(),
+              due_all_day: t.all_day,
               remaining_minutes: Math.round(remaining),
             });
           }

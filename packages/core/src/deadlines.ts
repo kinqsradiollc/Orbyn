@@ -302,17 +302,29 @@ export function dueDate(
 }
 
 /**
- * "Fri 2 Oct, 5 pm" (or "Fri 2 Oct" for a whole day) from what a planner row
- * carries: its `deadline_at` and `due_all_day`, or its due time when it has
- * no deadline worked out (an older saved plan). Null without a date.
+ * When a task is due, as a list line names it after "due": "Fri 2 Oct, 5 pm",
+ * or "Fri 2 Oct" for a whole day. A planner or team row carries its deadline
+ * (`deadline_at` and `due_all_day`); a task works it out from its own times
+ * (`deadlineOf`), so an all-day task names its day, not the midnight it
+ * starts, and one with an end time names the end. An older saved plan row
+ * with only a due time names that. Null without a date.
  */
 export function dueDateOf(row: {
   due_at?: string | null;
   deadline_at?: string | null;
   due_all_day?: boolean;
+  end_at?: string | null;
+  all_day?: boolean | null;
+  timezone?: string | null;
 }): string | null {
   if (row.deadline_at) return dueDate(row.deadline_at, !!row.due_all_day);
-  return row.due_at ? dueDate(row.due_at) : null;
+  const deadline = deadlineOf({
+    due_at: row.due_at,
+    end_at: row.end_at,
+    all_day: row.all_day,
+    timezone: row.timezone,
+  });
+  return deadline ? dueDate(deadline, !!row.all_day) : null;
 }
 
 /**

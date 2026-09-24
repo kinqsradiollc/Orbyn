@@ -977,6 +977,28 @@ test("the task panels say when a task is due by", () => {
     dueDate(at("2026-10-02", 9)),
   );
   assert.equal(dueDateOf({ due_at: null }), null);
+  // Tasks on list lines (Tasks to place, Focus mode's lists): their own
+  // deadline, never the midnight an all-day date starts or a span's start.
+  assert.equal(dueDateOf(oneDay), dueDate(at("2026-10-03", 0), true));
+  assert.doesNotMatch(dueDateOf(oneDay)!, /12:00/);
+  assert.equal(
+    dueDateOf({ ...oneDay, end_at: null }),
+    dueDate(at("2026-10-03", 0), true),
+  );
+  assert.equal(dueDateOf(threeDays), dueDate(at("2026-10-05", 0), true));
+  assert.equal(
+    dueDateOf({ due_at: at("2026-10-02", 15), end_at: at("2026-10-02", 17) }),
+    dueDate(at("2026-10-02", 17)),
+  );
+  // A row's own deadline wins over working it out again.
+  assert.equal(
+    dueDateOf({
+      due_at: at("2026-10-02", 15),
+      end_at: at("2026-10-02", 17),
+      deadline_at: at("2026-10-02", 18),
+    }),
+    dueDate(at("2026-10-02", 18)),
+  );
   // Named in a zone when given (the server writing for someone).
   assert.equal(
     dueDate(dayTime("2026-10-03", 0, TZ).toISOString(), true, TZ),

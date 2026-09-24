@@ -136,21 +136,44 @@ const whenFormat = (timeZone: string) =>
   });
 
 /**
+ * The people a scan covers, a page at a time in id order, so everyone is
+ * reached however many there are. `sql` takes `params`, then the last id of
+ * the page before (null for the first) and the page size, and must keep to
+ * `user_id > after ORDER BY user_id LIMIT size`.
+ */
+async function* pagedUsers(sql: string, params: unknown[], pageSize: number) {
+  let after: string | null = null;
+  for (;;) {
+    const rows: { user_id: string }[] = (
+      await pool.query<{ user_id: string }>(sql, [...params, after, pageSize])
+    ).rows;
+    for (const r of rows) yield r.user_id;
+    if (rows.length < pageSize) return;
+    after = rows[rows.length - 1].user_id;
+  }
+}
+
+/** People with a session in the next week, for the conflict scan. */
+const UPCOMING_SESSIONS = `
+  SELECT DISTINCT user_id FROM time_blocks
+  WHERE start_at > $1 AND start_at < $2
+    AND ($3::uuid IS NULL OR user_id > $3::uuid)
+  ORDER BY user_id LIMIT $4`;
+
+/**
  * Tell people when an event now overlaps time they set aside for a task, once
  * per block. The notice's `ref` is the block, so the apps can offer a one-tap
- * Reschedule.
+ * Reschedule. Everyone with a session in the next week is checked, a page of
+ * people at a time.
  */
-export async function scanConflicts(now = new Date()) {
+export async function scanConflicts(now = new Date(), pageSize = 500) {
   const horizon = new Date(now.getTime() + 7 * 86_400_000);
-  const users = (
-    await pool.query<{ user_id: string }>(
-      `SELECT DISTINCT user_id FROM time_blocks
-       WHERE start_at > $1 AND start_at < $2 LIMIT 500`,
-      [now, horizon],
-    )
-  ).rows;
   const email = await emailEnabled();
-  for (const { user_id } of users) {
+  for await (const user_id of pagedUsers(
+    UPCOMING_SESSIONS,
+    [now, horizon],
+    pageSize,
+  )) {
     const [blocks, entries, prefs] = await Promise.all([
       timeBlocks(pool, user_id, now, horizon),
       agendaEntries(pool, user_id, now, horizon, { hidden: true }),
@@ -211,7 +234,8 @@ const ACTIVE_USERS = `
                         THEN interval '25 hours' ELSE interval '0 hours' END) > $1
                   AND i.due_at < $1::timestamptz + interval '14 days'
                   AND ((i.team_id IS NULL AND i.user_id = a.user_id) OR i.assignee_id = a.user_id)))
-  ORDER BY a.user_id LIMIT 1000`;
+    AND ($3::uuid IS NULL OR a.user_id > $3::uuid)
+  ORDER BY a.user_id LIMIT $4`;
 
 /**
  * The planner's daily notices, each at most once a day (the `ref` is the
@@ -224,14 +248,20 @@ const ACTIVE_USERS = `
  * - due soon: a task is due within `deadline_notice_days` and has no time set
  *   aside for what's left of it (once per task, not for tasks already at risk).
  *
- * `only` limits the scan to some people (tests and manual runs).
+ * Everyone active is reached, a page of people at a time. `only` limits the
+ * scan to some people (tests and manual runs).
  */
-export async function scanPlanningNotices(now = new Date(), only?: string[]) {
-  const users = (
-    await pool.query<{ user_id: string }>(ACTIVE_USERS, [now, only ?? null])
-  ).rows;
+export async function scanPlanningNotices(
+  now = new Date(),
+  only?: string[],
+  pageSize = 1000,
+) {
   const email = await emailEnabled();
-  for (const { user_id } of users) {
+  for await (const user_id of pagedUsers(
+    ACTIVE_USERS,
+    [now, only ?? null],
+    pageSize,
+  )) {
     const prefs = await loadPrefs(pool, user_id);
     const tz = prefs.timezone;
     const today = localDateKey(now, tz);

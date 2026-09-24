@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Item } from "@orbyn/core";
+import { dueDateOf, type Item } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import {
@@ -153,7 +153,7 @@ function Body({
                       {t.estimate_minutes
                         ? minutesLabel(t.estimate_minutes)
                         : "No estimate · 30m"}
-                      {t.due_at ? ` · due ${dateLabel(t.due_at)}` : ""}
+                      {dueDateOf(t) ? ` · due ${dueDateOf(t)}` : ""}
                     </Text>
                   </View>
                   <SmallAction

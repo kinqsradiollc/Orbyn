@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   clockMinutes,
-  dateLabel,
   dayTime,
+  dueDateOf,
   freshItem,
   weekdayOf,
   type BusyInterval,
@@ -236,7 +236,7 @@ export function TeamTime({
 
   const atRisk = (workload ?? [])
     .flatMap((w) => w.at_risk_items ?? [])
-    .sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
+    .sort((a, b) => Date.parse(a.deadline_at) - Date.parse(b.deadline_at));
 
   return (
     <>
@@ -434,13 +434,13 @@ export function TeamTime({
                 key={t.id}
                 style={[s.member, n > 0 && s.divider]}
                 accessible
-                accessibilityLabel={`${t.title}, ${t.assignee_name}, due ${dateLabel(t.due_at)}, needs ${minutesLabel(t.remaining_minutes) || "more time"}`}
+                accessibilityLabel={`${t.title}, ${t.assignee_name}, due ${dueDateOf(t)}, needs ${minutesLabel(t.remaining_minutes) || "more time"}`}
               >
                 <Text style={s.name} numberOfLines={2}>
                   {t.title}
                 </Text>
                 <Text style={shared.small}>
-                  {t.assignee_name} · due {dateLabel(t.due_at)} · needs{" "}
+                  {t.assignee_name} · due {dueDateOf(t)} · needs{" "}
                   {minutesLabel(t.remaining_minutes) || "more time"}
                 </Text>
               </View>

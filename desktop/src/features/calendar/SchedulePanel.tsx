@@ -1,7 +1,7 @@
 import { isClosed } from "@orbyn/core";
 import { useState } from "react";
 import { CalendarPlus, GripVertical } from "lucide-react";
-import { dateLabel, type Item } from "@orbyn/core";
+import { dueDateOf, type Item } from "@orbyn/core";
 import { byScore, minutesLabel } from "../../lib/planning";
 import { TASK_MIME } from "./model";
 
@@ -50,7 +50,7 @@ export function SchedulePanel({ items, onSchedule }: Props) {
                   {i.estimate_minutes
                     ? minutesLabel(i.estimate_minutes)
                     : "No estimate · 30 min"}
-                  {i.due_at && ` · due ${dateLabel(i.due_at)}`}
+                  {dueDateOf(i) && ` · due ${dueDateOf(i)}`}
                 </small>
               </span>
               <button

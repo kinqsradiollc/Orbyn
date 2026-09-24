@@ -1224,6 +1224,10 @@ export type TeamAtRiskItem = {
   assignee_id: string;
   assignee_name: string;
   due_at: string;
+  /** The moment it's due by (see `deadlineOf`): free time before this counts. */
+  deadline_at: string;
+  /** Due on a whole day: name the day, not a time. */
+  due_all_day: boolean;
   remaining_minutes: number;
 };
 
