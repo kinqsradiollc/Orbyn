@@ -388,6 +388,12 @@ const ICONS = {
     ["path", { d: "M8 12h13" }],
     ["path", { d: "M8 19h13" }],
   ],
+  // lucide "layout-template": a page template, the same icon as the web.
+  layoutTemplate: [
+    ["rect", { x: "3", y: "3", width: "18", height: "7", rx: "1" }],
+    ["rect", { x: "3", y: "14", width: "9", height: "7", rx: "1" }],
+    ["rect", { x: "16", y: "14", width: "5", height: "7", rx: "1" }],
+  ],
 } satisfies Record<string, Shape[]>;
 
 export type IconName = keyof typeof ICONS;

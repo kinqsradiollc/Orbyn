@@ -32,6 +32,7 @@ import { subscriptionRoutes } from "./modules/planner/subscriptions.js";
 import { focusRoutes } from "./modules/focus/routes.js";
 import { teamCapacityRoutes } from "./modules/teams/capacity.js";
 import { templateRoutes } from "./modules/templates/routes.js";
+import { pageTemplateRoutes } from "./modules/templates/pages.js";
 import { followThroughRoutes } from "./modules/followthrough/routes.js";
 import {
   legacyDocStreamRoutes,
@@ -87,6 +88,7 @@ export const serviceModules: Record<
     presenceRoutes,
     teamCapacityRoutes,
     templateRoutes,
+    pageTemplateRoutes,
     followThroughRoutes,
     // Older apps' live-document path, for ingresses that send only /events
     // to the realtime service.

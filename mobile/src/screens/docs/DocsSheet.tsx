@@ -8,9 +8,13 @@ import {
   View,
 } from "react-native";
 import {
+  addDays,
+  agendaDay,
   agendaGroups,
   agendaMonthKey,
+  agendaTitleOn,
   agendaWeekOf,
+  localDateKey,
   favouriteKey,
   favouriteSet,
   savedAgo,
@@ -46,6 +50,7 @@ import { useDocComments } from "./useDocComments";
 import { PressableScale } from "../../motion";
 import { errorText } from "../../lib/errors";
 import { showToast } from "../../components/Toast";
+import { PageTemplatesPanel } from "./PageTemplates";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -71,10 +76,13 @@ export function DocsSheet({
   onItemsChanged,
   onMakeCards,
   startInUploads,
+  startInTemplates,
   onStarted,
 }: {
   /** Open on Uploads (after files were shared to Orbyn). */
   startInUploads?: boolean;
+  /** Open on "New page from a template" (the + sheet's From template). */
+  startInTemplates?: boolean;
   onStarted?: () => void;
   /** Suggest study cards from a page (opens Study). */
   onMakeCards?: (docId: string, title: string) => void;
@@ -136,6 +144,18 @@ export function DocsSheet({
   const [folderName, setFolderName] = useState("");
   /** True when the list could not be read, which is not the same as empty. */
   const [failed, setFailed] = useState(false);
+  /** Only pages with this tag, by id; "" for every page. */
+  const [tagFilter, setTagFilter] = useState("");
+  /** Whether "New page from a template" is showing in place of the list. */
+  const [templating, setTemplating] = useState(false);
+  /**
+   * Stepping through agendas: today's date in your own zone, and a day with
+   * no page written yet (shown as a gap with a way to write it).
+   */
+  const [agendaToday, setAgendaToday] = useState(() =>
+    localDateKey(new Date(), deviceTimeZone()),
+  );
+  const [agendaGap, setAgendaGap] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
 
   useEffect(() => {
@@ -143,12 +163,23 @@ export function DocsSheet({
     if (initialDoc) return setOpen(initialDoc);
     if (agenda) {
       // Today's page is written on the server the first time it is asked for.
-      client.agendaToday(deviceTimeZone()).then(setOpen, () => setOpen(null));
+      setAgendaGap(null);
+      client.agendaToday(deviceTimeZone()).then(
+        (doc) => {
+          setOpen(doc);
+          if (doc.agenda_date) setAgendaToday(doc.agenda_date);
+        },
+        () => setOpen(null),
+      );
       return;
     }
     void loadList();
     if (startInUploads) {
       selectCollection(null, null, false, null, true);
+      onStarted?.();
+    }
+    if (startInTemplates) {
+      setTemplating(true);
       onStarted?.();
     }
     // Folders and stars are small lists and only matter beside the pages,
@@ -253,9 +284,32 @@ export function DocsSheet({
   // Coming back to the list should show what was just written.
   const backToList = () => {
     setOpen(null);
+    setAgendaGap(null);
     void loadList();
     if (trashOnly) void loadTrash();
   };
+
+  /** Step to another day's agenda, or to the gap where it would be. */
+  const goAgenda = (date: string) =>
+    void run(async () => {
+      const day = await client.agendaOn(date, deviceTimeZone());
+      setAgendaToday(day.today);
+      if (day.doc) {
+        setAgendaGap(null);
+        setOpen(day.doc);
+      } else {
+        setOpen(null);
+        setAgendaGap(date);
+      }
+    });
+
+  /** Write the missing day's agenda from the calendar. */
+  const writeAgenda = (date: string) =>
+    void run(async () => {
+      const doc = await client.writeAgenda(date);
+      setAgendaGap(null);
+      setOpen(doc);
+    });
 
   /** Bring a page back from Trash; the toast offers to open it. */
   const restoreFromTrash = (page: TrashedDoc) =>
@@ -288,9 +342,11 @@ export function DocsSheet({
     ? () => setNavigationOpen(false)
     : agenda || initialDoc
       ? undefined
-      : open
+      : open || agendaGap
         ? backToList
-        : undefined;
+        : templating
+          ? () => setTemplating(false)
+          : undefined;
 
   // Searching is a round trip, so it waits for a pause in the typing.
   useEffect(() => {
@@ -342,6 +398,8 @@ export function DocsSheet({
     updated_at: string;
     created_at?: string;
     folder_id?: string | null;
+    agenda_date?: string | null;
+    tags?: DocSummary["tags"];
   };
 
   const narrowed: Row[] = hits
@@ -370,7 +428,7 @@ export function DocsSheet({
           (d) =>
             kindFilter !== "agenda" ||
             !agendaMonth ||
-            agendaMonthKey(d.created_at) === agendaMonth,
+            agendaMonthKey(agendaDay(d)) === agendaMonth,
         )
         // A search looks everywhere; a folder only narrows the plain list.
         .filter((d) =>
@@ -381,10 +439,25 @@ export function DocsSheet({
               : d.folder_id === folderFilter,
         );
   const agendas = agendaGroups(docs ?? []);
+  // The tags on the pages in view, for the tag filter; then the filter.
+  const tagsHere = [
+    ...new Map(
+      narrowed.flatMap((d) => d.tags ?? []).map((t) => [t.id, t] as const),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+  const tagged = tagFilter
+    ? narrowed.filter((d) => d.tags?.some((t) => t.id === tagFilter))
+    : narrowed;
 
-  const shown: Row[] = [...narrowed].sort((a, b) =>
+  /** When an agenda row is filed: the day it's for. */
+  const dayOf = (row: Row) =>
+    agendaDay({
+      created_at: row.created_at ?? "",
+      agenda_date: row.agenda_date,
+    });
+  const shown: Row[] = [...tagged].sort((a, b) =>
     kindFilter === "agenda" && a.created_at && b.created_at
-      ? b.created_at.localeCompare(a.created_at)
+      ? dayOf(b).localeCompare(dayOf(a))
       : sort === "title"
         ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
           a.id.localeCompare(b.id)
@@ -426,6 +499,8 @@ export function DocsSheet({
     setHits(null);
     setNavigationOpen(false);
     setFiling(null);
+    setTagFilter("");
+    setTemplating(false);
   };
   const navRow = (
     label: string,
@@ -477,9 +552,11 @@ export function DocsSheet({
           ? "Library"
           : open
             ? open.title || "Untitled"
-            : agenda
+            : agenda || agendaGap
               ? "Agenda"
-              : "Documents"
+              : templating
+                ? "New page"
+                : "Documents"
       }
       onClose={onClose}
       onBack={back}
@@ -637,37 +714,81 @@ export function DocsSheet({
                 </View>
               )}
             </View>
-          ) : open ? (
-            <OpenDoc
-              key={open.id}
-              doc={open}
-              userId={userId}
-              canWriteDoc={canWriteDoc}
-              onChanged={(saved) => {
-                setOpen((current) =>
-                  current?.id === saved.id ? saved : current,
-                );
-                setDocs(
-                  (current) =>
-                    current?.map((d) =>
-                      d.id === saved.id
-                        ? {
-                            ...d,
-                            title: saved.title,
-                            updated_at: saved.updated_at,
-                          }
-                        : d,
-                    ) ?? current,
-                );
-              }}
-              onItemsChanged={onItemsChanged}
-              onDeleted={backToList}
-              onUndoDelete={(back) => {
-                // Undo from the toast: the page comes back open.
-                setOpen(back);
+          ) : open || agendaGap ? (
+            <>
+              {(agendaGap || open?.kind === "agenda") && (
+                <AgendaNav
+                  date={agendaGap ?? open?.agenda_date ?? agendaToday}
+                  today={agendaToday}
+                  busy={busy}
+                  onGo={goAgenda}
+                />
+              )}
+              {agendaGap ? (
+                <View style={styles.agendaGap}>
+                  <Icon name="calendar" size={22} color={colors.muted} />
+                  <Text style={styles.empty}>
+                    {agendaGap < agendaToday
+                      ? `Nothing was written for ${agendaTitleOn(agendaGap)}.`
+                      : `${agendaTitleOn(agendaGap)} isn’t written yet.`}
+                  </Text>
+                  <Button
+                    title={busy ? "Writing…" : "Write it from my calendar"}
+                    disabled={busy}
+                    onPress={() => writeAgenda(agendaGap)}
+                  />
+                </View>
+              ) : (
+                <OpenDoc
+                  key={open!.id}
+                  doc={open!}
+                  isToday={
+                    !open!.agenda_date || open!.agenda_date === agendaToday
+                  }
+                  userId={userId}
+                  canWriteDoc={canWriteDoc}
+                  onChanged={(saved) => {
+                    setOpen((current) =>
+                      current?.id === saved.id ? saved : current,
+                    );
+                    setDocs(
+                      (current) =>
+                        current?.map((d) =>
+                          d.id === saved.id
+                            ? {
+                                ...d,
+                                title: saved.title,
+                                updated_at: saved.updated_at,
+                              }
+                            : d,
+                        ) ?? current,
+                    );
+                  }}
+                  onItemsChanged={onItemsChanged}
+                  onDeleted={backToList}
+                  onUndoDelete={(back) => {
+                    // Undo from the toast: the page comes back open.
+                    setOpen(back);
+                    void loadList();
+                  }}
+                  report={report}
+                />
+              )}
+            </>
+          ) : templating ? (
+            <PageTemplatesPanel
+              folders={folders}
+              folderId={
+                folderFilter && folderFilter !== "none" ? folderFilter : null
+              }
+              onCancel={() => setTemplating(false)}
+              onCreated={(doc, note, tasks) => {
+                setTemplating(false);
+                setOpen(doc);
+                showToast({ text: note });
+                if (tasks) onItemsChanged?.();
                 void loadList();
               }}
-              report={report}
             />
           ) : failed ? (
             <View style={styles.list}>
@@ -800,16 +921,54 @@ export function DocsSheet({
                     : `${hits.length} found`}
                 </Text>
               )}
+              {!hits &&
+                !trashOnly &&
+                !uploadsOnly &&
+                (tagsHere.length > 0 || !!tagFilter) && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.collections}
+                    accessibilityLabel="Show pages with a tag"
+                  >
+                    <Chip
+                      compact
+                      label="All tags"
+                      selected={!tagFilter}
+                      onPress={() => setTagFilter("")}
+                    />
+                    {tagsHere.map((t) => (
+                      <Chip
+                        key={t.id}
+                        compact
+                        label={`#${t.name}`}
+                        selected={tagFilter === t.id}
+                        onPress={() =>
+                          setTagFilter(tagFilter === t.id ? "" : t.id)
+                        }
+                      />
+                    ))}
+                  </ScrollView>
+                )}
               {/* The main way in full width, the other two side by side, as
               on Projects. */}
               <View style={styles.newActions}>
-                <Button
-                  title="New document"
-                  icon="plus"
-                  disabled={busy}
-                  style={styles.newFull}
-                  onPress={() => create("doc")}
-                />
+                <View style={styles.newRow}>
+                  <Button
+                    title="New document"
+                    icon="plus"
+                    disabled={busy}
+                    style={styles.newHalf}
+                    onPress={() => create("doc")}
+                  />
+                  <Button
+                    title="From template"
+                    secondary
+                    disabled={busy}
+                    style={styles.newHalf}
+                    onPress={() => setTemplating(true)}
+                  />
+                </View>
                 <View style={styles.newRow}>
                   <Button
                     title="New note"
@@ -974,21 +1133,20 @@ export function DocsSheet({
                     {kindFilter === "agenda" && !hits && doc.created_at && (
                       <>
                         {(n === 0 ||
-                          agendaMonthKey(doc.created_at) !==
-                            agendaMonthKey(shown[n - 1].created_at ?? "")) && (
+                          agendaMonthKey(dayOf(doc)) !==
+                            agendaMonthKey(dayOf(shown[n - 1]))) && (
                           <Text style={styles.monthHeading}>
-                            {new Date(doc.created_at).toLocaleDateString(
-                              "en-GB",
-                              { month: "long", year: "numeric" },
-                            )}
+                            {new Date(dayOf(doc)).toLocaleDateString("en-GB", {
+                              month: "long",
+                              year: "numeric",
+                            })}
                           </Text>
                         )}
                         {(n === 0 ||
-                          agendaWeekOf(doc.created_at).key !==
-                            agendaWeekOf(shown[n - 1].created_at ?? "")
-                              .key) && (
+                          agendaWeekOf(dayOf(doc)).key !==
+                            agendaWeekOf(dayOf(shown[n - 1])).key) && (
                           <Text style={styles.weekHeading}>
-                            {agendaWeekOf(doc.created_at).label}
+                            {agendaWeekOf(dayOf(doc)).label}
                           </Text>
                         )}
                       </>
@@ -1024,12 +1182,18 @@ export function DocsSheet({
                         {"  ·  " + (doc.preview || "Empty document")}
                       </Text>
                       <View style={styles.rowActions}>
-                        <Text style={styles.rowKind}>
+                        <Text style={styles.rowKind} numberOfLines={1}>
                           {doc.kind === "note"
                             ? "Note"
                             : doc.kind === "agenda"
                               ? "Agenda"
                               : "Document"}
+                          {doc.tags?.length ? (
+                            <Text style={styles.rowTags}>
+                              {"  " +
+                                doc.tags.map((t) => `#${t.name}`).join(" ")}
+                            </Text>
+                          ) : null}
                         </Text>
                         <Pressable
                           onPress={(event) => {
@@ -1099,6 +1263,7 @@ export function DocsSheet({
  */
 function OpenDoc({
   doc,
+  isToday = true,
   userId,
   canWriteDoc,
   onChanged,
@@ -1108,6 +1273,8 @@ function OpenDoc({
   report,
 }: {
   doc: Doc;
+  /** For an agenda: whether it is today's, the only one Rewrite writes. */
+  isToday?: boolean;
   userId?: string;
   canWriteDoc?: (teamId: string | null) => boolean;
   onChanged: (doc: Doc) => void;
@@ -1124,7 +1291,7 @@ function OpenDoc({
   const rewrite = () =>
     confirmAction(
       "Rewrite today's agenda?",
-      "It's written again from your calendar as it is now. Anything you've typed on the page is replaced.",
+      "Everything above Notes is written again from your calendar as it is now. Your notes and end-of-day answers stay as they are.",
       "Rewrite",
       () => {
         setRewriting(true);
@@ -1152,13 +1319,15 @@ function OpenDoc({
         <View style={styles.agendaBar}>
           <Text style={[shared.small, { flex: 1 }]}>
             {rewritten ||
-              "Written from your calendar, including the calendars you subscribe to."}
+              "Written from your calendar. Notes are yours: a rewrite leaves them alone."}
           </Text>
-          <SmallAction
-            label={rewriting ? "Rewriting…" : "Rewrite"}
-            disabled={rewriting}
-            onPress={rewrite}
-          />
+          {isToday && (
+            <SmallAction
+              label={rewriting ? "Rewriting…" : "Rewrite"}
+              disabled={rewriting}
+              onPress={rewrite}
+            />
+          )}
         </View>
       )}
       <DocEditor
@@ -1184,8 +1353,103 @@ function OpenDoc({
   );
 }
 
+/** "Today", "Yesterday", "Tomorrow", or the day's own name. */
+function dayName(date: string, today: string) {
+  if (date === today) return "Today";
+  if (date === addDays(today, -1)) return "Yesterday";
+  if (date === addDays(today, 1)) return "Tomorrow";
+  return agendaTitleOn(date);
+}
+
+/**
+ * ‹ and › to the day before and after, and a way back to today: the agenda
+ * read as a diary. A year back and two months ahead, as far as it goes.
+ */
+function AgendaNav({
+  date,
+  today,
+  busy,
+  onGo,
+}: {
+  date: string;
+  today: string;
+  busy: boolean;
+  onGo: (date: string) => void;
+}) {
+  const arrow = (by: -1 | 1) => {
+    const off =
+      busy ||
+      (by < 0 ? date <= addDays(today, -366) : date >= addDays(today, 62));
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={by < 0 ? "The day before" : "The day after"}
+        accessibilityState={{ disabled: off }}
+        disabled={off}
+        hitSlop={6}
+        onPress={() => onGo(addDays(date, by))}
+        style={({ pressed }) => [
+          styles.dayArrow,
+          pressed && styles.rowPressed,
+          off && { opacity: 0.4 },
+        ]}
+      >
+        <Icon
+          name={by < 0 ? "chevronLeft" : "chevronRight"}
+          size={18}
+          color={colors.textSoft}
+        />
+      </Pressable>
+    );
+  };
+  return (
+    <View style={styles.agendaNav}>
+      {arrow(-1)}
+      <Text style={styles.agendaDay} accessibilityLiveRegion="polite">
+        {dayName(date, today)}
+      </Text>
+      {arrow(1)}
+      <View style={{ flex: 1 }} />
+      {date !== today && (
+        <SmallAction
+          label="Today"
+          disabled={busy}
+          onPress={() => onGo(today)}
+        />
+      )}
+    </View>
+  );
+}
+
 const styles = themed(() =>
   StyleSheet.create({
+    agendaNav: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      marginBottom: 8,
+    },
+    dayArrow: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    agendaDay: {
+      minWidth: 120,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    agendaGap: {
+      alignItems: "center",
+      gap: 12,
+      paddingHorizontal: 22,
+      paddingVertical: 30,
+    },
+    rowTags: { color: colors.muted, fontFamily: fonts.regular },
     monthHeading: {
       fontFamily: fonts.display,
       fontSize: 16,

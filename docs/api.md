@@ -135,6 +135,16 @@ Called by the mail server, guarded by `X-Inbound-Secret: <MAIL_INBOUND_SECRET>` 
 
 Downloads a JSON archive of your personal data — lists, tags, habits and items — for keeping or moving.
 
+### `GET /me/export.zip` (auth, 10/min)
+
+Everything you own, pages included, as a `.zip` (`orbyn-export-YYYY-MM-DD.zip`): every personal
+page as Markdown in `pages/<folder>/` with front matter (title, kind, dates, folder, project, tags,
+the file it was imported from), agendas in `pages/Agendas/<date>.md`, pages in Trash in
+`pages/Trash/`, plus `planner.json` (the same archive as `/me/export`, importable),
+`projects.json`, `folders.json`, `attachments.json` (what was imported and which page it became;
+the files themselves are never kept) and `consent.json` (your terms and analytics decisions). Team
+pages stay with their team. Personal API keys get `403`, as for `/me/export`.
+
 ### `POST /me/import` (auth)
 
 `{ "format": "orbyn" | "csv", "data": string, "dry_run"?: bool }`. Brings items in; lists and tags are matched by name and created when missing. CSV needs a `title` column (optional `notes`, `due`, `priority`, `list`, `tags`). `dry_run` (default true) returns `{ created, skipped, lists_added, tags_added, sample, errors }` without writing.
@@ -438,10 +448,24 @@ if untouched, is written again. `GET /agenda/today?timezone=` and `POST /ai/agen
 In the library, agendas have their own **Agendas** section, filed by year, month and week (Monday
 first), and are left out of "All documents" and "Unfiled".
 
+### `GET /agenda/:date` (auth)
+
+One day's agenda, for stepping back and forward (`date` like `2026-09-24`, at most a year back and
+two months ahead, else `422`). → `{ date, title, today, doc }`: today's page is written on the
+spot as `/agenda/today` does; any other day's `doc` is `null` until it is written. Every agenda
+carries `agenda_date`, the day it is for, and the library files it under that day.
+
+### `POST /agenda/:date` (auth)
+
+Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
+(`200`). A past day reads as the calendar has it now, with no free time; a day ahead shows what's
+planned so far. A page written ahead that nobody changes is written again on its day.
+
 ### `POST /ai/agenda/today` (auth, 10/min)
 
-Writes today's agenda again from the calendar as it is now, replacing the page's content (the apps
-ask first), and opens it with the assistant's summary when a provider is connected. The provider is
+Writes today's agenda again from the calendar as it is now, replacing everything above its Notes
+heading (the apps ask first). Notes and everything under it — your notes and the end-of-day
+answers — are kept exactly as written. It opens with the assistant's summary when a provider is connected. The provider is
 sent the day as facts only (times already in your zone). → the document plus `brief`: whether the
 assistant wrote the summary.
 
@@ -597,6 +621,40 @@ see the record. The verdict stays the person's — the client shows the numbers 
 Each time someone sits down and changes a document, the state they started from is kept. Saves
 arrive every second or so while someone types, so a state is kept only when the previous kept one
 is by someone else or more than five minutes old — history reads as sittings, not keystrokes.
+
+### `PUT /docs/:id/tags` (auth, `items:write`)
+
+`{ "tags": ["<tag id>", …] }` (up to 20) → `{ tags }`. Sets exactly these tags on the page, from
+its own space: your personal tags on a personal page, the team's on a team page (a tag the page
+already carries may stay). Any other tag is `404`. Tags aren't the page's words, so its version
+doesn't change.
+
+### `POST /docs/:id/tags` (auth, `items:write`)
+
+`{ "names": ["physics", …] }` → `{ tags, added }`. Adds tags by name, as typing `#physics` in a
+line does; a name the page's space has no tag for yet makes one there. Names compare without case;
+past 20 tags the rest are left off. The apps call this when a line with a new `#tag` is left
+(`addedInlineTags` in `packages/core/src/page-tags.ts`).
+
+### Page templates (auth)
+
+A page kept to start the next one from (`packages/core/src/page-templates.ts`). Blanks `{date}`,
+`{title}`, `{project}` and `{event}` fill themselves in; double braces (cloze) and `::` are never
+touched. Starters: Lecture notes, Lab report, Essay plan, Meeting, Weekly review, One-to-one.
+
+- `GET /page-templates` → your templates, your teams', then the starters (`id` `starter:…`).
+- `POST /page-templates` `{ name, description?, team_id?, title?, content?, folder_id?, tags? }`
+  → `201`. Folder and tags must be in the template's space (`404` otherwise). Any team member who
+  can write may make a team's.
+- `PUT /page-templates/:id`, `DELETE /page-templates/:id` — its maker, or a team's owners and
+  admins (`403` otherwise).
+- `POST /page-templates/from-doc/:docId` `{ name?, description?, personal? }` → `201`. Saves a
+  page as a template with its folder and tags, boxes unticked. A team page makes a team template
+  unless `personal`.
+- `POST /page-templates/:id/use` `{ title?, team_id?, folder_id?, project_id?, event_id?,
+event_at?, make_tasks? }` → `201 { doc, tasks_created }`. With a project the page belongs to it;
+  with `make_tasks` its to-do lines become tasks in that project's first stage, tied to their lines.
+  With an event the page is that event's note and `{event}` is its title.
 
 ### `GET /docs/:id/export?format=` (auth)
 

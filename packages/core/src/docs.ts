@@ -271,6 +271,8 @@ export type Doc = {
   imported_from?: DocImportSource | null;
   /** Imported and not filed yet: it shows in Uploads until it's moved. */
   in_uploads?: boolean;
+  /** For a daily agenda, the day it is for ("2026-09-24"). */
+  agenda_date?: string | null;
 };
 
 /** Where an imported page came from. The file itself is not kept. */
@@ -1378,6 +1380,16 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/**
+ * When an agenda is filed: the day it is for, at noon in the reader's own
+ * zone, or when it was written for a page from before agendas knew their
+ * day. A page written today for last Tuesday files under last Tuesday.
+ */
+export const agendaDay = (doc: {
+  created_at: string;
+  agenda_date?: string | null;
+}) => (doc.agenda_date ? `${doc.agenda_date}T12:00:00` : doc.created_at);
+
 /** "2026-09" for a moment, in the reader's own zone. */
 export const agendaMonthKey = (iso: string) => {
   const d = new Date(iso);
@@ -1415,11 +1427,14 @@ export function agendaGroups(
 ): AgendaYear[] {
   const agendas = docs
     .filter((d) => d.kind === "agenda")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort(
+      (a, b) =>
+        new Date(agendaDay(b)).getTime() - new Date(agendaDay(a)).getTime(),
+    );
   const years: AgendaYear[] = [];
   for (const doc of agendas) {
-    const at = new Date(doc.created_at);
-    const key = agendaMonthKey(doc.created_at);
+    const at = new Date(agendaDay(doc));
+    const key = agendaMonthKey(agendaDay(doc));
     let year = years.find((y) => y.year === at.getFullYear());
     if (!year) years.push((year = { year: at.getFullYear(), months: [] }));
     let month = year.months.find((m) => m.key === key);

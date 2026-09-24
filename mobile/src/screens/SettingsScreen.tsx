@@ -33,6 +33,7 @@ import { SmallAction } from "../components/SmallAction";
 import * as WebBrowser from "expo-web-browser";
 import { client, webOrigin } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
+import { saveFile } from "../lib/download";
 import { disablePush, enablePush } from "../lib/push";
 import {
   colors,
@@ -725,13 +726,26 @@ export function SettingsScreen({
 
       <SettingsSection title="Import & export">
         <Text style={shared.body}>
-          Take your data with you, or bring it in from another app.
+          Take everything with you — every page as Markdown in its folders — or
+          bring tasks in from another app.
         </Text>
         <Button
           secondary
-          title="Export my data"
+          title="Export everything (.zip)"
           disabled={busy}
           style={{ marginTop: 12, marginBottom: 0 }}
+          onPress={() =>
+            void act(async () => {
+              const { blob, name } = await client.exportArchive();
+              await saveFile(name, blob, "application/zip");
+            })
+          }
+        />
+        <Button
+          secondary
+          title="Export my data (JSON)"
+          disabled={busy}
+          style={{ marginTop: 8, marginBottom: 0 }}
           onPress={() =>
             void act(async () => {
               const archive = await client.exportData();

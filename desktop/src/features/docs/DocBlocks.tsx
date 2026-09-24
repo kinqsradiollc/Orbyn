@@ -1,5 +1,11 @@
 import type { CSSProperties, ReactNode } from "react";
-import { parseDocInline, type DocBlock, type DocInline } from "@orbyn/core";
+import {
+  parseDocInline,
+  tagRuns,
+  type DocBlock,
+  type DocInline,
+  type TaggedRun,
+} from "@orbyn/core";
 import { Math } from "./Math";
 import { cut, touches, type Mark } from "./marks";
 
@@ -42,7 +48,10 @@ function Pieces({ run, marks }: { run: DocInline; marks: Mark[] }) {
  * no meaningful half of either.
  */
 export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
-  const runs = parseDocInline(text);
+  // A #tag stands apart from the words around it, drawn as a quiet chip.
+  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
+    tagRuns(run, text),
+  );
   return (
     <>
       {runs.map((run, i) => {
@@ -103,6 +112,12 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
             <mark key={i} className="doc-highlight">
               <Pieces run={run} marks={marks} />
             </mark>
+          );
+        if (run.tag)
+          return (
+            <span key={i} className="doc-inline-tag" title={`Tag: ${run.tag}`}>
+              <Pieces run={run} marks={marks} />
+            </span>
           );
         return <Pieces key={i} run={run} marks={marks} />;
       })}

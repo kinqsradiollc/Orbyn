@@ -16,6 +16,7 @@ import {
   Highlighter,
   History,
   Italic,
+  LayoutTemplate,
   Link,
   ListChecks,
   ListPlus,
@@ -27,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  addedInlineTags,
   BLOCK_KINDS,
   blockDepth,
   blockToType,
@@ -88,6 +90,8 @@ import {
 } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
+import { PageTags } from "./PageTags";
+import { SaveTemplateDialog } from "./PageTemplates";
 
 type Kind = (typeof BLOCK_KINDS)[number];
 
@@ -336,6 +340,16 @@ export function DocEditor({
   const plainPaste = useRef(0);
   /** A line made by "New task" in the / menu, waiting for its words. */
   const pendingTask = useRef<string | null>(null);
+  /** The page's tags, as its tag row shows them. */
+  const [tags, setTags] = useState(doc.tags ?? []);
+  /**
+   * The page as it stood when its #tags were last looked at. A #tag typed
+   * since then is added to the page when the line is left; one that was
+   * already there is not, so a tag taken off isn't put straight back.
+   */
+  const tagBase = useRef<DocBlock[]>(doc.content);
+  /** Whether "Save as template" is open. */
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -352,7 +366,32 @@ export function DocEditor({
     setSavedAt(doc.updated_at);
     setHistoryView(null);
     setLinking(null);
+    setTags(doc.tags ?? []);
+    tagBase.current = doc.content;
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Add to the page the #tags typed into it since they were last looked at. */
+  const settleTags = useRef<() => void>(() => {});
+  /** Set once the page goes to Trash: there is nothing left to tag. */
+  const gone = useRef(false);
+  settleTags.current = () => {
+    if (gone.current) return;
+    const now = live.current.blocks;
+    const added = addedInlineTags(tagBase.current, now);
+    tagBase.current = now;
+    if (!added.length || !canWrite) return;
+    client
+      .addDocTags(doc.id, added)
+      .then(({ tags: next }) => setTags(next), report);
+  };
+  // Leaving a line — Enter, the arrows, a click elsewhere — is when a #tag
+  // typed in it counts, not every keystroke on the way to "#physics".
+  const lastFocused = useRef<number | null>(null);
+  useEffect(() => {
+    if (lastFocused.current !== null && lastFocused.current !== focused)
+      settleTags.current();
+    lastFocused.current = focused;
+  }, [focused]);
 
   // "Saved 2 min ago" keeps up with the clock.
   useEffect(() => {
@@ -471,6 +510,7 @@ export function DocEditor({
     return () => {
       if (timer.current) clearTimeout(timer.current);
       flushOnClose.current();
+      settleTags.current();
     };
   }, []);
 
@@ -487,6 +527,7 @@ export function DocEditor({
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
+      gone.current = true;
       onDeleted(doc.id);
       toast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
@@ -501,6 +542,8 @@ export function DocEditor({
       if (!dirty.current && focusedRef.current === null) {
         version.current = theirs.version;
         base.current = theirs.content;
+        tagBase.current = theirs.content;
+        setTags(theirs.tags ?? []);
         setTitle(theirs.title);
         setBlocks(
           theirs.content.length
@@ -1489,6 +1532,7 @@ export function DocEditor({
     }
     dirty.current = false;
     flushOnClose.current = () => {};
+    gone.current = true;
     onDeleted(doc.id);
     toast({
       text: `Moved “${title || "Untitled"}” to Trash`,
@@ -1570,6 +1614,15 @@ export function DocEditor({
             title="Page history"
           >
             <History size={15} />
+          </button>
+          <button
+            className="icon-button"
+            onClick={() => setSavingTemplate(true)}
+            aria-label="Save as template"
+            aria-haspopup="dialog"
+            title="Save as template"
+          >
+            <LayoutTemplate size={15} />
           </button>
           <button
             className="icon-button"
@@ -1834,6 +1887,15 @@ export function DocEditor({
                 }}
               />
             )}
+            <PageTags
+              docId={doc.id}
+              teamId={doc.team_id}
+              tags={tags}
+              canWrite={canWrite && !reading}
+              // The library reads tags afresh on the way back to it.
+              onChange={setTags}
+              report={report}
+            />
 
             <div className="doc-body" ref={bodyRef}>
               {blocks.map((block, index) =>
@@ -2067,6 +2129,18 @@ export function DocEditor({
           />
         )}
       </div>
+
+      {savingTemplate && (
+        <SaveTemplateDialog
+          doc={doc}
+          onClose={() => setSavingTemplate(false)}
+          onSaved={(t) =>
+            toast({
+              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+            })
+          }
+        />
+      )}
 
       {chat && (
         <DocChat

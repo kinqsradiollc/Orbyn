@@ -1,5 +1,12 @@
 import {
   HttpError,
+  type AgendaDay,
+  type DocTag,
+  type PageTemplate,
+  type PageTemplateFromDoc,
+  type PageTemplateInput,
+  type PageTemplateUpdate,
+  type PageTemplateUse,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -574,6 +581,20 @@ export class OrbynClient {
   exportData() {
     return this.request<unknown>("/me/export");
   }
+  /**
+   * Everything, pages included, as a .zip: every page as Markdown in its
+   * folders, projects, folders, imports, consent history and the planner
+   * file. Comes back as a blob with the name the server chose.
+   */
+  async exportArchive() {
+    const response = await this.raw("/me/export.zip");
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return {
+      blob: await response.blob(),
+      name: named ?? "orbyn-export.zip",
+    };
+  }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
     format: "orbyn" | "csv";
@@ -750,6 +771,21 @@ export class OrbynClient {
         ? `/agenda/today?timezone=${encodeURIComponent(timezone)}`
         : "/agenda/today",
     );
+  }
+  /**
+   * One day's agenda, for stepping back and forward: today's is written on
+   * the spot; another day's `doc` is null until `writeAgenda` writes it.
+   */
+  agendaOn(date: string, timezone?: string) {
+    return this.request<AgendaDay>(
+      timezone
+        ? `/agenda/${date}?timezone=${encodeURIComponent(timezone)}`
+        : `/agenda/${date}`,
+    );
+  }
+  /** Write one day's agenda from the calendar (or get the one written). */
+  writeAgenda(date: string) {
+    return this.request<Doc>(`/agenda/${date}`, { method: "POST" });
   }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {
@@ -1047,6 +1083,23 @@ export class OrbynClient {
   }
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
+  }
+  /** Put exactly these tags (by id) on a page. */
+  setDocTags(id: string, tags: string[]) {
+    return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
+      method: "PUT",
+      body: { tags },
+    });
+  }
+  /**
+   * Add tags to a page by name, as typing "#physics" in a line does; a name
+   * with no tag yet makes one. `added` says which names were new to it.
+   */
+  addDocTags(id: string, names: string[]) {
+    return this.request<{ tags: DocTag[]; added: string[] }>(
+      `/docs/${id}/tags`,
+      { method: "POST", body: { names } },
+    );
   }
   createDoc(input: {
     title?: string;
@@ -2558,6 +2611,45 @@ export class OrbynClient {
       to: to.toISOString(),
     });
     return this.request<TeamCapacity>(`/teams/${teamId}/capacity?${q}`);
+  }
+
+  // ---- page templates ------------------------------------------------------
+
+  /** Your page templates, your teams', and the starters everyone has. */
+  listPageTemplates() {
+    return this.request<PageTemplate[]>("/page-templates");
+  }
+  createPageTemplate(input: PageTemplateInput) {
+    return this.request<PageTemplate>("/page-templates", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updatePageTemplate(id: string, input: PageTemplateUpdate) {
+    return this.request<PageTemplate>(`/page-templates/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deletePageTemplate(id: string) {
+    return this.request<void>(`/page-templates/${id}`, { method: "DELETE" });
+  }
+  /** Save a page as a template: its words, folder and tags, boxes unticked. */
+  savePageAsTemplate(docId: string, input: PageTemplateFromDoc = {}) {
+    return this.request<PageTemplate>(`/page-templates/from-doc/${docId}`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /**
+   * Make a page from a template, blanks filled in. With `make_tasks`, its
+   * to-do lines become tasks (in the project, when one is chosen).
+   */
+  usePageTemplate(id: string, input: PageTemplateUse = {}) {
+    return this.request<{ doc: Doc; tasks_created: number }>(
+      `/page-templates/${encodeURIComponent(id)}/use`,
+      { method: "POST", body: input },
+    );
   }
 
   // ---- project templates ---------------------------------------------------

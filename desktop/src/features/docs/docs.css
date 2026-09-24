@@ -2362,3 +2362,251 @@ h4.doc-heading {
     justify-self: start;
   }
 }
+
+/* ---- the agenda, a page a day (DAY-01) ---- */
+
+/* ‹ Today › and a way back to today. */
+.agenda-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.agenda-nav .icon-button:disabled {
+  opacity: 0.4;
+}
+.agenda-day {
+  min-width: 8rem;
+  text-align: center;
+  font-size: 13px;
+}
+.agenda-bar .agenda-today {
+  margin-left: 6px;
+}
+.agenda-note {
+  margin: -4px 0 14px;
+  font-size: 13px;
+}
+.agenda-note svg {
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+.agenda-note strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.agenda-empty p {
+  color: var(--color-textSoft);
+}
+
+/* ---- tags on a page (ORG-01) ---- */
+
+.page-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  margin: 2px 0 12px;
+}
+.page-tag {
+  padding-right: 4px;
+}
+.page-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+}
+.page-tag-remove:hover,
+.page-tag-remove:focus-visible {
+  opacity: 1;
+}
+/* Quiet until wanted: a word and an icon, no border. */
+.page-tags-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+/* On a page with no tags yet, the word lines up with the title above. */
+.page-tags-add:first-child {
+  margin-left: -8px;
+}
+.page-tags-add:hover,
+.page-tags-add:focus-visible,
+.page-tags-add[aria-expanded="true"] {
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+}
+.page-tags-picker {
+  display: grid;
+  gap: 8px;
+}
+/* The popover is the frame here; the picker needs no second one. */
+.page-tags-picker .tag-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.page-tags-picker .tag-picker legend {
+  padding: 0 0 6px;
+}
+.page-tags-picker .tag-create input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-h);
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+}
+.page-tags-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* A #tag in a line, drawn as a quiet chip where it was typed. */
+.doc-inline-tag {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  color: var(--color-textSoft);
+  font-size: 0.92em;
+  white-space: nowrap;
+}
+
+/* Tags on a library row, after where the page lives. */
+.doc-row-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.doc-row-tags .tag-chip {
+  padding: 0 6px;
+  font-size: 11px;
+}
+.docs-tag-filter {
+  min-width: 140px;
+}
+
+/* ---- page templates (DAY-02) ---- */
+
+.modal.page-templates {
+  width: 620px;
+}
+/* A switch in these forms keeps its track: the modal's field styles would
+   otherwise paint it as a white box. */
+.page-template-form input.ai-switch,
+.save-template-form input.ai-switch {
+  background: var(--color-track);
+}
+.page-template-form input.ai-switch:checked,
+.save-template-form input.ai-switch:checked {
+  background: var(--color-accent);
+}
+.page-templates .section-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.page-templates .section-heading h2 {
+  flex: 1;
+  min-width: 0;
+}
+.page-templates-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 22px 22px;
+}
+.page-templates-group h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-textSoft);
+}
+.page-templates-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-template-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.page-template-card:hover,
+.page-template-card:focus-visible {
+  border-color: var(--color-accent);
+}
+.page-template-card span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.page-template-card strong {
+  color: var(--color-text);
+  font-size: 13px;
+}
+.page-template-card small {
+  color: var(--color-textSoft);
+  font-size: 11px;
+}
+.page-template-card .page-template-meta {
+  color: var(--color-muted);
+}
+.modal .page-template-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0;
+}
+.modal .page-template-form label {
+  margin-bottom: 0;
+}
+.page-template-sections {
+  margin: 0;
+  font-size: 13px;
+}
+.page-template-form .confirm-actions {
+  align-items: center;
+  padding: 4px 0 0;
+}
+.page-template-delete {
+  margin-right: auto;
+  color: var(--color-danger);
+}

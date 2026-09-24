@@ -61,16 +61,16 @@ export function PrivacySettings({
         : "Usage analytics is off, and what was counted is cleared.";
     });
 
+  // Everything that's yours in one .zip: pages as Markdown in their
+  // folders, projects, folders, what you imported, this consent history and
+  // the planner file (tasks, lists, tags, habits) that can come back in.
   const download = () =>
     void data.run(async () => {
-      const archive = await client.exportData();
-      const blob = new Blob([JSON.stringify(archive, null, 2)], {
-        type: "application/json",
-      });
+      const { blob, name } = await client.exportArchive();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `orbyn-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = name;
       a.click();
       URL.revokeObjectURL(url);
       return "Your data was downloaded.";
@@ -158,8 +158,9 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Your data</h2>
         <p className="muted">
-          Download everything that&apos;s yours — items, lists, tags, habits and
-          settings — as a JSON file you can keep or bring somewhere else.
+          Download everything that&apos;s yours as a .zip: every page as
+          Markdown in its folders, your projects and folders, tasks, lists, tags
+          and habits, and your consent history.
         </p>
         <button
           className="secondary"

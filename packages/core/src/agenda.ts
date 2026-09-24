@@ -1,4 +1,4 @@
-import type { DocBlock } from "./docs.js";
+import type { Doc, DocBlock } from "./docs.js";
 import { localDateKey } from "./time.js";
 import type { AgendaEntry, Item } from "./types.js";
 
@@ -29,6 +29,76 @@ export const agendaTitle = (now: Date, timeZone: string) =>
     month: "long",
   });
 
+/**
+ * The title of one day's agenda, from its date ("2026-09-24"). Noon is used
+ * so no time zone can tip it into the day before or after.
+ */
+export const agendaTitleOn = (date: string) =>
+  agendaTitle(new Date(`${date}T12:00:00Z`), "UTC");
+
+/**
+ * One day's agenda, as stepping back and forward reads it: the day, its
+ * title, today's date in your zone, and the page if one has been written.
+ */
+export type AgendaDay = {
+  date: string;
+  title: string;
+  /** Today, in your own zone ("2026-09-24"). */
+  today: string;
+  doc: Doc | null;
+};
+
+/** "2026-09-24", for a string that should be one. */
+export const isDateKey = (s: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+  !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) &&
+  new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+/**
+ * The name of the Notes heading on an agenda. It is how "Rewrite from my
+ * calendar" finds the part of the page that is yours: everything from Notes
+ * down — your notes and the end-of-day answers — is kept as you wrote it.
+ */
+export const AGENDA_NOTES_ID = "agenda-notes";
+
+/**
+ * Where an agenda's Notes section starts: the heading named for it, or on a
+ * page written before headings had names, the last heading that reads
+ * "Notes". -1 when the page has none (someone took it out).
+ */
+export function agendaNotesAt(blocks: DocBlock[]): number {
+  const named = blocks.findIndex((b) => b.id === AGENDA_NOTES_ID);
+  if (named >= 0) return named;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.type === "heading" && b.text.trim().toLowerCase() === "notes")
+      return i;
+  }
+  return -1;
+}
+
+/**
+ * An agenda written again from the calendar, with its Notes section kept.
+ * Everything above Notes comes from `fresh`; Notes and everything under it
+ * comes from `current`, untouched. A page with no Notes section left has
+ * nothing to keep, so it is simply the fresh page.
+ */
+export function keepAgendaNotes(
+  current: DocBlock[],
+  fresh: DocBlock[],
+): DocBlock[] {
+  const mine = agendaNotesAt(current);
+  if (mine < 0) return fresh;
+  const theirs = agendaNotesAt(fresh);
+  const top = theirs < 0 ? fresh : fresh.slice(0, theirs);
+  const kept = current.slice(mine);
+  // A heading with no name yet takes the Notes name, so the next rewrite
+  // finds it however it is renamed. One that already has a name keeps it:
+  // remarks may be pointing at it.
+  if (!kept[0].id) kept[0] = { ...kept[0], id: AGENDA_NOTES_ID };
+  return [...top, ...kept];
+}
+
 export type AgendaOptions = {
   now?: Date;
   timeZone: string;
@@ -52,6 +122,11 @@ export type AgendaOptions = {
   priorities?: string[];
   /** A short summary of the day written by the assistant, when there is one. */
   brief?: string | null;
+  /**
+   * The day's name when the page is for a day other than today ("Friday"),
+   * so its opening line doesn't call it today.
+   */
+  dayName?: string | null;
   /** Flashcards to review today and exams coming up, for people who study. */
   study?: {
     due: number;
@@ -173,20 +248,29 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
     todayTasks.length ? `${plural(todayTasks.length, "task")} due` : "",
     overdue.length ? `${overdue.length} carried over` : "",
   ].filter(Boolean);
+  const other = opts.dayName?.trim() || null;
   const free =
     opts.freeMinutes == null || !parts.length
       ? ""
       : opts.freeMinutes >= 15
-        ? ` About ${hours(opts.freeMinutes)} of your working time is still free.`
-        : " Your working hours are full for the rest of today.";
+        ? other
+          ? ` About ${hours(opts.freeMinutes)} of your working time is free.`
+          : ` About ${hours(opts.freeMinutes)} of your working time is still free.`
+        : other
+          ? " Your working hours are full."
+          : " Your working hours are full for the rest of today.";
   line(
     opts.brief?.trim()
       ? opts.brief.trim()
       : parts.length
-        ? `Today: ${parts.join(", ")}.${free}`
+        ? `${other ?? "Today"}: ${parts.join(", ")}.${free}`
         : overdue.length
-          ? "Nothing is due today — a good moment to clear what slipped."
-          : "Nothing scheduled today. The page is yours.",
+          ? other
+            ? `Nothing is due on ${other} — a good moment to clear what slipped.`
+            : "Nothing is due today — a good moment to clear what slipped."
+          : other
+            ? `Nothing scheduled on ${other}. The page is yours.`
+            : "Nothing scheduled today. The page is yours.",
   );
 
   const priorities = (opts.priorities ?? []).slice(0, 3);
@@ -276,7 +360,13 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
     for (const c of coming) bullet(`${dayLabel(c.at, tz)} · ${c.text}`);
   }
 
-  head("Notes");
+  // Yours from here down: a rewrite never touches Notes or what follows it.
+  blocks.push({
+    type: "heading",
+    level: 2,
+    text: "Notes",
+    id: AGENDA_NOTES_ID,
+  });
   line("");
 
   head("End of day");

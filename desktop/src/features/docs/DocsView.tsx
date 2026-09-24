@@ -14,10 +14,12 @@ import {
   Hourglass,
   CalendarDays,
   Inbox,
+  LayoutTemplate,
   RotateCcw,
   Trash2,
 } from "lucide-react";
 import {
+  agendaDay,
   agendaGroups,
   agendaMonthKey,
   favouriteKey,
@@ -41,6 +43,7 @@ import { Popover } from "../../components/Popover";
 import { DocEditor } from "./DocEditor";
 import { ImportButton, UploadsPanel, useImports } from "./Uploads";
 import { MakeCardsDialog } from "../study/StudyView";
+import { PageTemplatesDialog } from "./PageTemplates";
 import "./docs.css";
 
 const when = (iso: string) => {
@@ -120,6 +123,10 @@ export function DocsView({
   };
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
+  /** Only pages with this tag, by id; "" for every page. */
+  const [tagFilter, setTagFilter] = useState("");
+  /** Whether "New page from a template" is open. */
+  const [templating, setTemplating] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   /** Pages nobody has changed or confirmed in months. */
   const [fading, setFading] = useState<Set<string>>(new Set());
@@ -324,7 +331,7 @@ export function DocsView({
       (d) =>
         kindFilter !== "agenda" ||
         !agendaMonth ||
-        agendaMonthKey(d.created_at) === agendaMonth,
+        agendaMonthKey(agendaDay(d)) === agendaMonth,
     )
     .filter((d) =>
       folderFilter === null
@@ -333,10 +340,19 @@ export function DocsView({
           ? !d.folder_id
           : d.folder_id === folderFilter,
     );
+  // The tags on the pages in view, for the tag filter; then the filter.
+  const tagsHere = [
+    ...new Map(
+      shown.flatMap((d) => d.tags ?? []).map((t) => [t.id, t] as const),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+  const tagged = tagFilter
+    ? shown.filter((d) => d.tags?.some((t) => t.id === tagFilter))
+    : shown;
   const agendas = agendaGroups(docs ?? []);
-  const ordered = [...shown].sort((a, b) =>
+  const ordered = [...tagged].sort((a, b) =>
     kindFilter === "agenda"
-      ? b.created_at.localeCompare(a.created_at)
+      ? agendaDay(b).localeCompare(agendaDay(a))
       : sort === "title"
         ? (a.title || "Untitled").localeCompare(b.title || "Untitled") ||
           a.id.localeCompare(b.id)
@@ -400,6 +416,7 @@ export function DocsView({
     setFavoritesOnly(favorites);
     setFadingOnly(false);
     setQuery("");
+    setTagFilter("");
     setOpen(null);
     setNavigationOpen(false);
   };
@@ -745,6 +762,13 @@ export function DocsView({
                   <Plus size={15} /> New note
                 </button>
                 <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => setTemplating(true)}
+                >
+                  <LayoutTemplate size={15} /> From template
+                </button>
+                <button
                   className="primary"
                   disabled={busy}
                   onClick={() => create("doc")}
@@ -767,6 +791,21 @@ export function DocsView({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
+                {(tagsHere.length > 0 || tagFilter) && (
+                  <Select
+                    className="docs-tag-filter"
+                    aria-label="Show pages with a tag"
+                    value={tagFilter}
+                    onChange={(e) => setTagFilter(e.target.value)}
+                  >
+                    <option value="">All tags</option>
+                    {tagsHere.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        #{t.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
                 <Select
                   className="docs-sort"
                   aria-label="Sort documents"
@@ -853,7 +892,11 @@ export function DocsView({
             ) : ordered.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title={query ? "No matching documents" : "Nothing in here yet"}
+                title={
+                  query || tagFilter
+                    ? "No matching documents"
+                    : "Nothing in here yet"
+                }
                 body="Keep meeting notes, a project brief or a page of working out — all in the same place as your tasks."
               >
                 <button
@@ -901,6 +944,20 @@ export function DocsView({
                                         (f) => f.id === doc.folder_id,
                                       )?.name || "Unfiled"
                                     }`}
+                                {!!doc.tags?.length && (
+                                  <span className="doc-row-tags">
+                                    {doc.tags.map((t) => (
+                                      <span
+                                        key={t.id}
+                                        className="tag-chip"
+                                        style={{ "--tag": t.color } as never}
+                                      >
+                                        <i aria-hidden="true" />
+                                        {t.name}
+                                      </span>
+                                    ))}
+                                  </span>
+                                )}
                               </span>
                             </span>
                             <span className="doc-row-when">
@@ -991,6 +1048,21 @@ export function DocsView({
             ))}
           </div>
         </Popover>
+      )}
+      {templating && (
+        <PageTemplatesDialog
+          folders={folders}
+          folderId={
+            folderFilter && folderFilter !== "none" ? folderFilter : null
+          }
+          onClose={() => setTemplating(false)}
+          onCreated={(doc, note, tasks) => {
+            setOpen(doc);
+            void load();
+            toast({ text: note });
+            if (tasks) onItemsChanged?.();
+          }}
+        />
       )}
       {making && (
         <MakeCardsDialog

@@ -40,3 +40,5 @@ export * from "./imports.js";
 export * from "./pdftext.js";
 export * from "./omml.js";
 export * from "./learning.js";
+export * from "./page-tags.js";
+export * from "./page-templates.js";

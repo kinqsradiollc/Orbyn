@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import {
+  addedInlineTags,
   BLOCK_KINDS,
   blockDepth,
   blockText,
@@ -54,6 +55,8 @@ import { DocViewers } from "./DocViewers";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
+import { PageTags } from "./PageTags";
+import { SaveTemplatePanel } from "./PageTemplates";
 import { controls, colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -208,6 +211,17 @@ export function DocEditor({
     setFocused(index);
   };
 
+  /** The page's tags, as the row under its title shows them. */
+  const [tags, setTags] = useState(doc.tags ?? []);
+  /**
+   * The page as it stood when its #tags were last looked at. A #tag typed
+   * since is added to the page when its line is put away; one that was
+   * there already is not, so a tag taken off isn't put straight back.
+   */
+  const tagBase = useRef<DocBlock[]>(doc.content);
+  /** Whether "Save as template" is open. */
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   const version = useRef(doc.version);
   /** Whether an edit here is waiting to be saved. */
   const dirty = useRef(false);
@@ -237,12 +251,38 @@ export function DocEditor({
     dirty.current = false;
     setFocused(null);
     setNote("");
+    setTags(doc.tags ?? []);
+    tagBase.current = doc.content;
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Add to the page the #tags typed into it since they were last looked at. */
+  const settleTags = useRef<() => void>(() => {});
+  /** Set once the page goes to Trash: there is nothing left to tag. */
+  const gone = useRef(false);
+  settleTags.current = () => {
+    if (gone.current) return;
+    const now = live.current.blocks;
+    const added = addedInlineTags(tagBase.current, now);
+    tagBase.current = now;
+    if (!added.length || !canWrite) return;
+    client
+      .addDocTags(doc.id, added)
+      .then(({ tags: next }) => setTags(next), report);
+  };
+  // Putting a line away (Done, Return, another line) is when a #tag typed
+  // in it counts, not every keystroke on the way to "#physics".
+  const lastFocused = useRef<number | null>(null);
+  useEffect(() => {
+    if (lastFocused.current !== null && lastFocused.current !== focused)
+      settleTags.current();
+    lastFocused.current = focused;
+  }, [focused]);
 
   useEffect(() => {
     return () => {
       if (timer.current) clearTimeout(timer.current);
       flushOnClose.current();
+      settleTags.current();
     };
   }, []);
 
@@ -376,6 +416,7 @@ export function DocEditor({
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
+      gone.current = true;
       onDeleted?.();
       showToast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
@@ -389,6 +430,8 @@ export function DocEditor({
       if (!dirty.current && focusedRef.current === null) {
         version.current = theirs.version;
         base.current = theirs.content;
+        tagBase.current = theirs.content;
+        setTags(theirs.tags ?? []);
         setTitle(theirs.title);
         setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
         live.current = { title: theirs.title, blocks: theirs.content };
@@ -826,6 +869,7 @@ export function DocEditor({
         return;
       }
       flushOnClose.current = () => {};
+      gone.current = true;
       onDeleted?.();
       showToast({
         text: `Moved “${title || "Untitled"}” to Trash`,
@@ -887,6 +931,15 @@ export function DocEditor({
         </View>
       )}
 
+      <PageTags
+        docId={doc.id}
+        teamId={doc.team_id}
+        tags={tags}
+        canWrite={canWrite && !reading}
+        onChange={setTags}
+        report={report}
+      />
+
       <DocSuggestions
         suggestions={suggestions}
         canDecide={canWrite}
@@ -944,6 +997,12 @@ export function DocEditor({
           onPress={() => setFormats((v) => !v)}
         />
         <DocTool
+          icon="layoutTemplate"
+          label="Save as template"
+          on={savingTemplate}
+          onPress={() => setSavingTemplate((v) => !v)}
+        />
+        <DocTool
           icon="trash"
           label="Move this page to Trash"
           destructive
@@ -956,6 +1015,18 @@ export function DocEditor({
           </Text>
         )}
       </View>
+
+      {savingTemplate && (
+        <SaveTemplatePanel
+          doc={doc}
+          onClose={() => setSavingTemplate(false)}
+          onSaved={(t) =>
+            showToast({
+              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+            })
+          }
+        />
+      )}
 
       <DocBody
         content={blocks}

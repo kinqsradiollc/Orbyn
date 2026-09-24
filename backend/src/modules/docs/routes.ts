@@ -26,6 +26,12 @@ import {
   TRASH_DAYS,
   MAX_SITTINGS,
   docTasksInput,
+  docTagsInput,
+  docTagNamesInput,
+  isDateKey,
+  agendaTitleOn,
+  PAGE_TAG_LIMIT,
+  type DocTag,
   type TrashedDoc,
   type Doc,
   type DocBlock,
@@ -50,7 +56,12 @@ import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { hasVectors } from "../search/semantic.js";
-import { todaysAgenda } from "./agenda.js";
+import {
+  agendaDayOf,
+  agendaOn,
+  todaysAgenda,
+  writeAgendaOn,
+} from "./agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
@@ -65,8 +76,10 @@ import { docToPdf } from "./pdf.js";
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
+  to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
-                                              'color', tg.color) ORDER BY tg.name)
+                                              'color', tg.color)
+                         ORDER BY lower(tg.name), tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
              WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
 
@@ -208,7 +221,8 @@ async function dropStandInCopy(db: Queryable, docId: string) {
         AND c.deleted_at IS NULL AND c.version = 1
         AND (
           (d.kind = 'agenda' AND c.user_id = d.user_id
-            AND c.team_id IS NULL AND c.title = d.title)
+            AND c.team_id IS NULL AND c.title = d.title
+            AND c.agenda_date IS NOT DISTINCT FROM d.agenda_date)
           OR (d.kind = 'meeting' AND d.item_id IS NOT NULL
             AND c.item_id = d.item_id
             AND c.team_id IS NOT DISTINCT FROM d.team_id
@@ -399,6 +413,149 @@ function itemFromLine(text: string, teamId: string | null) {
     kind: "task",
     team_id: teamId,
   });
+}
+
+/**
+ * Turn a page's open checklist lines into real tasks, tying each line to
+ * its task so ticking one ticks the other. Only lines that aren't tasks
+ * already, and only `only` when it names some. With a project, the tasks go
+ * into it, in its first stage, the way a project template's tasks do. The
+ * page is read and written back under its lock; `doc` must come from
+ * `requireDoc` in the same transaction. Returns the tasks made, or null
+ * when there was nothing to make.
+ */
+export async function makeLineTasks(
+  db: Db,
+  u: UserRow,
+  doc: { id: string; team_id: string | null },
+  options: { only?: string[]; projectId?: string | null } = {},
+): Promise<Item[] | null> {
+  const id = doc.id;
+  const content =
+    (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [id],
+      )
+    ).rows[0].content ?? [];
+  const only = options.only;
+  const wanted = content.filter(
+    (b): b is Extract<DocBlock, { type: "todo" }> =>
+      b.type === "todo" &&
+      !b.done &&
+      b.text.trim().length > 0 &&
+      (!only || (!!b.id && only.includes(b.id))),
+  );
+  // A line that is already tied to a task is not made again.
+  const linked = new Set(
+    (
+      await db.query<{ block_id: string }>(
+        "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
+        [id],
+      )
+    ).rows.map((r) => r.block_id),
+  );
+  const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
+  if (!lines.length) return null;
+  const stage = options.projectId
+    ? ((
+        await db.query<{ id: string }>(
+          `SELECT id FROM project_stages WHERE project_id = $1
+            ORDER BY position LIMIT 1`,
+          [options.projectId],
+        )
+      ).rows[0]?.id ?? null)
+    : null;
+
+  // Each line gets a stable id, so the link survives later edits.
+  const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
+  const out: Item[] = [];
+  for (const line of lines) {
+    const item = await mutate(db, u, {
+      operation: "create",
+      data: itemFromLine(line.text, doc.team_id),
+    });
+    if (!item) continue;
+    if (options.projectId) {
+      await db.query(
+        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
+        [item.id, options.projectId, stage],
+      );
+      item.project_id = options.projectId;
+    }
+    await db.query(
+      `INSERT INTO doc_task_links (doc_id, block_id, item_id)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
+      [id, ids.get(line), item.id],
+    );
+    out.push(item);
+  }
+  // Write the ids back so the document knows which lines are tied.
+  const next = content.map((b) =>
+    ids.has(b as Extract<DocBlock, { type: "todo" }>)
+      ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
+      : b,
+  );
+  await db.query(
+    "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
+    [id, JSON.stringify(next)],
+  );
+  return out;
+}
+
+/**
+ * Tags a page may carry: its own space's — your personal tags on a personal
+ * page, the team's on a team page. `$2` is the reader, `$3` the page's team.
+ */
+const TAG_IN_SPACE = `(($3::uuid IS NULL AND g.team_id IS NULL AND g.user_id = $2)
+  OR ($3::uuid IS NOT NULL AND g.team_id = $3::uuid))`;
+
+/** A page's tags as its tag row shows them, by name. */
+export async function pageTags(
+  db: Queryable,
+  docId: string,
+): Promise<DocTag[]> {
+  return (
+    await db.query<DocTag>(
+      `SELECT g.id, g.name, g.color FROM doc_tags dt
+         JOIN tags g ON g.id = dt.tag_id
+        WHERE dt.doc_id = $1 ORDER BY lower(g.name), g.name`,
+      [docId],
+    )
+  ).rows;
+}
+
+/**
+ * The tag called `name` in a page's space, made there if the space has no
+ * tag by that name yet (names compare without case, as tags always have).
+ */
+export async function tagNamed(
+  db: Queryable,
+  u: UserRow,
+  teamId: string | null,
+  name: string,
+): Promise<string> {
+  const find = async () =>
+    (
+      await db.query<{ id: string }>(
+        `SELECT g.id FROM tags g
+          WHERE lower(g.name) = lower($1) AND ${TAG_IN_SPACE}
+          ORDER BY g.created_at LIMIT 1`,
+        [name, u.id, teamId],
+      )
+    ).rows[0]?.id;
+  const found = await find();
+  if (found) return found;
+  const made = (
+    await db.query<{ id: string }>(
+      `INSERT INTO tags (user_id, team_id, name) VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [u.id, teamId, name],
+    )
+  ).rows[0]?.id;
+  // Someone made the same tag a moment ago: theirs is the one.
+  return made ?? (await find())!;
 }
 
 export async function docRoutes(app: FastifyInstance) {
@@ -816,6 +973,46 @@ export async function docRoutes(app: FastifyInstance) {
     return todaysAgenda(u.id);
   });
 
+  /** A day for the agenda routes: "2026-09-24", or a 422 answer. */
+  const dateParam = (r: { params: unknown }) => {
+    const date = String((r.params as { date?: unknown }).date ?? "");
+    if (!isDateKey(date)) fail(422, "That isn't a date like 2026-09-24.");
+    return date;
+  };
+
+  /**
+   * One day's agenda, for stepping back and forward from today's. Today's
+   * is written on the spot, as `/agenda/today` does; another day's page is
+   * there only if it was written, and otherwise `doc` is null and the app
+   * offers to write it. Days more than a year back or two months ahead are
+   * out of reach.
+   */
+  app.get("/agenda/:date", async (r) => {
+    const u = await authenticate(r);
+    const date = dateParam(r);
+    const zone = (r.query as { timezone?: unknown }).timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
+    const day = await agendaDayOf(u.id, date);
+    if (!day) fail(422, "The agenda goes back a year and ahead two months.");
+    return {
+      date,
+      title: agendaTitleOn(date),
+      today: day.today,
+      doc: await agendaOn(u.id, date),
+    };
+  });
+
+  /** Write one day's agenda from the calendar, if it isn't written yet. */
+  app.post("/agenda/:date", async (r, reply) => {
+    const u = await authenticate(r);
+    const date = dateParam(r);
+    const made = await writeAgendaOn(u.id, date);
+    if (!made) fail(422, "The agenda goes back a year and ahead two months.");
+    reply.code(made.created ? 201 : 200);
+    return made.doc;
+  });
+
   /**
    * The note for one event, created from a template the first time it's
    * opened. It belongs to whoever opened it, and to the event's team when it
@@ -894,60 +1091,7 @@ export async function docRoutes(app: FastifyInstance) {
       // lands meanwhile waits, then finds the version moved on and merges,
       // rather than being written over with the copy read here.
       const doc = await requireDoc(db, id, u, "items:read");
-      const content =
-        (
-          await db.query<{ content: DocBlock[] | null }>(
-            "SELECT content FROM docs WHERE id = $1",
-            [id],
-          )
-        ).rows[0].content ?? [];
-      const wanted = content.filter(
-        (b): b is Extract<DocBlock, { type: "todo" }> =>
-          b.type === "todo" &&
-          !b.done &&
-          b.text.trim().length > 0 &&
-          (!only || (!!b.id && only.includes(b.id))),
-      );
-      // A line that is already tied to a task is not made again.
-      const linked = new Set(
-        (
-          await db.query<{ block_id: string }>(
-            "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
-            [id],
-          )
-        ).rows.map((r) => r.block_id),
-      );
-      const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
-      if (!lines.length) return null;
-
-      // Each line gets a stable id, so the link survives later edits.
-      const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
-      const out = [];
-      for (const line of lines) {
-        const item = await mutate(db, u, {
-          operation: "create",
-          data: itemFromLine(line.text, doc.team_id),
-        });
-        if (!item) continue;
-        await db.query(
-          `INSERT INTO doc_task_links (doc_id, block_id, item_id)
-             VALUES ($1,$2,$3)
-             ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
-          [id, ids.get(line), item.id],
-        );
-        out.push(item);
-      }
-      // Write the ids back so the document knows which lines are tied.
-      const next = content.map((b) =>
-        ids.has(b as Extract<DocBlock, { type: "todo" }>)
-          ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
-          : b,
-      );
-      await db.query(
-        "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
-        [id, JSON.stringify(next)],
-      );
-      return out;
+      return makeLineTasks(db, u, doc, { only });
     });
     if (!made) return { created: 0, items: [], doc: null };
     const updated = (
@@ -966,6 +1110,75 @@ export async function docRoutes(app: FastifyInstance) {
         content: await withTaskState(pool, id, updated.content ?? []),
       },
     };
+  });
+
+  /**
+   * Put exactly these tags on a page, from its own space's tags. A tag the
+   * page already carries may stay, wherever it came from; any other tag
+   * outside the page's space is "not found". Tags aren't the page's words,
+   * so this doesn't make a new version of it.
+   */
+  app.put("/docs/:id/tags", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { tags } = docTagsInput.parse(r.body);
+    const wanted = [...new Set(tags)];
+    return transaction(async (db) => {
+      const doc = await requireDoc(db, id, u, "items:write");
+      const allowed = (
+        await db.query<{ id: string }>(
+          `SELECT g.id FROM tags g
+            WHERE g.id = ANY($1::uuid[])
+              AND (${TAG_IN_SPACE} OR EXISTS (SELECT 1 FROM doc_tags dt
+                     WHERE dt.doc_id = $4 AND dt.tag_id = g.id))`,
+          [wanted, u.id, doc.team_id, id],
+        )
+      ).rows.map((row) => row.id);
+      if (allowed.length !== wanted.length) fail(404, "Tag not found");
+      await db.query(
+        "DELETE FROM doc_tags WHERE doc_id = $1 AND NOT (tag_id = ANY($2::uuid[]))",
+        [id, allowed],
+      );
+      await db.query(
+        `INSERT INTO doc_tags (doc_id, tag_id)
+           SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+        [id, allowed],
+      );
+      return { tags: await pageTags(db, id) };
+    });
+  });
+
+  /**
+   * Add tags to a page by name, as typing "#physics" in a line does. A name
+   * the page's space has no tag for yet makes one there. A page holds at
+   * most PAGE_TAG_LIMIT tags; names past that are left off, and the answer
+   * says which were added.
+   */
+  app.post("/docs/:id/tags", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { names } = docTagNamesInput.parse(r.body);
+    return transaction(async (db) => {
+      const doc = await requireDoc(db, id, u, "items:write");
+      const have = new Set((await pageTags(db, id)).map((t) => t.id));
+      const added: string[] = [];
+      const seen = new Set<string>();
+      for (const name of names) {
+        const key = name.toLocaleLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const tag = await tagNamed(db, u, doc.team_id, name);
+        if (have.has(tag)) continue;
+        if (have.size >= PAGE_TAG_LIMIT) break;
+        await db.query(
+          "INSERT INTO doc_tags (doc_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [id, tag],
+        );
+        have.add(tag);
+        added.push(name);
+      }
+      return { tags: await pageTags(db, id), added };
+    });
   });
 
   /** Everyone's remarks on a document, oldest first. */
