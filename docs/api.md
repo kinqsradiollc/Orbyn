@@ -501,13 +501,18 @@ of the times from there on to the new series, each to the matching time (the n-t
 edit is the n-th of the new series, so a move to another hour or day, or across a clock change,
 keeps them lined up). Moving or re-timing the whole series (`all`, a new start or time zone) moves
 each note to its time's new start the same way; with a new pattern (say weekly to daily) each moves
-by as much as the series did. A note whose time no longer exists (deleted, skipped, or not in the
-new pattern) becomes the series' own note, rather than pointing at a time nothing opens.
+by as much as the series did. A note whose time no longer exists (deleted, skipped, not in the
+new pattern, or the repeat taken off) is kept as a note of the whole event it was made on (not the
+new series of a split), rather than pointing at a time nothing opens. It remembers the time it was
+for, and it never outranks the series' own note: the event opens it (and the apps point to it as
+the series note) only when the series has no note of its own.
 
 ### `GET /docs/event-notes?items=<id,id,…>&from=&to=` (auth)
 
-The notes some events have, to mark them: `[ { doc_id, title, item_id, occurrence, team_id } ]`,
-latest edited first, for at most 200 event ids. Only notes you can see in each event's own space,
+The notes some events have, to mark them:
+`[ { doc_id, title, item_id, occurrence, team_id, class_was } ]`, latest edited first, for at most
+200 event ids. `class_was` is the time a note was for when that time is gone (the note is then the
+whole event's, and `occurrence` is `null`); those come after the event's own notes. Only notes you can see in each event's own space,
 none in Trash. `from`/`to` keep a repeating event's per-time notes to those first starts (series
 notes always come back). `eventNoteFor(notes, entry)` in `packages/core/src/docs.ts` picks the one
 a calendar entry opens, by the same rule as the server. `422` for no ids, a bad id or more than 200.

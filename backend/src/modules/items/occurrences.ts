@@ -357,9 +357,10 @@ async function cancelOne(db: Db, item: ItemRow, when: Date) {
     "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = $2",
     [item.id, when],
   );
-  // Its note, if it had one, stays the event's: the class is gone.
+  // Its note, if it had one, stays the event's: the class is gone. It
+  // remembers the class, so it never outranks the series' own note.
   await db.query(
-    `UPDATE docs SET occurrence = NULL
+    `UPDATE docs SET occurrence = NULL, class_was = occurrence
       WHERE item_id = $1 AND kind = 'meeting' AND occurrence = $2`,
     [item.id, when],
   );

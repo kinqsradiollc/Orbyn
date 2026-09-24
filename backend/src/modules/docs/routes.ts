@@ -220,7 +220,9 @@ async function searchTrash(db: Db, docId: string, trashed: boolean) {
  * away, opening Agenda or the event wrote a fresh copy in its place; a copy
  * nobody has touched (never saved, nothing said or tasked on it) is let go
  * so the two don't sit side by side. One that was written in is kept (the
- * event then opens whichever note was written in last).
+ * event then opens whichever note was written in last). The note of a
+ * class that is gone (`class_was`) is nobody's copy but that class's, so
+ * bringing back the series' own note leaves it be.
  */
 async function dropStandInCopy(db: Queryable, docId: string) {
   await db.query(
@@ -235,6 +237,8 @@ async function dropStandInCopy(db: Queryable, docId: string) {
           OR (d.kind = 'meeting' AND d.item_id IS NOT NULL
             AND c.item_id = d.item_id
             AND c.occurrence IS NOT DISTINCT FROM d.occurrence
+            AND (c.class_was IS NULL
+              OR c.class_was IS NOT DISTINCT FROM d.class_was)
             AND c.team_id IS NOT DISTINCT FROM d.team_id
             AND (d.team_id IS NOT NULL OR c.user_id = d.user_id))
         )
@@ -692,11 +696,19 @@ export async function lockEventNote(db: Db, itemId: string, when: EventTime) {
 }
 
 /**
+ * An event's own notes before the notes of classes it no longer has (which
+ * are kept as the event's, remembering their class in `class_was`).
+ */
+const OWN_NOTE_FIRST = "(d.occurrence IS NULL AND d.class_was IS NOT NULL)";
+
+/**
  * The note an event already has, as opening the event finds it: a meeting
  * page hanging off it in the event's own space, not in Trash — for a class
  * of a repeating event, that class's own, and for a whole series, the
  * series'. When there are several (written before an event kept to one),
- * the latest edited.
+ * the latest edited — but a former class's note (its class skipped,
+ * deleted or dropped: `class_was`) only when the event has no note of its
+ * own, so the running note of a weekly one-to-one isn't swapped out.
  */
 export async function eventNote(
   db: Queryable,
@@ -712,7 +724,7 @@ export async function eventNote(
           AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
           AND (NOT $4::boolean
             OR d.occurrence IS NOT DISTINCT FROM $5::timestamptz)
-        ORDER BY d.updated_at DESC, d.created_at LIMIT 1`,
+        ORDER BY ${OWN_NOTE_FIRST}, d.updated_at DESC, d.created_at LIMIT 1`,
       [u.id, itemId, teamId, when.repeats, when.occurrence],
     )
   ).rows[0];
@@ -1760,7 +1772,9 @@ export async function docRoutes(app: FastifyInstance) {
 
   /**
    * The notes these events have, to mark them: one row per note, with the
-   * class it is for on a repeating event. Scoped to the events asked about
+   * class it is for on a repeating event (or, for a class that is gone, the
+   * class it was for), latest edited first after the event's own notes —
+   * the order eventNote keeps. Scoped to the events asked about
    * (and, with `from`/`to`, a repeating event's classes to those times), so
    * it holds however many pages someone has.
    */
@@ -1769,7 +1783,8 @@ export async function docRoutes(app: FastifyInstance) {
     const q = eventNotesQuery.parse(r.query ?? {});
     return (
       await reader(r.headers).query<EventNoteRef>(
-        `SELECT d.id AS doc_id, d.title, d.item_id, d.occurrence, d.team_id
+        `SELECT d.id AS doc_id, d.title, d.item_id, d.occurrence, d.team_id,
+                d.class_was
            FROM docs d JOIN items i ON i.id = d.item_id
           WHERE d.item_id = ANY($2::uuid[]) AND d.kind = 'meeting'
             AND d.team_id IS NOT DISTINCT FROM i.team_id AND ${VISIBLE}
@@ -1777,7 +1792,7 @@ export async function docRoutes(app: FastifyInstance) {
               OR d.occurrence >= $3)
             AND ($4::timestamptz IS NULL OR d.occurrence IS NULL
               OR d.occurrence < $4)
-          ORDER BY d.updated_at DESC
+          ORDER BY ${OWN_NOTE_FIRST}, d.updated_at DESC
           LIMIT 5000`,
         [u.id, q.items, q.from ?? null, q.to ?? null],
       )

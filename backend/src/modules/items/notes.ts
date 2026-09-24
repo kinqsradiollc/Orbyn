@@ -8,9 +8,12 @@ import { isOccurrence, type SeriesRow } from "../planner/calendar.js";
  * series itself changes — split at "this and following", moved as a whole,
  * given a new rule or zone — each note goes with its class: to the new
  * series on a split, and to the class's new time on a move. A note whose
- * class no longer exists is kept as a note of the whole event (its
- * `occurrence` is cleared) rather than left pointing at a time the event
- * doesn't have, where nothing would find it.
+ * class no longer exists stays with the event it was made on, as a note of
+ * the whole event (its `occurrence` is cleared, and `class_was` keeps the
+ * class it was for) rather than left pointing at a time the event doesn't
+ * have, where nothing would find it. It stands in for the event's own note
+ * only when the event has none: a former class's note never outranks the
+ * real one, and a new series from a split doesn't start out with one.
  */
 
 /** How many of a series' times are walked to match classes up. */
@@ -150,7 +153,10 @@ export async function carryEventNotes(
   )
     return;
   await db.query(
-    `UPDATE docs d SET item_id = $1, occurrence = x.at
+    `UPDATE docs d SET item_id = CASE WHEN x.at IS NULL THEN d.item_id
+                                      ELSE $1::uuid END,
+            occurrence = x.at,
+            class_was = CASE WHEN x.at IS NULL THEN d.occurrence END
        FROM unnest($2::uuid[], $3::timestamptz[]) AS x(id, at)
       WHERE d.id = x.id`,
     [now.id, moved.map((m) => m.id), moved.map((m) => m.at)],

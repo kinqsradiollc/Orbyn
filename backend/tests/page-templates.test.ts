@@ -1071,18 +1071,27 @@ test("a class's note stays with its class when the series changes", async () => 
   assert.ok([200, 204].includes(skip.statusCode), skip.body);
   const left = new Map(
     (
-      await pool.query<{ id: string; occurrence: Date | null }>(
-        "SELECT id, occurrence FROM docs WHERE item_id = $1 AND kind = 'meeting'",
+      await pool.query<{
+        id: string;
+        occurrence: Date | null;
+        class_was: Date | null;
+      }>(
+        `SELECT id, occurrence, class_was FROM docs
+          WHERE item_id = $1 AND kind = 'meeting'`,
         [prac.id],
       )
-    ).rows.map((r) => [r.id, r.occurrence?.toISOString() ?? null]),
+    ).rows.map((r) => [
+      r.id,
+      [r.occurrence?.toISOString() ?? null, r.class_was?.toISOString() ?? null],
+    ]),
   );
+  // Each remembers the class it was for.
   assert.deepEqual(Object.fromEntries(left), {
-    [prac0]: nov(0),
-    [prac2]: null,
-    [prac7]: null,
-    [prac14]: null,
-    [prac28]: null,
+    [prac0]: [nov(0), null],
+    [prac2]: [null, nov(2)],
+    [prac7]: [null, nov(7)],
+    [prac14]: [null, nov(14)],
+    [prac28]: [null, nov(28)],
   });
 
   // A repeat taken off: the one event keeps every note, none of them tied
@@ -1110,6 +1119,234 @@ test("a class's note stays with its class when the series changes", async () => 
       )
     ).rowCount,
     5,
+  );
+});
+
+test("the series' own note stays first when a class's note loses its class", async () => {
+  const hour = 3_600_000;
+  const openNote = (id: string, occurrence?: string) =>
+    call(
+      owner.token,
+      "POST",
+      `/items/${id}/note`,
+      occurrence ? { occurrence } : undefined,
+    );
+  const noteId = async (id: string, occurrence?: string) => {
+    const r = await openNote(id, occurrence);
+    assert.ok([200, 201].includes(r.statusCode), r.body);
+    return r.json().id as string;
+  };
+  const write = async (docId: string, line: string) => {
+    const doc = (await call(owner.token, "GET", `/docs/${docId}`)).json();
+    const r = await call(owner.token, "PUT", `/docs/${docId}`, {
+      version: doc.version,
+      content: [...doc.content, { type: "paragraph", text: line }],
+    });
+    assert.equal(r.statusCode, 200, r.body);
+  };
+  const getItem = async (id: string) =>
+    (await call(owner.token, "GET", `/items/${id}`)).json();
+  const refsOf = async (ids: string[]) =>
+    (
+      await call(owner.token, "GET", `/docs/event-notes?items=${ids.join(",")}`)
+    ).json() as Json[];
+  const event = async (title: string, start: string, rrule: string) =>
+    (
+      await call(owner.token, "POST", "/items", {
+        title,
+        kind: "event",
+        due_at: start,
+        end_at: new Date(Date.parse(start) + hour).toISOString(),
+        rrule,
+        timezone: TZ,
+      })
+    ).json() as Json;
+  const body = (item: Json, patch: Json = {}) => ({
+    title: item.title,
+    notes: item.notes ?? "",
+    kind: item.kind,
+    status: item.status,
+    priority: item.priority,
+    due_at: item.due_at,
+    end_at: item.end_at,
+    team_id: null,
+    version: item.version,
+    ...patch,
+  });
+
+  // A weekly one-to-one on Mondays at 10:00 in London, with a running note
+  // for the whole series, written in.
+  const monday = (n: number) =>
+    new Date(Date.UTC(2026, 8, 28 + 7 * n, n >= 4 ? 10 : 9)).toISOString();
+  const oneToOne = await event("One-to-one", monday(0), "FREQ=WEEKLY;COUNT=6");
+  const running = await noteId(oneToOne.id);
+  await write(running, "Agreed: weekly goals");
+  // A later class's note prepped (the latest edited now), then that class
+  // skipped.
+  const prepped = await openNote(oneToOne.id, monday(3));
+  assert.equal(prepped.statusCode, 201, prepped.body);
+  assert.equal(prepped.json().title, "One-to-one · 19 October 2026");
+  const skipped = await call(
+    owner.token,
+    "DELETE",
+    `/items/${oneToOne.id}?version=${(await getItem(oneToOne.id)).version}&scope=this&occurrence=${encodeURIComponent(monday(3))}`,
+  );
+  assert.ok([200, 204].includes(skipped.statusCode), skipped.body);
+  // Opening the event with no class (Overview, ⌘K, notices) still opens
+  // the running note, and every class points to it.
+  assert.equal(await noteId(oneToOne.id), running);
+  let refs = await refsOf([oneToOne.id]);
+  const former = refs.find((r) => r.doc_id === prepped.json().id);
+  assert.ok(former, "the skipped class's note is still the event's");
+  assert.equal(former.occurrence, null);
+  assert.equal(former.class_was, monday(3));
+  assert.equal(
+    refs.find((r) => r.doc_id === running)?.class_was,
+    null,
+    "the running note was never a class's",
+  );
+  assert.equal(refs[0].doc_id, running, "the event's own note comes first");
+  for (const n of [0, 1, 2, 4])
+    assert.equal(
+      seriesNoteFor(refs, { item_id: oneToOne.id, occurrence: monday(n) })
+        ?.doc_id,
+      running,
+      `class ${n}`,
+    );
+  assert.equal(
+    eventNoteFor(refs, { item_id: oneToOne.id, rrule: oneToOne.rrule })?.doc_id,
+    running,
+  );
+  // The skipped class's note is still there to open, in the library too.
+  const kept = await call(owner.token, "GET", `/docs/${prepped.json().id}`);
+  assert.equal(kept.statusCode, 200, kept.body);
+  assert.ok(
+    (await call(owner.token, "GET", "/docs?kind=meeting"))
+      .json()
+      .some((d: Json) => d.id === prepped.json().id),
+  );
+  // Written in after, it still doesn't take the running note's place.
+  await write(prepped.json().id, "Moved to next week");
+  assert.equal(await noteId(oneToOne.id), running);
+  refs = await refsOf([oneToOne.id]);
+  assert.equal(
+    seriesNoteFor(refs, { item_id: oneToOne.id, occurrence: monday(1) })
+      ?.doc_id,
+    running,
+  );
+
+  // With the running note in Trash, a former class's note stands in (no
+  // fresh copy is made); bringing the running note back takes its place
+  // again, and doesn't let a former class's note nobody wrote in go.
+  const untouched = await noteId(oneToOne.id, monday(4));
+  const cut = await call(
+    owner.token,
+    "DELETE",
+    `/items/${oneToOne.id}?version=${(await getItem(oneToOne.id)).version}&scope=following&occurrence=${encodeURIComponent(monday(4))}`,
+  );
+  assert.ok([200, 204].includes(cut.statusCode), cut.body);
+  assert.equal(await noteId(oneToOne.id), running);
+  await call(owner.token, "DELETE", `/docs/${running}`);
+  const standIn = await openNote(oneToOne.id);
+  assert.equal(standIn.statusCode, 200, standIn.body);
+  assert.ok([prepped.json().id, untouched].includes(standIn.json().id));
+  const back = await call(owner.token, "POST", `/docs/${running}/restore`);
+  assert.equal(back.statusCode, 200, back.body);
+  assert.equal(await noteId(oneToOne.id), running);
+  assert.deepEqual(
+    (
+      await pool.query<{ id: string }>(
+        `SELECT id FROM docs WHERE item_id = $1 AND kind = 'meeting'
+            AND deleted_at IS NULL ORDER BY id`,
+        [oneToOne.id],
+      )
+    ).rows.map((r) => r.id),
+    [running, prepped.json().id, untouched].sort(),
+  );
+
+  // A new pattern for the whole series: the class it drops leaves its note
+  // behind the series' own.
+  const nov = (n: number) =>
+    new Date(Date.UTC(2026, 10, 2 + n, 10)).toISOString();
+  const tutorial = await event("Tutorial", nov(0), "FREQ=DAILY;COUNT=10");
+  const tutorialNote = await noteId(tutorial.id);
+  await write(tutorialNote, "Reading list");
+  const sixth = await noteId(tutorial.id, nov(4));
+  await write(sixth, "Bring the lab book");
+  const weekly = await call(
+    owner.token,
+    "PUT",
+    `/items/${tutorial.id}`,
+    body(await getItem(tutorial.id), { rrule: "FREQ=WEEKLY;COUNT=5" }),
+  );
+  assert.equal(weekly.statusCode, 200, weekly.body);
+  assert.equal(await noteId(tutorial.id), tutorialNote);
+  refs = await refsOf([tutorial.id]);
+  assert.equal(
+    seriesNoteFor(refs, { item_id: tutorial.id, occurrence: nov(7) })?.doc_id,
+    tutorialNote,
+  );
+  assert.equal(refs.find((r) => r.doc_id === sixth)?.class_was, nov(4));
+
+  // "This and following" to a new pattern: a class neither series has any
+  // more leaves its note with the series it was made on, behind that
+  // series' own; the new series starts with a note of its own.
+  const seminar = await event("Seminar", nov(0), "FREQ=DAILY;COUNT=10");
+  const seminarNote = await noteId(seminar.id);
+  await write(seminarNote, "Term plan");
+  const lost = await noteId(seminar.id, nov(4));
+  await write(lost, "Questions for the 6th");
+  const split = await call(
+    owner.token,
+    "PUT",
+    `/items/${seminar.id}?scope=following&occurrence=${encodeURIComponent(nov(3))}`,
+    body(await getItem(seminar.id), {
+      due_at: nov(3),
+      end_at: new Date(Date.parse(nov(3)) + hour).toISOString(),
+      rrule: "FREQ=WEEKLY;COUNT=3",
+    }),
+  );
+  assert.equal(split.statusCode, 200, split.body);
+  const next = split.json();
+  assert.notEqual(next.id, seminar.id);
+  assert.equal(await noteId(seminar.id), seminarNote);
+  const fresh = await openNote(next.id);
+  assert.equal(fresh.statusCode, 201, fresh.body);
+  assert.ok(![seminarNote, lost].includes(fresh.json().id));
+  refs = await refsOf([seminar.id, next.id]);
+  const lostRef = refs.find((r) => r.doc_id === lost);
+  assert.equal(lostRef?.item_id, seminar.id);
+  assert.equal(lostRef?.class_was, nov(4));
+  assert.equal(
+    seriesNoteFor(refs, { item_id: next.id, occurrence: nov(10) })?.doc_id,
+    fresh.json().id,
+  );
+
+  // With no note of its own, a series opens the former class's note rather
+  // than a fresh page, whichever order the notes come in.
+  const ref = (doc_id: string, class_was: string | null = null) => ({
+    doc_id,
+    title: doc_id,
+    item_id: "weekly",
+    occurrence: null,
+    team_id: null,
+    class_was,
+  });
+  const entry = { item_id: "weekly", occurrence: monday(0) };
+  assert.equal(
+    seriesNoteFor([ref("former", monday(3)), ref("own")], entry)?.doc_id,
+    "own",
+  );
+  assert.equal(
+    eventNoteFor([ref("former", monday(3)), ref("own")], {
+      item_id: "weekly",
+      rrule: "FREQ=WEEKLY",
+    })?.doc_id,
+    "own",
+  );
+  assert.equal(
+    seriesNoteFor([ref("former", monday(3))], entry)?.doc_id,
+    "former",
   );
 });
 
