@@ -13,7 +13,9 @@ import { isOccurrence, type SeriesRow } from "../planner/calendar.js";
  * class it was for) rather than left pointing at a time the event doesn't
  * have, where nothing would find it. It stands in for the event's own note
  * only when the event has none: a former class's note never outranks the
- * real one, and a new series from a split doesn't start out with one.
+ * real one, and a new series from a split doesn't start out with one. A
+ * class split off into an event that doesn't repeat ("this and following"
+ * with the repeat taken off) takes its note along as that event's own.
  */
 
 /** How many of a series' times are walked to match classes up. */
@@ -120,6 +122,9 @@ export async function seriesRowOf(
  * or the new series a "this and following" edit started; null when it no
  * longer repeats), `anchor` one class and where it went, and `since` the
  * first class that moved (a split moves only the classes from there on).
+ * When a split's new item doesn't repeat, the anchor class is that one
+ * event: its note becomes the event's own (no class, and no class it was
+ * for), and only the later classes' notes stay behind with `was`.
  * Notes in Trash go too, so bringing one back finds its class.
  */
 export async function carryEventNotes(
@@ -146,19 +151,34 @@ export async function carryEventNotes(
         notes.map((n) => n.occurrence),
       )
     : () => null;
-  const moved = notes.map((n) => ({ id: n.id, at: to(n.occurrence) }));
+  // A split into one event: the anchor class is now that event.
+  const single = !now.series && now.id !== was.id;
+  const moved = notes.map((n) => {
+    const own = single && n.occurrence.getTime() === anchor.was.getTime();
+    return { id: n.id, at: own ? null : to(n.occurrence), own };
+  });
   if (
     now.id === was.id &&
     moved.every((m, i) => m.at?.getTime() === notes[i].occurrence.getTime())
   )
     return;
+  // Each note goes to its class in `now`, or becomes `now`'s own; one whose
+  // class is gone stays with `was`, remembering the class.
   await db.query(
-    `UPDATE docs d SET item_id = CASE WHEN x.at IS NULL THEN d.item_id
-                                      ELSE $1::uuid END,
+    `UPDATE docs d
+        SET item_id = CASE WHEN x.at IS NULL AND NOT x.own THEN d.item_id
+                           ELSE $1::uuid END,
             occurrence = x.at,
-            class_was = CASE WHEN x.at IS NULL THEN d.occurrence END
-       FROM unnest($2::uuid[], $3::timestamptz[]) AS x(id, at)
+            class_was = CASE WHEN x.at IS NULL AND NOT x.own
+                             THEN d.occurrence END
+       FROM unnest($2::uuid[], $3::timestamptz[], $4::boolean[])
+            AS x(id, at, own)
       WHERE d.id = x.id`,
-    [now.id, moved.map((m) => m.id), moved.map((m) => m.at)],
+    [
+      now.id,
+      moved.map((m) => m.id),
+      moved.map((m) => m.at),
+      moved.map((m) => m.own),
+    ],
   );
 }

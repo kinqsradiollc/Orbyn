@@ -1122,58 +1122,59 @@ test("a class's note stays with its class when the series changes", async () => 
   );
 });
 
-test("the series' own note stays first when a class's note loses its class", async () => {
-  const hour = 3_600_000;
-  const openNote = (id: string, occurrence?: string) =>
-    call(
-      owner.token,
-      "POST",
-      `/items/${id}/note`,
-      occurrence ? { occurrence } : undefined,
-    );
-  const noteId = async (id: string, occurrence?: string) => {
-    const r = await openNote(id, occurrence);
-    assert.ok([200, 201].includes(r.statusCode), r.body);
-    return r.json().id as string;
-  };
-  const write = async (docId: string, line: string) => {
-    const doc = (await call(owner.token, "GET", `/docs/${docId}`)).json();
-    const r = await call(owner.token, "PUT", `/docs/${docId}`, {
-      version: doc.version,
-      content: [...doc.content, { type: "paragraph", text: line }],
-    });
-    assert.equal(r.statusCode, 200, r.body);
-  };
-  const getItem = async (id: string) =>
-    (await call(owner.token, "GET", `/items/${id}`)).json();
-  const refsOf = async (ids: string[]) =>
-    (
-      await call(owner.token, "GET", `/docs/event-notes?items=${ids.join(",")}`)
-    ).json() as Json[];
-  const event = async (title: string, start: string, rrule: string) =>
-    (
-      await call(owner.token, "POST", "/items", {
-        title,
-        kind: "event",
-        due_at: start,
-        end_at: new Date(Date.parse(start) + hour).toISOString(),
-        rrule,
-        timezone: TZ,
-      })
-    ).json() as Json;
-  const body = (item: Json, patch: Json = {}) => ({
-    title: item.title,
-    notes: item.notes ?? "",
-    kind: item.kind,
-    status: item.status,
-    priority: item.priority,
-    due_at: item.due_at,
-    end_at: item.end_at,
-    team_id: null,
-    version: item.version,
-    ...patch,
+/** Opening, writing and listing event notes as the owner, for the tests below. */
+const hour = 3_600_000;
+const openNote = (id: string, occurrence?: string) =>
+  call(
+    owner.token,
+    "POST",
+    `/items/${id}/note`,
+    occurrence ? { occurrence } : undefined,
+  );
+const noteId = async (id: string, occurrence?: string) => {
+  const r = await openNote(id, occurrence);
+  assert.ok([200, 201].includes(r.statusCode), r.body);
+  return r.json().id as string;
+};
+const write = async (docId: string, line: string) => {
+  const doc = (await call(owner.token, "GET", `/docs/${docId}`)).json();
+  const r = await call(owner.token, "PUT", `/docs/${docId}`, {
+    version: doc.version,
+    content: [...doc.content, { type: "paragraph", text: line }],
   });
+  assert.equal(r.statusCode, 200, r.body);
+};
+const getItem = async (id: string) =>
+  (await call(owner.token, "GET", `/items/${id}`)).json();
+const refsOf = async (ids: string[]) =>
+  (
+    await call(owner.token, "GET", `/docs/event-notes?items=${ids.join(",")}`)
+  ).json() as Json[];
+const event = async (title: string, start: string, rrule: string) =>
+  (
+    await call(owner.token, "POST", "/items", {
+      title,
+      kind: "event",
+      due_at: start,
+      end_at: new Date(Date.parse(start) + hour).toISOString(),
+      rrule,
+      timezone: TZ,
+    })
+  ).json() as Json;
+const body = (item: Json, patch: Json = {}) => ({
+  title: item.title,
+  notes: item.notes ?? "",
+  kind: item.kind,
+  status: item.status,
+  priority: item.priority,
+  due_at: item.due_at,
+  end_at: item.end_at,
+  team_id: null,
+  version: item.version,
+  ...patch,
+});
 
+test("the series' own note stays first when a class's note loses its class", async () => {
   // A weekly one-to-one on Mondays at 10:00 in London, with a running note
   // for the whole series, written in.
   const monday = (n: number) =>
@@ -1348,6 +1349,94 @@ test("the series' own note stays first when a class's note loses its class", asy
     seriesNoteFor([ref("former", monday(3))], entry)?.doc_id,
     "former",
   );
+});
+
+test("a class split off into an event of its own takes its note along", async () => {
+  // A weekly seminar on Mondays at 10:00 in London from 5 October, with no
+  // note for the whole series; the 26 October class's note and a later
+  // class's are written in.
+  const monday = (n: number) =>
+    new Date(Date.UTC(2026, 9, 5 + 7 * n, n >= 3 ? 10 : 9)).toISOString();
+  const seminar = await event("Seminar", monday(0), "FREQ=WEEKLY;COUNT=6");
+  const classNote = await noteId(seminar.id, monday(3));
+  await write(classNote, "Questions for the 26th");
+  const laterNote = await noteId(seminar.id, monday(4));
+  await write(laterNote, "Bring the slides");
+
+  // "This and following" from 26 October, the repeat taken off: that class
+  // is now an event on its own.
+  const split = await call(
+    owner.token,
+    "PUT",
+    `/items/${seminar.id}?scope=following&occurrence=${encodeURIComponent(monday(3))}`,
+    body(await getItem(seminar.id), {
+      due_at: monday(3),
+      end_at: new Date(Date.parse(monday(3)) + hour).toISOString(),
+      rrule: null,
+    }),
+  );
+  assert.equal(split.statusCode, 200, split.body);
+  const oneOff = split.json();
+  assert.notEqual(oneOff.id, seminar.id);
+  assert.equal(oneOff.rrule, null);
+  assert.equal(oneOff.due_at, monday(3));
+
+  // Opening it opens the note written for that class, as the event's own.
+  const opened = await openNote(oneOff.id);
+  assert.equal(opened.statusCode, 200, opened.body);
+  assert.equal(opened.json().id, classNote);
+  assert.equal(opened.json().occurrence, null);
+  let refs = await refsOf([seminar.id, oneOff.id]);
+  const own = refs.find((r) => r.doc_id === classNote);
+  assert.equal(own?.item_id, oneOff.id);
+  assert.equal(own?.class_was, null);
+  assert.equal(
+    eventNoteFor(refs, { item_id: oneOff.id, rrule: null })?.doc_id,
+    classNote,
+  );
+
+  // The series it came from (5 to 19 October) doesn't open it; the later
+  // class's note stays there, remembering its class, and stands in for the
+  // series' note, which it has none of.
+  const later = refs.find((r) => r.doc_id === laterNote);
+  assert.equal(later?.item_id, seminar.id);
+  assert.equal(later?.occurrence, null);
+  assert.equal(later?.class_was, monday(4));
+  const series = await openNote(seminar.id);
+  assert.equal(series.statusCode, 200, series.body);
+  assert.equal(series.json().id, laterNote);
+  assert.equal(
+    seriesNoteFor(refs, { item_id: seminar.id, occurrence: monday(1) })?.doc_id,
+    laterNote,
+  );
+
+  // Moved to another time in the same edit, the class still takes its note,
+  // even one in Trash (bringing it back finds the event).
+  const lab = await event("Lab", monday(0), "FREQ=WEEKLY;COUNT=6");
+  const labNote = await noteId(lab.id, monday(2));
+  await write(labNote, "Safety briefing");
+  await call(owner.token, "DELETE", `/docs/${labNote}`);
+  const moved = await call(
+    owner.token,
+    "PUT",
+    `/items/${lab.id}?scope=following&occurrence=${encodeURIComponent(monday(2))}`,
+    body(await getItem(lab.id), {
+      due_at: new Date(Date.parse(monday(2)) + 2 * hour).toISOString(),
+      end_at: new Date(Date.parse(monday(2)) + 3 * hour).toISOString(),
+      rrule: null,
+    }),
+  );
+  assert.equal(moved.statusCode, 200, moved.body);
+  const labOnce = moved.json();
+  assert.notEqual(labOnce.id, lab.id);
+  const back = await call(owner.token, "POST", `/docs/${labNote}/restore`);
+  assert.equal(back.statusCode, 200, back.body);
+  refs = await refsOf([lab.id, labOnce.id]);
+  assert.equal(refs.find((r) => r.doc_id === labNote)?.item_id, labOnce.id);
+  assert.equal(await noteId(labOnce.id), labNote);
+  const labSeries = await openNote(lab.id);
+  assert.equal(labSeries.statusCode, 201, labSeries.body);
+  assert.notEqual(labSeries.json().id, labNote);
 });
 
 test("a starter makes a team's page from its events, projects and folders", async () => {
