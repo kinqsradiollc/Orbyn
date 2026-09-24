@@ -127,9 +127,8 @@ function Body() {
         <View style={[shared.softCard, s.privacy]}>
           <Icon name="shieldCheck" size={18} color={colors.accent} />
           <Text style={[shared.body, { flex: 1 }]}>
-            Your data stays on this server. It only goes to the apps and
-            addresses you connect here, and you can turn each one off at any
-            time.
+            Nothing here sends your data anywhere until you connect it, and you
+            can turn each one off at any time.
           </Text>
         </View>
 
@@ -137,8 +136,9 @@ function Body() {
         <Text style={[shared.eyebrow, s.eyebrow]}>API KEYS</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Let scripts and other apps use Orbyn as you. Treat a key like a
-            password.
+            Let scripts and other apps work with your tasks, pages and calendar
+            as you. A key can’t make or remove other keys, or change your
+            account settings, sign-in or webhooks. Treat it like a password.
           </Text>
           {newKey && (
             <FadeIn style={s.secret}>
@@ -460,12 +460,15 @@ function Body() {
           />
         </View>
 
-        <Text style={[shared.eyebrow, s.eyebrow]}>AN AI ASSISTANT (MCP)</Text>
+        <Text style={[shared.eyebrow, s.eyebrow]}>AN AI TOOL (MCP)</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Let your own AI tools — Claude, Cursor, ChatGPT — search and add to
-            your planner. Point an MCP client at the address below and sign it
-            in with a personal API key. It can do only what that key can.
+            Let an AI tool that takes a request header, such as Claude Code or
+            Cursor, search your tasks, add tasks and read your agenda. Point it
+            at the address below and send a personal API key as “Authorization:
+            Bearer …”. The key reaches all your tasks, pages and calendar, so
+            keep it private. ChatGPT and claude.ai don’t take keys, so they
+            can’t connect this way.
           </Text>
           <Text selectable style={s.code}>
             {`${client.baseUrl.replace(/\/$/, "")}/mcp`}

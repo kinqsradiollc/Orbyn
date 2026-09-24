@@ -486,6 +486,14 @@
 .admin-sessions strong {
   text-transform: capitalize;
 }
+/* A key's name is the person's own words, shown as they wrote it. */
+.admin-keys strong {
+  overflow-wrap: anywhere;
+  text-transform: none;
+}
+.admin-keys small {
+  overflow-wrap: anywhere;
+}
 .admin-user-link {
   padding: 0;
   border: 0;

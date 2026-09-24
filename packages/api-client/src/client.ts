@@ -2063,6 +2063,12 @@ export class OrbynClient {
       method: "DELETE",
     });
   }
+  /** Revoke one of an account's personal API keys (recorded in the audit log). */
+  adminRevokeApiKey(id: string, keyId: string) {
+    return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
+      method: "DELETE",
+    });
+  }
   /** A one-hour password reset link to pass on (also emailed when mail is set up). */
   adminResetLink(id: string) {
     return this.request<{

@@ -1,7 +1,15 @@
 import { query, type Db } from "../db/pool.js";
 
 export type AuditTarget =
-  "user" | "team" | "item" | "session" | "proposal" | "ai_provider" | "system";
+  | "user"
+  | "team"
+  | "item"
+  | "session"
+  | "proposal"
+  | "ai_provider"
+  | "system"
+  /** A personal API key; `details.user_id` names whose it is. */
+  | "api_key";
 
 /** Append an entry to the audit log. Pass `db` to write inside a transaction. */
 export async function audit(

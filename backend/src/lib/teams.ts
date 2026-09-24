@@ -7,6 +7,7 @@ import {
   type TeamRole,
 } from "@orbyn/core";
 import { query, type Db } from "../db/pool.js";
+import { isSessionPrincipal } from "./auth.js";
 
 type Actor = { id: string; role: SystemRole };
 
@@ -31,7 +32,9 @@ export async function membershipRole(
 /**
  * Require `permission` in a team. Non-members get 404 so team existence does
  * not leak. System admins act as owners for team management, but not for
- * reading or writing team items.
+ * reading or writing team items, and only when signed in to the app: an
+ * admin's API key (and so any tool or agent holding it) is an ordinary
+ * member, like everyone else's.
  *
  * Returns the caller's real membership role (null for an admin override) and
  * the effective role used for the check.
@@ -51,6 +54,7 @@ export async function requireTeam(
   ).rows[0];
   const role = team ? await membershipRole(teamId, actor.id, db) : null;
   const override =
+    isSessionPrincipal(actor) &&
     hasSystemPermission(actor.role, "teams:manage_all") &&
     !ITEM_PERMISSIONS.includes(permission);
   if (!team || (!role && !override)) fail(404, "Team not found");

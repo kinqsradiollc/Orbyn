@@ -199,3 +199,90 @@ test("the overview carries a suggested order and undated tasks", async () => {
   assert.equal(data.suggested_order[0].title, "Overdue invoice");
   assert.equal(data.without_a_date.length, 3);
 });
+
+// Last: the teammate's decision it adds would show in the tests above.
+test("get_project lists only the pages and records you could open yourself", async () => {
+  const mate = await register("Mate");
+  const as = (
+    who: string,
+    method: "POST" | "GET",
+    url: string,
+    payload?: object,
+  ) =>
+    app.inject({
+      method,
+      url,
+      headers: { authorization: `Bearer ${who}` },
+      ...(payload ? { payload } : {}),
+    });
+  const myEmail = (await as(token, "GET", "/me")).json().email;
+  const team = (
+    await as(mate.token, "POST", "/teams", { name: "Studio" })
+  ).json();
+  assert.equal(
+    (
+      await as(mate.token, "POST", `/teams/${team.id}/members`, {
+        email: myEmail,
+        role: "member",
+      })
+    ).statusCode,
+    201,
+  );
+  const project = (
+    await as(mate.token, "POST", "/projects", {
+      name: "Studio launch",
+      team_id: team.id,
+    })
+  ).json();
+  const shared = await as(mate.token, "POST", "/docs", {
+    title: "Team brief",
+    team_id: team.id,
+    project_id: project.id,
+  });
+  assert.equal(shared.statusCode, 201, shared.body);
+  // A personal page and record of the teammate's that still point at the
+  // project (it was theirs before it moved to the team).
+  const own = (
+    await as(mate.token, "POST", "/docs", { title: "Mate's diary" })
+  ).json();
+  const ownRecord = await as(mate.token, "POST", "/work-records", {
+    kind: "decision",
+    title: "Mate's private call",
+  });
+  assert.equal(ownRecord.statusCode, 201, ownRecord.body);
+  const teamRecord = await as(mate.token, "POST", "/work-records", {
+    kind: "decision",
+    title: "Ship on Friday",
+    team_id: team.id,
+    project_id: project.id,
+  });
+  assert.equal(teamRecord.statusCode, 201, teamRecord.body);
+  await pool.query("UPDATE docs SET project_id = $1 WHERE id = $2", [
+    project.id,
+    own.id,
+  ]);
+  await pool.query("UPDATE work_records SET project_id = $1 WHERE id = $2", [
+    project.id,
+    ownRecord.json().id,
+  ]);
+
+  const mine = await run("get_project", { project_id: project.id });
+  assert.equal(mine.isError, false, mine.content);
+  assert.deepEqual(
+    mine.data.notes.map((n: { title: string }) => n.title),
+    ["Team brief"],
+  );
+  assert.deepEqual(
+    mine.data.open_records.map((r: { title: string }) => r.title),
+    ["Ship on Friday"],
+  );
+  assert.doesNotMatch(mine.content, /diary|private call/);
+  // Their author still sees both.
+  const theirs = await run(
+    "get_project",
+    { project_id: project.id },
+    mate.user.id,
+  );
+  assert.equal(theirs.data.notes.length, 2);
+  assert.equal(theirs.data.open_records.length, 2);
+});

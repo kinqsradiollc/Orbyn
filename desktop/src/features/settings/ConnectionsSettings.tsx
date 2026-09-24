@@ -69,9 +69,8 @@ function OnceSecret({ label, value }: { label: string; value: string }) {
 
 /**
  * API keys, webhooks, the calendar feed and subscribed calendars: how other
- * tools work with Orbyn.
- * Everything is served from this server; nothing is sent anywhere else
- * unless you add a webhook.
+ * tools work with Orbyn. Nothing here sends data anywhere until the person
+ * connects it (a webhook, chat delivery or a feed link).
  */
 export function ConnectionsSettings({ report }: Props) {
   return (
@@ -81,10 +80,11 @@ export function ConnectionsSettings({ report }: Props) {
           <ShieldCheck size={16} aria-hidden="true" /> Connections
         </h2>
         <p className="muted">
-          Connect scripts, automation tools and other calendar apps. Your data
-          stays on this server: keys and links only let those tools reach it
-          here, and webhooks send only the events you pick to the address you
-          give.
+          Connect scripts, automation tools and other calendar apps. Nothing
+          here sends your data anywhere until you connect it: a key lets a tool
+          work with your tasks, pages and calendar, and a webhook sends only the
+          events you pick to the address you give. You can turn each one off at
+          any time.
         </p>
         <p className="muted">
           Building an integration? See the{" "}
@@ -161,8 +161,10 @@ function ApiKeys({ report }: Props) {
         <KeyRound size={16} aria-hidden="true" /> Personal API keys
       </h2>
       <p className="muted">
-        A key acts as you. Send it as <code>Authorization: Bearer …</code> to
-        this server&apos;s API.
+        A key acts as you for your tasks, pages and calendar. Send it as{" "}
+        <code>Authorization: Bearer …</code> to Orbyn&apos;s API. It can&apos;t
+        make or remove other keys, or change your account settings, sign-in or
+        webhooks.
       </p>
       {fresh && <OnceSecret label="Your new API key" value={fresh} />}
       {keys === null ? (
