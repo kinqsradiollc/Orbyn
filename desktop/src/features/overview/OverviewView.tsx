@@ -145,6 +145,7 @@ export function OverviewView({
           <OverviewSection
             icon={Loader}
             title="In progress"
+            className="ov-in-progress"
             count={inProgress.length}
             action={
               <button
@@ -163,7 +164,12 @@ export function OverviewView({
               </p>
             )}
           </OverviewSection>
-          <OverviewSection icon={Sun} title="Due today" count={today.length}>
+          <OverviewSection
+            icon={Sun}
+            title="Due today"
+            count={today.length}
+            className="ov-due-today"
+          >
             {today.length ? (
               rows(today)
             ) : (
@@ -204,6 +210,7 @@ export function OverviewView({
           <OverviewSection
             icon={CalendarDays}
             title="Coming up"
+            className="ov-coming-up"
             count={comingUp.length}
             action={
               <button

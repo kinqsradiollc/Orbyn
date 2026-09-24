@@ -274,7 +274,7 @@ export function TeamPlanning({
           <p className="muted team-block-lead">Loading workload…</p>
         ) : (
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table stack-table">
               <thead>
                 <tr>
                   <th>Person</th>
@@ -301,11 +301,15 @@ export function TeamPlanning({
                         )}
                       </span>
                     </td>
-                    <td>{minutesLabel(w.capacity_minutes)}</td>
-                    <td>{minutesLabel(w.assigned_minutes)}</td>
-                    <td>{w.open_tasks}</td>
-                    <td>{w.unestimated_tasks}</td>
-                    <td>
+                    <td data-label="Free time">
+                      {minutesLabel(w.capacity_minutes)}
+                    </td>
+                    <td data-label="Assigned">
+                      {minutesLabel(w.assigned_minutes)}
+                    </td>
+                    <td data-label="Open tasks">{w.open_tasks}</td>
+                    <td data-label="No estimate">{w.unestimated_tasks}</td>
+                    <td data-label="Load">
                       <span
                         className={
                           "load-bar" + (w.overloaded ? " is-over" : "")

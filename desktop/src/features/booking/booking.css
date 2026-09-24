@@ -644,7 +644,7 @@
     padding-right: 17px;
   }
   .hours-day {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
   }
   .hours-day > strong,
@@ -994,7 +994,7 @@
 
 @media (max-width: 760px) {
   .booking-public {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 22px;
   }
   .public-card {

@@ -298,7 +298,7 @@ function TeamsPanel({
         </h2>
       </div>
       <div className="table-wrap">
-        <table className="data-table">
+        <table className="data-table stack-table">
           <thead>
             <tr>
               <th>Team</th>
@@ -316,16 +316,18 @@ function TeamsPanel({
                     {t.name}
                   </button>
                 </td>
-                <td>
+                <td data-label="Your role">
                   {t.role ? (
                     <RoleBadge role={t.role} />
                   ) : (
                     <span className="muted">Not a member</span>
                   )}
                 </td>
-                <td>{t.member_count}</td>
-                <td>{t.item_count}</td>
-                <td>{new Date(t.created_at).toLocaleDateString()}</td>
+                <td data-label="Members">{t.member_count}</td>
+                <td data-label="Items">{t.item_count}</td>
+                <td data-label="Created">
+                  {new Date(t.created_at).toLocaleDateString()}
+                </td>
               </tr>
             ))}
             {teams && !teams.length && (

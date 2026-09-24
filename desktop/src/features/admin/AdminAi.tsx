@@ -248,7 +248,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           </button>
         </div>
         <div className="table-wrap">
-          <table className="data-table ai-providers-table">
+          <table className="data-table ai-providers-table stack-table">
             <thead>
               <tr>
                 <th>Provider</th>
@@ -284,7 +284,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                       )}
                       <small className="ai-kind">{def?.label ?? p.kind}</small>
                     </td>
-                    <td className="nowrap">
+                    <td data-label="Key" className="nowrap">
                       {p.has_key ? (
                         <span className="ai-key">
                           <KeyRound size={12} /> Key saved ({p.key_hint})
@@ -293,7 +293,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                         <span className="muted">No key</span>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Enabled">
                       <input
                         type="checkbox"
                         role="switch"
@@ -310,7 +310,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                         }}
                       />
                     </td>
-                    <td>
+                    <td data-label="Model">
                       <div className="ai-model">
                         {choices && choices.length > 0 && (
                           <Select

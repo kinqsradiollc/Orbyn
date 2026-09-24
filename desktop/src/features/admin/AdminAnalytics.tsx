@@ -144,7 +144,7 @@ export function AdminAnalytics({ report }: { report: (e: unknown) => void }) {
             <p className="db-empty">Nobody has been active in this period.</p>
           ) : (
             <div className="table-wrap">
-              <table className="data-table">
+              <table className="data-table stack-table">
                 <thead>
                   <tr>
                     <th>Person</th>
@@ -159,11 +159,13 @@ export function AdminAnalytics({ report }: { report: (e: unknown) => void }) {
                       <td>
                         <strong>{p.name}</strong>
                       </td>
-                      <td>{p.email}</td>
-                      <td>
+                      <td data-label="Email">{p.email}</td>
+                      <td data-label="Days active">
                         {p.days_active} of {days}
                       </td>
-                      <td>{p.requests.toLocaleString()}</td>
+                      <td data-label="Requests">
+                        {p.requests.toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

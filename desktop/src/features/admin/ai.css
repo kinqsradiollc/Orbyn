@@ -137,7 +137,7 @@
 /* Add / edit form */
 .ai-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 15px;
   padding: 0 23px 22px;
 }
@@ -176,7 +176,7 @@
 
 @media (max-width: 640px) {
   .ai-form {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     padding: 0 17px 20px;
   }
   .ai-facts {

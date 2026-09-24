@@ -59,7 +59,7 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
         </button>
       </div>
       <div className="table-wrap">
-        <table className="data-table">
+        <table className="data-table stack-table">
           <thead>
             <tr>
               <th>Time</th>
@@ -79,17 +79,17 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
                 <td className="nowrap">
                   {new Date(a.created_at).toLocaleString()}
                 </td>
-                <td>
+                <td data-label="Actor">
                   {a.actor_email ?? (
                     <span className="muted">
                       {a.actor_id ? "Deleted user" : "System"}
                     </span>
                   )}
                 </td>
-                <td>
+                <td data-label="Action">
                   <code className="audit-action">{a.action}</code>
                 </td>
-                <td className="nowrap">
+                <td data-label="Target" className="nowrap">
                   {a.target_type}
                   {a.target_id && (
                     <small className="muted" title={a.target_id}>
@@ -98,7 +98,11 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
                     </small>
                   )}
                 </td>
-                <td className="audit-details" title={formatDetails(a.details)}>
+                <td
+                  data-label="Details"
+                  className="audit-details"
+                  title={formatDetails(a.details)}
+                >
                   {formatDetails(a.details) || <span className="muted">—</span>}
                 </td>
               </tr>

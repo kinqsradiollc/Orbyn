@@ -270,7 +270,7 @@ export function TeamDetail({
         </h3>
       </div>
       <div className="table-wrap">
-        <table className="data-table">
+        <table className="data-table stack-table">
           <thead>
             <tr>
               <th>Name</th>
@@ -299,8 +299,8 @@ export function TeamDetail({
                     <strong>{m.name}</strong>
                     {self && <span className="you-tag">You</span>}
                   </td>
-                  <td>{m.email}</td>
-                  <td>
+                  <td data-label="Email">{m.email}</td>
+                  <td data-label="Role">
                     <Select
                       className="role-select"
                       aria-label={`Role for ${m.name}`}

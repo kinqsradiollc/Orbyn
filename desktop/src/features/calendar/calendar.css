@@ -560,7 +560,7 @@
 /* ---- Day ---- */
 .day-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(min(300px, 100%), 1fr);
 }
 .day-layout .timegrid {
   --days: 1;
@@ -577,7 +577,7 @@
 @media (max-width: 1100px) {
   .month-layout,
   .day-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .calendar-agenda,
   .day-tasks {
@@ -978,7 +978,7 @@
 }
 .planner-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px 12px;
   padding: 0 20px 16px;
 }
@@ -1114,7 +1114,7 @@
 
 @media (max-width: 1250px) {
   .calendar-page.with-side {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .calendar-side {
     grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
@@ -1125,7 +1125,7 @@
    under the time grid instead of squeezing it. */
 @media (max-width: 1400px) {
   .with-side .day-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .with-side .day-tasks {
     border-left: 0;

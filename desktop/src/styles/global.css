@@ -537,7 +537,7 @@ nav button i,
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(245px, 1fr);
+  grid-template-columns: minmax(0, 1.75fr) minmax(min(245px, 100%), 1fr);
   gap: 24px;
 }
 .card {
@@ -1087,7 +1087,7 @@ footer svg {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0 15px;
 }
 .button-row {
@@ -1291,16 +1291,42 @@ footer svg {
   .content {
     padding: 28px 20px;
   }
+  /* One column, in the order that matters on a small screen: what to do
+     now first, the lists next, the encouragement last. The two desktop
+     columns step aside so their cards can be ordered as one list. */
   .overview-grid {
-    grid-template-columns: 1fr;
-  }
-  .overview-grid > div:nth-child(2) {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
+  .overview-grid > div {
+    display: contents;
+  }
+  .overview-grid > div > * {
+    margin: 0;
+  }
+  .overview-grid .up-next {
+    order: 1;
+  }
+  .overview-grid .attention-card {
+    order: 2;
+  }
+  .overview-grid .ov-due-today {
+    order: 3;
+  }
+  .overview-grid .ov-in-progress {
+    order: 4;
+  }
+  .overview-grid .ov-coming-up {
+    order: 5;
+  }
+  .overview-grid .progress-card {
+    order: 6;
+  }
+  .overview-grid .assistant-card {
+    order: 7;
+  }
   .assistant-card {
-    min-height: 300px;
+    min-height: 0;
   }
   .page-heading {
     align-items: flex-start;
@@ -1316,14 +1342,14 @@ footer svg {
     padding: 0 12px;
   }
   .stats > div > span {
-    font-size: 9px;
+    font-size: 11px;
     gap: 5px;
   }
   .stats strong {
     font-size: 24px;
   }
   .stats small {
-    font-size: 9px;
+    font-size: 11px;
   }
   .auth-story {
     display: none;
@@ -1336,9 +1362,6 @@ footer svg {
   }
 }
 @media (max-width: 480px) {
-  .overview-grid > div:nth-child(2) {
-    display: block;
-  }
   .priority {
     display: none;
   }
@@ -1357,12 +1380,35 @@ footer svg {
   }
   .item-row {
     padding: 17px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  /* Status and score drop under the title so the title gets the width. */
+  .item-row > .item-tags {
+    order: 1;
+    flex-basis: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    padding-left: 30px;
+  }
+  .item-row > .item-tags:empty {
+    display: none;
+  }
+  /* A search field fills its row on a phone, under the heading it sits in. */
+  .section-heading:has(> .search) {
+    flex-wrap: wrap;
+  }
+  .search {
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .search input {
-    width: 130px;
+    flex: 1;
+    width: auto;
+    min-width: 0;
   }
   .form-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .chat {
     padding: 15px;
@@ -1800,7 +1846,7 @@ footer svg {
 }
 @media (max-width: 1100px) {
   .teams-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 480px) {
@@ -1821,7 +1867,7 @@ footer svg {
     margin-right: 17px;
   }
   .stat-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px;
   }
 }
@@ -2271,7 +2317,7 @@ footer svg {
 @media (max-width: 700px) {
   /* Narrow: the board reads as a list grouped by status. */
   .board {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .item-tags {
     max-width: 40%;
@@ -2492,7 +2538,7 @@ footer svg {
 }
 .team-analytics-list li {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 14px;
   align-items: baseline;
   font-size: 13.5px;
@@ -2538,7 +2584,7 @@ footer svg {
 /* Projects and recent documents, beneath the planner's own cards. */
 .workspace-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 16px;
   margin-top: 16px;
   min-width: 0;
@@ -2804,6 +2850,7 @@ footer svg {
 /* ---- choosing a file ---- */
 
 .file-picker {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2991,7 +3038,7 @@ footer svg {
 }
 .date-month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
 }
 .date-month-weekday {
@@ -3259,10 +3306,85 @@ input[type="number"]::-webkit-outer-spin-button {
  * size and grow an invisible touch area instead.
  */
 @media (max-width: 640px) {
+  /* Task titles get two lines on a phone instead of being cut at one. */
+  .item-main strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
   /* A wide table scrolls sideways on a phone; its "nothing here" line starts
      where the eye is, not in the middle of the scrolled-away width. */
   .table-wrap .table-empty {
     text-align: left;
+  }
+  /* List tables (members, users, audit…) become one block per row: the first
+     cell is the row's title and every other cell sits beside its column name,
+     so nothing runs off the right edge. */
+  .data-table.stack-table {
+    min-width: 0;
+    font-size: 13px;
+  }
+  .stack-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .stack-table,
+  .stack-table tbody {
+    display: block;
+  }
+  .stack-table tbody tr {
+    display: grid;
+    gap: 8px;
+    padding: 14px 18px;
+    border-top: 1px solid var(--color-divider);
+  }
+  .data-table.stack-table td,
+  .data-table.stack-table td:first-child {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .stack-table td:first-child,
+  .stack-table td:first-child .link-button {
+    font-size: 14px;
+  }
+  .stack-table td[data-label] {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    min-height: 20px;
+    padding-left: 104px;
+  }
+  .stack-table td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 92px;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: #9aa29d;
+  }
+  .stack-table .row-actions {
+    text-align: left;
+  }
+  .stack-table .audit-details {
+    max-width: none;
+  }
+  .data-table.stack-table .table-empty {
+    padding: 22px 18px !important;
   }
 }
 @media (max-width: 640px), (pointer: coarse) {
@@ -3275,6 +3397,23 @@ input[type="number"]::-webkit-outer-spin-button {
     content: "";
     position: absolute;
     inset: -10px;
+  }
+  /* Text-sized buttons keep their look but take a finger-sized tap. */
+  .link-button,
+  .danger-text,
+  .team-settings .danger,
+  .tag-chip.toggle,
+  .up-next-title {
+    position: relative;
+  }
+  .link-button::after,
+  .danger-text::after,
+  .team-settings .danger::after,
+  .tag-chip.toggle::after,
+  .up-next-title::after {
+    content: "";
+    position: absolute;
+    inset: -8px -4px;
   }
   .swatches {
     gap: 8px;
