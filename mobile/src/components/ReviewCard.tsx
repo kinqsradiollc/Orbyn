@@ -36,11 +36,17 @@ const riskLine = (t: PlannerReview["at_risk"][number]) => {
 export function ReviewCard({
   items,
   onPlan,
+  showUnfinished = true,
 }: {
   /** Planner items; the review reloads when they change. */
   items: Item[];
   /** Open a proposed plan to review and apply. */
   onPlan: (plan: Plan) => void;
+  /**
+   * List unfinished sessions (with Move forward). Off beside the Today
+   * list, whose "Not finished" rows offer Plan again.
+   */
+  showUnfinished?: boolean;
 }) {
   const [review, setReview] = useState<PlannerReview | null>(null);
   const [all, setAll] = useState(false);
@@ -62,7 +68,8 @@ export function ReviewCard({
   }, [load, items]);
 
   if (!review) return null;
-  const { unfinished, conflicts, at_risk } = review;
+  const { conflicts, at_risk } = review;
+  const unfinished = showUnfinished ? review.unfinished : [];
   if (!unfinished.length && !conflicts.length && !at_risk.length && !note)
     return null;
   const shownUnfinished = all ? unfinished : unfinished.slice(0, FEW);

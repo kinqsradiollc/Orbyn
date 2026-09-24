@@ -12,6 +12,10 @@ const TONES = themed(() => ({
 
 export type PillTone = keyof typeof TONES;
 
+/** The pill for a chip's tone from core ("Planned 9:15", "Short 2h"…). */
+export const chipTone = (tone: "ok" | "warn" | "muted" | "accent"): PillTone =>
+  tone === "warn" ? "warning" : tone === "muted" ? "muted" : "accent";
+
 /** Small rounded label for roles and states (Owner, Admin, Disabled…). */
 export function Pill({
   label,

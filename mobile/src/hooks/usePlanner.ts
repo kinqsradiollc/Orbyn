@@ -5,12 +5,19 @@ import type {
   Item,
   Maintenance,
   Notice,
+  PlannedFeed,
   Tag,
   TaskList,
   Team,
+  TodayList,
   User,
 } from "@orbyn/core";
-import { applyOutbox, isOfflineError, parseAddDeepLink } from "@orbyn/core";
+import {
+  applyOutbox,
+  dayBounds,
+  isOfflineError,
+  parseAddDeepLink,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
@@ -56,6 +63,10 @@ export function usePlanner() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [lists, setLists] = useState<TaskList[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  /** Planned time by task ("Planned 9:15", status chips), for this day. */
+  const [planned, setPlanned] = useState<PlannedFeed | null>(null);
+  /** The Today list, for this day. */
+  const [today, setToday] = useState<TodayList | null>(null);
   const [error, setError] = useState("");
   const [twoFactorRequired, setTwoFactorRequired] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -97,6 +108,9 @@ export function usePlanner() {
     setTeams([]);
     setLists([]);
     setTags([]);
+    setPlanned(null);
+    setToday(null);
+    kept.current = { planned: null, today: null };
     setUser(null);
   };
 
@@ -130,6 +144,10 @@ export function usePlanner() {
    * (e.g. after ticking a checkbox) animate into their new places.
    */
   const lastData = useRef("");
+  /** The last planned feed and Today list, kept when a later load fails. */
+  const kept = useRef<{ planned: PlannedFeed | null; today: TodayList | null }>(
+    { planned: null, today: null },
+  );
   const refresh = useCallback(
     async (options?: { animate?: boolean; silent?: boolean }) => {
       if (!token) return;
@@ -138,26 +156,46 @@ export function usePlanner() {
       if (!options?.silent) setRefreshing(true);
       try {
         const list = await client.listAllItems(500);
-        const [u, n, t, l, g] = await Promise.all([
+        const { from, to } = dayBounds(new Date());
+        const [u, n, t, l, g, p, d] = await Promise.all([
           client.me(),
           client.listNotifications(),
           client.listTeams(),
           // Older servers have no lists or tags; the planner works without them.
           client.listLists().catch((): TaskList[] => []),
           client.listTags().catch((): Tag[] => []),
+          // Nor planned time or a Today list: rows and Today do without, and
+          // a blip keeps what's on screen.
+          client
+            .planned({ from: from.toISOString(), to: to.toISOString() })
+            .catch(() => kept.current.planned),
+          client.today(deviceTimeZone()).catch(() => kept.current.today),
         ]);
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-        const snapshot = JSON.stringify([list, u, n, t, l, g]);
+        // `now` moves on every call; it isn't a change.
+        const snapshot = JSON.stringify([
+          list,
+          u,
+          n,
+          t,
+          l,
+          g,
+          p,
+          d && { ...d, now: undefined },
+        ]);
         // Nothing changed: skip the re-render entirely.
         if (options?.silent && snapshot === lastData.current) return;
         lastData.current = snapshot;
         if (options?.animate) animateLayout();
+        kept.current = { planned: p, today: d };
         setItems(list);
         setUser(u);
         setNotices(n);
         setTeams(t);
         setLists(l);
         setTags(g);
+        setPlanned(p);
+        setToday(d);
         // Keep a copy on the device for the next offline / cold start.
         void saveCache({
           items: list,
@@ -166,6 +204,8 @@ export function usePlanner() {
           teams: t,
           lists: l,
           tags: g,
+          planned: p,
+          today: d,
         });
         // Refresh the home-screen widget's glance (iOS only; no-ops elsewhere).
         publishGlance(list);
@@ -209,6 +249,14 @@ export function usePlanner() {
           setTeams(cached.teams);
           setLists(cached.lists);
           setTags(cached.tags);
+          // Planned time and Today too, still before the token (see above).
+          // A Today list from another day is only shown on its own day.
+          kept.current = {
+            planned: cached.planned ?? null,
+            today: cached.today ?? null,
+          };
+          setPlanned(cached.planned ?? null);
+          setToday(cached.today ?? null);
         }
       }
       if (alive) setToken(t);
@@ -387,6 +435,10 @@ export function usePlanner() {
     teams,
     lists,
     tags,
+    /** Planned time by task, for this day (null until loaded). */
+    planned,
+    /** The Today list (null until loaded, or on a server without it). */
+    today,
     reloadPlanning,
     error,
     setError,

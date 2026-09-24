@@ -40,7 +40,8 @@ import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { PlanningProvider } from "../lib/planningContext";
-import { planIncluding } from "../lib/plans";
+import { PlannedProvider } from "../lib/plannedContext";
+import { planIncluding, planOnly } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale, isReducedMotion } from "../motion";
@@ -130,6 +131,8 @@ export function RootScreen() {
     teams,
     lists,
     tags,
+    planned,
+    today: todayList,
     reloadPlanning,
     error,
     setError,
@@ -500,6 +503,29 @@ export function RootScreen() {
         "Plan my day",
       );
     });
+  /**
+   * "Plan it" on a Today row: a plan for that task alone, looking ahead as
+   * far as its deadline.
+   */
+  const startPlanOnly = (itemId: string) =>
+    act(async () => {
+      const item =
+        items.find((i) => i.id === itemId) ??
+        (await client.getItem(itemId).catch(() => null));
+      openPlanner(
+        await planOnly(itemId, item ? deadlineOf(item) : null),
+        "Plan it",
+      );
+    });
+  /** Opens a task or event by id, fetching it when the list doesn't have it. */
+  const openTaskById = (id: string) => {
+    const found = items.find((i) => i.id === id);
+    if (found) openTask(found);
+    else
+      void act(async () => {
+        openTask(await client.getItem(id));
+      });
+  };
   /** A planner notice's action; the notice is marked read alongside. */
   const noticeAction = (n: Notice, start: () => Promise<void>) => {
     if (!n.read)
@@ -616,569 +642,565 @@ export function RootScreen() {
 
   return (
     <PlanningProvider lists={lists} tags={tags} reload={reloadPlanning}>
-      <View style={s.screen}>
-        <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
-          <View style={s.headerRow}>
-            <Brand size={24} />
-            <View style={s.headerActions}>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={
-                  notices.some((n) => !n.read)
-                    ? "Notifications, unread updates"
-                    : "Notifications"
-                }
-                onPress={() => setTab("Inbox")}
-                style={s.notification}
-              >
-                <Icon
-                  name="bell"
-                  size={20}
-                  color={tab === "Inbox" ? colors.accent : colors.textSoft}
-                />
-                {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
-              </PressableScale>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="New item"
-                hitSlop={8}
-                onPress={openNew}
-                style={({ pressed }) => [s.add, pressed && s.addPressed]}
-              >
-                <Icon
-                  name="plus"
-                  size={20}
-                  color={colors.white}
-                  strokeWidth={2.2}
-                />
-              </PressableScale>
-            </View>
-          </View>
-        </View>
-        <View style={sidePadding}>
-          <View style={s.column}>
-            <MaintenanceBanner
-              maintenance={maintenance}
-              admin={hasSystemPermission(user?.role, "system:manage")}
-            />
-          </View>
-        </View>
-        <View
-          ref={keyboardArea}
-          collapsable={false}
-          onLayout={keyboard.onLayout}
-          style={[s.body, { paddingBottom: keyboard.inset }]}
-        >
-          <ScrollView
-            // Sticky headers can't be switched on and off on a mounted
-            // ScrollView: on iOS the calendar came back blank from another
-            // tab until the app reloaded. The calendar gets its own.
-            key={tab === "Calendar" ? "calendar" : "page"}
-            ref={scroller}
-            style={s.scroll}
-            scrollEnabled={!dragging}
-            stickyHeaderIndices={tab === "Calendar" ? [1] : undefined}
-            contentContainerStyle={[s.content, sidePadding]}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => act(() => refresh())}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
-              />
-            }
+      <PlannedProvider feed={planned} today={todayList}>
+        <View style={s.screen}>
+          <View
+            style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}
           >
-            <View style={s.column}>
-              {tab === "Today" && (
-                <Text style={shared.eyebrow}>
-                  {today
-                    .toLocaleDateString([], {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })
-                    .toUpperCase()}
-                </Text>
-              )}
-              {/* Chat and Calendar provide their own compact page headings. */}
-              {tab !== "AI" && tab !== "Calendar" && (
-                <FadeIn key={`head-${tab}`} duration={motion.slow}>
-                  <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-                  {tab === "Today" && (
-                    <Text style={[shared.subtitle, s.subtitle]}>
-                      {tabSubtitle(tab)}
-                    </Text>
-                  )}
-                </FadeIn>
-              )}
-              <ErrorBanner error={error} onDismiss={() => setError("")} />
-              <SyncBar
-                outbox={planner.outbox}
-                onOpen={() => present({ sheet: "sync" })}
-              />
-              <AnnouncementBanner />
-              <FocusElsewhere
-                items={items}
-                hidden={sheet === "focus"}
-                onOpen={openFocus}
-              />
-            </View>
-            {/* Sticky on the Calendar tab: its date navigation and view switch. */}
-            <View
-              collapsable={false}
-              onLayout={(e) => {
-                stickyHeight.current = e.nativeEvent.layout.height;
-              }}
-              style={[s.column, s.sticky]}
-            >
-              <SlotHost slot={calendarControls} />
-            </View>
-            <View
-              ref={content}
-              collapsable={false}
-              // Only records where the column starts; it never scrolls.
-              onLayout={(e) => {
-                contentY.current = e.nativeEvent.layout.y;
-              }}
-              style={s.column}
-            >
-              <FadeIn key={`body-${tab}`} duration={motion.slow}>
-                {tab === "Today" && (
-                  <WelcomeBack
-                    onOpenItem={(id) =>
-                      void act(async () => openTask(await client.getItem(id)))
-                    }
-                    onOpenDoc={(docId) =>
-                      void client.getDoc(docId).then((doc) => {
-                        setNote(doc);
-                        present({ sheet: "note" });
-                      })
-                    }
-                    onOpenAsks={() => setTab("Inbox")}
+            <View style={s.headerRow}>
+              <Brand size={24} />
+              <View style={s.headerActions}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    notices.some((n) => !n.read)
+                      ? "Notifications, unread updates"
+                      : "Notifications"
+                  }
+                  onPress={() => setTab("Inbox")}
+                  style={s.notification}
+                >
+                  <Icon
+                    name="bell"
+                    size={20}
+                    color={tab === "Inbox" ? colors.accent : colors.textSoft}
                   />
-                )}
-                {tab === "Today" && (
-                  <TodayScreen
-                    items={items}
-                    onOpenWorkspace={(what) => present({ sheet: what })}
-                    onPlanDay={() => {
-                      setTab("AI");
-                      void assistant.ask(planDayPrompt);
-                    }}
-                    onOpenPlanner={openPlanner}
-                    userId={user?.id}
-                    onQuickAdded={() =>
-                      void refresh({ animate: true }).catch(() => {})
-                    }
-                    onAsk={(text) => {
-                      setTab("AI");
-                      void assistant.ask(text);
-                    }}
-                    onShowAll={() => {
-                      setTab("Tasks");
-                      setSearch("");
-                    }}
-                    onFocus={openFocus}
-                    {...listHandlers}
+                  {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
+                </PressableScale>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="New item"
+                  hitSlop={8}
+                  onPress={openNew}
+                  style={({ pressed }) => [s.add, pressed && s.addPressed]}
+                >
+                  <Icon
+                    name="plus"
+                    size={20}
+                    color={colors.white}
+                    strokeWidth={2.2}
                   />
-                )}
-                {tab === "Tasks" && (
-                  <TasksScreen
-                    items={items}
-                    search={search}
-                    onSearch={setSearch}
-                    user={user}
-                    onManageLists={() => setSheet("lists")}
-                    onManageTags={() => setSheet("tags")}
-                    onDragging={setDragging}
-                    onReorder={(i, place) =>
-                      void act(async () => {
-                        await client.moveItem(i.id, place);
-                        await refresh({ animate: true });
-                      })
-                    }
-                    {...listHandlers}
-                  />
-                )}
-                {tab === "Calendar" && (
-                  <CalendarScreen
-                    items={items}
-                    act={act}
-                    onChanged={planChanged}
-                    teams={teams}
-                    preview={preview}
-                    onPreviewChange={setPreview}
-                    onPreviewDone={() => setPreview(null)}
-                    onDragging={setDragging}
-                    onOpenOccurrence={openTask}
-                    onFocus={openFocus}
-                    onScrollTo={scrollToView}
-                    controlsSlot={calendarControls}
-                    jump={calendarJump}
-                    {...listHandlers}
-                  />
-                )}
-                {tab === "AI" && (
-                  <AssistantScreen
-                    assistant={assistant}
-                    items={items}
-                    busy={busy}
-                    onOpenSource={(source) =>
-                      void client.getDoc(source.doc_id).then((doc) => {
-                        setNote(doc);
-                        setSheet("note");
-                      })
-                    }
-                    onKeptNote={(docId) =>
-                      void client.getDoc(docId).then((doc) => {
-                        setNote(doc);
-                        setSheet("note");
-                      })
-                    }
-                    onShowOnCalendar={(at) => {
-                      setSearch("");
-                      setTab("Calendar");
-                      setCalendarJump({ at, key: Date.now() });
-                    }}
-                  />
-                )}
-                {tab === "Inbox" && (
-                  <InboxScreen
-                    notices={notices}
-                    busy={busy}
-                    onRead={markRead}
-                    onReschedule={reschedule}
-                    onOpenBooking={openBookingNotice}
-                    onRollForward={(n) =>
-                      void noticeAction(n, startRollForward)
-                    }
-                    onPlanIt={(n) =>
-                      void noticeAction(n, () => startPlanIt(n.item_id))
-                    }
-                    onOpenItem={(n) =>
-                      void noticeAction(n, () =>
-                        act(async () => {
-                          if (n.item_id)
-                            openTask(await client.getItem(n.item_id));
-                        }),
-                      )
-                    }
-                    onOpenItemById={(id) =>
-                      void act(async () => openTask(await client.getItem(id)))
-                    }
-                    onOpenTemplate={(n) =>
-                      void noticeAction(n, async () => {
-                        setTemplateToOpen(n.ref ?? null);
-                        present({ sheet: "projects" });
-                      })
-                    }
-                    onOpenDoc={(n, docId) =>
-                      void noticeAction(n, () =>
-                        act(async () => {
-                          setNote(await client.getDoc(docId));
-                          present({ sheet: "note" });
-                        }),
-                      )
-                    }
-                  />
-                )}
-                {tab === "Browse" && (
-                  <BrowseScreen
-                    user={user}
-                    onOpen={(to) =>
-                      to === "booking" ? openBookings() : setSheet(to)
-                    }
-                  />
-                )}
-              </FadeIn>
-            </View>
-          </ScrollView>
-          {tab === "AI" && (
-            <View style={[s.footer, sidePadding]}>
-              <View style={s.column}>
-                <AssistantComposer assistant={assistant} busy={busy} />
+                </PressableScale>
               </View>
             </View>
-          )}
-        </View>
-        <TabBar
-          tab={tab}
-          onChange={(t) => {
-            // Tapping the tab you're on goes back to its top and refreshes,
-            // the way Instagram and Facebook do. The assistant reads from
-            // the bottom, so there it goes to the newest message instead.
-            if (t === tab) {
-              const animated = !isReducedMotion();
-              if (t === "AI") scroller.current?.scrollToEnd({ animated });
-              else scroller.current?.scrollTo({ y: 0, animated });
-              if (!refreshing) void act(() => refresh());
-              return;
-            }
-            setTab(t);
-            setSearch("");
-          }}
-        />
-        <CelebrationHost bottom={Math.max(insets.bottom, 10) + 64} />
-        <ItemEditor
-          editing={editing}
-          teams={teams}
-          items={items}
-          busy={busy}
-          error={error}
-          onChange={(patch) =>
-            setEditing((prev) => (prev ? { ...prev, ...patch } : prev))
-          }
-          onSave={saveEditing}
-          onDelete={deleteEditing}
-          onClose={closeEditor}
-          onDismissed={goBack}
-        />
-        <TaskDetail
-          visible={sheet === "task"}
-          item={task}
-          items={items}
-          teams={teams}
-          onOpenItem={(i) => {
-            // Switch in place: a subtask or the task above it.
-            setTaskOccurrence(null);
-            setTask(i);
-          }}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onOpenNote={(event: Item) =>
-            void client
-              .itemNote(event.id)
-              .then((made) => {
-                setNote(made);
-                setSheet("note");
-              })
-              .catch((e: Error) => setError(errorText(e)))
-          }
-          onEdit={editItem}
-          onFocus={openFocus}
-          onChanged={planChanged}
-          onShowOnCalendar={(at) => {
-            // Straight to the calendar: nothing reopens behind it.
-            back.current = [];
-            setSheet(null);
-            setSearch("");
-            setTab("Calendar");
-            setCalendarJump({ at, key: Date.now() });
-          }}
-        />
-        <FocusScreen
-          item={sheet === "focus" ? focus : null}
-          items={items}
-          onClose={closeFocus}
-          onDismiss={onSheetDismissed}
-          onSwitch={setFocus}
-          onChanged={planChanged}
-          readOnly={!!focus && !listHandlers.canToggle(focus)}
-        />
-        <PlanSheet
-          visible={sheet === "plan"}
-          seed={planSeed}
-          title={planTitle ?? undefined}
-          teams={teams}
-          items={items}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onApplied={() => {
-            setPreview(null);
-            planChanged();
-          }}
-          onShowOnCalendar={(plan) => {
-            setPreview(plan);
-            setTab("Calendar");
-            setSearch("");
-            closeSheet();
-          }}
-          onShowDay={(at) => {
-            // Straight to the calendar: nothing reopens behind it.
-            back.current = [];
-            setSheet(null);
-            setSearch("");
-            setTab("Calendar");
-            setCalendarJump({ at, key: Date.now() });
-          }}
-        />
-        <ListsSheet
-          visible={sheet === "lists"}
-          teams={teams}
-          items={items}
-          handlers={listHandlers}
-          onNewTask={newInList}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <Sheet
-          visible={sheet === "settings"}
-          title="Settings"
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        >
-          {/* Scrolls, with the page's padding, like every other sheet. */}
-          <ScrollView
-            contentContainerStyle={sheetStyles.body}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
-            automaticallyAdjustKeyboardInsets
-          >
-            <View style={sheetStyles.column}>
-              <SettingsScreen
-                user={user}
-                busy={busy}
-                act={act}
-                onUser={setUser}
-                onSignOut={() => {
-                  setPreview(null);
-                  signOut();
-                }}
-                onOpenStatus={() => setSheet("status")}
-                onOpenPlanning={() => setSheet("planning")}
-                onOpenConnections={() => setSheet("connections")}
-                onOpenTags={() => setSheet("tags")}
-                onOpenHabits={() => setSheet("habits")}
-                onOpenSync={() => setSheet("sync")}
-                onAccountDeleted={() => {
-                  setSheet(null);
-                  setPreview(null);
-                  void forgetSession();
-                }}
+          </View>
+          <View style={sidePadding}>
+            <View style={s.column}>
+              <MaintenanceBanner
+                maintenance={maintenance}
+                admin={hasSystemPermission(user?.role, "system:manage")}
               />
             </View>
-          </ScrollView>
-        </Sheet>
-        <ProgressSheet
-          visible={sheet === "progress"}
-          teams={teams}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <SyncSheet
-          visible={sheet === "sync"}
-          outbox={planner.outbox}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <StudySheet
-          visible={sheet === "study"}
-          suggestFrom={studySuggest}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onOpenPage={(doc) => {
-            setNote(doc);
-            present({ sheet: "note" });
-          }}
-          onPlanned={() => void refresh()}
-        />
-        <DocsSheet
-          visible={sheet === "docs"}
-          userId={user?.id}
-          canWriteDoc={canWriteIn}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onItemsChanged={() => void refresh()}
-          onMakeCards={(docId, title) => {
-            setStudySuggest({ docId, title });
-            present({ sheet: "study" });
-          }}
-          startInUploads={docsInUploads}
-          onStarted={() => setDocsInUploads(false)}
-        />
-        <DocsSheet
-          visible={sheet === "note"}
-          initialDoc={note}
-          userId={user?.id}
-          canWriteDoc={canWriteIn}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onItemsChanged={() => void refresh()}
-        />
-        <DocsSheet
-          visible={sheet === "agenda"}
-          agenda
-          userId={user?.id}
-          canWriteDoc={canWriteIn}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onItemsChanged={() => void refresh()}
-        />
-        <ProjectsSheet
-          canWriteIn={canWriteIn}
-          userId={user?.id}
-          visible={sheet === "projects"}
-          items={items}
-          teams={teams}
-          openTemplate={templateToOpen}
-          onClose={() => {
-            setTemplateToOpen(null);
-            closeSheet();
-          }}
-          onDismiss={onSheetDismissed}
-          onOpenItem={openTask}
-          onOpenNote={(docId) =>
-            void client.getDoc(docId).then((doc) => {
+          </View>
+          <View
+            ref={keyboardArea}
+            collapsable={false}
+            onLayout={keyboard.onLayout}
+            style={[s.body, { paddingBottom: keyboard.inset }]}
+          >
+            <ScrollView
+              // Sticky headers can't be switched on and off on a mounted
+              // ScrollView: on iOS the calendar came back blank from another
+              // tab until the app reloaded. The calendar gets its own.
+              key={tab === "Calendar" ? "calendar" : "page"}
+              ref={scroller}
+              style={s.scroll}
+              scrollEnabled={!dragging}
+              stickyHeaderIndices={tab === "Calendar" ? [1] : undefined}
+              contentContainerStyle={[s.content, sidePadding]}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => act(() => refresh())}
+                  tintColor={colors.accent}
+                  colors={[colors.accent]}
+                />
+              }
+            >
+              <View style={s.column}>
+                {tab === "Today" && (
+                  <Text style={shared.eyebrow}>
+                    {today
+                      .toLocaleDateString([], {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      })
+                      .toUpperCase()}
+                  </Text>
+                )}
+                {/* Chat and Calendar provide their own compact page headings. */}
+                {tab !== "AI" && tab !== "Calendar" && (
+                  <FadeIn key={`head-${tab}`} duration={motion.slow}>
+                    <Text style={shared.title}>{tabTitle(tab, user)}</Text>
+                    {tab === "Today" && (
+                      <Text style={[shared.subtitle, s.subtitle]}>
+                        {tabSubtitle(tab)}
+                      </Text>
+                    )}
+                  </FadeIn>
+                )}
+                <ErrorBanner error={error} onDismiss={() => setError("")} />
+                <SyncBar
+                  outbox={planner.outbox}
+                  onOpen={() => present({ sheet: "sync" })}
+                />
+                <AnnouncementBanner />
+                <FocusElsewhere
+                  items={items}
+                  hidden={sheet === "focus"}
+                  onOpen={openFocus}
+                />
+              </View>
+              {/* Sticky on the Calendar tab: its date navigation and view switch. */}
+              <View
+                collapsable={false}
+                onLayout={(e) => {
+                  stickyHeight.current = e.nativeEvent.layout.height;
+                }}
+                style={[s.column, s.sticky]}
+              >
+                <SlotHost slot={calendarControls} />
+              </View>
+              <View
+                ref={content}
+                collapsable={false}
+                // Only records where the column starts; it never scrolls.
+                onLayout={(e) => {
+                  contentY.current = e.nativeEvent.layout.y;
+                }}
+                style={s.column}
+              >
+                <FadeIn key={`body-${tab}`} duration={motion.slow}>
+                  {tab === "Today" && (
+                    <WelcomeBack
+                      onOpenItem={(id) =>
+                        void act(async () => openTask(await client.getItem(id)))
+                      }
+                      onOpenDoc={(docId) =>
+                        void client.getDoc(docId).then((doc) => {
+                          setNote(doc);
+                          present({ sheet: "note" });
+                        })
+                      }
+                      onOpenAsks={() => setTab("Inbox")}
+                    />
+                  )}
+                  {tab === "Today" && (
+                    <TodayScreen
+                      items={items}
+                      onOpenWorkspace={(what) => present({ sheet: what })}
+                      onPlanDay={() => {
+                        setTab("AI");
+                        void assistant.ask(planDayPrompt);
+                      }}
+                      onOpenPlanner={openPlanner}
+                      userId={user?.id}
+                      onQuickAdded={() =>
+                        void refresh({ animate: true }).catch(() => {})
+                      }
+                      onAsk={(text) => {
+                        setTab("AI");
+                        void assistant.ask(text);
+                      }}
+                      onShowAll={() => {
+                        setTab("Tasks");
+                        setSearch("");
+                      }}
+                      onFocus={openFocus}
+                      onOpenById={openTaskById}
+                      onPlanTask={(id) => void startPlanOnly(id)}
+                      onPlanAgain={(id) =>
+                        void act(async () =>
+                          openPlanner(
+                            await client.rollForward([id]),
+                            "Move work forward",
+                          ),
+                        )
+                      }
+                      onOpenCalendar={() => setTab("Calendar")}
+                      {...listHandlers}
+                    />
+                  )}
+                  {tab === "Tasks" && (
+                    <TasksScreen
+                      items={items}
+                      search={search}
+                      onSearch={setSearch}
+                      user={user}
+                      onManageLists={() => setSheet("lists")}
+                      onManageTags={() => setSheet("tags")}
+                      onDragging={setDragging}
+                      onReorder={(i, place) =>
+                        void act(async () => {
+                          await client.moveItem(i.id, place);
+                          await refresh({ animate: true });
+                        })
+                      }
+                      {...listHandlers}
+                    />
+                  )}
+                  {tab === "Calendar" && (
+                    <CalendarScreen
+                      items={items}
+                      act={act}
+                      onChanged={planChanged}
+                      teams={teams}
+                      preview={preview}
+                      onPreviewChange={setPreview}
+                      onPreviewDone={() => setPreview(null)}
+                      onDragging={setDragging}
+                      onOpenOccurrence={openTask}
+                      onFocus={openFocus}
+                      onScrollTo={scrollToView}
+                      controlsSlot={calendarControls}
+                      jump={calendarJump}
+                      {...listHandlers}
+                    />
+                  )}
+                  {tab === "AI" && (
+                    <AssistantScreen
+                      assistant={assistant}
+                      items={items}
+                      busy={busy}
+                      onOpenSource={(source) =>
+                        void client.getDoc(source.doc_id).then((doc) => {
+                          setNote(doc);
+                          setSheet("note");
+                        })
+                      }
+                      onKeptNote={(docId) =>
+                        void client.getDoc(docId).then((doc) => {
+                          setNote(doc);
+                          setSheet("note");
+                        })
+                      }
+                      onShowOnCalendar={(at) => {
+                        setSearch("");
+                        setTab("Calendar");
+                        setCalendarJump({ at, key: Date.now() });
+                      }}
+                    />
+                  )}
+                  {tab === "Inbox" && (
+                    <InboxScreen
+                      notices={notices}
+                      busy={busy}
+                      onRead={markRead}
+                      onReschedule={reschedule}
+                      onOpenBooking={openBookingNotice}
+                      onRollForward={(n) =>
+                        void noticeAction(n, startRollForward)
+                      }
+                      onPlanIt={(n) =>
+                        void noticeAction(n, () => startPlanIt(n.item_id))
+                      }
+                      onOpenItem={(n) =>
+                        void noticeAction(n, () =>
+                          act(async () => {
+                            if (n.item_id)
+                              openTask(await client.getItem(n.item_id));
+                          }),
+                        )
+                      }
+                      onOpenItemById={(id) =>
+                        void act(async () => openTask(await client.getItem(id)))
+                      }
+                      onOpenTemplate={(n) =>
+                        void noticeAction(n, async () => {
+                          setTemplateToOpen(n.ref ?? null);
+                          present({ sheet: "projects" });
+                        })
+                      }
+                      onOpenDoc={(n, docId) =>
+                        void noticeAction(n, () =>
+                          act(async () => {
+                            setNote(await client.getDoc(docId));
+                            present({ sheet: "note" });
+                          }),
+                        )
+                      }
+                    />
+                  )}
+                  {tab === "Browse" && (
+                    <BrowseScreen
+                      user={user}
+                      onOpen={(to) =>
+                        to === "booking" ? openBookings() : setSheet(to)
+                      }
+                    />
+                  )}
+                </FadeIn>
+              </View>
+            </ScrollView>
+            {tab === "AI" && (
+              <View style={[s.footer, sidePadding]}>
+                <View style={s.column}>
+                  <AssistantComposer assistant={assistant} busy={busy} />
+                </View>
+              </View>
+            )}
+          </View>
+          <TabBar
+            tab={tab}
+            onChange={(t) => {
+              // Tapping the tab you're on goes back to its top and refreshes,
+              // the way Instagram and Facebook do. The assistant reads from
+              // the bottom, so there it goes to the newest message instead.
+              if (t === tab) {
+                const animated = !isReducedMotion();
+                if (t === "AI") scroller.current?.scrollToEnd({ animated });
+                else scroller.current?.scrollTo({ y: 0, animated });
+                if (!refreshing) void act(() => refresh());
+                return;
+              }
+              setTab(t);
+              setSearch("");
+            }}
+          />
+          <CelebrationHost bottom={Math.max(insets.bottom, 10) + 64} />
+          <ItemEditor
+            editing={editing}
+            teams={teams}
+            items={items}
+            busy={busy}
+            error={error}
+            onChange={(patch) =>
+              setEditing((prev) => (prev ? { ...prev, ...patch } : prev))
+            }
+            onSave={saveEditing}
+            onDelete={deleteEditing}
+            onClose={closeEditor}
+            onDismissed={goBack}
+          />
+          <TaskDetail
+            visible={sheet === "task"}
+            item={task}
+            items={items}
+            teams={teams}
+            onOpenItem={(i) => {
+              // Switch in place: a subtask or the task above it.
+              setTaskOccurrence(null);
+              setTask(i);
+            }}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onOpenNote={(event: Item) =>
+              void client
+                .itemNote(event.id)
+                .then((made) => {
+                  setNote(made);
+                  setSheet("note");
+                })
+                .catch((e: Error) => setError(errorText(e)))
+            }
+            onEdit={editItem}
+            onFocus={openFocus}
+            onChanged={planChanged}
+            onShowOnCalendar={(at) => {
+              // Straight to the calendar: nothing reopens behind it.
+              back.current = [];
+              setSheet(null);
+              setSearch("");
+              setTab("Calendar");
+              setCalendarJump({ at, key: Date.now() });
+            }}
+          />
+          <FocusScreen
+            item={sheet === "focus" ? focus : null}
+            items={items}
+            onClose={closeFocus}
+            onDismiss={onSheetDismissed}
+            onSwitch={setFocus}
+            onChanged={planChanged}
+            readOnly={!!focus && !listHandlers.canToggle(focus)}
+          />
+          <PlanSheet
+            visible={sheet === "plan"}
+            seed={planSeed}
+            title={planTitle ?? undefined}
+            teams={teams}
+            items={items}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onApplied={() => {
+              setPreview(null);
+              planChanged();
+            }}
+            onShowOnCalendar={(plan) => {
+              setPreview(plan);
+              setTab("Calendar");
+              setSearch("");
+              closeSheet();
+            }}
+            onShowDay={(at) => {
+              // Straight to the calendar: nothing reopens behind it.
+              back.current = [];
+              setSheet(null);
+              setSearch("");
+              setTab("Calendar");
+              setCalendarJump({ at, key: Date.now() });
+            }}
+          />
+          <ListsSheet
+            visible={sheet === "lists"}
+            teams={teams}
+            items={items}
+            handlers={listHandlers}
+            onNewTask={newInList}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <Sheet
+            visible={sheet === "settings"}
+            title="Settings"
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          >
+            {/* Scrolls, with the page's padding, like every other sheet. */}
+            <ScrollView
+              contentContainerStyle={sheetStyles.body}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+              automaticallyAdjustKeyboardInsets
+            >
+              <View style={sheetStyles.column}>
+                <SettingsScreen
+                  user={user}
+                  busy={busy}
+                  act={act}
+                  onUser={setUser}
+                  onSignOut={() => {
+                    setPreview(null);
+                    signOut();
+                  }}
+                  onOpenStatus={() => setSheet("status")}
+                  onOpenPlanning={() => setSheet("planning")}
+                  onOpenConnections={() => setSheet("connections")}
+                  onOpenTags={() => setSheet("tags")}
+                  onOpenHabits={() => setSheet("habits")}
+                  onOpenSync={() => setSheet("sync")}
+                  onAccountDeleted={() => {
+                    setSheet(null);
+                    setPreview(null);
+                    void forgetSession();
+                  }}
+                />
+              </View>
+            </ScrollView>
+          </Sheet>
+          <ProgressSheet
+            visible={sheet === "progress"}
+            teams={teams}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <SyncSheet
+            visible={sheet === "sync"}
+            outbox={planner.outbox}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <StudySheet
+            visible={sheet === "study"}
+            suggestFrom={studySuggest}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onOpenPage={(doc) => {
               setNote(doc);
-              setSheet("note");
-            })
-          }
-          onItemsChanged={() => void refresh()}
-        />
-        <TagsSheet
-          visible={sheet === "tags"}
-          teams={teams}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <HabitsSheet
-          visible={sheet === "habits"}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <PlanningSheet
-          visible={sheet === "planning"}
-          teams={teams}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <ConnectionsSheet
-          visible={sheet === "connections"}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <BookingSheet
-          visible={sheet === "booking"}
-          user={user}
-          teams={teams}
-          bookingId={bookingId}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        <TeamsSheet
-          visible={sheet === "teams"}
-          user={user}
-          teams={teams}
-          busy={busy}
-          error={error}
-          clearError={clearError}
-          act={act}
-          refresh={refresh}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-          onOpenItem={openFromSheet}
-        />
-        <StatusSheet
-          visible={sheet === "status"}
-          onClose={closeSheet}
-          onDismiss={onSheetDismissed}
-        />
-        {hasSystemPermission(user?.role, "admin:access") && (
-          <AdminSheet
-            visible={sheet === "admin"}
+              present({ sheet: "note" });
+            }}
+            onPlanned={() => void refresh()}
+          />
+          <DocsSheet
+            visible={sheet === "docs"}
+            userId={user?.id}
+            canWriteDoc={canWriteIn}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onItemsChanged={() => void refresh()}
+            onMakeCards={(docId, title) => {
+              setStudySuggest({ docId, title });
+              present({ sheet: "study" });
+            }}
+            startInUploads={docsInUploads}
+            onStarted={() => setDocsInUploads(false)}
+          />
+          <DocsSheet
+            visible={sheet === "note"}
+            initialDoc={note}
+            userId={user?.id}
+            canWriteDoc={canWriteIn}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onItemsChanged={() => void refresh()}
+          />
+          <DocsSheet
+            visible={sheet === "agenda"}
+            agenda
+            userId={user?.id}
+            canWriteDoc={canWriteIn}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+            onItemsChanged={() => void refresh()}
+          />
+          <ProjectsSheet
+            canWriteIn={canWriteIn}
+            userId={user?.id}
+            visible={sheet === "projects"}
+            items={items}
+            teams={teams}
+            openTemplate={templateToOpen}
+            onClose={() => {
+              setTemplateToOpen(null);
+              closeSheet();
+            }}
+            onDismiss={onSheetDismissed}
+            onOpenItem={openTask}
+            onOpenNote={(docId) =>
+              void client.getDoc(docId).then((doc) => {
+                setNote(doc);
+                setSheet("note");
+              })
+            }
+            onItemsChanged={() => void refresh()}
+          />
+          <TagsSheet
+            visible={sheet === "tags"}
+            teams={teams}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <HabitsSheet
+            visible={sheet === "habits"}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <PlanningSheet
+            visible={sheet === "planning"}
+            teams={teams}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <ConnectionsSheet
+            visible={sheet === "connections"}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <BookingSheet
+            visible={sheet === "booking"}
             user={user}
+            teams={teams}
+            bookingId={bookingId}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          <TeamsSheet
+            visible={sheet === "teams"}
+            user={user}
+            teams={teams}
             busy={busy}
             error={error}
             clearError={clearError}
@@ -1187,10 +1209,29 @@ export function RootScreen() {
             onClose={closeSheet}
             onDismiss={onSheetDismissed}
             onOpenItem={openFromSheet}
-            onMaintenance={setMaintenance}
           />
-        )}
-      </View>
+          <StatusSheet
+            visible={sheet === "status"}
+            onClose={closeSheet}
+            onDismiss={onSheetDismissed}
+          />
+          {hasSystemPermission(user?.role, "admin:access") && (
+            <AdminSheet
+              visible={sheet === "admin"}
+              user={user}
+              busy={busy}
+              error={error}
+              clearError={clearError}
+              act={act}
+              refresh={refresh}
+              onClose={closeSheet}
+              onDismiss={onSheetDismissed}
+              onOpenItem={openFromSheet}
+              onMaintenance={setMaintenance}
+            />
+          )}
+        </View>
+      </PlannedProvider>
     </PlanningProvider>
   );
 }

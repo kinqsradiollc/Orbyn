@@ -10,6 +10,7 @@ import {
 import {
   ITEM_SORTS,
   dueDayAt,
+  plannedTodayIds,
   isClosed,
   searchItems,
   emptyPlans,
@@ -44,6 +45,7 @@ import {
 } from "../lib/planning";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { usePlanning } from "../lib/planningContext";
+import { usePlanned } from "../lib/plannedContext";
 import { isOverdue } from "../lib/progress";
 import { animateLayout, PressableScale } from "../motion";
 import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
@@ -109,7 +111,7 @@ const KEY_LABELS: Record<Key, string> = {
 const DUE_LABELS: Record<Due, string> = {
   any: "Any time",
   overdue: "Overdue",
-  today: "Today",
+  today: "Today (planned or due)",
   tomorrow: "Tomorrow",
   soon: "Due soon",
   week: "This week",
@@ -251,6 +253,7 @@ export function TasksScreen({
   onDragging?: (dragging: boolean) => void;
 }) {
   const { lists, tags, listById, tagById } = usePlanning();
+  const { feed } = usePlanned();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [filters, setFilters] = useState<Filters>(() => ({
     ...DEFAULTS,
@@ -271,6 +274,9 @@ export function TasksScreen({
     const due = dueDayAt(i);
     return !!due && due >= dayStart(from, now) && due < dayStart(to, now);
   };
+  // "Today" is planned or due today: tasks with a session of yours today too.
+  const plannedToday = plannedTodayIds(feed, now);
+  const today = (i: Item) => within(i, 0, 1) || plannedToday.has(i.id);
 
   // The assignee filter only means something with team items.
   const hasTeamItems = items.some((i) => i.team_id);
@@ -286,7 +292,7 @@ export function TasksScreen({
       filters.due === "any" ||
       (filters.due === "none" && !i.due_at) ||
       (filters.due === "overdue" && isOverdue(i, now)) ||
-      (filters.due === "today" && within(i, 0, 1)) ||
+      (filters.due === "today" && today(i)) ||
       (filters.due === "tomorrow" && within(i, 1, 2)) ||
       // Due soon: the rest of the coming week, after today and tomorrow.
       (filters.due === "soon" && within(i, 2, 7)) ||
@@ -386,9 +392,10 @@ export function TasksScreen({
   // Pinned sections: open tasks by when they're due, each in one section only.
   // A due filter is already a smart list, so it shows without them.
   const pinnedAs = (i: Item): "overdue" | Pin | null => {
-    if (isClosed(i.status) || !i.due_at) return null;
-    if (isOverdue(i, now)) return "overdue";
-    if (within(i, 0, 1)) return "today";
+    if (isClosed(i.status)) return null;
+    if (i.due_at && isOverdue(i, now)) return "overdue";
+    if (today(i)) return "today";
+    if (!i.due_at) return null;
     if (within(i, 1, 2)) return "tomorrow";
     return within(i, 2, 7) ? "soon" : null;
   };
@@ -796,7 +803,9 @@ export function TasksScreen({
                 hint={
                   section.key === "overdue"
                     ? "Due before today and still open"
-                    : undefined
+                    : section.key === "today"
+                      ? "Planned or due today"
+                      : undefined
                 }
               />
               <ItemRows items={section.items} {...listRowProps} />
