@@ -482,6 +482,20 @@ Trash doesn't count: the event gets a fresh one. If the old one is restored whil
 written in, both are kept and the event opens the one written in last. Two first opens at once (or
 one and a page made from a template for the same event) still make only one note.
 
+A repeating event keeps a note per time (each lecture of a term, each standup): the body
+`{ "occurrence": "<start>" }` — a calendar entry's `occurrence`, or the new start of a time moved
+on its own — opens that time's note, titled with its day ("Physics lecture · 25 September 2026")
+and carrying `occurrence`. Without a body the note is the whole series' own. `422` for a time the
+event doesn't have. A note's `occurrence` is `null` for any other page.
+
+### `GET /docs/event-notes?items=<id,id,…>&from=&to=` (auth)
+
+The notes some events have, to mark them: `[ { doc_id, title, item_id, occurrence, team_id } ]`,
+latest edited first, for at most 200 event ids. Only notes you can see in each event's own space,
+none in Trash. `from`/`to` keep a repeating event's per-time notes to those first starts (series
+notes always come back). `eventNoteFor(notes, entry)` in `packages/core/src/docs.ts` picks the one
+a calendar entry opens, by the same rule as the server. `422` for no ids, a bad id or more than 200.
+
 ### `POST /docs/:id/tasks` (auth)
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
@@ -659,14 +673,16 @@ touched. Starters: Lecture notes, Lab report, Essay plan, Meeting, Weekly review
   page as a template with its folder and tags, boxes unticked. A team page makes a team template
   unless `personal`.
 - `POST /page-templates/:id/use` `{ title?, team_id?, folder_id?, project_id?, event_id?,
-event_at?, make_tasks? }` → `201 { doc, tasks_created, existing: false }`. Any template (a starter
+event_at?, occurrence?, make_tasks? }` → `201 { doc, tasks_created, existing: false }`. Any template (a starter
   too) makes a page in your space or, with `team_id`, a team's you can write in (`403` for a
   viewer); without `team_id` it goes where the event, else the template, is. Event, project and
   folder must be in that space (`404`). With a project the page belongs to it; with `make_tasks`
   its to-do lines become tasks in that project's first stage, tied to their lines. With an event
   the page is that event's note and `{event}` is its title — unless the event already has a note:
   then nothing is made and the answer is `200 { doc: <that note>, tasks_created: 0, existing:
-true }`, the same note `POST /items/:id/note` opens. A line that only labels blanks left empty
+true }`, the same note `POST /items/:id/note` opens. For a repeating event, `occurrence` (else
+  `event_at`) says which time the page is the note for, so each lecture gets its own page; with
+  neither, it is the series' note. `422` for a time the event doesn't have. A line that only labels blanks left empty
   (`Course: {project}` with no project) is left off the page.
 
 ### `GET /docs/:id/export?format=` (auth)

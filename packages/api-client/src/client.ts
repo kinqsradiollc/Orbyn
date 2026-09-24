@@ -44,6 +44,7 @@ import {
   type Proposed,
   type SearchHit,
   type DocSummary,
+  type EventNoteRef,
   type DocVersion,
   type DocVersionChanges,
   type Favourite,
@@ -798,9 +799,43 @@ export class OrbynClient {
       { method: "POST", body: { timezone } },
     );
   }
-  /** The note for an event, created from a template the first time. */
-  itemNote(itemId: string) {
-    return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
+  /**
+   * The note for an event, created from a template the first time. For a
+   * repeating event, `occurrence` (the calendar entry's) opens that class's
+   * own note; without it, the series' note.
+   */
+  itemNote(itemId: string, occurrence?: string | null) {
+    return this.request<Doc>(`/items/${itemId}/note`, {
+      method: "POST",
+      ...(occurrence ? { body: { occurrence } } : {}),
+    });
+  }
+  /**
+   * The notes these events have, to mark them (`eventNoteFor` finds an
+   * entry's). `from`/`to` keep a repeating event's class notes to the
+   * times shown.
+   */
+  async eventNotes(
+    itemIds: string[],
+    range: { from?: string; to?: string } = {},
+  ): Promise<EventNoteRef[]> {
+    const ids = [...new Set(itemIds)];
+    // The server takes 200 events at a time.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 200)
+      chunks.push(ids.slice(i, i + 200));
+    const found = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<EventNoteRef[]>(
+          `/docs/event-notes?${new URLSearchParams({
+            items: chunk.join(","),
+            ...(range.from ? { from: range.from } : {}),
+            ...(range.to ? { to: range.to } : {}),
+          })}`,
+        ),
+      ),
+    );
+    return found.flat();
   }
   /**
    * Turn a page's open checklist lines into tasks: every one that isn't a

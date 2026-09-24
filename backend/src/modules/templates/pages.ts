@@ -28,10 +28,14 @@ import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import {
   COLUMNS as DOC_COLUMNS,
+  EVENT_COLUMNS,
   JOINS as DOC_JOINS,
   eventNote,
+  eventTime,
+  lockEventNote,
   makeLineTasks,
   pageTags,
+  type EventRow,
 } from "../docs/routes.js";
 
 /**
@@ -230,13 +234,8 @@ async function usePageTemplate(
   await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
   const event = input.event_id
     ? ((
-        await db.query<{
-          id: string;
-          title: string;
-          due_at: Date | null;
-          team_id: string | null;
-        }>(
-          `SELECT i.id, i.title, i.due_at, i.team_id FROM items i
+        await db.query<EventRow>(
+          `SELECT ${EVENT_COLUMNS} FROM items i
             WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
           [u.id, input.event_id],
         )
@@ -252,15 +251,19 @@ async function usePageTemplate(
         : template.team_id;
   if (teamId) await requireTeam(teamId, u, "items:write", db);
   if (event && event.team_id !== teamId) fail(404, "Event not found");
-  if (event) {
-    // An event keeps one note. When it has one already, that note is the
-    // answer — the same one opening the event finds — rather than a second
-    // page the event would switch between. Two people choosing the same
-    // event at once wait for each other here, so only one note is made.
-    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      `event-note:${event.id}`,
-    ]);
-    const existing = await eventNote(db, u, event.id, teamId);
+  // Which time of the event the page is for: a class of a repeating one
+  // keeps its own note, so a term of lectures makes a page per lecture.
+  const when = event
+    ? await eventTime(db, event, input.occurrence ?? input.event_at)
+    : null;
+  if (event && when) {
+    // An event (a class of a repeating one) keeps one note. When it has
+    // one already, that note is the answer — the same one opening the
+    // event finds — rather than a second page the event would switch
+    // between. Two people choosing the same class at once wait for each
+    // other here, so only one note is made.
+    await lockEventNote(db, event.id, when);
+    const existing = await eventNote(db, u, event.id, teamId, when);
     if (existing) return { doc: existing, tasks_created: 0, existing: true };
   }
   const project = input.project_id
@@ -288,20 +291,20 @@ async function usePageTemplate(
         event
           ? input.event_at
             ? new Date(input.event_at)
-            : (event.due_at ?? new Date())
+            : (when?.start ?? event.due_at ?? new Date())
           : new Date(),
         tz,
       ),
       project: project?.name ?? "",
-      event: event?.title ?? "",
+      event: when?.title ?? event?.title ?? "",
     },
     input.title,
   );
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
-         folder_id, project_id)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING id`,
+         folder_id, project_id, occurrence)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9) RETURNING id`,
       [
         u.id,
         teamId,
@@ -311,6 +314,7 @@ async function usePageTemplate(
         event?.id ?? null,
         folderId,
         project?.id ?? null,
+        when?.occurrence ?? null,
       ],
     )
   ).rows[0].id;

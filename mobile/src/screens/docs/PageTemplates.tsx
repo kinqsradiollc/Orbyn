@@ -4,12 +4,14 @@ import {
   addDays,
   blankDate,
   blanksIn,
+  eventNoteFor,
   fillTitle,
   hasTeamPermission,
   localDateKey,
   templateTodos,
   type CalendarEntry,
   type Doc,
+  type EventNoteRef,
   type Folder,
   type PageTemplate,
   type Project,
@@ -102,8 +104,8 @@ export function PageTemplatesPanel({
   /** Teams whose pages you can write: the other places a page can go. */
   const [teams, setTeams] = useState<Team[]>([]);
   const [space, setSpace] = useState<Space>("");
-  /** Events that have a note already, by event and space. */
-  const [notes, setNotes] = useState<Set<string>>(new Set());
+  /** The notes the listed events have, which open instead of a new page. */
+  const [notes, setNotes] = useState<EventNoteRef[]>([]);
 
   const load = () =>
     client.listPageTemplates().then(setTemplates, (e: Error) => {
@@ -121,17 +123,6 @@ export function PageTemplatesPanel({
         setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
       () => setTeams([]),
     );
-    client.listDocs({ kind: "meeting" }).then(
-      (all) =>
-        setNotes(
-          new Set(
-            all.flatMap((d) =>
-              d.item_id ? [`${d.item_id}|${d.team_id ?? ""}`] : [],
-            ),
-          ),
-        ),
-      () => setNotes(new Set()),
-    );
     const today = localDateKey(new Date(), deviceTimeZone());
     client
       .calendar(
@@ -139,12 +130,17 @@ export function PageTemplatesPanel({
         new Date(`${addDays(today, 8)}T00:00:00`).toISOString(),
       )
       .then(
-        (view) =>
-          setEvents(
-            view.entries
-              .filter((e) => e.kind === "event")
-              .sort((a, b) => a.start_at.localeCompare(b.start_at)),
-          ),
+        (view) => {
+          const listed = view.entries
+            .filter((e) => e.kind === "event")
+            .sort((a, b) => a.start_at.localeCompare(b.start_at));
+          setEvents(listed);
+          // Which of these have a note, asked of these events alone.
+          if (listed.length)
+            client
+              .eventNotes(listed.map((e) => e.item_id))
+              .then(setNotes, () => setNotes([]));
+        },
         () => setEvents([]),
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,8 +150,10 @@ export function PageTemplatesPanel({
   const inSpace = (x: { team_id?: string | null }) =>
     (x.team_id ?? null) === team;
   const event = events.find((e) => eventKey(e) === eventId && inSpace(e));
-  /** Whether an event has a note already, which opens instead. */
-  const noted = (e: CalendarEntry) => notes.has(`${e.item_id}|${space}`);
+  /** Whether an event (this class of it) has a note, which opens instead. */
+  const noted = (e: CalendarEntry) => !!eventNoteFor(notes, e);
+  /** The note the chosen event already has: choosing it opens that note. */
+  const opens = event ? eventNoteFor(notes, event) : undefined;
   const project = projects.find((p) => p.id === projectId && inSpace(p));
   const usesEvent = picked ? blanksIn(picked).includes("event") : false;
   const todos = picked ? templateTodos(picked.content) : 0;
@@ -230,6 +228,7 @@ export function PageTemplatesPanel({
         project_id: project?.id ?? null,
         event_id: event ? event.item_id : null,
         ...(event ? { event_at: event.start_at } : {}),
+        ...(event?.occurrence ? { occurrence: event.occurrence } : {}),
         folder_id: folder || null,
         make_tasks: makeTasks,
       })
@@ -349,19 +348,21 @@ export function PageTemplatesPanel({
         )
       ) : (
         <View style={s.form}>
-          <View>
-            <Text style={shared.label}>Title</Text>
-            <TextInput
-              style={shared.input}
-              value={title}
-              maxLength={200}
-              onChangeText={(text) => {
-                setTitle(text);
-                setNamed(true);
-              }}
-              accessibilityLabel="Title"
-            />
-          </View>
+          {!opens && (
+            <View>
+              <Text style={shared.label}>Title</Text>
+              <TextInput
+                style={shared.input}
+                value={title}
+                maxLength={200}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  setNamed(true);
+                }}
+                accessibilityLabel="Title"
+              />
+            </View>
+          )}
           {teams.length > 0 && (
             <View>
               <Text style={shared.label}>Where</Text>
@@ -382,27 +383,29 @@ export function PageTemplatesPanel({
               </ChipRow>
             </View>
           )}
-          <View>
-            <Text style={shared.label}>Project</Text>
-            <ChipRow label="Project">
-              <Chip
-                label="None"
-                selected={!project}
-                onPress={() => {
-                  setProjectId("");
-                  setMakeTasks(false);
-                }}
-              />
-              {projects.filter(inSpace).map((p) => (
+          {!opens && (
+            <View>
+              <Text style={shared.label}>Project</Text>
+              <ChipRow label="Project">
                 <Chip
-                  key={p.id}
-                  label={p.name}
-                  selected={projectId === p.id}
-                  onPress={() => setProjectId(p.id)}
+                  label="None"
+                  selected={!project}
+                  onPress={() => {
+                    setProjectId("");
+                    setMakeTasks(false);
+                  }}
                 />
-              ))}
-            </ChipRow>
-          </View>
+                {projects.filter(inSpace).map((p) => (
+                  <Chip
+                    key={p.id}
+                    label={p.name}
+                    selected={projectId === p.id}
+                    onPress={() => setProjectId(p.id)}
+                  />
+                ))}
+              </ChipRow>
+            </View>
+          )}
           {usesEvent && (
             <View>
               <Text style={shared.label}>Event</Text>
@@ -424,34 +427,38 @@ export function PageTemplatesPanel({
                     />
                   ))}
               </ChipRow>
-              {!!event && noted(event) && (
+              {!!opens && (
                 <Text style={[shared.small, s.noted]}>
-                  This event already has a note. It opens instead of a new page.
+                  This event already has a note
+                  {event?.occurrence ? " for this day" : ""}, “
+                  {opens.title || "Untitled"}”. It opens instead of a new page.
                 </Text>
               )}
             </View>
           )}
-          <View>
-            <Text style={shared.label}>Folder</Text>
-            <ChipRow label="Folder">
-              <Chip
-                label="Unfiled"
-                selected={!folder}
-                onPress={() => setFolder("")}
-              />
-              {folders
-                .filter((f) => (f.team_id ?? "") === space)
-                .map((f) => (
-                  <Chip
-                    key={f.id}
-                    label={f.name}
-                    selected={folder === f.id}
-                    onPress={() => setFolder(f.id)}
-                  />
-                ))}
-            </ChipRow>
-          </View>
-          {todos > 0 && !(event && noted(event)) && (
+          {!opens && (
+            <View>
+              <Text style={shared.label}>Folder</Text>
+              <ChipRow label="Folder">
+                <Chip
+                  label="Unfiled"
+                  selected={!folder}
+                  onPress={() => setFolder("")}
+                />
+                {folders
+                  .filter((f) => (f.team_id ?? "") === space)
+                  .map((f) => (
+                    <Chip
+                      key={f.id}
+                      label={f.name}
+                      selected={folder === f.id}
+                      onPress={() => setFolder(f.id)}
+                    />
+                  ))}
+              </ChipRow>
+            </View>
+          )}
+          {todos > 0 && !opens && (
             <View style={s.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.name}>
@@ -472,7 +479,7 @@ export function PageTemplatesPanel({
               />
             </View>
           )}
-          {event && noted(event) ? (
+          {opens ? (
             <Button
               title={busy ? "Opening…" : "Open its note"}
               icon="fileText"

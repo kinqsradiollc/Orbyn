@@ -167,9 +167,85 @@ test("nothing you wrote is lost when the Notes heading is gone", () => {
     ],
     fresh,
   );
+  // The calendar's line is still on the fresh page, so it isn't kept twice.
+  const withExam: DocBlock[] = [
+    ...top,
+    { type: "heading", level: 2, text: "Coming up" },
+    { type: "bullet", text: "Fri 26 Sept · Exam" },
+    ...fresh.slice(top.length),
+  ];
+  const sameExam = keepAgendaNotes(
+    [
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Coming up" },
+      { type: "bullet", text: "Fri 26 Sept · Exam" },
+      { type: "heading", level: 2, text: "End of day" },
+      { type: "bullet", text: "What went well: the lab" },
+    ],
+    withExam,
+  );
+  assert.deepEqual(texts(sameExam.slice(top.length)), [
+    "Coming up",
+    "Fri 26 Sept · Exam",
+    "End of day",
+    "What went well: the lab",
+  ]);
+  assert.equal(sameExam[top.length + 2].id, AGENDA_NOTES_ID);
+  // One the fresh page no longer has is still the calendar's, by its shape.
   assert.deepEqual(texts(noNotes.slice(top.length)), [
     "End of day",
     "What went well: the lab",
+  ]);
+
+  // Notes deleted with your lines left under the calendar's last section,
+  // and End of day below them: the lines are kept, under a fresh Notes
+  // heading in front of End of day.
+  const stray = keepAgendaNotes(
+    [
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Coming up" },
+      { type: "bullet", text: "Fri 26 Sept · Exam" },
+      { type: "paragraph", text: "my private thoughts" },
+      { type: "paragraph", text: "" },
+      { type: "heading", level: 2, text: "End of day" },
+      { type: "bullet", text: "What went well: lots" },
+    ],
+    withExam,
+  );
+  assert.deepEqual(texts(stray.slice(top.length)), [
+    "Coming up",
+    "Fri 26 Sept · Exam",
+    "Notes",
+    "my private thoughts",
+    "End of day",
+    "What went well: lots",
+  ]);
+  assert.equal(stray[top.length + 2].id, AGENDA_NOTES_ID);
+  // End of day keeps its own (lack of a) name: Notes has the name now.
+  assert.equal(stray[top.length + 4].id, undefined);
+  assert.equal(agendaNotesAt(stray), top.length + 2);
+  // Written again, the page is found by its Notes heading and stays put.
+  assert.deepEqual(keepAgendaNotes(stray, withExam), stray);
+  // As the review found it: the exam gone from the calendar since, and your
+  // lines right under it — the exam line goes, your words stay.
+  const found = keepAgendaNotes(
+    [
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Coming up" },
+      { type: "bullet", text: "Fri 26 Sept · Exam" },
+      { type: "paragraph", text: "my private thoughts" },
+      { type: "bullet", text: "ask about the lab" },
+      { type: "heading", level: 2, text: "End of day" },
+      { type: "bullet", text: "What went well: lots" },
+    ],
+    fresh,
+  );
+  assert.deepEqual(texts(found.slice(top.length)), [
+    "Notes",
+    "my private thoughts",
+    "ask about the lab",
+    "End of day",
+    "What went well: lots",
   ]);
 
   // No heading left to go by at all: every line of yours that the fresh

@@ -921,7 +921,13 @@ export function RootScreen() {
           onDismiss={onSheetDismissed}
           onOpenNote={(event: Item) =>
             void client
-              .itemNote(event.id)
+              // Opened on one class of a repeating event: that class's note.
+              .itemNote(
+                event.id,
+                event.rrule && taskOccurrence?.itemId === event.id
+                  ? taskOccurrence.occurrence
+                  : null,
+              )
               .then((made) => {
                 setNote(made);
                 setSheet("note");

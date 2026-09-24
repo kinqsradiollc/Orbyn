@@ -511,6 +511,38 @@ export const docListQuery = z
   })
   .strict();
 
+/**
+ * Which time of a repeating event a note is for: the calendar entry's
+ * `occurrence` (the class's first start; its new time works too when that
+ * one class was moved). Left out, the note is the whole series' own.
+ */
+export const itemNoteInput = z
+  .object({ occurrence: z.iso.datetime({ offset: true }).optional() })
+  .strict();
+
+/**
+ * The notes some events have, for marking them: `items` is a comma-separated
+ * list of event ids (at most 200), and `from`/`to` keep a repeating event's
+ * class notes to the times being shown.
+ */
+export const eventNotesQuery = z
+  .object({
+    items: z
+      .string()
+      .transform((s) => [
+        ...new Set(
+          s
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        ),
+      ])
+      .pipe(z.array(z.uuid()).min(1).max(200)),
+    from: z.iso.datetime({ offset: true }).optional(),
+    to: z.iso.datetime({ offset: true }).optional(),
+  })
+  .strict();
+
 export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
 
 /** Changes proposed to a page, sent together as one edit produced them. */

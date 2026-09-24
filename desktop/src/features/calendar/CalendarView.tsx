@@ -94,7 +94,8 @@ type Props = {
   items: Item[];
   teams: Team[];
   canWrite: (item: Item) => boolean;
-  onOpen: (item: Item) => void;
+  /** Opens an item; on a repeating one, `occurrence` is the time clicked. */
+  onOpen: (item: Item, occurrence?: OccurrenceRef) => void;
   /** Opens the item editor (to edit a whole series). */
   onEditItem: (item: Item, occurrence?: OccurrenceRef) => void;
   onFocus: (item: Item) => void;
@@ -143,6 +144,12 @@ const shortDay = (iso: string) =>
     month: "short",
     day: "numeric",
   });
+
+/** Which time of a repeating item an entry is, for opening or editing it. */
+const occurrenceOf = (e: CalendarEntry): OccurrenceRef | undefined =>
+  e.occurrence
+    ? { occurrence: e.occurrence, start_at: e.start_at, end_at: e.end_at }
+    : undefined;
 
 /**
  * Month / Week / Day / Agenda calendar on the calendar API, with calendar
@@ -671,7 +678,12 @@ export function CalendarView({
   /** Open an item from the month grid or day list; external events show their details. */
   const openKey = (i: Item, anchor?: DOMRect) => {
     const x = externalById.get(i.id);
-    if (!x) return withItem(itemIdOf(i.id), onOpen);
+    if (!x) {
+      const entry = entries.find((e) => entryKey(e) === i.id);
+      return withItem(itemIdOf(i.id), (item) =>
+        onOpen(item, entry && occurrenceOf(entry)),
+      );
+    }
     setMenu({
       kind: "external",
       event: x,
@@ -937,7 +949,11 @@ export function CalendarView({
           canComplete={canComplete(menu.entry)}
           onReopen={() => void reopen(menu.entry.item_id)}
           onClose={() => setMenu(null)}
-          onOpen={() => withItem(menu.entry.item_id, onOpen)}
+          onOpen={() =>
+            withItem(menu.entry.item_id, (item) =>
+              onOpen(item, occurrenceOf(menu.entry)),
+            )
+          }
           onEditSeries={() => {
             const e = menu.entry;
             withItem(e.item_id, (item) =>

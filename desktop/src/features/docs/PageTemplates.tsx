@@ -12,12 +12,14 @@ import {
   addDays,
   blankDate,
   blanksIn,
+  eventNoteFor,
   fillTitle,
   hasTeamPermission,
   localDateKey,
   templateTodos,
   type CalendarEntry,
   type Doc,
+  type EventNoteRef,
   type Folder,
   type PageTemplate,
   type Project,
@@ -123,8 +125,8 @@ export function PageTemplatesDialog({
   /** Teams whose pages you can write: the other places a page can go. */
   const [teams, setTeams] = useState<Team[]>([]);
   const [space, setSpace] = useState<Space>("");
-  /** Events that have a note already, by event, with the note's id. */
-  const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  /** The notes the listed events have, which open instead of a new page. */
+  const [notes, setNotes] = useState<EventNoteRef[]>([]);
   const [menu, setMenu] = useState<DOMRect | null>(null);
 
   const load = () =>
@@ -143,17 +145,6 @@ export function PageTemplatesDialog({
         setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
       () => setTeams([]),
     );
-    client.listDocs({ kind: "meeting" }).then(
-      (all) =>
-        setNotes(
-          new Map(
-            all.flatMap((d) =>
-              d.item_id ? [[`${d.item_id}|${d.team_id ?? ""}`, d.id]] : [],
-            ),
-          ),
-        ),
-      () => setNotes(new Map()),
-    );
     const tz = deviceTimeZone();
     const today = localDateKey(new Date(), tz);
     client
@@ -162,12 +153,17 @@ export function PageTemplatesDialog({
         new Date(`${addDays(today, 15)}T00:00:00`).toISOString(),
       )
       .then(
-        (view) =>
-          setEvents(
-            view.entries
-              .filter((e) => e.kind === "event")
-              .sort((a, b) => a.start_at.localeCompare(b.start_at)),
-          ),
+        (view) => {
+          const listed = view.entries
+            .filter((e) => e.kind === "event")
+            .sort((a, b) => a.start_at.localeCompare(b.start_at));
+          setEvents(listed);
+          // Which of these have a note, asked of these events alone.
+          if (listed.length)
+            client
+              .eventNotes(listed.map((e) => e.item_id))
+              .then(setNotes, () => setNotes([]));
+        },
         () => setEvents([]),
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,8 +179,10 @@ export function PageTemplatesDialog({
   const inSpace = (x: { team_id?: string | null }) =>
     (x.team_id ?? null) === team;
   const event = events.find((e) => eventKey(e) === eventId && inSpace(e));
-  /** The note the chosen event already has, which is opened instead. */
-  const noted = (e: CalendarEntry) => notes.has(`${e.item_id}|${space}`);
+  /** Whether an event (this class of it) has a note, which opens instead. */
+  const noted = (e: CalendarEntry) => !!eventNoteFor(notes, e);
+  /** The note the chosen event already has: choosing it opens that note. */
+  const opens = event ? eventNoteFor(notes, event) : undefined;
   const project = projects.find((p) => p.id === projectId && inSpace(p));
   const usesEvent = picked ? blanksIn(picked).includes("event") : false;
   const todos = picked ? templateTodos(picked.content) : 0;
@@ -261,6 +259,7 @@ export function PageTemplatesDialog({
           project_id: project?.id ?? null,
           event_id: event ? event.item_id : null,
           ...(event ? { event_at: event.start_at } : {}),
+          ...(event?.occurrence ? { occurrence: event.occurrence } : {}),
           folder_id: folder || null,
           make_tasks: makeTasks,
         },
@@ -422,22 +421,24 @@ export function PageTemplatesDialog({
                 void create();
               }}
             >
-              {sections.length > 0 && (
+              {sections.length > 0 && !opens && (
                 <p className="muted page-template-sections">
                   {sections.join(" · ")}
                 </p>
               )}
-              <label>
-                Title
-                <input
-                  value={title}
-                  maxLength={200}
-                  onChange={(e) => {
-                    setTitle(e.target.value);
-                    setNamed(true);
-                  }}
-                />
-              </label>
+              {!opens && (
+                <label>
+                  Title
+                  <input
+                    value={title}
+                    maxLength={200}
+                    onChange={(e) => {
+                      setTitle(e.target.value);
+                      setNamed(true);
+                    }}
+                  />
+                </label>
+              )}
               {teams.length > 0 && (
                 <label>
                   Where
@@ -454,23 +455,25 @@ export function PageTemplatesDialog({
                   </Select>
                 </label>
               )}
-              <label>
-                Project
-                <Select
-                  value={project?.id ?? ""}
-                  onChange={(e) => {
-                    setProjectId(e.target.value);
-                    if (!e.target.value) setMakeTasks(false);
-                  }}
-                >
-                  <option value="">None</option>
-                  {projects.filter(inSpace).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
-              </label>
+              {!opens && (
+                <label>
+                  Project
+                  <Select
+                    value={project?.id ?? ""}
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      if (!e.target.value) setMakeTasks(false);
+                    }}
+                  >
+                    <option value="">None</option>
+                    {projects.filter(inSpace).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              )}
               {usesEvent && (
                 <label>
                   Event
@@ -486,31 +489,36 @@ export function PageTemplatesDialog({
                       </option>
                     ))}
                   </Select>
-                  {event && noted(event) && (
+                  {opens && (
                     <small className="field-hint page-template-noted">
                       <FileText size={13} aria-hidden="true" /> This event
-                      already has a note. It opens instead of a new page.
+                      already has a note
+                      {event?.occurrence ? " for this day" : ""}, “
+                      {opens.title || "Untitled"}”. It opens instead of a new
+                      page.
                     </small>
                   )}
                 </label>
               )}
-              <label>
-                Folder
-                <Select
-                  value={folder}
-                  onChange={(e) => setFolder(e.target.value)}
-                >
-                  <option value="">Unfiled</option>
-                  {folders
-                    .filter((f) => (f.team_id ?? "") === space)
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name}
-                      </option>
-                    ))}
-                </Select>
-              </label>
-              {todos > 0 && !(event && noted(event)) && (
+              {!opens && (
+                <label>
+                  Folder
+                  <Select
+                    value={folder}
+                    onChange={(e) => setFolder(e.target.value)}
+                  >
+                    <option value="">Unfiled</option>
+                    {folders
+                      .filter((f) => (f.team_id ?? "") === space)
+                      .map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                  </Select>
+                </label>
+              )}
+              {todos > 0 && !opens && (
                 <label className="switch-line">
                   <input
                     type="checkbox"
@@ -530,13 +538,13 @@ export function PageTemplatesDialog({
                   </span>
                 </label>
               )}
-              {picked.tags.length > 0 && (
+              {picked.tags.length > 0 && !opens && (
                 <p className="muted page-template-sections">
                   Tagged {picked.tags.map((g) => `#${g.name}`).join(" ")}
                 </p>
               )}
               <div className="confirm-actions">
-                {event && noted(event) ? (
+                {opens ? (
                   <button type="submit" className="primary" disabled={busy}>
                     <FileText size={15} aria-hidden="true" /> Open its note
                   </button>

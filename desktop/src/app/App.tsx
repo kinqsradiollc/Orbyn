@@ -151,6 +151,14 @@ export function App() {
   const [draft, setDraft] = useState<Partial<ItemInput> | null>(null);
   /** The task open in the detail panel (as last seen, in case it isn't in `items`). */
   const [openTask, setOpenTask] = useState<Item | null>(null);
+  /** The time of a repeating event the task panel was opened on. */
+  const [openOccurrence, setOpenOccurrence] = useState<{
+    itemId: string;
+    occurrence: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!openTask) setOpenOccurrence(null);
+  }, [openTask]);
   /** The task in focus mode. */
   const [focusTask, setFocusTask] = useState<Item | null>(null);
   /** A meeting note opened from its event, handed to the Docs view. */
@@ -352,7 +360,16 @@ export function App() {
     if (status !== i.status && guard(i)) void planner.setItemStatus(i, status);
   };
 
-  const openItem = (i: Item) => setOpenTask(i);
+  /**
+   * Opens an item in the task panel. Opened on one time of a repeating
+   * event (a class), that time is kept, so its meeting note is that class's.
+   */
+  const openItem = (i: Item, occurrence?: OccurrenceRef) => {
+    setOpenTask(i);
+    setOpenOccurrence(
+      occurrence ? { itemId: i.id, occurrence: occurrence.occurrence } : null,
+    );
+  };
   const closeTask = useCallback(() => setOpenTask(null), []);
   const closeFocus = useCallback(() => setFocusTask(null), []);
   const startFocus = (i: Item) => {
@@ -437,6 +454,7 @@ export function App() {
   };
   /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
   const openItemById = (id: string) => {
+    setOpenOccurrence(null);
     const found = items.find((i) => i.id === id);
     if (found) setOpenTask(found);
     else client.getItem(id).then(setOpenTask, report);
@@ -868,12 +886,18 @@ export function App() {
             onEdit={setEditing}
             onFocus={startFocus}
             items={items}
-            onOpenItem={setOpenTask}
+            onOpenItem={(i) => openItem(i)}
             onChanged={refresh}
             onError={report}
             onOpenNote={(event) => {
               void client
-                .itemNote(event.id)
+                // Opened on one class of a repeating event: that class's note.
+                .itemNote(
+                  event.id,
+                  event.rrule && openOccurrence?.itemId === event.id
+                    ? openOccurrence.occurrence
+                    : null,
+                )
                 .then((note) => {
                   closeTask();
                   setNoteDoc(note);

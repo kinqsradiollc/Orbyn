@@ -273,7 +273,50 @@ export type Doc = {
   in_uploads?: boolean;
   /** For a daily agenda, the day it is for ("2026-09-24"). */
   agenda_date?: string | null;
+  /**
+   * For the note of one class of a repeating event, which class: its first
+   * start, as the calendar's `occurrence`. Null for any other page.
+   */
+  occurrence?: string | null;
 };
+
+/** A note an event has (`GET /docs/event-notes`): enough to mark the event. */
+export type EventNoteRef = {
+  doc_id: string;
+  /** The note's title, to say which page opens. */
+  title: string;
+  item_id: string;
+  /** The class it is for, on a repeating event; null for the whole event. */
+  occurrence: string | null;
+  team_id: string | null;
+};
+
+/**
+ * The note an event on the calendar opens, of `notes` (latest edited
+ * first): for one time of a repeating event (a calendar entry's
+ * `occurrence`), that time's own; for a repeating event with no time
+ * given, the series' own; for any other event, its note. The same rule the
+ * server keeps when a note is opened or made.
+ */
+export function eventNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    rrule?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  const at = entry.occurrence ? Date.parse(entry.occurrence) : null;
+  return notes.find(
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      (at !== null
+        ? n.occurrence !== null && Date.parse(n.occurrence) === at
+        : !entry.rrule || n.occurrence === null),
+  );
+}
 
 /** Where an imported page came from. The file itself is not kept. */
 export type DocImportSource = {

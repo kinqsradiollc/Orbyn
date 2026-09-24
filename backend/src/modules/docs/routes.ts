@@ -31,6 +31,11 @@ import {
   isDateKey,
   agendaTitleOn,
   PAGE_TAG_LIMIT,
+  blankDate,
+  eventNotesQuery,
+  itemNoteInput,
+  type EventNoteRef,
+  type OccurrenceChanges,
   type DocTag,
   type TrashedDoc,
   type Doc,
@@ -52,7 +57,11 @@ import {
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
-import { loadPrefs } from "../planner/calendar.js";
+import {
+  isOccurrence,
+  loadPrefs,
+  type SeriesRow,
+} from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { hasVectors } from "../search/semantic.js";
@@ -76,7 +85,7 @@ import { docToPdf } from "./pdf.js";
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
-  to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date,
+  to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
@@ -225,6 +234,7 @@ async function dropStandInCopy(db: Queryable, docId: string) {
             AND c.agenda_date IS NOT DISTINCT FROM d.agenda_date)
           OR (d.kind = 'meeting' AND d.item_id IS NOT NULL
             AND c.item_id = d.item_id
+            AND c.occurrence IS NOT DISTINCT FROM d.occurrence
             AND c.team_id IS NOT DISTINCT FROM d.team_id
             AND (d.team_id IS NOT NULL OR c.user_id = d.user_id))
         )
@@ -578,24 +588,122 @@ export async function tagNamed(
   return made ?? (await find())!;
 }
 
+/** The event columns finding its note needs: the series, for its classes. */
+export const EVENT_COLUMNS = `i.id, i.title, i.kind, i.due_at, i.end_at,
+  i.location, i.team_id, i.user_id, i.rrule, i.timezone, i.series_start,
+  i.exdates, i.all_day`;
+
+export type EventRow = {
+  id: string;
+  title: string;
+  kind: SeriesRow["kind"];
+  due_at: Date | null;
+  end_at: Date | null;
+  location: string;
+  team_id: string | null;
+  user_id: string;
+  rrule: string | null;
+  timezone: string;
+  series_start: Date | null;
+  exdates: Date[];
+  all_day: boolean;
+};
+
+/**
+ * Which time of an event a note is for. A repeating event keeps a note per
+ * class, known by the class's first start (`occurrence`, as the calendar
+ * gives it); `start` is when that class now starts, and `title` what it's
+ * called, for the note's first lines. An event that doesn't repeat, or a
+ * whole series (no time given), keeps one note: `occurrence` is null.
+ */
+export type EventTime = {
+  repeats: boolean;
+  occurrence: Date | null;
+  start: Date | null;
+  title: string;
+};
+
+/**
+ * The time `at` of an event, as a note is kept for it. `at` is a class's
+ * first start or, for a class moved on its own, its new start too; anything
+ * that is neither is refused, so a note never hangs off a time the event
+ * doesn't have.
+ */
+export async function eventTime(
+  db: Queryable,
+  event: EventRow,
+  at: string | undefined,
+): Promise<EventTime> {
+  if (!event.rrule || !event.due_at)
+    return {
+      repeats: false,
+      occurrence: null,
+      start: event.due_at,
+      title: event.title,
+    };
+  if (!at)
+    return { repeats: true, occurrence: null, start: null, title: event.title };
+  const series = { ...event, due_at: event.due_at } as SeriesRow;
+  const when = new Date(at);
+  const changes = (
+    await db.query<{ occurrence: Date; data: OccurrenceChanges }>(
+      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1",
+      [event.id],
+    )
+  ).rows;
+  const own = (occurrence: Date) =>
+    changes.find((c) => c.occurrence.getTime() === occurrence.getTime())?.data;
+  const classAt = (occurrence: Date, c = own(occurrence)): EventTime => ({
+    repeats: true,
+    occurrence,
+    start: c?.due_at ? new Date(c.due_at) : occurrence,
+    title: c?.title?.trim() || event.title,
+  });
+  if (isOccurrence(series, when)) return classAt(when);
+  const moved = changes.find(
+    (c) =>
+      !!c.data.due_at &&
+      Date.parse(c.data.due_at) === when.getTime() &&
+      isOccurrence(series, c.occurrence),
+  );
+  if (moved) return classAt(moved.occurrence, moved.data);
+  return fail(422, "That isn't one of this event's times.");
+}
+
+/**
+ * Wait for anyone else finding or making the note for this time of this
+ * event, so two at once (two people, or a first open and a template) end up
+ * with one note.
+ */
+export async function lockEventNote(db: Db, itemId: string, when: EventTime) {
+  await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+    `event-note:${itemId}:${when.occurrence?.toISOString() ?? ""}`,
+  ]);
+}
+
 /**
  * The note an event already has, as opening the event finds it: a meeting
- * page hanging off it in the event's own space, not in Trash. When there are
- * several (written before an event kept to one), the latest edited.
+ * page hanging off it in the event's own space, not in Trash — for a class
+ * of a repeating event, that class's own, and for a whole series, the
+ * series'. When there are several (written before an event kept to one),
+ * the latest edited.
  */
 export async function eventNote(
   db: Queryable,
   u: UserRow,
   itemId: string,
   teamId: string | null,
+  when: EventTime,
 ): Promise<Doc | undefined> {
   return (
     await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
         WHERE d.item_id = $2 AND d.kind = 'meeting'
           AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
+          AND (NOT $4::boolean
+            OR d.occurrence IS NOT DISTINCT FROM $5::timestamptz)
         ORDER BY d.updated_at DESC, d.created_at LIMIT 1`,
-      [u.id, itemId, teamId],
+      [u.id, itemId, teamId, when.repeats, when.occurrence],
     )
   ).rows[0];
 }
@@ -1058,51 +1166,61 @@ export async function docRoutes(app: FastifyInstance) {
   /**
    * The note for one event, created from a template the first time it's
    * opened. It belongs to whoever opened it, and to the event's team when it
-   * has one, so a shared meeting keeps one shared note.
+   * has one, so a shared meeting keeps one shared note. A repeating event
+   * keeps one per class: `occurrence` says which (without it, the note is
+   * the whole series').
    */
   app.post("/items/:id/note", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
+    const { occurrence } = itemNoteInput.parse(r.body ?? {});
     const event = (
-      await pool.query<{
-        id: string;
-        title: string;
-        due_at: Date | null;
-        location: string;
-        team_id: string | null;
-        user_id: string;
-      }>(
-        `SELECT i.id, i.title, i.due_at, i.location, i.team_id, i.user_id
-           FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+      await pool.query<EventRow>(
+        `SELECT ${EVENT_COLUMNS} FROM items i
+          WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
         [u.id, id],
       )
     ).rows[0];
     if (!event) fail(404, "Item not found");
+    const when = await eventTime(pool, event, occurrence);
 
-    const existing = await eventNote(pool, u, id, event.team_id);
+    const existing = await eventNote(pool, u, id, event.team_id, when);
     if (existing) return existing;
 
     const prefs = await loadPrefs(pool, u.id);
+    const timeZone = prefs.timezone || "UTC";
     const content = meetingNoteTemplate({
-      title: event.title,
-      due_at: event.due_at ? event.due_at.toISOString() : null,
+      title: when.title,
+      due_at: when.start ? when.start.toISOString() : null,
       location: event.location,
-      timeZone: prefs.timezone || "UTC",
+      timeZone,
     });
+    // A class's note says which class in its name, so a term of them reads
+    // apart in the library.
+    const title =
+      when.occurrence && when.start
+        ? `${when.title} · ${blankDate(when.start, timeZone)}`
+        : when.title;
     const made = await transaction(async (db) => {
       // Two first opens at once (or a note being made from a template) must
       // not leave the event with two notes: the check is made again under
-      // the event's own lock.
-      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-        `event-note:${id}`,
-      ]);
-      const again = await eventNote(db, u, id, event.team_id);
+      // the lock for this time of the event.
+      await lockEventNote(db, id, when);
+      const again = await eventNote(db, u, id, event.team_id, when);
       if (again) return { doc: again, created: false };
       const newId = (
         await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id)
-             VALUES ($1,$2,$3,'meeting',$4::jsonb,$5) RETURNING id`,
-          [u.id, event.team_id, event.title, JSON.stringify(content), id],
+          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
+             occurrence)
+             VALUES ($1,$2,$3,'meeting',$4::jsonb,$5,$6) RETURNING id`,
+          [
+            u.id,
+            event.team_id,
+            title.slice(0, 200),
+            JSON.stringify(content),
+            id,
+            when.occurrence,
+          ],
         )
       ).rows[0].id;
       return {
@@ -1628,6 +1746,32 @@ export async function docRoutes(app: FastifyInstance) {
       trashed: true,
     });
     reply.code(204);
+  });
+
+  /**
+   * The notes these events have, to mark them: one row per note, with the
+   * class it is for on a repeating event. Scoped to the events asked about
+   * (and, with `from`/`to`, a repeating event's classes to those times), so
+   * it holds however many pages someone has.
+   */
+  app.get("/docs/event-notes", async (r): Promise<EventNoteRef[]> => {
+    const u = await authenticate(r);
+    const q = eventNotesQuery.parse(r.query ?? {});
+    return (
+      await reader(r.headers).query<EventNoteRef>(
+        `SELECT d.id AS doc_id, d.title, d.item_id, d.occurrence, d.team_id
+           FROM docs d JOIN items i ON i.id = d.item_id
+          WHERE d.item_id = ANY($2::uuid[]) AND d.kind = 'meeting'
+            AND d.team_id IS NOT DISTINCT FROM i.team_id AND ${VISIBLE}
+            AND ($3::timestamptz IS NULL OR d.occurrence IS NULL
+              OR d.occurrence >= $3)
+            AND ($4::timestamptz IS NULL OR d.occurrence IS NULL
+              OR d.occurrence < $4)
+          ORDER BY d.updated_at DESC
+          LIMIT 5000`,
+        [u.id, q.items, q.from ?? null, q.to ?? null],
+      )
+    ).rows;
   });
 
   /**

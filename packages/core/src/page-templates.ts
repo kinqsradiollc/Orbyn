@@ -218,8 +218,13 @@ export const pageTemplateUse = z
     folder_id: z.uuid().nullable().optional(),
     project_id: z.uuid().nullable().default(null),
     event_id: z.uuid().nullable().default(null),
-    /** Which time of a repeating event the page is for, for its {date}. */
+    /** When the event (this time of it) starts, for its {date}. */
     event_at: z.iso.datetime({ offset: true }).optional(),
+    /**
+     * Which class of a repeating event the page is the note for: the
+     * calendar entry's `occurrence`. Left out, `event_at` says which.
+     */
+    occurrence: z.iso.datetime({ offset: true }).optional(),
     make_tasks: z.boolean().default(false),
   })
   .strict();

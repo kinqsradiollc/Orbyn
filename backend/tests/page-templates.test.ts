@@ -16,6 +16,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const {
   PAGE_TEMPLATE_STARTERS,
   blankDate,
+  eventNoteFor,
   blanksIn,
   fillBlanks,
   fillTemplate,
@@ -422,6 +423,331 @@ test("an event that already has a note keeps that one note", async () => {
     [fresh.id],
   );
   assert.equal(made.rowCount, 1);
+});
+
+test("an event on the calendar is marked with the note it opens", () => {
+  const note = (
+    doc_id: string,
+    item_id: string,
+    occurrence: string | null,
+    team_id: string | null = null,
+  ) => ({ doc_id, title: doc_id, item_id, occurrence, team_id });
+  // Latest edited first, as the server lists them.
+  const notes = [
+    note("standup-thu", "standup", "2026-09-24T09:00:00.000Z"),
+    note("standup-series", "standup", null),
+    note("review", "review", null),
+    note("team-sync", "sync", null, "team-1"),
+  ];
+  const rrule = "FREQ=DAILY";
+  // One time of a repeating event: its own note, whatever the offset says.
+  assert.equal(
+    eventNoteFor(notes, {
+      item_id: "standup",
+      rrule,
+      occurrence: "2026-09-24T19:00:00+10:00",
+    })?.doc_id,
+    "standup-thu",
+  );
+  // Another time of it has none yet: not the series' note, not Thursday's.
+  assert.equal(
+    eventNoteFor(notes, {
+      item_id: "standup",
+      rrule,
+      occurrence: "2026-09-25T09:00:00.000Z",
+    }),
+    undefined,
+  );
+  // The series with no time given opens the series' own.
+  assert.equal(
+    eventNoteFor(notes, { item_id: "standup", rrule })?.doc_id,
+    "standup-series",
+  );
+  // An event that doesn't repeat: its note, the latest edited.
+  assert.equal(
+    eventNoteFor(notes, { item_id: "review", occurrence: null })?.doc_id,
+    "review",
+  );
+  // A note is only an event's in the event's own space.
+  assert.equal(
+    eventNoteFor(notes, { item_id: "sync", team_id: "team-1" })?.doc_id,
+    "team-sync",
+  );
+  assert.equal(eventNoteFor(notes, { item_id: "sync" }), undefined);
+  assert.equal(
+    eventNoteFor(notes, { item_id: "review", team_id: "team-1" }),
+    undefined,
+  );
+  assert.equal(eventNoteFor([], { item_id: "review" }), undefined);
+});
+
+test("each class of a repeating event keeps its own note", async () => {
+  // A daily lecture, five classes, at 10:00 in London.
+  const series = (
+    await call(owner.token, "POST", "/items", {
+      title: "Physics lecture",
+      kind: "event",
+      due_at: "2026-09-24T09:00:00.000Z",
+      end_at: "2026-09-24T10:00:00.000Z",
+      rrule: "FREQ=DAILY;COUNT=5",
+    })
+  ).json();
+  const at = (day: number) =>
+    new Date(Date.UTC(2026, 8, 24 + day, 9)).toISOString();
+  // The calendar names each class by the time the apps send back.
+  const view = (
+    await call(
+      owner.token,
+      "GET",
+      `/calendar?from=${at(-1)}&to=${encodeURIComponent(at(6))}`,
+    )
+  ).json();
+  const classes = view.entries.filter((e: Json) => e.item_id === series.id);
+  assert.deepEqual(
+    classes.map((e: Json) => e.occurrence),
+    [0, 1, 2, 3, 4].map(at),
+  );
+
+  const lecture = (occurrence: string) =>
+    call(owner.token, "POST", "/page-templates/starter:lecture/use", {
+      event_id: series.id,
+      event_at: occurrence,
+      occurrence,
+    });
+  const first = await lecture(at(0));
+  assert.equal(first.statusCode, 201, first.body);
+  assert.equal(first.json().doc.title, "Lecture notes · 24 September 2026");
+  assert.equal(first.json().doc.occurrence, at(0));
+  // Two days later is another class, so another page.
+  const third = await lecture(at(2));
+  assert.equal(third.statusCode, 201, third.body);
+  assert.notEqual(third.json().doc.id, first.json().doc.id);
+  assert.equal(third.json().doc.title, "Lecture notes · 26 September 2026");
+  assert.equal(third.json().existing, false);
+  // The first class again: its own page, not a new one.
+  const again = await lecture(at(0));
+  assert.equal(again.statusCode, 200, again.body);
+  assert.equal(again.json().existing, true);
+  assert.equal(again.json().doc.id, first.json().doc.id);
+  // An app that sends only the class's time finds its page too.
+  const byTime = await call(
+    owner.token,
+    "POST",
+    "/page-templates/starter:lecture/use",
+    { event_id: series.id, event_at: at(2) },
+  );
+  assert.equal(byTime.statusCode, 200, byTime.body);
+  assert.equal(byTime.json().doc.id, third.json().doc.id);
+
+  // Opening a class from the calendar opens that class's note.
+  const open = (occurrence?: string) =>
+    call(
+      owner.token,
+      "POST",
+      `/items/${series.id}/note`,
+      occurrence ? { occurrence } : undefined,
+    );
+  assert.equal((await open(at(0))).json().id, first.json().doc.id);
+  assert.equal((await open(at(2))).json().id, third.json().doc.id);
+  // A class with no note yet gets its own, named for its day.
+  const second = await open(at(1));
+  assert.equal(second.statusCode, 201, second.body);
+  assert.equal(second.json().title, "Physics lecture · 25 September 2026");
+  assert.equal(texts(second.json().content)[0], "2026-09-25 at 10:00");
+  assert.equal(second.json().occurrence, at(1));
+  const secondAgain = await open(at(1));
+  assert.equal(secondAgain.statusCode, 200);
+  assert.equal(secondAgain.json().id, second.json().id);
+  // The whole series, with no class named, keeps a note of its own.
+  const whole = await open();
+  assert.equal(whole.statusCode, 201, whole.body);
+  assert.equal(whole.json().title, "Physics lecture");
+  assert.equal(whole.json().occurrence, null);
+  assert.ok(
+    ![first, third].some((r) => r.json().doc.id === whole.json().id) &&
+      whole.json().id !== second.json().id,
+  );
+  assert.equal((await open()).json().id, whole.json().id);
+  // A time the event doesn't have is refused, as is anything else.
+  assert.equal((await open("2026-09-24T09:30:00.000Z")).statusCode, 422);
+  assert.equal((await open(at(7))).statusCode, 422);
+  assert.equal((await lecture("2026-09-24T09:30:00.000Z")).statusCode, 422);
+  assert.equal(
+    (
+      await call(owner.token, "POST", `/items/${series.id}/note`, {
+        occurrence: "tomorrow",
+      })
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (
+      await call(owner.token, "POST", `/items/${series.id}/note`, {
+        class: at(0),
+      })
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (await call(null, "POST", `/items/${series.id}/note`)).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await call(stranger.token, "POST", `/items/${series.id}/note`, {
+        occurrence: at(0),
+      })
+    ).statusCode,
+    404,
+  );
+
+  // A class moved on its own keeps its note, found by its first time or
+  // its new one, and a page made for it carries its own title and day.
+  const moved = await call(
+    owner.token,
+    "PUT",
+    `/items/${series.id}?scope=this&occurrence=${encodeURIComponent(at(3))}`,
+    {
+      title: "Physics lecture (Room 2)",
+      notes: series.notes,
+      kind: "event",
+      status: series.status,
+      priority: series.priority,
+      due_at: "2026-09-27T13:00:00.000Z",
+      end_at: "2026-09-27T14:00:00.000Z",
+      team_id: null,
+      version: series.version,
+    },
+  );
+  assert.equal(moved.statusCode, 200, moved.body);
+  const fourth = await open("2026-09-27T13:00:00.000Z");
+  assert.equal(fourth.statusCode, 201, fourth.body);
+  assert.equal(fourth.json().occurrence, at(3));
+  assert.equal(
+    fourth.json().title,
+    "Physics lecture (Room 2) · 27 September 2026",
+  );
+  assert.equal(texts(fourth.json().content)[0], "2026-09-27 at 14:00");
+  assert.equal((await open(at(3))).json().id, fourth.json().id);
+  const fourthPage = await call(
+    owner.token,
+    "POST",
+    "/page-templates/starter:lecture/use",
+    { event_id: series.id, occurrence: at(3) },
+  );
+  assert.equal(fourthPage.statusCode, 200, fourthPage.body);
+  assert.equal(fourthPage.json().doc.id, fourth.json().id);
+
+  // The notes these events have, to mark them: each class's, and the
+  // series' own, and nobody else's.
+  const refs = await call(
+    owner.token,
+    "GET",
+    `/docs/event-notes?items=${series.id}`,
+  );
+  assert.equal(refs.statusCode, 200, refs.body);
+  const byOccurrence = new Map(
+    refs.json().map((r: Json) => [r.occurrence, r.doc_id]),
+  );
+  assert.equal(byOccurrence.get(at(0)), first.json().doc.id);
+  assert.equal(byOccurrence.get(at(1)), second.json().id);
+  assert.equal(byOccurrence.get(at(2)), third.json().doc.id);
+  assert.equal(byOccurrence.get(at(3)), fourth.json().id);
+  assert.equal(byOccurrence.get(null), whole.json().id);
+  assert.equal(refs.json().length, 5);
+  const one = refs.json().find((r: Json) => r.doc_id === first.json().doc.id);
+  assert.equal(one.title, "Lecture notes · 24 September 2026");
+  assert.equal(one.item_id, series.id);
+  assert.equal(one.team_id, null);
+  // The apps' rule agrees: each class opens its own, the series its own.
+  for (const e of classes)
+    assert.equal(
+      eventNoteFor(refs.json(), e)?.doc_id,
+      byOccurrence.get(e.occurrence),
+    );
+  assert.equal(
+    eventNoteFor(refs.json(), { item_id: series.id, occurrence: at(4) }),
+    undefined,
+  );
+  // The series with no time given: the series' own note, as the server has.
+  assert.equal(
+    eventNoteFor(refs.json(), { item_id: series.id, rrule: series.rrule })
+      ?.doc_id,
+    whole.json().id,
+  );
+  // A window keeps a repeating event's classes to the times shown.
+  const window = await call(
+    owner.token,
+    "GET",
+    `/docs/event-notes?items=${series.id}&from=${encodeURIComponent(at(1))}&to=${encodeURIComponent(at(3))}`,
+  );
+  assert.deepEqual(
+    window
+      .json()
+      .map((r: Json) => r.occurrence)
+      .sort(),
+    [at(1), at(2), null].sort(),
+  );
+  // A note in Trash no longer marks its class.
+  await call(owner.token, "DELETE", `/docs/${second.json().id}`);
+  assert.ok(
+    !(await call(owner.token, "GET", `/docs/event-notes?items=${series.id}`))
+      .json()
+      .some((r: Json) => r.doc_id === second.json().id),
+  );
+  // Opened meanwhile, that class gets a fresh note; bringing the old one
+  // back lets the untouched copy go — that class's only, not the other
+  // classes' pages nobody has written in yet.
+  const copy = await open(at(1));
+  assert.equal(copy.statusCode, 201, copy.body);
+  assert.notEqual(copy.json().id, second.json().id);
+  const restored = await call(
+    owner.token,
+    "POST",
+    `/docs/${second.json().id}/restore`,
+  );
+  assert.equal(restored.statusCode, 200, restored.body);
+  const left = (
+    await pool.query<{ id: string }>(
+      `SELECT id FROM docs WHERE item_id = $1 AND kind = 'meeting'
+          AND deleted_at IS NULL`,
+      [series.id],
+    )
+  ).rows.map((r) => r.id);
+  assert.deepEqual(
+    left.sort(),
+    [
+      first.json().doc.id,
+      second.json().id,
+      third.json().doc.id,
+      fourth.json().id,
+      whole.json().id,
+    ].sort(),
+  );
+  assert.equal((await open(at(1))).json().id, second.json().id);
+  assert.deepEqual(
+    (
+      await call(stranger.token, "GET", `/docs/event-notes?items=${series.id}`)
+    ).json(),
+    [],
+  );
+  assert.equal(
+    (await call(null, "GET", `/docs/event-notes?items=${series.id}`))
+      .statusCode,
+    401,
+  );
+  for (const bad of ["", "?items=", "?items=nope", `?items=${series.id}&x=1`])
+    assert.equal(
+      (await call(owner.token, "GET", `/docs/event-notes${bad}`)).statusCode,
+      422,
+      bad,
+    );
+  const many = Array.from({ length: 201 }, () => randomUUID()).join(",");
+  assert.equal(
+    (await call(owner.token, "GET", `/docs/event-notes?items=${many}`))
+      .statusCode,
+    422,
+  );
 });
 
 test("a starter makes a team's page from its events, projects and folders", async () => {
@@ -831,6 +1157,10 @@ test("page templates answer 429 past the per-minute limit", async () => {
     assert.equal(limited.statusCode, 429);
     assert.equal(
       (await from("POST", "/page-templates/starter:meeting/use")).statusCode,
+      429,
+    );
+    assert.equal(
+      (await from("GET", `/docs/event-notes?items=${randomUUID()}`)).statusCode,
       429,
     );
   } finally {
