@@ -51,6 +51,12 @@ export type SchedulerTask = {
    * the planner offers to move them to free time before the deadline.
    */
   late_sessions?: LateSession[];
+  /**
+   * Minutes still to come in its sessions after a deadline still ahead
+   * (those that have started too). What stays there after the moves already
+   * holds time for the task, so no more is added after the deadline.
+   */
+  late_minutes?: number;
   list_id: string | null;
   tag_ids: string[];
   team_id: string | null;
@@ -755,6 +761,7 @@ export function schedule(input: SchedulerInput): SchedulerResult {
     // before the deadline covers its own length. One that can't move stays
     // where it is (nothing is refused), and doesn't count.
     let left = remaining;
+    let movedMinutes = 0;
     if (due > nowMs)
       for (const late of task.late_sessions ?? []) {
         if (left <= 0) break;
@@ -793,11 +800,27 @@ export function schedule(input: SchedulerInput): SchedulerResult {
         });
         take(slot, start, start + length, minutes);
         left -= minutes;
+        movedMinutes += minutes;
       }
     if (left <= 0) {
       completed.set(task.id, finish());
       continue;
     }
+    // The late sessions that stay already hold this much time after the
+    // deadline: new time goes before it, and only what they don't hold is
+    // added after it. Otherwise each plan would add the same late time again.
+    let heldLate =
+      due > nowMs
+        ? Math.max(
+            0,
+            (task.late_minutes ??
+              (task.late_sessions ?? []).reduce(
+                (n, l) =>
+                  n + (Date.parse(l.end_at) - Date.parse(l.start_at)) / MINUTE,
+                0,
+              )) - movedMinutes,
+          )
+        : 0;
 
     const padded = roundUpMinutes(left * (1 + input.padPercent / 100));
     const parts = sessions(
@@ -806,17 +829,34 @@ export function schedule(input: SchedulerInput): SchedulerResult {
       input.splitAfterMinutes,
       input.minBlockMinutes,
     );
-    for (const [index, minutes] of parts.entries()) {
-      const need = minutes * MINUTE;
+    for (const [index, part] of parts.entries()) {
+      let minutes = part;
+      let need = minutes * MINUTE;
       const fits = (s: Segment) => {
         if (!accepts(s)) return false;
         blockedByFrames = false;
         return s.end - Math.max(s.start, ready) >= need;
       };
-      const candidates = free.filter(fits);
-      const choice = smart
-        ? bestPlace(candidates, need, minutes)
-        : earliestPlace(candidates, need);
+      let candidates = free.filter(fits);
+      let choice = smart
+        ? bestPlace(candidates, need, minutes, heldLate > 0)
+        : earliestPlace(candidates, need, heldLate > 0);
+      if (!choice && heldLate > 0) {
+        // No room before the deadline: a late session that stays holds it.
+        lateSession = true;
+        if (heldLate >= minutes) {
+          heldLate -= minutes;
+          continue;
+        }
+        // Partly held: only the rest is added.
+        minutes = Math.max(input.minBlockMinutes, minutes - heldLate);
+        need = minutes * MINUTE;
+        heldLate = 0;
+        candidates = free.filter(fits);
+        choice = smart
+          ? bestPlace(candidates, need, minutes)
+          : earliestPlace(candidates, need);
+      }
       if (!choice) {
         ok = false;
         break;

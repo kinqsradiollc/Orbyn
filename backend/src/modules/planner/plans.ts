@@ -247,11 +247,15 @@ export function describePlan(result: SchedulerResult, days: number) {
   if (result.at_risk.length)
     notes.push(`${plural(result.at_risk.length, "task")} may run late.`);
   if (!result.blocks.length)
-    return moves
-      ? `No new sessions needed. ${notes.join(" ")}`
-      : result.unplaced.length
-        ? `Nothing fits yet. ${notes.join(" ")}`
-        : "There's nothing to plan: no open task needs time.";
+    return result.unplaced.length
+      ? `Nothing fits yet. ${notes.join(" ")}`
+      : result.at_risk.length
+        ? // What's missing doesn't fit before the deadlines, and the late
+          // sessions already there hold the rest.
+          `No more time fits before the deadlines. ${notes.join(" ")}`
+        : moves
+          ? `No new sessions needed. ${notes.join(" ")}`
+          : "There's nothing to plan: no open task needs time.";
   return [
     `${plural(tasks, "task")} in ${plural(result.blocks.length, "session")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
     ...notes,
