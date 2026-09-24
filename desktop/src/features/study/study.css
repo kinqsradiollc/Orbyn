@@ -259,7 +259,7 @@
 }
 .study-review-head {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   font-size: 13px;
@@ -584,7 +584,7 @@
 }
 @media (max-width: 760px) {
   .study-hero {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .study-hero-side {
     justify-items: start;
@@ -647,7 +647,7 @@
 /* No cards yet: three ways in, and what a card looks like. */
 .study-ways {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 12px;
 }
 .study-way {
@@ -673,7 +673,7 @@
 }
 .study-sample {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
@@ -947,7 +947,7 @@
     justify-content: flex-end;
   }
   .study-sample {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .study-sample > div + div {
     border-left: 0;

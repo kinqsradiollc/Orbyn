@@ -894,6 +894,9 @@
 :root[data-theme="dark"] .data-table tr.is-disabled td {
   color: var(--color-muted);
 }
+:root[data-theme="dark"] .stack-table td[data-label]::before {
+  color: var(--color-muted);
+}
 :root[data-theme="dark"] .danger-text {
   color: var(--color-danger);
 }

@@ -265,13 +265,13 @@
 
 @media (max-width: 900px) {
   .settings-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 @media (max-width: 560px) {
   .settings-grid,
   .settings-grid.settings-pairs {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .settings-card {
     padding: 20px 17px;
@@ -297,7 +297,7 @@
 }
 .settings-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .settings-check {
@@ -339,7 +339,7 @@
 }
 @media (max-width: 620px) {
   .settings-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -363,7 +363,7 @@
 }
 .estimate-tags li {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: baseline;
   font-size: 13.5px;
@@ -461,7 +461,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 6px 20px;
 }
 .two-factor-codes .mono {
@@ -511,7 +511,7 @@
 }
 .analytics-bars li {
   display: grid;
-  grid-template-columns: minmax(80px, 140px) 1fr auto;
+  grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   font-size: 13.5px;

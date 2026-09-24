@@ -124,7 +124,7 @@
 }
 .system-smtp {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px 15px;
   margin-top: 12px;
 }
@@ -287,13 +287,13 @@
 
 @media (max-width: 900px) {
   .system-form {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 @media (max-width: 640px) {
   .system-form,
   .system-smtp {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .system-form,
   .system-body {
@@ -397,7 +397,7 @@
 }
 @media (max-width: 720px) {
   .legal-admin-doc {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .legal-admin-actions {
     justify-content: flex-start;

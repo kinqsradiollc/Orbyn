@@ -43,7 +43,7 @@
 /* One card per service. */
 .admin-service-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
   gap: 12px;
 }
 .admin-service {
@@ -60,7 +60,7 @@
 }
 .admin-service dl {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px 14px;
   margin: 0;
 }
@@ -148,7 +148,7 @@
 }
 .admin-chart-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 12px;
 }
 .bars {
@@ -213,7 +213,7 @@
 /* Slow and failing routes. */
 .admin-route-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 12px;
 }
 .admin-routes {
@@ -453,7 +453,7 @@
 }
 .admin-user-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
 }
 .admin-user-grid > .card {

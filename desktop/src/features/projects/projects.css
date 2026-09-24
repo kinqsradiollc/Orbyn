@@ -57,7 +57,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   gap: 12px;
 }
 
@@ -156,7 +156,7 @@
 }
 @media (max-width: 720px) {
   .project-meta {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     justify-items: start;
   }
 }
@@ -863,7 +863,7 @@
 }
 .project-note {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 2px 12px;
   width: 100%;
   padding: 8px 10px;
@@ -941,7 +941,7 @@
 }
 .templates-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;

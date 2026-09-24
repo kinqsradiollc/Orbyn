@@ -209,7 +209,7 @@
 
 @media (max-width: 860px) {
   .focus-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 24px;
     padding: 0 20px 32px;
   }

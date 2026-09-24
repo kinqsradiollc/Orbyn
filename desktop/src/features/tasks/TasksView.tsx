@@ -8,6 +8,7 @@ import {
   Search,
   X,
   BadgeCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   searchItems,
@@ -209,6 +210,11 @@ export function TasksView({
   const [tagId, setTagId] = useState("any");
   const [size, setSize] = useState<Size | "any">("any");
   const [assignee, setAssignee] = useState("any");
+  /** On a phone the filters fold behind one button (see .filter-bar). */
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = [due, priority, listId, tagId, size, assignee].filter(
+    (v) => v !== "any",
+  ).length;
 
   const setLayout = (next: Layout) => {
     setLayoutState(next);
@@ -558,6 +564,16 @@ export function TasksView({
               <Columns3 size={15} aria-hidden="true" /> Board
             </button>
           </div>
+          <button
+            type="button"
+            className="secondary filters-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="task-filters"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            {activeFilters ? `Filters · ${activeFilters}` : "Filters and sort"}
+          </button>
         </div>
       </div>
       {viewMenu && (
@@ -592,7 +608,12 @@ export function TasksView({
           )}
         </Popover>
       )}
-      <div className="filter-bar" role="group" aria-label="Filters">
+      <div
+        id="task-filters"
+        className={"filter-bar" + (filtersOpen ? " is-open" : "")}
+        role="group"
+        aria-label="Filters"
+      >
         <label className="filter-select">
           <span>Due</span>
           <Select

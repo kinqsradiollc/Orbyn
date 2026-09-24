@@ -124,7 +124,7 @@ export function AdminUsers({
         </div>
       </div>
       <div className="table-wrap">
-        <table className="data-table">
+        <table className="data-table stack-table">
           <thead>
             <tr>
               <th>Name</th>
@@ -164,7 +164,7 @@ export function AdminUsers({
                     )}
                     {self && <span className="you-tag">You</span>}
                   </td>
-                  <td>
+                  <td data-label="Email">
                     {u.email}
                     {!u.email_verified && (
                       <span className="admin-unverified">
@@ -181,7 +181,7 @@ export function AdminUsers({
                       </span>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Role">
                     <Select
                       className="role-select"
                       aria-label={`System role for ${u.name}`}
@@ -195,7 +195,7 @@ export function AdminUsers({
                       <option value="member">Member</option>
                     </Select>
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <span
                       className={
                         "status-pill " + (u.disabled ? "disabled" : "active")
@@ -213,9 +213,11 @@ export function AdminUsers({
                       </button>
                     )}
                   </td>
-                  <td>{u.team_count}</td>
-                  <td>{u.item_count}</td>
-                  <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td data-label="Teams">{u.team_count}</td>
+                  <td data-label="Items">{u.item_count}</td>
+                  <td data-label="Joined">
+                    {new Date(u.created_at).toLocaleDateString()}
+                  </td>
                   <td className="row-actions">
                     {!self && (
                       <button
