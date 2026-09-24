@@ -310,6 +310,70 @@ test("a page holds at most its limit of tags; names past it are left off", async
   assert.equal(over.statusCode, 200);
   assert.deepEqual(over.json().added, []);
   assert.equal(over.json().tags.length, PAGE_TAG_LIMIT);
+  // A name left off a full page leaves no tag behind in the space.
+  const made = await pool.query(
+    "SELECT 1 FROM tags WHERE user_id = $1 AND lower(name) = 'onemore'",
+    [me.id],
+  );
+  assert.equal(made.rowCount, 0);
+  // A name the page already has is still "already there", not refused.
+  const same = await call(me.token, "POST", `/docs/${page.id}/tags`, {
+    names: ["LIM3"],
+  });
+  assert.deepEqual(same.json().added, []);
+});
+
+test("a tag change reaches the page's other open editors, words unchanged", async () => {
+  const page = await newPage(me.token);
+  // Listen as an open editor's stream does.
+  const listener = await pool.connect();
+  const heard: {
+    docId: string;
+    version: number;
+    tags?: boolean;
+    by: string;
+  }[] = [];
+  listener.on("notification", (m) => {
+    if (m.channel === "doc_changed" && m.payload) {
+      const news = JSON.parse(m.payload);
+      if (news.docId === page.id) heard.push(news);
+    }
+  });
+  await listener.query("LISTEN doc_changed");
+  try {
+    const tag = (
+      await call(me.token, "POST", "/tags", { name: "live" })
+    ).json();
+    const set = await app.inject({
+      method: "PUT",
+      url: `/docs/${page.id}/tags`,
+      headers: {
+        authorization: `Bearer ${me.token}`,
+        "x-orbyn-editor": "tab-one",
+      },
+      payload: { tags: [tag.id] },
+    });
+    assert.equal(set.statusCode, 200, set.body);
+    await call(me.token, "POST", `/docs/${page.id}/tags`, {
+      names: ["another"],
+    });
+    // Nothing new to add: nobody needs telling.
+    await call(me.token, "POST", `/docs/${page.id}/tags`, {
+      names: ["another"],
+    });
+    for (let i = 0; i < 100 && heard.length < 2; i++)
+      await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 60));
+    assert.equal(heard.length, 2);
+    assert.ok(heard.every((n) => n.tags === true));
+    // The page's words didn't move on, so its version didn't either.
+    assert.ok(heard.every((n) => n.version === page.version));
+    // The tab that made the change is named, so it isn't told its own news.
+    assert.equal(heard[0].by, "tab-one");
+  } finally {
+    await listener.query("UNLISTEN doc_changed");
+    listener.release();
+  }
 });
 
 test("tag routes answer 429 past the per-minute limit", async () => {

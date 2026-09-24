@@ -50,6 +50,7 @@ import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
+import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocViewers } from "./DocViewers";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
@@ -408,8 +409,8 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every render,
    * which on a phone is a request storm rather than a nuisance.
    */
-  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
-  onEvent.current = (remote: number, trashed: boolean) => {
+  const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
+  onEvent.current = (remote: number, { trashed, tags: retagged }: DocNews) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
@@ -421,6 +422,13 @@ export function DocEditor({
       showToast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone changed the page's tags: the row follows, the words stay.
+    if (retagged) {
+      void client
+        .getDoc(doc.id)
+        .then((theirs) => setTags(theirs.tags ?? []), report);
       return;
     }
     if (remote && remote <= version.current) return;
@@ -450,8 +458,7 @@ export function DocEditor({
    * desktop at the same time does not go stale in your hand.
    */
   useEffect(
-    () =>
-      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    () => client.watchDoc(doc.id, (v, news) => onEvent.current(v, news)),
     [doc.id],
   );
 
@@ -1019,6 +1026,7 @@ export function DocEditor({
       {savingTemplate && (
         <SaveTemplatePanel
           doc={doc}
+          canShare={canWrite}
           onClose={() => setSavingTemplate(false)}
           onSaved={(t) =>
             showToast({

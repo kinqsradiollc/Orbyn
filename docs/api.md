@@ -145,6 +145,10 @@ the file it was imported from), agendas in `pages/Agendas/<date>.md`, pages in T
 the files themselves are never kept) and `consent.json` (your terms and analytics decisions). Team
 pages stay with their team. Personal API keys get `403`, as for `/me/export`.
 
+The archive is streamed as it is written (no `content-length`): pages are read 200 at a time and
+each file is deflated off the main thread, so a large account never sits in memory whole. Past
+65,535 files or 4 GB it carries zip64 records.
+
 ### `POST /me/import` (auth)
 
 `{ "format": "orbyn" | "csv", "data": string, "dry_run"?: bool }`. Brings items in; lists and tags are matched by name and created when missing. CSV needs a `title` column (optional `notes`, `due`, `priority`, `list`, `tags`). `dry_run` (default true) returns `{ created, skipped, lists_added, tags_added, sample, errors }` without writing.
@@ -475,7 +479,8 @@ The meeting note for an event, created from a template (Agenda, Notes, Decisions
 the first time and returned as-is afterwards. → `201` when created, `200` when it already existed.
 A note for a team event belongs to the team, so one shared meeting keeps one shared note. A note in
 Trash doesn't count: the event gets a fresh one. If the old one is restored while the fresh one was
-written in, both are kept and the event opens the one written in last.
+written in, both are kept and the event opens the one written in last. Two first opens at once (or
+one and a page made from a template for the same event) still make only one note.
 
 ### `POST /docs/:id/tasks` (auth)
 
@@ -627,14 +632,16 @@ is by someone else or more than five minutes old — history reads as sittings, 
 `{ "tags": ["<tag id>", …] }` (up to 20) → `{ tags }`. Sets exactly these tags on the page, from
 its own space: your personal tags on a personal page, the team's on a team page (a tag the page
 already carries may stay). Any other tag is `404`. Tags aren't the page's words, so its version
-doesn't change.
+doesn't change; the page's live stream (`/events/docs/:id`) sends `{ version, tags: true }` so
+other open editors refresh their tag row.
 
 ### `POST /docs/:id/tags` (auth, `items:write`)
 
 `{ "names": ["physics", …] }` → `{ tags, added }`. Adds tags by name, as typing `#physics` in a
 line does; a name the page's space has no tag for yet makes one there. Names compare without case;
-past 20 tags the rest are left off. The apps call this when a line with a new `#tag` is left
-(`addedInlineTags` in `packages/core/src/page-tags.ts`).
+past 20 tags the rest are left off, and a tag is only made when it goes on the page. The apps call
+this when a line with a new `#tag` is left (`addedInlineTags` in `packages/core/src/page-tags.ts`).
+When something was added, open editors hear `{ tags: true }` as for `PUT`.
 
 ### Page templates (auth)
 
@@ -652,9 +659,15 @@ touched. Starters: Lecture notes, Lab report, Essay plan, Meeting, Weekly review
   page as a template with its folder and tags, boxes unticked. A team page makes a team template
   unless `personal`.
 - `POST /page-templates/:id/use` `{ title?, team_id?, folder_id?, project_id?, event_id?,
-event_at?, make_tasks? }` → `201 { doc, tasks_created }`. With a project the page belongs to it;
-  with `make_tasks` its to-do lines become tasks in that project's first stage, tied to their lines.
-  With an event the page is that event's note and `{event}` is its title.
+event_at?, make_tasks? }` → `201 { doc, tasks_created, existing: false }`. Any template (a starter
+  too) makes a page in your space or, with `team_id`, a team's you can write in (`403` for a
+  viewer); without `team_id` it goes where the event, else the template, is. Event, project and
+  folder must be in that space (`404`). With a project the page belongs to it; with `make_tasks`
+  its to-do lines become tasks in that project's first stage, tied to their lines. With an event
+  the page is that event's note and `{event}` is its title — unless the event already has a note:
+  then nothing is made and the answer is `200 { doc: <that note>, tasks_created: 0, existing:
+true }`, the same note `POST /items/:id/note` opens. A line that only labels blanks left empty
+  (`Course: {project}` with no project) is left off the page.
 
 ### `GET /docs/:id/export?format=` (auth)
 

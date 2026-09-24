@@ -145,6 +145,57 @@ test("blanks fill in single braces and never touch study syntax", () => {
   );
 });
 
+test("a line that only labels blanks left empty is left off the page", () => {
+  const today = { date: "24 September 2026" };
+  for (const id of ["starter:lecture", "starter:lab", "starter:essay"]) {
+    const starter = PAGE_TEMPLATE_STARTERS.find((s) => s.id === id)!;
+    const lines = texts(fillTemplate(starter, today).content);
+    assert.ok(
+      !lines.some((l) => /^(Course|Class):\s*$/.test(l)),
+      `${starter.name}: ${lines.slice(0, 3).join(" | ")}`,
+    );
+    // Only those lines: every heading and to-do is still there.
+    assert.equal(
+      lines.length,
+      starter.content.length - (id === "starter:lecture" ? 2 : 1),
+    );
+  }
+  const lecture = PAGE_TEMPLATE_STARTERS.find(
+    (s) => s.id === "starter:lecture",
+  )!;
+  // Filled, the labels stay.
+  assert.deepEqual(
+    texts(
+      fillTemplate(lecture, {
+        ...today,
+        project: "Physics 101",
+        event: "Optics",
+      }).content,
+    ).slice(0, 2),
+    ["Course: Physics 101", "Class: Optics"],
+  );
+  // A line with words of its own around an empty blank is kept, and so is
+  // one that was never a label.
+  const kept = fillTemplate(
+    {
+      title: "x",
+      content: [
+        { type: "paragraph", text: "Course: {project} (second year)" },
+        { type: "paragraph", text: "{project}" },
+        { type: "paragraph", text: "When: {date}" },
+        { type: "bullet", text: "Ask: " },
+      ],
+    },
+    today,
+  );
+  assert.deepEqual(texts(kept.content), [
+    "Course:  (second year)",
+    "",
+    "When: 24 September 2026",
+    "Ask: ",
+  ]);
+});
+
 test("the six starters are there, and none of them makes study cards", () => {
   assert.deepEqual(
     PAGE_TEMPLATE_STARTERS.map((s) => s.name),
@@ -206,7 +257,9 @@ test("a starter makes a page with its blanks filled, in the chosen project", asy
   assert.equal(tasks_created, 0);
   const lines = texts(doc.content);
   assert.equal(lines[0], "Course: Physics 101");
-  assert.equal(lines[1], "Class: ");
+  // No event was chosen, so "Class:" isn't left dangling on the page.
+  assert.equal(lines[1], "Key ideas");
+  assert.ok(!lines.includes("Class: "));
   // Nothing became a task without being asked.
   const links = await pool.query(
     "SELECT 1 FROM doc_task_links WHERE doc_id = $1",
@@ -305,6 +358,170 @@ test("with an event, the page is the event's note and {event} is its title", asy
     },
   );
   assert.equal(theirs.statusCode, 404);
+});
+
+test("an event that already has a note keeps that one note", async () => {
+  const event = (
+    await call(owner.token, "POST", "/items", {
+      title: "Budget review",
+      kind: "event",
+      due_at: "2026-10-05T09:00:00.000Z",
+      end_at: "2026-10-05T10:00:00.000Z",
+    })
+  ).json();
+  // The event's note is opened and written in first.
+  const note = (
+    await call(owner.token, "POST", `/items/${event.id}/note`)
+  ).json();
+  const written = await call(owner.token, "PUT", `/docs/${note.id}`, {
+    version: note.version,
+    content: [...note.content, { type: "paragraph", text: "Cut travel" }],
+  });
+  assert.equal(written.statusCode, 200, written.body);
+  // Choosing the same event for the Meeting starter answers that note.
+  const used = await call(
+    owner.token,
+    "POST",
+    "/page-templates/starter:meeting/use",
+    { event_id: event.id, make_tasks: true },
+  );
+  assert.equal(used.statusCode, 200, used.body);
+  assert.equal(used.json().existing, true);
+  assert.equal(used.json().doc.id, note.id);
+  assert.equal(used.json().tasks_created, 0);
+  assert.ok(texts(used.json().doc.content).includes("Cut travel"));
+  const notes = await pool.query(
+    "SELECT 1 FROM docs WHERE item_id = $1 AND kind = 'meeting'",
+    [event.id],
+  );
+  assert.equal(notes.rowCount, 1);
+  // And the event still opens the note with the writing in it.
+  const again = (
+    await call(owner.token, "POST", `/items/${event.id}/note`)
+  ).json();
+  assert.equal(again.id, note.id);
+
+  // Two at once still make only one.
+  const fresh = (
+    await call(owner.token, "POST", "/items", {
+      title: "Retro",
+      kind: "event",
+      due_at: "2026-10-06T09:00:00.000Z",
+      end_at: "2026-10-06T10:00:00.000Z",
+    })
+  ).json();
+  const both = await Promise.all([
+    call(owner.token, "POST", "/page-templates/starter:meeting/use", {
+      event_id: fresh.id,
+    }),
+    call(owner.token, "POST", `/items/${fresh.id}/note`),
+  ]);
+  assert.deepEqual(both.map((r) => r.statusCode).sort(), [200, 201]);
+  const made = await pool.query(
+    "SELECT 1 FROM docs WHERE item_id = $1 AND kind = 'meeting'",
+    [fresh.id],
+  );
+  assert.equal(made.rowCount, 1);
+});
+
+test("a starter makes a team's page from its events, projects and folders", async () => {
+  const event = (
+    await call(member.token, "POST", "/items", {
+      title: "Team planning",
+      kind: "event",
+      team_id: team,
+      due_at: "2026-10-07T09:00:00.000Z",
+      end_at: "2026-10-07T10:00:00.000Z",
+    })
+  ).json();
+  assert.equal(event.team_id, team);
+  const project = (
+    await call(member.token, "POST", "/projects", {
+      name: "Launch",
+      team_id: team,
+    })
+  ).json();
+  assert.equal(project.team_id, team);
+  const folder = (
+    await call(member.token, "POST", "/folders", {
+      name: "Meetings",
+      team_id: team,
+    })
+  ).json();
+  assert.equal(folder.team_id, team);
+  const made = await call(
+    member.token,
+    "POST",
+    "/page-templates/starter:meeting/use",
+    {
+      team_id: team,
+      event_id: event.id,
+      project_id: project.id,
+      folder_id: folder.id,
+      make_tasks: false,
+    },
+  );
+  assert.equal(made.statusCode, 201, made.body);
+  const { doc } = made.json();
+  assert.equal(doc.team_id, team);
+  assert.equal(doc.kind, "meeting");
+  assert.equal(doc.item_id, event.id);
+  assert.equal(doc.project_id, project.id);
+  assert.equal(doc.folder_id, folder.id);
+  assert.equal(doc.title, "Team planning · 7 October 2026");
+  // The team's event opens this same note.
+  const note = await call(owner.token, "POST", `/items/${event.id}/note`);
+  assert.equal(note.json().id, doc.id);
+  // Everyone on the team can read it; a viewer can't write one.
+  assert.equal(
+    (await call(viewer.token, "GET", `/docs/${doc.id}`)).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await call(viewer.token, "POST", "/page-templates/starter:lecture/use", {
+        team_id: team,
+      })
+    ).statusCode,
+    403,
+  );
+  // A team's event can't be a personal page's, nor a personal project a
+  // team page's.
+  assert.equal(
+    (
+      await call(member.token, "POST", "/page-templates/starter:meeting/use", {
+        team_id: null,
+        event_id: event.id,
+      })
+    ).statusCode,
+    404,
+  );
+  const mine = (
+    await call(member.token, "POST", "/projects", { name: "Mine only" })
+  ).json();
+  assert.equal(
+    (
+      await call(member.token, "POST", "/page-templates/starter:lecture/use", {
+        team_id: team,
+        project_id: mine.id,
+      })
+    ).statusCode,
+    404,
+  );
+  // Someone outside the team can't even find it.
+  assert.equal(
+    (
+      await call(
+        stranger.token,
+        "POST",
+        "/page-templates/starter:lecture/use",
+        {
+          team_id: team,
+        },
+      )
+    ).statusCode,
+    404,
+  );
 });
 
 test("with no event chosen, a meeting page is named for the template", async () => {

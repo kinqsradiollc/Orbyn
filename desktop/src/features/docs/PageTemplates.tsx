@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, LayoutTemplate, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  LayoutTemplate,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   addDays,
   blankDate,
   blanksIn,
   fillTitle,
+  hasTeamPermission,
   localDateKey,
   templateTodos,
   type CalendarEntry,
@@ -12,10 +21,12 @@ import {
   type Folder,
   type PageTemplate,
   type Project,
+  type Team,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { deviceTimeZone, errorText } from "../../lib/planning";
 import { useConfirm } from "../../components/Confirm";
+import { Popover } from "../../components/Popover";
 import { Select } from "../../components/Select";
 
 const GROUPS = [
@@ -55,10 +66,31 @@ const eventLabel = (e: CalendarEntry) =>
         })}`
   } · ${e.title}`;
 
+/** Which space a page goes in: "" for your own, or a team's id. */
+type Space = string;
+
+/**
+ * Where a page from `t` goes to begin with: a team template's team, else
+ * the team of the folder being looked at, else your own pages — only ever
+ * a space you can write in.
+ */
+function startingSpace(
+  t: PageTemplate,
+  here: Folder | undefined,
+  writable: Team[],
+): Space {
+  const can = (id: string | null | undefined) =>
+    !!id && writable.some((team) => team.id === id);
+  if (can(t.team_id)) return t.team_id!;
+  if (can(here?.team_id)) return here!.team_id!;
+  return "";
+}
+
 /**
  * New page from a template: pick one, name the page, and say where it goes.
  * Blanks ({date}, {title}, {project}, {event}) fill themselves in; a
- * template's to-do lines can become tasks in the project chosen.
+ * template's to-do lines can become tasks in the project chosen. Any
+ * template can start a page in your own space or a team's you can write in.
  */
 export function PageTemplatesDialog({
   folders,
@@ -88,6 +120,12 @@ export function PageTemplatesDialog({
   const [makeTasks, setMakeTasks] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** Teams whose pages you can write: the other places a page can go. */
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [space, setSpace] = useState<Space>("");
+  /** Events that have a note already, by event, with the note's id. */
+  const [notes, setNotes] = useState<Map<string, string>>(new Map());
+  const [menu, setMenu] = useState<DOMRect | null>(null);
 
   const load = () =>
     client.listPageTemplates().then(setTemplates, (e) => {
@@ -99,6 +137,22 @@ export function PageTemplatesDialog({
     client.listProjects().then(
       (all) => setProjects(all.filter((p) => p.status === "active")),
       () => setProjects([]),
+    );
+    client.listTeams().then(
+      (all) =>
+        setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
+      () => setTeams([]),
+    );
+    client.listDocs({ kind: "meeting" }).then(
+      (all) =>
+        setNotes(
+          new Map(
+            all.flatMap((d) =>
+              d.item_id ? [[`${d.item_id}|${d.team_id ?? ""}`, d.id]] : [],
+            ),
+          ),
+        ),
+      () => setNotes(new Map()),
     );
     const tz = deviceTimeZone();
     const today = localDateKey(new Date(), tz);
@@ -125,12 +179,13 @@ export function PageTemplatesDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // A template's pages live where it does: yours, or its team's.
-  const space = picked?.team_id ?? null;
-  const event = events.find(
-    (e) => eventKey(e) === eventId && e.team_id === space,
-  );
-  const project = projects.find((p) => p.id === projectId);
+  const team = space || null;
+  const inSpace = (x: { team_id?: string | null }) =>
+    (x.team_id ?? null) === team;
+  const event = events.find((e) => eventKey(e) === eventId && inSpace(e));
+  /** The note the chosen event already has, which is opened instead. */
+  const noted = (e: CalendarEntry) => notes.has(`${e.item_id}|${space}`);
+  const project = projects.find((p) => p.id === projectId && inSpace(p));
   const usesEvent = picked ? blanksIn(picked).includes("event") : false;
   const todos = picked ? templateTodos(picked.content) : 0;
   const suggested = useMemo(
@@ -155,18 +210,42 @@ export function PageTemplatesDialog({
     if (!named) setTitle(suggested);
   }, [suggested, named]);
 
+  /**
+   * The folder a page starts in, in `to`: the template's own when it's
+   * there, else the folder being looked at when it's there, else none.
+   */
+  const startingFolder = (t: PageTemplate, to: Space) => {
+    const fits = (id: string | null | undefined) =>
+      !!id && folders.some((f) => f.id === id && (f.team_id ?? "") === to);
+    if (fits(t.folder_id)) return t.folder_id!;
+    if (fits(folderId)) return folderId!;
+    return "";
+  };
+
   const choose = (t: PageTemplate) => {
+    const to = startingSpace(
+      t,
+      folders.find((f) => f.id === folderId),
+      teams,
+    );
     setPicked(t);
     setNamed(false);
     setProjectId("");
     setEventId("");
     setMakeTasks(false);
-    const here = folders.find((f) => f.id === folderId);
-    setFolder(
-      t.folder_id ??
-        (here && (here.team_id ?? null) === (t.team_id ?? null) ? here.id : ""),
-    );
+    setSpace(to);
+    setFolder(startingFolder(t, to));
     setError("");
+  };
+
+  /** Move the page to another space; choices from the old one go. */
+  const moveTo = (to: Space) => {
+    if (!picked) return;
+    setSpace(to);
+    setProjectId("");
+    setEventId("");
+    setMakeTasks(false);
+    setFolder(startingFolder(picked, to));
   };
 
   const create = async () => {
@@ -174,19 +253,25 @@ export function PageTemplatesDialog({
     setBusy(true);
     setError("");
     try {
-      const { doc, tasks_created } = await client.usePageTemplate(picked.id, {
-        title: title.trim() || undefined,
-        project_id: projectId || null,
-        event_id: event ? event.item_id : null,
-        ...(event ? { event_at: event.start_at } : {}),
-        folder_id: folder || null,
-        make_tasks: makeTasks,
-      });
+      const { doc, tasks_created, existing } = await client.usePageTemplate(
+        picked.id,
+        {
+          title: title.trim() || undefined,
+          team_id: team,
+          project_id: project?.id ?? null,
+          event_id: event ? event.item_id : null,
+          ...(event ? { event_at: event.start_at } : {}),
+          folder_id: folder || null,
+          make_tasks: makeTasks,
+        },
+      );
       onCreated(
         doc,
-        tasks_created
-          ? `Made from ${picked.name}. ${tasks_created} to-do${tasks_created === 1 ? " is" : "s are"} now ${tasks_created === 1 ? "a task" : "tasks"}${project ? ` in ${project.name}` : ""}.`
-          : `Made from ${picked.name}.`,
+        existing
+          ? `“${event?.title ?? doc.title}” already has a note, so it's open.`
+          : tasks_created
+            ? `Made from ${picked.name}. ${tasks_created} to-do${tasks_created === 1 ? " is" : "s are"} now ${tasks_created === 1 ? "a task" : "tasks"}${project ? ` in ${project.name}` : ""}.`
+            : `Made from ${picked.name}.`,
         tasks_created,
       );
       onClose();
@@ -198,6 +283,7 @@ export function PageTemplatesDialog({
   };
 
   const remove = async (t: PageTemplate) => {
+    setMenu(null);
     if (
       !(await ask({
         title: `Delete the template “${t.name}”?`,
@@ -250,10 +336,43 @@ export function PageTemplatesDialog({
           <h2 id="page-templates-title">
             {picked ? picked.name : "New page from a template"}
           </h2>
+          {picked?.can_edit && (
+            <button
+              className="icon-button"
+              aria-label="Template options"
+              title="Template options"
+              aria-haspopup="menu"
+              aria-expanded={!!menu}
+              disabled={busy}
+              onClick={(e) =>
+                setMenu(menu ? null : e.currentTarget.getBoundingClientRect())
+              }
+            >
+              <MoreHorizontal size={18} />
+            </button>
+          )}
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
+        {menu && picked && (
+          <Popover
+            anchor={menu}
+            label="Template options"
+            onClose={() => setMenu(null)}
+            width={220}
+          >
+            <div className="doc-menu" role="menu">
+              <button
+                className="doc-menu-item is-danger"
+                role="menuitem"
+                onClick={() => void remove(picked)}
+              >
+                <Trash2 size={15} aria-hidden="true" /> Delete template
+              </button>
+            </div>
+          </Popover>
+        )}
         <div className="page-templates-body">
           {error && (
             <div className="error" role="alert">
@@ -319,41 +438,60 @@ export function PageTemplatesDialog({
                   }}
                 />
               </label>
+              {teams.length > 0 && (
+                <label>
+                  Where
+                  <Select
+                    value={space}
+                    onChange={(e) => moveTo(e.target.value)}
+                  >
+                    <option value="">Your pages</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              )}
               <label>
                 Project
                 <Select
-                  value={projectId}
+                  value={project?.id ?? ""}
                   onChange={(e) => {
                     setProjectId(e.target.value);
                     if (!e.target.value) setMakeTasks(false);
                   }}
                 >
                   <option value="">None</option>
-                  {projects
-                    .filter((p) => (p.team_id ?? null) === space)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
+                  {projects.filter(inSpace).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
                 </Select>
               </label>
               {usesEvent && (
                 <label>
                   Event
                   <Select
-                    value={eventId}
+                    value={event ? eventKey(event) : ""}
                     onChange={(e) => setEventId(e.target.value)}
                   >
                     <option value="">None</option>
-                    {events
-                      .filter((e) => e.team_id === space)
-                      .map((e) => (
-                        <option key={eventKey(e)} value={eventKey(e)}>
-                          {eventLabel(e)}
-                        </option>
-                      ))}
+                    {events.filter(inSpace).map((e) => (
+                      <option key={eventKey(e)} value={eventKey(e)}>
+                        {eventLabel(e)}
+                        {noted(e) ? " · has a note" : ""}
+                      </option>
+                    ))}
                   </Select>
+                  {event && noted(event) && (
+                    <small className="field-hint page-template-noted">
+                      <FileText size={13} aria-hidden="true" /> This event
+                      already has a note. It opens instead of a new page.
+                    </small>
+                  )}
                 </label>
               )}
               <label>
@@ -364,7 +502,7 @@ export function PageTemplatesDialog({
                 >
                   <option value="">Unfiled</option>
                   {folders
-                    .filter((f) => (f.team_id ?? null) === space)
+                    .filter((f) => (f.team_id ?? "") === space)
                     .map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.name}
@@ -372,7 +510,7 @@ export function PageTemplatesDialog({
                     ))}
                 </Select>
               </label>
-              {todos > 0 && (
+              {todos > 0 && !(event && noted(event)) && (
                 <label className="switch-line">
                   <input
                     type="checkbox"
@@ -398,19 +536,15 @@ export function PageTemplatesDialog({
                 </p>
               )}
               <div className="confirm-actions">
-                {picked.can_edit && (
-                  <button
-                    type="button"
-                    className="text-button page-template-delete"
-                    disabled={busy}
-                    onClick={() => void remove(picked)}
-                  >
-                    <Trash2 size={14} aria-hidden="true" /> Delete template
+                {event && noted(event) ? (
+                  <button type="submit" className="primary" disabled={busy}>
+                    <FileText size={15} aria-hidden="true" /> Open its note
+                  </button>
+                ) : (
+                  <button type="submit" className="primary" disabled={busy}>
+                    <Plus size={15} aria-hidden="true" /> Create page
                   </button>
                 )}
-                <button type="submit" className="primary" disabled={busy}>
-                  <Plus size={15} aria-hidden="true" /> Create page
-                </button>
               </div>
             </form>
           )}
@@ -423,19 +557,23 @@ export function PageTemplatesDialog({
 /**
  * Save the open page as a template. It's kept where the page lives — a team
  * page makes a template for the team — with its folder and tags, and every
- * box unticked. Blanks typed into the page fill in when it's used.
+ * box unticked. Blanks typed into the page fill in when it's used. Someone
+ * who can only read a team's pages keeps a template of their own.
  */
 export function SaveTemplateDialog({
   doc,
+  canShare,
   onClose,
   onSaved,
 }: {
   doc: Pick<Doc, "id" | "title" | "team_id" | "team_name">;
+  /** Whether a team page's template may be the team's (you can write there). */
+  canShare: boolean;
   onClose: () => void;
   onSaved: (t: PageTemplate) => void;
 }) {
   const [name, setName] = useState(doc.title || "");
-  const [personal, setPersonal] = useState(false);
+  const [personal, setPersonal] = useState(!canShare);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -505,7 +643,7 @@ export function SaveTemplateDialog({
               in the page fill themselves in each time it's used.
             </small>
           </label>
-          {doc.team_id && (
+          {doc.team_id && canShare && (
             <label className="switch-line">
               <input
                 type="checkbox"
@@ -519,6 +657,12 @@ export function SaveTemplateDialog({
                 <small>Everyone on the team can start pages from it.</small>
               </span>
             </label>
+          )}
+          {doc.team_id && !canShare && (
+            <p className="muted page-template-sections">
+              It's kept as your own template, since you can read{" "}
+              {doc.team_name ?? "this team"}'s pages but not add to them.
+            </p>
           )}
           <div className="confirm-actions">
             <button type="button" className="ghost" onClick={onClose}>

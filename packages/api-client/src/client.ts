@@ -213,7 +213,11 @@ export type LiveNews = {
  * What a document's stream says beyond its version: `trashed` when someone
  * moved it to Trash, so an editor that has it open can let it go.
  */
-export type DocNews = { trashed: boolean };
+export type DocNews = {
+  trashed: boolean;
+  /** Only the page's tags changed; its words and version are as they were. */
+  tags: boolean;
+};
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
 const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
@@ -1228,9 +1232,11 @@ export class OrbynClient {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
                   trashed?: boolean;
+                  tags?: boolean;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
+                  tags: payload.tags === true,
                 });
               } catch {
                 // A half-written event: the next one will bring us up to date.
@@ -2643,13 +2649,19 @@ export class OrbynClient {
   }
   /**
    * Make a page from a template, blanks filled in. With `make_tasks`, its
-   * to-do lines become tasks (in the project, when one is chosen).
+   * to-do lines become tasks (in the project, when one is chosen). For an
+   * event that already has a note, that note comes back (`existing`) and
+   * nothing new is made.
    */
   usePageTemplate(id: string, input: PageTemplateUse = {}) {
-    return this.request<{ doc: Doc; tasks_created: number }>(
-      `/page-templates/${encodeURIComponent(id)}/use`,
-      { method: "POST", body: input },
-    );
+    return this.request<{
+      doc: Doc;
+      tasks_created: number;
+      existing: boolean;
+    }>(`/page-templates/${encodeURIComponent(id)}/use`, {
+      method: "POST",
+      body: input,
+    });
   }
 
   // ---- project templates ---------------------------------------------------

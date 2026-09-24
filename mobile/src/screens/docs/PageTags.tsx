@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import type { DocTag, Tag } from "@orbyn/core";
+import { PAGE_TAG_LIMIT, type DocTag, type Tag } from "@orbyn/core";
 import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
 import { SmallAction } from "../../components/SmallAction";
@@ -84,7 +84,7 @@ export function PageTags({
             accessibilityRole="button"
             accessibilityState={{ expanded: open }}
             accessibilityLabel={tags.length ? "Change tags" : "Add a tag"}
-            hitSlop={{ top: 8, bottom: 8 }}
+            hitSlop={TAG_SLOP}
             onPress={toggleOpen}
             style={({ pressed }) => [s.add, (pressed || open) && s.addOn]}
           >
@@ -107,7 +107,9 @@ export function PageTags({
                   label={t.name}
                   color={t.color}
                   selected={on.has(t.id)}
-                  disabled={busy || (!on.has(t.id) && on.size >= 20)}
+                  disabled={
+                    busy || (!on.has(t.id) && on.size >= PAGE_TAG_LIMIT)
+                  }
                   onPress={() =>
                     set(
                       on.has(t.id)
@@ -147,6 +149,15 @@ export function PageTags({
   );
 }
 
+/** The tag row's chips are drawn small; this brings "Tag" up to a full tap. */
+const CHIP_HEIGHT = 26;
+const TAG_SLOP = {
+  top: (controls.tap - CHIP_HEIGHT) / 2,
+  bottom: (controls.tap - CHIP_HEIGHT) / 2,
+  left: 6,
+  right: 6,
+};
+
 const s = themed(() =>
   StyleSheet.create({
     wrap: { gap: 8, marginTop: -6 },
@@ -161,18 +172,18 @@ const s = themed(() =>
       alignItems: "center",
       gap: 5,
       maxWidth: "100%",
-      minHeight: 26,
+      minHeight: CHIP_HEIGHT,
       paddingHorizontal: 10,
       borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
     },
-    dot: { width: 6, height: 6, borderRadius: 3 },
+    dot: { width: 6, height: 6, borderRadius: radii.pill },
     tagText: { color: colors.textSoft, fontSize: 13, fontFamily: fonts.medium },
     add: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      minHeight: 26,
+      minHeight: CHIP_HEIGHT,
       paddingHorizontal: 10,
       borderRadius: radii.pill,
     },

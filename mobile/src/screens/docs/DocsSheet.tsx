@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -157,6 +158,18 @@ export function DocsSheet({
   );
   const [agendaGap, setAgendaGap] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
+
+  // Left open past midnight, today's page becomes yesterday's: the labels
+  // and Rewrite follow the clock whenever the app comes back to the front.
+  useEffect(() => {
+    if (!agenda) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      const now = localDateKey(new Date(), deviceTimeZone());
+      setAgendaToday((was) => (now > was ? now : was));
+    });
+    return () => sub.remove();
+  }, [agenda]);
 
   useEffect(() => {
     if (!visible) return;
@@ -1432,7 +1445,7 @@ const styles = themed(() =>
     dayArrow: {
       width: 34,
       height: 34,
-      borderRadius: 17,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },

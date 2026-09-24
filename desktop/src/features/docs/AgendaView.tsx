@@ -57,6 +57,8 @@ export function AgendaView({
   );
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  /** Another day's page couldn't be looked up (not the same as "none"). */
+  const [dayFailed, setDayFailed] = useState(false);
   const [rewriting, setRewriting] = useState(false);
   const [writing, setWriting] = useState(false);
   const [note, setNote] = useState("");
@@ -68,6 +70,7 @@ export function AgendaView({
   const load = () => {
     setTrashed(false);
     setFailed(false);
+    setDayFailed(false);
     setNote("");
     setLoading(true);
     setDoc(null);
@@ -91,11 +94,43 @@ export function AgendaView({
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Left open past midnight, the page on screen becomes yesterday's: the
+  // labels, the Today button and Rewrite follow the clock, checked when the
+  // window comes back and at each midnight.
+  useEffect(() => {
+    const check = () => {
+      const now = localDateKey(new Date(), deviceTimeZone());
+      setToday((was) => (now > was ? now : was));
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    let timer: ReturnType<typeof setTimeout>;
+    const atMidnight = () => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(24, 0, 5, 0);
+      timer = setTimeout(() => {
+        check();
+        atMidnight();
+      }, next.getTime() - now.getTime());
+    };
+    atMidnight();
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
   /** Step to another day's page, or to the gap where it would be. */
   const go = (day: string) => {
     if (day === today) return load();
     setTrashed(false);
     setFailed(false);
+    setDayFailed(false);
     setNote("");
     setLoading(true);
     // The page on screen goes first, saving anything typed into it.
@@ -110,7 +145,8 @@ export function AgendaView({
         },
         (e) => {
           setDoc(null);
-          report(e);
+          setDayFailed(true);
+          errorText(e, "That day's agenda");
         },
       )
       .finally(() => setLoading(false));
@@ -242,6 +278,14 @@ export function AgendaView({
       )}
       {loading && !doc ? (
         <p className="muted">Looking for that day's page…</p>
+      ) : dayFailed ? (
+        <div className="empty agenda-empty" role="alert">
+          <CalendarDays size={30} aria-hidden="true" />
+          <p>{agendaTitleOn(date)} couldn't be loaded.</p>
+          <button type="button" className="secondary" onClick={() => go(date)}>
+            <RefreshCw size={14} aria-hidden="true" /> Try again
+          </button>
+        </div>
       ) : doc ? (
         <DocEditor
           key={`${doc.id}-${edition}`}

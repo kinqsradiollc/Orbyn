@@ -5,6 +5,7 @@ import {
   blankDate,
   blanksIn,
   fillTitle,
+  hasTeamPermission,
   localDateKey,
   templateTodos,
   type CalendarEntry,
@@ -12,10 +13,12 @@ import {
   type Folder,
   type PageTemplate,
   type Project,
+  type Team,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
+import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
 import { Switch } from "../../components/Switch";
 import { client } from "../../lib/api";
@@ -48,9 +51,30 @@ function summary(t: PageTemplate) {
     .join(" · ");
 }
 
+/** Which space a page goes in: "" for your own, or a team's id. */
+type Space = string;
+
+/**
+ * Where a page from `t` goes to begin with: a team template's team, else
+ * the team of the folder being looked at, else your own pages — only ever
+ * a space you can write in.
+ */
+function startingSpace(
+  t: PageTemplate,
+  here: Folder | undefined,
+  writable: Team[],
+): Space {
+  const can = (id: string | null | undefined) =>
+    !!id && writable.some((team) => team.id === id);
+  if (can(t.team_id)) return t.team_id!;
+  if (can(here?.team_id)) return here!.team_id!;
+  return "";
+}
+
 /**
  * New page from a template, on the phone: pick one, name the page, choose
- * its project, event and folder, and whether its to-dos become tasks.
+ * where it goes (your pages or a team's), its project, event and folder,
+ * and whether its to-dos become tasks.
  */
 export function PageTemplatesPanel({
   folders,
@@ -75,6 +99,11 @@ export function PageTemplatesPanel({
   const [makeTasks, setMakeTasks] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** Teams whose pages you can write: the other places a page can go. */
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [space, setSpace] = useState<Space>("");
+  /** Events that have a note already, by event and space. */
+  const [notes, setNotes] = useState<Set<string>>(new Set());
 
   const load = () =>
     client.listPageTemplates().then(setTemplates, (e: Error) => {
@@ -86,6 +115,22 @@ export function PageTemplatesPanel({
     client.listProjects().then(
       (all) => setProjects(all.filter((p) => p.status === "active")),
       () => setProjects([]),
+    );
+    client.listTeams().then(
+      (all) =>
+        setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
+      () => setTeams([]),
+    );
+    client.listDocs({ kind: "meeting" }).then(
+      (all) =>
+        setNotes(
+          new Set(
+            all.flatMap((d) =>
+              d.item_id ? [`${d.item_id}|${d.team_id ?? ""}`] : [],
+            ),
+          ),
+        ),
+      () => setNotes(new Set()),
     );
     const today = localDateKey(new Date(), deviceTimeZone());
     client
@@ -105,11 +150,13 @@ export function PageTemplatesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const space = picked?.team_id ?? null;
-  const event = events.find(
-    (e) => eventKey(e) === eventId && e.team_id === space,
-  );
-  const project = projects.find((p) => p.id === projectId);
+  const team = space || null;
+  const inSpace = (x: { team_id?: string | null }) =>
+    (x.team_id ?? null) === team;
+  const event = events.find((e) => eventKey(e) === eventId && inSpace(e));
+  /** Whether an event has a note already, which opens instead. */
+  const noted = (e: CalendarEntry) => notes.has(`${e.item_id}|${space}`);
+  const project = projects.find((p) => p.id === projectId && inSpace(p));
   const usesEvent = picked ? blanksIn(picked).includes("event") : false;
   const todos = picked ? templateTodos(picked.content) : 0;
   const suggested = useMemo(
@@ -134,18 +181,42 @@ export function PageTemplatesPanel({
     if (!named) setTitle(suggested);
   }, [suggested, named]);
 
+  /**
+   * The folder a page starts in, in `to`: the template's own when it's
+   * there, else the folder being looked at when it's there, else none.
+   */
+  const startingFolder = (t: PageTemplate, to: Space) => {
+    const fits = (id: string | null | undefined) =>
+      !!id && folders.some((f) => f.id === id && (f.team_id ?? "") === to);
+    if (fits(t.folder_id)) return t.folder_id!;
+    if (fits(folderId)) return folderId!;
+    return "";
+  };
+
   const choose = (t: PageTemplate) => {
+    const to = startingSpace(
+      t,
+      folders.find((f) => f.id === folderId),
+      teams,
+    );
     setPicked(t);
     setNamed(false);
     setProjectId("");
     setEventId("");
     setMakeTasks(false);
-    const here = folders.find((f) => f.id === folderId);
-    setFolder(
-      t.folder_id ??
-        (here && (here.team_id ?? null) === (t.team_id ?? null) ? here.id : ""),
-    );
+    setSpace(to);
+    setFolder(startingFolder(t, to));
     setError("");
+  };
+
+  /** Move the page to another space; choices from the old one go. */
+  const moveTo = (to: Space) => {
+    if (!picked) return;
+    setSpace(to);
+    setProjectId("");
+    setEventId("");
+    setMakeTasks(false);
+    setFolder(startingFolder(picked, to));
   };
 
   const create = () => {
@@ -155,19 +226,22 @@ export function PageTemplatesPanel({
     client
       .usePageTemplate(picked.id, {
         title: title.trim() || undefined,
-        project_id: projectId || null,
+        team_id: team,
+        project_id: project?.id ?? null,
         event_id: event ? event.item_id : null,
         ...(event ? { event_at: event.start_at } : {}),
         folder_id: folder || null,
         make_tasks: makeTasks,
       })
       .then(
-        ({ doc, tasks_created }) =>
+        ({ doc, tasks_created, existing }) =>
           onCreated(
             doc,
-            tasks_created
-              ? `Made from ${picked.name}. ${tasks_created} to-do${tasks_created === 1 ? " is" : "s are"} now ${tasks_created === 1 ? "a task" : "tasks"}${project ? ` in ${project.name}` : ""}.`
-              : `Made from ${picked.name}.`,
+            existing
+              ? `“${event?.title ?? doc.title}” already has a note, so it’s open.`
+              : tasks_created
+                ? `Made from ${picked.name}. ${tasks_created} to-do${tasks_created === 1 ? " is" : "s are"} now ${tasks_created === 1 ? "a task" : "tasks"}${project ? ` in ${project.name}` : ""}.`
+                : `Made from ${picked.name}.`,
             tasks_created,
           ),
         (e: Error) => setError(errorText(e)),
@@ -212,6 +286,19 @@ export function PageTemplatesPanel({
         <Text style={s.title} accessibilityRole="header" numberOfLines={1}>
           {picked ? picked.name : "From a template"}
         </Text>
+        {picked?.can_edit && (
+          <MoreMenu
+            label="Template options"
+            disabled={busy}
+            actions={[
+              {
+                label: "Delete template",
+                destructive: true,
+                onPress: () => remove(picked),
+              },
+            ]}
+          />
+        )}
         <SmallAction label="Cancel" disabled={false} onPress={onCancel} />
       </View>
       {!!error && <Text style={s.error}>{error}</Text>}
@@ -275,27 +362,45 @@ export function PageTemplatesPanel({
               accessibilityLabel="Title"
             />
           </View>
+          {teams.length > 0 && (
+            <View>
+              <Text style={shared.label}>Where</Text>
+              <ChipRow label="Where">
+                <Chip
+                  label="Your pages"
+                  selected={!space}
+                  onPress={() => moveTo("")}
+                />
+                {teams.map((t) => (
+                  <Chip
+                    key={t.id}
+                    label={t.name}
+                    selected={space === t.id}
+                    onPress={() => moveTo(t.id)}
+                  />
+                ))}
+              </ChipRow>
+            </View>
+          )}
           <View>
             <Text style={shared.label}>Project</Text>
             <ChipRow label="Project">
               <Chip
                 label="None"
-                selected={!projectId}
+                selected={!project}
                 onPress={() => {
                   setProjectId("");
                   setMakeTasks(false);
                 }}
               />
-              {projects
-                .filter((p) => (p.team_id ?? null) === space)
-                .map((p) => (
-                  <Chip
-                    key={p.id}
-                    label={p.name}
-                    selected={projectId === p.id}
-                    onPress={() => setProjectId(p.id)}
-                  />
-                ))}
+              {projects.filter(inSpace).map((p) => (
+                <Chip
+                  key={p.id}
+                  label={p.name}
+                  selected={projectId === p.id}
+                  onPress={() => setProjectId(p.id)}
+                />
+              ))}
             </ChipRow>
           </View>
           {usesEvent && (
@@ -308,17 +413,22 @@ export function PageTemplatesPanel({
                   onPress={() => setEventId("")}
                 />
                 {events
-                  .filter((e) => e.team_id === space)
+                  .filter(inSpace)
                   .slice(0, 12)
                   .map((e) => (
                     <Chip
                       key={eventKey(e)}
-                      label={eventLabel(e)}
+                      label={`${eventLabel(e)}${noted(e) ? " · has a note" : ""}`}
                       selected={eventId === eventKey(e)}
                       onPress={() => setEventId(eventKey(e))}
                     />
                   ))}
               </ChipRow>
+              {!!event && noted(event) && (
+                <Text style={[shared.small, s.noted]}>
+                  This event already has a note. It opens instead of a new page.
+                </Text>
+              )}
             </View>
           )}
           <View>
@@ -330,7 +440,7 @@ export function PageTemplatesPanel({
                 onPress={() => setFolder("")}
               />
               {folders
-                .filter((f) => (f.team_id ?? null) === space)
+                .filter((f) => (f.team_id ?? "") === space)
                 .map((f) => (
                   <Chip
                     key={f.id}
@@ -341,7 +451,7 @@ export function PageTemplatesPanel({
                 ))}
             </ChipRow>
           </View>
-          {todos > 0 && (
+          {todos > 0 && !(event && noted(event)) && (
             <View style={s.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.name}>
@@ -362,18 +472,19 @@ export function PageTemplatesPanel({
               />
             </View>
           )}
-          <Button
-            title={busy ? "Making…" : "Create page"}
-            icon="plus"
-            disabled={busy}
-            onPress={create}
-          />
-          {picked.can_edit && (
-            <SmallAction
-              label="Delete template"
-              destructive
+          {event && noted(event) ? (
+            <Button
+              title={busy ? "Opening…" : "Open its note"}
+              icon="fileText"
               disabled={busy}
-              onPress={() => remove(picked)}
+              onPress={create}
+            />
+          ) : (
+            <Button
+              title={busy ? "Making…" : "Create page"}
+              icon="plus"
+              disabled={busy}
+              onPress={create}
             />
           )}
         </View>
@@ -388,15 +499,18 @@ export function PageTemplatesPanel({
  */
 export function SaveTemplatePanel({
   doc,
+  canShare,
   onClose,
   onSaved,
 }: {
   doc: Pick<Doc, "id" | "title" | "team_id" | "team_name">;
+  /** Whether a team page's template may be the team's (you can write there). */
+  canShare: boolean;
   onClose: () => void;
   onSaved: (t: PageTemplate) => void;
 }) {
   const [name, setName] = useState(doc.title || "");
-  const [shareWithTeam, setShareWithTeam] = useState(true);
+  const [shareWithTeam, setShareWithTeam] = useState(canShare);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = () => {
@@ -432,7 +546,13 @@ export function SaveTemplatePanel({
         Blanks like {"{date}"}, {"{title}"}, {"{project}"} and {"{event}"} in
         the page fill themselves in each time it’s used.
       </Text>
-      {!!doc.team_id && (
+      {!!doc.team_id && !canShare && (
+        <Text style={shared.small}>
+          It’s kept as your own template, since you can read{" "}
+          {doc.team_name ?? "this team"}’s pages but not add to them.
+        </Text>
+      )}
+      {!!doc.team_id && canShare && (
         <View style={s.switchRow}>
           <Text style={[s.name, { flex: 1 }]}>
             Share with {doc.team_name ?? "the team"}
@@ -495,6 +615,7 @@ const s = themed(() =>
     },
     form: { gap: 14 },
     switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    noted: { marginTop: 6 },
     error: { color: colors.danger, fontSize: 13 },
     savePanel: {
       gap: 10,

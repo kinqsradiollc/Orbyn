@@ -73,6 +73,7 @@ import {
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
+import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
 import { DocViewers } from "./DocViewers";
@@ -519,8 +520,8 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
-  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
-  onEvent.current = (remote: number, trashed: boolean) => {
+  const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
+  onEvent.current = (remote: number, { trashed, tags: retagged }: DocNews) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
@@ -532,6 +533,13 @@ export function DocEditor({
       toast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone changed the page's tags: the row follows, the words stay.
+    if (retagged) {
+      void client
+        .getDoc(doc.id)
+        .then((theirs) => setTags(theirs.tags ?? []), report);
       return;
     }
     if (remote && remote <= version.current) return;
@@ -568,8 +576,7 @@ export function DocEditor({
    * in, so two people can work on the same page at once.
    */
   useEffect(
-    () =>
-      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    () => client.watchDoc(doc.id, (v, news) => onEvent.current(v, news)),
     [doc.id],
   );
 
@@ -2133,6 +2140,7 @@ export function DocEditor({
       {savingTemplate && (
         <SaveTemplateDialog
           doc={doc}
+          canShare={canWrite}
           onClose={() => setSavingTemplate(false)}
           onSaved={(t) =>
             toast({

@@ -78,25 +78,93 @@ export function agendaNotesAt(blocks: DocBlock[]): number {
 }
 
 /**
+ * The headings the calendar writes on an agenda (`buildAgenda`), lower case.
+ * Everything under the last of them, from the next heading on, is yours.
+ */
+const WRITTEN_HEADINGS = new Set([
+  "top priorities",
+  "schedule",
+  "morning",
+  "afternoon",
+  "evening",
+  "focus time",
+  "study",
+  "due today",
+  "carried over",
+  "coming up",
+]);
+
+const headingText = (b: DocBlock) =>
+  b.type === "heading" ? b.text.trim().toLowerCase() : null;
+
+/**
+ * Where the part of an agenda that is yours starts, when its Notes heading
+ * can't be found (it was renamed on a page written before headings had
+ * names, or deleted): the first heading after the last section the
+ * calendar writes — or, on a day with none of those, the first heading
+ * after the opening line. -1 when there is no such heading either.
+ */
+function yoursAt(blocks: DocBlock[]): number {
+  let last = 0;
+  blocks.forEach((b, i) => {
+    const text = headingText(b);
+    if (text !== null && WRITTEN_HEADINGS.has(text)) last = i;
+  });
+  for (let i = last + 1; i < blocks.length; i++) {
+    const text = headingText(blocks[i]);
+    if (text !== null && !WRITTEN_HEADINGS.has(text)) return i;
+  }
+  return -1;
+}
+
+const hasWords = (b: DocBlock) => b.type !== "divider" && !!b.text.trim();
+const sameLine = (a: DocBlock, b: DocBlock) =>
+  a.type === b.type &&
+  (a.type === "divider" || (b.type !== "divider" && a.text === b.text));
+
+/**
  * An agenda written again from the calendar, with its Notes section kept.
  * Everything above Notes comes from `fresh`; Notes and everything under it
- * comes from `current`, untouched. A page with no Notes section left has
- * nothing to keep, so it is simply the fresh page.
+ * — your notes and the end-of-day answers — comes from `current`,
+ * untouched.
+ *
+ * Nothing you wrote is ever dropped. When the Notes heading is gone, what
+ * follows the calendar's own sections is kept (from the first heading
+ * after them); when even that can't be told apart, every line of yours
+ * that the fresh page doesn't already have is kept under a new Notes
+ * heading.
  */
 export function keepAgendaNotes(
   current: DocBlock[],
   fresh: DocBlock[],
 ): DocBlock[] {
-  const mine = agendaNotesAt(current);
-  if (mine < 0) return fresh;
   const theirs = agendaNotesAt(fresh);
   const top = theirs < 0 ? fresh : fresh.slice(0, theirs);
-  const kept = current.slice(mine);
-  // A heading with no name yet takes the Notes name, so the next rewrite
-  // finds it however it is renamed. One that already has a name keeps it:
-  // remarks may be pointing at it.
-  if (!kept[0].id) kept[0] = { ...kept[0], id: AGENDA_NOTES_ID };
-  return [...top, ...kept];
+  const named = agendaNotesAt(current);
+  const mine = named >= 0 ? named : yoursAt(current);
+  if (mine >= 0) {
+    const kept = current.slice(mine);
+    // A heading with no name yet takes the Notes name, so the next rewrite
+    // finds it however it is renamed. One that already has a name keeps
+    // it: remarks may be pointing at it.
+    if (!kept[0].id) kept[0] = { ...kept[0], id: AGENDA_NOTES_ID };
+    return [...top, ...kept];
+  }
+  // No way to tell where the calendar's part ends: keep every line with
+  // words in it that the fresh page doesn't have, and none of the
+  // calendar's own headings, under a fresh Notes heading.
+  const left = current.filter((b) => {
+    if (!hasWords(b)) return false;
+    const text = headingText(b);
+    if (text !== null && WRITTEN_HEADINGS.has(text)) return false;
+    return !fresh.some((f) => sameLine(f, b));
+  });
+  if (!left.length) return fresh;
+  return [
+    ...top,
+    { type: "heading", level: 2, text: "Notes", id: AGENDA_NOTES_ID },
+    ...left,
+  ];
 }
 
 export type AgendaOptions = {

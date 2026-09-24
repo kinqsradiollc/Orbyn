@@ -78,9 +78,21 @@ export function fillTitle(
 }
 
 /**
+ * Whether a line is only a label left waiting for blanks that came out
+ * empty — "Course: " once no project was chosen — and so is better left
+ * off the page than left dangling.
+ */
+function onlyALabel(before: string, after: string, values: BlankValues) {
+  const blanks = [...before.matchAll(BLANK_RE)].map((m) => m[1] as PageBlank);
+  if (!blanks.length || blanks.some((b) => values[b]?.trim())) return false;
+  return /^\s*[\p{L}\p{N}][\p{L}\p{N} '’&/-]{0,40}:\s*$/u.test(after);
+}
+
+/**
  * A template's page, filled in: the title, then every line but code and
  * maths, which are kept exactly as written. `{title}` on the page is the
- * page's own title as it was finally named.
+ * page's own title as it was finally named. A line that was only a label
+ * for blanks left empty ("Course: {project}" with no project) is left out.
  */
 export function fillTemplate(
   template: { title: string; content: DocBlock[]; name?: string },
@@ -99,11 +111,12 @@ export function fillTemplate(
   const all = { ...values, title: named };
   return {
     title: named,
-    content: template.content.map((b) =>
-      b.type === "divider" || b.type === "code" || b.type === "math"
-        ? b
-        : { ...b, text: fillBlanks(b.text, all) },
-    ),
+    content: template.content.flatMap((b): DocBlock[] => {
+      if (b.type === "divider" || b.type === "code" || b.type === "math")
+        return [b];
+      const text = fillBlanks(b.text, all);
+      return onlyALabel(b.text, text, all) ? [] : [{ ...b, text }];
+    }),
   };
 }
 

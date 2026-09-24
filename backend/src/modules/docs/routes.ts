@@ -527,8 +527,36 @@ export async function pageTags(
 }
 
 /**
+ * Tell a page's other open editors and readers that its tags changed, so
+ * their tag row follows. Tags aren't the page's words, so its version stays;
+ * a failed notice only means they see the change on their next load.
+ */
+const announceTags = (docId: string, version: number, by: string) =>
+  announceDocChange(pool, docId, version, by, { tags: true }).catch(() => {});
+
+/**
+ * The tag called `name` in a page's space, if the space has one (names
+ * compare without case, as tags always have).
+ */
+async function findTagNamed(
+  db: Queryable,
+  u: UserRow,
+  teamId: string | null,
+  name: string,
+): Promise<string | undefined> {
+  return (
+    await db.query<{ id: string }>(
+      `SELECT g.id FROM tags g
+        WHERE lower(g.name) = lower($1) AND ${TAG_IN_SPACE}
+        ORDER BY g.created_at LIMIT 1`,
+      [name, u.id, teamId],
+    )
+  ).rows[0]?.id;
+}
+
+/**
  * The tag called `name` in a page's space, made there if the space has no
- * tag by that name yet (names compare without case, as tags always have).
+ * tag by that name yet.
  */
 export async function tagNamed(
   db: Queryable,
@@ -536,15 +564,7 @@ export async function tagNamed(
   teamId: string | null,
   name: string,
 ): Promise<string> {
-  const find = async () =>
-    (
-      await db.query<{ id: string }>(
-        `SELECT g.id FROM tags g
-          WHERE lower(g.name) = lower($1) AND ${TAG_IN_SPACE}
-          ORDER BY g.created_at LIMIT 1`,
-        [name, u.id, teamId],
-      )
-    ).rows[0]?.id;
+  const find = () => findTagNamed(db, u, teamId, name);
   const found = await find();
   if (found) return found;
   const made = (
@@ -556,6 +576,28 @@ export async function tagNamed(
   ).rows[0]?.id;
   // Someone made the same tag a moment ago: theirs is the one.
   return made ?? (await find())!;
+}
+
+/**
+ * The note an event already has, as opening the event finds it: a meeting
+ * page hanging off it in the event's own space, not in Trash. When there are
+ * several (written before an event kept to one), the latest edited.
+ */
+export async function eventNote(
+  db: Queryable,
+  u: UserRow,
+  itemId: string,
+  teamId: string | null,
+): Promise<Doc | undefined> {
+  return (
+    await db.query<Doc>(
+      `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
+        WHERE d.item_id = $2 AND d.kind = 'meeting'
+          AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
+        ORDER BY d.updated_at DESC, d.created_at LIMIT 1`,
+      [u.id, itemId, teamId],
+    )
+  ).rows[0];
 }
 
 export async function docRoutes(app: FastifyInstance) {
@@ -1037,15 +1079,7 @@ export async function docRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!event) fail(404, "Item not found");
 
-    const existing = (
-      await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
-          WHERE d.item_id = $2 AND d.kind = 'meeting'
-            AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
-          ORDER BY d.updated_at DESC, d.created_at LIMIT 1`,
-        [u.id, id, event.team_id],
-      )
-    ).rows[0];
+    const existing = await eventNote(pool, u, id, event.team_id);
     if (existing) return existing;
 
     const prefs = await loadPrefs(pool, u.id);
@@ -1055,7 +1089,15 @@ export async function docRoutes(app: FastifyInstance) {
       location: event.location,
       timeZone: prefs.timezone || "UTC",
     });
-    const doc = await transaction(async (db) => {
+    const made = await transaction(async (db) => {
+      // Two first opens at once (or a note being made from a template) must
+      // not leave the event with two notes: the check is made again under
+      // the event's own lock.
+      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `event-note:${id}`,
+      ]);
+      const again = await eventNote(db, u, id, event.team_id);
+      if (again) return { doc: again, created: false };
       const newId = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, title, kind, content, item_id)
@@ -1063,16 +1105,19 @@ export async function docRoutes(app: FastifyInstance) {
           [u.id, event.team_id, event.title, JSON.stringify(content), id],
         )
       ).rows[0].id;
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [newId],
-        )
-      ).rows[0];
+      return {
+        doc: (
+          await db.query<Doc>(
+            `SELECT ${COLUMNS}, d.content FROM docs d
+               ${JOINS} WHERE d.id = $1`,
+            [newId],
+          )
+        ).rows[0],
+        created: true,
+      };
     });
-    reply.code(201);
-    return doc;
+    if (made.created) reply.code(201);
+    return made.doc;
   });
 
   /**
@@ -1123,7 +1168,7 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const { tags } = docTagsInput.parse(r.body);
     const wanted = [...new Set(tags)];
-    return transaction(async (db) => {
+    const out = await transaction(async (db) => {
       const doc = await requireDoc(db, id, u, "items:write");
       const allowed = (
         await db.query<{ id: string }>(
@@ -1144,8 +1189,10 @@ export async function docRoutes(app: FastifyInstance) {
            SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
         [id, allowed],
       );
-      return { tags: await pageTags(db, id) };
+      return { tags: await pageTags(db, id), version: doc.version };
     });
+    await announceTags(id, out.version, editorOf(r));
+    return { tags: out.tags };
   });
 
   /**
@@ -1158,18 +1205,23 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const { names } = docTagNamesInput.parse(r.body);
-    return transaction(async (db) => {
+    const out = await transaction(async (db) => {
       const doc = await requireDoc(db, id, u, "items:write");
-      const have = new Set((await pageTags(db, id)).map((t) => t.id));
+      const current = await pageTags(db, id);
+      const have = new Set(current.map((t) => t.id));
+      // A name the page already carries, from wherever, is already there.
+      const seen = new Set(current.map((t) => t.name.toLowerCase()));
       const added: string[] = [];
-      const seen = new Set<string>();
       for (const name of names) {
-        const key = name.toLocaleLowerCase();
+        const key = name.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
-        const tag = await tagNamed(db, u, doc.team_id, name);
-        if (have.has(tag)) continue;
+        const found = await findTagNamed(db, u, doc.team_id, name);
+        if (found && have.has(found)) continue;
+        // A full page takes no more, and a tag is only made when it will
+        // go on the page: a name left off here leaves nothing behind.
         if (have.size >= PAGE_TAG_LIMIT) break;
+        const tag = found ?? (await tagNamed(db, u, doc.team_id, name));
         await db.query(
           "INSERT INTO doc_tags (doc_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
           [id, tag],
@@ -1177,8 +1229,14 @@ export async function docRoutes(app: FastifyInstance) {
         have.add(tag);
         added.push(name);
       }
-      return { tags: await pageTags(db, id), added };
+      return {
+        tags: await pageTags(db, id),
+        added,
+        version: doc.version,
+      };
     });
+    if (out.added.length) await announceTags(id, out.version, editorOf(r));
+    return { tags: out.tags, added: out.added };
   });
 
   /** Everyone's remarks on a document, oldest first. */

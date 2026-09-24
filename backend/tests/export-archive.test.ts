@@ -15,6 +15,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { pageFile, safeFileName } = await import("@orbyn/core");
+const { zip, zipStream } = await import("../src/modules/docs/zip.js");
 
 const app = await buildApp();
 type Json = Record<string, any>;
@@ -244,6 +245,118 @@ test("the archive holds every page in its folder, and everything beside them", a
     files.get(`${root}/README.md`)!,
     /Team pages and projects belong to their team/,
   );
+});
+
+/** Everything a stream gives, as one buffer. */
+async function collect(stream: AsyncIterable<Buffer>) {
+  const parts: Buffer[] = [];
+  for await (const part of stream) parts.push(part);
+  return Buffer.concat(parts);
+}
+
+/**
+ * Read an archive the way unzip tools do, from its end: the closing record
+ * (and the zip64 pair when there is one), then the central directory.
+ */
+function directory(buffer: Buffer) {
+  const end = buffer.length - 22;
+  assert.equal(buffer.readUInt32LE(end), 0x06054b50);
+  let count = buffer.readUInt16LE(end + 10);
+  let size = buffer.readUInt32LE(end + 12);
+  let start = buffer.readUInt32LE(end + 16);
+  let zip64 = false;
+  if (buffer.readUInt32LE(end - 20) === 0x07064b50) {
+    zip64 = true;
+    const record = Number(buffer.readBigUInt64LE(end - 20 + 8));
+    assert.equal(buffer.readUInt32LE(record), 0x06064b50);
+    count = Number(buffer.readBigUInt64LE(record + 32));
+    size = Number(buffer.readBigUInt64LE(record + 40));
+    start = Number(buffer.readBigUInt64LE(record + 48));
+  }
+  const names: string[] = [];
+  let at = start;
+  for (let i = 0; i < count; i++) {
+    assert.equal(buffer.readUInt32LE(at), 0x02014b50, `entry ${i}`);
+    const nameLength = buffer.readUInt16LE(at + 28);
+    const extra = buffer.readUInt16LE(at + 30);
+    const comment = buffer.readUInt16LE(at + 32);
+    const offset = buffer.readUInt32LE(at + 42);
+    // Each entry points back at its own local header.
+    assert.equal(buffer.readUInt32LE(offset), 0x04034b50);
+    names.push(buffer.toString("utf8", at + 46, at + 46 + nameLength));
+    at += 46 + nameLength + extra + comment;
+  }
+  assert.equal(at - start, size);
+  return { names, zip64 };
+}
+
+test("the zip writer streams, deflates big files and stores tiny ones", async () => {
+  const text = "A line worth squeezing. ".repeat(200);
+  const entries = [
+    { name: "a.md", body: text },
+    { name: "tiny.txt", body: "hi" },
+    { name: "ü/b.md", body: Buffer.from(text) },
+  ];
+  const streamed = await collect(zipStream(entries));
+  const files = unzip(streamed);
+  assert.equal(files.get("a.md"), text);
+  assert.equal(files.get("tiny.txt"), "hi");
+  assert.equal(files.get("ü/b.md"), text);
+  assert.ok(streamed.length < text.length, "big files are deflated");
+  const { names, zip64 } = directory(streamed);
+  assert.deepEqual(names, ["a.md", "tiny.txt", "ü/b.md"]);
+  assert.equal(zip64, false);
+  // The in-memory writer (Word files) gives the same files.
+  assert.deepEqual(unzip(zip(entries)), files);
+});
+
+test("past 65,535 files the archive carries zip64 records", async () => {
+  const many = 70_000;
+  function* entries() {
+    for (let i = 0; i < many; i++) yield { name: `p/${i}.md`, body: `${i}` };
+  }
+  const buffer = await collect(zipStream(entries()));
+  const { names, zip64 } = directory(buffer);
+  assert.equal(zip64, true);
+  assert.equal(names.length, many);
+  assert.equal(names[0], "p/0.md");
+  assert.equal(names[many - 1], `p/${many - 1}.md`);
+  // The classic record says "see zip64" rather than a wrapped-round count.
+  assert.equal(buffer.readUInt16LE(buffer.length - 22 + 10), 0xffff);
+  const files = unzip(buffer);
+  assert.equal(files.size, many);
+  assert.equal(files.get("p/65536.md"), "65536");
+});
+
+test("a large account's pages all arrive, read a batch at a time", async () => {
+  // More pages than one batch, all written at the same instant, so the
+  // batches must be told apart by id as well as by time.
+  const at = "2026-01-02T03:04:05.123456Z";
+  await pool.query(
+    `INSERT INTO docs (user_id, title, kind, content, created_at, updated_at)
+     SELECT $1, 'Bulk ' || n, 'doc',
+            jsonb_build_array(jsonb_build_object('type', 'paragraph',
+                                                 'text', 'Page ' || n)),
+            $2::timestamptz, $2::timestamptz
+       FROM generate_series(1, 450) n`,
+    [userId, at],
+  );
+  const r = await call("GET", "/me/export.zip");
+  assert.equal(r.statusCode, 200, r.body);
+  const files = unzip(r.rawPayload);
+  const date = new Date().toISOString().slice(0, 10);
+  const root = `orbyn-export-${date}`;
+  for (let n = 1; n <= 450; n++) {
+    const page = files.get(`${root}/pages/Bulk ${n}.md`);
+    assert.ok(page, `Bulk ${n}`);
+    assert.match(page, new RegExp(`Page ${n}\n`));
+  }
+  const bulk = [...files.keys()].filter((k) => /\/pages\/Bulk \d+/.test(k));
+  assert.equal(bulk.length, 450, "each page once");
+  assert.match(files.get(`${root}/README.md`)!, /your \d+ pages as Markdown/);
+  assert.ok(files.has(`${root}/attachments.json`));
+  const { names } = directory(r.rawPayload);
+  assert.equal(names.length, files.size);
 });
 
 test("the JSON export still works as it did", async () => {

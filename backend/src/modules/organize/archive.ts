@@ -1,6 +1,7 @@
+import { Readable } from "node:stream";
 import { pageFile, safeFileName, type DocBlock } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { zip, type ZipEntry } from "../docs/zip.js";
+import { zipStream, type ZipEntry } from "../docs/zip.js";
 import { exportData } from "./portability.js";
 
 /**
@@ -15,7 +16,15 @@ import { exportData } from "./portability.js";
  *
  * Only what is the person's own is here — their personal pages, projects
  * and folders. A team's pages belong to the team and stay with it.
+ *
+ * The archive is written as it is downloaded: pages are read a batch at a
+ * time and each file is deflated off the main thread, so a large account
+ * neither sits in the API's memory whole nor holds up anyone else's
+ * requests while it is packed.
  */
+
+/** Pages read at a time. */
+const BATCH = 200;
 
 type PageRow = {
   title: string;
@@ -36,7 +45,8 @@ type PageRow = {
   } | null;
   deleted_at: Date | null;
   id: string;
-  folder_id: string | null;
+  /** Where the next batch starts: the exact time, as Postgres wrote it. */
+  at_key: string;
 };
 
 /** A path no other file in the archive has, by numbering a repeat. */
@@ -74,26 +84,34 @@ bring somewhere else.
 Team pages and projects belong to their team, so they aren't in here.
 `;
 
-/** Build the archive for one person. */
+/**
+ * The archive for one person, as a stream to send. Everything but the pages
+ * is read before the first byte goes out, so a failure there is an ordinary
+ * error; the pages follow in batches.
+ */
 export async function exportArchive(
   db: Queryable,
   userId: string,
   now = new Date(),
-): Promise<{ name: string; body: Buffer }> {
+): Promise<{ name: string; body: Readable }> {
   const date = now.toISOString().slice(0, 10);
   const root = `orbyn-export-${date}`;
   const planner = await exportData(db, userId);
 
   const folders = (
     await db.query<{
-      id: string;
       name: string;
       position: number;
       created_at: Date;
+      pages: number;
     }>(
-      `SELECT id, name, position, created_at FROM folders
-        WHERE user_id = $1 AND team_id IS NULL
-        ORDER BY position, lower(name)`,
+      `SELECT f.name, f.position, f.created_at,
+              (SELECT count(*)::int FROM docs d
+                WHERE d.folder_id = f.id AND d.user_id = $1
+                  AND d.team_id IS NULL AND d.deleted_at IS NULL) AS pages
+         FROM folders f
+        WHERE f.user_id = $1 AND f.team_id IS NULL
+        ORDER BY f.position, lower(f.name)`,
       [userId],
     )
   ).rows;
@@ -127,24 +145,13 @@ export async function exportArchive(
     )
   ).rows;
 
-  const pages = (
-    await db.query<PageRow>(
-      `SELECT d.id, d.folder_id, d.title, d.kind, d.content, d.created_at,
-              d.updated_at,
-              to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date,
-              f.name AS folder, p.name AS project, d.imported_from,
-              d.deleted_at,
-              coalesce((SELECT array_agg(g.name ORDER BY g.name)
-                          FROM doc_tags dt JOIN tags g ON g.id = dt.tag_id
-                         WHERE dt.doc_id = d.id), '{}') AS tags
-         FROM docs d
-         LEFT JOIN folders f ON f.id = d.folder_id
-         LEFT JOIN projects p ON p.id = d.project_id
-        WHERE d.user_id = $1 AND d.team_id IS NULL
-        ORDER BY d.created_at, d.id`,
+  const pageCount = (
+    await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM docs d
+        WHERE d.user_id = $1 AND d.team_id IS NULL`,
       [userId],
     )
-  ).rows;
+  ).rows[0].n;
 
   const imports = (
     await db.query<{
@@ -189,56 +196,104 @@ export async function exportArchive(
     )
   ).rows[0];
 
-  // Each page's file, in its folder.
-  const taken = new Set<string>();
-  const pathOf = new Map<string, string>();
-  const entries: ZipEntry[] = [];
-  for (const page of pages) {
-    const title = page.title.trim() || "Untitled";
-    const dir = page.deleted_at
-      ? "pages/Trash"
-      : page.folder
-        ? `pages/${safeFileName(page.folder, "Folder")}`
-        : page.kind === "agenda"
-          ? "pages/Agendas"
-          : "pages";
-    const name =
-      page.kind === "agenda" && page.agenda_date
-        ? page.agenda_date
-        : safeFileName(title);
-    const path = claim(taken, dir, name, ".md");
-    pathOf.set(page.id, path);
-    entries.push({
-      name: `${root}/${path}`,
-      body: pageFile(
-        {
-          title,
-          kind: page.kind,
-          created_at: page.created_at.toISOString(),
-          updated_at: page.updated_at.toISOString(),
-          agenda_date: page.agenda_date,
-          folder: page.folder,
-          project: page.project,
-          tags: page.tags,
-          imported_from: page.imported_from,
-          in_trash: !!page.deleted_at,
-        },
-        page.content ?? [],
-      ),
-    });
-  }
-
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   const iso = (d: Date | null) => (d ? d.toISOString() : null);
   const counts = {
-    pages: pages.length,
+    pages: pageCount,
     projects: projects.length,
     folders: folders.length,
   };
-  entries.unshift(
-    { name: `${root}/README.md`, body: README(date, counts) },
-    { name: `${root}/planner.json`, body: json(planner) },
-    {
+
+  // The page an import became is named in attachments.json, which is
+  // written after the pages, once their files have their names.
+  const wanted = new Set(imports.flatMap((i) => (i.doc_id ? [i.doc_id] : [])));
+  const pathOf = new Map<string, string>();
+  const imported: {
+    page: string;
+    file_name: string;
+    file_type: string;
+    pages: number;
+    imported_at: string;
+  }[] = [];
+
+  /** Every page, a batch at a time, in the order they were written. */
+  async function* pages(): AsyncGenerator<ZipEntry> {
+    const taken = new Set<string>();
+    let after: { at: string; id: string } | null = null;
+    for (;;) {
+      const batch: PageRow[] = (
+        await db.query<PageRow>(
+          `SELECT d.id, d.title, d.kind, d.content, d.created_at,
+                  d.created_at::text AS at_key, d.updated_at,
+                  to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date,
+                  f.name AS folder, p.name AS project, d.imported_from,
+                  d.deleted_at,
+                  coalesce((SELECT array_agg(g.name ORDER BY g.name)
+                              FROM doc_tags dt JOIN tags g ON g.id = dt.tag_id
+                             WHERE dt.doc_id = d.id), '{}') AS tags
+             FROM docs d
+             LEFT JOIN folders f ON f.id = d.folder_id
+             LEFT JOIN projects p ON p.id = d.project_id
+            WHERE d.user_id = $1 AND d.team_id IS NULL
+              AND ($2::timestamptz IS NULL
+                   OR (d.created_at, d.id) > ($2::timestamptz, $3::uuid))
+            ORDER BY d.created_at, d.id
+            LIMIT ${BATCH}`,
+          [userId, after?.at ?? null, after?.id ?? null],
+        )
+      ).rows;
+      for (const page of batch) {
+        const title = page.title.trim() || "Untitled";
+        const dir = page.deleted_at
+          ? "pages/Trash"
+          : page.folder
+            ? `pages/${safeFileName(page.folder, "Folder")}`
+            : page.kind === "agenda"
+              ? "pages/Agendas"
+              : "pages";
+        const name =
+          page.kind === "agenda" && page.agenda_date
+            ? page.agenda_date
+            : safeFileName(title);
+        const path = claim(taken, dir, name, ".md");
+        if (wanted.has(page.id)) pathOf.set(page.id, path);
+        if (page.imported_from)
+          imported.push({
+            page: path,
+            file_name: page.imported_from.file_name,
+            file_type: page.imported_from.file_type,
+            pages: page.imported_from.pages,
+            imported_at: page.imported_from.imported_at,
+          });
+        yield {
+          name: `${root}/${path}`,
+          body: pageFile(
+            {
+              title,
+              kind: page.kind,
+              created_at: page.created_at.toISOString(),
+              updated_at: page.updated_at.toISOString(),
+              agenda_date: page.agenda_date,
+              folder: page.folder,
+              project: page.project,
+              tags: page.tags,
+              imported_from: page.imported_from,
+              in_trash: !!page.deleted_at,
+            },
+            page.content ?? [],
+          ),
+        };
+      }
+      if (batch.length < BATCH) return;
+      const last = batch[batch.length - 1];
+      after = { at: last.at_key, id: last.id };
+    }
+  }
+
+  async function* everything(): AsyncGenerator<ZipEntry> {
+    yield { name: `${root}/README.md`, body: README(date, counts) };
+    yield { name: `${root}/planner.json`, body: json(planner) };
+    yield {
       name: `${root}/projects.json`,
       body: json(
         projects.map((p) => ({
@@ -254,45 +309,19 @@ export async function exportArchive(
           updated_at: iso(p.updated_at),
         })),
       ),
-    },
-    {
+    };
+    yield {
       name: `${root}/folders.json`,
       body: json(
         folders.map((f) => ({
           name: f.name,
           position: f.position,
           created_at: iso(f.created_at),
-          pages: pages.filter((p) => p.folder_id === f.id && !p.deleted_at)
-            .length,
+          pages: f.pages,
         })),
       ),
-    },
-    {
-      name: `${root}/attachments.json`,
-      body: json({
-        note: "Orbyn doesn't keep the files you import. Each one is deleted as soon as it becomes a page, and always within a day. This is what was imported and where it went.",
-        imports: imports.map((i) => ({
-          file_name: i.file_name,
-          file_type: i.file_type,
-          bytes: Number(i.bytes),
-          status: i.status,
-          pages: i.pages,
-          imported_at: iso(i.created_at),
-          finished_at: iso(i.finished_at),
-          page: (i.doc_id && pathOf.get(i.doc_id)) || null,
-        })),
-        pages: pages
-          .filter((p) => p.imported_from)
-          .map((p) => ({
-            page: pathOf.get(p.id),
-            file_name: p.imported_from!.file_name,
-            file_type: p.imported_from!.file_type,
-            pages: p.imported_from!.pages,
-            imported_at: p.imported_from!.imported_at,
-          })),
-      }),
-    },
-    {
+    };
+    yield {
       name: `${root}/consent.json`,
       body: json({
         terms_version: person?.terms_version ?? null,
@@ -306,7 +335,29 @@ export async function exportArchive(
           device: c.user_agent,
         })),
       }),
-    },
-  );
-  return { name: `${root}.zip`, body: zip(entries, now) };
+    };
+    yield* pages();
+    yield {
+      name: `${root}/attachments.json`,
+      body: json({
+        note: "Orbyn doesn't keep the files you import. Each one is deleted as soon as it becomes a page, and always within a day. This is what was imported and where it went.",
+        imports: imports.map((i) => ({
+          file_name: i.file_name,
+          file_type: i.file_type,
+          bytes: Number(i.bytes),
+          status: i.status,
+          pages: i.pages,
+          imported_at: iso(i.created_at),
+          finished_at: iso(i.finished_at),
+          page: (i.doc_id && pathOf.get(i.doc_id)) || null,
+        })),
+        pages: imported,
+      }),
+    };
+  }
+
+  return {
+    name: `${root}.zip`,
+    body: Readable.from(zipStream(everything(), now), { objectMode: false }),
+  };
 }

@@ -2606,7 +2606,13 @@ h4.doc-heading {
   align-items: center;
   padding: 4px 0 0;
 }
-.page-template-delete {
-  margin-right: auto;
-  color: var(--color-danger);
+.page-template-noted {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.page-template-noted svg {
+  flex: none;
+  color: var(--color-muted);
 }

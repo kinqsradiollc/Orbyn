@@ -82,7 +82,13 @@ async function studyFor(userId: string) {
  * the present for today, the start of the day for any other. A day that has
  * already gone has no free time left to offer.
  */
-async function readDay(userId: string, now: Date, past = false): Promise<Day> {
+async function readDay(
+  userId: string,
+  now: Date,
+  past = false,
+  /** Study and priorities, which only today's page shows. */
+  extras = true,
+): Promise<Day> {
   const prefs = await loadPrefs(pool, userId);
   const tz = prefs.timezone || "UTC";
   const today = localDateKey(now, tz);
@@ -144,7 +150,7 @@ async function readDay(userId: string, now: Date, past = false): Promise<Day> {
         start_at: new Date(f.start).toISOString(),
         end_at: new Date(f.end).toISOString(),
       })),
-    study: await studyFor(userId),
+    study: extras ? await studyFor(userId) : null,
     // The app's own order (the same score the assistant ranks by).
     priorities: open.rows
       .map((i) => ({ title: i.title, score: priorityScore(i, now) }))
@@ -250,7 +256,7 @@ async function contentFor(
   withBrief: boolean,
   other: { dayName: string; past: boolean } | null = null,
 ) {
-  const day = await readDay(userId, now, other?.past);
+  const day = await readDay(userId, now, other?.past, !other);
   // The assistant's words are about today; another day reads without them.
   const brief = withBrief && !other ? await briefFor(day, now) : null;
   return {
@@ -265,8 +271,11 @@ async function contentFor(
       comingEvents: day.comingEvents,
       freeMinutes: day.freeMinutes ?? undefined,
       freeStretches: day.freeStretches,
-      priorities: day.priorities,
-      study: day.study,
+      // Cards due, exam countdowns and top priorities are worked out from
+      // today, so they'd be wrong on last Tuesday's page or next Friday's:
+      // another day's page leaves them out.
+      priorities: other ? [] : day.priorities,
+      study: other ? null : day.study,
       brief,
     }),
   };

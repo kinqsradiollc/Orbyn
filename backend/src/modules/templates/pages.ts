@@ -29,6 +29,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import {
   COLUMNS as DOC_COLUMNS,
   JOINS as DOC_JOINS,
+  eventNote,
   makeLineTasks,
   pageTags,
 } from "../docs/routes.js";
@@ -251,6 +252,17 @@ async function usePageTemplate(
         : template.team_id;
   if (teamId) await requireTeam(teamId, u, "items:write", db);
   if (event && event.team_id !== teamId) fail(404, "Event not found");
+  if (event) {
+    // An event keeps one note. When it has one already, that note is the
+    // answer — the same one opening the event finds — rather than a second
+    // page the event would switch between. Two people choosing the same
+    // event at once wait for each other here, so only one note is made.
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `event-note:${event.id}`,
+    ]);
+    const existing = await eventNote(db, u, event.id, teamId);
+    if (existing) return { doc: existing, tasks_created: 0, existing: true };
+  }
   const project = input.project_id
     ? ((
         await db.query<{ id: string; name: string }>(
@@ -330,7 +342,7 @@ async function usePageTemplate(
       [id],
     )
   ).rows[0];
-  return { doc, tasks_created: made?.length ?? 0 };
+  return { doc, tasks_created: made?.length ?? 0, existing: false };
 }
 
 export async function pageTemplateRoutes(app: FastifyInstance) {
@@ -489,7 +501,11 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Make a page from a template, a starter or a saved one. */
+  /**
+   * Make a page from a template, a starter or a saved one. For an event that
+   * already has a note, nothing new is made: the answer is that note, with
+   * `existing` set, so the app can open it and say so.
+   */
   app.post("/page-templates/:id/use", async (r, reply) => {
     const u = await authenticate(r);
     const raw = (r.params as { id: string }).id;
@@ -501,7 +517,7 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
         : toTemplate(u, await loadTemplate(db, u, idParam(r)));
       return usePageTemplate(db, u, template, d);
     });
-    reply.code(201);
+    reply.code(made.existing ? 200 : 201);
     return made;
   });
 }

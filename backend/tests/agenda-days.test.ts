@@ -104,14 +104,90 @@ test("a rewrite keeps Notes and everything under it, word for word", () => {
   const merged = keepAgendaNotes(old, next);
   assert.deepEqual(texts(merged).slice(-1), ["Kept"]);
   assert.equal(merged[agendaNotesAt(merged)].id, AGENDA_NOTES_ID);
-  // With no Notes section left there's nothing to keep.
-  assert.deepEqual(
-    keepAgendaNotes([{ type: "paragraph", text: "x" }], next),
-    next,
-  );
+  // A page that is only the calendar's has nothing of yours to keep.
+  assert.deepEqual(keepAgendaNotes(next, next), next);
   assert.ok(isDateKey("2026-09-24"));
   assert.ok(!isDateKey("2026-02-30") && !isDateKey("yesterday"));
   assert.equal(agendaTitleOn("2026-09-24"), "Thursday 24 September");
+});
+
+test("nothing you wrote is lost when the Notes heading is gone", () => {
+  const fresh = buildAgenda([], { timeZone: TZ, now: new Date() });
+  const top = fresh.slice(0, agendaNotesAt(fresh));
+  // A page from before headings had names, with Notes renamed "Journal".
+  const renamed: DocBlock[] = [
+    { type: "paragraph", text: "Today: 1 event." },
+    { type: "heading", level: 2, text: "Schedule" },
+    { type: "heading", level: 3, text: "Morning" },
+    { type: "bullet", text: "09:00–10:00 · Lecture" },
+    { type: "heading", level: 2, text: "Journal" },
+    { type: "paragraph", text: "my private thoughts" },
+    { type: "heading", level: 2, text: "End of day" },
+    { type: "bullet", text: "What went well: lots" },
+    { type: "bullet", text: "What to carry into tomorrow: " },
+  ];
+  const kept = keepAgendaNotes(renamed, fresh);
+  assert.deepEqual(kept.slice(0, top.length), top);
+  assert.deepEqual(texts(kept.slice(top.length)), [
+    "Journal",
+    "my private thoughts",
+    "End of day",
+    "What went well: lots",
+    "What to carry into tomorrow: ",
+  ]);
+  assert.ok(!texts(kept).includes("09:00–10:00 · Lecture"));
+  // The renamed heading takes the Notes name, so next time it is found.
+  assert.equal(kept[top.length].id, AGENDA_NOTES_ID);
+  assert.equal(agendaNotesAt(kept), top.length);
+
+  // A quiet day with no sections of the calendar's: yours starts at the
+  // first heading after the opening line.
+  const quiet = keepAgendaNotes(
+    [
+      {
+        type: "paragraph",
+        text: "Nothing scheduled today. The page is yours.",
+      },
+      { type: "heading", level: 2, text: "Thoughts" },
+      { type: "paragraph", text: "abc" },
+    ],
+    fresh,
+  );
+  assert.deepEqual(texts(quiet.slice(top.length)), ["Thoughts", "abc"]);
+
+  // Notes deleted along with every heading below it: the end-of-day
+  // heading still marks where yours starts.
+  const noNotes = keepAgendaNotes(
+    [
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "heading", level: 2, text: "Coming up" },
+      { type: "bullet", text: "Fri 26 Sept · Exam" },
+      { type: "heading", level: 2, text: "End of day" },
+      { type: "bullet", text: "What went well: the lab" },
+    ],
+    fresh,
+  );
+  assert.deepEqual(texts(noNotes.slice(top.length)), [
+    "End of day",
+    "What went well: the lab",
+  ]);
+
+  // No heading left to go by at all: every line of yours that the fresh
+  // page doesn't have is kept, under a new Notes heading.
+  const bare = keepAgendaNotes(
+    [
+      { type: "paragraph", text: "Today: 1 event." },
+      { type: "bullet", text: "09:00–10:00 · Lecture" },
+      { type: "paragraph", text: "" },
+      { type: "paragraph", text: "my own words" },
+    ],
+    fresh,
+  );
+  const tail = bare.slice(top.length);
+  assert.equal(tail[0].type, "heading");
+  assert.equal(tail[0].id, AGENDA_NOTES_ID);
+  assert.ok(texts(tail).includes("my own words"));
+  assert.ok(!texts(tail).includes(""));
 });
 
 test("another day's opening line names the day, not today", () => {
@@ -211,6 +287,69 @@ test("Rewrite from my calendar keeps your notes", async () => {
   assert.ok(lines.includes("Call the lab about the sample"));
   assert.ok(!lines.includes("Typed above Notes"));
   assert.ok(lines.includes("What went well: "));
+});
+
+test("another day's page leaves out what is worked out from today", async () => {
+  const r = await app.inject({
+    method: "POST",
+    url: "/auth/register",
+    payload: {
+      email: `days-${randomUUID()}@example.com`,
+      password: "a-long-test-password",
+      name: "Student",
+    },
+  });
+  const other = r.json().token as string;
+  await call("PUT", "/planner/prefs", { timezone: TZ }, other);
+  // Something to prioritise, and cards to review.
+  await call(
+    "POST",
+    "/items",
+    { kind: "task", title: "Finish the essay", priority: "high" },
+    other,
+  );
+  const cards = await call(
+    "POST",
+    "/docs",
+    {
+      title: "Biology",
+      content: [
+        { type: "paragraph", text: "What carries oxygen :: haemoglobin" },
+        {
+          type: "paragraph",
+          text: "The powerhouse of the cell :: mitochondria",
+        },
+      ],
+    },
+    other,
+  );
+  assert.equal(cards.statusCode, 201, cards.body);
+  const headings = (blocks: DocBlock[]) =>
+    blocks.flatMap((b) => (b.type === "heading" ? [b.text] : []));
+  // Today's page has them...
+  const todays = (await call("GET", "/agenda/today", undefined, other)).json();
+  assert.ok(headings(todays.content).includes("Top priorities"));
+  assert.ok(headings(todays.content).includes("Study"));
+  assert.ok(
+    todays.content.some(
+      (b: DocBlock) => b.type === "todo" && b.text === "Finish the essay",
+    ),
+  );
+  // ...but a page for last week or next week doesn't.
+  for (const day of [addDays(today(), -5), addDays(today(), 5)]) {
+    const page = (
+      await call("POST", `/agenda/${day}`, undefined, other)
+    ).json();
+    assert.equal(page.agenda_date, day);
+    const found = headings(page.content);
+    assert.ok(!found.includes("Top priorities"), `${day}: ${found}`);
+    assert.ok(!found.includes("Study"), `${day}: ${found}`);
+    assert.ok(
+      !texts(page.content).some((l) =>
+        /cards? to review| in \d+ days?/.test(l),
+      ),
+    );
+  }
 });
 
 test("the agenda steps only to real days within reach", async () => {
