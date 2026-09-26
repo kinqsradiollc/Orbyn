@@ -16,7 +16,7 @@
 }
 .admin-requests-head h2 {
   margin: 7px 0 5px;
-  font-size: 20px;
+  font-size: 18px;
 }
 .admin-requests-head p {
   margin: 0;
@@ -70,7 +70,7 @@
 }
 .admin-service dd {
   margin: 2px 0 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -168,7 +168,7 @@
   top: 0;
   left: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 .bars-col {
@@ -207,7 +207,7 @@
   overflow: visible;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Slow and failing routes. */
@@ -227,7 +227,7 @@
 }
 .admin-routes p {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-routes ul {
   display: grid;
@@ -245,7 +245,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-routes .muted {
   font-size: 11px;
@@ -274,7 +274,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textSoft);
   white-space: nowrap;
 }
@@ -308,11 +308,11 @@
 }
 .admin-log-detail dt {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .admin-log-detail dd {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* Analytics tiles. */
@@ -329,7 +329,7 @@
 }
 .admin-tile span {
   color: var(--color-textSoft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-tile strong {
   font-family: "Manrope", sans-serif;
@@ -363,7 +363,7 @@
   align-items: center;
   gap: 8px;
   margin: 0 0 4px;
-  font-size: 20px;
+  font-size: 18px;
 }
 .admin-user-title p {
   margin: 0;
@@ -382,7 +382,7 @@
   display: grid;
   gap: 5px;
   flex: 1 1 220px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .admin-user-edit input {
@@ -422,7 +422,7 @@
 }
 .admin-user-actions h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
 }
 .admin-user-actions > div {
   display: flex;
@@ -446,7 +446,7 @@
   flex: 1 1 260px;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-link small {
   flex: 1 1 100%;
@@ -481,7 +481,7 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .admin-sessions strong {
   text-transform: capitalize;

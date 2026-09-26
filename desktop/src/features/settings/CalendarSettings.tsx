@@ -495,10 +495,8 @@ export function CalendarSubscriptions({ report }: Props) {
         <CalendarPlus size={16} aria-hidden="true" /> Subscribed calendars
       </h2>
       <p className="muted">
-        Add calendars from other apps by their link: a class timetable, exams,
-        work shifts, meetings, public holidays. Orbyn reads each one straight
-        away and every hour after. Their events show on your calendar and
-        can&apos;t be changed here.
+        Add calendars from other apps by their link, like a timetable or public
+        holidays; they refresh every hour and can&apos;t be changed here.
       </p>
       {subs === null ? (
         <p className="muted">Loading your calendars…</p>

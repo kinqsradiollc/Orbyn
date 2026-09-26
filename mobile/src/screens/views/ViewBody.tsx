@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Pressable } from "../../motion";
 import {
   calendarDay,
   cellText,
@@ -41,6 +41,7 @@ import { SmallAction } from "../../components/SmallAction";
 import { shared } from "../../styles";
 import { colors, fonts, radii, themed } from "../../theme";
 import { webOrigin } from "../../lib/api";
+import { tap } from "../../lib/haptics";
 import { FieldValueInput } from "./FieldsSection";
 import type { CellEdit } from "./edits";
 
@@ -342,11 +343,11 @@ function TableLayout({
                                 ? setCell({ row, column: c })
                                 : undefined
                           }
-                          onLongPress={() =>
-                            c === "title" && editable
-                              ? setCell({ row, column: c })
-                              : undefined
-                          }
+                          onLongPress={() => {
+                            if (c !== "title" || !editable) return;
+                            tap();
+                            setCell({ row, column: c });
+                          }}
                           style={[s.td, { width: width(c) }]}
                         >
                           <Text
@@ -720,7 +721,7 @@ const s = themed(() =>
     listText: { flex: 1, gap: 2 },
     rowTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     done: { color: colors.muted, textDecorationLine: "line-through" },
-    left: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+    left: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     late: { color: colors.warning, fontFamily: fonts.semibold },
     tick: {
       width: 22,

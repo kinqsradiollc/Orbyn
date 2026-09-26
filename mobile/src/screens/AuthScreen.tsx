@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +16,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { LegalSheet } from "../components/LegalSheet";
 import type { SignInInput } from "../hooks/usePlanner";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { MINIMUM_AGE, motion, type LegalDoc } from "@orbyn/core";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
@@ -298,7 +297,7 @@ const s = themed(() =>
     eyebrow: { marginTop: 36 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 38,
+      fontSize: 36,
       lineHeight: 44,
       letterSpacing: -1.4,
       color: colors.text,
@@ -307,20 +306,20 @@ const s = themed(() =>
     field: { marginBottom: 16 },
     notice: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.muted,
       marginBottom: 12,
     },
     forgot: { alignItems: "center", paddingTop: 12 },
     forgotText: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
     },
     switch: { alignItems: "center", paddingVertical: 12 },
     switchText: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.muted,
     },
     switchLink: { fontFamily: fonts.semibold, color: colors.accent },
@@ -345,14 +344,14 @@ const s = themed(() =>
     consentText: {
       flex: 1,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       color: colors.text,
     },
     link: { fontFamily: fonts.semibold, color: colors.accent },
     fine: {
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 18,
       color: colors.muted,
       marginBottom: 16,

@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   PanResponder,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   Vibration,
@@ -28,7 +27,7 @@ import { Icon } from "../../components/Icon";
 import { useNow } from "../../hooks/useNow";
 import { shortDay } from "../../lib/planning";
 import { usePlanning } from "../../lib/planningContext";
-import { isReducedMotion, PressableScale } from "../../motion";
+import { isReducedMotion, PressableScale, Pressable } from "../../motion";
 import { colors, fonts, radii, statusTones, themed, tint } from "../../theme";
 import { shared } from "../../styles";
 import {
@@ -1603,13 +1602,13 @@ const s = themed(() =>
     zoneName: {
       textAlign: "right",
       fontFamily: fonts.semibold,
-      fontSize: 9,
+      fontSize: 11,
       color: colors.muted,
     },
     zoneAbbr: {
       textAlign: "right",
       fontFamily: fonts.medium,
-      fontSize: 9,
+      fontSize: 11,
       color: colors.faint,
     },
     local: { paddingRight: 4 },
@@ -1630,8 +1629,8 @@ const s = themed(() =>
     allDayLabel: {
       textAlign: "right",
       fontFamily: fonts.medium,
-      fontSize: 10,
-      lineHeight: 13,
+      fontSize: 11,
+      lineHeight: 14,
       color: colors.muted,
     },
     allDayItems: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -1647,7 +1646,7 @@ const s = themed(() =>
     allDayText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.text,
     },
     dot: { width: 7, height: 7, borderRadius: 4 },
@@ -1665,7 +1664,7 @@ const s = themed(() =>
       textAlign: "right",
       paddingRight: 4,
       fontFamily: fonts.medium,
-      fontSize: 9,
+      fontSize: 11,
       color: colors.faint,
     },
     hourLabel: {
@@ -1673,7 +1672,7 @@ const s = themed(() =>
       textAlign: "right",
       paddingRight: 8,
       fontFamily: fonts.medium,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.faint,
     },
     hourLine: {
@@ -1702,12 +1701,12 @@ const s = themed(() =>
     frameText: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.textSoft,
     },
     frameBusy: {
       fontFamily: fonts.semibold,
-      fontSize: 9,
+      fontSize: 11,
       color: colors.muted,
       borderWidth: 1,
       borderColor: colors.border,
@@ -1727,7 +1726,7 @@ const s = themed(() =>
     travel: { backgroundColor: colors.soft },
     bandText: {
       fontFamily: fonts.medium,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.muted,
     },
     event: {
@@ -1801,7 +1800,7 @@ const s = themed(() =>
     eventTitle: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 16,
       color: colors.text,
     },
@@ -1835,7 +1834,7 @@ const s = themed(() =>
     },
     keepFreeText: {
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.muted,
     },
     /** The range being drawn: the kept-free look, outlined in the accent. */

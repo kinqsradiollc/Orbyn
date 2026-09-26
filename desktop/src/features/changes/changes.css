@@ -1,4 +1,21 @@
-/* Recent changes per team (SHR-02). */
+/* Recent changes per team (SHR-02). Nothing touches the card's edge. */
+.recent-changes {
+  padding: 18px 21px;
+}
+/* Inside a team's card it is a section of that card, not a card in a card. */
+.team-detail .recent-changes {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  padding: 18px 23px;
+}
+@media (max-width: 480px) {
+  .team-detail .recent-changes {
+    padding-left: 17px;
+    padding-right: 17px;
+  }
+}
 .recent-changes-head {
   display: flex;
   align-items: center;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   moveEntry,
   START_SCREEN_LABELS,
@@ -23,7 +24,7 @@ export function StartChoice() {
   return (
     <View style={s.body}>
       <Text style={s.hint}>
-        What Orbyn shows when it opens. Saved on this phone only.
+        What Orbyn shows when it opens, saved on this phone only.
       </Text>
       <ChipRow label="Open to">
         {START_SCREENS.map((id) => (
@@ -116,8 +117,8 @@ export function ArrangeList({
   return (
     <View style={s.body}>
       <Text style={s.hint}>
-        Show, hide and reorder what Workspace lists. The same list arranges the
-        sidebar on the web.
+        Show, hide and reorder what Workspace lists, the same list that arranges
+        the web’s sidebar.
       </Text>
       {groups.map((g) => (
         <View key={g.label} style={s.group}>

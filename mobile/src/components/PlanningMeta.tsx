@@ -135,9 +135,9 @@ const s = themed(() =>
     text: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.textSoft,
     },
-    textLarge: { fontSize: 12 },
+    textLarge: { fontSize: 13 },
   }),
 );

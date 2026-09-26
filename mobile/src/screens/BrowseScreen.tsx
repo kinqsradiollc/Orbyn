@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import {
   arrangeEntries,
   hasSystemPermission,
@@ -9,8 +9,8 @@ import {
   type StarredItem,
   type User,
 } from "@orbyn/core";
-import { Icon, type IconName } from "../components/Icon";
-import { FadeIn } from "../motion";
+import { CONCEPT_ICON, Icon, type IconName } from "../components/Icon";
+import { FadeIn, Pressable } from "../motion";
 import { shared } from "../styles";
 import { colors, fonts, themed } from "../theme";
 
@@ -55,13 +55,13 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
       },
       {
         to: "projects",
-        icon: "boxes",
+        icon: CONCEPT_ICON.project,
         title: "Projects",
         detail: "Work grouped into stages",
       },
       {
         to: "docs",
-        icon: "fileText",
+        icon: CONCEPT_ICON.page,
         title: "Docs",
         detail: "Notes, briefs and meeting notes",
       },
@@ -73,13 +73,13 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
       },
       {
         to: "study",
-        icon: "graduationCap",
+        icon: CONCEPT_ICON.study,
         title: "Study",
         detail: "Flashcards from your pages, planned around exams",
       },
       {
         to: "lists",
-        icon: "list",
+        icon: "listChecks",
         title: "Lists",
         detail: "Somewhere for each kind of task",
       },
@@ -102,7 +102,7 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
       },
       {
         to: "agenda",
-        icon: "sun",
+        icon: CONCEPT_ICON.agenda,
         title: "Agenda",
         detail: "Written for you each morning",
       },
@@ -125,7 +125,7 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
       },
       {
         to: "booking",
-        icon: "calendar",
+        icon: "calendarCheck",
         title: "Booking",
         detail: "Let people find a time with you",
       },
@@ -161,10 +161,10 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
 export const ALWAYS_ROWS = ["Search & do", "Settings"];
 
 const STAR_ICONS: Record<StarredItem["kind"], IconName> = {
-  doc: "fileText",
+  doc: CONCEPT_ICON.page,
   heading: "hash",
-  task: "squareCheck",
-  project: "boxes",
+  task: CONCEPT_ICON.task,
+  project: CONCEPT_ICON.project,
   view: "table",
 };
 

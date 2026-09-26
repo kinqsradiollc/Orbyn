@@ -1,8 +1,5 @@
 import {
-  Boxes,
-  FileText,
   Hash,
-  ListTodo,
   LogOut,
   Orbit,
   PanelLeftClose,
@@ -21,6 +18,7 @@ import {
 import { NAV_GROUPS, type View } from "../app/views";
 import { commandById, keysFor } from "../app/commands";
 import { usePrefs } from "../app/prefs";
+import { CONCEPT_ICON } from "../app/concept-icons";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -28,10 +26,10 @@ const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const STARRED_SHOWN = 8;
 
 const STAR_ICONS: Record<StarredItem["kind"], LucideIcon> = {
-  doc: FileText,
+  doc: CONCEPT_ICON.page,
   heading: Hash,
-  task: ListTodo,
-  project: Boxes,
+  task: CONCEPT_ICON.task,
+  project: CONCEPT_ICON.project,
   view: Table2,
 };
 

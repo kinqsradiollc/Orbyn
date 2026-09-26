@@ -3,7 +3,6 @@ import {
   AccessibilityInfo,
   Alert,
   Linking,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -75,7 +74,7 @@ import {
   unpinBlock,
 } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
-import { FadeIn, PressableScale, animateLayout } from "../motion";
+import { FadeIn, PressableScale, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, statusTones, themed } from "../theme";
 import { shared } from "../styles";
 import { ActionMenu, type Menu, type MenuAction } from "./calendar/ActionMenu";
@@ -2024,7 +2023,7 @@ const s = themed(() =>
       alignItems: "center",
       marginBottom: 10,
     },
-    headingText: { fontSize: 22, lineHeight: 30, marginBottom: 8 },
+    headingText: { fontSize: 24, lineHeight: 30, marginBottom: 8 },
     tools: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -2042,7 +2041,7 @@ const s = themed(() =>
     },
     legendLabel: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
     },
     legendItem: {
@@ -2052,7 +2051,7 @@ const s = themed(() =>
       maxWidth: 120,
     },
     legendDot: { width: 8, height: 8, borderRadius: 4 },
-    legendName: { fontFamily: fonts.medium, fontSize: 12, color: colors.text },
+    legendName: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
     sets: { paddingHorizontal: 4, marginBottom: 10 },
     control: { padding: 8, minHeight: 44, justifyContent: "center" },
     selectionChip: {
@@ -2067,7 +2066,7 @@ const s = themed(() =>
     },
     todayLabel: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
     external: { paddingVertical: 12 },
@@ -2080,7 +2079,7 @@ const s = themed(() =>
     externalTitle: {
       flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     divider: {

@@ -276,8 +276,8 @@ export function SettingsView({
           <SettingsSection className="card settings-card">
             <h2>AI provider</h2>
             <p className="muted">
-              An admin connects the AI provider in Admin → AI. Keys stay on the
-              server.
+              An admin connects the AI provider in Admin → AI, and its keys stay
+              on the server.
             </p>
           </SettingsSection>
         )}
@@ -314,7 +314,7 @@ export function SettingsView({
             <h2>Security and data</h2>
             <p className="muted">
               How Orbyn keeps your account safe and how to take your data with
-              you. Last checked {securityPageDate()}.
+              you, last checked {securityPageDate()}.
             </p>
             <button className="secondary" onClick={onOpenSecurity}>
               <ShieldCheck size={14} /> Security and data

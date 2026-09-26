@@ -156,8 +156,8 @@ export function ArrangeSettings({ user }: { user: User | null }) {
     <SettingsSection className="card settings-card">
       <h2>Arrange</h2>
       <p className="muted">
-        Show, hide and reorder what the sidebar lists. It follows your account
-        to every computer.
+        Show, hide and reorder what the sidebar lists, on every computer you
+        sign in to.
       </p>
       {groups.map((g) => (
         <div key={g.label} className="arrange-group">
@@ -248,8 +248,8 @@ export function ShortcutSettings() {
     <SettingsSection className="card settings-card">
       <h2>Keyboard shortcuts</h2>
       <p className="muted">
-        Give any command your own keys, or take a key away. Find one by its name
-        or by the keys, like “⌘K”. Your changes follow your account.
+        Give any command your own keys, or take one away, on every computer you
+        sign in to.
       </p>
       <input
         type="search"

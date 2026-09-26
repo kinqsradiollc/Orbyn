@@ -35,7 +35,7 @@
 .study-hero-count {
   margin: 0;
   font-family: "Manrope", sans-serif;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 750;
   line-height: 1.2;
   color: var(--color-text);
@@ -66,7 +66,7 @@
   background: var(--color-sunken);
 }
 .study-stats dt {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--color-muted);
 }
 .study-stats dd {
@@ -75,7 +75,7 @@
   align-items: center;
   gap: 6px;
   font-family: "Manrope", sans-serif;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
@@ -97,7 +97,7 @@
   align-items: center;
   gap: 6px;
   margin: 6px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--color-accentText);
 }
 
@@ -133,11 +133,11 @@
 }
 .study-date b {
   font-family: "Manrope", sans-serif;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 750;
 }
 .study-date span {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -149,7 +149,7 @@
   min-width: 0;
 }
 .study-exam-info > small {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .study-exam-ready {
@@ -163,7 +163,7 @@
   flex: 1;
 }
 .study-exam-ready span {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-accentText);
   white-space: nowrap;
@@ -200,7 +200,7 @@
   border-radius: var(--radius-md);
 }
 .study-choose legend {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   padding: 0 4px;
 }
@@ -220,7 +220,7 @@
   margin: 0;
 }
 .study-example {
-  font-size: 12.5px;
+  font-size: 13px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
@@ -276,7 +276,7 @@
 }
 .study-review-count {
   justify-self: end;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
@@ -305,7 +305,7 @@
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-muted);
-  font-size: 11.5px;
+  font-size: 11px;
   cursor: pointer;
 }
 .study-source:hover {
@@ -326,7 +326,7 @@
   border-top: 1px dashed var(--color-border);
 }
 .study-face-label {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -349,7 +349,7 @@
 .study-answer {
   margin: 0;
   max-width: 520px;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.5;
   color: var(--color-text);
   overflow-wrap: anywhere;
@@ -366,7 +366,7 @@
   font-size: 13px;
 }
 .study-hint {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--color-faint, var(--color-muted));
 }
 .study-quiz {
@@ -428,7 +428,7 @@
 }
 .study-rate-label {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .study-rate {
@@ -455,7 +455,7 @@
   font-size: 13px;
 }
 .study-rate small {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -546,7 +546,7 @@
   margin-top: 0;
 }
 .study-suggested small {
-  font-size: 11.5px;
+  font-size: 11px;
 }
 .study-make .modal-body,
 .study-plan .modal-body {
@@ -564,7 +564,7 @@
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-muted);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .study-plan-length button.active {
   color: var(--color-accentText);
@@ -580,7 +580,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 @media (max-width: 760px) {
   .study-hero {
@@ -609,7 +609,7 @@
     padding: 18px 18px 22px;
   }
   .study-question {
-    font-size: 20px;
+    font-size: 18px;
   }
 }
 
@@ -640,65 +640,8 @@
   background: var(--color-accent);
 }
 .study-forecast small {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--color-muted);
-}
-
-/* No cards yet: three ways in, and what a card looks like. */
-.study-ways {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 12px;
-}
-.study-way {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  justify-items: start;
-  padding: 18px;
-}
-.study-way p {
-  margin: 0 0 4px;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.study-way-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: var(--radius-sm);
-  background: var(--color-accentSoft);
-  color: var(--color-accentText);
-}
-.study-sample {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  overflow: hidden;
-  font-size: 13.5px;
-}
-.study-sample > div {
-  padding: 12px 14px;
-}
-.study-sample > div + div {
-  border-left: 1px dashed var(--color-border);
-  color: var(--color-muted);
-}
-.study-sample span {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 10.5px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-muted);
-}
-.study-syntax {
-  margin: 0;
-  font-size: 12.5px;
 }
 
 /* Pages with cards: one compact row each. */
@@ -719,7 +662,7 @@
   border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: var(--color-textSoft);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
 }
 .study-tools {
@@ -766,7 +709,7 @@
   height: 32px;
   border-radius: 50%;
   background: var(--color-surface);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 750;
   color: var(--color-accentText);
   font-variant-numeric: tabular-nums;
@@ -782,7 +725,7 @@
   cursor: pointer;
 }
 .study-deck-main strong {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -792,7 +735,7 @@
   text-decoration: underline;
 }
 .study-deck-main small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -923,13 +866,13 @@
 }
 .study-picker-list strong {
   color: var(--color-text);
-  font-size: 13.5px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .study-picker-list small {
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -945,12 +888,5 @@
   .study-deck-go {
     grid-column: 1 / -1;
     justify-content: flex-end;
-  }
-  .study-sample {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .study-sample > div + div {
-    border-left: 0;
-    border-top: 1px dashed var(--color-border);
   }
 }

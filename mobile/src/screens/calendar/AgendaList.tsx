@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
   dayHeading,
   sessionLine,
@@ -19,7 +13,7 @@ import { Icon } from "../../components/Icon";
 import { StatusPill } from "../../components/Pill";
 import { usePlanning } from "../../lib/planningContext";
 import { canJoin, rangeLabel } from "../../lib/planning";
-import { FadeIn } from "../../motion";
+import { FadeIn, Pressable } from "../../motion";
 import { colors, fonts, radii, statusTones, themed } from "../../theme";
 import { shared } from "../../styles";
 import { covers, startOfDay, timeLabel } from "./dates";
@@ -325,7 +319,7 @@ const s = themed(() =>
       gap: 8,
       marginBottom: 8,
     },
-    dayTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+    dayTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     count: {
       backgroundColor: colors.surfaceMuted,
       borderRadius: 6,
@@ -363,11 +357,11 @@ const s = themed(() =>
     rail: { width: 4, alignSelf: "stretch", borderRadius: 2 },
     time: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
     },
     titleRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-    title: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     doneText: { color: colors.faint, textDecorationLine: "line-through" },
     late: { fontFamily: fonts.semibold, color: colors.warningStrong },
     extra: { flexDirection: "row", alignItems: "center", gap: 6 },

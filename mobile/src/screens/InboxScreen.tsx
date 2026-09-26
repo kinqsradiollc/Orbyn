@@ -1,23 +1,23 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
 import { client } from "../lib/api";
 import { Icon, type IconName } from "../components/Icon";
 import { SmallAction } from "../components/SmallAction";
 import { AsksList } from "../components/followthrough/Asks";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   conflict: "alert",
-  booking: "calendar",
+  booking: "calendarCheck",
   rollforward: "arrowRight",
   at_risk: "alert",
   deadline: "clock",
   rsvp: "users",
   template: "layoutGrid",
-  project: "calendar",
+  project: "boxes",
   mention: "atSign",
   session: "timer",
   review: "inbox",
@@ -339,7 +339,7 @@ const s = themed(() =>
     },
     body: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 20,
       color: colors.textSoft,
       marginBottom: 6,

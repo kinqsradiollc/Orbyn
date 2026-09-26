@@ -180,7 +180,7 @@ const styles = themed(() =>
     },
     rowText: { flex: 1, gap: 3 },
     title: { color: colors.text, fontFamily: fonts.regular, lineHeight: 20 },
-    meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: 12 },
+    meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
     snapshot: {
       gap: 9,
       padding: 14,
@@ -189,7 +189,7 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    snapshotTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
+    snapshotTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 18 },
     group: { gap: 5 },
     heading: { color: colors.text, fontFamily: fonts.bold },
   }),

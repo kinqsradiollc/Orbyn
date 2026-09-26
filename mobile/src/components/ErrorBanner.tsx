@@ -1,7 +1,7 @@
 import React from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { Icon } from "./Icon";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 
 /**
@@ -25,7 +25,7 @@ export function ErrorBanner({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Dismiss error"
-          hitSlop={10}
+          hitSlop={14}
           onPress={onDismiss}
         >
           <Icon name="x" size={16} color={colors.danger} />

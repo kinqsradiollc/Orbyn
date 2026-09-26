@@ -503,7 +503,7 @@ const s = themed(() =>
     pills: { flexDirection: "row", marginBottom: 14 },
     detail: { marginBottom: 14 },
     theirs: { marginTop: -8, marginBottom: 14 },
-    link: { fontFamily: fonts.medium, fontSize: 14, color: colors.accent },
+    link: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
     approve: { padding: 16 },
     panel: { marginTop: 10, marginBottom: 12 },
     noteActions: { flexDirection: "row", marginTop: 10 },
@@ -520,7 +520,7 @@ const s = themed(() =>
     eventBody: { flex: 1, paddingBottom: 14 },
     eventTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
       marginBottom: 2,
     },

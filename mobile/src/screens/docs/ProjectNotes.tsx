@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import type { DocSummary } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
@@ -131,8 +132,8 @@ const s = themed(() =>
     },
     rowPressed: { opacity: 0.7 },
     rowMain: { flex: 1, minWidth: 0, gap: 1 },
-    rowTitle: { color: colors.text, fontSize: 14, fontFamily: fonts.semibold },
-    rowPreview: { color: colors.muted, fontSize: 12 },
+    rowTitle: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
+    rowPreview: { color: colors.muted, fontSize: 13 },
     rowWhen: { color: colors.muted, fontSize: 11 },
   }),
 );

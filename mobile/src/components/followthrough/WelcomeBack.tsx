@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { ReentryBrief, ReentryLine } from "@orbyn/core";
 import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
-import { animateLayout } from "../../motion";
+import { animateLayout, Pressable } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 
@@ -100,11 +100,11 @@ const s = themed(() =>
   StyleSheet.create({
     card: { gap: 10, marginTop: 14 },
     head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-    title: { fontFamily: fonts.bold, fontSize: 17, color: colors.text },
+    title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
     section: { gap: 2, marginTop: 4 },
     sectionLabel: { marginBottom: 2 },
     line: { paddingVertical: 6, borderRadius: 8 },
     pressed: { backgroundColor: colors.surfaceMuted },
-    lineTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    lineTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
   }),
 );

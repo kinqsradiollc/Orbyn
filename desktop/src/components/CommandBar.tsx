@@ -18,12 +18,10 @@ import {
   Crosshair,
   Download,
   FilePlus,
-  FileText,
   History,
   Keyboard,
   LayoutTemplate,
   Link2,
-  ListTodo,
   PanelLeft,
   Pin,
   PinOff,
@@ -108,6 +106,7 @@ import { Popover } from "./Popover";
 import { ProposalReview } from "./ProposalReview";
 import "./event-fields.css";
 import "./command-bar.css";
+import { CONCEPT_ICON } from "../app/concept-icons";
 
 type Props = {
   /** What's starred, shown first with nothing typed (NAV-07). */
@@ -234,10 +233,10 @@ const ICONS: Record<CommandIcon, LucideIcon> = {
 };
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
-  doc: FileText,
-  task: ListTodo,
-  event: CalendarDays,
-  project: Boxes,
+  doc: CONCEPT_ICON.page,
+  task: CONCEPT_ICON.task,
+  event: CONCEPT_ICON.event,
+  project: CONCEPT_ICON.project,
   record: CircleCheck,
 };
 

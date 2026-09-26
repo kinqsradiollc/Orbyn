@@ -1003,7 +1003,7 @@ const s = themed(() =>
       flex: 1,
       textAlign: "center",
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     switchRow: {
@@ -1060,7 +1060,7 @@ const s = themed(() =>
     taskTop: { flexDirection: "row", alignItems: "center", gap: 10 },
     taskTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
       marginBottom: 2,
     },
@@ -1076,7 +1076,7 @@ const s = themed(() =>
     freeText: {
       flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     saved: {
@@ -1091,7 +1091,7 @@ const s = themed(() =>
     savedText: {
       flex: 1,
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
     },
   }),

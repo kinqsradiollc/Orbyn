@@ -1158,7 +1158,7 @@ export function DocsView({
                 <EmptyState
                   icon={Archive}
                   title="Nothing archived"
-                  body="Archive last term's notes or an old project's pages from a page's ⋯ menu. They'll wait here."
+                  body="Pages you archive from a page's ⋯ menu wait here."
                 />
               ) : (
                 <ul className="docs-list docs-trash">
@@ -1307,19 +1307,33 @@ export function DocsView({
                 icon={FileText}
                 title={
                   query || tagFilter
-                    ? "No matching documents"
+                    ? "No matching pages"
                     : "Nothing in here yet"
                 }
-                body="Keep meeting notes, a project brief or a page of working out — all in the same place as your tasks."
+                body={
+                  query || tagFilter
+                    ? "Try another word or tag."
+                    : "Keep notes, briefs and working out next to your tasks."
+                }
               >
-                <button
-                  className="primary"
-                  onClick={() => create(kindFilter ?? "doc")}
-                  disabled={busy}
-                >
-                  <Plus size={15} /> New{" "}
-                  {kindFilter === "note" ? "note" : "document"}
-                </button>
+                {!(query || tagFilter) && (
+                  <div className="empty-actions">
+                    <button
+                      className="primary"
+                      onClick={() => create(kindFilter ?? "doc")}
+                      disabled={busy}
+                    >
+                      <Plus size={15} /> New{" "}
+                      {kindFilter === "note" ? "note" : "page"}
+                    </button>
+                    <ImportButton
+                      onFiles={importFiles}
+                      busy={imports.busy}
+                      className="secondary"
+                      label="Import"
+                    />
+                  </div>
+                )}
               </EmptyState>
             ) : (
               <>

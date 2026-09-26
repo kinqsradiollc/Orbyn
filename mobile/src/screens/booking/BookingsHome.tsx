@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Linking,
-  Pressable,
   RefreshControl,
   ScrollView,
   Share,
@@ -29,7 +28,7 @@ import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { minutesLabel, rangeLabel, shareText } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { FadeIn, animateLayout } from "../../motion";
+import { FadeIn, animateLayout, Pressable } from "../../motion";
 import { colors, fonts, radii, spacing, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
@@ -673,7 +672,7 @@ const s = themed(() =>
     },
     statValue: {
       fontFamily: fonts.display,
-      fontSize: 20,
+      fontSize: 18,
       letterSpacing: -0.4,
       color: colors.text,
     },

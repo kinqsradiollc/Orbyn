@@ -1,17 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  Linking,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Linking, StyleSheet, Text, TextInput, View } from "react-native";
 import type { ItemProof } from "@orbyn/core";
 import { Icon } from "../Icon";
 import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
-import { animateLayout } from "../../motion";
+import { animateLayout, Pressable } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
@@ -165,7 +158,7 @@ const s = themed(() =>
       gap: 8,
     },
     row: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-    proof: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    proof: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     link: { color: colors.accent },
     form: { gap: 8 },
     bad: { color: colors.danger },

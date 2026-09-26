@@ -1,15 +1,8 @@
 import React, { useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { isTimeZone } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
-import { animateLayout } from "../../motion";
+import { animateLayout, Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { timeZones, zoneLabel } from "./helpers";
@@ -178,7 +171,7 @@ const s = themed(() =>
     rowText: {
       flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     rowOn: { color: colors.accent },

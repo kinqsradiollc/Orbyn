@@ -1,14 +1,8 @@
 import {
   Bell,
   CalendarCheck,
-  CalendarDays,
   ListChecks,
-  ListTodo,
-  FileText,
   Inbox,
-  GraduationCap,
-  Boxes,
-  Newspaper,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -17,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { screens, screenTitle, type ScreenName } from "@orbyn/core";
+import { CONCEPT_ICON } from "./concept-icons";
 
 export type View =
   | ScreenName
@@ -99,18 +94,18 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
     label: "TODAY",
     items: [
       { label: "Overview", icon: Sun },
-      { label: "Agenda", icon: Newspaper },
-      { label: "My tasks", icon: ListTodo },
-      { label: "Calendar", icon: CalendarDays },
+      { label: "Agenda", icon: CONCEPT_ICON.agenda },
+      { label: "My tasks", icon: CONCEPT_ICON.task },
+      { label: "Calendar", icon: CONCEPT_ICON.event },
     ],
   },
   {
     label: "YOUR WORK",
     items: [
-      { label: "Projects", icon: Boxes },
-      { label: "Docs", icon: FileText },
+      { label: "Projects", icon: CONCEPT_ICON.project },
+      { label: "Docs", icon: CONCEPT_ICON.page },
       { label: "Views", icon: Table2 },
-      { label: "Study", icon: GraduationCap },
+      { label: "Study", icon: CONCEPT_ICON.study },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
     ],

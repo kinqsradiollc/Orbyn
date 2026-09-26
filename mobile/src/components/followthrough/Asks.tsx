@@ -328,7 +328,7 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     textRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
-    text: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    text: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     form: { gap: 8 },
     bad: { color: colors.danger },

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { onLive } from "../../lib/live";
 import {
-  Pressable,
   Linking,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Pressable } from "../../motion";
 import {
   activityOriginLabel,
   changeProjectDeadline,
@@ -60,6 +60,7 @@ import { useImports } from "./Uploads";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { tap } from "../../lib/haptics";
 import { LinkedHere } from "./links";
 import { ConnectionsMap } from "./ConnectionsMap";
 import { FieldsSection } from "../views/FieldsSection";
@@ -2086,7 +2087,10 @@ export function ProjectsSheet({
                     })
                   }
                   delayLongPress={380}
-                  onLongPress={() => setHeldProject(p)}
+                  onLongPress={() => {
+                    tap();
+                    setHeldProject(p);
+                  }}
                   accessibilityHint="Touch and hold for more"
                   accessibilityActions={[
                     { name: "longpress", label: "More for this project" },
@@ -2195,10 +2199,10 @@ const styles = themed(() =>
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
     },
-    aiTitle: { fontFamily: fonts.display, fontSize: 21, color: colors.text },
+    aiTitle: { fontFamily: fonts.display, fontSize: 24, color: colors.text },
     aiDescription: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       color: colors.muted,
     },
@@ -2235,14 +2239,14 @@ const styles = themed(() =>
     },
     emptyTitle: {
       fontFamily: fonts.display,
-      fontSize: 21,
+      fontSize: 24,
       lineHeight: 29,
       textAlign: "center",
       color: colors.text,
     },
     emptyDescription: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       textAlign: "center",
       color: colors.muted,
@@ -2287,7 +2291,7 @@ const styles = themed(() =>
       overflow: "hidden",
     },
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
-    meta: { color: colors.muted, fontSize: 12 },
+    meta: { color: colors.muted, fontSize: 13 },
     home: { gap: 12 },
     searchInput: {
       minHeight: 44,
@@ -2343,7 +2347,7 @@ const styles = themed(() =>
     newRow: { gap: 8 },
     nameInput: {
       color: colors.text,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.semibold,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2356,10 +2360,10 @@ const styles = themed(() =>
     title: {
       flex: 1,
       color: colors.text,
-      fontSize: 20,
+      fontSize: 18,
       fontFamily: fonts.display,
     },
-    summary: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    summary: { color: colors.muted, fontSize: 15, lineHeight: 20 },
     projectHistory: {
       gap: 10,
       marginTop: 10,
@@ -2371,7 +2375,7 @@ const styles = themed(() =>
     },
     historyHeading: {
       color: colors.text,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.semibold,
     },
     historyDescription: { color: colors.muted, fontSize: 13, lineHeight: 19 },
@@ -2396,7 +2400,7 @@ const styles = themed(() =>
       borderRadius: radii.input,
       backgroundColor: colors.accentSoft,
     },
-    historySummary: { color: colors.text, fontSize: 14, lineHeight: 20 },
+    historySummary: { color: colors.text, fontSize: 15, lineHeight: 20 },
     historyMeta: { color: colors.muted, fontSize: 11, lineHeight: 16 },
     stage: {
       gap: 6,
@@ -2417,10 +2421,10 @@ const styles = themed(() =>
     stageName: {
       flex: 1,
       color: colors.text,
-      fontSize: 14,
+      fontSize: 15,
       fontFamily: fonts.semibold,
     },
-    stageCount: { color: colors.muted, fontSize: 12 },
+    stageCount: { color: colors.muted, fontSize: 13 },
     // The move button carries the 44pt target, so the row needs no padding
     // of its own; rows stay one line apart instead of drifting.
     task: {
@@ -2439,7 +2443,7 @@ const styles = themed(() =>
       borderColor: colors.muted,
     },
     dotDone: { backgroundColor: colors.accent, borderColor: colors.accent },
-    taskText: { flex: 1, color: colors.text, fontSize: 14 },
+    taskText: { flex: 1, color: colors.text, fontSize: 15 },
     taskDone: { color: colors.muted, textDecorationLine: "line-through" },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   }),

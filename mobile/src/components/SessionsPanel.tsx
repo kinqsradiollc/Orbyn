@@ -486,7 +486,7 @@ const s = themed(() =>
     },
     lateChipText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.warningStrong,
     },
     row: {
@@ -512,13 +512,13 @@ const s = themed(() =>
     rowActions: { flexDirection: "row", alignItems: "center", gap: 8 },
     when: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     past: { color: colors.muted },
     lateText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.warningStrong,
     },
     offer: {
@@ -529,7 +529,7 @@ const s = themed(() =>
     },
     offerTime: {
       fontFamily: fonts.display,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
       marginTop: 4,
     },

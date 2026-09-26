@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -128,7 +129,7 @@ const s = themed(() =>
   StyleSheet.create({
     input: {
       color: colors.text,
-      fontSize: 14,
+      fontSize: 15,
       minHeight: 56,
       textAlignVertical: "top",
       borderWidth: 1,
@@ -149,7 +150,7 @@ const s = themed(() =>
     },
     row: { paddingHorizontal: 10, paddingVertical: 8, gap: 1 },
     rowPressed: { backgroundColor: colors.surfaceMuted },
-    name: { color: colors.text, fontSize: 14, fontFamily: fonts.semibold },
-    email: { color: colors.muted, fontSize: 12 },
+    name: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
+    email: { color: colors.muted, fontSize: 13 },
   }),
 );

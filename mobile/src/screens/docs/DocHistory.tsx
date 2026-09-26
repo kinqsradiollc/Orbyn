@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Platform, StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   changeAuthors,
   diffBlocks,

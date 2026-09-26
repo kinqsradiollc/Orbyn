@@ -4,12 +4,12 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Pressable } from "../motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ToastHost } from "./Toast";
 import { useSwipeDown } from "../hooks/useSwipeDown";
@@ -65,6 +65,7 @@ export function BottomSheet({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <Pressable
+          quiet
           style={s.backdrop}
           accessibilityRole="button"
           accessibilityLabel="Close"

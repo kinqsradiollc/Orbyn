@@ -1,9 +1,9 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { TEAM_ROLE_LABELS, type Team } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { Pill } from "./Pill";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 

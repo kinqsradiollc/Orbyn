@@ -264,7 +264,7 @@ export function ProjectsView({
         <EmptyState
           icon={Boxes}
           title="No projects yet"
-          body="Group related tasks into stages so you can see a piece of work end to end, not just today's list."
+          body="Group related tasks into stages to see a piece of work end to end."
         >
           <button
             className="primary"

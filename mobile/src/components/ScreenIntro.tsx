@@ -40,7 +40,7 @@ const s = themed(() =>
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       lineHeight: 34,
       letterSpacing: -0.7,
       color: colors.text,

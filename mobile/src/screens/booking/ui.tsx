@@ -1,16 +1,10 @@
 import React, { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type LayoutChangeEvent,
-} from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { Switch } from "../../components/Switch";
 import { Chip, ChipRow } from "../../components/Chip";
 import { NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";
-import { animateLayout } from "../../motion";
+import { animateLayout, Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
@@ -291,7 +285,7 @@ const s = themed(() =>
     pressed: { backgroundColor: colors.surfaceMuted },
     title: {
       fontFamily: fonts.display,
-      fontSize: 16,
+      fontSize: 15,
       letterSpacing: -0.3,
       color: colors.text,
       marginBottom: 2,

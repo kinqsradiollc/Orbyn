@@ -5,11 +5,9 @@ import {
   Check,
   FastForward,
   FileText,
-  FileUp,
   Flame,
   HelpCircle,
   MoreHorizontal,
-  PenLine,
   Lightbulb,
   Plus,
   Repeat,
@@ -33,6 +31,8 @@ import { ReviewSession } from "./ReviewSession";
 import { ImportButton, useImports } from "../docs/Uploads";
 import "./study.css";
 import { errorText } from "../../lib/errors";
+import { EmptyState } from "../../components/EmptyState";
+import { CONCEPT_ICON } from "../../app/concept-icons";
 
 type Props = {
   report: (e: unknown) => void;
@@ -227,7 +227,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
               ? `${data.due_today} due · ${data.new_cards} new · about ${minutes} min`
               : totalCards
                 ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
-                : "Get your first cards below: write them, import lecture notes, or pick a page."}
+                : "Add cards from a page, or start a study page below."}
           </p>
           <div className="study-actions">
             {toReview ? (
@@ -268,11 +268,9 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                 </button>
               </>
             ) : null}
-            {totalCards > 0 && (
-              <button className="text-button" onClick={() => setPicking(true)}>
-                <Plus size={15} /> Add cards
-              </button>
-            )}
+            <button className="text-button" onClick={() => setPicking(true)}>
+              <Plus size={15} /> Add cards
+            </button>
           </div>
           {note && (
             <p className="study-note" role="status">
@@ -467,61 +465,23 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
 
       {data.decks.length === 0 ? (
         <section className="study-section">
-          <h2>Get your first cards</h2>
-          <div className="study-ways">
-            <div className="card study-way">
-              <span className="study-way-icon" aria-hidden="true">
-                <PenLine size={16} />
-              </span>
-              <strong>Write cards</strong>
-              <p className="muted">
-                A new page. Any line written as question :: answer becomes a
-                card.
-              </p>
+          <EmptyState
+            icon={CONCEPT_ICON.study}
+            title="No cards yet"
+            body="Any line written as Question :: Answer in a page becomes a card."
+          >
+            <div className="empty-actions">
               <button className="primary" onClick={() => void newPage()}>
                 <Plus size={15} /> New study page
               </button>
-            </div>
-            <div className="card study-way">
-              <span className="study-way-icon" aria-hidden="true">
-                <FileUp size={16} />
-              </span>
-              <strong>Import lecture notes</strong>
-              <p className="muted">
-                A PDF or Word file becomes a page, then Orbyn suggests cards
-                from it.
-              </p>
               <ImportButton
                 onFiles={(files) => void imports.importFiles(files)}
                 busy={imports.busy}
                 className="secondary"
+                label="Import notes"
               />
             </div>
-            <div className="card study-way">
-              <span className="study-way-icon" aria-hidden="true">
-                <Sparkles size={16} />
-              </span>
-              <strong>From a page you have</strong>
-              <p className="muted">
-                Pick a page, and keep the suggested cards you want.
-              </p>
-              <button className="secondary" onClick={() => setPicking(true)}>
-                Choose a page…
-              </button>
-            </div>
-          </div>
-          <div className="study-sample" aria-label="An example card">
-            <div>
-              <span>Question</span>What does CAP stand for?
-            </div>
-            <div>
-              <span>Answer</span>Consistency, availability, partition tolerance
-            </div>
-          </div>
-          <p className="muted study-syntax">
-            Also: <code>A ::: B</code> asks both ways, and{" "}
-            <code>{"The {{leader}} sends heartbeats"}</code> hides a word.
-          </p>
+          </EmptyState>
         </section>
       ) : (
         <section className="study-section">

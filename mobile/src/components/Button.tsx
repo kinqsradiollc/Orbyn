@@ -76,7 +76,7 @@ const s = themed(() =>
       flexShrink: 1,
       textAlign: "center",
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
     },
     quietText: { fontFamily: fonts.medium },
   }),

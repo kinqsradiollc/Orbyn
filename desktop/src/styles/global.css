@@ -17,21 +17,27 @@
   /*
    * One size for every field: text boxes, dropdowns, date pickers and text
    * areas. Compact ones sit in tables and toolbars. Phones and touch screens
-   * get taller fields and 16px text (smaller text makes iOS zoom the page
-   * when a field is focused).
+   * get taller fields and 18px text (anything under 16px makes iOS zoom the
+   * page when a field is focused).
+   *
+   * Type: one scale of six sizes, shared with the phone app (TYPE_SCALE in
+   * @orbyn/core): 11 captions, 13 small and meta, 15 body, 18 titles,
+   * 24 headings, 36 display. Nothing is smaller than 11, and hierarchy comes
+   * from size and weight. backend/tests/neatness.unit.test.ts keeps every
+   * font size in these files on the scale.
    */
   --control-h: 40px;
   --control-h-sm: 32px;
-  --control-fs: 14px;
-  --control-fs-sm: 12px;
+  --control-fs: 15px;
+  --control-fs-sm: 13px;
   --control-pad-x: 12px;
 }
 @media (max-width: 640px), (pointer: coarse) {
   :root {
     --control-h: 44px;
     --control-h-sm: 36px;
-    --control-fs: 16px;
-    --control-fs-sm: 16px;
+    --control-fs: 18px;
+    --control-fs-sm: 18px;
   }
 }
 * {
@@ -39,6 +45,8 @@
 }
 body {
   margin: 0;
+  /* Body text on the scale; anything without a size of its own gets it. */
+  font-size: 15px;
 }
 button,
 input,
@@ -127,28 +135,28 @@ h3,
   font-family: "Manrope", sans-serif;
 }
 h1 {
-  font-size: 31px;
+  font-size: 36px;
   letter-spacing: -1.3px;
   line-height: 1.3;
   margin-bottom: 9px;
   font-weight: 650;
 }
 h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.3px;
   margin-bottom: 0;
 }
 h3 {
-  font-size: 17px;
+  font-size: 18px;
 }
 p {
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
   color: #7a857e;
 }
 small {
-  font-size: 12px;
+  font-size: 13px;
 }
 .app {
   display: flex;
@@ -193,7 +201,7 @@ small {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: -1.5px;
   padding-left: 9px;
@@ -205,7 +213,7 @@ small {
   color: var(--green);
 }
 .brand-name > span {
-  font-size: 30px;
+  font-size: 36px;
   color: var(--color-dot);
   /* The gap the flex row used to give the dot, less its side bearing. */
   margin-left: 4px;
@@ -219,22 +227,22 @@ small {
   justify-content: center;
   background: #e9eddf;
   color: #61704d;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 .profile strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .profile small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 4px;
 }
 .nav-label {
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1.5px;
   color: #9aa29d;
   font-weight: 600;
@@ -300,7 +308,7 @@ nav button i,
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .profile {
   border-top: 1px solid var(--border);
@@ -446,7 +454,7 @@ nav button i,
 }
 .eyebrow {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.9px;
   font-weight: 600;
   color: #8b978b;
@@ -464,7 +472,7 @@ nav button i,
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .primary {
@@ -482,7 +490,7 @@ nav button i,
 .text-button {
   border: 0;
   background: none;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: #56704e;
   display: inline-flex;
@@ -513,7 +521,7 @@ nav button i,
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: #637066;
 }
@@ -522,7 +530,7 @@ nav button i,
 }
 .stats strong {
   font-family: "Manrope", sans-serif;
-  font-size: 29px;
+  font-size: 24px;
   font-weight: 600;
   display: block;
   margin-top: 13px;
@@ -597,7 +605,7 @@ nav button i,
   padding: 0;
 }
 .item-main strong {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   display: block;
   overflow: hidden;
@@ -606,7 +614,7 @@ nav button i,
 }
 .item-main .item-meta {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: #6f7b72;
   margin-top: 4px;
   overflow: hidden;
@@ -618,7 +626,7 @@ nav button i,
   color: #9ca498;
 }
 .priority {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
   border-radius: var(--radius-pill);
@@ -654,6 +662,13 @@ nav button i,
   margin-left: auto;
   margin-right: auto;
   margin-bottom: 12px;
+}
+/* At most two buttons that do the obvious thing, side by side. */
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 /* Inside a section card the empty state is an aside, not the main event. */
 .overview-section .empty {
@@ -691,7 +706,7 @@ nav button i,
 }
 .date-tile small {
   text-transform: uppercase;
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.7px;
   color: #9aa28e;
   margin-bottom: 3px;
@@ -700,12 +715,12 @@ nav button i,
   flex: 1;
 }
 .upcoming strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   display: block;
 }
 .upcoming > span > small {
-  font-size: 10px;
+  font-size: 11px;
   color: #9ca394;
   display: block;
   margin-top: 6px;
@@ -736,12 +751,12 @@ nav button i,
   margin-bottom: 25px;
 }
 .assistant-card .eyebrow {
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 1.5px;
   color: #859374;
 }
 .assistant-card h2 {
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 500;
   line-height: 1.35;
   letter-spacing: -1px;
@@ -761,7 +776,7 @@ nav button i,
   border: 1px solid #d6decb;
   background: #f9faf2;
   color: #5d754f;
-  font-size: 10px;
+  font-size: 11px;
   padding: 10px 13px;
   border-radius: var(--radius-sm);
   margin-top: 20px;
@@ -789,7 +804,7 @@ nav button i,
   position: absolute;
   left: 56px;
   top: 46px;
-  font-size: 38px;
+  font-size: 36px;
   color: #bccba9;
 }
 .progress-card {
@@ -805,12 +820,12 @@ nav button i,
   margin-top: 22px;
 }
 .progress-line strong {
-  font-size: 25px;
+  font-size: 24px;
   font-family: "Manrope";
   font-weight: 500;
 }
 .progress-line span {
-  font-size: 10px;
+  font-size: 11px;
   color: #a0a692;
 }
 .progress-track {
@@ -825,7 +840,7 @@ nav button i,
   height: 100%;
 }
 .progress-card p {
-  font-size: 10px;
+  font-size: 11px;
   color: #a3aa99;
   margin: 14px 0 0;
 }
@@ -875,11 +890,11 @@ footer svg {
   margin-bottom: 20px;
 }
 .assistant-intro h2 {
-  font-size: 23px;
+  font-size: 24px;
   margin-bottom: 15px;
 }
 .assistant-intro p {
-  font-size: 12px;
+  font-size: 13px;
 }
 .suggestions {
   display: flex;
@@ -917,7 +932,7 @@ footer svg {
 .chat > .muted {
   display: block;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   margin: 13px;
 }
 .proposal {
@@ -937,10 +952,10 @@ footer svg {
   border-top: 1px solid #e4e9de;
 }
 .proposal-action strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 .proposal-action p {
-  font-size: 12px;
+  font-size: 13px;
   margin: 7px 0;
 }
 .proposal-action small {
@@ -967,12 +982,12 @@ footer svg {
   font-weight: 500;
 }
 .notice p {
-  font-size: 12px;
+  font-size: 13px;
   margin: 6px 0;
 }
 .notice small {
   color: #96a08e;
-  font-size: 10px;
+  font-size: 11px;
 }
 .notice.read {
   background: white;
@@ -987,7 +1002,7 @@ footer svg {
   margin-bottom: 12px;
 }
 .settings-card p {
-  font-size: 12px;
+  font-size: 13px;
 }
 .settings-card hr {
   border: 0;
@@ -1001,7 +1016,7 @@ footer svg {
 }
 .preference strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 .preference small {
   display: block;
@@ -1024,7 +1039,7 @@ footer svg {
   border-radius: var(--radius-sm);
   padding: 12px 16px;
   margin-bottom: 20px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .sync-status {
   position: fixed;
@@ -1034,7 +1049,7 @@ footer svg {
   background: #eaf0e3;
   color: #708064;
   border-radius: var(--radius-sm);
-  font-size: 10px;
+  font-size: 11px;
 }
 .modal-backdrop {
   position: fixed;
@@ -1125,18 +1140,18 @@ footer svg {
   padding: 0;
 }
 .auth-story h1 {
-  font-size: 56px;
+  font-size: 36px;
   line-height: 1.16;
   letter-spacing: -2.4px;
   font-weight: 500;
   margin: 23px 0;
 }
 .auth-story p {
-  font-size: 14px;
+  font-size: 15px;
   color: #819076;
 }
 .auth-story > small {
-  font-size: 10px;
+  font-size: 11px;
   color: #91a085;
 }
 .auth-story > div:nth-child(2) {
@@ -1165,7 +1180,7 @@ footer svg {
   position: absolute;
   left: 99px;
   top: 56px;
-  font-size: 64px;
+  font-size: 36px;
   color: #95af7f;
 }
 .auth-form {
@@ -1180,12 +1195,12 @@ footer svg {
   width: 100%;
 }
 .auth-card h2 {
-  font-size: 26px;
+  font-size: 24px;
   letter-spacing: -1px;
   margin: 16px 0 10px;
 }
 .auth-card > p {
-  font-size: 12px;
+  font-size: 13px;
   margin-bottom: 30px;
 }
 .auth-card input {
@@ -1242,7 +1257,7 @@ footer svg {
     padding: 40px;
   }
   .auth-story h1 {
-    font-size: 44px;
+    font-size: 36px;
   }
 }
 @media (max-width: 800px) {
@@ -1333,7 +1348,7 @@ footer svg {
     gap: 10px;
   }
   h1 {
-    font-size: 25px;
+    font-size: 24px;
   }
   .stats {
     padding: 18px 0;
@@ -1437,7 +1452,7 @@ footer svg {
 }
 .role-badge {
   display: inline-block;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.2px;
   border-radius: var(--radius-xs);
@@ -1470,14 +1485,14 @@ footer svg {
 }
 .profile strong .role-badge {
   margin-left: 6px;
-  font-size: 8px;
+  font-size: 11px;
   padding: 2px 5px;
 }
 .team-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: 11px;
   border-radius: var(--radius-xs);
   padding: 4px 7px;
   background: #edf2e8;
@@ -1493,7 +1508,7 @@ footer svg {
 }
 .you-tag {
   margin-left: 7px;
-  font-size: 9px;
+  font-size: 11px;
   color: #648153;
   background: #edf2e8;
   border-radius: var(--radius-xs);
@@ -1534,7 +1549,7 @@ footer svg {
 .field-hint {
   display: block;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: var(--muted);
 }
@@ -1572,7 +1587,7 @@ footer svg {
   justify-content: center;
   background: #e9eddf;
   color: #61704d;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -1582,7 +1597,7 @@ footer svg {
 }
 .team-row-main strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1590,7 +1605,7 @@ footer svg {
 }
 .team-row-main small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: #9ba197;
   margin-top: 5px;
 }
@@ -1619,7 +1634,7 @@ footer svg {
 }
 .team-detail .section-heading small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   margin-top: 7px;
 }
 .heading-actions {
@@ -1655,7 +1670,7 @@ footer svg {
 }
 .subheading h3 span {
   font:
-    10px "DM Sans",
+    11px "DM Sans",
     sans-serif;
   margin-left: 7px;
   background: #f1f4ee;
@@ -1667,6 +1682,68 @@ footer svg {
   padding: 16px 23px 22px;
 }
 
+/* A team's members: initials, name and email, a role, and one quiet action. */
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 23px 18px;
+  display: grid;
+}
+.member-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 6px 0;
+}
+.member-list li + li {
+  border-top: 1px solid var(--color-divider);
+}
+.member-initials {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 11px;
+  font-weight: 600;
+}
+.member-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.member-main strong,
+.member-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-main strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.member-main small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.member-list .role-select {
+  flex: none;
+  width: 128px;
+}
+.member-action-space {
+  flex: none;
+  width: 32px;
+}
+@media (max-width: 520px) {
+  .member-list .role-select {
+    width: 112px;
+  }
+}
+
 /* Tables (members, admin users/teams/audit) */
 .table-wrap {
   width: 100%;
@@ -1676,11 +1753,11 @@ footer svg {
   width: 100%;
   min-width: 560px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
 }
 .data-table th {
   text-align: left;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   text-transform: uppercase;
   font-weight: 600;
@@ -1746,7 +1823,7 @@ footer svg {
 }
 .status-pill {
   display: inline-block;
-  font-size: 9px;
+  font-size: 11px;
   border-radius: var(--radius-xs);
   padding: 3px 7px;
   margin-right: 8px;
@@ -1768,7 +1845,7 @@ footer svg {
   border-top: 1px solid var(--color-divider);
 }
 .audit-action {
-  font-size: 10px;
+  font-size: 11px;
   background: #f1f4ee;
   color: #5d7854;
   border-radius: var(--radius-xs);
@@ -1800,7 +1877,7 @@ footer svg {
   color: #78817d;
   border-radius: var(--radius-sm);
   padding: 9px 14px;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .tabs button:hover {
@@ -1835,7 +1912,7 @@ footer svg {
 .stat-card strong {
   display: block;
   font-family: "Manrope", sans-serif;
-  font-size: 27px;
+  font-size: 24px;
   font-weight: 600;
   line-height: 1;
   margin-top: 13px;
@@ -1856,6 +1933,7 @@ footer svg {
   .team-row,
   .create-team,
   .add-member,
+  .member-list,
   .team-settings,
   .subheading,
   .table-footer {
@@ -1991,7 +2069,7 @@ footer svg {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: #637066;
   white-space: nowrap;
 }
@@ -2048,7 +2126,7 @@ footer svg {
 }
 .section-hint {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: #6f7b72;
 }
@@ -2110,7 +2188,7 @@ footer svg {
   border-radius: var(--radius-sm);
   background: transparent;
   color: #5f6b62;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .segmented button.active {
@@ -2140,7 +2218,7 @@ footer svg {
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: #5f6b62;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .filter-chips button i {
@@ -2212,7 +2290,7 @@ footer svg {
   border: 1px dashed #d5ddd5;
   border-radius: var(--radius-sm);
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
   color: #6f7b72;
 }
 .board-card {
@@ -2414,7 +2492,7 @@ footer svg {
   gap: 6px 12px;
   padding: 9px 43px;
   border-bottom: 1px solid;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 .app-banner > svg {
@@ -2424,7 +2502,7 @@ footer svg {
   flex: 1 1 240px;
   min-width: 0;
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: inherit;
   overflow-wrap: anywhere;
 }
@@ -2487,7 +2565,7 @@ footer svg {
 }
 .auth-card .auth-consent .check-line {
   align-items: flex-start;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .auth-card .auth-consent input {
@@ -2541,7 +2619,7 @@ footer svg {
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 14px;
   align-items: baseline;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 .team-analytics-list .mono {
   font-variant-numeric: tabular-nums;
@@ -2565,7 +2643,7 @@ footer svg {
 }
 
 .chip {
-  font-size: 0.72rem;
+  font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-pill);
@@ -2606,7 +2684,7 @@ footer svg {
 }
 .strip-more {
   margin-left: auto;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 .strip-list {
@@ -2642,7 +2720,7 @@ footer svg {
   min-width: 0;
 }
 .strip-main strong {
-  font-size: 0.92rem;
+  font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2650,7 +2728,7 @@ footer svg {
 .strip-main small,
 .strip-when {
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: 13px;
 }
 .strip-main small {
   overflow: hidden;
@@ -2678,13 +2756,13 @@ footer svg {
   padding: 22px 22px 6px;
 }
 .confirm-body h2 {
-  font-size: 1.05rem;
+  font-size: 18px;
   margin: 0 0 6px;
   overflow-wrap: anywhere;
 }
 .confirm-body p {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: 15px;
   line-height: 1.55;
   color: var(--color-muted);
   overflow-wrap: anywhere;
@@ -2883,11 +2961,11 @@ footer svg {
 .file-picker .secondary {
   gap: 8px;
   padding: 8px 13px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .file-picker-hint {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .file-picker-chosen {
   display: inline-flex;
@@ -2897,7 +2975,7 @@ footer svg {
   padding: 4px 4px 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--color-chip);
-  font-size: 12px;
+  font-size: 13px;
 }
 .file-picker-chosen strong {
   font-weight: 600;
@@ -2937,7 +3015,7 @@ footer svg {
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-size: 1rem;
+  font-size: 15px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3044,7 +3122,7 @@ footer svg {
 .date-month-weekday {
   padding: 4px 0;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-muted);
 }
@@ -3056,7 +3134,7 @@ footer svg {
   border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .date-day:hover:not(:disabled) {
@@ -3102,7 +3180,7 @@ footer svg {
   border-radius: var(--radius-sm);
   background: none;
   color: var(--color-text);
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   font-variant-numeric: tabular-nums;
 }
@@ -3356,7 +3434,7 @@ input[type="number"]::-webkit-outer-spin-button {
   }
   .stack-table td:first-child,
   .stack-table td:first-child .link-button {
-    font-size: 14px;
+    font-size: 15px;
   }
   .stack-table td[data-label] {
     position: relative;

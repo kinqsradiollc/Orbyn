@@ -211,7 +211,7 @@
 }
 .chip-list .chip {
   padding: 3px 4px 3px 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .chip-list .icon-button {
   padding: 3px;
@@ -226,7 +226,7 @@
   border: 1px solid #d7e4d6;
   border-radius: var(--radius-sm);
   background: #f3f8f2;
-  font-size: 12px;
+  font-size: 13px;
 }
 .secret-box small {
   color: #5f6b62;
@@ -251,7 +251,7 @@
 }
 .hook-url {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px !important;
+  font-size: 13px !important;
 }
 .hook-error {
   color: var(--color-danger);
@@ -335,7 +335,7 @@
   padding: 0;
   display: grid;
   gap: 3px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 @media (max-width: 620px) {
   .settings-row {
@@ -366,7 +366,7 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: baseline;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 .estimate-tags .mono {
   font-variant-numeric: tabular-nums;
@@ -411,7 +411,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 6px;
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--muted);
 }
 .hour-strip-legend i {
@@ -447,7 +447,7 @@
 }
 .two-factor-uri {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   word-break: break-all;
   margin-top: 6px;
 }
@@ -473,7 +473,7 @@
   width: 100%;
   margin-top: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12.5px;
+  font-size: 13px;
   resize: vertical;
 }
 .portability-actions {
@@ -497,7 +497,7 @@
 }
 .analytics-totals strong {
   display: block;
-  font-size: 22px;
+  font-size: 24px;
 }
 .analytics-totals small {
   color: var(--muted);
@@ -514,7 +514,7 @@
   grid-template-columns: minmax(80px, 140px) minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 .analytics-track {
   height: 10px;
@@ -567,7 +567,7 @@
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
 }
 .kind-picker button:hover {
@@ -629,7 +629,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 13px;
+  font-size: var(--control-fs-sm);
   color: var(--color-text);
 }
 .settings-found {

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   AudioQuality,
   IOSOutputFormat,

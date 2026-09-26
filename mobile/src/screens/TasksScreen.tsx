@@ -1120,7 +1120,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.textSoft,
     },
-    chipCount: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    chipCount: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     filter: {
       flexDirection: "row",
       alignItems: "center",
@@ -1140,7 +1140,7 @@ const s = themed(() =>
       backgroundColor: colors.accentSoft,
     },
     filterOpen: { borderColor: colors.accent },
-    filterText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    filterText: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     filterTextOn: { fontFamily: fonts.semibold, color: colors.accent },
     panel: {
       backgroundColor: colors.surface,

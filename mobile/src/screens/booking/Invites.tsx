@@ -524,7 +524,7 @@ const s = themed(() =>
     done: { padding: 16 },
     link: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
       marginVertical: 12,
     },

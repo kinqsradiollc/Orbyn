@@ -58,7 +58,7 @@
 .milestone-name {
   justify-self: start;
   padding: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
   text-align: left;
 }
@@ -106,7 +106,7 @@
   min-width: 0;
 }
 .project-home-section .muted {
-  font-size: 0.82rem;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -119,7 +119,7 @@
   justify-content: space-between;
 }
 .projects-count {
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .project-create-form {
   display: flex;
@@ -144,12 +144,12 @@
 .project-reentry p {
   margin: 5px 0;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .project-reentry ul {
   margin: 6px 0 0;
   padding-left: 18px;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 .project-reentry li + li {
   margin-top: 3px;
@@ -194,7 +194,7 @@
 }
 .project-card-top strong {
   font-family: "Manrope", sans-serif;
-  font-size: 1rem;
+  font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -204,13 +204,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .project-card-foot {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -255,7 +255,7 @@
   margin: 0;
 }
 .project-search-results h3 {
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .project-search-results ul {
   display: grid;
@@ -339,12 +339,12 @@
 .project-header h2 {
   margin: 0;
   font-family: "Manrope", sans-serif;
-  font-size: 1.35rem;
+  font-size: 24px;
   min-width: 0;
 }
 .project-header p {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 15px;
 }
 .project-planning {
   display: grid;
@@ -413,7 +413,7 @@
   grid-template-columns: minmax(120px, 1fr) auto auto;
   gap: 12px;
   align-items: center;
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 @media (max-width: 720px) {
   .project-meta {
@@ -463,7 +463,7 @@
 .stage-name {
   font-family: "Manrope", sans-serif;
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 15px;
   color: var(--color-text);
   background: none;
   border: 0;
@@ -483,7 +483,7 @@
   background: none;
 }
 .stage-count {
-  font-size: 0.8rem;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .stage-head .text-button {
@@ -492,7 +492,7 @@
 
 .stage-empty {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 
 .stage-tasks {
@@ -524,7 +524,7 @@
   color: var(--color-text);
   cursor: pointer;
   min-width: 0;
-  font-size: 0.92rem;
+  font-size: 15px;
 }
 .stage-task:hover {
   background: var(--color-hover);
@@ -553,7 +553,7 @@
 
 /* The picker draws its own box; the wrapper only sets size and type. */
 .stage-move {
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--color-muted);
   max-width: 150px;
 }
@@ -576,7 +576,7 @@
   align-items: center;
   gap: 6px;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 15px;
   color: var(--color-muted);
   background: none;
   border: 1px dashed var(--color-borderStrong);
@@ -615,7 +615,7 @@
   flex: none;
   white-space: nowrap;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 13px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -664,7 +664,7 @@
 }
 .pboard-head strong {
   font-family: "Manrope", sans-serif;
-  font-size: 0.9rem;
+  font-size: 15px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -685,7 +685,7 @@
   gap: 8px;
   text-align: left;
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 15px;
   line-height: 1.45;
   color: var(--color-text);
   background: var(--color-sunken);
@@ -711,7 +711,7 @@
 }
 .pboard-empty {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 13px;
   padding: 6px 2px;
 }
 
@@ -737,14 +737,14 @@
   border: 1px dashed var(--color-borderStrong);
   border-radius: var(--radius-md);
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 15px;
 }
 
 .timeline-axis {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -794,7 +794,7 @@
   min-width: 0;
 }
 .timeline-label {
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -853,7 +853,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 13px;
 }
 .timeline-swatch {
   width: 10px;
@@ -875,7 +875,7 @@
 
 .timeline-undated {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 
 /* A narrow screen gives the labels less room rather than squeezing the bars. */
@@ -907,11 +907,11 @@
 }
 .project-records h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 15px;
 }
 .project-records-head p {
   margin: 4px 0 0;
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .project-record-form {
   display: grid;
@@ -946,7 +946,7 @@
 }
 .promise-tracker-toggle > span:last-child {
   margin-left: auto;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 .promise-tracker-body {
@@ -1050,7 +1050,7 @@
 }
 .project-time-machine-head p {
   margin: 3px 0 0;
-  font-size: 0.8rem;
+  font-size: 13px;
 }
 .project-time-machine-head .select {
   max-width: min(100%, 340px);
@@ -1079,7 +1079,7 @@
   margin-top: 4px;
 }
 .project-record-kind {
-  font-size: 0.75rem;
+  font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1088,7 +1088,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px 14px;
-  font-size: 0.8rem;
+  font-size: 13px;
 }
 .project-record-actions {
   justify-content: flex-start;
@@ -1098,7 +1098,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 10px;
-  font-size: 0.85rem;
+  font-size: 13px;
   color: var(--color-warn);
 }
 @media (max-width: 600px) {
@@ -1136,7 +1136,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1167,7 +1167,7 @@
   border-color: var(--color-border);
 }
 .project-note strong {
-  font-size: 0.9rem;
+  font-size: 15px;
   font-weight: 600;
 }
 .project-note span {
@@ -1264,7 +1264,7 @@
 }
 .template-card small {
   color: var(--color-textSoft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .template-card .template-meta {
   color: var(--color-muted);
@@ -1337,7 +1337,7 @@
 }
 .project-history-heading h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 .project-history-heading p {
   margin: 5px 0 0;
@@ -1422,7 +1422,7 @@
   flex-wrap: wrap;
   gap: 6px;
   color: var(--color-textSoft);
-  font-size: 12px;
+  font-size: 13px;
 }
 .project-history-diff li > span:first-child {
   min-width: 82px;
@@ -1431,7 +1431,7 @@
 .project-history-entry > .text-button {
   margin: 2px 0 0;
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 @media (max-width: 760px) {
   .project-history {
@@ -1491,7 +1491,7 @@
   padding: 3px 4px 3px 11px;
   border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .new-project-stages li .icon-button {
   padding: 3px;
@@ -1517,13 +1517,13 @@
 }
 .new-project-note {
   margin: 0 0 16px;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .new-project-error {
   margin: 0 0 12px;
   color: var(--color-danger);
-  font-size: 12px;
+  font-size: 13px;
 }
 .new-project-draft {
   display: grid;

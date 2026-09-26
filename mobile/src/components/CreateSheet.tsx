@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   createLabel,
   moveAction,
@@ -11,16 +12,16 @@ import {
 } from "@orbyn/core";
 import { BottomSheet } from "./BottomSheet";
 import { Button } from "./Button";
-import { Icon, type IconName } from "./Icon";
+import { CONCEPT_ICON, Icon, type IconName } from "./Icon";
 import { colors, controls, fonts, radii, themed } from "../theme";
 
 /** One icon per idea, the same as everywhere else in the app. */
 export const CREATE_ICONS: Record<CreateActionId, IconName> = {
-  task: "listTodo",
-  page: "fileText",
+  task: CONCEPT_ICON.task,
+  page: CONCEPT_ICON.page,
   template: "layoutTemplate",
   scan: "scan",
-  project: "boxes",
+  project: CONCEPT_ICON.project,
   plan: "calendarCheck",
   focus: "timer",
   ask: "sparkles",
@@ -194,10 +195,10 @@ const s = themed(() =>
     label: {
       flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
     },
-    tap: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    tap: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     small: {
       width: 34,
       height: 34,
@@ -215,7 +216,7 @@ const s = themed(() =>
     },
     arrangeText: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.muted,
     },
   }),

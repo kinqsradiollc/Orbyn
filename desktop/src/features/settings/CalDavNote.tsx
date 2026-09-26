@@ -14,9 +14,8 @@ export function CalDavNote() {
         app
       </h2>
       <p className="muted">
-        Add your Orbyn events to Apple Calendar, Thunderbird or DAVx5 over
-        CalDAV (read-only for now). Use your email as the username and a
-        personal API key (above) as the password.
+        Show your Orbyn events, read-only, in Apple Calendar, Thunderbird or
+        DAVx5, signing in with your email and a personal API key.
       </p>
       <code className="two-factor-secret">{url}</code>
     </SettingsSection>

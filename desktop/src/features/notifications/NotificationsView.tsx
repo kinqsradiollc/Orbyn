@@ -21,6 +21,7 @@ import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { stagger } from "../../lib/motion";
 import { client } from "../../lib/api";
+import { CONCEPT_ICON } from "../../app/concept-icons";
 
 type Props = {
   notices: Notice[];
@@ -56,7 +57,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   deadline: Hourglass,
   rsvp: UserCheck,
   template: LayoutTemplate,
-  project: CalendarDays,
+  project: CONCEPT_ICON.project,
   import: FileText,
   mention: AtSign,
   session: Timer,

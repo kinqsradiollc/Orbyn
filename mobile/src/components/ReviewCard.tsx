@@ -220,7 +220,7 @@ const s = themed(() =>
       paddingVertical: 6,
     },
     more: { flexDirection: "row", marginTop: 4 },
-    title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     button: { marginTop: 8, marginBottom: 0 },
   }),
 );

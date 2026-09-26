@@ -23,6 +23,13 @@ export const fonts = {
   brand: "Manrope_800ExtraBold",
 } as const;
 
+/**
+ * The one type scale shared with the web (11/13/15/18/24/36): every
+ * `fontSize` is one of these, and text still follows the phone's text size
+ * setting on top. See `typeScale` in @orbyn/core.
+ */
+export { TYPE_SCALE, typeScale } from "@orbyn/core";
+
 export const spacing = {
   /** Horizontal page padding, added on top of safe-area insets. */
   page: 16,

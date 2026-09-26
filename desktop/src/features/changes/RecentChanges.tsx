@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Activity, CalendarDays, Circle, FileText, X } from "lucide-react";
+import { Activity, X } from "lucide-react";
 import {
   changeEdits,
   changeTime,
@@ -11,6 +11,7 @@ import { client } from "../../lib/api";
 import { deviceTimeZone, errorText } from "../../lib/planning";
 import { openObject, peekObject } from "../docs/DocLinks";
 import "./changes.css";
+import { CONCEPT_ICON } from "../../app/concept-icons";
 
 const HIDE_KEY = "orbyn-changes-hide-mine";
 
@@ -22,7 +23,11 @@ const hideMineAtFirst = () => {
   }
 };
 
-const ICONS = { page: FileText, task: Circle, event: CalendarDays } as const;
+const ICONS = {
+  page: CONCEPT_ICON.page,
+  task: CONCEPT_ICON.task,
+  event: CONCEPT_ICON.event,
+} as const;
 
 /**
  * Recent changes (SHR-02): who changed which team page or task, grouped by

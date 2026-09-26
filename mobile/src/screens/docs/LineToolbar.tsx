@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   BLOCK_KINDS,
   type HighlightTint,
@@ -495,7 +496,7 @@ const s = themed(() =>
       justifyContent: "center",
     },
     toolOn: { backgroundColor: colors.accentSoft },
-    hint: { color: colors.faint, fontSize: 12, lineHeight: 18 },
+    hint: { color: colors.faint, fontSize: 13, lineHeight: 18 },
     panel: {
       flexDirection: "row",
       flexWrap: "wrap",

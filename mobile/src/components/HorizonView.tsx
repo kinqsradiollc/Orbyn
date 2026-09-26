@@ -3,7 +3,6 @@ import {
   AccessibilityInfo,
   Animated,
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,7 +23,7 @@ import {
 import { Chip, ChipRow } from "./Chip";
 import { Icon } from "./Icon";
 import { minutesLabel, rangeLabel } from "../lib/planning";
-import { animateLayout } from "../motion";
+import { animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { tap } from "../lib/haptics";
@@ -368,7 +367,7 @@ const s = themed(() =>
       justifyContent: "space-between",
       alignItems: "baseline",
     },
-    laneDay: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+    laneDay: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     card: {
       flexDirection: "row",
       alignItems: "center",
@@ -386,7 +385,7 @@ const s = themed(() =>
       borderStyle: "dashed",
       borderColor: colors.border,
     },
-    cardTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    cardTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     tray: { gap: 6, marginTop: 6 },
   }),
 );

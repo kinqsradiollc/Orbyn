@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import { PAGE_TAG_LIMIT, type DocTag, type Tag } from "@orbyn/core";
 import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";

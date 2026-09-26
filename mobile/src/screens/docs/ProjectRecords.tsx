@@ -610,10 +610,10 @@ const styles = themed(() =>
     kind: {
       color: colors.text,
       fontFamily: fonts.bold,
-      fontSize: 12,
+      fontSize: 13,
       textTransform: "uppercase",
     },
-    title: { color: colors.text, fontFamily: fonts.bold, fontSize: 16 },
+    title: { color: colors.text, fontFamily: fonts.bold, fontSize: 15 },
     body: { color: colors.text, fontFamily: fonts.regular, lineHeight: 21 },
     meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
     actions: { flexDirection: "row", gap: 12 },

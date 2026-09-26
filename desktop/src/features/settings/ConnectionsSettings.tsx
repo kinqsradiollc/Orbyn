@@ -82,11 +82,8 @@ export function ConnectionsSettings({ report }: Props) {
           <ShieldCheck size={16} aria-hidden="true" /> Connections
         </h2>
         <p className="muted">
-          Connect scripts, automation tools and other calendar apps. Nothing
-          here sends your data anywhere until you connect it: a key lets a tool
-          work with your tasks, pages and calendar, and a webhook sends only the
-          events you pick to the address you give. You can turn each one off at
-          any time.
+          Connect scripts, automation tools and calendar apps; nothing is sent
+          anywhere until you connect it, and each can be turned off.
         </p>
         <p className="muted">
           Building an integration? See the{" "}
@@ -163,11 +160,9 @@ function ApiKeys({ report }: Props) {
         <KeyRound size={16} aria-hidden="true" /> Personal API keys
       </h2>
       <p className="muted">
-        For scripts, automation tools and calendar apps (CalDAV). A key acts as
-        you for your tasks, pages and calendar. Send it as{" "}
-        <code>Authorization: Bearer …</code> to Orbyn&apos;s API. It can&apos;t
-        make or remove other keys, or change your account settings, sign-in or
-        webhooks. For AI agents, use an agent key under Connected agents.
+        A key lets scripts and calendar apps act as you for tasks, pages and
+        calendar (send it as <code>Authorization: Bearer …</code>), never for
+        keys, sign-in, settings or webhooks.
       </p>
       {fresh && <OnceSecret label="Your new API key" value={fresh} />}
       {keys === null ? (
@@ -300,8 +295,8 @@ function Webhooks({ report }: Props) {
         <WebhookIcon size={16} aria-hidden="true" /> Webhooks
       </h2>
       <p className="muted">
-        Orbyn posts a signed message to your address when something happens.
-        Check the signature with the signing secret.
+        Orbyn posts a message, signed with your signing secret, to your address
+        when something happens.
       </p>
       {secret && <OnceSecret label="Signing secret" value={secret} />}
       {hooks === null ? (

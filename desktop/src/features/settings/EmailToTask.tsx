@@ -35,9 +35,9 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
         <Mail size={18} aria-hidden="true" /> Email to task
       </h2>
       <p className="muted">
-        Forward or send an email to your private address and it becomes a task —
-        the subject is the task (dates and #tags are read from it), the body its
-        notes. Only mail from your own account address is accepted.
+        Mail from your own address sent to your private address becomes a task:
+        the subject (with its dates and #tags) is the title and the body its
+        notes.
       </p>
 
       {inbox === null ? (

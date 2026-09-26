@@ -51,11 +51,8 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
     <SettingsSection className="card settings-card">
       <h2>Orbyn Clipper</h2>
       <p className="muted">
-        Save what you're reading from your browser: an article or a paper as a
-        page, an assignment or a long read as a task, and highlights as quotes
-        or study cards. Paste a Clipper key into the extension's options to
-        connect it. A Clipper key can only save clips and list where they can
-        go; it can't open what's in your pages.
+        Save articles, papers, assignments and highlights from your browser with
+        a Clipper key, which can save clips but never open your pages.
       </p>
       {made && (
         <div className="clip-key-made" role="status">

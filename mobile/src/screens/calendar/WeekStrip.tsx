@@ -1,14 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import { motion, sameDay, type Status } from "@orbyn/core";
-import { easeOut, isReducedMotion } from "../../motion";
+import { easeOut, isReducedMotion, Pressable } from "../../motion";
 import { colors, fonts, themed, statusTones } from "../../theme";
 import { startOfWeek, weekDays } from "./dates";
 
@@ -210,7 +203,7 @@ const s = themed(() =>
       borderColor: "transparent",
     },
     todayRing: { borderColor: colors.accent },
-    date: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    date: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     todayText: { color: colors.accent },
     activeText: { color: colors.white },
     dots: { height: 8, flexDirection: "row", gap: 3, marginTop: 3 },

@@ -610,16 +610,16 @@ const s = themed(() =>
       gap: 10,
       paddingVertical: 6,
     },
-    analyticsName: { flex: 1, color: colors.text, fontSize: 14 },
+    analyticsName: { flex: 1, color: colors.text, fontSize: 15 },
     analyticsHours: {
       color: colors.text,
-      fontSize: 14,
+      fontSize: 15,
       fontFamily: fonts.semibold,
       fontVariant: ["tabular-nums"],
     },
     analyticsDone: {
       color: colors.muted,
-      fontSize: 12,
+      fontSize: 13,
       minWidth: 58,
       textAlign: "right",
     },
@@ -634,7 +634,7 @@ const s = themed(() =>
     weekEyebrow: { marginBottom: 2 },
     weekLabel: {
       fontFamily: fonts.display,
-      fontSize: 17,
+      fontSize: 18,
       letterSpacing: -0.3,
       color: colors.text,
       marginBottom: 10,
@@ -650,7 +650,7 @@ const s = themed(() =>
     name: {
       flex: 1,
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     dayRow: {
@@ -714,7 +714,7 @@ const s = themed(() =>
     disrupts: { color: colors.warning },
     slotText: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
   }),

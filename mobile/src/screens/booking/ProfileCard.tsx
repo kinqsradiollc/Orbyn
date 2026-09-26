@@ -231,7 +231,7 @@ const s = themed(() =>
     line: { marginTop: 4 },
     link: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
       marginTop: 10,
     },

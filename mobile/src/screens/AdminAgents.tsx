@@ -446,7 +446,7 @@ function NumberField({
 const s = themed(() =>
   StyleSheet.create({
     card: { marginBottom: 16, gap: 10 },
-    title: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     lead: { lineHeight: 19 },
     note: { color: colors.accent },
     flush: { marginBottom: 0 },

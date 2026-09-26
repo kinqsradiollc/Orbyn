@@ -225,7 +225,7 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    value: { fontFamily: fonts.display, fontSize: 20, color: colors.text },
+    value: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     gapTop: { marginTop: 12 },
     bad: { color: colors.danger },

@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Circle,
   FileText,
-  FolderKanban,
   Hash,
   Link2,
   Plus,
@@ -43,6 +42,7 @@ import {
 import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
 import { LinkCardPopover } from "./LinkCard";
+import { CONCEPT_ICON } from "../../app/concept-icons";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05) on the web: the pill a
@@ -86,10 +86,10 @@ const MOD_CLICK =
     : "Ctrl-click";
 
 const ICONS: Record<LinkKind, LucideIcon> = {
-  doc: FileText,
-  task: Circle,
-  event: CalendarDays,
-  project: FolderKanban,
+  doc: CONCEPT_ICON.page,
+  task: CONCEPT_ICON.task,
+  event: CONCEPT_ICON.event,
+  project: CONCEPT_ICON.project,
   person: UserRound,
   date: CalendarDays,
 };

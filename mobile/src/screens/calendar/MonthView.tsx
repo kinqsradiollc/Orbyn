@@ -1,11 +1,6 @@
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "../../motion";
 import { monthGrid, sameDay, type FrameOccurrence } from "@orbyn/core";
 import { colors, fonts, radii, themed, tint } from "../../theme";
 import { Icon } from "../../components/Icon";
@@ -293,7 +288,7 @@ const s = themed(() =>
       flex: 1,
       textAlign: "center",
       fontFamily: fonts.medium,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.muted,
       marginBottom: 6,
     },
@@ -328,7 +323,7 @@ const s = themed(() =>
     },
     dateToday: { borderWidth: 1.5, borderColor: colors.accent },
     dateActive: { backgroundColor: colors.accent },
-    dateText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
+    dateText: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
     otherMonth: { color: colors.faint },
     todayText: { color: colors.accent },
     activeText: { color: colors.white },
@@ -353,7 +348,7 @@ const s = themed(() =>
     flatRight: { borderTopRightRadius: 0, borderBottomRightRadius: 0 },
     barText: {
       fontFamily: fonts.medium,
-      fontSize: 9,
+      fontSize: 11,
       lineHeight: 12,
       color: colors.text,
     },
@@ -367,7 +362,7 @@ const s = themed(() =>
     },
     moreText: {
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.accent,
     },
   }),

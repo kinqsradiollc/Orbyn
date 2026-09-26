@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../motion";
 import { Icon } from "./Icon";
 import { colors, fonts, radii, themed } from "../theme";
 
@@ -57,7 +58,7 @@ const s = themed(() =>
       minHeight: 76,
     },
     copy: { flex: 1, minWidth: 0, gap: 4 },
-    title: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     detail: {
       fontFamily: fonts.regular,
       fontSize: 13,

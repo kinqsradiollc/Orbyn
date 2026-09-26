@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import type { OutlineEntry } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon } from "../../components/Icon";

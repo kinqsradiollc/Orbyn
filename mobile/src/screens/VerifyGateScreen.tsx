@@ -108,7 +108,7 @@ const s = themed(() =>
     eyebrow: { marginTop: 36 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 38,
+      fontSize: 36,
       lineHeight: 44,
       letterSpacing: -1.4,
       color: colors.text,
@@ -116,7 +116,7 @@ const s = themed(() =>
     intro: { marginBottom: 28 },
     note: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.muted,
       marginBottom: 12,
     },

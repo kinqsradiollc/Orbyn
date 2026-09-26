@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Animated,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,6 +40,7 @@ import { Chip, ChipRow } from "./Chip";
 import { AlertsField, ColorField, InviteesField } from "./EventFields";
 import { DateField, NumberInput } from "./Field";
 import { Icon } from "./Icon";
+import { useSwipeDown } from "../hooks/useSwipeDown";
 import { RepeatPicker } from "./RepeatPicker";
 import { Segmented } from "./Segmented";
 import { client } from "../lib/api";
@@ -51,7 +52,7 @@ import {
   shortDay,
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
-import { PressableScale } from "../motion";
+import { PressableScale, Pressable } from "../motion";
 import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -125,6 +126,9 @@ function Form({
   onClose,
 }: Omit<Props, "editing"> & { editing: Editing }) {
   const [picker, setPicker] = useState<Picker | null>(null);
+  // iOS's page sheet is pulled down by the system; elsewhere the header is.
+  const swipe = useSwipeDown(true, onClose);
+  const headerSwipe = Platform.OS === "ios" ? {} : swipe.handlers;
   const setDate = (field: DateField, value: string | null) =>
     onChange(field === "due_at" ? { due_at: value } : { end_at: value });
   // The team the item was saved in when the editor opened; moving it out needs members:manage there.
@@ -365,7 +369,19 @@ function Form({
   };
   return (
     <>
-      <View style={s.header}>
+      <Animated.View
+        {...headerSwipe}
+        style={[
+          s.header,
+          Platform.OS !== "ios" && {
+            transform: [{ translateY: swipe.offset }],
+          },
+        ]}
+      >
+        {/* The grab handle: pull the header down to close. */}
+        <View pointerEvents="none" style={s.grabRow}>
+          <View style={s.grab} />
+        </View>
         <Text style={s.headerTitle} numberOfLines={1}>
           {readOnly
             ? "View plan"
@@ -382,7 +398,7 @@ function Form({
         >
           <Icon name="x" size={18} color={colors.textSoft} />
         </Pressable>
-      </View>
+      </Animated.View>
       {/* Keyboard: the ScrollView adds the inset itself (iOS); Android resizes the window. */}
       <ScrollView
         style={s.fill}
@@ -1312,6 +1328,19 @@ const s = themed(() =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
+    grabRow: {
+      position: "absolute",
+      top: 5,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+    },
+    grab: {
+      width: 36,
+      height: 5,
+      borderRadius: radii.pill,
+      backgroundColor: colors.border,
+    },
     headerTitle: {
       flexShrink: 1,
       fontFamily: fonts.display,
@@ -1331,7 +1360,7 @@ const s = themed(() =>
     body: { padding: spacing.page, paddingBottom: 40 },
     column: { width: "100%", maxWidth: 600, alignSelf: "center" },
     section: { marginBottom: 18 },
-    titleInput: { fontFamily: fonts.medium, fontSize: 17 },
+    titleInput: { fontFamily: fonts.medium, fontSize: 18 },
     dateRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     dateButton: {
       flex: 1,
@@ -1419,7 +1448,7 @@ const s = themed(() =>
     },
     linkTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     linkRemove: {

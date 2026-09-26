@@ -123,7 +123,7 @@ export function OverviewView({
           <EmptyState
             icon={Sun}
             title="Give your ideas a home."
-            body="Add a task or event to start building your plan. Progress, checklists and updates all live on each task."
+            body="Add a task or event to start building your plan."
           >
             <button className="primary" onClick={onNewItem}>
               <Plus size={15} /> Make your first plan
@@ -187,7 +187,7 @@ export function OverviewView({
                 <EmptyState
                   icon={Sun}
                   title="A little breathing room."
-                  body="Nothing due today. Add something worth making time for."
+                  body="Nothing due today."
                 >
                   <button className="text-button" onClick={onNewItem}>
                     Plan something <Plus size={14} />

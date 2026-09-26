@@ -271,7 +271,7 @@ const s = themed(() =>
     },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
       marginBottom: 2,
     },

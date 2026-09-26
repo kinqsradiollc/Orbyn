@@ -116,7 +116,7 @@ a.drawer-fact {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -146,7 +146,7 @@ a.drawer-fact {
   padding: 14px 23px 10px;
   border-top: 1px solid var(--color-divider);
   background: #fafbf8;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 .task-group-title span {
@@ -169,7 +169,7 @@ a.drawer-fact {
 .list-section-title {
   margin: 0;
   padding: 12px 22px 6px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.2px;
   text-transform: uppercase;
   color: #8a948c;
@@ -263,7 +263,7 @@ a.drawer-fact {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: #5f6b62;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .day-toggles button.active {
@@ -304,7 +304,7 @@ a.drawer-fact {
   padding: 6px 8px 6px 10px;
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .waits-on-list li span {
   flex: 1;
@@ -402,7 +402,7 @@ a.drawer-fact {
   margin-bottom: 10px;
 }
 .popover-head strong {
-  font-size: 14px;
+  font-size: 15px;
   overflow-wrap: anywhere;
 }
 .popover-head small {
@@ -413,7 +413,7 @@ a.drawer-fact {
 }
 .popover-head .eyebrow {
   margin: 0;
-  font-size: 9px;
+  font-size: 11px;
 }
 /* A fact that needs attention (a session after its deadline). */
 .popover-head small.popover-warn {
@@ -478,7 +478,7 @@ a.drawer-fact {
 }
 .plan-summary {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
   color: #5f6b62;
 }
@@ -506,7 +506,7 @@ a.drawer-fact {
 .plan-days li li {
   display: flex;
   gap: 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .plan-time {
   flex: 0 0 auto;
@@ -527,7 +527,7 @@ a.drawer-fact {
 }
 .plan-flags {
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .plan-flags strong {
   display: flex;
@@ -589,7 +589,7 @@ a.drawer-fact {
 .plan-risk-more .text-button,
 .plan-outcome .text-button {
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .plan-outcome {
   flex-wrap: wrap;
@@ -609,7 +609,7 @@ a.drawer-fact {
   align-items: flex-start;
   gap: 6px;
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -637,7 +637,7 @@ a.drawer-fact {
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: #6f7b72;
-  font-size: 12px;
+  font-size: 13px;
 }
 .command-trigger:hover {
   border-color: #d3ddd3;
@@ -649,7 +649,7 @@ kbd {
   border-radius: var(--radius-xs);
   background: var(--color-surfaceMuted);
   font:
-    600 10px "DM Sans",
+    600 11px "DM Sans",
     sans-serif;
   color: #5f6b62;
 }
@@ -848,7 +848,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: #5f6b62;
 }
 .team-block {
@@ -862,7 +862,7 @@ kbd {
 }
 .team-block-lead {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .team-block .table-wrap {
   margin: 0 -23px;
@@ -883,7 +883,7 @@ kbd {
 }
 .avail-table thead th {
   border-top: 0;
-  font-size: 10px;
+  font-size: 11px;
   color: #6f7b72;
   text-align: center;
 }
@@ -902,12 +902,12 @@ kbd {
 }
 .avail-person strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .avail-person small {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: #7a857c;
 }
 .avail-person .icon-button[aria-pressed="true"] {
@@ -950,7 +950,7 @@ kbd {
   border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: #5f6b62;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 .chip.is-danger {
@@ -1005,7 +1005,7 @@ kbd {
 }
 .slot-list strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 .slot-list small {
   color: #6f7b72;
@@ -1034,7 +1034,7 @@ kbd {
   display: inline-flex !important;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 450 !important;
   margin: 0 !important;
 }
@@ -1051,7 +1051,7 @@ kbd {
   display: flex !important;
   align-items: flex-start;
   gap: 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .switch-line .ai-switch {
@@ -1083,7 +1083,7 @@ kbd {
 }
 .modal-lead {
   margin: 0 0 16px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .set-card {
   margin: 0 0 14px;
@@ -1105,7 +1105,7 @@ kbd {
   justify-content: center;
   border-radius: var(--radius-sm);
   background: var(--color-surfaceMuted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 .set-name {
@@ -1211,7 +1211,7 @@ kbd {
 }
 .shortcut-group h3 {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textSoft);
 }
 .shortcut-group dl {
@@ -1244,7 +1244,7 @@ kbd {
 .shortcut-note {
   margin: 0;
   padding: 8px 23px 20px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textMuted);
 }
 
@@ -1257,7 +1257,7 @@ kbd {
   align-items: center;
   gap: 6px;
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-warn);
 }
 .team-atrisk ul {
@@ -1272,7 +1272,7 @@ kbd {
   gap: 12px;
   padding: 8px 0;
   border-top: 1px solid var(--color-divider);
-  font-size: 12px;
+  font-size: 13px;
 }
 .team-atrisk strong {
   display: block;
@@ -1293,7 +1293,7 @@ kbd {
   border-radius: var(--radius-pill);
   background: var(--color-chip);
   color: var(--color-textMuted);
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

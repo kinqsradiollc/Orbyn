@@ -8,12 +8,12 @@ import React, {
 import {
   Keyboard,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Pressable } from "../../motion";
 import {
   blocksToClipboard,
   EMBED_LANG,
@@ -2889,7 +2889,7 @@ const styles = themed(() =>
     titleEditor: { minHeight: 44 },
     title: {
       color: colors.text,
-      fontSize: 28,
+      fontSize: 24,
       lineHeight: 36,
       fontFamily: fonts.display,
       padding: 0,
@@ -2914,20 +2914,20 @@ const styles = themed(() =>
     tagText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
     },
     note: {
       alignSelf: "flex-start",
       color: colors.muted,
       backgroundColor: colors.soft,
-      fontSize: 12,
+      fontSize: 13,
       paddingHorizontal: 9,
       paddingVertical: 3,
       borderRadius: radii.pill,
       overflow: "hidden",
     },
-    hint: { color: colors.faint, fontSize: 12, lineHeight: 18 },
+    hint: { color: colors.faint, fontSize: 13, lineHeight: 18 },
     footer: {
       color: colors.muted,
       fontSize: 11,
@@ -2951,6 +2951,6 @@ const styles = themed(() =>
       borderRadius: radii.input,
     },
     addPressed: { backgroundColor: colors.surfaceMuted },
-    addText: { color: colors.muted, fontSize: 14, fontFamily: fonts.semibold },
+    addText: { color: colors.muted, fontSize: 15, fontFamily: fonts.semibold },
   }),
 );

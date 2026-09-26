@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";

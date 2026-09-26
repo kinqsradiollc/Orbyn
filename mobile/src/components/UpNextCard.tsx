@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View } from "react-native";
 import type { Item, UpNext } from "@orbyn/core";
 import { Button } from "./Button";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -155,7 +155,7 @@ const s = themed(() =>
     window: { marginTop: 2, marginBottom: 12 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 17,
+      fontSize: 18,
       lineHeight: 23,
       color: colors.text,
     },
@@ -167,7 +167,7 @@ const s = themed(() =>
     },
     reason: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.pill,
@@ -188,7 +188,7 @@ const s = themed(() =>
     rowPressed: { opacity: 0.7 },
     rowTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
   }),

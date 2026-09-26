@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,7 +20,7 @@ import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { deviceTimeZone, WEEK_ORDER, WEEKDAYS } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -452,13 +451,13 @@ const s = themed(() =>
     name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     meta: {
       fontFamily: fonts.regular,
-      fontSize: 12.5,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 2,
     },
     note: {
       fontFamily: fonts.regular,
-      fontSize: 12.5,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 6,
     },

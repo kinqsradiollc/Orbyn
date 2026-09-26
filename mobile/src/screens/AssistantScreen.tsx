@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Pressable,
   Animated,
   Easing,
   StyleSheet,
@@ -21,7 +20,7 @@ import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
-import { FadeIn, PressableScale, useReducedMotion } from "../motion";
+import { FadeIn, PressableScale, useReducedMotion, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -476,8 +475,8 @@ const s = themed(() =>
     },
     welcomeTitle: {
       fontFamily: fonts.display,
-      fontSize: 30,
-      lineHeight: 38,
+      fontSize: 36,
+      lineHeight: 42,
       letterSpacing: -0.8,
       color: colors.text,
     },
@@ -541,7 +540,7 @@ const s = themed(() =>
     },
     newChatText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
     thread: { gap: 12, marginBottom: 14 },
@@ -636,7 +635,7 @@ const s = themed(() =>
       gap: 6,
       marginBottom: 8,
     },
-    planTitle: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+    planTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     planButton: { marginTop: 12, marginBottom: 0 },
     planDone: {
       flexDirection: "row",

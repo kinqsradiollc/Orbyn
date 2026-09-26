@@ -185,7 +185,7 @@ const s = themed(() =>
       justifyContent: "center",
     },
     text: { flexShrink: 1 },
-    title: { fontFamily: fonts.display, fontSize: 16, color: colors.text },
+    title: { fontFamily: fonts.display, fontSize: 15, color: colors.text },
     body: {
       fontFamily: fonts.regular,
       fontSize: 13,
