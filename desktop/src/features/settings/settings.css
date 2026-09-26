@@ -596,3 +596,87 @@
 .settings-list li.settings-subform > .button-row {
   justify-content: flex-end;
 }
+
+/* Search in Settings (NAV-10): one field above the tabs, and what it found. */
+.settings-search {
+  position: relative;
+  max-width: 520px;
+  margin-bottom: 14px;
+}
+.settings-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+.settings-search-field:focus-within {
+  border-color: var(--color-accent);
+}
+.settings-search .settings-search-field input[type="search"],
+.settings-search .settings-search-field input[type="search"]:focus {
+  box-shadow: none;
+  border: none;
+}
+.settings-search-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text);
+}
+.settings-found {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--color-text) 12%, transparent);
+}
+.settings-found button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.settings-found button:hover,
+.settings-found button:focus-visible {
+  background: var(--color-hover);
+}
+.settings-found strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.settings-found small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.settings-found-none {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+/* The section a search chose, lit for a moment. */
+.settings-section.is-found {
+  box-shadow: 0 0 0 2px var(--color-accent);
+  transition: box-shadow 400ms ease;
+}

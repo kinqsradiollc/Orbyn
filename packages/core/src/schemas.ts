@@ -829,7 +829,8 @@ export const projectRequest = z.object({
 /** Bring planner data in from an Orbyn export or a CSV. */
 export const importInput = z
   .object({
-    format: z.enum(["orbyn", "csv"]),
+    /** An Orbyn export, a CSV with a title column, or Todoist's or TickTick's CSV. */
+    format: z.enum(["orbyn", "csv", "todoist", "ticktick"]),
     data: z.string().min(1).max(5_000_000),
     /** Preview counts without writing anything. */
     dry_run: z.boolean().default(true),

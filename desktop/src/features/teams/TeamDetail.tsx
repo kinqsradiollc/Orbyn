@@ -33,6 +33,8 @@ import { RoleBadge } from "../../components/RoleBadge";
 import { stagger } from "../../lib/motion";
 import { TeamPlanning } from "./TeamPlanning";
 import { TeamAgents } from "./TeamAgents";
+import { TeamPublishing } from "../publish/PublishDialog";
+import { RecentChanges } from "../changes/RecentChanges";
 
 /** Planner plumbing shared by the Teams and Admin views. */
 export type TeamActions = {
@@ -405,6 +407,12 @@ export function TeamDetail({
           canManage={hasTeamPermission(team.role, "team:update")}
           report={report}
         />
+      )}
+
+      {!override && <TeamPublishing teamId={team.id} />}
+
+      {!override && hasTeamPermission(team.role, "items:read") && (
+        <RecentChanges teamId={team.id} showTeam={false} />
       )}
 
       {!override && hasTeamPermission(team.role, "items:read") && (

@@ -1,4 +1,10 @@
-import { itemData, type SystemRole } from "@orbyn/core";
+import {
+  itemData,
+  tickTickTasks,
+  todoistTasks,
+  type ImportedTask,
+  type SystemRole,
+} from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
 import { mutate } from "../items/service.js";
 import { loadHabits } from "../planner/habits.js";
@@ -164,6 +170,22 @@ function itemsFromCsv(rows: Record<string, string>[]): ExportItem[] {
   return out;
 }
 
+/** A task from Todoist or TickTick, in the archive item shape. */
+const fromApp = (t: ImportedTask): ExportItem => ({
+  title: t.title,
+  notes: t.notes,
+  kind: "task",
+  status: t.status,
+  priority: t.priority,
+  due_at: t.due_at,
+  end_at: null,
+  estimate_minutes: null,
+  location: "",
+  rrule: null,
+  list: t.list,
+  tags: t.tags,
+});
+
 /** Parse a date or datetime to an ISO string with offset, or null. */
 function isoOf(s: string): string | null {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(s.trim())
@@ -180,7 +202,7 @@ function isoOf(s: string): string | null {
 export async function importData(
   db: Db,
   user: { id: string; role: SystemRole },
-  format: "orbyn" | "csv",
+  format: "orbyn" | "csv" | "todoist" | "ticktick",
   data: string,
   dryRun: boolean,
 ): Promise<ImportSummary> {
@@ -189,7 +211,13 @@ export async function importData(
     items =
       format === "csv"
         ? itemsFromCsv(parseCsv(data))
-        : ((JSON.parse(data) as ExportArchive).items ?? []);
+        : format === "todoist"
+          ? todoistTasks(data).map(fromApp)
+          : format === "ticktick"
+            ? tickTickTasks(data).map(fromApp)
+            : ((JSON.parse(data) as ExportArchive).items ?? []);
+    if (format !== "orbyn" && format !== "csv" && !items.length)
+      throw new Error("no tasks");
   } catch {
     return {
       created: 0,

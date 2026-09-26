@@ -231,3 +231,83 @@ export async function* zipStream(
   yield directory;
   yield closing(count, offset, directory.length);
 }
+
+// ---------------------------------------------------------------- reading
+
+/** A file read back out of a zip. */
+export type UnzippedFile = { name: string; body: Buffer };
+
+export class ZipError extends Error {}
+
+/**
+ * Read the files in a zip (DATA-08: a folder of Markdown notes, a Notion
+ * export). Only what imports need: stored and deflated files, found through
+ * the central directory, with limits on how many and how big so a crafted
+ * archive can't blow up in memory. Directories and zip64 are skipped.
+ */
+export function unzip(
+  archive: Buffer,
+  limits: {
+    maxFiles: number;
+    maxBytes: number;
+    keep?: (name: string) => boolean;
+  },
+): UnzippedFile[] {
+  // The end-of-central-directory record: in the last 64 KB + 22 bytes.
+  let end = -1;
+  for (
+    let i = archive.length - 22;
+    i >= Math.max(0, archive.length - 65_557);
+    i--
+  )
+    if (archive.readUInt32LE(i) === 0x06054b50) {
+      end = i;
+      break;
+    }
+  if (end < 0) throw new ZipError("This isn't a zip file.");
+  const count = archive.readUInt16LE(end + 10);
+  let at = archive.readUInt32LE(end + 16);
+  const out: UnzippedFile[] = [];
+  let total = 0;
+  for (let n = 0; n < count; n++) {
+    if (at + 46 > archive.length || archive.readUInt32LE(at) !== 0x02014b50)
+      throw new ZipError("The zip file is damaged.");
+    const method = archive.readUInt16LE(at + 10);
+    const packed = archive.readUInt32LE(at + 20);
+    const size = archive.readUInt32LE(at + 24);
+    const nameLength = archive.readUInt16LE(at + 28);
+    const extraLength = archive.readUInt16LE(at + 30);
+    const commentLength = archive.readUInt16LE(at + 32);
+    const local = archive.readUInt32LE(at + 42);
+    const flags = archive.readUInt16LE(at + 8);
+    const raw = archive.subarray(at + 46, at + 46 + nameLength);
+    // Bit 11: the name is UTF-8; older tools wrote CP437, read as Latin-1.
+    const name = raw.toString(flags & 0x800 ? "utf8" : "latin1");
+    at += 46 + nameLength + extraLength + commentLength;
+    if (name.endsWith("/") || (limits.keep && !limits.keep(name))) continue;
+    if (out.length >= limits.maxFiles)
+      throw new ZipError(`The zip has more than ${limits.maxFiles} files.`);
+    total += size;
+    if (size === U32 || packed === U32 || total > limits.maxBytes)
+      throw new ZipError("The zip is too big once unpacked.");
+    if (
+      local + 30 > archive.length ||
+      archive.readUInt32LE(local) !== 0x04034b50
+    )
+      throw new ZipError("The zip file is damaged.");
+    const start =
+      local +
+      30 +
+      archive.readUInt16LE(local + 26) +
+      archive.readUInt16LE(local + 28);
+    const data = archive.subarray(start, start + packed);
+    let body: Buffer;
+    if (method === 0) body = Buffer.from(data);
+    else if (method === 8)
+      body = zlib.inflateRawSync(data, { maxOutputLength: Math.max(size, 1) });
+    else continue;
+    if (body.length !== size) throw new ZipError("The zip file is damaged.");
+    out.push({ name, body });
+  }
+  return out;
+}

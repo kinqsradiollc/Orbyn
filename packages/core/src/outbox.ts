@@ -1,4 +1,5 @@
 import { itemBody } from "./planner.js";
+import { combinePageSaves, type PageSave } from "./offline-pages.js";
 import type {
   EditScope,
   HabitInput,
@@ -56,7 +57,9 @@ export type OutboxOp =
   | { type: "booking.cancel"; id: string; who: string; reason: string }
   /** Only if the time is still free when it's sent: it may be refused. */
   | { type: "booking.reschedule"; id: string; who: string; start_at: string }
-  | { type: "booking.note"; id: string; who: string; note: string };
+  | { type: "booking.note"; id: string; who: string; note: string }
+  /** A page edited with no signal (SHR-03): merged with the page when sent. */
+  | { type: "doc.save"; save: PageSave };
 
 export type OutboxEntry = {
   /** Sent as the Idempotency-Key. */
@@ -166,7 +169,51 @@ export function describeOp(op: OutboxOp) {
       return `Moved booking · ${op.who}`;
     case "booking.note":
       return `Booking note · ${op.who}`;
+    case "doc.save":
+      return `Edited page · ${op.save.title || "Untitled"}`;
   }
+}
+
+/**
+ * Put a change in the queue. A page edit joins one still waiting for the
+ * same page (it is the same edit, carried on), so a page typed into for an
+ * hour offline sends once, measured from where it began.
+ */
+export function queueChange(
+  entries: OutboxEntry[],
+  entry: OutboxEntry,
+): OutboxEntry[] {
+  const op = entry.op;
+  if (op.type === "doc.save") {
+    const at = entries.findIndex(
+      (e) =>
+        e.state === "pending" &&
+        e.op.type === "doc.save" &&
+        e.op.save.id === op.save.id,
+    );
+    if (at >= 0) {
+      const waiting = entries[at].op as { type: "doc.save"; save: PageSave };
+      const next = entries.slice();
+      next[at] = {
+        ...entries[at],
+        op: { type: "doc.save", save: combinePageSaves(waiting.save, op.save) },
+      };
+      return next;
+    }
+  }
+  return [...entries, entry];
+}
+
+/** The edit waiting for a page, if one is. */
+export function waitingPageSave(
+  entries: OutboxEntry[],
+  id: string,
+): PageSave | null {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const op = entries[i].op;
+    if (op.type === "doc.save" && op.save.id === id) return op.save;
+  }
+  return null;
 }
 
 /**

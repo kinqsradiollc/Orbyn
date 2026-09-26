@@ -25,6 +25,7 @@ import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
 import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
+import { hasUnseenRelease, type ObjectRef } from "@orbyn/core";
 import {
   deepLinkKey,
   deepLinkOf,
@@ -60,6 +61,20 @@ import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
 import { SecurityPage } from "../features/legal/SecurityPage";
+import { ChangelogPage } from "../features/whatsnew/ChangelogPage";
+import {
+  markReleaseSeen,
+  seenRelease,
+  WhatsNew,
+} from "../features/whatsnew/WhatsNew";
+import { FirstRun } from "../features/firstrun/FirstRun";
+import { SidePeek } from "../features/peek/SidePeek";
+import {
+  RecentChanges,
+  RecentChangesDialog,
+} from "../features/changes/RecentChanges";
+import { PEEK_EVENT } from "../features/docs/DocLinks";
+import { openPageCommands } from "./page-commands";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -237,6 +252,19 @@ export function App() {
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** "What's new" (DSN-03) and Recent changes (SHR-02), over the app. */
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
+  /** The side peek (NAV-05): what is open beside, and whether it stays. */
+  const [peek, setPeek] = useState<{
+    target: ObjectRef;
+    pinned: boolean;
+  } | null>(null);
+  /** A setting ⌘K asked for (NAV-10), counted so asking again works. */
+  const [settingAsked, setSettingAsked] = useState<{
+    id: string;
+    seq: number;
+  } | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
@@ -335,6 +363,27 @@ export function App() {
     window.addEventListener(OPEN_LINK_EVENT, open);
     return () => window.removeEventListener(OPEN_LINK_EVENT, open);
   }, []);
+  // ⌘-click on a link, ⌘Enter in ⌘K: open it beside (NAV-05).
+  useEffect(() => {
+    const onPeek = (e: Event) => {
+      const target = (e as CustomEvent<ObjectRef>).detail;
+      setPeek((was) => ({ target, pinned: was?.pinned ?? false }));
+    };
+    window.addEventListener(PEEK_EVENT, onPeek);
+    return () => window.removeEventListener(PEEK_EVENT, onPeek);
+  }, []);
+  // After a release, "What's new" opens once by itself (DSN-03). A browser
+  // that has never seen one (a new account, a first visit) is not shown it.
+  useEffect(() => {
+    if (!token || !user || user.first_run_done === false) return;
+    const seen = seenRelease();
+    if (!seen) markReleaseSeen();
+    else if (hasUnseenRelease(seen)) setWhatsNewOpen(true);
+  }, [token, user?.id, user?.first_run_done]);
+  // Moving to another screen closes the peek, unless it is pinned.
+  useEffect(() => {
+    setPeek((p) => (p?.pinned ? p : null));
+  }, [view]);
   useEffect(() => {
     if (!linked) return;
     if (!token) {
@@ -398,19 +447,30 @@ export function App() {
                     description: "Whether every part of Orbyn is up right now.",
                     index: false,
                   }
-                : token
-                  ? { title: view + " · Orbyn", description: app, index: false }
-                  : path === "/login"
+                : path === "/changelog"
+                  ? {
+                      title: "What's new · Orbyn",
+                      description:
+                        "Everything that changed in Orbyn: New, Better and No longer broken.",
+                      index: true,
+                    }
+                  : token
                     ? {
-                        title: "Sign in · Orbyn",
+                        title: view + " · Orbyn",
                         description: app,
                         index: false,
                       }
-                    : {
-                        title: "Create your space · Orbyn",
-                        description: app,
-                        index: false,
-                      },
+                    : path === "/login"
+                      ? {
+                          title: "Sign in · Orbyn",
+                          description: app,
+                          index: false,
+                        }
+                      : {
+                          title: "Create your space · Orbyn",
+                          description: app,
+                          index: false,
+                        },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -438,6 +498,7 @@ export function App() {
     path === "/terms" ||
     path === "/privacy" ||
     path === "/security" ||
+    path === "/changelog" ||
     (!nativeDesktop && path === "/")
   );
   useEffect(() => {
@@ -453,6 +514,8 @@ export function App() {
       "app.sidebar": () => toggleRail(),
       "app.shortcuts": () => setShortcutsOpen(true),
       "new.task": () => newItem(),
+      // Reading or editing the open page (EDT-10); nothing with no page.
+      "page.read": () => openPageCommands()?.run["page.read"]?.(),
     };
     const onKey = (e: KeyboardEvent) => {
       const command = commandForKey(e);
@@ -741,6 +804,16 @@ export function App() {
     });
   };
 
+  // What's new, every release: public, signed in or not (DSN-03).
+  if (path === "/changelog")
+    return (
+      <ChangelogPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
   // Security and data: public, signed in or not.
   if (path === "/security")
     return (
@@ -892,7 +965,11 @@ export function App() {
 
   return (
     <PlanningProviders planning={planning} planned={planned}>
-      <div className={"app" + (railed ? " is-railed" : "")}>
+      <div
+        className={
+          "app" + (railed ? " is-railed" : "") + (peek ? " has-peek" : "")
+        }
+      >
         <Sidebar
           open={mobileNav}
           railed={railed}
@@ -983,6 +1060,10 @@ export function App() {
                   onPlanMyDay={planMyDay}
                   onShowLate={() => navigate("My tasks")}
                 />
+              )}
+              {/* What changed in your teams, others' changes first (SHR-02). */}
+              {view === "Overview" && teams.length > 0 && (
+                <RecentChanges compact limit={12} />
               )}
               {view === "My tasks" && (
                 <TasksView
@@ -1212,6 +1293,8 @@ export function App() {
                   teams={teams}
                   busy={busy}
                   report={report}
+                  initialSetting={settingAsked}
+                  onOpenWhatsNew={() => setWhatsNewOpen(true)}
                   onEmailReminders={planner.setEmailReminders}
                   onOpenStatus={() => navigatePath("/status")}
                   onOpenSecurity={() => navigatePath("/security")}
@@ -1227,7 +1310,14 @@ export function App() {
             )}
             {view !== "AI assistant" && (
               <footer>
-                A little more clarity. A little more you. <Orbit size={14} />
+                A little more clarity. A little more you. <Orbit size={14} />{" "}
+                <button
+                  type="button"
+                  className="footer-link"
+                  onClick={() => setWhatsNewOpen(true)}
+                >
+                  What's new
+                </button>
               </footer>
             )}
           </main>
@@ -1371,6 +1461,12 @@ export function App() {
             onKeptNote={(docId) => openPage(docId)}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
+            onOpenWhatsNew={() => setWhatsNewOpen(true)}
+            onOpenChanges={() => setChangesOpen(true)}
+            onOpenSetting={(id) => {
+              navigate("Settings");
+              setSettingAsked((was) => ({ id, seq: (was?.seq ?? 0) + 1 }));
+            }}
             teams={teams}
             userId={user?.id}
             onJumpToDate={jumpToDate}
@@ -1379,6 +1475,38 @@ export function App() {
         )}
         {shortcutsOpen && (
           <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+        )}
+        {peek && (
+          <SidePeek
+            target={peek.target}
+            pinned={peek.pinned}
+            onPin={(pinned) => setPeek((p) => (p ? { ...p, pinned } : p))}
+            onClose={() => setPeek(null)}
+            report={report}
+          />
+        )}
+        {whatsNewOpen && (
+          <WhatsNew
+            onClose={() => setWhatsNewOpen(false)}
+            onOpenChangelog={() => {
+              setWhatsNewOpen(false);
+              navigatePath("/changelog");
+            }}
+          />
+        )}
+        {changesOpen && (
+          <RecentChangesDialog onClose={() => setChangesOpen(false)} />
+        )}
+        {user && user.first_run_done === false && (
+          <FirstRun
+            user={user}
+            onDone={(_next, made) => {
+              markReleaseSeen();
+              void refreshUser();
+              void refresh();
+              if (made?.brief_id) openPage(made.brief_id);
+            }}
+          />
         )}
         <Celebration />
       </div>

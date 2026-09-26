@@ -1,11 +1,34 @@
 import {
   Children,
+  createContext,
   isValidElement,
+  useContext,
+  useEffect,
   useId,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { ChevronDown } from "lucide-react";
+import { sectionKey } from "@orbyn/core";
+
+/**
+ * The section Settings' search chose (NAV-10): its heading, compared by
+ * `sectionKey`, and a counter so choosing the same one again still opens
+ * and scrolls to it.
+ */
+export const SettingsFocus = createContext<{ key: string; seq: number } | null>(
+  null,
+);
+
+/** The words of a heading, icons and all left out. */
+function textOf(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join("");
+  if (isValidElement(node))
+    return textOf((node.props as { children?: ReactNode }).children);
+  return "";
+}
 
 const REMEMBER = "orbyn-settings-open";
 
@@ -84,6 +107,28 @@ export function SettingsSection({
     () => defaultOpen || remembered()[key] === true,
   );
   const bodyId = useId();
+  // Settings' search chose this section: open it and bring it into view.
+  const focus = useContext(SettingsFocus);
+  const box = useRef<HTMLElement>(null);
+  const [flash, setFlash] = useState(false);
+  const name = sectionKey(
+    typeof title === "string"
+      ? title
+      : textOf(isValidElement(head) ? head : null),
+  );
+  const chosen = !!focus && !!name && focus.key === name;
+  useEffect(() => {
+    if (!chosen) return;
+    setOpen(true);
+    setFlash(true);
+    const t = window.setTimeout(() => setFlash(false), 1600);
+    requestAnimationFrame(() =>
+      box.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+    return () => window.clearTimeout(t);
+    // The counter, so choosing it again does it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chosen, focus?.seq]);
 
   // Falling back leaves the section unfolded, which is easy to miss; say so
   // while developing rather than quietly shipping a tab that never folds.
@@ -97,7 +142,10 @@ export function SettingsSection({
 
   return (
     <section
-      className={(className ?? "") + " settings-section"}
+      ref={box}
+      className={
+        (className ?? "") + " settings-section" + (flash ? " is-found" : "")
+      }
       data-open={open || undefined}
     >
       <button

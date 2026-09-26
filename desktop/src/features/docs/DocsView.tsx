@@ -17,6 +17,7 @@ import {
   LayoutTemplate,
   RotateCcw,
   Trash2,
+  Globe,
 } from "lucide-react";
 import {
   agendaDay,
@@ -46,6 +47,7 @@ import { DocEditor } from "./DocEditor";
 import { ImportButton, UploadsPanel, useImports } from "./Uploads";
 import { MakeCardsDialog } from "../study/StudyView";
 import { PageTemplatesDialog } from "./PageTemplates";
+import { PublishDialog } from "../publish/PublishDialog";
 import "./docs.css";
 
 const when = (iso: string) => {
@@ -89,6 +91,8 @@ export function DocsView({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** null = everything; a folder id = that folder; "none" = unfiled. */
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
+  /** A folder being put on the web (SHR-05). */
+  const [publishingFolder, setPublishingFolder] = useState<Folder | null>(null);
   /**
    * null = every kind but agendas; "note" = only notes; "doc" = only plain
    * pages; "agenda" = the daily agendas, which have their own section.
@@ -409,6 +413,10 @@ export function DocsView({
           ),
         )
       : [{ key: "all", month: "", label: "", docs: ordered }];
+  const openFolder =
+    folderFilter && folderFilter !== "none"
+      ? (folders.find((f) => f.id === folderFilter) ?? null)
+      : null;
   const location = trashOnly
     ? "Trash"
     : uploadsOnly
@@ -851,6 +859,16 @@ export function DocsView({
             <div className="docs-head">
               <h2 className="docs-count">{location}</h2>
               <div className="docs-head-actions">
+                {openFolder && (
+                  <button
+                    className="text-button"
+                    aria-haspopup="dialog"
+                    onClick={() => setPublishingFolder(openFolder)}
+                    title="Put this folder's pages on the web"
+                  >
+                    <Globe size={15} /> Publish folder
+                  </button>
+                )}
                 <ImportButton onFiles={importFiles} busy={imports.busy} />
                 <button
                   className="text-button"
@@ -977,6 +995,11 @@ export function DocsView({
                 onMakeCards={setMaking}
                 onFiles={importFiles}
                 caps={imports.caps}
+                report={report}
+                onChanged={() => {
+                  void load();
+                  onItemsChanged?.();
+                }}
               />
             ) : failed ? (
               <div>
@@ -1187,6 +1210,14 @@ export function DocsView({
           title={making.title || "Untitled"}
           report={report}
           onClose={() => setMaking(null)}
+        />
+      )}
+      {publishingFolder && (
+        <PublishDialog
+          kind="folder"
+          id={publishingFolder.id}
+          name={publishingFolder.name}
+          onClose={() => setPublishingFolder(null)}
         />
       )}
     </div>

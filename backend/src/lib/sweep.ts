@@ -397,6 +397,17 @@ export const SWEEP_RULES: SweepRule[] = [
     days: 0,
     configurable: false,
   },
+  {
+    key: "team_changes",
+    label: "Recent changes",
+    detail:
+      "Who changed which team page or task, for each team's Recent changes.",
+    table: "team_changes",
+    where: olderThan("at"),
+    days: 90,
+    configurable: true,
+    min: 14,
+  },
 ];
 
 const SLICE = 5000;

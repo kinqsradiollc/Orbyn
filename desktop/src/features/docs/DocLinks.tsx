@@ -52,6 +52,22 @@ import { LinkCardPopover } from "./LinkCard";
 /** Asks the app to open something (App.tsx listens). */
 export const OPEN_LINK_EVENT = "orbyn:open-link";
 
+/** Asks the app to open something in the side peek (App.tsx listens). */
+export const PEEK_EVENT = "orbyn:peek";
+
+/**
+ * Open a page, task, event or project in the side peek (NAV-05), beside
+ * whatever is open: ⌘-click (Ctrl-click) a link, or ⌘Enter in ⌘K.
+ */
+export function peekObject(ref: ObjectRef) {
+  if (ref.kind === "person" || ref.kind === "date") return;
+  window.dispatchEvent(
+    new CustomEvent<ObjectRef>(PEEK_EVENT, {
+      detail: { kind: ref.kind === "event" ? "task" : ref.kind, id: ref.id },
+    }),
+  );
+}
+
 /** Open a page (at a line), task, event or project over the app. */
 export function openObject(ref: ObjectRef, block?: string | null) {
   if (ref.kind === "person" || ref.kind === "date") return;
@@ -62,6 +78,12 @@ export function openObject(ref: ObjectRef, block?: string | null) {
     }),
   );
 }
+
+const MOD_CLICK =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "⌘-click"
+    : "Ctrl-click";
 
 const ICONS: Record<LinkKind, LucideIcon> = {
   doc: FileText,
@@ -255,15 +277,21 @@ export function LinkPillView({
       role={openable ? "link" : undefined}
       tabIndex={openable ? 0 : undefined}
       aria-label={openable ? `Open ${noun} ${title}` : undefined}
+      title={
+        openable ? `Open. ${MOD_CLICK} opens it beside this page.` : undefined
+      }
       onClick={(e) => {
         stop(e);
-        if (openable) open();
+        if (!openable) return;
+        if (e.metaKey || e.ctrlKey) peekObject(target);
+        else open();
       }}
       onKeyDown={(e) => {
         if (openable && e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          open();
+          if (e.metaKey || e.ctrlKey) peekObject(target);
+          else open();
         }
       }}
       onMouseEnter={() => {

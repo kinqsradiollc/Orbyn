@@ -194,6 +194,14 @@ ${UPSTREAM_MCP}
     # Uploads for importing into Docs go straight to the file store,
     # streamed (not buffered here) and up to 50 MB. The link in the path is
     # signed by the API and works once.
+    # Markdown and Notion exports into pages (DATA-08): a zip up to 20 MB,
+    # sent as base64 in one JSON request.
+    location = /imports/pages {
+      limit_req zone=per_client burst=20 nodelay;
+      client_max_body_size 28m;
+      proxy_read_timeout 125s;
+      proxy_pass http://api;
+    }
     location /files/u/ {
       limit_req zone=per_client burst=10 nodelay;
       client_max_body_size 52m;
@@ -285,6 +293,27 @@ ${UPSTREAM_MCP}
       # Links the API builds (the calendar feed) need the /api it sits under.
       proxy_set_header X-Forwarded-Prefix /api;
       proxy_pass http://127.0.0.1:8080/;
+    }
+
+    location = /api/imports/pages {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      client_max_body_size 28m;
+      proxy_pass http://127.0.0.1:8080/imports/pages;
+    }
+
+    # Published pages (SHR-05): read at /p/<slug> on the web app's own
+    # address, written by the API as plain HTML (no app, no script).
+    location ^~ /p/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/p/;
     }
 
     # Uploads for importing, through this gateway's own entry point above.

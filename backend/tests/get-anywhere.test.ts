@@ -312,10 +312,12 @@ test("recent commands come first and pinned ones stay on top", () => {
 
 test("typing narrows the list; unavailable commands never show", () => {
   const found = orderCommands("go cal", EMPTY_MEMORY, () => true);
+  // Settings that answer the words ("Google calendar") follow the commands.
   assert.deepEqual(
-    found.map((c) => c.id),
+    found.filter((c) => c.group !== "Settings").map((c) => c.id),
     ["go.calendar"],
   );
+  assert.equal(found[0].id, "go.calendar");
   assert.ok(
     commandMatches(
       COMMANDS.find((c) => c.id === "new.page")!,

@@ -18,6 +18,8 @@ export type UserRow = User & {
   created_at: string;
   /** Whether teammates may see when they are active (presence). */
   share_presence?: boolean;
+  /** When the first run was finished or skipped (DSN-02). */
+  first_run_at?: string | null;
 };
 
 export const digest = (s: string) =>
@@ -34,6 +36,8 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   bio: (u.bio as string | undefined) ?? "",
   terms_version: (u.terms_version as string | null | undefined) ?? null,
   analytics_opt_out: !!u.analytics_opt_out,
+  first_run_done: (u as { first_run_at?: unknown }).first_run_at !== null,
+  purpose: (u.purpose as User["purpose"] | undefined) ?? null,
 });
 
 /** API key ids by key hash, so rate limiting needn't ask the database each time. */

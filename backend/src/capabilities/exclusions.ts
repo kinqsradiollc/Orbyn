@@ -40,6 +40,12 @@ export const EXCLUSION_REASONS = {
     "How a page is shown to one person (the headings they folded): not data.",
   file_bytes:
     "Uploading, showing and downloading pictures and files in pages through short-lived signed links: people's apps only; agents read pages as words.",
+  publishing:
+    "Putting a page or folder on the public web, its password, and a team's switch for it: people only, since it shows words to anyone.",
+  catch_up:
+    "A team's Recent changes list, for people catching up after time away; agents read what changed through the page and task tools.",
+  bring_in:
+    "Bringing in another app's export (a Markdown or Notion zip): people choose the file and read the dry run.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -142,6 +148,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/study/cards/:id/explain": "hosted_ai",
   "POST /ai/study/grade": "hosted_ai",
   "POST /ai/study/pages/:id/cards": "hosted_ai",
+  "POST /ai/assist": "hosted_ai",
   "POST /auth/logout": "sign_in",
   "POST /auth/resend-verification": "sign_in",
   "GET /bookings/export.csv": "export_file",
@@ -198,6 +205,19 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /ai/capabilities": "hosted_ai",
   "POST /capture/preview": "outside_fetch",
   "POST /me/import": "account",
+  "POST /me/first-run": "account",
+  "POST /me/first-run/skip": "account",
+  "GET /changes": "catch_up",
+  "POST /imports/pages": "bring_in",
+  "GET /docs/:id/publish": "publishing",
+  "PUT /docs/:id/publish": "publishing",
+  "DELETE /docs/:id/publish": "publishing",
+  "PUT /docs/:id/web-description": "publishing",
+  "GET /folders/:id/publish": "publishing",
+  "PUT /folders/:id/publish": "publishing",
+  "DELETE /folders/:id/publish": "publishing",
+  "GET /teams/:id/publishing": "publishing",
+  "PUT /teams/:id/publishing": "team_admin",
   "DELETE /me/inbox": "account",
   "GET /me/inbox": "account",
   "POST /me/inbox/rotate": "account",
@@ -498,6 +518,11 @@ export const PUBLIC: string[] = [
   // signed hour-long link to show or download one (EDT-01).
   "PUT /files/p/:token",
   "GET /files/r/:token",
+  // Published pages (SHR-05): read by anyone with the address, with the
+  // password form for a page that has one.
+  "GET /p/:slug",
+  "GET /p/:slug/:doc",
+  "POST /p/:slug/unlock",
   "GET /mcp",
   "DELETE /mcp",
   "GET /.well-known/oauth-protected-resource",

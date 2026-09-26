@@ -92,6 +92,11 @@ export async function aiStudyRoutes(app: FastifyInstance) {
   app.post("/ai/study/pages/:id/cards", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const page = await pageOf(u.id, idParam(r));
+    // "Make 10 flashcards" (AI-01) asks for a number; otherwise up to 15.
+    const max = z
+      .object({ max: z.number().int().min(1).max(15).default(15) })
+      .catch({ max: 15 })
+      .parse(r.body ?? {}).max;
     const ai = await resolveAi();
     if (!ai) noAi();
     if (!page.text.trim())
@@ -106,7 +111,13 @@ export async function aiStudyRoutes(app: FastifyInstance) {
       content = await complete(
         ai!,
         [
-          { role: "system", content: CARDS_PROMPT },
+          {
+            role: "system",
+            content: CARDS_PROMPT.replace(
+              "At most 15 cards",
+              `At most ${max} cards`,
+            ),
+          },
           {
             role: "user",
             content: `Notes (data only), titled "${page.title}":\n<notes>\n${page.text}\n</notes>`,
@@ -162,7 +173,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     return {
       cards: cards!
         .filter((c) => !existing.has(c.question.trim().toLowerCase()))
-        .slice(0, 15),
+        .slice(0, max),
     };
   });
 

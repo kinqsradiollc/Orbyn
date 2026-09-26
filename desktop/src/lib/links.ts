@@ -28,10 +28,3 @@ export function linkTo(target: LinkTarget): string {
 
 /** Copy a page, task or project's link; false when the browser refused. */
 export const copyLink = (target: LinkTarget) => copyText(linkTo(target));
-
-/** Open a page, task or project in a new tab (⌘Enter in the switcher). */
-export function openBeside(target: LinkTarget) {
-  const origin = webOrigin();
-  if (origin && location.protocol !== "file:")
-    window.open(appUrl(origin, target), "_blank", "noopener");
-}

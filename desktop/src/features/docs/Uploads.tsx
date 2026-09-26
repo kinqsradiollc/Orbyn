@@ -1,3 +1,4 @@
+import { AssistChips } from "../assist/AssistChips";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, FileUp, FolderInput, GraduationCap, X } from "lucide-react";
 import {
@@ -209,8 +210,14 @@ export function UploadsPanel({
   onMakeCards,
   onFiles,
   caps,
+  report,
+  onChanged,
 }: {
   caps: ImportCapabilities | null;
+  /** With it, the assistant's chips show on each page (AI-01). */
+  report?: (e: unknown) => void;
+  /** The assistant's suggestion was taken: read the pages again. */
+  onChanged?: () => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -353,13 +360,22 @@ export function UploadsPanel({
                 </small>
               </button>
               <span className="upload-actions">
-                <button
-                  className="text-button"
-                  title="Suggest study cards from this page"
-                  onClick={() => onMakeCards(doc)}
-                >
-                  <GraduationCap size={15} /> Make cards
-                </button>
+                {report ? (
+                  <AssistChips
+                    docId={doc.id}
+                    title={doc.title || "Untitled"}
+                    report={report}
+                    onChanged={onChanged}
+                  />
+                ) : (
+                  <button
+                    className="text-button"
+                    title="Suggest study cards from this page"
+                    onClick={() => onMakeCards(doc)}
+                  >
+                    <GraduationCap size={15} /> Make cards
+                  </button>
+                )}
                 <button
                   className="primary"
                   aria-haspopup="dialog"

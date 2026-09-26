@@ -118,6 +118,7 @@ import { copyLink } from "../../lib/links";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
+import { readsFirst } from "./reading";
 import { useDocViewers } from "./DocViewers";
 import { DocOutline } from "./DocOutline";
 import { PageInfo } from "./PageInfo";
@@ -151,6 +152,7 @@ import {
   scaledPicture,
 } from "./RichBlocks";
 import { MergeDialog, TemplateInsert } from "./PageActions";
+import { PublishDialog } from "../publish/PublishDialog";
 import { openObject } from "./DocLinks";
 
 type Kind = (typeof BLOCK_KINDS)[number];
@@ -330,13 +332,30 @@ export function DocEditor({
    */
   const [mode, setMode] = useState<DocMode>(() =>
     canWrite
-      ? // The agenda is read more than written, so it opens for reading.
-        (rememberedMode(doc.id) ?? (doc.kind === "agenda" ? "read" : "edit"))
+      ? // The agenda is read more than written, so it opens for reading;
+        // so does every page on a device set to read first (EDT-10).
+        (rememberedMode(doc.id) ??
+        (doc.kind === "agenda" || readsFirst() ? "read" : "edit"))
       : "read",
   );
   const suggesting = mode === "suggest";
   /** Nothing typed changes the page itself in these modes. */
   const reading = mode === "read" || (!canWrite && !suggesting);
+  /**
+   * Read, Edit or Suggest. Leaving an open line behind would strand what
+   * was typed in it, so the page is settled before the mode changes.
+   */
+  /**
+   * Read (EDT-10), chosen by someone who could edit: the page alone, with no
+   * block handles and no margin of remarks. Someone who may only read keeps
+   * the margin, since remarking is how they take part.
+   */
+  const focusReading = canWrite && mode === "read";
+  const changeMode = (next: DocMode) => {
+    setFocused(null);
+    setMode(next);
+    rememberMode(doc.id, next);
+  };
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
   /** What a line being suggested on has been typed into, before it is sent. */
@@ -491,6 +510,8 @@ export function DocEditor({
   /** The page's ⋯ menu, and "Merge into…". */
   const [moreMenu, setMoreMenu] = useState(false);
   const [merging, setMerging] = useState(false);
+  /** "Publish to web…" (SHR-05). */
+  const [publishing, setPublishing] = useState(false);
   /** "Template" in the / menu: where its lines go. */
   const [inserting, setInserting] = useState<{
     index: number;
@@ -2455,6 +2476,10 @@ export function DocEditor({
     docId: doc.id,
     title: title || "Untitled",
     run: {
+      // ⌘⇧R (EDT-10): reading and editing, back and forth.
+      ...(canWrite
+        ? { "page.read": () => changeMode(mode === "read" ? "edit" : "read") }
+        : {}),
       "page.link": copyPageLink,
       "page.markdown": copyMarkdown,
       "page.download-md": () => void download("md"),
@@ -2561,13 +2586,7 @@ export function DocEditor({
             mode={mode}
             canWrite={canWrite}
             teamName={doc.team_name}
-            onChange={(next) => {
-              // Leaving an open line behind would strand what was typed in
-              // it, so the page is settled before the mode changes.
-              setFocused(null);
-              setMode(next);
-              rememberMode(doc.id, next);
-            }}
+            onChange={changeMode}
           />
           {openTodos > 0 && !reading && (
             <button className="text-button" onClick={makeTasks}>
@@ -2681,6 +2700,20 @@ export function DocEditor({
                       {foldableHeadings(blocks).some((id) => !folds.has(id))
                         ? "Collapse all headings"
                         : "Expand all headings"}
+                    </button>
+                  </li>
+                )}
+                {doc.kind !== "agenda" && (
+                  <li>
+                    <button
+                      role="menuitem"
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        setMoreMenu(false);
+                        setPublishing(true);
+                      }}
+                    >
+                      Publish to web…
                     </button>
                   </li>
                 )}
@@ -2979,7 +3012,9 @@ export function DocEditor({
             ? " has-history"
             : showInfo
               ? " has-info"
-              : " has-comments") +
+              : focusReading
+                ? " is-reading"
+                : " has-comments") +
           (longPage && !historyView ? " has-outline" : "")
         }
       >
@@ -3414,7 +3449,7 @@ export function DocEditor({
             report={report}
           />
         )}
-        {!showHistory && !showInfo && (
+        {!showHistory && !showInfo && !focusReading && (
           <>
             <DocComments
               docId={doc.id}
@@ -3473,6 +3508,14 @@ export function DocEditor({
             void addFiles(files, place.index, place.replace);
         }}
       />
+      {publishing && (
+        <PublishDialog
+          kind="doc"
+          id={doc.id}
+          name={title || "Untitled"}
+          onClose={() => setPublishing(false)}
+        />
+      )}
       {merging && (
         <MergeDialog
           doc={{ id: doc.id, title, team_id: doc.team_id }}

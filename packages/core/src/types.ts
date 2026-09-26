@@ -211,6 +211,13 @@ export type User = {
   terms_version?: string | null;
   /** Whether you turned usage analytics off (Settings → Privacy). */
   analytics_opt_out?: boolean;
+  /**
+   * Whether the guided first run is done (or skipped). False only for a new
+   * account that has not been through it; older servers leave it out.
+   */
+  first_run_done?: boolean;
+  /** What you said Orbyn is for, in the first run. */
+  purpose?: "study" | "team" | "personal" | null;
 };
 
 /** Your public profile, as you edit it. */

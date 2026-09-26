@@ -1,6 +1,12 @@
 import { Eye, PencilLine } from "lucide-react";
 import { MODE_LABELS, modesFor, type DocMode } from "@orbyn/core";
 
+const MOD =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.userAgent)
+    ? "⌘"
+    : "Ctrl+";
+
 const ICONS: Record<DocMode, typeof Eye> = {
   edit: PencilLine,
   suggest: PencilLine,
@@ -49,7 +55,11 @@ export function DocModeSwitch({
             role="radio"
             aria-checked={mode === m}
             className={mode === m ? "is-on" : undefined}
-            title={MODE_LABELS[m].blurb}
+            title={
+              m === "suggest"
+                ? MODE_LABELS[m].blurb
+                : `${MODE_LABELS[m].blurb} (${MOD}⇧R switches)`
+            }
             onClick={() => onChange(m)}
           >
             <Icon size={13} aria-hidden="true" /> {MODE_LABELS[m].name}

@@ -71,6 +71,18 @@ export type HtmlOptions = {
    * (which has none of this file's stylesheet).
    */
   inline?: boolean;
+  /**
+   * Where a link goes, for pages read somewhere else (a published page):
+   * null keeps the words and drops the link (a page that isn't published).
+   */
+  linkUrl?: (href: string) => string | null;
+  /** Give each heading an id (`h-<n>`, by line), for a contents list. */
+  anchors?: boolean;
+  /**
+   * Typeset maths as HTML (a published page writes MathML); left out, or
+   * returning null, maths is written as its plain reading.
+   */
+  math?: (tex: string, display: boolean) => string | null;
 };
 
 /** The highlighter colours as another app draws them (the light theme's tints). */
@@ -81,13 +93,17 @@ function inlineHtml(text: string, o: HtmlOptions = {}): string {
   return parseDocInline(text)
     .map((run: DocInline) => {
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
-      if (run.math) return `<span class="m">${body}</span>`;
+      if (run.math)
+        return o.math?.(run.text, false) ?? `<span class="m">${body}</span>`;
       if (run.code) return `<code>${body}</code>`;
       if (run.footnote) {
         const n = o.notes?.get(run.footnote) ?? run.footnote;
         return `<sup><a href="#fn-${escapeHtml(String(n))}">${escapeHtml(String(n))}</a></sup>`;
       }
-      if (run.link) return `<a href="${escapeHtml(run.link)}">${body}</a>`;
+      if (run.link) {
+        const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
+        return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
+      }
       if (run.bold) return `<strong>${body}</strong>`;
       if (run.italic) return `<em>${body}</em>`;
       if (run.strike) return `<s>${body}</s>`;
@@ -165,7 +181,10 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
       case "heading": {
         closeList();
         const level = block.level + 1;
-        body.push(`<h${level}>${inlineHtml(block.text, opts)}</h${level}>`);
+        const id = o.anchors ? ` id="h-${index}"` : "";
+        body.push(
+          `<h${level}${id}>${inlineHtml(block.text, opts)}</h${level}>`,
+        );
         break;
       }
       case "bullet":
@@ -231,7 +250,10 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
         break;
       case "math":
         closeList();
-        body.push(`<p class="m">${escapeHtml(mathToText(block.text))}</p>`);
+        body.push(
+          o.math?.(block.text, true) ??
+            `<p class="m">${escapeHtml(mathToText(block.text))}</p>`,
+        );
         break;
       case "divider":
         closeList();

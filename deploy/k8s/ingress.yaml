@@ -237,3 +237,51 @@ spec:
                 name: mcp
                 port:
                   name: http
+---
+# Markdown and Notion exports into pages (DATA-08): one JSON request up to
+# 28 MB (a 20 MB zip as base64), on both hosts. Its own Ingress so the larger
+# body size applies to this path only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-page-imports
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # placeholder
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "5"
+    nginx.ingress.kubernetes.io/proxy-body-size: "28m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "125"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "125"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+    - hosts:
+        - app.orbyn.example
+      secretName: orbyn-web-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /imports/pages
+            pathType: Exact
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+    - host: app.orbyn.example
+      http:
+        paths:
+          - path: /api/imports/pages
+            pathType: Exact
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

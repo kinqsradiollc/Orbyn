@@ -11,6 +11,11 @@ export default defineConfig({
         // Links the API builds (the calendar feed) need the /api prefix.
         headers: { "X-Forwarded-Prefix": "/api" },
       },
+      // Published pages (SHR-05) are written by the API at /p/<slug>, on
+      // the web app's own address, as the gateway does in production.
+      "^/p/": {
+        target: process.env.API_PROXY_URL || "http://localhost:8008",
+      },
     },
   },
 });

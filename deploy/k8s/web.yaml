@@ -130,8 +130,18 @@ data:
         proxy_read_timeout 100s;
         proxy_pass http://orbyn_mcp/mcp;
       }
+      # Markdown and Notion exports into pages (DATA-08): up to 20 MB as
+      # base64 JSON.
+      location = /api/imports/pages {
+        client_max_body_size 28m;
+        proxy_pass http://orbyn_api/imports/pages;
+      }
       location /api/ {
         proxy_pass http://orbyn_api/;
+      }
+      # Published pages (SHR-05): plain HTML written by the API.
+      location ^~ /p/ {
+        proxy_pass http://orbyn_api/p/;
       }
       # Signing in with Orbyn: the authorization server's metadata (RFC 8414)
       # at the issuer (this host), from the API.

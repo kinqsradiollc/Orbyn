@@ -888,6 +888,10 @@ h4.doc-heading {
 .doc-layout.has-comments {
   grid-template-columns: minmax(0, 820px) minmax(0, 300px);
 }
+/* Reading (EDT-10): the page alone, centred, no margin of remarks. */
+.doc-layout.is-reading {
+  grid-template-columns: minmax(0, 820px);
+}
 /* No room for a margin: the cards fall in below the page, each still
    carrying the line it was written about. */
 @media (max-width: 1100px) {

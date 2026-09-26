@@ -46,6 +46,7 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
       { keys: [MOD, "Enter"], label: "Tick or untick a checklist line" },
       { keys: [MOD, "⇧", "V"], label: "Paste the words without their styles" },
       { keys: ["/"], label: "Change a line, or add a date or a task" },
+      { keys: [MOD + "-click"], label: "Open a link beside the page" },
     ],
   },
   {
@@ -72,7 +73,7 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
         keys: ["⇧", "Enter"],
         label: "Make what you typed: a page, or a task on My tasks and Lists",
       },
-      { keys: [MOD, "Enter"], label: "Open the result in a new tab" },
+      { keys: [MOD, "Enter"], label: "Open the result beside, in a side peek" },
       { keys: ["tag:"], label: "Pages with a tag: tag:physics" },
       { keys: ["project:"], label: 'In a project: project:"Big launch"' },
       { keys: ["team:"], label: "In a team: team:lab" },

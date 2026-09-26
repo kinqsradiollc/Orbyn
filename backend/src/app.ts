@@ -54,6 +54,11 @@ import { filesRoutes } from "./modules/imports/store.js";
 import { pageFileRoutes } from "./modules/page-files/routes.js";
 import { pageFileStoreRoutes } from "./modules/page-files/store-routes.js";
 import { captureRoutes } from "./modules/capture/routes.js";
+import { teamChangeRoutes } from "./modules/teams/changes.js";
+import { firstRunRoutes } from "./modules/users/first-run.js";
+import { publishRoutes } from "./modules/publish/routes.js";
+import { pageImportRoutes } from "./modules/imports/pages.js";
+import { aiCaptureRoutes } from "./modules/ai/capture.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -116,12 +121,20 @@ export const serviceModules: Record<
     templateRoutes,
     pageTemplateRoutes,
     followThroughRoutes,
+    // Recent changes per team (SHR-02).
+    teamChangeRoutes,
+    // The guided first run (DSN-02).
+    firstRunRoutes,
+    // Pages and folders on the web (SHR-05), and /p/<slug> itself.
+    publishRoutes,
+    // Markdown and Notion exports into pages (DATA-08).
+    pageImportRoutes,
     // Older apps' live-document path, for ingresses that send only /events
     // to the realtime service.
     legacyDocStreamRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
-  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes],
+  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes, aiCaptureRoutes],
   /** The public status report. */
   status: [statusRoutes],
   /**

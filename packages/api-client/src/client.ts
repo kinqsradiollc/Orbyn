@@ -258,6 +258,15 @@ import {
   type WhatIfInput,
   type WhatIfResult,
   type ExperimentEvidence,
+  type CaptureAssistInput,
+  type CaptureAssistResult,
+  type FirstRunInput,
+  type FirstRunResult,
+  type PageImportInput,
+  type PagesImportSummary,
+  type PublishInput,
+  type PublishState,
+  type TeamChangesPage,
 } from "@orbyn/core";
 
 /** News from `GET /events`: re-read what it names. */
@@ -668,7 +677,7 @@ export class OrbynClient {
   }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
-    format: "orbyn" | "csv";
+    format: "orbyn" | "csv" | "todoist" | "ticktick";
     data: string;
     dry_run?: boolean;
   }) {
@@ -2846,10 +2855,10 @@ export class OrbynClient {
     }>("/study/revision/apply", { method: "POST", body: input });
   }
   /** The assistant's suggested cards from a page — a proposal to tick. */
-  suggestCards(docId: string) {
+  suggestCards(docId: string, max?: number) {
     return this.request<{ cards: SuggestedCard[] }>(
       `/ai/study/pages/${docId}/cards`,
-      { method: "POST", body: {} },
+      { method: "POST", body: max ? { max } : {} },
     );
   }
   /** Grade a typed answer against the card and its page. */
@@ -3471,5 +3480,97 @@ export class OrbynClient {
   /** An experiment's before and after, measured. */
   experimentEvidence(id: string) {
     return this.request<ExperimentEvidence>(`/work-records/${id}/evidence`);
+  }
+
+  // ---- D4c: staying current, publishing, imports, assistant chips ----
+
+  /** Recent changes in your teams (SHR-02), newest first. */
+  listChanges(
+    params: {
+      team_id?: string;
+      /** Leave out your own changes; on unless false. */
+      hide_mine?: boolean;
+      before?: string;
+      limit?: number;
+    } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (params.team_id) q.set("team_id", params.team_id);
+    if (params.hide_mine === false) q.set("hide_mine", "false");
+    if (params.before) q.set("before", params.before);
+    if (params.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return this.request<TeamChangesPage>(`/changes${qs ? `?${qs}` : ""}`);
+  }
+
+  /** Finish the first run (DSN-02): what Orbyn is for, and a starter. */
+  finishFirstRun(input: FirstRunInput) {
+    return this.request<FirstRunResult & { user: User }>("/me/first-run", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Not now: the first run isn't shown again. */
+  skipFirstRun() {
+    return this.request<User>("/me/first-run/skip", {
+      method: "POST",
+      body: {},
+    });
+  }
+
+  /** Whether a page or folder is on the web, and whether you may publish it. */
+  getPublish(kind: "doc" | "folder", id: string) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`);
+  }
+  /** Put a page or folder on the web, or change how (SHR-05, SHR-06). */
+  publish(kind: "doc" | "folder", id: string, input: PublishInput) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Take it off the web; the address stops working at once. */
+  unpublish(kind: "doc" | "folder", id: string) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
+      method: "DELETE",
+    });
+  }
+  /** A page's own description for its card on the web. */
+  setWebDescription(docId: string, description: string) {
+    return this.request<PublishState>(`/docs/${docId}/web-description`, {
+      method: "PUT",
+      body: { description },
+    });
+  }
+  /** A team's switch for publishing, and how many of its pages are on the web. */
+  getTeamPublishing(teamId: string) {
+    return this.request<{
+      allowed: boolean;
+      published: number;
+      can_change: boolean;
+    }>(`/teams/${teamId}/publishing`);
+  }
+  setTeamPublishing(teamId: string, allowed: boolean) {
+    return this.request<{
+      allowed: boolean;
+      published: number;
+      can_change: boolean;
+    }>(`/teams/${teamId}/publishing`, { method: "PUT", body: { allowed } });
+  }
+
+  /** A Markdown or Notion export into pages (DATA-08). Dry run by default. */
+  importPages(input: PageImportInput) {
+    return this.request<PagesImportSummary>("/imports/pages", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /** Summarise, or find deadlines in, a page or shared words (AI-01). */
+  assistCapture(input: CaptureAssistInput) {
+    return this.request<CaptureAssistResult>("/ai/assist", {
+      method: "POST",
+      body: input,
+    });
   }
 }

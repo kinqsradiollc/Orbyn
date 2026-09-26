@@ -34,6 +34,10 @@ import {
   ShieldCheck,
   Sparkles,
   Wand2,
+  Eye,
+  Newspaper,
+  Upload,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -69,7 +73,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { celebrate } from "../lib/celebrate";
-import { openBeside } from "../lib/links";
+import { peekObject } from "../features/docs/DocLinks";
 import { usePlanning } from "../app/planning";
 import { NAV, type View } from "../app/views";
 import {
@@ -148,6 +152,10 @@ type Props = {
   onApplied: () => Promise<void>;
   /** Opens the keyboard shortcut sheet. */
   onShowShortcuts: () => void;
+  /** What's new (DSN-03), Recent changes (SHR-02), a setting (NAV-10). */
+  onOpenWhatsNew?: () => void;
+  onOpenChanges?: () => void;
+  onOpenSetting?: (id: string) => void;
   report: (e: unknown) => void;
 };
 
@@ -201,6 +209,11 @@ const ICONS: Record<CommandIcon, LucideIcon> = {
   history: History,
   sparkles: Sparkles,
   shield: ShieldCheck,
+  eye: Eye,
+  news: Newspaper,
+  upload: Upload,
+  activity: Activity,
+  settings: Settings,
 };
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -314,6 +327,9 @@ export function CommandBar({
   onShowOnCalendar,
   onApplied,
   onShowShortcuts,
+  onOpenWhatsNew,
+  onOpenChanges,
+  onOpenSetting,
   report,
 }: Props) {
   const { lists, tags } = usePlanning();
@@ -547,6 +563,7 @@ export function CommandBar({
     onClose();
     if (def.view) return onNavigate(def.view);
     if (def.needs === "page") return pageOpen?.run[def.id]?.();
+    if (def.setting) return onOpenSetting?.(def.setting);
     const actions: Record<string, () => void> = {
       "new.task": onNewItem,
       "new.event": onNewEvent,
@@ -559,6 +576,9 @@ export function CommandBar({
       "app.shortcuts": onShowShortcuts,
       "app.sidebar": onToggleSidebar,
       "app.security": onOpenSecurity,
+      "app.whats-new": () => onOpenWhatsNew?.(),
+      "app.changes": () => onOpenChanges?.(),
+      "new.import": () => onOpenSetting?.("import"),
     };
     actions[def.id]?.();
   };
@@ -976,7 +996,10 @@ export function CommandBar({
                     const chosen = commands[current];
                     if (e.shiftKey) createTyped();
                     else if ((e.metaKey || e.ctrlKey) && chosen?.target) {
-                      openBeside(chosen.target);
+                      // Beside what is open, not a new tab (NAV-05).
+                      const t = chosen.target;
+                      onClose();
+                      peekObject({ kind: t.kind, id: t.id });
                     } else chosen?.run();
                   }
                 }}
@@ -1051,7 +1074,7 @@ export function CommandBar({
               {filtering
                 ? unknown || searchSummary(filters)
                 : q
-                  ? `Enter opens · Shift+Enter makes it · ${MAC ? "⌘" : "Ctrl+"}Enter opens in a new tab`
+                  ? `Enter opens · Shift+Enter makes it · ${MAC ? "⌘" : "Ctrl+"}Enter opens it beside`
                   : "Recent first · type to jump anywhere, or use tag: project: is:"}
             </p>
             {notice && (
