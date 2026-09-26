@@ -22,6 +22,7 @@ import {
   type Db,
   type Queryable,
 } from "../../db/pool.js";
+import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
@@ -300,6 +301,8 @@ async function usePageTemplate(
     },
     input.title,
   );
+  // A template's pictures and files show only for someone who can read them.
+  await allowPageFiles(db, u.id, filled.content);
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,

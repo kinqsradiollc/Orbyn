@@ -17,6 +17,7 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { announceDocChange } from "./live.js";
@@ -306,6 +307,8 @@ export async function docStructureRoutes(app: FastifyInstance) {
       const moved = content.filter((b) => b.id && wanted.has(b.id));
       if (!moved.length) fail(409, "Those lines aren't on the page any more.");
       const title = body.title?.trim() || titleFor(moved);
+      // The pictures and files go with their lines (read through this page).
+      await allowPageFiles(db, u.id, moved);
       const newId = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, title, kind, content, project_id,
@@ -429,6 +432,8 @@ export async function docStructureRoutes(app: FastifyInstance) {
             ]
           : [];
       const merged = [...(target.content ?? []), ...heading, ...lines];
+      // Checked before the source goes to Trash, while it still shows them.
+      await allowPageFiles(db, u.id, lines);
       await carryLines(
         db,
         id,

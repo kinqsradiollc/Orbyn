@@ -164,7 +164,7 @@ export const SWEEP_RULES: SweepRule[] = [
     // Pictures and files in pages (EDT-01): a file no page shows any more,
     // once its page was deleted for good or 30 days after its last line
     // went (time for undo and history), and uploads that never arrived.
-    // page_file_refs (migration 114) knows which pages show a file. The
+    // page_file_refs (migrations 114, 115) knows which pages show a file. The
     // file store deletes the bytes of rows that are gone.
     key: "page_files",
     label: "Pictures and files in pages",

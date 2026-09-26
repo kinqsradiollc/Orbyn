@@ -332,7 +332,8 @@ function FilesSection({
       live = false;
     };
   }, [docId, originalFile, revision, asked]);
-  if (!files.length) return null;
+  // The space is always shown, so someone near the limit sees it on any page.
+  if (!files.length && !usage) return null;
   const remove = async (f: PageFile) => {
     if (
       !(await ask({
@@ -351,35 +352,39 @@ function FilesSection({
   return (
     <section className="page-info-section">
       <h3>Pictures and files</h3>
-      <ul className="page-info-files">
-        {files.map((f) => (
-          <li key={f.id}>
-            <button
-              className="page-info-link"
-              onClick={() => void downloadFile(f.id).catch(report)}
-              title={`Download ${f.name}`}
-            >
-              {f.kind === "image" ? (
-                <ImageIcon size={13} aria-hidden="true" />
-              ) : (
-                <FileIcon size={13} aria-hidden="true" />
-              )}
-              <span>{f.name}</span>
-            </button>
-            <small>{fileSize(f.bytes)}</small>
-            {canWrite && (
+      {files.length > 0 && (
+        <ul className="page-info-files">
+          {files.map((f) => (
+            <li key={f.id}>
               <button
-                className="icon-button"
-                onClick={() => void remove(f)}
-                aria-label={`Delete ${f.name}`}
-                title="Delete for good"
+                className="page-info-link"
+                onClick={() => void downloadFile(f.id).catch(report)}
+                title={`Download ${f.name}`}
               >
-                <Trash2 size={13} />
+                {f.kind === "image" ? (
+                  <ImageIcon size={13} aria-hidden="true" />
+                ) : (
+                  <FileIcon size={13} aria-hidden="true" />
+                )}
+                <span>{f.name}</span>
               </button>
-            )}
-          </li>
-        ))}
-      </ul>
+              <small>{fileSize(f.bytes)}</small>
+              {/* Only the page a file was added to can delete it; a copy
+                pasted here goes when its line does. */}
+              {canWrite && f.doc_id === docId && (
+                <button
+                  className="icon-button"
+                  onClick={() => void remove(f)}
+                  aria-label={`Delete ${f.name}`}
+                  title="Delete for good"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {usage && (
         <div className="page-info-space">
           <div
@@ -395,7 +400,8 @@ function FilesSection({
           <small>
             {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
             in all your pages. A picture whose line you remove frees its space
-            30 days later.
+            30 days later; pages in Trash keep theirs until the Trash is
+            emptied.
           </small>
         </div>
       )}

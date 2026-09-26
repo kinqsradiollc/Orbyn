@@ -1158,6 +1158,83 @@ test("a picture no page shows any more frees its space 30 days later", async () 
   );
 });
 
+test("a file's id alone gives nothing: a paste links only what you can read, and only its page deletes it", async () => {
+  const team = await page(me, "Team album", [], { team_id: teamId });
+  const shared = await picture(me, team.id, "album.png");
+  await save(me, team.id, [image(shared, "b-album")]);
+
+  // Someone outside the team who got hold of the id pastes it into their
+  // own page: the page saves, but the file isn't theirs to see or delete.
+  const stolen = await page(stranger, "Mine now", [image(shared, "b-x")]);
+  await save(stranger, stolen.id, [image(shared, "b-x"), para("again")]);
+  assert.deepEqual(await listed(stranger, stolen.id), []);
+  assert.equal(
+    (await call(stranger, "GET", `/docs/files/${shared}`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(stranger, "DELETE", `/docs/files/${shared}`)).statusCode,
+    404,
+  );
+
+  // A team viewer may read it, so a paste into their own page shows it
+  // there, but deleting it is still only for the team page's writers or
+  // its uploader; removing the line is theirs.
+  const mine = await page(viewer, "Viewer's copy", [image(shared, "b-v")]);
+  assert.deepEqual(await listed(viewer, mine.id), [shared]);
+  assert.equal(
+    (await call(viewer, "DELETE", `/docs/files/${shared}`)).statusCode,
+    403,
+  );
+  assert.equal(
+    (await call(me, "GET", `/docs/files/${shared}`)).statusCode,
+    200,
+  );
+  assert.deepEqual(await listed(me, team.id), [shared]);
+
+  // Someone who leaves the team loses it, pasted copy or not, and can't
+  // get it back by pasting the id again.
+  const leaver = await register("Leaver");
+  await call(me, "POST", `/teams/${teamId}/members`, {
+    email: leaver.email,
+    role: "member",
+  });
+  assert.equal(
+    (await call(leaver, "GET", `/docs/files/${shared}`)).statusCode,
+    200,
+  );
+  const kept = await page(leaver, "Kept a copy", [image(shared, "b-k")]);
+  assert.deepEqual(await listed(leaver, kept.id), [shared]);
+  assert.equal(
+    (await call(me, "DELETE", `/teams/${teamId}/members/${leaver.id}`))
+      .statusCode,
+    204,
+  );
+  assert.equal(
+    (await call(leaver, "GET", `/docs/files/${shared}`)).statusCode,
+    404,
+  );
+  await save(leaver, kept.id, [image(shared, "b-k"), para("still here?")]);
+  assert.deepEqual(await listed(leaver, kept.id), []);
+  assert.equal(
+    (await call(leaver, "GET", `/docs/files/${shared}`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(leaver, "DELETE", `/docs/files/${shared}`)).statusCode,
+    404,
+  );
+  // The team page still shows it; its writers and uploader may delete it.
+  assert.equal(
+    (await call(mate, "GET", `/docs/files/${shared}`)).statusCode,
+    200,
+  );
+  assert.equal(
+    (await call(mate, "DELETE", `/docs/files/${shared}`)).statusCode,
+    204,
+  );
+});
+
 test("uploads at the same time can't together go over the space", async () => {
   const doc = await page(me, "Racing");
   const quota = (await call(me, "GET", "/files/usage")).json();

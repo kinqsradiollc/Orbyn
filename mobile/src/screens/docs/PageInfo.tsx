@@ -289,7 +289,8 @@ function FilesBlock({
       live = false;
     };
   }, [docId, originalFile, revision, asked]);
-  if (!files.length) return null;
+  // The space is always shown, so someone near the limit sees it on any page.
+  if (!files.length && !usage) return null;
   const remove = (f: PageFile) =>
     Alert.alert(
       `Delete ${f.name} for good?`,
@@ -325,7 +326,9 @@ function FilesBlock({
             </Text>
           </Pressable>
           <Text style={s.small}>{fileSize(f.bytes)}</Text>
-          {canWrite && (
+          {/* Only the page a file was added to can delete it; a copy
+              pasted here goes when its line does. */}
+          {canWrite && f.doc_id === docId && (
             <SmallAction
               label="Delete"
               destructive
@@ -352,7 +355,8 @@ function FilesBlock({
           <Text style={s.small}>
             {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
             in all your pages. A picture whose line you remove frees its space
-            30 days later.
+            30 days later; pages in Trash keep theirs until the Trash is
+            emptied.
           </Text>
         </View>
       )}

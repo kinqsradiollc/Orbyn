@@ -863,17 +863,20 @@ for as long as a page shows them; never a third-party store. Each person has `PA
 and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
 Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
 
-| Method and path          | Body / result                                                                                                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file)                 |
-| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                                             |
-| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour, for anyone who can read a live page that shows it |
-| `GET /docs/:id/files`    | The pictures and files added to the page or shown on it → `[PageFile]`                                                                                                   |
-| `DELETE /docs/files/:id` | Deletes one for good, freeing its space (`items:write` on a page that holds it) → `204`                                                                                  |
-| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                                          |
+| Method and path          | Body / result                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file)                                 |
+| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                                                             |
+| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour, for its uploader or anyone who can read a live page that shows it |
+| `GET /docs/:id/files`    | The pictures and files added to the page or shown on it → `[PageFile]`                                                                                                                   |
+| `DELETE /docs/files/:id` | Deletes one for good, freeing its space (its uploader, or `items:write` on the page it was added to; `403` from a page it was only pasted into) → `204`                                  |
+| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                                                          |
 
-Which pages show a file is kept by a trigger (`page_file_refs`, migration 114), so a picture moved,
-merged or pasted into another page keeps working there. A file no page shows any more goes at the
+Which pages show a file is kept by a trigger (`page_file_refs`, migrations 114 and 115), so a
+picture moved, merged or pasted into another page keeps working there. A save links a page to a
+file only when the person saving can already read it (the uploader, or a reader of a live page it
+is on); an id copied from anywhere else stays unlinked and shows as gone, and leaving a team unlinks
+that team's files from your own pages. A file no page shows any more goes at the
 sweep 30 days after its last line was removed (time for undo and history), or at the next sweep
 when its page is deleted for good. Parallel uploads are counted one at a time against the space.
 

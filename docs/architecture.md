@@ -123,7 +123,8 @@ downloading one takes a link the API signs for an hour for someone who can read 
 (`/files/r/…`, `Content-Security-Policy: sandbox`, `nosniff`). Each person has `PAGE_FILES_QUOTA_MB`
 of space, checked under a per-person lock. A trigger keeps `page_file_refs` (every page whose lines
 or kept original point at a file), so a picture moved, merged or pasted into another page shows
-there too, and marks a file no page shows any more (`unused_since`): the sweep lets it go 30 days
+there too (a save links only files its saver can read, listed by the API in the transaction-local
+`orbyn.page_files_ok`; leaving a team unlinks its files from your own pages), and marks a file no page shows any more (`unused_since`): the sweep lets it go 30 days
 later, or at once when its page was deleted for good. The file store deletes the bytes of rows that
 are gone. "Keep the original" moves an import's file here instead of deleting it.
 

@@ -15,6 +15,7 @@ import { env } from "../../config/env.js";
 import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { pageFileReadableBy } from "../../lib/page-file-access.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { claimToken, importsEnabled } from "../imports/tokens.js";
@@ -26,10 +27,11 @@ import { claimToken, importsEnabled } from "../imports/tokens.js";
  * (see store-routes.ts); the API never holds them.
  *
  * A file can be read by whoever can read a live page that shows it (the
- * page it was added to, or one it was moved, merged or pasted into), and
- * deleted by whoever can change such a page. An id from a page you can't
- * open is "not found". A file no page shows any more goes 30 days later
- * (page_file_refs, migration 114; see sweep.ts).
+ * page it was added to, or one it was moved, merged or pasted into by
+ * someone who could read it; see lib/page-file-access.ts), and deleted by
+ * its uploader or whoever can change the page it was added to. An id from
+ * a page you can't open is "not found". A file no page shows any more goes 30 days later
+ * (page_file_refs, migrations 114 and 115; see sweep.ts).
  */
 
 export const PAGE_FILE_COLUMNS = `f.id, f.doc_id, f.name, f.mime, f.kind,
@@ -75,23 +77,18 @@ async function writablePage(db: Queryable, u: UserRow, docId: string) {
  * A file `userId` can read, or 404: one on a live page they can read, or
  * shown on one (a picture moved, merged or pasted into another page keeps
  * working there, even once the page it was added to is in Trash or gone).
- * Pages point at a file by its random id, which only people who could
- * already read the file have seen.
+ * A page only shows a file its saver could already read (allowPageFiles).
  */
 async function readableFile(
   db: Queryable,
   userId: string,
   fileId: string,
-): Promise<PageFile & { team_id: string | null }> {
+): Promise<PageFile & { team_id: string | null; user_id: string }> {
   const row = (
-    await db.query<PageFile & { team_id: string | null }>(
-      `SELECT ${PAGE_FILE_COLUMNS}, d.team_id FROM page_files f
+    await db.query<PageFile & { team_id: string | null; user_id: string }>(
+      `SELECT ${PAGE_FILE_COLUMNS}, f.user_id, d.team_id FROM page_files f
          LEFT JOIN docs d ON d.id = f.doc_id
-        WHERE f.id = $2
-          AND ((d.id IS NOT NULL AND ${docVisibleTo("$1")})
-            OR EXISTS (SELECT 1 FROM page_file_refs r
-                         JOIN docs s ON s.id = r.doc_id
-                        WHERE r.file_id = f.id AND ${docVisibleTo("$1", "s")}))`,
+        WHERE f.id = $2 AND ${pageFileReadableBy("$1")}`,
       [userId, fileId],
     )
   ).rows[0];
@@ -100,34 +97,39 @@ async function readableFile(
 }
 
 /**
- * A page `u` may change that holds the file, for removing it: the page it
- * was added to, or one that shows it.
+ * Whether `u` may delete a file for good: whoever uploaded it, or whoever
+ * can change the page it was added to. A page it was only moved, merged or
+ * pasted into can drop its line, never the file itself (that would take it
+ * from every page showing it).
  */
-async function writableHolder(db: Queryable, u: UserRow, file: PageFile) {
-  const holders = (
-    await db.query<{ id: string }>(
-      `SELECT d.id FROM docs d
-        WHERE ${docVisibleTo("$1")}
-          AND (d.id = $2::uuid OR d.id IN (
-                SELECT doc_id FROM page_file_refs WHERE file_id = $3))
-        ORDER BY (d.id = $2::uuid) DESC`,
-      [u.id, file.doc_id, file.id],
-    )
-  ).rows;
-  let refused: unknown = null;
-  for (const h of holders) {
-    try {
-      return await writablePage(db, u, h.id);
-    } catch (e) {
-      refused = e;
+async function mayDelete(
+  db: Queryable,
+  u: UserRow,
+  file: PageFile & { user_id: string },
+) {
+  if (file.user_id === u.id) return;
+  if (file.doc_id) {
+    const home = (
+      await db.query(
+        `SELECT 1 FROM docs d WHERE d.id = $2 AND ${docVisibleTo("$1")}`,
+        [u.id, file.doc_id],
+      )
+    ).rowCount;
+    if (home) {
+      await writablePage(db, u, file.doc_id);
+      return;
     }
   }
-  if (refused) throw refused;
-  fail(404, "File not found");
+  fail(
+    403,
+    "This file was added on another page. Remove its line here instead; only that page or whoever uploaded it can delete the file.",
+  );
 }
 
-const asFile = (row: PageFile & { team_id?: string | null }): PageFile => {
-  const { team_id: _team, ...file } = row;
+const asFile = (
+  row: PageFile & { team_id?: string | null; user_id?: string },
+): PageFile => {
+  const { team_id: _team, user_id: _user, ...file } = row;
   return {
     ...file,
     bytes: Number(file.bytes),
@@ -190,7 +192,7 @@ export async function pageFileRoutes(app: FastifyInstance) {
         if (used + d.bytes > quotaBytes)
           fail(
             413,
-            `Your space for pictures and files is full (${env.PAGE_FILES_QUOTA_MB} MB). Delete ones you no longer need from a page's Info, under Pictures and files.`,
+            `Your space for pictures and files is full (${env.PAGE_FILES_QUOTA_MB} MB). Delete ones you no longer need from a page's Info, under Pictures and files. Pages in Trash keep their files until the Trash is emptied, so emptying it frees space too.`,
           );
         return (
           await db.query<PageFile>(
@@ -268,13 +270,13 @@ export async function pageFileRoutes(app: FastifyInstance) {
 
   /**
    * Delete a picture or file for good, freeing its space at once (a line
-   * still showing it then says it's gone). Whoever can change a page that
-   * holds it may.
+   * still showing it then says it's gone). Whoever uploaded it, or can
+   * change the page it was added to, may (see mayDelete).
    */
   app.delete("/docs/files/:id", async (r, reply) => {
     const u = await authenticate(r);
     const file = await readableFile(pool, u.id, idParam(r));
-    await writableHolder(pool, u, file);
+    await mayDelete(pool, u, file);
     await pool.query("DELETE FROM page_files WHERE id = $1", [file.id]);
     return reply.code(204).send();
   });

@@ -57,6 +57,7 @@ import {
   type Db,
   type Queryable,
 } from "../../db/pool.js";
+import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
@@ -975,6 +976,8 @@ export async function docRoutes(app: FastifyInstance) {
     await checkLinks(pool, u, data.team_id ?? null, data);
     const doc = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      // Pictures and files the new page shows must be ones its maker can read.
+      await allowPageFiles(db, u.id, data.content);
       const id = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
@@ -1136,6 +1139,8 @@ export async function docRoutes(app: FastifyInstance) {
         : undefined;
       if (content) await followComments(db, id, content);
       if (content) await followSuggestions(db, id, content);
+      // A picture or file pasted in is linked only if the saver can read it.
+      if (content) await allowPageFiles(db, u.id, content);
       await snapshot(db, id, u.id);
       await db.query(
         `UPDATE docs SET
@@ -1287,6 +1292,8 @@ export async function docRoutes(app: FastifyInstance) {
       // comes loose rather than pointing at the wrong sentence.
       await followComments(db, id, content);
       await followSuggestions(db, id, content);
+      // Pictures and files it showed come back only for someone who can read them.
+      await allowPageFiles(db, u.id, content);
       // A restore is a sitting of its own: always keep what it replaces.
       const current = (
         await db.query<{ version: number; title: string; content: unknown }>(
