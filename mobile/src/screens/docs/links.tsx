@@ -19,6 +19,11 @@ import {
   dateTitle,
   docObjectLinks,
   parseObjectHref,
+  refKey,
+  splitHeadingQuery,
+  type HeadingOption,
+  type RelatedPage,
+  type UnlinkedMention,
   type DocBlock,
   type LinkedHere as LinkedHereEntry,
   type LinkedHereList,
@@ -30,7 +35,7 @@ import {
 import { client } from "../../lib/api";
 import { openAppUrl } from "../../hooks/useAppLinks";
 import { Icon, type IconName } from "../../components/Icon";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, controls, fonts, radii, themed } from "../../theme";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05) on the phone: the pill a
@@ -38,11 +43,14 @@ import { colors, fonts, radii, themed } from "../../theme";
  * in a line), and "Linked here". The same as the web, drawn for a thumb.
  */
 
-/** Open a page, task, event or project in the app. */
-export function openObject(ref: ObjectRef) {
+/** Open a page (at a line), task, event or project in the app. */
+export function openObject(ref: ObjectRef, block?: string | null) {
   if (ref.kind === "person" || ref.kind === "date") return;
   const kind = ref.kind === "event" ? "task" : ref.kind;
-  openAppUrl(`orbyn://${kind}/${ref.id}`);
+  const line = block ?? ref.block;
+  openAppUrl(
+    `orbyn://${kind}/${ref.id}${kind === "doc" && line ? `#${line}` : ""}`,
+  );
 }
 
 const ICONS: Record<LinkKind, IconName> = {
@@ -63,9 +71,11 @@ const NOUNS: Record<LinkKind, string> = {
   date: "date",
 };
 
-/** One key for a thing, whether it was linked as a task or an event. */
-export const pillKey = (r: ObjectRef) =>
-  `${r.kind === "event" ? "task" : r.kind}:${r.id.toLowerCase()}`;
+/**
+ * One key for a thing, whether it was linked as a task or an event; a link
+ * to one line of a page has its own (it shows that line's words).
+ */
+export const pillKey = refKey;
 
 /** A deadline as a pill says it: "Fri" this week, "2 Oct" after. */
 export function shortDue(iso: string, now = new Date()): string {
@@ -88,12 +98,17 @@ type Pills = {
   pills: Map<string, LinkPill>;
   onToggle?: (id: string, done: boolean) => void;
   onRestore?: (id: string) => void;
+  /** A long press on a pill: its card, as a half sheet (LNK-07). */
+  onCard?: (ref: ObjectRef) => void;
 };
 
 const PillContext = createContext<Pills>({ pills: new Map() });
 
 /** Gives the pills inside it their live titles and actions. */
 export const LinkPillProvider = PillContext.Provider;
+
+/** The page's pills and actions, for blocks inside it that tick tasks. */
+export const usePagePills = () => useContext(PillContext);
 
 /** The pills for a page's links, as they stand now. */
 export function useLinkPills(blocks: DocBlock[], report: (e: unknown) => void) {
@@ -145,7 +160,7 @@ export function LinkPillText({
   style?: object;
 }) {
   const ref = parseObjectHref(href);
-  const { pills, onToggle, onRestore } = useContext(PillContext);
+  const { pills, onToggle, onRestore, onCard } = useContext(PillContext);
   if (!ref) return null;
   const pill = pills.get(pillKey(ref));
   const noun = NOUNS[ref.kind];
@@ -174,12 +189,24 @@ export function LinkPillText({
   const isTask = ref.kind === "task" || ref.kind === "event";
   const done = !!pill?.done;
   const openable = ref.kind !== "person" && ref.kind !== "date";
+  // A page merged into another opens the page it went into.
+  const target: ObjectRef = pill?.moved_to
+    ? {
+        kind: "doc",
+        id: pill.moved_to,
+        ...(ref.block ? { block: ref.block } : {}),
+      }
+    : ref;
   return (
     <Text
       style={[style, s.pill]}
       accessibilityRole={openable ? "link" : undefined}
       accessibilityLabel={openable ? `Open ${noun} ${title}` : undefined}
-      onPress={openable ? () => openObject(ref) : undefined}
+      accessibilityHint={
+        openable && onCard ? "Touch and hold for more" : undefined
+      }
+      onPress={openable ? () => openObject(target) : undefined}
+      onLongPress={openable && onCard ? () => onCard(target) : undefined}
     >
       {" "}
       {ref.kind === "task" && pill ? (
@@ -194,6 +221,9 @@ export function LinkPillText({
         </Text>
       ) : null}
       <Text style={done ? s.doneText : undefined}>{title}</Text>
+      {ref.block && pill ? (
+        <Text style={s.line}>{` › ${pill.block_title ?? "line gone"}`}</Text>
+      ) : null}
       {isTask && pill?.due_at && !done ? (
         <Text style={s.due}>{` · ${shortDue(pill.due_at)}`}</Text>
       ) : null}{" "}
@@ -206,7 +236,9 @@ export function LinkPillText({
 type Row =
   | { type: "option"; option: LinkOption }
   | { type: "create"; kind: "doc" | "task"; title: string }
-  | { type: "url"; url: string };
+  | { type: "url"; url: string }
+  /** `[[Page#`: one of the page's headings or lines (LNK-04). */
+  | { type: "heading"; doc: LinkOption; heading: HeadingOption };
 
 const GROUPS: { kind: LinkKind; label: string }[] = [
   { kind: "doc", label: "Pages" },
@@ -249,10 +281,30 @@ export function LinkPickerPanel({
   const q = (query ?? typed).trim();
   const [found, setFound] = useState<LinkOption[]>([]);
   const [bad, setBad] = useState(false);
+  /** `[[Page#words`: the page it names, and its headings. */
+  const wantsLine = splitHeadingQuery(query ?? typed);
+  const [lines, setLines] = useState<{
+    doc: LinkOption;
+    headings: HeadingOption[];
+  } | null>(null);
   useEffect(() => {
     let live = true;
     const t = setTimeout(() => {
-      client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
+      if (wantsLine)
+        client
+          .pickLinks(wantsLine.page, 5)
+          .then(async (hits) => {
+            const doc = hits.find((h) => h.kind === "doc");
+            if (!doc) return live && setLines(null);
+            const headings = await client.pageHeadings(
+              doc.id,
+              wantsLine.heading.trim(),
+            );
+            if (live) setLines({ doc, headings });
+          })
+          .catch(report);
+      else
+        client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
     }, 150);
     return () => {
       live = false;
@@ -261,6 +313,17 @@ export function LinkPickerPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   const rows = useMemo<Row[]>(() => {
+    if (wantsLine)
+      return lines
+        ? [
+            { type: "option", option: lines.doc },
+            ...lines.headings.map((heading): Row => ({
+              type: "heading",
+              doc: lines.doc,
+              heading,
+            })),
+          ]
+        : [];
     const out: Row[] = [];
     if (query === undefined && onUrl && WEB.test(q) && !/\s/.test(q))
       out.push({ type: "url", url: q });
@@ -282,13 +345,26 @@ export function LinkPickerPanel({
       out.push({ type: "create", kind: "doc", title: q });
     }
     return out;
-  }, [found, q, query, onUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found, q, query, onUrl, lines]);
 
   const take = (row: Row) => {
     if (row.type === "url") {
       if (onUrl && !onUrl(row.url)) setBad(true);
     } else if (row.type === "create") onCreate(row.kind, row.title);
-    else onPick(row.option, row.option.title);
+    else if (row.type === "heading") {
+      const { doc, heading } = row;
+      // A line with no name yet is named first, so the link can find it.
+      const named = heading.block_id
+        ? Promise.resolve(heading.block_id)
+        : client
+            .anchorLine(doc.id, heading.index, heading.text)
+            .then((r) => r.block_id);
+      void named.then(
+        (block) => onPick({ kind: "doc", id: doc.id, block }, doc.title),
+        () => onPick({ kind: "doc", id: doc.id }, doc.title),
+      );
+    } else onPick(row.option, row.option.title);
   };
 
   let lastKind: string | null = null;
@@ -342,7 +418,9 @@ export function LinkPickerPanel({
           const heading =
             kind !== lastKind && row.type === "option"
               ? GROUPS.find((g) => g.kind === kind)?.label
-              : null;
+              : kind !== lastKind && row.type === "heading"
+                ? "Headings and lines"
+                : null;
           lastKind = kind;
           return (
             <View key={i}>
@@ -352,7 +430,28 @@ export function LinkPickerPanel({
                 onPress={() => take(row)}
                 style={({ pressed }) => [s.row, pressed && s.rowPressed]}
               >
-                {row.type === "option" ? (
+                {row.type === "heading" ? (
+                  <>
+                    <Icon name="hash" size={16} color={colors.muted} />
+                    <View
+                      style={[
+                        s.rowText,
+                        {
+                          paddingLeft: row.heading.level
+                            ? (row.heading.level - 1) * 12
+                            : 0,
+                        },
+                      ]}
+                    >
+                      <Text style={s.rowTitle} numberOfLines={1}>
+                        {row.heading.text}
+                      </Text>
+                      {!row.heading.level && (
+                        <Text style={s.rowHint}>A line</Text>
+                      )}
+                    </View>
+                  </>
+                ) : row.type === "option" ? (
                   <>
                     <Icon
                       name={ICONS[row.option.kind]}
@@ -420,7 +519,9 @@ const SOURCE_NOTES: Partial<Record<LinkedHereEntry["source"], string>> = {
 /**
  * "Linked here": the pages and tasks that link to this page, task, event
  * or project, each with the line around the link. Places you can't open
- * are never listed or counted; hidden when nothing links here.
+ * are never listed or counted. Under it, for a page or a project, the
+ * pages that say its name without linking to it, each with Link, and for a
+ * page, the pages that read like it (LNK-06). Hidden when there's none.
  */
 export function LinkedHere({
   kind,
@@ -428,6 +529,7 @@ export function LinkedHere({
   onCount,
   report,
   onOpen,
+  onLinkRelated,
 }: {
   kind: "doc" | "task" | "event" | "project";
   id: string;
@@ -435,8 +537,14 @@ export function LinkedHere({
   report: (e: unknown) => void;
   /** Before opening one (to put the current sheet away, say). */
   onOpen?: () => void;
+  /** Link a related page from this one; left out where that can't be. */
+  onLinkRelated?: (page: RelatedPage) => void;
 }) {
   const [list, setList] = useState<LinkedHereList | null>(null);
+  const [mentions, setMentions] = useState<UnlinkedMention[]>([]);
+  const [related, setRelated] = useState<RelatedPage[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
     client.linksHere(kind, id).then((l) => {
@@ -444,53 +552,193 @@ export function LinkedHere({
       setList(l);
       onCount?.(l.count);
     }, report);
+    if (kind === "doc" || kind === "project")
+      client.unlinkedMentions(kind, id).then(
+        (m) => live && setMentions(m),
+        () => setMentions([]),
+      );
+    if (kind === "doc")
+      client.relatedPages(id).then(
+        (r) => live && setRelated(r),
+        () => setRelated([]),
+      );
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, id]);
-  if (!list || !list.count) return null;
+  }, [kind, id, round]);
+  const link = (m: UnlinkedMention) => {
+    if (!m.block_id || (kind !== "doc" && kind !== "project")) return;
+    void client
+      .linkMention({
+        doc_id: m.doc_id,
+        block_id: m.block_id,
+        matched: m.matched,
+        target: { kind, id },
+      })
+      .then(() => setRound((n) => n + 1), report);
+  };
+  if (!list) return null;
+  if (!list.count && !mentions.length && !related.length) return null;
   return (
     <View style={s.here} accessibilityLabel="Linked here">
-      <Text style={s.hereTitle}>Linked here · {list.count}</Text>
-      {list.items.map((e) => {
-        const note = SOURCE_NOTES[e.source];
-        const { before, linked, after } = e.context;
-        return (
+      {list.count > 0 && (
+        <>
+          <Text style={s.hereTitle}>Linked here · {list.count}</Text>
+          {list.items.map((e) => {
+            const note = SOURCE_NOTES[e.source];
+            const { before, linked, after } = e.context;
+            return (
+              <Pressable
+                key={`${e.kind}:${e.id}`}
+                accessibilityRole="button"
+                onPress={() => {
+                  onOpen?.();
+                  openObject({ kind: e.kind, id: e.id }, e.block_id);
+                }}
+                style={({ pressed }) => [s.hereRow, pressed && s.rowPressed]}
+              >
+                <Icon
+                  name={e.kind === "doc" ? "fileText" : "squareCheck"}
+                  size={16}
+                  color={colors.muted}
+                />
+                <View style={s.rowText}>
+                  <Text style={s.rowTitle} numberOfLines={1}>
+                    {e.title}
+                  </Text>
+                  <Text style={s.rowHint} numberOfLines={1}>
+                    {[e.hint, note].filter(Boolean).join(" · ")}
+                  </Text>
+                  {before || linked || after ? (
+                    <Text style={s.context} numberOfLines={2}>
+                      {before}
+                      {linked ? (
+                        <Text style={s.contextLinked}>{linked}</Text>
+                      ) : null}
+                      {after}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </>
+      )}
+      {mentions.length > 0 && (
+        <>
           <Pressable
-            key={`${e.kind}:${e.id}`}
             accessibilityRole="button"
-            onPress={() => {
-              onOpen?.();
-              openObject({ kind: e.kind, id: e.id });
-            }}
-            style={({ pressed }) => [s.hereRow, pressed && s.rowPressed]}
+            accessibilityState={{ expanded: showMentions }}
+            onPress={() => setShowMentions((v) => !v)}
+            style={s.moreToggle}
           >
             <Icon
-              name={e.kind === "doc" ? "fileText" : "squareCheck"}
-              size={16}
+              name={showMentions ? "chevronDown" : "chevronRight"}
+              size={14}
               color={colors.muted}
             />
-            <View style={s.rowText}>
-              <Text style={s.rowTitle} numberOfLines={1}>
-                {e.title}
-              </Text>
-              <Text style={s.rowHint} numberOfLines={1}>
-                {[e.hint, note].filter(Boolean).join(" · ")}
-              </Text>
-              {before || linked || after ? (
-                <Text style={s.context} numberOfLines={2}>
-                  {before}
-                  {linked ? (
-                    <Text style={s.contextLinked}>{linked}</Text>
-                  ) : null}
-                  {after}
-                </Text>
-              ) : null}
-            </View>
+            <Text style={s.hereTitle}>
+              Mentioned without a link ({mentions.length})
+            </Text>
           </Pressable>
-        );
-      })}
+          {showMentions &&
+            mentions.map((m) => (
+              <View key={m.doc_id} style={s.mentionRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    onOpen?.();
+                    openObject({ kind: "doc", id: m.doc_id }, m.block_id);
+                  }}
+                  style={({ pressed }) => [
+                    s.hereRow,
+                    s.mentionMain,
+                    pressed && s.rowPressed,
+                  ]}
+                >
+                  <Icon name="fileText" size={16} color={colors.muted} />
+                  <View style={s.rowText}>
+                    <Text style={s.rowTitle} numberOfLines={1}>
+                      {m.title}
+                    </Text>
+                    <Text style={s.context} numberOfLines={2}>
+                      {m.context.before}
+                      <Text style={s.contextLinked}>{m.context.linked}</Text>
+                      {m.context.after}
+                    </Text>
+                  </View>
+                </Pressable>
+                {m.can_link && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Link “${m.matched}” in ${m.title}`}
+                    hitSlop={8}
+                    onPress={() => link(m)}
+                    style={({ pressed }) => [
+                      s.linkButton,
+                      pressed && s.rowPressed,
+                    ]}
+                  >
+                    <Icon name="link" size={14} color={colors.accent} />
+                    <Text style={s.linkButtonText}>Link</Text>
+                  </Pressable>
+                )}
+              </View>
+            ))}
+        </>
+      )}
+      {related.length > 0 && (
+        <>
+          <Text style={[s.hereTitle, s.relatedTitle]}>Related</Text>
+          {related.map((r) => (
+            <View key={r.doc_id} style={s.mentionRow}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  onOpen?.();
+                  openObject({ kind: "doc", id: r.doc_id });
+                }}
+                style={({ pressed }) => [
+                  s.hereRow,
+                  s.mentionMain,
+                  pressed && s.rowPressed,
+                ]}
+              >
+                <Icon name="fileText" size={16} color={colors.muted} />
+                <View style={s.rowText}>
+                  <Text style={s.rowTitle} numberOfLines={1}>
+                    {r.title}
+                  </Text>
+                  <Text style={s.rowHint} numberOfLines={1}>
+                    {[r.hint, r.reason].filter(Boolean).join(" · ")}
+                  </Text>
+                </View>
+              </Pressable>
+              {onLinkRelated && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Link ${r.title} from this page`}
+                  hitSlop={8}
+                  onPress={() => {
+                    onLinkRelated(r);
+                    setRelated((all) =>
+                      all.filter((x) => x.doc_id !== r.doc_id),
+                    );
+                  }}
+                  style={({ pressed }) => [
+                    s.linkButton,
+                    pressed && s.rowPressed,
+                  ]}
+                >
+                  <Icon name="link" size={14} color={colors.accent} />
+                  <Text style={s.linkButtonText}>Link</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -507,6 +755,7 @@ const s = themed(() =>
     tick: { color: colors.muted },
     tickDone: { color: colors.accent },
     doneText: { color: colors.muted, textDecorationLine: "line-through" },
+    line: { color: colors.muted },
     due: { color: colors.muted, fontSize: 13 },
     picker: {
       marginHorizontal: 8,
@@ -607,5 +856,30 @@ const s = themed(() =>
       marginTop: 2,
     },
     contextLinked: { color: colors.text, fontFamily: fonts.semibold },
+    moreToggle: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      minHeight: controls.compact,
+      marginTop: 8,
+    },
+    relatedTitle: { marginTop: 12 },
+    mentionRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    mentionMain: { flex: 1 },
+    linkButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      minHeight: controls.compact,
+      paddingHorizontal: 10,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    linkButtonText: {
+      color: colors.accent,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+    },
   }),
 );

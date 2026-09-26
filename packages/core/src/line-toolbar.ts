@@ -5,19 +5,24 @@
  * of every style, and tell the toolbar which styles the caret sits in so it
  * can show them as on.
  */
-import { isStyledRun, parseDocInline } from "./docs.js";
+import {
+  isStyledRun,
+  parseDocInline,
+  type HighlightTint,
+} from "./docs.js";
 import {
   isUrl,
   linkTarget,
   STYLE_MARKERS,
   styleRange,
+  tintRange,
   type InlineStyle,
   type Restyled,
 } from "./doc-editing.js";
 
 /** The marker a line of each kind starts with, as the editor shows it. */
 const LINE_MARKER =
-  /^(#{1,3}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?)/;
+  /^(#{1,3}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?\[![A-Za-z]+\][-+]?\s*|>\s?|\[\^[\w-]{1,24}\]:\s*)/;
 
 /**
  * Where the words of a line start in its Markdown: after "# ", "- [ ] ",
@@ -147,6 +152,21 @@ export function toolbarStyle(
     return { text: dropped.text, start: dropped.at, end: dropped.at };
   }
   return styleRange(source, at.start, at.end, style);
+}
+
+/**
+ * The highlighter's other colours from the toolbar (EDT-05): the chosen
+ * words highlighted green or pink, or highlighted words given that colour.
+ */
+export function toolbarTint(
+  source: string,
+  start: number,
+  end: number,
+  tint: HighlightTint,
+): Restyled | null {
+  if (!canStyleLine(source)) return null;
+  const at = intoWords(source, start, end);
+  return tintRange(source, at.start, at.end, tint);
 }
 
 /** "https://www.example.com/a/b" as "example.com/a/b", for a link's words. */

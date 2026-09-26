@@ -21,6 +21,16 @@ import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { readLocal, saveLocal } from "../../lib/localPrefs";
+import { Switch } from "../../components/Switch";
+
+const KEEP_KEY = "orbyn-keep-originals";
+
+/**
+ * "Keep the original" (EDT-01): whether an imported file stays with its
+ * page, in your space for files. Off unless chosen; kept on this device.
+ */
+export const keepOriginals = () => readLocal(KEEP_KEY) === "1";
 
 type LocalFile = {
   name: string;
@@ -51,6 +61,7 @@ export async function sendLocalFile(
     mime: file.mimeType ?? undefined,
     project_id: projectId,
     project_team_id: projectId ? projectTeamId : undefined,
+    ...(keepOriginals() ? { keep_original: true } : {}),
   });
   try {
     await client.uploadImportFile(
@@ -334,6 +345,7 @@ export function UploadsList({
   onImport: () => void;
 }) {
   const waiting = docs.filter((d) => d.in_uploads);
+  const [keep, setKeep] = useState(keepOriginals);
   // A finished import is shown as its page (below) while it waits to be
   // filed; once filed or deleted, it's gone from Uploads.
   const shownJobs = jobs.filter((j) => j.status !== "ready");
@@ -341,9 +353,27 @@ export function UploadsList({
     <View style={s.list}>
       <Text style={s.intro}>
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays.
+        file, then deletes it; only the page stays, unless you keep the
+        original.
       </Text>
       <Text style={s.hint}>{importHint(caps)}</Text>
+      <View style={s.keep}>
+        <View style={s.keepText}>
+          <Text style={s.title}>Keep the original file</Text>
+          <Text style={s.status}>
+            It stays with its page, in your space for files, to download again.
+          </Text>
+        </View>
+        <Switch
+          value={keep}
+          trackColor={{ true: colors.accent }}
+          accessibilityLabel="Keep the original file"
+          onValueChange={(on) => {
+            setKeep(on);
+            saveLocal(KEEP_KEY, on ? "1" : "0");
+          }}
+        />
+      </View>
       {!waiting.length && !shownJobs.length && (
         <View style={s.empty}>
           <View style={s.emptyIcon}>
@@ -499,6 +529,13 @@ const kindText = (type: string) =>
 
 const s = themed(() =>
   StyleSheet.create({
+    keep: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 6,
+    },
+    keepText: { flex: 1, gap: 2 },
     list: { gap: 10 },
     hint: {
       fontFamily: fonts.regular,

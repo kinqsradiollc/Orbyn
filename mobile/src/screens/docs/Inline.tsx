@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useContext } from "react";
 import { Linking, StyleSheet, Text } from "react-native";
 import {
   mathToText,
@@ -10,6 +10,7 @@ import {
 import { colors, fonts, themed } from "../../theme";
 import type { Mark } from "./marks";
 import { LinkPillText } from "./links";
+import { FootnoteContext } from "./footnotes";
 
 /**
  * One line of text with its inline styling applied.
@@ -36,6 +37,7 @@ export function Inline({
   const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
     tagRuns(run, text),
   );
+  const notes = useContext(FootnoteContext);
   return (
     <>
       {runs.map((run, i) => {
@@ -45,6 +47,23 @@ export function Inline({
         const shown = run.math ? mathToText(run.text) : run.text;
         // A link made with the picker reads as a pill with the thing's
         // live title, and opens it in the app rather than the browser.
+        // A footnote's marker: its number, small; its words a tap away.
+        if (run.footnote) {
+          const n = notes.numbers.get(run.footnote) ?? run.footnote;
+          const words = notes.texts.get(run.footnote);
+          return (
+            <Text
+              key={i}
+              style={[style, s.footnote]}
+              accessibilityLabel={`Footnote ${n}${words ? `: ${words}` : ""}`}
+              onPress={
+                words ? () => notes.onShow?.(String(n), words) : undefined
+              }
+            >
+              {` ${n}`}
+            </Text>
+          );
+        }
         if (run.link && parseObjectHref(run.link))
           return (
             <LinkPillText
@@ -64,6 +83,9 @@ export function Inline({
               (run.code || run.math) && s.code,
               !!run.link && s.link,
               run.highlight && s.highlight,
+              run.highlight && run.tint === "green" && s.green,
+              run.highlight && run.tint === "rose" && s.rose,
+              run.strike && s.strike,
               !!run.tag && s.tag,
               lit && s.marked,
             ]}
@@ -97,6 +119,11 @@ const s = themed(() =>
     },
     // ==Highlighted== words, on the same soft tint as the web.
     highlight: { backgroundColor: colors.warningSoft },
+    // The highlighter's other colours, the palette's own tints (EDT-05).
+    green: { backgroundColor: colors.accentSoft },
+    rose: { backgroundColor: colors.highBg },
+    strike: { textDecorationLine: "line-through", color: colors.muted },
+    footnote: { color: colors.accent, fontSize: 11, lineHeight: 14 },
     // A #tag, quiet like the chip the web draws.
     tag: { backgroundColor: colors.surfaceMuted, color: colors.textSoft },
   }),

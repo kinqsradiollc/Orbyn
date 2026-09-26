@@ -58,6 +58,7 @@ import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 import { LinkedHere } from "./links";
 import { FieldsSection } from "../views/FieldsSection";
+import { AliasesField } from "./AliasesField";
 import { deviceTimeZone } from "../../lib/planning";
 
 /** "Fri 16 Oct, 5 pm", or just the day. */
@@ -1580,6 +1581,30 @@ export function ProjectsSheet({
                         label="All decisions"
                         disabled={busy}
                         onPress={() => setSection("decisions")}
+                      />
+                    </View>
+                  )}
+                  {/* Other names, such as a course code (LNK-03). */}
+                  {(canWriteIn(open.team_id) ||
+                    (open.aliases ?? []).length > 0) && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Also called</Text>
+                      <AliasesField
+                        aliases={open.aliases ?? []}
+                        canWrite={canWriteIn(open.team_id)}
+                        placeholder="Add another name, like COMP3100"
+                        onSave={(aliases) =>
+                          client.updateProject(open.id, { aliases }).then(
+                            (next) => {
+                              setOpen(next);
+                              return next.aliases ?? aliases;
+                            },
+                            (e) => {
+                              setError(errorText(e as Error));
+                              return open.aliases ?? [];
+                            },
+                          )
+                        }
                       />
                     </View>
                   )}

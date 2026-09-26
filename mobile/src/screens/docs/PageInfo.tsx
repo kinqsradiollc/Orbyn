@@ -20,6 +20,8 @@ import { colors, fonts, themed } from "../../theme";
 import { DocViewers } from "./DocViewers";
 import { PageTags } from "./PageTags";
 import { FieldsSection } from "../views/FieldsSection";
+import { AliasesField } from "./AliasesField";
+import { downloadFile } from "./RichBlocks";
 
 const KIND_NAMES: Record<Doc["kind"], string> = {
   doc: "Page",
@@ -78,6 +80,8 @@ export function PageInfo({
   fieldsStamp?: number;
 }) {
   // What it belongs to, its links and versions: read when Info opens.
+  const [aliases, setAliases] = useState(doc.aliases ?? []);
+  useEffect(() => setAliases(doc.aliases ?? []), [doc.id, doc.aliases]);
   const [info, setInfo] = useState<DocInfo | null>(null);
   const reportRef = useRef(report);
   reportRef.current = report;
@@ -135,6 +139,41 @@ export function PageInfo({
             <Text style={s.small}>No tags.</Text>
           )}
         </Section>
+        {(canWrite && !reading) || aliases.length ? (
+          <Section label="Also called">
+            <AliasesField
+              aliases={aliases}
+              canWrite={canWrite && !reading}
+              onSave={(next) =>
+                client.setDocAliases(doc.id, next).then(
+                  (r) => {
+                    setAliases(r.aliases);
+                    return r.aliases;
+                  },
+                  (e) => {
+                    report(e);
+                    return aliases;
+                  },
+                )
+              }
+            />
+          </Section>
+        ) : null}
+        {doc.imported_from?.original_file ? (
+          <Section label="Original file">
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() =>
+                void downloadFile(doc.imported_from!.original_file!).catch(
+                  report,
+                )
+              }
+            >
+              <Text style={s.link}>{doc.imported_from.file_name}</Text>
+            </Pressable>
+          </Section>
+        ) : null}
         <FieldsBlock
           docId={doc.id}
           revision={`${doc.version}:${fieldsStamp ?? 0}`}

@@ -557,6 +557,71 @@ const ICONS = {
     ["rect", { x: "8", y: "8", width: "14", height: "14", rx: "2" }],
     ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }],
   ],
+  // lucide "strikethrough": ~~words~~ (EDT-05)
+  strikethrough: [
+    ["path", { d: "M16 4H9a3 3 0 0 0-2.83 4" }],
+    ["path", { d: "M14 12a4 4 0 0 1 0 8H6" }],
+    ["path", { d: "M4 12h16" }],
+  ],
+  // lucide "image": a picture in a page (EDT-01)
+  image: [
+    ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+    ["circle", { cx: "9", cy: "9", r: "2" }],
+    ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }],
+  ],
+  // lucide "paperclip": a file in a page
+  paperclip: [
+    [
+      "path",
+      {
+        d: "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
+      },
+    ],
+  ],
+  // lucide "lightbulb": a Tip callout (EDT-04)
+  lightbulb: [
+    [
+      "path",
+      {
+        d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5",
+      },
+    ],
+    ["path", { d: "M9 18h6" }],
+    ["path", { d: "M10 22h4" }],
+  ],
+  // lucide "circle-help": a Question callout
+  circleHelp: [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }],
+    ["path", { d: "M12 17h.01" }],
+  ],
+  // lucide "clipboard-list": a Summary callout, tasks linked here
+  clipboardList: [
+    ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1" }],
+    [
+      "path",
+      {
+        d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+      },
+    ],
+    ["path", { d: "M12 11h4" }],
+    ["path", { d: "M12 16h4" }],
+    ["path", { d: "M8 11h.01" }],
+    ["path", { d: "M8 16h.01" }],
+  ],
+  // lucide "hash": a link to one heading or line (LNK-04)
+  hash: [
+    ["path", { d: "M4 9h16" }],
+    ["path", { d: "M4 15h16" }],
+    ["path", { d: "M10 3 8 21" }],
+    ["path", { d: "M16 3l-2 18" }],
+  ],
+  // lucide "download"
+  download: [
+    ["path", { d: "M12 15V3" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "m7 10 5 5 5-5" }],
+  ],
 } satisfies Record<string, Shape[]>;
 
 export type IconName = keyof typeof ICONS;
