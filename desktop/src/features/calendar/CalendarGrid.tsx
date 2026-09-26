@@ -31,6 +31,7 @@ import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
 import { Popover } from "../../components/Popover";
 import { entryClass, listLook } from "./MonthView";
+import { dayDropTarget } from "../../lib/drag";
 import type { MateBusy } from "./Teammates";
 import {
   entryEnd,
@@ -80,6 +81,8 @@ type Props = {
   onBlock: (block: TimeBlock, anchor: DOMRect) => void;
   /** A task dropped on the grid at `start`. */
   onDropTask: (itemId: string, start: Date) => void;
+  /** A task dropped on a day's heading or all-day row: a session that day. */
+  onDropTaskOnDay?: (itemId: string, day: Date) => void;
   /** A block dragged to a new time or resized. */
   onChangeBlock: (block: TimeBlock, start: Date, end: Date) => void;
   /** A block Alt/Option-dragged: copy it to `start`. */
@@ -183,6 +186,7 @@ export function CalendarGrid({
   onEntry,
   onBlock,
   onDropTask,
+  onDropTaskOnDay,
   onChangeBlock,
   onDuplicateBlock,
   canDragEntry,
@@ -365,6 +369,19 @@ export function CalendarGrid({
     (onKeepFree ?? onCreateRange)(at(days[day], s.from), at(days[day], s.to));
   };
 
+  // ---- dropping tasks on a whole day (its heading or all-day row) ----
+  const [dropDay, setDropDay] = useState<string | null>(null);
+  const dayDrop = (d: Date) =>
+    onDropTaskOnDay
+      ? dayDropTarget(
+          (id) => onDropTaskOnDay(id, d),
+          (over) =>
+            setDropDay((was) =>
+              over ? d.toDateString() : was === d.toDateString() ? null : was,
+            ),
+        )
+      : {};
+
   // ---- dropping tasks from the side list ----
   const accepts = (e: DragEvent) => e.dataTransfer.types.includes(TASK_MIME);
   const onDragOver = (e: DragEvent<HTMLDivElement>, day: number) => {
@@ -476,7 +493,12 @@ export function CalendarGrid({
         {days.map((d) => (
           <button
             key={d.toISOString()}
-            className={"tg-day " + (sameDay(d, now) ? "is-today" : "")}
+            className={
+              "tg-day " +
+              (sameDay(d, now) ? "is-today" : "") +
+              (dropDay === d.toDateString() ? " is-drop" : "")
+            }
+            {...dayDrop(d)}
             aria-current={sameDay(d, now) ? "date" : undefined}
             aria-label={`Show ${d.toLocaleDateString([], {
               weekday: "long",
@@ -497,7 +519,14 @@ export function CalendarGrid({
           no time
         </span>
         {days.map((d) => (
-          <div className="tg-allday-cell" key={d.toISOString()}>
+          <div
+            className={
+              "tg-allday-cell" +
+              (dropDay === d.toDateString() ? " is-drop" : "")
+            }
+            key={d.toISOString()}
+            {...dayDrop(d)}
+          >
             {external
               .filter((x) => isAllDayEntry(x) && entryOnDay(x, d))
               .map((x) => (

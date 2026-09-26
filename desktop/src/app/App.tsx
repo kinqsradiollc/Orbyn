@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
   deadlineOf,
+  itemBody,
+  type ColumnChange,
   hasSystemPermission,
   hasTeamPermission,
   planDayPrompt,
@@ -524,6 +526,18 @@ export function App() {
   };
 
   /**
+   * A card dragged to another board column (DATA-03): its list, priority,
+   * assignee or tags change, saved against the version it was shown at.
+   */
+  const changeItem = (i: Item, change: ColumnChange) => {
+    if (!guard(i)) return;
+    void act(async () => {
+      await client.updateItem(i.id, { ...itemBody(i), ...change });
+      await refresh();
+    });
+  };
+
+  /**
    * Opens an item in the task panel. Opened on one time of a repeating
    * event (a class), that time is kept, so its meeting note is that class's.
    */
@@ -947,6 +961,8 @@ export function App() {
                   onSetStatus={setStatus}
                   userId={user?.id}
                   onChanged={refresh}
+                  onNewItem={(prefill) => newItem(null, prefill)}
+                  onChangeItem={changeItem}
                 />
               )}
               {view === "Lists" && (

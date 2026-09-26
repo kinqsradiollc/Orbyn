@@ -2815,3 +2815,233 @@ h4.doc-heading {
     white-space: normal;
   }
 }
+
+/* ------------------------------ Info panel, contents and drops (D3b) --- */
+
+/* The Info rail takes the margin's place beside the page. */
+.doc-layout.has-info {
+  grid-template-columns: minmax(0, 820px) minmax(260px, 320px);
+}
+/* A long page's contents sit in a slim rail to its left; the editor adds
+   has-outline only when the page area is wide enough for it. */
+.doc-layout.has-outline {
+  grid-template-columns: 170px minmax(0, 820px);
+}
+.doc-layout.has-outline.has-comments {
+  grid-template-columns: 170px minmax(0, 820px) minmax(0, 300px);
+}
+.doc-layout.has-outline.has-history {
+  grid-template-columns: 170px minmax(0, 820px) minmax(280px, 380px);
+}
+.doc-layout.has-outline.has-info {
+  grid-template-columns: 170px minmax(0, 820px) minmax(260px, 320px);
+}
+.doc-outline {
+  position: sticky;
+  /* Clear of the app's top bar. */
+  top: 64px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding-top: 28px;
+}
+@media (max-width: 1100px) {
+  .doc-layout.has-info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* On a narrow window the Info opens above the page, where it was asked for. */
+  .doc-layout.has-info .page-info {
+    order: -1;
+  }
+}
+.doc-outline-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.doc-outline ol,
+.page-info-outline ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-outline li button,
+.page-info-outline li button {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: none;
+  color: var(--color-textSoft);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-outline li.is-level-2 button,
+.page-info-outline li.is-level-2 button {
+  padding-left: 18px;
+}
+.doc-outline li.is-level-3 button,
+.page-info-outline li.is-level-3 button {
+  padding-left: 28px;
+  font-size: 11px;
+}
+.doc-outline li button:hover,
+.page-info-outline li button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.doc-outline li.is-current button,
+.page-info-outline li.is-current button {
+  border-left-color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+.doc-outline li[draggable="true"] {
+  cursor: grab;
+}
+.doc-outline li.is-drop {
+  box-shadow: inset 0 2px 0 var(--color-accent);
+}
+
+.page-info {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 14px 16px 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  min-width: 0;
+}
+.page-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.page-info-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.page-info-facts {
+  margin: -6px 0 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.page-info-section {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
+  min-width: 0;
+}
+.page-info-section h3,
+.page-info-outline .doc-outline-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.page-info-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.page-info-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.page-info-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.page-info-link:disabled {
+  color: var(--color-textSoft);
+}
+.page-info-versions {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.page-info-versions li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.page-info-versions small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.page-info .page-freshness {
+  margin: 0;
+}
+.page-info .page-tags {
+  margin: 0;
+}
+
+/* The page's one muted line opens its Info. */
+.doc-footer-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+}
+.doc-footer-button:hover {
+  color: var(--color-text);
+}
+.doc-footer-stale {
+  color: var(--color-danger);
+}
+
+/* Where a dragged page or task will land as a link (ORG-06). */
+.doc-block-row.is-drop-after {
+  box-shadow: 0 2px 0 var(--color-accent);
+}
+.doc-block-row.is-drop-before {
+  box-shadow: 0 -2px 0 var(--color-accent);
+}
+/* A page held over a folder it can be filed in. */
+.docs-nav-folder summary.is-drop {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-accentSoft);
+  border-radius: var(--radius-sm);
+}
+.docs-nav-page[draggable="true"],
+.doc-row[draggable="true"] {
+  cursor: grab;
+}

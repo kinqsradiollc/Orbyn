@@ -1,6 +1,8 @@
 import { Select } from "../../components/Select";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  ChevronDown,
+  ChevronRight,
   Columns3,
   List,
   ListTodo,
@@ -18,10 +20,23 @@ import {
   STATUSES,
   isClosed,
   statusLabels,
+  boardColumns,
+  columnPrefill,
+  dropChange,
+  durationText,
+  groupTasks,
+  isBoardGroup,
+  BOARD_GROUPS,
+  TASK_GROUP_LABELS,
+  type BoardGroupBy,
+  type ColumnChange,
+  type GroupNames,
   type Item,
+  type ItemInput,
   type ItemSort,
   type Priority,
   type Status,
+  type TaskGroupBy,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { ProgressDialog } from "../followthrough/ProgressDialog";
@@ -56,14 +71,46 @@ type Props = {
   userId?: string;
   /** Refresh the planner after reordering. */
   onChanged?: () => Promise<void>;
+  /** A column's +: a new task starting with that column's value. */
+  onNewItem?: (prefill: Partial<ItemInput>) => void;
+  /** A card dragged to another column: its list, priority, assignee or tags. */
+  onChangeItem?: (item: Item, change: ColumnChange) => void;
 };
 
 type Filter = Status | "all";
 type Layout = "list" | "board";
-type Group = "none" | "list" | "tag" | "size";
+/** How the list groups its rows; the board always groups by something. */
+type Group = TaskGroupBy;
+const LIST_GROUPS: Group[] = [
+  "none",
+  "list",
+  "tag",
+  "size",
+  "priority",
+  "project",
+  "due_week",
+  "assignee",
+];
 
 const LAYOUT_KEY = "orbyn-tasks-layout";
 const GROUP_KEY = "orbyn-tasks-group";
+const BOARD_GROUP_KEY = "orbyn-tasks-board-group";
+const HIDE_EMPTY_KEY = "orbyn-tasks-hide-empty";
+/** Folded groups, remembered per layout and grouping. */
+const foldKey = (layout: string, group: string) =>
+  `orbyn-tasks-folded:${layout}:${group}`;
+const savedFolds = (key: string): Set<string> => {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(key) ?? "[]");
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((v): v is string => typeof v === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+};
 const PIN_KEY = "orbyn-tasks-pinned";
 const SORT_KEY = "orbyn-tasks-sort";
 const saved = <T extends string>(key: string, allowed: T[], fallback: T): T => {
@@ -83,6 +130,11 @@ const remember = (key: string, value: string) => {
 };
 
 const SIZES: Size[] = ["quick", "short", "long", "none"];
+/** "Group by" names in the menu. */
+const GROUP_NAMES: Record<Group, string> = {
+  ...TASK_GROUP_LABELS,
+  none: "No grouping",
+};
 const DUE_OPTIONS: { id: DueFilter; label: string }[] = [
   { id: "any", label: "Any due date" },
   { id: "overdue", label: "Overdue" },
@@ -191,8 +243,10 @@ export function TasksView({
   onSetStatus,
   userId,
   onChanged,
+  onNewItem,
+  onChangeItem,
 }: Props) {
-  const { lists, tags, listById, tagById } = usePlanning();
+  const { lists, tags } = usePlanning();
   const { feed } = usePlanned();
   const [filter, setFilter] = useState<Filter>("all");
   const [progressOpen, setProgressOpen] = useState(false);
@@ -200,8 +254,44 @@ export function TasksView({
     saved(LAYOUT_KEY, ["list", "board"], "list"),
   );
   const [group, setGroupState] = useState<Group>(() =>
-    saved(GROUP_KEY, ["none", "list", "tag", "size"], "none"),
+    saved(GROUP_KEY, LIST_GROUPS, "none"),
   );
+  const [boardGroup, setBoardGroupState] = useState<BoardGroupBy>(() =>
+    saved(BOARD_GROUP_KEY, [...BOARD_GROUPS], "status"),
+  );
+  const [hideEmpty, setHideEmptyState] = useState(
+    () => saved(HIDE_EMPTY_KEY, ["yes", "no"], "no") === "yes",
+  );
+  /** What the shown layout groups by, and which of its groups are folded. */
+  const shownGroup: Group = layout === "board" ? boardGroup : group;
+  const [folds, setFolds] = useState(() =>
+    savedFolds(foldKey(layout, shownGroup)),
+  );
+  useEffect(() => {
+    setFolds(savedFolds(foldKey(layout, shownGroup)));
+  }, [layout, shownGroup]);
+  const toggleGroupFold = (key: string) => {
+    const next = new Set(folds);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setFolds(next);
+    remember(foldKey(layout, shownGroup), JSON.stringify([...next]));
+  };
+  // Project names, for grouping by project (loaded only then).
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (shownGroup !== "project" || projects.length) return;
+    let live = true;
+    client
+      .listProjects()
+      .then(
+        (all) => live && setProjects(all.map(({ id, name }) => ({ id, name }))),
+      )
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [shownGroup, projects.length]);
   const [pins, setPinsState] = useState<PinId[]>(savedPins);
   const [sort, setSortState] = useState<ItemSort>(() =>
     saved(
@@ -228,8 +318,18 @@ export function TasksView({
     remember(LAYOUT_KEY, next);
   };
   const setGroup = (next: Group) => {
+    if (layout === "board") {
+      if (!isBoardGroup(next)) return;
+      setBoardGroupState(next);
+      remember(BOARD_GROUP_KEY, next);
+      return;
+    }
     setGroupState(next);
     remember(GROUP_KEY, next);
+  };
+  const setHideEmpty = (next: boolean) => {
+    setHideEmptyState(next);
+    remember(HIDE_EMPTY_KEY, next ? "yes" : "no");
   };
   const togglePin = (id: PinId) => {
     const next = PINNABLE.map((p) => p.id).filter(
@@ -325,60 +425,56 @@ export function TasksView({
     ? visible.filter((i) => !pinnedIds.has(i.id))
     : visible;
 
+  /** What groups are named from. */
+  const names: GroupNames = {
+    lists,
+    tags,
+    projects,
+    userId,
+    now,
+  };
   /** The unpinned items split into titled groups (an item can sit in several tag groups). */
-  const groups: {
-    key: string;
-    title: string;
-    color?: string;
-    items: Item[];
-  }[] =
-    group === "list"
+  const groups =
+    group === "none"
       ? [
-          ...lists
-            .map((l) => ({
-              key: l.id,
-              title: l.team_name ? `${l.name} · ${l.team_name}` : l.name,
-              color: l.color,
-              items: rest.filter((i) => i.list_id === l.id),
-            }))
-            .filter((g) => g.items.length),
           {
-            key: "none",
-            title: "No list",
-            items: rest.filter((i) => !i.list_id || !listById.has(i.list_id)),
+            key: "all",
+            title: pinned.length ? "Everything else" : "",
+            items: rest,
+            minutes: 0,
           },
         ]
-      : group === "tag"
-        ? [
-            ...tags
-              .map((t) => ({
-                key: t.id,
-                title: t.name,
-                color: t.color,
-                items: rest.filter((i) => (i.tag_ids ?? []).includes(t.id)),
-              }))
-              .filter((g) => g.items.length),
-            {
-              key: "none",
-              title: "No tag",
-              items: rest.filter(
-                (i) => !(i.tag_ids ?? []).some((id) => tagById.has(id)),
-              ),
-            },
-          ]
-        : group === "size"
-          ? SIZES.map((s) => ({
-              key: s,
-              title: SIZE_LABELS[s],
-              items: rest.filter((i) => sizeOf(i) === s),
-            }))
-          : [
-              {
-                key: "all",
-                title: pinned.length ? "Everything else" : "",
-                items: rest,
-              },
-            ];
+      : groupTasks(rest, group, names);
+  // The board: every column a card could go to (DATA-03).
+  const columns =
+    layout === "board"
+      ? boardColumns(visible, boardGroup, names, {
+          statuses:
+            boardGroup === "status" && filter !== "all"
+              ? [filter]
+              : [...STATUSES],
+          hideEmpty,
+        })
+      : [];
+  const targets =
+    layout === "board"
+      ? boardColumns(items, boardGroup, names).map(({ key, title }) => ({
+          key,
+          title,
+        }))
+      : [];
+  const moveCard = (item: Item, from: string, to: string) => {
+    const result = dropChange(item, boardGroup, from, to, names);
+    if (!result) return;
+    if (!result.ok) {
+      setMoveError(result.reason);
+      return;
+    }
+    setMoveError("");
+    const change = result.change;
+    if ("status" in change) onSetStatus(item, change.status);
+    else onChangeItem?.(item, change);
+  };
 
   // Subtasks sit under their parent when both are listed; folding hides them.
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
@@ -618,9 +714,24 @@ export function TasksView({
             ))}
           </div>
           {layout === "board" && (
-            <small className="popover-note">
-              Pinned lists show in the List layout.
-            </small>
+            <>
+              <small className="popover-note">
+                Pinned lists show in the List layout.
+              </small>
+              <div className="popover-actions">
+                <label className="popover-check">
+                  <input
+                    type="checkbox"
+                    checked={hideEmpty}
+                    onChange={(e) => setHideEmpty(e.target.checked)}
+                  />
+                  <span>
+                    Hide empty columns
+                    <small>Columns with no cards fold away</small>
+                  </span>
+                </label>
+              </div>
+            </>
           )}
         </Popover>
       )}
@@ -712,20 +823,19 @@ export function TasksView({
             </Select>
           </label>
         )}
-        {layout === "list" && (
-          <label className="filter-select">
-            <span>Group by</span>
-            <Select
-              value={group}
-              onChange={(e) => setGroup(e.target.value as Group)}
-            >
-              <option value="none">No grouping</option>
-              <option value="list">List</option>
-              <option value="tag">Tag</option>
-              <option value="size">Size</option>
-            </Select>
-          </label>
-        )}
+        <label className="filter-select">
+          <span>{layout === "board" ? "Columns" : "Group by"}</span>
+          <Select
+            value={shownGroup}
+            onChange={(e) => setGroup(e.target.value as Group)}
+          >
+            {(layout === "board" ? [...BOARD_GROUPS] : LIST_GROUPS).map((g) => (
+              <option key={g} value={g}>
+                {GROUP_NAMES[g]}
+              </option>
+            ))}
+          </Select>
+        </label>
         <label className="filter-select">
           <span>Sort</span>
           <Select
@@ -780,15 +890,23 @@ export function TasksView({
         <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
       ) : layout === "board" ? (
         <TaskBoard
-          items={visible}
+          columns={columns}
+          by={boardGroup}
+          targets={targets}
           parentOf={(i) =>
             i.parent_id ? itemById.get(i.parent_id)?.title : undefined
           }
-          statuses={filter === "all" ? [...STATUSES] : [filter]}
           busy={busy}
           canWrite={canWrite}
           onOpen={onOpen}
-          onSetStatus={onSetStatus}
+          onMove={moveCard}
+          onAdd={
+            onNewItem && boardGroup !== "assignee"
+              ? (key) => onNewItem(columnPrefill(boardGroup, key, names))
+              : undefined
+          }
+          folded={folds}
+          onToggleFold={toggleGroupFold}
         />
       ) : (
         <>
@@ -810,26 +928,46 @@ export function TasksView({
             ? rows(rest)
             : groups
                 .filter((g) => g.items.length)
-                .map((g) => (
-                  <section
-                    key={g.key}
-                    className="task-group"
-                    aria-label={`${g.title}, ${g.items.length}`}
-                  >
-                    <h3 className="task-group-title">
-                      {g.color && (
-                        <i
-                          className="list-dot"
-                          style={{ background: g.color }}
-                          aria-hidden="true"
-                        />
-                      )}
-                      {g.title}
-                      <span>{g.items.length}</span>
-                    </h3>
-                    {rows(g.items)}
-                  </section>
-                ))}
+                .map((g) => {
+                  const isFolded = folds.has(g.key);
+                  return (
+                    <section
+                      key={g.key}
+                      className={"task-group" + (isFolded ? " is-folded" : "")}
+                      aria-label={`${g.title}, ${g.items.length}`}
+                    >
+                      <h3 className="task-group-title">
+                        <button
+                          type="button"
+                          className="task-group-fold"
+                          aria-expanded={!isFolded}
+                          onClick={() => toggleGroupFold(g.key)}
+                        >
+                          {isFolded ? (
+                            <ChevronRight size={14} aria-hidden="true" />
+                          ) : (
+                            <ChevronDown size={14} aria-hidden="true" />
+                          )}
+                          {g.color && (
+                            <i
+                              className="list-dot"
+                              style={{ background: g.color }}
+                              aria-hidden="true"
+                            />
+                          )}
+                          {g.title}
+                          <span>{g.items.length}</span>
+                          {g.minutes > 0 && (
+                            <small className="task-group-time">
+                              {durationText(g.minutes)}
+                            </small>
+                          )}
+                        </button>
+                      </h3>
+                      {!isFolded && rows(g.items)}
+                    </section>
+                  );
+                })}
         </>
       )}
     </section>

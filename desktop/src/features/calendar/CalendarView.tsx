@@ -37,6 +37,7 @@ import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { errorText, fromDayKey } from "../../lib/planning";
+import { localDay } from "../../lib/drag";
 import {
   addDays,
   itemsForDay,
@@ -399,6 +400,31 @@ export function CalendarView({
         }),
       ),
     );
+  };
+
+  /**
+   * A task dropped on a whole day (ORG-06): a session at that day's first
+   * free working time. A day with none says so, and the task stays put.
+   */
+  const planOnDay = (itemId: string, day: Date) => {
+    const item = itemMap.get(itemId);
+    if (!item || item.kind !== "task") return;
+    void (async () => {
+      try {
+        const block = await client.createBlockOnDay({
+          item_id: item.id,
+          day: localDay(day),
+        });
+        if (lateSessionWarning(block)) warnIfLate(block);
+        else
+          setNote({
+            text: `Planned “${item.title}” for ${movedTo(block.start_at)}.`,
+          });
+      } catch (e) {
+        setNote({ tone: "warn", text: errorText(e) });
+      }
+      await reload();
+    })();
   };
 
   const changeBlock = (block: TimeBlock, start: Date, end: Date) => {
@@ -955,12 +981,20 @@ export function CalendarView({
               onSelect={onDateChange}
               onOpenDay={openDay}
               onOpen={openKey}
+              onDropTask={planOnDay}
             />
-            <DayAgenda
-              day={date}
-              items={itemsForDay(monthItems, date)}
-              onOpen={openKey}
-            />
+            <div className="month-side">
+              <DayAgenda
+                day={date}
+                items={itemsForDay(monthItems, date)}
+                onOpen={openKey}
+              />
+              {/* Tasks to drag onto a day, as beside the week. */}
+              <SchedulePanel
+                items={items}
+                onSchedule={(item) => setDialog({ kind: "schedule", item })}
+              />
+            </div>
           </div>
         )}
 
@@ -999,6 +1033,7 @@ export function CalendarView({
               const item = itemMap.get(id);
               if (item) createBlock(item, start);
             }}
+            onDropTaskOnDay={planOnDay}
             onChangeBlock={changeBlock}
             onDuplicateBlock={(block, start) => void duplicate(block, start)}
             canDragEntry={canDragEntry}

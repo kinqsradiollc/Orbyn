@@ -12,9 +12,17 @@ import { errorText } from "../../lib/planning";
 export function PageFreshness({
   doc,
   canWrite,
+  always = false,
+  onReviewed,
 }: {
   doc: Pick<Doc, "id" | "updated_at" | "reviewed_at" | "team_id">;
   canWrite: boolean;
+  /**
+   * In the Info panel: say how fresh it is even when it's fresh, and let
+   * anyone who can edit it confirm it at any time.
+   */
+  always?: boolean;
+  onReviewed?: () => void;
 }) {
   const [reviewed, setReviewed] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
@@ -28,7 +36,7 @@ export function PageFreshness({
         {done}
       </p>
     );
-  if (fresh.state === "fresh") return null;
+  if (fresh.state === "fresh" && !always) return null;
   const review = async (
     input:
       { verdict: "still_true" } | { verdict: "needs_update"; note: string },
@@ -37,6 +45,7 @@ export function PageFreshness({
     try {
       const r = await client.reviewDoc(doc.id, input);
       setReviewed(r.reviewed_at);
+      onReviewed?.();
       setDone(
         input.verdict === "still_true"
           ? "Thanks — marked as still true."
@@ -56,8 +65,17 @@ export function PageFreshness({
     >
       <Hourglass size={14} aria-hidden="true" />
       <span className="page-freshness-text">
-        Not changed or confirmed in {ageLabel(fresh.days)}.
-        {canWrite ? " Is it still true?" : " It may be out of date."}
+        {fresh.state === "fresh" ? (
+          <>
+            Changed or confirmed{" "}
+            {fresh.days < 1 ? "today" : `${ageLabel(fresh.days)} ago`}.
+          </>
+        ) : (
+          <>
+            Not changed or confirmed in {ageLabel(fresh.days)}.
+            {canWrite ? " Is it still true?" : " It may be out of date."}
+          </>
+        )}
       </span>
       {canWrite && !asking && (
         <span className="page-freshness-actions">

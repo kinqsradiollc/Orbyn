@@ -12,6 +12,7 @@
  * `[[` is only a way to open the picker while typing; it is never stored.
  */
 import { z } from "zod";
+import { parseAppLink } from "./app-links.js";
 import { parseDocInline, plainText, type DocBlock } from "./docs.js";
 
 /** What a link can point to. An event is a task with a time. */
@@ -51,6 +52,21 @@ export function parseObjectHref(
   if (!(LINK_KINDS as readonly string[]).includes(kind)) return null;
   const id = m[2].toLowerCase();
   return validLinkId(kind, id) ? { kind, id } : null;
+}
+
+/**
+ * The thing a link dropped or pasted into a page points to: an
+ * `orbyn://` link, or the web app's own link to a page, task or project
+ * (`https://…/app/task/<id>`). Null for any other address.
+ */
+export function refFromUrl(url: string | null | undefined): ObjectRef | null {
+  const own = parseObjectHref((url ?? "").trim());
+  if (own) return own;
+  const app = parseAppLink((url ?? "").trim());
+  return app &&
+    (app.kind === "task" || app.kind === "doc" || app.kind === "project")
+    ? { kind: app.kind, id: app.id }
+    : null;
 }
 
 /** The same thing, whether it was linked as a task or as an event. */

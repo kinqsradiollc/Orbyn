@@ -15,6 +15,7 @@ import {
   GripVertical,
   Highlighter,
   History,
+  Info,
   Italic,
   LayoutTemplate,
   Link,
@@ -28,9 +29,17 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import type { DragEvent } from "react";
 import {
   insertLink,
+  linkMarkdown,
   linkQueryAt,
+  currentHeading,
+  docOutline,
+  moveSection,
+  pageFreshness,
+  showsOutline,
+  type OutlineEntry,
   type ObjectRef,
   addedInlineTags,
   BLOCK_KINDS,
@@ -87,8 +96,10 @@ import { copyLink } from "../../lib/links";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
-import { DocViewers } from "./DocViewers";
-import { PageFreshness } from "./PageFreshness";
+import { useDocViewers } from "./DocViewers";
+import { DocOutline } from "./DocOutline";
+import { PageInfo } from "./PageInfo";
+import { carriesLink, droppedLink } from "../../lib/drag";
 import { DocChat } from "./DocChat";
 import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
@@ -108,7 +119,6 @@ import {
 } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
-import { PageTags } from "./PageTags";
 import { SaveTemplateDialog } from "./PageTemplates";
 
 type Kind = (typeof BLOCK_KINDS)[number];
@@ -180,6 +190,9 @@ function blocksFromSource(source: string): DocBlock[] {
   const parsed = parseDoc(source);
   return parsed.length ? parsed : [{ type: "paragraph", text: "" }];
 }
+
+/** How wide the page area must be for the contents rail beside it. */
+const OUTLINE_ROOM = 1060;
 
 /** How much room the button over a selection needs above the words. */
 const BAR_HEIGHT = 44;
@@ -327,6 +340,14 @@ export function DocEditor({
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  /** The Info rail beside the page (NAV-04); it takes the margin's place. */
+  const [showInfo, setShowInfo] = useState(false);
+  /** Who else is here; opening the page tells the server this device is. */
+  const viewers = useDocViewers(doc.id);
+  /** Where a dragged page or task would land as a link (after this line). */
+  const [linkDrop, setLinkDrop] = useState<number | null>(null);
+  /** The heading being read, for the contents rail. */
+  const [readingAt, setReadingAt] = useState(-1);
   /** Words chosen for a comment, before anything has been written. */
   const [pending, setPending] = useState<{
     blockId: string;
@@ -1710,6 +1731,142 @@ export function DocEditor({
   /** Where each line sits in its list: its depth and its number. */
   const layout = useMemo(() => listLayout(blocks), [blocks]);
   const stats = useMemo(() => docStats(blocks), [blocks]);
+
+  // ---- contents (NAV-03) ----
+  const outline = useMemo(() => docOutline(blocks), [blocks]);
+  /**
+   * The contents rail needs room beside the page and its margin; with the
+   * library open on a laptop there isn't, and the Info panel lists them.
+   */
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const [roomy, setRoomy] = useState(false);
+  useEffect(() => {
+    const el = layoutRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(([entry]) =>
+      setRoomy(entry.contentRect.width >= OUTLINE_ROOM),
+    );
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  const longPage = showsOutline(outline) && roomy;
+  /** Each line's element on the page, in order (one per block). */
+  const lineEls = () =>
+    [...(bodyRef.current?.children ?? [])].filter((el) =>
+      el.matches(".doc-block-row, .doc-input"),
+    ) as HTMLElement[];
+  // The section being read: the last heading above the top of the view.
+  useEffect(() => {
+    if (!outline.length) return;
+    let frame = 0;
+    const read = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const els = lineEls();
+        let top = -1;
+        for (let n = 0; n < els.length; n++) {
+          if (els[n].getBoundingClientRect().top > 140) break;
+          top = n;
+        }
+        setReadingAt(currentHeading(outline, Math.max(top, 0)));
+      });
+    };
+    read();
+    document.addEventListener("scroll", read, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("scroll", read, true);
+    };
+  }, [outline]); // eslint-disable-line react-hooks/exhaustive-deps
+  const jumpTo = (entry: OutlineEntry) => {
+    lineEls()[entry.index]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  /** A heading dragged in the contents: its whole section moves. */
+  const moveHeading = (from: OutlineEntry, before: OutlineEntry) => {
+    const next = moveSection(blocks, from.index, before.index);
+    if (next === blocks) return;
+    setFocused(null);
+    update(next);
+    toast({ text: `Moved “${from.text}”` });
+  };
+  const linkedRef = useRef<HTMLDivElement>(null);
+  const footerText = pageFooter({
+    ...stats,
+    selected: picked ? countWords(plainText(picked.quote)) : 0,
+    savedAt,
+    saving: save === "saving",
+    failed: save === "error",
+    now,
+    linked: linkedCount,
+  });
+  const stale =
+    doc.kind === "doc" &&
+    pageFreshness(doc.updated_at, doc.reviewed_at).state !== "fresh";
+
+  // ---- dropping a page or task into the page as a link (ORG-06) ----
+  const canDropLinks = !reading && structural;
+  /** The line a drop at this height would follow (-1: before the first). */
+  const lineBefore = (clientY: number) => {
+    const els = lineEls();
+    let at = -1;
+    for (let n = 0; n < els.length; n++) {
+      const r = els[n].getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) break;
+      at = n;
+    }
+    return at;
+  };
+  const onLinkDragOver = (e: DragEvent) => {
+    if (!canDropLinks || !carriesLink(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    // Into the open line, it goes where the caret is.
+    if (e.target === areaRef.current) {
+      if (linkDrop !== null) setLinkDrop(null);
+      return;
+    }
+    const at = lineBefore(e.clientY);
+    if (at !== linkDrop) setLinkDrop(at);
+  };
+  const onLinkDrop = async (e: DragEvent) => {
+    if (!canDropLinks || !carriesLink(e)) return;
+    const found = droppedLink(e);
+    const into = e.target === areaRef.current ? areaRef.current : null;
+    const after = linkDrop ?? lineBefore(e.clientY);
+    setLinkDrop(null);
+    if (!found) return;
+    e.preventDefault();
+    if (found.ref.kind === "doc" && found.ref.id === doc.id) {
+      toast({ text: "That's this page.", tone: "warn" });
+      return;
+    }
+    let title = found.title;
+    if (!title) {
+      // A link dragged in from elsewhere: name it by what it points to.
+      const [pill] = await client.resolveLinks([found.ref]).catch(() => []);
+      if (!pill || pill.state !== "ok") {
+        toast({ text: "That link isn't one you can open.", tone: "warn" });
+        return;
+      }
+      title = pill.title ?? "";
+    }
+    if (into) {
+      const caret = into.selectionStart;
+      const put = insertLink(into.value, caret, caret, found.ref, title);
+      typeInto(into, { text: put.text, start: put.caret, end: put.caret });
+      return;
+    }
+    const next = blocks.slice();
+    next.splice(after + 1, 0, {
+      type: "paragraph",
+      text: linkMarkdown(found.ref, title),
+    });
+    setFocused(null);
+    update(next);
+  };
   /** The words selected, with the line they are in and what can be done. */
   const words = linking?.words ?? picked;
   const pickedLine = words ? lineOf(words) : null;
@@ -1838,14 +1995,6 @@ export function DocEditor({
 
   return (
     <div className="doc-editor">
-      {doc.project_id && doc.project_name && onOpenProject && (
-        <button
-          className="text-button"
-          onClick={() => onOpenProject(doc.project_id!)}
-        >
-          In project: {doc.project_name}
-        </button>
-      )}
       <div className="doc-bar">
         {onBack && (
           <button className="text-button" onClick={onBack}>
@@ -1871,7 +2020,6 @@ export function DocEditor({
           </span>
         )}
         <span className="doc-bar-actions">
-          <DocViewers docId={doc.id} />
           <DocModeSwitch
             mode={mode}
             canWrite={canWrite}
@@ -1904,6 +2052,7 @@ export function DocEditor({
             className={"icon-button" + (showHistory ? " is-on" : "")}
             onClick={() => {
               if (showHistory) setHistoryView(null);
+              setShowInfo(false);
               setShowHistory((v) => !v);
             }}
             aria-label="Page history"
@@ -1980,6 +2129,20 @@ export function DocEditor({
               <Trash2 size={15} />
             </button>
           )}
+          {/* The page's facts live in one Info rail (NAV-04). */}
+          <button
+            className={"icon-button" + (showInfo ? " is-on" : "")}
+            onClick={() => {
+              setShowHistory(false);
+              setHistoryView(null);
+              setShowInfo((v) => !v);
+            }}
+            aria-label="Page info"
+            aria-pressed={showInfo}
+            title="Page info"
+          >
+            <Info size={15} />
+          </button>
         </span>
       </div>
 
@@ -2145,10 +2308,25 @@ export function DocEditor({
           three more children of the grid itself, so auto-placement put Ask in
           the margin and pushed the remarks below the page. */}
       <div
+        ref={layoutRef}
         className={
-          "doc-layout" + (showHistory ? " has-history" : " has-comments")
+          "doc-layout" +
+          (showHistory
+            ? " has-history"
+            : showInfo
+              ? " has-info"
+              : " has-comments") +
+          (longPage && !historyView ? " has-outline" : "")
         }
       >
+        {longPage && !historyView && (
+          <DocOutline
+            outline={outline}
+            current={readingAt}
+            onJump={jumpTo}
+            onMoveSection={canDropLinks ? moveHeading : undefined}
+          />
+        )}
         <div className="doc-main">
           {historyView && (
             <DocChanges
@@ -2167,9 +2345,6 @@ export function DocEditor({
             />
           )}
           <div className="doc-page" ref={pageRef} hidden={!!historyView}>
-            {doc.kind === "doc" && (
-              <PageFreshness doc={doc} canWrite={canWrite} />
-            )}
             {reading ? (
               <h1 className="doc-title is-reading">{title || "Untitled"}</h1>
             ) : (
@@ -2194,18 +2369,19 @@ export function DocEditor({
                 }}
               />
             )}
-            <PageTags
-              docId={doc.id}
-              teamId={doc.team_id}
-              tags={tags}
-              canWrite={canWrite && !reading}
-              // The library reads tags afresh on the way back to it.
-              onChange={setTags}
-              report={report}
-            />
 
             <LinkPillProvider value={pillActions}>
-              <div className="doc-body" ref={bodyRef}>
+              <div
+                className="doc-body"
+                ref={bodyRef}
+                onDragOver={onLinkDragOver}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null))
+                    return;
+                  setLinkDrop(null);
+                }}
+                onDrop={(e) => void onLinkDrop(e)}
+              >
                 {blocks.map((block, index) =>
                   focused === index && (!reading || suggesting) ? (
                     <textarea
@@ -2264,6 +2440,10 @@ export function DocEditor({
                       data-block-source={blockText(block)}
                       className={
                         "doc-block-row" +
+                        (linkDrop === index ? " is-drop-after" : "") +
+                        (linkDrop === -1 && index === 0
+                          ? " is-drop-before"
+                          : "") +
                         (block.id && commented[block.id]?.length
                           ? " has-comment"
                           : "") +
@@ -2398,16 +2578,28 @@ export function DocEditor({
               </p>
             )}
             <p className="doc-footer">
-              {pageFooter({
-                ...stats,
-                selected: words ? countWords(plainText(words.quote)) : 0,
-                savedAt,
-                saving: save === "saving",
-                failed: save === "error",
-                now,
-                linked: linkedCount,
-              })}
+              {/* The one muted line at the end opens the page's Info. */}
+              <button
+                type="button"
+                className="doc-footer-button"
+                aria-label="Page info"
+                aria-pressed={showInfo}
+                onClick={() => {
+                  setShowHistory(false);
+                  setHistoryView(null);
+                  setShowInfo(true);
+                }}
+              >
+                {footerText}
+                {stale && (
+                  <span className="doc-footer-stale">
+                    {" "}
+                    · Might be out of date
+                  </span>
+                )}
+              </button>
             </p>
+            <div ref={linkedRef} />
             <LinkedHere
               kind="doc"
               id={doc.id}
@@ -2426,7 +2618,35 @@ export function DocEditor({
             />
           )}
         </div>
-        {!showHistory && (
+        {showInfo && !showHistory && (
+          <PageInfo
+            doc={doc}
+            tags={tags}
+            canWrite={canWrite}
+            reading={reading}
+            outline={outline}
+            current={readingAt}
+            viewers={viewers}
+            facts={footerText}
+            revision={savedAt ?? ""}
+            onTags={setTags}
+            onJump={jumpTo}
+            onOpenProject={onOpenProject}
+            onShowHistory={() => {
+              setShowInfo(false);
+              setShowHistory(true);
+            }}
+            onShowLinked={() =>
+              linkedRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              })
+            }
+            onClose={() => setShowInfo(false)}
+            report={report}
+          />
+        )}
+        {!showHistory && !showInfo && (
           <>
             <DocComments
               docId={doc.id}

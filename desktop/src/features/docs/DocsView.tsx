@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type DragEvent } from "react";
 import {
   FileText,
   FolderInput,
@@ -36,6 +36,7 @@ import {
   type Project,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { carries, DOC_MIME, startDrag } from "../../lib/drag";
 import { EmptyState } from "../../components/EmptyState";
 import { useConfirm } from "../../components/Confirm";
 import { useToast } from "../../components/Toast";
@@ -511,6 +512,50 @@ export function DocsView({
       setBusy(false);
     }
   };
+  /**
+   * A page dropped on a folder (or Unfiled) is filed there (ORG-06); the
+   * folder button on each row does the same without a mouse.
+   */
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
+  const folderDrop = (folderId: string) => ({
+    className: dropFolder === folderId ? "is-drop" : undefined,
+    onDragOver: (e: DragEvent) => {
+      if (!carries(e, DOC_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dropFolder !== folderId) setDropFolder(folderId);
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDropFolder((f) => (f === folderId ? null : f));
+    },
+    onDrop: (e: DragEvent) => {
+      setDropFolder(null);
+      const id = e.dataTransfer.getData(DOC_MIME);
+      if (!id) return;
+      e.preventDefault();
+      const doc = (docs ?? []).find((d) => d.id === id);
+      if (!doc || (doc.folder_id ?? "") === folderId) return;
+      const folder = folders.find((f) => f.id === folderId);
+      if (folder && (folder.team_id ?? null) !== (doc.team_id ?? null)) {
+        toast({
+          text: folder.team_id
+            ? `Only the team's own pages can go in ${folder.name}.`
+            : `${folder.name} is your own folder, so a team's page can't go in it.`,
+          tone: "warn",
+        });
+        return;
+      }
+      if (canWriteDoc && !canWriteDoc(doc.team_id)) return;
+      void fileIn(doc, folderId);
+    },
+  });
+  /** A library page picked up: into a folder, or into the open page as a link. */
+  const dragPage = (doc: DocSummary) => ({
+    draggable: true,
+    onDragStart: (e: DragEvent) =>
+      startDrag(e, { kind: "doc", id: doc.id, title: doc.title || "Untitled" }),
+  });
   const pageLink = (doc: DocSummary) => (
     <button
       key={doc.id}
@@ -518,6 +563,7 @@ export function DocsView({
       aria-current={open?.id === doc.id ? "page" : undefined}
       disabled={busy}
       onClick={() => openPage(doc.id)}
+      {...dragPage(doc)}
     >
       <FileText size={14} />
       <span>{doc.title || "Untitled"}</span>
@@ -731,7 +777,7 @@ export function DocsView({
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((folder) => (
             <details key={folder.id} className="docs-nav-folder">
-              <summary>
+              <summary {...folderDrop(folder.id)}>
                 <ChevronRight size={14} />
                 <FolderIcon size={16} />
                 <span>{folder.name}</span>
@@ -759,7 +805,7 @@ export function DocsView({
             </details>
           ))}
         <details className="docs-nav-folder">
-          <summary>
+          <summary {...folderDrop("")}>
             <ChevronRight size={14} />
             <FolderIcon size={16} />
             <span>Unfiled</span>
@@ -977,6 +1023,7 @@ export function DocsView({
                             className="doc-row"
                             disabled={busy}
                             onClick={() => openPage(doc.id)}
+                            {...dragPage(doc)}
                           >
                             <FileText size={16} aria-hidden="true" />
                             <span className="doc-row-main">
