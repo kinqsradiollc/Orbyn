@@ -42,6 +42,8 @@ export type Project = {
   /** Tasks in the project, and how many are finished. */
   task_count: number;
   done_count: number;
+  /** Other names the project goes by, such as a course code (LNK-03). */
+  aliases?: string[];
 };
 
 /** Your open work in a project, measured against each task's planning target. */

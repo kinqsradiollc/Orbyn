@@ -62,22 +62,31 @@ type KeyFile = {
   type: string;
 };
 
-const paths = (id: string) => ({
-  data: join(filesDir(), `${id}.bin`),
-  key: join(filesDir(), `${id}.key`),
+/**
+ * Where pictures and files in pages are kept (EDT-01): a directory of their
+ * own, since they last as long as their page rather than a day, and are
+ * backed up with the database.
+ */
+export const pageFilesDir = () =>
+  env.PAGE_FILES_DIR || join(filesDir(), "pages");
+
+export const objectPaths = (id: string, dir = filesDir()) => ({
+  data: join(dir, `${id}.bin`),
+  key: join(dir, `${id}.key`),
 });
+const paths = objectPaths;
 
 const OBJECT_ID = /^[0-9a-f-]{36}$/;
 
 /** Remove a stored file and its key; once the key is gone it can't be read. */
-export async function removeObject(id: string) {
+export async function removeObject(id: string, dir = filesDir()) {
   if (!OBJECT_ID.test(id)) return;
-  const p = paths(id);
+  const p = paths(id, dir);
   await rm(p.key, { force: true });
   await rm(p.data, { force: true });
 }
 
-class UploadError extends Error {
+export class UploadError extends Error {
   constructor(
     public statusCode: number,
     message: string,
@@ -90,17 +99,37 @@ class UploadError extends Error {
  * Stream `body` to disk, encrypted, refusing anything over `max` bytes or
  * whose first bytes aren't the promised type.
  */
-async function storeStream(
+/** How a store checks what arrives: the size limit and the file's type. */
+type StoreCheck = {
+  dir: string;
+  /** The type the file is kept as. */
+  type: string;
+  tooBig: string;
+  /** Whether the first bytes are the promised type; the words when not. */
+  sniff: (head: Buffer) => boolean;
+  wrongType: string;
+};
+
+const importCheck = (type: string): StoreCheck => ({
+  dir: filesDir(),
+  type,
+  tooBig: `This file is over the ${Math.round(IMPORT_LIMITS.maxBytes / 1024 / 1024)} MB limit.`,
+  sniff: (head) => sniffImportType(head) === type,
+  wrongType:
+    "This file isn't what its name says. Orbyn imports PDF, Word (.docx), PNG and JPEG files.",
+});
+
+export async function storeStream(
   id: string,
   body: Readable,
   max: number,
-  type: string,
+  check: StoreCheck,
 ): Promise<number> {
-  await mkdir(filesDir(), { recursive: true, mode: 0o700 });
+  await mkdir(check.dir, { recursive: true, mode: 0o700 });
   const fileKey = randomBytes(32);
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", fileKey, iv);
-  const p = paths(id);
+  const p = paths(id, check.dir);
   const out = createWriteStream(p.data, { mode: 0o600 });
   let bytes = 0;
   let head: Buffer | null = null;
@@ -108,19 +137,10 @@ async function storeStream(
     for await (const chunk of body) {
       const buf = chunk as Buffer;
       bytes += buf.length;
-      if (bytes > max)
-        throw new UploadError(
-          413,
-          `This file is over the ${Math.round(IMPORT_LIMITS.maxBytes / 1024 / 1024)} MB limit.`,
-        );
+      if (bytes > max) throw new UploadError(413, check.tooBig);
       if (!head) {
         head = buf;
-        const actual = sniffImportType(buf);
-        if (actual !== type)
-          throw new UploadError(
-            415,
-            "This file isn't what its name says. Orbyn imports PDF, Word (.docx), PNG and JPEG files.",
-          );
+        if (!check.sniff(buf)) throw new UploadError(415, check.wrongType);
       }
       if (!out.write(cipher.update(buf)))
         await new Promise<void>((r) => out.once("drain", () => r()));
@@ -132,7 +152,7 @@ async function storeStream(
     );
   } catch (error) {
     out.destroy();
-    await removeObject(id);
+    await removeObject(id, check.dir);
     throw error;
   }
   const wrapIv = randomBytes(12);
@@ -145,16 +165,19 @@ async function storeStream(
     iv: iv.toString("base64"),
     tag: cipher.getAuthTag().toString("base64"),
     bytes,
-    type,
+    type: check.type,
   };
   await writeFile(p.key, JSON.stringify(keyFile), { mode: 0o600 });
   return bytes;
 }
 
 /** A stored file, decrypted. Throws when it's missing or tampered with. */
-export async function readObject(id: string): Promise<Buffer> {
+export async function readObject(
+  id: string,
+  dir = filesDir(),
+): Promise<Buffer> {
   if (!OBJECT_ID.test(id)) throw new UploadError(404, "Not found");
-  const p = paths(id);
+  const p = paths(id, dir);
   const k = JSON.parse(await readFile(p.key, "utf8")) as KeyFile;
   const unwrap = createDecipheriv(
     "aes-256-gcm",
@@ -179,10 +202,13 @@ export async function readObject(id: string): Promise<Buffer> {
 }
 
 /** Refuse new uploads when less than this much disk is free (FILES_MIN_FREE_MB). */
-async function diskFull(incoming: number): Promise<boolean> {
+export async function diskFull(
+  incoming: number,
+  dir = filesDir(),
+): Promise<boolean> {
   try {
-    await mkdir(filesDir(), { recursive: true, mode: 0o700 });
-    const s = await statfs(filesDir());
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const s = await statfs(dir);
     const free = s.bavail * s.bsize;
     return free - incoming < env.FILES_MIN_FREE_MB * 1024 * 1024;
   } catch {
@@ -322,7 +348,7 @@ export async function filesRoutes(app: FastifyInstance) {
           objectId,
           r.body as Readable,
           claim.m,
-          claim.t,
+          importCheck(claim.t),
         );
       } catch (error) {
         const e = error as UploadError;

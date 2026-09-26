@@ -60,3 +60,6 @@ export * from "./task-groups.js";
 export * from "./doc-outline.js";
 export * from "./fields.js";
 export * from "./views.js";
+export * from "./page-files.js";
+export * from "./code-colour.js";
+export * from "./diagrams.js";

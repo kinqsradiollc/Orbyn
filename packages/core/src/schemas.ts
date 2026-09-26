@@ -2,7 +2,8 @@ import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
-import { DOC_KINDS } from "./docs.js";
+import { CALLOUT_KINDS, DOC_KINDS } from "./docs.js";
+import { aliasesInput } from "./links.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
@@ -333,6 +334,37 @@ const docBlock = z.discriminatedUnion("type", [
     check: z.boolean().optional(),
   }),
   z.object({ ...named, type: z.literal("divider") }),
+  z.object({
+    ...named,
+    type: z.literal("callout"),
+    kind: z.enum(CALLOUT_KINDS),
+    text: z.string().max(4000),
+    folded: z.boolean().optional(),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("table"),
+    text: z.string().max(40000),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("image"),
+    file: z.uuid(),
+    text: z.string().max(300),
+    width: z.number().int().min(10).max(100).optional(),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("file"),
+    file: z.uuid(),
+    text: z.string().max(300),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("footnote"),
+    label: z.string().regex(/^[\w-]{1,24}$/),
+    text: z.string().max(4000),
+  }),
 ]);
 
 export const docContent = z.array(docBlock).max(2000);
@@ -370,7 +402,47 @@ export const docUpdate = z
     folder_id: z.uuid().nullable().optional(),
     project_id: z.uuid().nullable().optional(),
     tags: z.array(z.uuid()).max(20).optional(),
+    /** Other names the page goes by (LNK-03). */
+    aliases: aliasesInput.optional(),
     version: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * "Move to new page" (ORG-05): these lines become a new page, and a link to
+ * it takes their place. `version` guards the page they leave, as a save does.
+ */
+export const docExtractInput = z
+  .object({
+    block_ids: z.array(z.string().min(1).max(64)).min(1).max(2000),
+    title: z.string().trim().max(200).optional(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * "Merge into…" (ORG-05): this page's lines go to the end of another, its
+ * comments and task lines with them, and this page goes to Trash; links to
+ * it open the page it went into.
+ */
+export const docMergeInput = z
+  .object({
+    into: z.uuid(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+/** The headings someone has folded on one page (EDT-14). */
+export const docFoldsInput = z
+  .object({ block_ids: z.array(z.string().min(1).max(64)).max(200) })
+  .strict();
+
+/** Name a heading or line so a link can point at it (LNK-04). */
+export const docAnchorInput = z
+  .object({
+    index: z.number().int().min(0).max(1999),
+    /** What the line says, so a page that moved on isn't named wrong. */
+    text: z.string().max(40000),
   })
   .strict();
 
@@ -414,6 +486,8 @@ export const projectUpdate = z
     status: z.enum(PROJECT_STATUSES).optional(),
     deadline: z.iso.datetime({ offset: true }).nullable().optional(),
     doc_id: z.uuid().nullable().optional(),
+    /** Other names the project goes by, such as a course code (LNK-03). */
+    aliases: aliasesInput.optional(),
     stages: z
       .array(
         z.object({

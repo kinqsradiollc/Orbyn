@@ -116,6 +116,16 @@ const schema = z.object({
   /** The file store refuses uploads when less disk than this (MB) would be left. */
   FILES_MIN_FREE_MB: z.coerce.number().int().min(0).default(1024),
   /**
+   * Pictures and files in pages (EDT-01): kept by the file store on a volume
+   * of their own (PAGE_FILES_DIR; blank keeps them under FILES_DIR/pages),
+   * encrypted like uploads, for as long as their page. Each person has
+   * PAGE_FILES_QUOTA_MB of space, and one file is at most PAGE_FILES_MAX_MB.
+   * Off, like importing, while FILES_SECRET is blank.
+   */
+  PAGE_FILES_DIR: z.string().default(""),
+  PAGE_FILES_QUOTA_MB: z.coerce.number().int().min(1).default(1024),
+  PAGE_FILES_MAX_MB: z.coerce.number().int().min(1).max(200).default(25),
+  /**
    * The OCR service (Compose profile `ocr`) for scanned pages and photos.
    * Blank: Word files and PDFs with real text still import; scanned pages
    * are refused with a clear message.

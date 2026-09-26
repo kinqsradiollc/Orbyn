@@ -89,6 +89,7 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
+  d.aliases,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
@@ -130,7 +131,7 @@ const SEES = `((d.team_id IS NULL AND d.user_id = $1)
  * is concerned: lists, search, comments, history and exports all answer
  * "not found" for it, the same as for a page that never existed.
  */
-const VISIBLE = `(${SEES} AND d.deleted_at IS NULL)`;
+export const VISIBLE = `(${SEES} AND d.deleted_at IS NULL)`;
 
 /**
  * A page may hang off a task, a project or a folder only in its own space:
@@ -183,7 +184,7 @@ type Owned = {
  * says so in its project's history here: gone from the project while in
  * Trash (no state after), and back again when restored.
  */
-async function noteTrash(
+export async function noteTrash(
   db: Queryable,
   docId: string,
   actor: string,
@@ -215,7 +216,7 @@ async function noteTrash(
  * it is there; brought back, it is queued again, which catches any edit it
  * was still waiting on. Lines already measured keep their measurement.
  */
-async function searchTrash(db: Db, docId: string, trashed: boolean) {
+export async function searchTrash(db: Db, docId: string, trashed: boolean) {
   if (!(await hasVectors(db))) return;
   await db.query(
     trashed
@@ -266,7 +267,7 @@ async function dropStandInCopy(db: Queryable, docId: string) {
  * page in Trash is "not found" unless `trashed` asks for exactly those, which
  * only restoring and deleting for good do.
  */
-async function requireDoc(
+export async function requireDoc(
   db: Db,
   id: string,
   u: UserRow,
@@ -290,7 +291,7 @@ async function requireDoc(
  * Show a document's checklist as its tasks actually stand. A line that became
  * a task follows the task, so ticking it in the planner ticks it here too.
  */
-async function withTaskState(
+export async function withTaskState(
   db: Queryable,
   docId: string,
   content: DocBlock[],
@@ -320,7 +321,7 @@ async function withTaskState(
  * editor takes the ticks from here, so a repeating task it just finished
  * shows unticked for its next occurrence.
  */
-async function readDoc(db: Queryable, id: string): Promise<Doc> {
+export async function readDoc(db: Queryable, id: string): Promise<Doc> {
   const doc = (
     await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
@@ -873,7 +874,7 @@ export async function eventNote(
  * list of sittings, not keystrokes.
  */
 const SITTING = "5 minutes";
-async function snapshot(db: Queryable, docId: string, byUser: string) {
+export async function snapshot(db: Queryable, docId: string, byUser: string) {
   const current = (
     await db.query<{ version: number; title: string; content: unknown }>(
       "SELECT version, title, content FROM docs WHERE id = $1",
@@ -1142,6 +1143,7 @@ export async function docRoutes(app: FastifyInstance) {
            content = coalesce($3::jsonb, content),
            folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
            project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
+           aliases = coalesce($8::text[], aliases),
            -- Filing an imported page anywhere takes it out of Uploads.
            in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
                              ELSE in_uploads END,
@@ -1156,6 +1158,7 @@ export async function docRoutes(app: FastifyInstance) {
           body.folder_id ?? null,
           body.project_id !== undefined,
           body.project_id ?? null,
+          body.aliases ?? null,
         ],
       );
       if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
@@ -2029,7 +2032,8 @@ export async function docRoutes(app: FastifyInstance) {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireDoc(db, id, u, "items:write", true);
       await db.query(
-        "UPDATE docs SET deleted_at = NULL, deleted_by = NULL WHERE id = $1",
+        `UPDATE docs SET deleted_at = NULL, deleted_by = NULL,
+           merged_into = NULL WHERE id = $1`,
         [id],
       );
       await noteTrash(db, id, u.id, false);

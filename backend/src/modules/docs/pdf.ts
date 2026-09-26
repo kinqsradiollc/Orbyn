@@ -1,8 +1,13 @@
 import {
   blockText,
+  CALLOUT_LABELS,
+  footnoteNumbers,
+  isEmbed,
+  isLiveList,
   listLayout,
   mathToText,
   parseDocInline,
+  parseTable,
   type DocBlock,
 } from "@orbyn/core";
 
@@ -16,8 +21,9 @@ import {
  * it has.
  *
  * What it does: A4 pages, wrapped text, headings, lists, checklists,
- * quotes, code, rules, and bold and italic inside a line. What it does not:
- * images (a page has none), colour, or typeset maths — a formula is written
+ * quotes, callouts, tables as rows, code, rules, footnotes at the end, and
+ * bold and italic inside a line. What it does not: pictures (named by their
+ * caption), colour, or typeset maths — a formula is written
  * as the symbols it reads as, the same as everywhere else outside the
  * editor.
  */
@@ -153,9 +159,19 @@ const pdfText = (text: string) =>
     })
     .join("");
 
+/** The page's footnote numbers while it is laid out. */
+let notes: Map<string, number> = new Map();
+
 /** One line's styled runs, as pieces in the right font. */
 function piecesFor(text: string, base: Font): Piece[] {
   return parseDocInline(text).map((run) => {
+    // A footnote marker reads as its number in brackets; the notes follow
+    // the page.
+    if (run.footnote)
+      return {
+        text: `[${notes.get(run.footnote) ?? run.footnote}]`,
+        font: base,
+      };
     const body = run.math ? mathToText(run.text) : run.text;
     if (run.code || run.math) return { text: body, font: "F4" as Font };
     if (run.bold) return { text: body, font: "F2" as Font };
@@ -236,7 +252,41 @@ function layout(title: string, blocks: DocBlock[]): Line[] {
       case "quote":
         add(block.text, { font: "F3", indent: 22, before: 4, after: 6 });
         break;
+      case "callout":
+        add(block.text, {
+          indent: 14,
+          before: 4,
+          after: 6,
+          prefix: `${CALLOUT_LABELS[block.kind]}:  `,
+        });
+        break;
+      case "table": {
+        // Each row as one line, its cells apart; the header in bold.
+        const { rows } = parseTable(block.text);
+        rows.forEach((row, n) =>
+          add(row.join("   |   "), {
+            font: n === 0 ? "F2" : "F1",
+            indent: 8,
+            before: n === 0 ? 4 : 0,
+            after: n === rows.length - 1 ? 8 : 2,
+          }),
+        );
+        break;
+      }
+      case "image":
+        add(`Picture${block.text ? `: ${block.text}` : ""}`, {
+          font: "F3",
+          after: 6,
+        });
+        break;
+      case "file":
+        add(`File: ${block.text}`, { font: "F3", after: 6 });
+        break;
+      case "footnote":
+        // Listed together at the end.
+        break;
       case "code":
+        if (isLiveList(block) || isEmbed(block)) break;
         for (const line of block.text.split("\n"))
           add(line, { font: "F4", size: 9.5, indent: 14, after: 1 });
         break;
@@ -257,6 +307,29 @@ function layout(title: string, blocks: DocBlock[]): Line[] {
       default:
         add(blockText(block), { after: 7 });
     }
+  }
+  const footnotes = blocks
+    .filter(
+      (b): b is Extract<DocBlock, { type: "footnote" }> =>
+        b.type === "footnote",
+    )
+    .sort((a, b) => (notes.get(a.label) ?? 0) - (notes.get(b.label) ?? 0));
+  if (footnotes.length) {
+    out.push({
+      pieces: [],
+      size: 11,
+      font: "F1",
+      indent: 0,
+      before: 10,
+      after: 6,
+      rule: true,
+    });
+    for (const f of footnotes)
+      add(f.text, {
+        size: 9,
+        after: 3,
+        prefix: `${notes.get(f.label) ?? f.label}.  `,
+      });
   }
   return out;
 }
@@ -313,6 +386,7 @@ function paint(lines: Line[]): string[] {
 }
 
 export function docToPdf(title: string, blocks: DocBlock[]): Buffer {
+  notes = footnoteNumbers(blocks);
   const pages = paint(layout(title, blocks));
   const objects: string[] = [];
   const add = (body: string) => objects.push(body) && objects.length;

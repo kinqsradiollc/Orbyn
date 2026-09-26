@@ -52,6 +52,22 @@ const score = (name: string, updated: string) => `
 const nameMatch = (name: string) =>
   `(${name} ILIKE '%' || $3::text || '%' OR similarity(${name}, $2::text) > 0.3)`;
 
+/**
+ * Another name (LNK-03) fits what was typed: as well as a title would, so a
+ * course code finds its page. `aliases` is the text[] column.
+ */
+const aliasScore = (aliases: string) => `
+  (CASE WHEN EXISTS (SELECT 1 FROM unnest(${aliases}) a
+                      WHERE lower(a) = lower($2::text)) THEN 3
+        WHEN EXISTS (SELECT 1 FROM unnest(${aliases}) a
+                      WHERE a ILIKE $3::text || '%') THEN 2
+        WHEN orbyn_aliases(${aliases}) ILIKE '%' || $3::text || '%' THEN 1
+        ELSE 0 END)`;
+
+/** The other name that matched, for the hint: "Also called CS101". */
+const aliasHit = (aliases: string) => `(SELECT a FROM unnest(${aliases}) a
+  WHERE a ILIKE '%' || $3::text || '%' ORDER BY length(a) LIMIT 1)`;
+
 const recentJoin = (kind: string, id: string) =>
   `LEFT JOIN recent_opens ro
      ON ro.user_id = $1 AND ro.kind = '${kind}' AND ro.target_id = ${id}`;
@@ -70,12 +86,19 @@ async function byName(
       db
         .query<Row>(
           `SELECT d.id, 'doc' AS type, d.title,
-                  COALESCE(p.name, ${DOC_HINT}) AS hint, d.team_id, d.updated_at,
-                  ro.opened_at, ${score("d.title", "d.updated_at")} AS score
+                  CASE WHEN d.title NOT ILIKE '%' || $3::text || '%'
+                            AND ${aliasHit("d.aliases")} IS NOT NULL
+                       THEN 'Also called ' || ${aliasHit("d.aliases")}
+                       ELSE COALESCE(p.name, ${DOC_HINT}) END AS hint,
+                  d.team_id, d.updated_at, ro.opened_at,
+                  ${score("d.title", "d.updated_at")}
+                    + ${aliasScore("d.aliases")} AS score
              FROM docs d
              LEFT JOIN projects p ON p.id = d.project_id
              ${recentJoin("doc", "d.id")}
-            WHERE ${docVisibleTo("$1")} AND ${nameMatch("d.title")}
+            WHERE ${docVisibleTo("$1")}
+              AND (${nameMatch("d.title")}
+                OR orbyn_aliases(d.aliases) ILIKE '%' || $3::text || '%')
             ORDER BY score DESC, d.updated_at DESC
             LIMIT $4`,
           params,
@@ -107,14 +130,20 @@ async function byName(
       db
         .query<Row>(
           `SELECT p.id, 'project' AS type, p.name AS title,
-                  CASE WHEN p.status = 'archived' THEN 'Archived'
+                  CASE WHEN p.name NOT ILIKE '%' || $3::text || '%'
+                            AND ${aliasHit("p.aliases")} IS NOT NULL
+                       THEN 'Also called ' || ${aliasHit("p.aliases")}
+                       WHEN p.status = 'archived' THEN 'Archived'
                        WHEN p.status = 'done' THEN 'Done' ELSE 'Project' END AS hint,
                   p.team_id, p.updated_at, ro.opened_at,
                   ${score("p.name", "p.updated_at")}
+                    + ${aliasScore("p.aliases")}
                     - CASE WHEN p.status = 'archived' THEN 0.5 ELSE 0 END AS score
              FROM projects p
              ${recentJoin("project", "p.id")}
-            WHERE ${visibleProjects("p")} AND ${nameMatch("p.name")}
+            WHERE ${visibleProjects("p")}
+              AND (${nameMatch("p.name")}
+                OR orbyn_aliases(p.aliases) ILIKE '%' || $3::text || '%')
             ORDER BY score DESC, p.updated_at DESC
             LIMIT $4`,
           params,

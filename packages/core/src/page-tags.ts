@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { parseDocInline, type DocBlock, type DocInline } from "./docs.js";
+import {
+  isStyledRun,
+  parseDocInline,
+  type DocBlock,
+  type DocInline,
+} from "./docs.js";
 
 /**
  * Tags on pages (ORG-01).
@@ -109,16 +114,7 @@ export type TaggedRun = DocInline & { tag?: string };
  * so comments and selections still line up with the words.
  */
 export function tagRuns(run: DocInline, line?: string): TaggedRun[] {
-  if (
-    run.bold ||
-    run.italic ||
-    run.code ||
-    run.math ||
-    run.link ||
-    run.highlight ||
-    !run.text.includes("#")
-  )
-    return [run];
+  if (isStyledRun(run) || !run.text.includes("#")) return [run];
   // A tag needs a space or the start of the line before it. A run that
   // doesn't start the line (it follows **bold**, say) only starts a tag when
   // the line has a space there.

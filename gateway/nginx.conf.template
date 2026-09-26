@@ -204,6 +204,23 @@ ${UPSTREAM_MCP}
       proxy_pass http://files;
     }
 
+    # Pictures and files for pages go straight to the file store too,
+    # streamed, up to PAGE_FILES_MAX_MB (200 MB at most); the link is signed
+    # by the API and works once. Showing one is a signed hour-long link.
+    location /files/p/ {
+      limit_req zone=per_client burst=20 nodelay;
+      client_max_body_size 202m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_next_upstream off;
+      proxy_pass http://files;
+    }
+    location /files/r/ {
+      limit_req zone=per_client burst=100 nodelay;
+      proxy_pass http://files;
+    }
+
     # The MCP address for older setups (the web app's /api/mcp): the mcp
     # service, as on mcp.orbyn.dev.
     location = /mcp {
@@ -282,6 +299,28 @@ ${UPSTREAM_MCP}
       proxy_read_timeout 600s;
       proxy_send_timeout 600s;
       proxy_pass http://127.0.0.1:8080/files/u/;
+    }
+
+    # Pictures and files in pages, through this gateway's entry point above.
+    location /api/files/p/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      client_max_body_size 202m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_pass http://127.0.0.1:8080/files/p/;
+    }
+    location /api/files/r/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/files/r/;
     }
 
     # CalDAV, served by the API at its own /dav path (no /api strip), so Apple

@@ -147,6 +147,73 @@ test("a project import becomes a project page with file history, and outsiders c
   assert.equal(row.object_id, null);
 });
 
+test("Keep the original: the file stays with its page, readable like any page file", async () => {
+  const owner = await person();
+  const outsider = await person();
+  const start = await call(owner.token, "POST", "/imports", {
+    file_name: "week7.docx",
+    bytes: wordFile().length,
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    keep_original: true,
+  });
+  assert.equal(start.status, 201, JSON.stringify(start.body));
+  const put = await app.inject({
+    method: "PUT",
+    url: start.body.upload_path,
+    remoteAddress: address(),
+    headers: {
+      "content-type":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    payload: wordFile(),
+  });
+  assert.equal(put.statusCode, 201, put.body);
+  await convertPending();
+  const job = (
+    await call(owner.token, "GET", `/imports/${start.body.import.id}`)
+  ).body;
+  assert.equal(job.status, "ready", JSON.stringify(job));
+  const doc = (await call(owner.token, "GET", `/docs/${job.doc_id}`)).body;
+  const original = doc.imported_from.original_file as string;
+  assert.ok(original, JSON.stringify(doc.imported_from));
+  const link = await call(owner.token, "GET", `/docs/files/${original}`);
+  assert.equal(link.status, 200, JSON.stringify(link.body));
+  assert.equal(link.body.file.source, "import");
+  assert.equal(link.body.file.name, "week7.docx");
+  const bytes = await app.inject({
+    method: "GET",
+    url: link.body.url_path,
+    remoteAddress: address(),
+  });
+  assert.equal(bytes.statusCode, 200);
+  assert.deepEqual(bytes.rawPayload, wordFile());
+  assert.match(String(bytes.headers["content-disposition"]), /^attachment;/);
+  // Someone who can't read the page can't read its original.
+  assert.equal(
+    (await call(outsider.token, "GET", `/docs/files/${original}`)).status,
+    404,
+  );
+  // The import's own copy is gone, as always.
+  const row = (
+    await pool.query("SELECT object_id FROM imports WHERE id = $1", [
+      start.body.import.id,
+    ])
+  ).rows[0];
+  assert.equal(row.object_id, null);
+  // Left unchosen, nothing is kept.
+  const plain = await upload(
+    owner.token,
+    "week8.docx",
+    wordFile(),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  await convertPending();
+  const plainJob = (await call(owner.token, "GET", `/imports/${plain}`)).body;
+  const plainDoc = (await call(owner.token, "GET", `/docs/${plainJob.doc_id}`))
+    .body;
+  assert.equal(plainDoc.imported_from.original_file, undefined);
+});
+
 test("conversion fails closed if the project disappears after upload", async () => {
   const owner = await person();
   const created = await call(owner.token, "POST", "/projects", {

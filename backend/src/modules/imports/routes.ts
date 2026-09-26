@@ -203,9 +203,17 @@ export async function importRoutes(app: FastifyInstance) {
     const id = (
       await pool.query<{ id: string }>(
         `INSERT INTO imports (user_id, file_name, file_type, bytes,
-           project_id, project_team_id)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [u.id, d.file_name, type, d.bytes, d.project_id ?? null, projectTeamId],
+           project_id, project_team_id, keep_original)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [
+          u.id,
+          d.file_name,
+          type,
+          d.bytes,
+          d.project_id ?? null,
+          projectTeamId,
+          !!d.keep_original,
+        ],
       )
     ).rows[0].id;
     const expires =

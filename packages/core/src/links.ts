@@ -26,8 +26,15 @@ export const LINK_KINDS = [
 ] as const;
 export type LinkKind = (typeof LINK_KINDS)[number];
 
-/** One thing a link points to. A date's id is its day, `2026-09-26`. */
-export type ObjectRef = { kind: LinkKind; id: string };
+/**
+ * One thing a link points to. A date's id is its day, `2026-09-26`. A link
+ * to one heading or line of a page (LNK-04) carries that line's id as
+ * `block`; the page is still what it points to.
+ */
+export type ObjectRef = { kind: LinkKind; id: string; block?: string };
+
+/** The shape of a line's id in a link (`#b…`). */
+export const BLOCK_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,18 +47,28 @@ export const validLinkId = (kind: LinkKind, id: string): boolean =>
 
 /** The address a link is stored with. */
 export const linkHref = (ref: ObjectRef): string =>
-  `orbyn://${ref.kind}/${ref.id.toLowerCase()}`;
+  `orbyn://${ref.kind}/${ref.id.toLowerCase()}${
+    ref.kind === "doc" && ref.block && BLOCK_ID.test(ref.block)
+      ? `#${ref.block}`
+      : ""
+  }`;
 
 /** The thing an `orbyn://` link points to, or null for any other link. */
 export function parseObjectHref(
   href: string | null | undefined,
 ): ObjectRef | null {
-  const m = /^orbyn:\/\/([a-z]+)\/([^/?#\s]+)$/i.exec(href ?? "");
+  const m =
+    /^orbyn:\/\/([a-z]+)\/([^/?#\s]+)(?:#([A-Za-z0-9_-]{1,64}))?$/i.exec(
+      href ?? "",
+    );
   if (!m) return null;
   const kind = m[1].toLowerCase() as LinkKind;
   if (!(LINK_KINDS as readonly string[]).includes(kind)) return null;
+  // Only a page has lines to point at.
+  if (m[3] && kind !== "doc") return null;
   const id = m[2].toLowerCase();
-  return validLinkId(kind, id) ? { kind, id } : null;
+  if (!validLinkId(kind, id)) return null;
+  return m[3] ? { kind, id, block: m[3] } : { kind, id };
 }
 
 /**
@@ -63,8 +80,11 @@ export function refFromUrl(url: string | null | undefined): ObjectRef | null {
   const own = parseObjectHref((url ?? "").trim());
   if (own) return own;
   const app = parseAppLink((url ?? "").trim());
-  return app &&
-    (app.kind === "task" || app.kind === "doc" || app.kind === "project")
+  if (app?.kind === "doc")
+    return app.block
+      ? { kind: "doc", id: app.id, block: app.block }
+      : { kind: "doc", id: app.id };
+  return app && (app.kind === "task" || app.kind === "project")
     ? { kind: app.kind, id: app.id }
     : null;
 }
@@ -302,7 +322,8 @@ export function webLinks(text: string, origin: string): string {
       if (ref.kind === "person") return label;
       if (ref.kind === "date") return dateTitle(ref.id);
       const kind = ref.kind === "event" ? "task" : ref.kind;
-      return `[${label}](${base}/app/${kind}/${ref.id})`;
+      const line = ref.block ? `#${ref.block}` : "";
+      return `[${label}](${base}/app/${kind}/${ref.id}${line})`;
     },
   );
 }
@@ -339,7 +360,145 @@ export type LinkPill = {
   done?: boolean;
   due_at?: string | null;
   can_restore?: boolean;
+  /** For a link to one line of a page (LNK-04): the line's id and words. */
+  block?: string;
+  /** The heading or line's words as they read now; null once it's gone. */
+  block_title?: string | null;
+  /**
+   * A page merged into another (ORG-05): the page it went into, which the
+   * pill opens and whose title it shows.
+   */
+  moved_to?: string;
 };
+
+/**
+ * What a hover card on a link shows (LNK-07, GET /links/card): enough to
+ * tick, reschedule or open the thing without leaving the page.
+ *
+ * - a page: its folder, project and first lines (or the linked line);
+ * - a task: its tick, deadline, estimate, project and your next session;
+ * - an event: its time, and the meeting note it has;
+ * - a project: how far along it is and the next task due.
+ */
+export type LinkCard = {
+  kind: "doc" | "task" | "event" | "project";
+  id: string;
+  state: "ok" | "deleted" | "missing";
+  title: string | null;
+  /** Whether you may change it (tick, reschedule). */
+  can_write: boolean;
+  /** Its project, when it has one. */
+  project?: { id: string; name: string } | null;
+  // A page.
+  folder?: string | null;
+  /** "Page", "Note", "Meeting note" or "Agenda". */
+  kind_label?: string;
+  /** Its first lines, or the linked line's section, as words. */
+  preview?: string;
+  /** The linked heading or line's words, for a link to one line. */
+  section?: string | null;
+  // A task.
+  done?: boolean;
+  due_at?: string | null;
+  all_day?: boolean;
+  estimate_minutes?: number | null;
+  /** Your next session on it, if one is planned. */
+  planned?: { start_at: string; end_at: string } | null;
+  /** A repeating task moves its dates from the task itself. */
+  repeats?: boolean;
+  // An event.
+  start_at?: string | null;
+  end_at?: string | null;
+  /** The meeting note it has, to open; null when it has none yet. */
+  note_id?: string | null;
+  // A project.
+  progress?: { done: number; total: number };
+  next?: { id: string; title: string; due_at: string | null } | null;
+  /** The project's latest date for its tasks. */
+  deadline?: string | null;
+};
+
+/** GET /links/card: one link's hover card. */
+export const linkCardQuery = z
+  .object({
+    kind: z.enum(["doc", "task", "event", "project"]),
+    id: z.uuid(),
+    block: z.string().regex(BLOCK_ID).optional(),
+  })
+  .strict();
+
+/**
+ * A page that says another's name (or one of its other names) without
+ * linking to it (LNK-06): "Mentioned without a link", with the line it says
+ * it on, so one click can make the words a link.
+ */
+export type UnlinkedMention = {
+  doc_id: string;
+  title: string;
+  hint: string | null;
+  block_id: string | null;
+  /** The name as it was found in the line. */
+  matched: string;
+  context: LinkContext;
+  /** Whether you can change that page (the Link button needs to). */
+  can_link: boolean;
+};
+
+/** A page that reads like this one (LNK-06 "Related"). */
+export type RelatedPage = {
+  doc_id: string;
+  title: string;
+  hint: string | null;
+  /** Why it's related, in a few words: "Same tags", "Similar words". */
+  reason: string;
+};
+
+/** GET /links/mentions and /links/related: for a page or a project. */
+export const mentionsQuery = z
+  .object({
+    kind: z.enum(["doc", "project"]),
+    id: z.uuid(),
+  })
+  .strict();
+
+/**
+ * POST /links/mentions/link: make the words a mention found into a link
+ * (the page it's in is saved as a new version).
+ */
+export const linkMentionInput = z
+  .object({
+    doc_id: z.uuid(),
+    block_id: z.string().min(1).max(64),
+    matched: z.string().min(1).max(200),
+    target: z.object({ kind: z.enum(["doc", "project"]), id: z.uuid() }),
+  })
+  .strict();
+
+/** A heading or line of a page the link picker can point at (LNK-04). */
+export type HeadingOption = {
+  /** Null for a line that has no id yet: picking it names it first. */
+  block_id: string | null;
+  index: number;
+  level: 1 | 2 | 3 | null;
+  text: string;
+};
+
+/** GET /links/headings: a page's headings, for `[[Page#`. */
+export const headingsQuery = z
+  .object({
+    doc: z.uuid(),
+    q: z.string().trim().max(200).default(""),
+  })
+  .strict();
+
+/** What `[[Page#words` asks for: the page's words and the heading's. */
+export function splitHeadingQuery(
+  query: string,
+): { page: string; heading: string } | null {
+  const at = query.indexOf("#");
+  if (at < 1) return null;
+  return { page: query.slice(0, at).trim(), heading: query.slice(at + 1) };
+}
 
 /** One thing the link picker offers (GET /links/pick). */
 export type LinkOption = {
@@ -415,15 +574,21 @@ export const linkResolveQuery = z
       .transform((s, ctx) => {
         const refs: ObjectRef[] = [];
         for (const part of s.split(",").filter(Boolean)) {
-          const [kind, id = ""] = part.split(":");
+          const [kind, rest = ""] = part.split(":");
+          const [id, block] = rest.split("#");
           if (
             !(LINK_KINDS as readonly string[]).includes(kind) ||
-            !validLinkId(kind as LinkKind, id.toLowerCase())
+            !validLinkId(kind as LinkKind, id.toLowerCase()) ||
+            (block !== undefined && (kind !== "doc" || !BLOCK_ID.test(block)))
           ) {
             ctx.addIssue({ code: "custom", message: `Not a link: ${part}` });
             return z.NEVER;
           }
-          refs.push({ kind: kind as LinkKind, id: id.toLowerCase() });
+          refs.push(
+            block
+              ? { kind: kind as LinkKind, id: id.toLowerCase(), block }
+              : { kind: kind as LinkKind, id: id.toLowerCase() },
+          );
         }
         if (refs.length > MAX_RESOLVE) {
           ctx.addIssue({ code: "custom", message: "Too many links at once" });
@@ -436,4 +601,93 @@ export const linkResolveQuery = z
 
 /** The `refs` query value for a set of links, each once. */
 export const resolveRefs = (refs: ObjectRef[]): string =>
-  [...new Set(refs.map((r) => `${r.kind}:${r.id.toLowerCase()}`))].join(",");
+  [
+    ...new Set(
+      refs.map(
+        (r) =>
+          `${r.kind}:${r.id.toLowerCase()}${r.kind === "doc" && r.block ? `#${r.block}` : ""}`,
+      ),
+    ),
+  ].join(",");
+
+/** One key for a link's pill: a thing, or one line of a page. */
+export const refKey = (r: ObjectRef): string =>
+  `${r.kind === "event" ? "task" : r.kind}:${r.id.toLowerCase()}${
+    r.kind === "doc" && r.block ? `#${r.block}` : ""
+  }`;
+
+// ---------------------------------------------------------------- mentions ---
+
+/** Letters and digits in any script, for telling where a word ends. */
+const WORDISH = /[\p{L}\p{N}_]/u;
+
+/**
+ * Where a name is said in a line as words of its own (not part of a longer
+ * word), outside links, code and maths: the first such place, or null. The
+ * name is matched without regard to case; names shorter than three letters
+ * are never looked for, since "AI" or "Q3" would be found everywhere.
+ */
+export function findMention(
+  source: string,
+  name: string,
+): { start: number; end: number; matched: string } | null {
+  const want = name.trim();
+  if (want.length < 3) return null;
+  const lower = want.toLowerCase();
+  for (const run of parseDocInline(source)) {
+    if (run.link || run.code || run.math || run.footnote) continue;
+    const text = run.text.toLowerCase();
+    let at = text.indexOf(lower);
+    while (at >= 0) {
+      const before = run.text[at - 1];
+      const after = run.text[at + want.length];
+      if (
+        (!before || !WORDISH.test(before)) &&
+        (!after || !WORDISH.test(after))
+      ) {
+        const start = run.start + at;
+        return {
+          start,
+          end: start + want.length,
+          matched: source.slice(start, start + want.length),
+        };
+      }
+      at = text.indexOf(lower, at + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * The line with the first mention of `matched` made a link to `ref`, or null
+ * when the words are no longer there as a mention.
+ */
+export function linkMention(
+  source: string,
+  matched: string,
+  ref: ObjectRef,
+): string | null {
+  const found = findMention(source, matched);
+  if (!found) return null;
+  const words = found.matched.replace(/[[\]]/g, "");
+  return (
+    source.slice(0, found.start) +
+    `[${words}](${linkHref(ref)})` +
+    source.slice(found.end)
+  );
+}
+
+/** Other names as they're kept: trimmed, each once, no more than eight. */
+export const MAX_ALIASES = 8;
+export const aliasesInput = z
+  .array(z.string().trim().min(1).max(80))
+  .max(MAX_ALIASES)
+  .transform((list) => {
+    const seen = new Set<string>();
+    return list.filter((a) => {
+      const k = a.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  });

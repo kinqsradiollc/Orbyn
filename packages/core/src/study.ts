@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { newBlockId, type DocBlock } from "./docs.js";
+import { newBlockId, parseDocInline, type DocBlock } from "./docs.js";
 
 /**
  * Study: flashcards written in your own pages, reviewed with spaced
@@ -132,6 +132,94 @@ export function withCards(
   let end = at + 1;
   while (end < blocks.length && blocks[end].type !== "heading") end++;
   return [...blocks.slice(0, end), ...lines, ...blocks.slice(end)];
+}
+
+// ---- Cards from highlights (EDT-05) ----------------------------------------
+
+/**
+ * Cloze cards made from what was highlighted: each line with ==highlighted==
+ * words becomes the same sentence with those words hidden ("The
+ * {{mitochondria}} makes energy"). Lines that are already cards, and cards
+ * the page already has, are left out, so asking twice adds nothing twice.
+ */
+export function highlightCards(blocks: DocBlock[]): string[] {
+  const have = new Set(
+    blocks.flatMap((b) =>
+      b.type === "paragraph" || b.type === "bullet" || b.type === "numbered"
+        ? [b.text.trim()]
+        : [],
+    ),
+  );
+  const out: string[] = [];
+  for (const b of blocks) {
+    if (
+      b.type !== "paragraph" &&
+      b.type !== "bullet" &&
+      b.type !== "numbered" &&
+      b.type !== "todo" &&
+      b.type !== "quote" &&
+      b.type !== "callout"
+    )
+      continue;
+    if (isCardLine(b.text)) continue;
+    const runs = parseDocInline(b.text);
+    if (!runs.some((r) => r.highlight && r.text.trim())) continue;
+    const line = runs
+      .map((r) =>
+        r.highlight
+          ? `{{${r.text.replace(/[{}]/g, "")}}}`
+          : r.footnote
+            ? ""
+            : r.link
+              ? r.text
+              : r.math
+                ? `$${r.text}$`
+                : r.code
+                  ? `\`${r.text}\``
+                  : r.text,
+      )
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (line && !have.has(line) && !out.includes(line)) out.push(line);
+  }
+  return out;
+}
+
+/**
+ * A page with cloze card lines added under its "Cards" heading (made when
+ * it has none), each line named so its review history survives edits. The
+ * person's own page edit, like any card they write.
+ */
+export function withClozeLines(
+  blocks: DocBlock[],
+  lines: string[],
+): DocBlock[] {
+  if (!lines.length) return blocks;
+  const made: DocBlock[] = lines.map((text) => ({
+    type: "bullet",
+    id: newBlockId(),
+    text,
+  }));
+  const at = blocks.findIndex(
+    (b) => b.type === "heading" && b.text.trim().toLowerCase() === "cards",
+  );
+  if (at < 0)
+    return [
+      ...blocks.filter(
+        (b, i) =>
+          !(
+            i === blocks.length - 1 &&
+            b.type === "paragraph" &&
+            !b.text.trim()
+          ),
+      ),
+      { type: "heading", level: 2, id: newBlockId(), text: "Cards" },
+      ...made,
+    ];
+  let end = at + 1;
+  while (end < blocks.length && blocks[end].type !== "heading") end++;
+  return [...blocks.slice(0, end), ...made, ...blocks.slice(end)];
 }
 
 // ---- Spaced repetition (FSRS v4.5, standard parameters) --------------------

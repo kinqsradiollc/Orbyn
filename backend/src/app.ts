@@ -18,6 +18,7 @@ import { adminRoutes } from "./modules/admin/routes.js";
 import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
 import { docRoutes } from "./modules/docs/routes.js";
+import { docStructureRoutes } from "./modules/docs/structure.js";
 import { docInfoRoutes } from "./modules/docs/info.js";
 import { viewRoutes } from "./modules/views/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
@@ -50,6 +51,8 @@ import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
+import { pageFileRoutes } from "./modules/page-files/routes.js";
+import { pageFileStoreRoutes } from "./modules/page-files/store-routes.js";
 import { captureRoutes } from "./modules/capture/routes.js";
 
 /**
@@ -83,6 +86,8 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    // Sections to embed, line names, moving and merging pages, folds.
+    docStructureRoutes,
     // A page's Info panel in one request.
     docInfoRoutes,
     // Saved views and your own fields on pages and projects.
@@ -91,6 +96,8 @@ export const serviceModules: Record<
     searchRoutes,
     // Links between things: the link picker, pills and "Linked here".
     linkRoutes,
+    // Pictures and files in pages: upload and read links, space used.
+    pageFileRoutes,
     aiDocRoutes,
     folderRoutes,
     projectRoutes,
@@ -124,10 +131,11 @@ export const serviceModules: Record<
   realtime: [realtimeRoutes, legacyDocStreamRoutes],
   /**
    * The file store: uploads for importing into Docs, held encrypted until
-   * the converter has read them, and never longer than a day. It holds
+   * the converter has read them, and never longer than a day; and pictures
+   * and files in pages, kept encrypted for as long as their page. It holds
    * upload streams, so it runs apart from the API.
    */
-  files: [filesRoutes],
+  files: [filesRoutes, pageFileStoreRoutes],
   /**
    * The MCP address for outside agents: stateless, short calls, scaled on
    * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.

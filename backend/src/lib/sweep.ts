@@ -161,6 +161,20 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    // Pictures and files in pages (EDT-01): a file whose page was deleted
+    // for good, or an upload that never arrived. The file store deletes the
+    // bytes of rows that are gone.
+    key: "page_files",
+    label: "Pictures and files in pages",
+    detail:
+      "Files whose page was deleted for good, and uploads that never finished.",
+    table: "page_files",
+    where: `doc_id IS NULL
+         OR (status <> 'ready' AND created_at < now() - interval '1 day')`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "audit_log",
     label: "Audit log",
     detail: "Admin and security actions.",

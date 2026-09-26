@@ -34,6 +34,12 @@ export const EXCLUSION_REASONS = {
   team_admin:
     "Making, renaming and deleting teams, members, roles and team policies: people only.",
   sends_outside: "Sends an email to test delivery.",
+  editor_shortcut:
+    "An editor's shortcut over a page's own lines (naming a line for a link, linking a mention, moving lines to a new page, merging pages, other names): agents change pages with their own page tools, under review.",
+  view_state:
+    "How a page is shown to one person (the headings they folded): not data.",
+  file_bytes:
+    "Uploading, showing and downloading pictures and files in pages through short-lived signed links: people's apps only; agents read pages as words.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -68,6 +74,14 @@ export const COVERED: Record<string, string[]> = {
   "GET /today": ["get_today"],
   // Date fields shown on the calendar (DATA-07) are deadlines get_calendar lists.
   "GET /fields/dates": ["get_calendar"],
+  // D4b: a link's hover card and a page's headings and sections are facts
+  // fetch returns with the thing; mentions and related pages are found by
+  // name and words, as search finds them.
+  "GET /links/card": ["fetch"],
+  "GET /links/headings": ["fetch"],
+  "GET /docs/:id/section": ["fetch"],
+  "GET /links/mentions": ["search"],
+  "GET /links/related": ["search"],
 };
 
 /** Routes agents never reach, with the reason. */
@@ -224,6 +238,19 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /teams/:id/members/:userId": "team_admin",
   "PUT /teams/:id/members/:userId": "team_admin",
   "GET /teams/:id/presence": "device",
+  // D4b: richer links and pages.
+  "POST /links/mentions/link": "editor_shortcut",
+  "POST /docs/:id/anchor": "editor_shortcut",
+  "POST /docs/:id/extract": "editor_shortcut",
+  "POST /docs/:id/merge": "editor_shortcut",
+  "PUT /docs/:id/aliases": "editor_shortcut",
+  "GET /docs/:id/folds": "view_state",
+  "PUT /docs/:id/folds": "view_state",
+  "POST /docs/:id/files": "file_bytes",
+  "GET /docs/:id/files": "file_bytes",
+  "GET /docs/files/:id": "file_bytes",
+  "DELETE /docs/files/:id": "file_bytes",
+  "GET /files/usage": "file_bytes",
 };
 
 /**
@@ -467,6 +494,10 @@ export const PUBLIC: string[] = [
   "POST /rsvp/:token",
   "GET /status",
   "PUT /files/u/:token",
+  // Pictures and files in pages: the signed one-time upload link and the
+  // signed hour-long link to show or download one (EDT-01).
+  "PUT /files/p/:token",
+  "GET /files/r/:token",
   "GET /mcp",
   "DELETE /mcp",
   "GET /.well-known/oauth-protected-resource",

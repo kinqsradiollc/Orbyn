@@ -203,16 +203,20 @@ services:
 
   # The file store for importing into Docs: uploads arrive through the
   # gateway's /files/u/ route and are kept encrypted until the converter has
-  # read them, never longer than a day. Needs FILES_SECRET and
-  # FILES_MASTER_KEY in .env; without FILES_SECRET importing is off.
+  # read them, never longer than a day. Pictures and files in pages arrive
+  # through /files/p/ and are kept, encrypted, on page_files for as long as
+  # their page (back that volume up with the database). Needs FILES_SECRET
+  # and FILES_MASTER_KEY in .env; without FILES_SECRET both are off.
   files:
     <<: *backend
     environment:
       <<: *backend-env
       FILES_DIR: /data/files
+      PAGE_FILES_DIR: /data/page-files
     command: ["node", "backend/dist/services/files.js"]
     volumes:
       - import_files:/data/files
+      - page_files:/data/page-files
     healthcheck: *http-health
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -423,6 +427,8 @@ volumes:
   postgres_data:
   # Files waiting to be imported (encrypted, gone within a day).
   import_files:
+  # Pictures and files in pages, and kept originals (encrypted, kept).
+  page_files:
   # The OCR model's weights, downloaded once.
   ocr_models:
   postgres_replica_data:

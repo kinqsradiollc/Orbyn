@@ -8,7 +8,12 @@
 import { parseAddDeepLink } from "./quickcapture.js";
 
 /** A page, task or project, as a link to it names it. */
-export type LinkTarget = { kind: "task" | "doc" | "project"; id: string };
+export type LinkTarget = {
+  kind: "task" | "doc" | "project";
+  id: string;
+  /** For a page, the heading or line to open it at (LNK-04). */
+  block?: string;
+};
 
 /** What a link into the app asks to open. */
 export type AppLink =
@@ -36,7 +41,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The path that opens a page, task or project in the web app. */
 export const appPath = (target: LinkTarget) =>
-  `/app/${target.kind}/${target.id.toLowerCase()}`;
+  `/app/${target.kind}/${target.id.toLowerCase()}${
+    target.kind === "doc" &&
+    target.block &&
+    /^[A-Za-z0-9_-]{1,64}$/.test(target.block)
+      ? `#${target.block}`
+      : ""
+  }`;
 
 /** The full link to a page, task or project, on the web app at `origin`. */
 export const appUrl = (origin: string, target: LinkTarget) =>
@@ -83,6 +94,10 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   }
   if ((head === "task" || head === "doc" || head === "project") && id) {
     if (rest.length || !UUID.test(id)) return null;
+    // A page's link can name a line to open it at: /app/doc/<id>#<line>.
+    const line = /^#([A-Za-z0-9_-]{1,64})$/.exec(parsed.hash)?.[1];
+    if (head === "doc" && line)
+      return { kind: head, id: id.toLowerCase(), block: line };
     return { kind: head, id: id.toLowerCase() };
   }
   if (head === "view" && id) {

@@ -9,7 +9,7 @@ import {
   pageNeedsOcr,
   pageToMarkdown,
   sniffImportType,
-  tablesToBullets,
+  tablesToMarkdown,
   textPageToMarkdown,
 } from "@orbyn/core";
 
@@ -32,7 +32,7 @@ test("file types come from the name, and the bytes decide", () => {
   assert.equal(sniffImportType(Buffer.from("hello")), null);
 });
 
-test("OCR output: page furniture goes, figures leave a note, tables become lists", () => {
+test("OCR output: page furniture goes, figures leave a note, tables stay tables", () => {
   const raw = [
     "<|ref|>header<|/ref|><|det|>[[0,0,10,10]]<|/det|>COMP3100 · Week 6",
     "<|ref|>title<|/ref|><|det|>[[0,0,10,10]]<|/det|># Consensus and Raft",
@@ -48,18 +48,21 @@ test("OCR output: page furniture goes, figures leave a note, tables become lists
   assert.equal(page.figures, 1);
   assert.doesNotMatch(page.markdown, /COMP3100|<\||^14$/m);
   assert.match(page.markdown, /Figure on page 4: “Raft states”/);
-  assert.match(page.markdown, /- Protocol: Raft · Leader: yes/);
+  assert.match(
+    page.markdown,
+    /\| Protocol \| Leader \|\n\| --- \| --- \|\n\| Raft \| yes \|/,
+  );
   assert.match(page.markdown, /\$\$\nq = \\lfloor n\/2 \\rfloor \+ 1\n\$\$/);
 });
 
-test("Markdown pipe tables become one bullet per row", () => {
-  const { markdown, tables } = tablesToBullets(
+test("Markdown pipe tables stay tables (EDT-02)", () => {
+  const { markdown, tables } = tablesToMarkdown(
     "Before\n| Term | Meaning |\n|---|---|\n| CAP | Consistency |\n| ACID | Atomicity |\nAfter",
   );
   assert.equal(tables, 1);
   assert.equal(
     markdown,
-    "Before\n- Term: CAP · Meaning: Consistency\n- Term: ACID · Meaning: Atomicity\nAfter",
+    "Before\n\n| Term | Meaning |\n| --- | --- |\n| CAP | Consistency |\n| ACID | Atomicity |\n\nAfter",
   );
 });
 
@@ -118,14 +121,14 @@ test("pages are assembled with a title, stepped-down headings and a source line"
     text: "Log replication",
   });
   assert.deepEqual(notes, [
-    "1 table kept as lists",
+    "1 table kept as tables",
     "1 page read from an image (OCR)",
   ]);
   const last = content[content.length - 1];
   assert.equal(last.type, "paragraph");
   assert.match(
     (last as { text: string }).text,
-    /^\*Imported from lecture06\.pdf · 2 pages · 23 Sept 2026 · 1 table kept as lists/,
+    /^\*Imported from lecture06\.pdf · 2 pages · 23 Sept 2026 · 1 table kept as tables/,
   );
   // No heading at the top: the file's name is the title.
   assert.equal(
@@ -186,7 +189,9 @@ test("a Word document becomes Markdown: styles, lists, bold, tables, pictures", 
       "- Consistency",
       "1. First step",
       "",
-      "- Term: CAP · Meaning: Consistency & more",
+      "| Term | Meaning |",
+      "| --- | --- |",
+      "| CAP | Consistency & more |",
       "",
       "*Figure (not imported)*",
     ].join("\n"),

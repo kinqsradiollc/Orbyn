@@ -9,6 +9,7 @@ import {
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
+import { pageFileLimits, usedBytes } from "../page-files/routes.js";
 import { announceTo } from "../presence/live.js";
 import { NotAWordFile, docxToMarkdown } from "./docx.js";
 import { PdfLocked, PdfUnreadable, readPdf, singlePage } from "./pdf.js";
@@ -503,16 +504,20 @@ async function finish(importId: string) {
         notes: string[];
         project_id: string | null;
         project_team_id: string | null;
+        keep_original: boolean;
+        bytes: string | number;
       }
     >(
       `UPDATE imports SET finished_at = now()
         WHERE id = $1 AND status IN ('reading','ocr') AND finished_at IS NULL
         RETURNING id, user_id, file_name, file_type, object_id, attempts,
-          notes, project_id, project_team_id`,
+          notes, project_id, project_team_id, keep_original, bytes`,
       [importId],
     )
   ).rows[0];
   if (!row) return;
+  /** The page file the original is kept as, when it was chosen and fits. */
+  let original: string | null = null;
   try {
     const pages = (
       await pool.query<{
@@ -541,6 +546,15 @@ async function finish(importId: string) {
     const { title, content, notes } = assembleImport(imported, row.file_name, {
       notes: row.notes ?? [],
     });
+    // "Keep the original": only when it fits in the person's space.
+    const keep =
+      row.keep_original &&
+      !!row.object_id &&
+      (await usedBytes(pool, row.user_id)) + Number(row.bytes) <=
+        pageFileLimits().quotaBytes &&
+      Number(row.bytes) <= pageFileLimits().maxBytes;
+    if (row.keep_original && !keep)
+      notes.push("Original not kept: your space for files is full");
     await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [
         row.user_id,
@@ -587,6 +601,27 @@ async function finish(importId: string) {
           ],
         )
       ).rows[0].id;
+      if (keep) {
+        original = (
+          await db.query<{ id: string }>(
+            `INSERT INTO page_files (user_id, doc_id, name, mime, kind, bytes,
+               source)
+             VALUES ($1, $2, $3, $4, 'file', $5, 'import') RETURNING id`,
+            [
+              row.user_id,
+              docId,
+              row.file_name.slice(0, 300),
+              IMPORT_MIME[row.file_type] ?? "application/octet-stream",
+              Number(row.bytes),
+            ],
+          )
+        ).rows[0].id;
+        await db.query(
+          `UPDATE docs SET imported_from = imported_from ||
+             jsonb_build_object('original_file', $2::text) WHERE id = $1`,
+          [docId, original],
+        );
+      }
       if (row.project_id) {
         await db.query(
           `UPDATE project_activity SET summary = 'File added: ' || $2
@@ -632,8 +667,48 @@ async function finish(importId: string) {
     );
   }
   if (cached?.id === row.id) cached = null;
+  if (original && row.object_id) await keepOriginal(row.object_id, original);
   await deleteFile(row.id, row.object_id);
   await changed(row.user_id);
+}
+
+/** What an import's file is kept as, by the type it was read as. */
+const IMPORT_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  png: "image/png",
+  jpeg: "image/jpeg",
+};
+
+/**
+ * Hand an import's file to the page store as the original of its page.
+ * If that fails, the page says only where it came from, as before.
+ */
+async function keepOriginal(objectId: string, fileId: string) {
+  try {
+    const res = await fetch(
+      `${env.FILES_URL}/internal/files/${objectId}/keep`,
+      {
+        method: "POST",
+        headers: {
+          "x-orbyn-service": serviceKey(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ file: fileId }),
+        signal: AbortSignal.timeout(60_000),
+      },
+    );
+    if (res.ok) return;
+  } catch {
+    // Handled below, as a refusal is.
+  }
+  log("original not kept", { file: fileId });
+  await pool.query("DELETE FROM page_files WHERE id = $1", [fileId]);
+  await pool.query(
+    `UPDATE docs SET imported_from = imported_from - 'original_file'
+      WHERE imported_from->>'original_file' = $1`,
+    [fileId],
+  );
 }
 
 // ------------------------------------------------------------- upkeep ---

@@ -1,4 +1,4 @@
-import { rowsToBullets } from "./imports.js";
+import { rowsToTable } from "./imports.js";
 
 /**
  * Reading a page from positioned text: what a PDF's own text layer gives
@@ -243,7 +243,7 @@ type Line = {
   x: number;
   right: number;
   spans: Span[];
-  /** A table found on the page, already written as bullet rows. */
+  /** A table found on the page, already written as Markdown table rows. */
   table?: string;
 };
 
@@ -364,8 +364,8 @@ export function runningLines(pages: PageText[]): Set<string> {
  * Tables in a page's own text: three or more rows at the same heights, each
  * with the same number of cells starting at the same places. Cells are
  * short (wide text columns side by side are a two-column page, not a
- * table). Each table becomes one line holding bullet rows, since pages have
- * no table block yet.
+ * table). Each table becomes one line holding the rows of a Markdown table,
+ * which the page keeps as a table (EDT-02).
  */
 export function findTables(lines: Line[], width: number): Line[] {
   // A line's cells: its spans, split wherever there is a wide gap.
@@ -452,7 +452,7 @@ export function findTables(lines: Line[], width: number): Line[] {
         x: Math.min(...rows[i].map((c) => c.x)),
         right: Math.max(...rows[i].map((c) => c.right)),
         spans: [{ text: "table", x: top.x, y: top.y, w: 1, size: top.size }],
-        table: rowsToBullets(cells).join("\n"),
+        table: rowsToTable(cells).join("\n"),
       });
       for (const r of rows.slice(i, j)) for (const c of r) used.add(c.line);
       i = j;

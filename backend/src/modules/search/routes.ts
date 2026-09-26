@@ -223,15 +223,17 @@ export async function searchRoutes(app: FastifyInstance) {
                     ts_headline('english', p.summary, q.tsq, '${MARKS}') AS snippet,
                     NULL AS block_id,
                     ${RANK(
-                      "setweight(to_tsvector('english', p.name), 'A') || setweight(to_tsvector('english', p.summary), 'C')",
+                      "setweight(to_tsvector('english', p.name || ' ' || orbyn_aliases(p.aliases)), 'A') || setweight(to_tsvector('english', p.summary), 'C')",
                       "p.name",
                       "p.updated_at",
                     )} AS rank
                FROM projects p
                CROSS JOIN q
               WHERE ${visibleProjects("p")}
-                AND ($2::text = '' OR to_tsvector('english', p.name || ' ' || p.summary) @@ q.tsq
-                     OR similarity(p.name, $2) > 0.25)
+                AND ($2::text = '' OR to_tsvector('english', p.name || ' ' || p.summary
+                                                     || ' ' || orbyn_aliases(p.aliases)) @@ q.tsq
+                     OR similarity(p.name, $2) > 0.25
+                     OR orbyn_aliases(p.aliases) ILIKE '%' || $2 || '%')
                 AND ($3::uuid IS NULL OR p.id = $3)
                 AND ${TEAM("p", "$4")}
                 AND ($5::timestamptz IS NULL OR p.updated_at >= $5)

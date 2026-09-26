@@ -1,6 +1,9 @@
 import {
+  blockText,
   dateTitle,
   fail,
+  plainText,
+  type DocBlock,
   linkContext,
   type LinkedHere,
   type LinkedHereList,
@@ -135,7 +138,13 @@ export async function resolveLinks(
 ): Promise<LinkPill[]> {
   const ids = (kinds: string[]) =>
     refs.filter((r) => kinds.includes(r.kind)).map((r) => r.id.toLowerCase());
-  const docIds = ids(["doc"]);
+  const docIds = [...new Set(ids(["doc"]))];
+  /** Pages whose lines are linked to, whose lines have to be read. */
+  const withLines = [
+    ...new Set(
+      refs.filter((r) => r.kind === "doc" && r.block).map((r) => r.id),
+    ),
+  ];
   const itemIds = ids(["task", "event"]);
   const projectIds = ids(["project"]);
   const personIds = ids(["person"]);
@@ -146,14 +155,22 @@ export async function resolveLinks(
           title: string;
           deleted: boolean;
           can_restore: boolean;
+          content: DocBlock[] | null;
+          moved_to: string | null;
+          moved_title: string | null;
         }>(
           `SELECT d.id, d.title, d.deleted_at IS NOT NULL AS deleted,
                   (d.team_id IS NULL OR m.role IN ('owner', 'admin', 'member'))
-                    AS can_restore
+                    AS can_restore,
+                  CASE WHEN d.id = ANY ($3::uuid[]) THEN d.content END AS content,
+                  CASE WHEN d.deleted_at IS NOT NULL THEN mi.id END AS moved_to,
+                  CASE WHEN d.deleted_at IS NOT NULL THEN mi.title END AS moved_title
              FROM docs d
              LEFT JOIN team_members m ON m.team_id = d.team_id AND m.user_id = $1
+             LEFT JOIN docs mi ON mi.id = d.merged_into
+                  AND ${docVisibleTo("$1", "mi")}
             WHERE d.id = ANY ($2::uuid[]) AND ${docReadableBy("$1")}`,
-          [userId, docIds],
+          [userId, docIds, withLines],
         )
       : null,
     itemIds.length
@@ -201,15 +218,44 @@ export async function resolveLinks(
       case "doc": {
         const d = docMap.get(id);
         if (!d) return missing(r);
-        return d.deleted
-          ? {
-              kind: r.kind,
-              id,
-              state: "deleted",
-              title: d.title || "Untitled",
-              can_restore: d.can_restore,
-            }
-          : { kind: r.kind, id, state: "ok", title: d.title || "Untitled" };
+        // A page merged into another opens that one.
+        if (d.deleted && d.moved_to)
+          return {
+            kind: r.kind,
+            id,
+            state: "ok",
+            title: d.moved_title || "Untitled",
+            moved_to: d.moved_to,
+          };
+        if (d.deleted)
+          return {
+            kind: r.kind,
+            id,
+            state: "deleted",
+            title: d.title || "Untitled",
+            can_restore: d.can_restore,
+          };
+        if (!r.block)
+          return {
+            kind: r.kind,
+            id,
+            state: "ok",
+            title: d.title || "Untitled",
+          };
+        const line = (d.content ?? []).find((b) => b.id === r.block);
+        return {
+          kind: r.kind,
+          id,
+          state: "ok",
+          title: d.title || "Untitled",
+          block: r.block,
+          block_title: line
+            ? plainText(blockText(line))
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 120) || "Untitled line"
+            : null,
+        };
       }
       case "task":
       case "event": {

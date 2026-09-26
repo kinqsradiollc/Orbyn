@@ -5,7 +5,7 @@
  * of every style, and tell the toolbar which styles the caret sits in so it
  * can show them as on.
  */
-import { parseDocInline } from "./docs.js";
+import { isStyledRun, parseDocInline } from "./docs.js";
 import {
   isUrl,
   linkTarget,
@@ -55,7 +55,13 @@ function intoWords(source: string, start: number, end: number) {
  */
 function emptyPairAt(source: string, caret: number): InlineStyle | null {
   // Longest first, so "**|**" isn't read as italic.
-  for (const style of ["bold", "highlight", "italic", "code"] as const) {
+  for (const style of [
+    "bold",
+    "highlight",
+    "strike",
+    "italic",
+    "code",
+  ] as const) {
     const m = STYLE_MARKERS[style];
     if (
       source.slice(caret - m.length, caret) === m &&
@@ -96,6 +102,7 @@ export function stylesAt(
       run.bold && "bold",
       run.italic && "italic",
       run.highlight && "highlight",
+      run.strike && "strike",
       run.code && "code",
       run.link && "link",
     ].filter((s): s is ToolbarStyle => !!s);
@@ -187,10 +194,7 @@ export function toolbarLink(
     const e = at.end - tail;
     // Only words that aren't styled another way; the same rule as desktop.
     const plain = parseDocInline(source).every(
-      (r) =>
-        r.start + r.text.length <= s ||
-        r.start >= e ||
-        !(r.bold || r.italic || r.code || r.math || r.link || r.highlight),
+      (r) => r.start + r.text.length <= s || r.start >= e || !isStyledRun(r),
     );
     if (!plain) return null;
     const inner = source.slice(s, e).replace(/[[\]]/g, "");
@@ -200,7 +204,7 @@ export function toolbarLink(
   // A caret inside words already styled can't start a link there.
   const inside = parseDocInline(source).some(
     (r) =>
-      (r.bold || r.italic || r.code || r.math || r.link || r.highlight) &&
+      isStyledRun(r) &&
       at.start > r.start &&
       at.start < r.start + r.text.length,
   );

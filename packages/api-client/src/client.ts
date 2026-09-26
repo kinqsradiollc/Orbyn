@@ -57,6 +57,15 @@ import {
   type LinkPill,
   type ObjectRef,
   resolveRefs,
+  type HeadingOption,
+  type LinkCard,
+  type RelatedPage,
+  type UnlinkedMention,
+  type PageFile,
+  type PageFileInput,
+  type PageFileLink,
+  type PageFilesUsage,
+  type PageFileUpload,
   type DocSummary,
   type EventNoteRef,
   type DocVersion,
@@ -1335,6 +1344,148 @@ export class OrbynClient {
   linksHere(kind: "doc" | "task" | "event" | "project" | "person", id: string) {
     const params = new URLSearchParams({ kind, id });
     return this.request<LinkedHereList>(`/links/here?${params}`);
+  }
+
+  /** A link's hover card: enough to tick, reschedule or open it (LNK-07). */
+  linkCard(ref: {
+    kind: "doc" | "task" | "event" | "project";
+    id: string;
+    block?: string;
+  }) {
+    const params = new URLSearchParams({ kind: ref.kind, id: ref.id });
+    if (ref.block) params.set("block", ref.block);
+    return this.request<LinkCard>(`/links/card?${params}`);
+  }
+
+  /** Pages that say this page's or project's name without linking to it (LNK-06). */
+  unlinkedMentions(kind: "doc" | "project", id: string) {
+    const params = new URLSearchParams({ kind, id });
+    return this.request<UnlinkedMention[]>(`/links/mentions?${params}`);
+  }
+
+  /** Make a mention a link, in the page it's in. */
+  linkMention(input: {
+    doc_id: string;
+    block_id: string;
+    matched: string;
+    target: { kind: "doc" | "project"; id: string };
+  }) {
+    return this.request<{ doc_id: string; version: number }>(
+      "/links/mentions/link",
+      { method: "POST", body: input },
+    );
+  }
+
+  /** Pages that read like this one, not linked either way yet (LNK-06). */
+  relatedPages(docId: string) {
+    const params = new URLSearchParams({ kind: "doc", id: docId });
+    return this.request<RelatedPage[]>(`/links/related?${params}`);
+  }
+
+  /** A page's headings (and, with words, lines) for [[Page# (LNK-04). */
+  pageHeadings(docId: string, q = "") {
+    const params = new URLSearchParams({ doc: docId, q });
+    return this.request<HeadingOption[]>(`/links/headings?${params}`);
+  }
+
+  /** Name a heading or line so a link can point at it. */
+  anchorLine(docId: string, index: number, text: string) {
+    return this.request<{ block_id: string }>(`/docs/${docId}/anchor`, {
+      method: "POST",
+      body: { index, text },
+    });
+  }
+
+  /** A heading's section of a page (or the page's first lines), to embed. */
+  docSection(docId: string, block?: string | null) {
+    const params = new URLSearchParams();
+    if (block) params.set("block", block);
+    return this.request<{
+      doc_id: string;
+      title: string;
+      block_id: string | null;
+      missing: boolean;
+      more: boolean;
+      blocks: DocBlock[];
+    }>(`/docs/${docId}/section${block ? `?${params}` : ""}`);
+  }
+
+  /** "Move to new page": these lines become a page, and a link takes their place. */
+  extractToPage(
+    docId: string,
+    input: { block_ids: string[]; title?: string; version: number },
+  ) {
+    return this.request<{ doc: Doc; source: Doc }>(`/docs/${docId}/extract`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /** "Merge into…": this page's lines go to the end of another. */
+  mergeDoc(docId: string, into: string, version: number) {
+    return this.request<{ doc: Doc; relinked: number }>(
+      `/docs/${docId}/merge`,
+      { method: "POST", body: { into, version } },
+    );
+  }
+
+  /** The headings you folded on a page, on every device (EDT-14). */
+  docFolds(docId: string) {
+    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`);
+  }
+  setDocFolds(docId: string, blockIds: string[]) {
+    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`, {
+      method: "PUT",
+      body: { block_ids: blockIds },
+    });
+  }
+
+  /** A page's other names, such as a course code (LNK-03). */
+  setDocAliases(docId: string, aliases: string[]) {
+    return this.request<{ aliases: string[] }>(`/docs/${docId}/aliases`, {
+      method: "PUT",
+      body: { aliases },
+    });
+  }
+
+  // ---- pictures and files in pages (EDT-01) ----
+  /**
+   * Add a picture or file to a page: its row, and where to send the bytes
+   * (a path on this API's base URL, good for ten minutes and one upload).
+   */
+  createPageFile(docId: string, input: PageFileInput) {
+    return this.request<PageFileUpload>(`/docs/${docId}/files`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Send a picture's or file's bytes to the link from `createPageFile`. */
+  async uploadPageFile(
+    uploadPath: string,
+    file: Blob | ArrayBuffer | Uint8Array,
+    contentType: string,
+  ): Promise<void> {
+    return this.uploadImportFile(uploadPath, file, contentType);
+  }
+  /** A picture or file, with a link to show or download it for an hour. */
+  pageFile(fileId: string) {
+    return this.request<PageFileLink>(`/docs/files/${fileId}`);
+  }
+  /** The pictures and files on a page. */
+  pageFiles(docId: string) {
+    return this.request<PageFile[]>(`/docs/${docId}/files`);
+  }
+  /** Delete a picture or file for good. */
+  deletePageFile(fileId: string) {
+    return this.request<void>(`/docs/files/${fileId}`, { method: "DELETE" });
+  }
+  /** How much of your space pictures and files take. */
+  filesUsage() {
+    return this.request<PageFilesUsage>("/files/usage");
+  }
+  /** The full address of a path on this API (a file's link, say). */
+  urlFor(path: string) {
+    return this.baseUrl + path;
   }
 
   /** Something was opened: it leads the quick switcher's recent list. */

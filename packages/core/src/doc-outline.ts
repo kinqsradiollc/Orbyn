@@ -93,6 +93,67 @@ export function moveSection(
   return [...rest.slice(0, at), ...section, ...rest.slice(at)];
 }
 
+// ---------------------------------------------------------------- folds ---
+
+/**
+ * Which lines are hidden by folded headings (EDT-14): everything in a
+ * folded heading's section but the heading itself. `folded` holds the
+ * headings' block ids; a fold on a line that isn't a heading is ignored.
+ */
+export function foldedLines(
+  blocks: DocBlock[],
+  folded: ReadonlySet<string>,
+): boolean[] {
+  const hidden = blocks.map(() => false);
+  if (!folded.size) return hidden;
+  blocks.forEach((b, i) => {
+    if (b.type !== "heading" || !b.id || !folded.has(b.id) || hidden[i]) return;
+    const { end } = sectionRange(blocks, i);
+    for (let n = i + 1; n < end; n++) hidden[n] = true;
+  });
+  return hidden;
+}
+
+/** Whether a heading has anything under it to fold away. */
+export const canFold = (blocks: DocBlock[], index: number): boolean => {
+  const b = blocks[index];
+  if (b?.type !== "heading") return false;
+  return sectionRange(blocks, index).end > index + 1;
+};
+
+/** The ids of every heading that can fold: "Collapse all". */
+export const foldableHeadings = (blocks: DocBlock[]): string[] =>
+  blocks.flatMap((b, i) =>
+    b.type === "heading" && b.id && canFold(blocks, i) ? [b.id] : [],
+  );
+
+/** The most folds kept for one page. */
+export const MAX_FOLDS = 200;
+
+// -------------------------------------------------------------- sections ---
+
+/**
+ * The lines a link or an embed to one line stands for: a heading's whole
+ * section, or the one line. Empty when the line isn't on the page.
+ */
+export function sectionOf(blocks: DocBlock[], blockId: string): DocBlock[] {
+  const at = blocks.findIndex((b) => b.id === blockId);
+  if (at < 0) return [];
+  const { start, end } = sectionRange(blocks, at);
+  return blocks.slice(start, end);
+}
+
+/**
+ * The lines "Move to new page" takes (ORG-05): a heading's whole section,
+ * or the one line, by index.
+ */
+export function movedRange(
+  blocks: DocBlock[],
+  index: number,
+): { start: number; end: number } {
+  return sectionRange(blocks, index);
+}
+
 /**
  * Everything the Info panel says about a page that isn't in the page itself
  * (`GET /docs/:id/info`). Viewers are live and come from presence; words
