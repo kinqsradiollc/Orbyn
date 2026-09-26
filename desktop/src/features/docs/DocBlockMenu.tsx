@@ -403,7 +403,10 @@ export function PeopleMenu({
       .filter(
         (p) =>
           !q ||
-          p.name.toLowerCase().split(/\s+/).some((w) => w.startsWith(q)) ||
+          p.name
+            .toLowerCase()
+            .split(/\s+/)
+            .some((w) => w.startsWith(q)) ||
           p.email.toLowerCase().startsWith(q),
       )
       .slice(0, 8);

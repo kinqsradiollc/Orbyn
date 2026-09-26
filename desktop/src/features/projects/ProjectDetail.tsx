@@ -85,8 +85,7 @@ const HISTORY_FIELDS: Record<string, string> = {
 function historyValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "Not set";
   if (key === "progress") return `${value}%`;
-  if (key === "assistant_off")
-    return value ? "Kept out" : "Can read it";
+  if (key === "assistant_off") return value ? "Kept out" : "Can read it";
   if (key === "done") return value ? "Yes" : "No";
   if (key === "due_on")
     return new Date(`${String(value)}T12:00:00`).toLocaleDateString([], {

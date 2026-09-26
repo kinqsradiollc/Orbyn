@@ -141,7 +141,10 @@ export function ProjectMilestones({
   };
 
   if (list === null || (!list.length && !canWrite)) return null;
-  const today = localDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const today = localDateKey(
+    new Date(),
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
   return (
     <section className="project-home-section project-milestones">
       <div className="project-milestones-head">
@@ -200,7 +203,8 @@ export function ProjectMilestones({
                   {m.planned_finish_at && m.status !== "done"
                     ? ` · planned finish ${new Date(m.planned_finish_at).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" })}`
                     : ""}
-                  {m.status === "not_planned" && m.needed_minutes > m.planned_minutes
+                  {m.status === "not_planned" &&
+                  m.needed_minutes > m.planned_minutes
                     ? ` · ${shortMinutes(m.needed_minutes - m.planned_minutes)} not planned`
                     : ""}
                 </small>
