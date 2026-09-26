@@ -998,6 +998,7 @@ export function RootScreen() {
                       void refresh({ animate: true }).catch(() => {})
                     }
                     quickAddPrefill={quickAddPrefill}
+                    onQuickAddPrefillUsed={() => setQuickAddPrefill(null)}
                     onAsk={(text) => {
                       setTab("AI");
                       void assistant.ask(text);

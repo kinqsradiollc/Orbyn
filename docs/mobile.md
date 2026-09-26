@@ -168,8 +168,8 @@ for the app id.
 
 **Copy link** is in the ⋯ of a page, task and project (expo-clipboard; a build made before it was
 added falls back to the share sheet). **Search** (Workspace → Search) finds pages, tasks and
-projects with the web's filters and operators (`tag:`, `project:`, `team:`, `is:`, `edited:`) and a
-one-line summary; with nothing typed it lists what you opened last on any device. **Settings →
+projects with the web's filters and operators (`tag:`, `project:`, `team:` — `team:personal` for
+what's in no team — `is:`, `edited:`) and a one-line summary; with nothing typed it lists what you opened last on any device. **Settings →
 Privacy → Security and data** shows the dated page the web has at `/security`.
 
 Long-pressing the app icon offers **New task, Today's agenda, Scan notes and Ask assistant**, each

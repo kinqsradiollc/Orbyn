@@ -25,6 +25,14 @@ import { findRoutes } from "./find.js";
  * for is usually the thing they were last working on.
  */
 
+/**
+ * The team filter: a team's id, or "personal" for what belongs to no team
+ * (team:personal). Compared as text so the one parameter can carry either.
+ */
+const TEAM = (alias: string, param: string) =>
+  `(${param}::text IS NULL OR (${param} = 'personal' AND ${alias}.team_id IS NULL)
+    OR ${alias}.team_id::text = ${param})`;
+
 /** Where the matched words are wrapped, for a client that wants to mark them. */
 const MARKS =
   "StartSel=[[, StopSel=]], MaxWords=26, MinWords=10, MaxFragments=1";
@@ -84,7 +92,7 @@ export async function searchPages(
           AND ($5::uuid IS NULL OR EXISTS (
                 SELECT 1 FROM doc_tags dt
                  WHERE dt.doc_id = d.id AND dt.tag_id = $5))
-          AND ($6::uuid IS NULL OR d.team_id = $6)
+          AND ${TEAM("d", "$6")}
           AND ($7::timestamptz IS NULL OR d.updated_at >= $7)
           AND ($9::uuid IS NULL OR d.item_id = $9 OR EXISTS (
                 SELECT 1 FROM doc_task_links l
@@ -111,8 +119,9 @@ export async function searchRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const q = searchQuery.parse(r.query ?? {});
     const db = reader(r.headers);
-    // Tasks take their own list: a placeholder a query never mentions has
-    // no type for Postgres to infer, and it refuses the whole statement.
+    // Tasks, records and projects share this list (tasks add their tag as
+    // $7): a placeholder a query never mentions has no type for Postgres to
+    // infer, and it refuses the whole statement.
     const itemParams = [
       u.id,
       q.q,
@@ -123,7 +132,8 @@ export async function searchRoutes(app: FastifyInstance) {
     ];
 
     const wantsDocs = !q.type || q.type === "doc";
-    const wantsItems = (!q.type || q.type === "task") && !q.tag;
+    // Tasks carry tags too (item_tags, from the same tags as pages).
+    const wantsItems = !q.type || q.type === "task";
     // Projects have no tags, kinds or a project of their own, so a search
     // narrowed by one of those isn't looking for a project.
     const wantsProjects =
@@ -160,11 +170,14 @@ export async function searchRoutes(app: FastifyInstance) {
               WHERE ${VISIBLE_ITEMS}
                 AND ($2::text = '' OR i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR i.project_id = $3)
-                AND ($4::uuid IS NULL OR i.team_id = $4)
+                AND ${TEAM("i", "$4")}
                 AND ($5::timestamptz IS NULL OR i.updated_at >= $5)
+                AND ($7::uuid IS NULL OR EXISTS (
+                      SELECT 1 FROM item_tags x
+                       WHERE x.item_id = i.id AND x.tag_id = $7))
               ORDER BY rank DESC, i.updated_at DESC
               LIMIT $6`,
-            itemParams,
+            [...itemParams, q.tag ?? null],
           )
         ).rows
       : [];
@@ -191,7 +204,7 @@ export async function searchRoutes(app: FastifyInstance) {
                 AND ($2::text = '' OR to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
                      OR similarity(w.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR w.project_id = $3)
-                AND ($4::uuid IS NULL OR w.team_id = $4)
+                AND ${TEAM("w", "$4")}
                 AND ($5::timestamptz IS NULL OR w.updated_at >= $5)
               ORDER BY rank DESC, w.updated_at DESC
               LIMIT $6`,
@@ -220,7 +233,7 @@ export async function searchRoutes(app: FastifyInstance) {
                 AND ($2::text = '' OR to_tsvector('english', p.name || ' ' || p.summary) @@ q.tsq
                      OR similarity(p.name, $2) > 0.25)
                 AND ($3::uuid IS NULL OR p.id = $3)
-                AND ($4::uuid IS NULL OR p.team_id = $4)
+                AND ${TEAM("p", "$4")}
                 AND ($5::timestamptz IS NULL OR p.updated_at >= $5)
               ORDER BY rank DESC, p.updated_at DESC
               LIMIT $6`,

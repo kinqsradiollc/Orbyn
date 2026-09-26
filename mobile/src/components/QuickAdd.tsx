@@ -27,6 +27,7 @@ import { useRun } from "../hooks/useRun";
 import { FadeIn, PressableScale } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { takeLinkPrefill, type LinkPrefill } from "../lib/link-prefill";
 
 const CHIP_ICONS: Record<QuickAddChip["kind"], IconName> = {
   kind: "sparkles",
@@ -89,13 +90,16 @@ export function QuickAdd({
   onCreated,
   onAsk,
   prefill,
+  onPrefillUsed,
 }: {
   userId?: string;
   /**
    * Words from a link (orbyn://add?text=…): put in the box to check and
    * add with a tap, never added on their own. A new `key` fills it again.
    */
-  prefill?: { text: string; key: number } | null;
+  prefill?: LinkPrefill | null;
+  /** The link's words are in the box: the caller lets them go. */
+  onPrefillUsed?: () => void;
   /** The item it made, or null when the text made a habit. */
   onCreated: (item: Item | null) => void;
   /** Hand the text to the assistant. */
@@ -106,9 +110,13 @@ export function QuickAdd({
   const [text, setText] = useState("");
   const field = useRef<TextInput>(null);
   useEffect(() => {
-    if (!prefill) return;
-    setText(prefill.text.slice(0, 500));
+    // Once per link, even if Today is left and opened again before the
+    // caller has let the words go.
+    const words = takeLinkPrefill(prefill);
+    if (words === null) return;
+    setText(words);
     field.current?.focus();
+    onPrefillUsed?.();
   }, [prefill?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const zone = deviceTimeZone();
   const parsed = useMemo(() => {

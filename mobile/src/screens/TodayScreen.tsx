@@ -55,6 +55,7 @@ export function TodayScreen({
   onQuickAdded,
   onAsk,
   quickAddPrefill,
+  onQuickAddPrefillUsed,
   onShowAll,
   onFocus,
   onOpenById,
@@ -81,6 +82,8 @@ export function TodayScreen({
   onQuickAdded: (item: Item | null) => void;
   /** Words from an add link, put in quick add to confirm. */
   quickAddPrefill?: { text: string; key: number } | null;
+  /** Quick add took the link's words: they are let go. */
+  onQuickAddPrefillUsed?: () => void;
   /** Hand quick-add text to the assistant instead. */
   onAsk: (text: string) => void;
   /** Jumps to the assistant and asks it to plan the day. */
@@ -152,6 +155,7 @@ export function TodayScreen({
         onCreated={onQuickAdded}
         onAsk={onAsk}
         prefill={quickAddPrefill}
+        onPrefillUsed={onQuickAddPrefillUsed}
       />
       <View style={s.stats}>
         {stats.map((stat, n) => (

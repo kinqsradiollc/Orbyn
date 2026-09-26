@@ -1028,10 +1028,12 @@ as it stands; anything that does not match comes back in `not_found` rather than
 `type` is `doc`, `task`, `project` or `record`; leave it out for pages, tasks and projects, ranked
 together on one scale (projects match on their name and summary, and aren't included when `tag`,
 `kind` or `project` narrows the search). `q` may be left out when another filter is set: the search
-then lists what fits, newest first (the filter chips use this: "Pages tagged physics"); with nothing
-at all to go on it answers 422. `project` limits results to that project's pages and tasks, and adds its work records
+then lists what fits, newest first (the filter chips use this: "Pages and tasks tagged physics");
+with nothing at all to go on it answers 422. `tag` narrows pages (`doc_tags`) and tasks (`item_tags`),
+and leaves projects out. `team` is a team's id, or `personal` for what belongs to no team (the
+`team:personal` operator). `project` limits results to that project's pages and tasks, and adds its work records
 (decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
-searched with `type=record`. Every hit still passes the caller's normal visibility check, and
+searched with `type=record`. ⌘K and the phone's Search open a record hit's project. Every hit still passes the caller's normal visibility check, and
 pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
 Renaming a project reindexes its pages, which are found by their project's name. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
 body D — and on the **letters**

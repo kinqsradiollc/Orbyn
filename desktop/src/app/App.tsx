@@ -3,7 +3,6 @@ import { Orbit, X } from "lucide-react";
 import {
   deadlineOf,
   hasSystemPermission,
-  parseAppLink,
   hasTeamPermission,
   planDayPrompt,
   type Item,
@@ -28,12 +27,13 @@ import {
   deepLinkOf,
   deepLinkPath,
   focusDocBlock,
-  fromAppLink,
+  deepLinkOfUrl,
   rememberDeepLink,
   takeDeepLink,
   type DeepLink,
 } from "./deep-link";
 import "./deep-link.css";
+import { commandForKey, type KeyedCommand } from "./commands";
 import { usePlannedData } from "../hooks/usePlannedData";
 import { PlanningProviders } from "./PlanningProviders";
 import { Sidebar } from "../components/Sidebar";
@@ -194,8 +194,11 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   /** Words ⌘K opens with (a quick-add or search link). */
   const [commandQuery, setCommandQuery] = useState("");
-  const openCommand = (words = "") => {
+  /** The words came from an add link: making them leads, to confirm. */
+  const [commandAdd, setCommandAdd] = useState(false);
+  const openCommand = (words = "", add = false) => {
     setCommandQuery(words);
+    setCommandAdd(add);
     setCommandOpen(true);
   };
   /** Bumped to open "New page from template" or a new project from ⌘K. */
@@ -272,7 +275,10 @@ export function App() {
     } else if (link.kind === "add" || link.kind === "search")
       // Words to add open Quick add filled in, to confirm: never added
       // silently, whoever sent the link.
-      openCommand(link.kind === "add" ? link.text : link.q);
+      openCommand(
+        link.kind === "add" ? link.text : link.q,
+        link.kind === "add",
+      );
     else if (link.kind === "review") setView("Notifications");
     else setView("Overview");
   };
@@ -280,8 +286,7 @@ export function App() {
   // out, a link waits for sign-in, like a web link does.
   const openLinkRef = useRef<(url: string) => void>(() => {});
   openLinkRef.current = (url) => {
-    const app = parseAppLink(url);
-    const link = app && fromAppLink(app);
+    const link = deepLinkOfUrl(url);
     if (!link) return;
     if (token) openDeepLink(link);
     else rememberDeepLink(link);
@@ -397,31 +402,34 @@ export function App() {
   );
   useEffect(() => {
     if (!token || isPublicBooking || !inShell) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
+    // The keys come from the one command list (commands.ts): what a key
+    // does is looked up there, then run here.
+    const run: Record<KeyedCommand, () => void> = {
+      "app.search": () => {
         setCommandQuery("");
+        setCommandAdd(false);
         setCommandOpen((open) => !open);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
-        e.preventDefault();
-        toggleRail();
-        return;
-      }
+      },
+      "app.sidebar": () => toggleRail(),
+      "app.shortcuts": () => setShortcutsOpen(true),
+      "new.task": () => newItem(),
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const command = commandForKey(e);
+      const action = command && run[command.id as KeyedCommand];
+      if (!command || !action) return;
+      // ⌘ and Ctrl shortcuts work while typing; single keys don't, and
+      // wait while a dialog or popover is open.
+      const withMod = command.keys?.[0] === "mod";
       if (
-        e.defaultPrevented ||
-        isTyping(e) ||
-        document.querySelector('[aria-modal="true"], .popover')
+        !withMod &&
+        (e.defaultPrevented ||
+          isTyping(e) ||
+          document.querySelector('[aria-modal="true"], .popover'))
       )
         return;
-      if (e.key === "?") {
-        e.preventDefault();
-        setShortcutsOpen(true);
-      } else if (e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        newItem();
-      }
+      e.preventDefault();
+      action();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -1224,6 +1232,7 @@ export function App() {
             isAdmin={isAdmin}
             view={view}
             initialQuery={commandQuery}
+            initialAdd={commandAdd}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
             onOpenItemById={openItemById}

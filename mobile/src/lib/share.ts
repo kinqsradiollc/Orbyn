@@ -71,9 +71,15 @@ export async function copyLink(target: LinkTarget, title: string) {
     return;
   }
   const clipboard = nativeClipboard();
-  if (!clipboard) return shareLink(target, title);
-  await clipboard.setStringAsync(url);
-  showToast({ text: "Link copied" });
+  try {
+    if (!clipboard) return await shareLink(target, title);
+    await clipboard.setStringAsync(url);
+    showToast({ text: "Link copied" });
+  } catch {
+    // Callers don't wait for this (`void copyLink(…)`), so a failure is
+    // said here rather than left as an unhandled rejection.
+    showToast({ text: "Couldn't copy the link" });
+  }
 }
 
 /** A page as a Markdown or PDF file, handed to the share sheet. */

@@ -55,6 +55,7 @@ let taskId = "";
 let projectId = "";
 let teamProjectId = "";
 let privateId = "";
+let crewId = "";
 
 before(async () => {
   await migrate();
@@ -74,6 +75,7 @@ before(async () => {
     })
   ).json().id;
   const team = (await call(mate, "POST", "/teams", { name: "Crew" })).json();
+  crewId = team.id;
   await call(mate, "POST", `/teams/${team.id}/members`, {
     email: me.email,
     role: "member",
@@ -302,6 +304,58 @@ test("a search with only filters lists what fits, newest first", async () => {
   // Nothing to go on at all is still a mistake.
   assert.equal((await call(me, "GET", "/search")).statusCode, 422);
   assert.equal((await call(me, "GET", "/search?q=%20")).statusCode, 422);
+});
+
+test("team=personal keeps what belongs to no team", async () => {
+  const teamPage = (
+    await call(me, "POST", "/docs", {
+      title: "Kinetics crew notes",
+      team_id: crewId,
+    })
+  ).json().id;
+  const personal = ids(
+    (await call(me, "GET", "/search?q=kinetics&team=personal")).json(),
+  );
+  const inCrew = ids(
+    (await call(me, "GET", `/search?type=doc&team=${crewId}`)).json(),
+  );
+  assert.ok(
+    ids((await call(me, "GET", "/search?q=kinetics")).json()).includes(
+      teamPage,
+    ),
+  );
+  assert.ok(!personal.includes(teamPage), "a team page isn't personal");
+  assert.ok(inCrew.includes(teamPage));
+  assert.ok(!inCrew.includes(pageId));
+  const mine = ids((await call(me, "GET", "/search?team=personal")).json());
+  assert.ok(mine.includes(pageId) && mine.includes(taskId));
+  assert.ok(mine.includes(projectId) && !mine.includes(teamProjectId));
+  assert.ok(!mine.includes(teamPage));
+  assert.equal(
+    (await call(me, "GET", "/search?team=someone")).statusCode,
+    422,
+    "only an id or personal",
+  );
+});
+
+test("a tag finds tagged tasks as well as pages", async () => {
+  const tag = (await call(me, "POST", "/tags", { name: "physics-lab" })).json();
+  const tagged = (
+    await call(me, "POST", "/items", {
+      title: "Write up the pendulum",
+      tag_ids: [tag.id],
+    })
+  ).json().id;
+  const hits = (await call(me, "GET", `/search?tag=${tag.id}`)).json();
+  assert.deepEqual(ids(hits), [tagged]);
+  assert.deepEqual(
+    ids((await call(me, "GET", `/search?tag=${tag.id}&type=task`)).json()),
+    [tagged],
+  );
+  assert.deepEqual(
+    (await call(me, "GET", `/search?tag=${tag.id}&type=doc`)).json(),
+    [],
+  );
 });
 
 test("the phone link files are served, empty until the app ids are set", async () => {

@@ -26,7 +26,7 @@ export type SearchFilters = {
   project: string | null;
   /** A tag's name. */
   tag: string | null;
-  /** A team's name, or "personal". */
+  /** A team's name, or "personal" for what isn't in any team. */
   team: string | null;
   date: SearchDate | null;
 };
@@ -147,11 +147,11 @@ const DATE_PHRASES: Record<SearchDate, string> = {
 
 /**
  * One plain sentence for a search: "Pages tagged physics in Lab, changed in
- * the past week, matching “forces”". Tags are on pages only, so a tag with
- * no kind chosen reads as pages.
+ * the past week, matching “forces”". Pages and tasks carry tags, projects
+ * don't, so a tag with no kind chosen reads as pages and tasks.
  */
 export function searchSummary(f: SearchFilters): string {
-  const type = f.type ?? (f.tag ? "doc" : null);
+  const type = f.type;
   const subject =
     type === "doc"
       ? "Pages"
@@ -159,14 +159,16 @@ export function searchSummary(f: SearchFilters): string {
         ? "Tasks"
         : type === "project"
           ? "Projects"
-          : "Pages, tasks and projects";
+          : f.tag
+            ? "Pages and tasks"
+            : "Pages, tasks and projects";
   const parts: string[] = [subject];
   if (f.tag) parts.push(`tagged ${f.tag}`);
   if (f.project && type !== "project")
     parts.push(`in the project ${f.project}`);
   if (f.team)
     parts.push(
-      f.team.toLowerCase() === "personal"
+      f.team.trim().toLowerCase() === PERSONAL_SPACE.id
         ? "in your personal space"
         : `in the team ${f.team}`,
     );
@@ -202,4 +204,45 @@ export function findNamed<T extends Named>(
     x.name.trim().toLowerCase().startsWith(want),
   );
   return starts.length === 1 ? starts[0] : null;
+}
+
+/**
+ * `team:personal`: what belongs to no team. The server's /search takes
+ * "personal" as the team for it.
+ */
+export const PERSONAL_SPACE = { id: "personal", name: "Personal" } as const;
+
+/**
+ * The team a search's `team:` names: a team called that first, then the
+ * personal space for "personal", then the only team whose name starts with
+ * it. Null when none fits.
+ */
+export function findSearchTeam<T extends Named>(
+  teams: readonly T[],
+  name: string | null,
+): T | typeof PERSONAL_SPACE | null {
+  if (!name) return null;
+  const want = name.trim().toLowerCase();
+  if (!want) return null;
+  const exact = teams.find((t) => t.name.trim().toLowerCase() === want);
+  if (exact) return exact;
+  if (want === PERSONAL_SPACE.id) return PERSONAL_SPACE;
+  return findNamed(teams, name);
+}
+
+/**
+ * What choosing a search hit opens: the page, task or project itself, or,
+ * for a work record (a decision, a promise), the project it belongs to.
+ * Null when there is nothing to open.
+ */
+export function searchHitTarget(hit: {
+  type: string;
+  id: string;
+  project_id: string | null;
+}): { type: "doc" | "task" | "project"; id: string } | null {
+  if (hit.type === "doc" || hit.type === "task" || hit.type === "project")
+    return { type: hit.type, id: hit.id };
+  if (hit.type === "record" && hit.project_id)
+    return { type: "project", id: hit.project_id };
+  return null;
 }

@@ -348,3 +348,89 @@ export const commandShortcuts = (mac: boolean) =>
     keys: keysFor(c, mac),
     label: c.label,
   }));
+
+// -------------------------------------------------------------- keyboard
+
+/**
+ * The commands that have keys, which the app's key handler runs. Every
+ * command with `keys` must be here (a test checks), so a key in the list
+ * always does something.
+ */
+export const KEYED_COMMANDS = [
+  "app.search",
+  "app.sidebar",
+  "app.shortcuts",
+  "new.task",
+] as const;
+export type KeyedCommand = (typeof KEYED_COMMANDS)[number];
+
+/** A key press, as the handler sees it. */
+export type KeyPress = {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+};
+
+/**
+ * The command a key press runs anywhere in the app, from the keys written
+ * in the list above (so changing a command's keys changes what the key
+ * does). "mod" is ⌘ or Ctrl; a single key needs no modifier held.
+ */
+export function commandForKey(e: KeyPress): CommandDef | null {
+  const mod = e.metaKey || e.ctrlKey;
+  for (const c of COMMANDS) {
+    const keys = c.keys;
+    if (!keys?.length) continue;
+    const wantsMod = keys[0] === "mod";
+    const key = keys[keys.length - 1];
+    if (keys.length !== (wantsMod ? 2 : 1)) continue;
+    if (wantsMod !== mod || e.altKey) continue;
+    if (e.key.toLowerCase() === key.toLowerCase()) return c;
+  }
+  return null;
+}
+
+// ------------------------------------------------------------- ⌘K rows
+
+/**
+ * Whether ⌘K's first row makes what was typed: only when an add link (or a
+ * share) opened the bar with these words, never a search link, so Enter on
+ * a search link opens what was found rather than creating something.
+ */
+export const linkAddsFirst = (
+  opening: { words: string; add: boolean },
+  typed: string,
+) => opening.add && !!opening.words.trim() && typed === opening.words.trim();
+
+/**
+ * ⌘K's rows in order: a question asks the assistant first; text quick add
+ * understood (or words an add link brought) makes the item first; otherwise
+ * what was found leads and making or asking waits at the end.
+ */
+export function arrangeBarRows<T>(
+  rows: {
+    ask: T | null;
+    quick: T | null;
+    leading: T[];
+    found: T[];
+    events: T[];
+    trailing: T[];
+  },
+  how: { question: boolean; quickFirst: boolean; addFirst: boolean },
+): T[] {
+  const { ask, quick } = rows;
+  const quickLeads = !!quick && (how.quickFirst || how.addFirst);
+  const askLeads = !!ask && how.question && !how.addFirst;
+  return [
+    ...(ask && askLeads ? [ask] : []),
+    ...(quick && quickLeads ? [quick] : []),
+    ...rows.leading,
+    ...rows.found,
+    ...rows.events,
+    ...rows.trailing,
+    ...(quick && !quickLeads ? [quick] : []),
+    ...(ask && !askLeads ? [ask] : []),
+  ];
+}

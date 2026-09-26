@@ -41,11 +41,14 @@ import {
   describeRrule,
   editedSince,
   findNamed,
+  findSearchTeam,
   formatSearch,
   hasSearchFilters,
   parseQuickAdd,
   parseSearch,
+  searchHitTarget,
   searchSummary,
+  PERSONAL_SPACE,
   SEARCH_DATE_CHIPS,
   SEARCH_KIND_CHIPS,
   snippetRuns,
@@ -75,6 +78,8 @@ import {
   orderCommands,
   readMemory,
   recordCommand,
+  arrangeBarRows,
+  linkAddsFirst,
   togglePinned,
   type CommandDef,
   type CommandIcon,
@@ -104,6 +109,11 @@ type Props = {
   view?: View;
   /** Words to start with (a quick-add link, orbyn://search). */
   initialQuery?: string;
+  /**
+   * The words came from an add or share link: making them leads, to
+   * confirm with Enter. A search link's words only look for things.
+   */
+  initialAdd?: boolean;
   onClose: () => void;
   onOpenItem: (item: Item) => void;
   /** Opens a task or event by id (from the switcher). */
@@ -281,6 +291,7 @@ export function CommandBar({
   isAdmin = false,
   view,
   initialQuery = "",
+  initialAdd = false,
   onClose,
   onOpenItem,
   onOpenItemById,
@@ -377,7 +388,7 @@ export function CommandBar({
   const named = {
     project: findNamed(projects, filters.project),
     tag: findNamed(tags, filters.tag),
-    team: findNamed(teams, filters.team),
+    team: findSearchTeam(teams, filters.team),
   };
   const unknown =
     filters.project && !named.project
@@ -609,17 +620,24 @@ export function CommandBar({
     run: () => openFound(h.type, h.id),
   }));
 
-  const searchRows = (searched ?? []).map((h): Command => ({
-    id: `search-${h.type}-${h.id}`,
-    label: h.title || "Untitled",
-    hint:
-      plainSnippet(h.snippet) ||
-      (h.project_name && h.type !== "project" ? h.project_name : undefined),
-    icon: TYPE_ICONS[h.type] ?? Search,
-    group: "Results",
-    target: targetOf(h.type, h.id),
-    run: () => openFound(h.type, h.id, h.block_id),
-  }));
+  // A work record (a decision, a promise) opens its project.
+  const searchRows = (searched ?? []).flatMap((h): Command[] => {
+    const to = searchHitTarget(h);
+    if (!to) return [];
+    return [
+      {
+        id: `search-${h.type}-${h.id}`,
+        label: h.title || "Untitled",
+        hint:
+          plainSnippet(h.snippet) ||
+          (h.project_name && h.type !== "project" ? h.project_name : undefined),
+        icon: TYPE_ICONS[h.type] ?? Search,
+        group: "Results",
+        target: targetOf(to.type, to.id),
+        run: () => openFound(to.type, to.id, h.block_id),
+      },
+    ];
+  });
 
   const eventRows = events.map((e, n): Command => ({
     id: "event-" + n,
@@ -680,21 +698,22 @@ export function CommandBar({
   const wordCount = q.split(/\s+/).filter(Boolean).length;
   const question = /\?$/.test(q) || (!chips.length && wordCount >= 4);
   const quickFirst = !!quickCommand && !question && chips.length > 0;
-  // A link that brought words to add puts making them first, to confirm.
-  const addFirst =
-    !!quickCommand && !!initialQuery && q === initialQuery.trim();
+  // A link that brought words to add puts making them first, to confirm;
+  // a search link never does.
+  const addFirst = linkAddsFirst({ words: initialQuery, add: initialAdd }, q);
   const commands: Command[] = filtering
     ? searchRows
-    : [
-        ...(askCommand && question && !addFirst ? [askCommand] : []),
-        ...(quickCommand && (quickFirst || addFirst) ? [quickCommand] : []),
-        ...leading,
-        ...foundRows,
-        ...eventRows,
-        ...trailing,
-        ...(quickCommand && !quickFirst && !addFirst ? [quickCommand] : []),
-        ...(askCommand && (!question || addFirst) ? [askCommand] : []),
-      ];
+    : arrangeBarRows(
+        {
+          ask: askCommand,
+          quick: quickCommand,
+          leading,
+          found: foundRows,
+          events: eventRows,
+          trailing,
+        },
+        { question, quickFirst, addFirst },
+      );
   const current = Math.min(active, Math.max(0, commands.length - 1));
 
   /** Shift+Enter: make what was typed, a task on the task screens. */
@@ -808,12 +827,25 @@ export function CommandBar({
               setFilter({ tag: named.tag?.id === t.id ? null : t.name }),
           }))
         : picking?.kind === "team"
-          ? teams.map((t) => ({
-              label: t.name,
-              on: named.team?.id === t.id,
-              pick: () =>
-                setFilter({ team: named.team?.id === t.id ? null : t.name }),
-            }))
+          ? [
+              {
+                label: "Personal (no team)",
+                on: named.team?.id === PERSONAL_SPACE.id,
+                pick: () =>
+                  setFilter({
+                    team:
+                      named.team?.id === PERSONAL_SPACE.id
+                        ? null
+                        : PERSONAL_SPACE.id,
+                  }),
+              },
+              ...teams.map((t) => ({
+                label: t.name,
+                on: named.team?.id === t.id,
+                pick: () =>
+                  setFilter({ team: named.team?.id === t.id ? null : t.name }),
+              })),
+            ]
           : picking?.kind === "date"
             ? SEARCH_DATE_CHIPS.map((d) => ({
                 label: d.label,
@@ -973,7 +1005,7 @@ export function CommandBar({
               ))}
               {dropChip("project", "Project", named.project?.name ?? null)}
               {dropChip("tag", "Tag", named.tag?.name ?? null)}
-              {teams.length > 0 &&
+              {(teams.length > 0 || !!filters.team) &&
                 dropChip("team", "Team", named.team?.name ?? null)}
               {dropChip(
                 "date",

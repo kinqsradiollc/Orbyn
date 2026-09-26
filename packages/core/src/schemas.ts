@@ -544,7 +544,8 @@ export const searchQuery = z
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),
-    team: z.uuid().optional(),
+    /** A team's id, or "personal" for what belongs to no team. */
+    team: z.union([z.uuid(), z.literal("personal")]).optional(),
     updated_after: z.iso.datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
   })

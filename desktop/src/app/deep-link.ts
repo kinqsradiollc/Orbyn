@@ -6,7 +6,7 @@
  *   /app/project/<id>         a project
  *   /app/today                the Today list (on Overview)
  *   /app/view/<id>            (reserved: saved views arrive later)
- *   /app/review/<id>          (reserved: the Review inbox arrives later)
+ *   /app/review[/<id>]        the Review inbox (Notifications until it lands)
  *   /app/add?text=<words>     Quick add, filled in, to confirm (never adds)
  *   /app/search?q=<words>     ⌘K with the words typed
  *
@@ -19,7 +19,7 @@
  * followed, so ?next= can't send anyone elsewhere.
  */
 
-import type { AppLink } from "@orbyn/core";
+import { parseAppLink, type AppLink } from "@orbyn/core";
 
 export type DeepLink =
   | { kind: "task"; id: string }
@@ -27,7 +27,7 @@ export type DeepLink =
   | { kind: "project"; id: string }
   | { kind: "today" }
   | { kind: "view"; id: string }
-  | { kind: "review"; id: string }
+  | { kind: "review"; id: string | null }
   | { kind: "add"; text: string }
   | { kind: "search"; q: string };
 
@@ -50,6 +50,7 @@ export function deepLinkOf(
   search = "",
 ): DeepLink | null {
   if (/^\/app\/today\/?$/i.test(path)) return { kind: "today" };
+  if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };
   if (/^\/app\/add\/?$/i.test(path))
     return { kind: "add", text: wordsIn(search, "text", 500) };
   if (/^\/app\/search\/?$/i.test(path))
@@ -76,6 +77,7 @@ export function deepLinkPath(link: DeepLink): string {
       : "/app/search";
   if (link.kind === "doc")
     return `/app/doc/${link.id}${link.block ? `#${link.block}` : ""}`;
+  if (link.kind === "review" && !link.id) return "/app/review";
   return `/app/${link.kind}/${link.id}`;
 }
 
@@ -152,19 +154,20 @@ export function focusDocBlock(blockId: string, tries = 40) {
  * An orbyn:// link (or a web one) as the web app's link, for the desktop
  * app: the same things open the same way. The phone's own links (the
  * agenda, the camera, the assistant) open their nearest screen here.
+ * `hash` is the link's #line, for a page opened at a line.
  */
-export function fromAppLink(link: AppLink): DeepLink | null {
+export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
   switch (link.kind) {
     case "task":
     case "project":
       return { kind: link.kind, id: link.id };
     case "doc":
-      return { kind: "doc", id: link.id, block: null };
+      return { kind: "doc", id: link.id, block: BLOCK.exec(hash)?.[1] ?? null };
     case "today":
     case "agenda":
       return { kind: "today" };
     case "review":
-      return link.id ? { kind: "review", id: link.id } : { kind: "today" };
+      return { kind: "review", id: link.id };
     case "add":
       return { kind: "add", text: link.text ?? "" };
     case "search":
@@ -177,4 +180,17 @@ export function fromAppLink(link: AppLink): DeepLink | null {
     default:
       return null;
   }
+}
+
+/** A whole orbyn:// (or web) address as the link it opens, #line and all. */
+export function deepLinkOfUrl(url: string): DeepLink | null {
+  const app = parseAppLink(url);
+  if (!app) return null;
+  let hash = "";
+  try {
+    hash = new URL(url).hash;
+  } catch {
+    // parseAppLink read it, so this can't fail; no line if it does.
+  }
+  return fromAppLink(app, hash);
 }

@@ -2,26 +2,36 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EMPTY_SEARCH,
+  PERSONAL_SPACE,
   SECURITY_PAGE,
   SECURITY_PAGE_UPDATED,
   editedSince,
   findNamed,
+  findSearchTeam,
   formatSearch,
   hasSearchFilters,
   parseAppLink,
   parseSearch,
+  searchHitTarget,
+  searchQuery,
   searchSummary,
   securityPageDate,
 } from "@orbyn/core";
 import {
   deepLinkOf,
+  deepLinkOfUrl,
   deepLinkPath,
   fromAppLink,
   safeNext,
 } from "../../desktop/src/app/deep-link.ts";
+import { prefillTaker } from "../../mobile/src/lib/link-prefill.ts";
 import {
   COMMANDS,
   EMPTY_MEMORY,
+  KEYED_COMMANDS,
+  arrangeBarRows,
+  commandForKey,
+  linkAddsFirst,
   RECENT_COMMANDS,
   commandMatches,
   commandShortcuts,
@@ -88,7 +98,7 @@ test("filters written back read the same", () => {
 test("the summary is one plain sentence", () => {
   assert.equal(
     searchSummary(parseSearch("forces tag:physics edited:week")),
-    "Pages tagged physics, changed in the past week, matching “forces”",
+    "Pages and tasks tagged physics, changed in the past week, matching “forces”",
   );
   assert.equal(
     searchSummary(parseSearch("is:task project:Thesis team:Lab")),
@@ -103,6 +113,48 @@ test("the summary is one plain sentence", () => {
     searchSummary(parseSearch("team:personal")),
     "Pages, tasks and projects in your personal space",
   );
+  assert.equal(
+    searchSummary(parseSearch("is:task tag:lab")),
+    "Tasks tagged lab",
+  );
+});
+
+test("team:personal names the personal space; a team called that wins", () => {
+  const teams = [
+    { id: "t1", name: "Lab" },
+    { id: "t2", name: "Personal trainers" },
+  ];
+  assert.deepEqual(findSearchTeam(teams, "personal"), PERSONAL_SPACE);
+  assert.deepEqual(findSearchTeam(teams, " Personal "), PERSONAL_SPACE);
+  assert.equal(findSearchTeam(teams, "lab")?.id, "t1");
+  assert.equal(findSearchTeam(teams, "personal t")?.id, "t2");
+  assert.equal(findSearchTeam(teams, "nobody"), null);
+  assert.equal(findSearchTeam(teams, null), null);
+  const own = [{ id: "t3", name: "Personal" }];
+  assert.equal(findSearchTeam(own, "personal")?.id, "t3");
+  // The server takes the same word for it.
+  assert.equal(searchQuery.parse({ team: "personal" }).team, "personal");
+  assert.throws(() => searchQuery.parse({ team: "lab" }));
+});
+
+test("choosing a search hit opens it, and a record opens its project", () => {
+  const hit = (type: string, project_id: string | null = null) => ({
+    type,
+    id: "h1",
+    project_id,
+  });
+  assert.deepEqual(searchHitTarget(hit("doc")), { type: "doc", id: "h1" });
+  assert.deepEqual(searchHitTarget(hit("task")), { type: "task", id: "h1" });
+  assert.deepEqual(searchHitTarget(hit("project")), {
+    type: "project",
+    id: "h1",
+  });
+  assert.deepEqual(searchHitTarget(hit("record", "p9")), {
+    type: "project",
+    id: "p9",
+  });
+  assert.equal(searchHitTarget(hit("record")), null);
+  assert.equal(searchHitTarget(hit("folder")), null);
 });
 
 test("dates count back from now", () => {
@@ -168,6 +220,68 @@ test("shortcuts come from the list, for this computer", () => {
   const sheet = commandShortcuts(true);
   assert.ok(sheet.some((s) => s.label === "New task" && s.keys[0] === "N"));
   assert.ok(sheet.every((s) => s.keys.length > 0));
+});
+
+test("the app's keys are looked up in the list", () => {
+  const press = (key: string, mod = false) =>
+    commandForKey({ key, metaKey: mod, ctrlKey: false })?.id ?? null;
+  assert.equal(press("k", true), "app.search");
+  assert.equal(press("K", true), "app.search");
+  assert.equal(
+    commandForKey({ key: "k", metaKey: false, ctrlKey: true })?.id,
+    "app.search",
+  );
+  assert.equal(press("\\", true), "app.sidebar");
+  assert.equal(press("?"), "app.shortcuts");
+  assert.equal(press("n"), "new.task");
+  assert.equal(press("k"), null, "K alone does nothing");
+  assert.equal(press("n", true), null, "⌘N is the browser's");
+  // Every command with keys has something to run in the handler.
+  assert.deepEqual(
+    COMMANDS.filter((c) => c.keys?.length)
+      .map((c) => c.id)
+      .sort(),
+    [...KEYED_COMMANDS].sort(),
+  );
+});
+
+test("an add link leads ⌘K with making it; a search link never does", () => {
+  const rows = {
+    ask: "ask",
+    quick: "create",
+    leading: [],
+    found: ["found"],
+    events: [],
+    trailing: ["command"],
+  };
+  const how = (addFirst: boolean) => ({
+    question: false,
+    quickFirst: false,
+    addFirst,
+  });
+  // orbyn://add?text=milk: Create leads, to confirm with Enter.
+  const add = linkAddsFirst({ words: "milk", add: true }, "milk");
+  assert.equal(add, true);
+  assert.equal(arrangeBarRows(rows, how(add))[0], "create");
+  // orbyn://search?q=milk: what was found leads.
+  const search = linkAddsFirst({ words: "milk", add: false }, "milk");
+  assert.equal(search, false);
+  assert.equal(arrangeBarRows(rows, how(search))[0], "found");
+  assert.equal(
+    arrangeBarRows({ ...rows, found: [] }, how(search))[0],
+    "command",
+  );
+  // Changed words are the person's own again.
+  assert.equal(linkAddsFirst({ words: "milk", add: true }, "milk fri"), false);
+  assert.equal(linkAddsFirst({ words: "", add: true }, ""), false);
+  // A question still asks first, unless a link brought words to add.
+  const asked = arrangeBarRows(rows, { ...how(false), question: true });
+  assert.equal(asked[0], "ask");
+  assert.equal(asked.at(-1), "create");
+  assert.equal(
+    arrangeBarRows(rows, { ...how(true), question: true })[0],
+    "create",
+  );
 });
 
 test("recent commands come first and pinned ones stay on top", () => {
@@ -259,6 +373,14 @@ test("web links to add or search open a filled-in bar, and survive sign-in", () 
     kind: "search",
     q: "tag:physics",
   });
+  // The Review inbox, with or without a change named.
+  assert.deepEqual(deepLinkOf("/app/review"), { kind: "review", id: null });
+  assert.deepEqual(deepLinkOf("/app/review/"), { kind: "review", id: null });
+  assert.equal(deepLinkPath({ kind: "review", id: null }), "/app/review");
+  assert.deepEqual(safeNext("?next=%2Fapp%2Freview"), {
+    kind: "review",
+    id: null,
+  });
   const add = { kind: "add" as const, text: "Call Anna 3pm" };
   const kept = deepLinkPath(add);
   assert.equal(kept, "/app/add?text=Call+Anna+3pm");
@@ -279,6 +401,24 @@ test("the desktop app opens orbyn:// links as the web app does", () => {
   assert.deepEqual(open(`orbyn://project/${id}`), { kind: "project", id });
   assert.deepEqual(open("orbyn://today"), { kind: "today" });
   assert.deepEqual(open(`orbyn://review/${id}`), { kind: "review", id });
+  assert.deepEqual(open("orbyn://review"), { kind: "review", id: null });
+  // A link to a line opens the page there.
+  assert.deepEqual(deepLinkOfUrl(`orbyn://doc/${id}#b-12`), {
+    kind: "doc",
+    id,
+    block: "b-12",
+  });
+  assert.deepEqual(deepLinkOfUrl(`https://orbyn.dev/app/doc/${id}#b-12`), {
+    kind: "doc",
+    id,
+    block: "b-12",
+  });
+  assert.deepEqual(deepLinkOfUrl(`orbyn://doc/${id}#not%20a%20line`), {
+    kind: "doc",
+    id,
+    block: null,
+  });
+  assert.equal(deepLinkOfUrl("javascript:alert(1)"), null);
   // Words to add fill Quick add; nothing is added by the link itself.
   assert.deepEqual(open("orbyn://add?text=Lunch%20fri%201pm"), {
     kind: "add",
@@ -288,6 +428,18 @@ test("the desktop app opens orbyn:// links as the web app does", () => {
   assert.equal(open("orbyn://scan"), null, "the phone's camera stays there");
   assert.equal(open("javascript:alert(1)"), null);
   assert.equal(open("orbyn://task/../../etc"), null);
+});
+
+test("an add link fills the phone's quick add once, not on every return to Today", () => {
+  const take = prefillTaker();
+  const link = { text: "Buy milk fri", key: 1 };
+  assert.equal(take(link), "Buy milk fri", "Today opens with the words");
+  // Leaving Today and coming back mounts quick add again with the same link.
+  assert.equal(take(link), null);
+  assert.equal(take(null), null, "once let go there is nothing");
+  assert.equal(take(link), null);
+  // A new link fills it again, cut to the box's length.
+  assert.equal(take({ text: "x".repeat(900), key: 2 })?.length, 500);
 });
 
 test("the Security and data page is dated and plain", () => {

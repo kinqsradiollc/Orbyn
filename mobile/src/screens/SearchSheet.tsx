@@ -10,9 +10,12 @@ import {
 import {
   editedSince,
   findNamed,
+  findSearchTeam,
+  PERSONAL_SPACE,
   formatSearch,
   hasSearchFilters,
   parseSearch,
+  searchHitTarget,
   searchSummary,
   SEARCH_DATE_CHIPS,
   SEARCH_KIND_CHIPS,
@@ -36,8 +39,11 @@ import { colors, fonts, radii, themed } from "../theme";
 /** One thing found, from the recent list or a search. */
 type Row = {
   key: string;
+  /** What choosing it opens (a work record opens its project). */
   id: string;
   type: string;
+  /** What it is, for its icon. */
+  icon: string;
   title: string;
   hint: string;
   blockId: string | null;
@@ -122,7 +128,7 @@ function Body({
   const named = {
     project: findNamed(projects, filters.project),
     tag: findNamed(tags, filters.tag),
-    team: findNamed(teams, filters.team),
+    team: findSearchTeam(teams, filters.team),
   };
   const unknown =
     filters.project && !named.project
@@ -168,6 +174,7 @@ function Body({
                   key: `${h.type}-${h.id}`,
                   id: h.id,
                   type: h.type,
+                  icon: h.type,
                   title: h.title,
                   hint: h.hint ?? "",
                   blockId: null,
@@ -189,17 +196,23 @@ function Body({
           .then(
             (hits: SearchHit[]) =>
               done(
-                hits.map((h) => ({
-                  key: `${h.type}-${h.id}`,
-                  id: h.id,
-                  type: h.type,
-                  title: h.title || "Untitled",
-                  hint:
-                    plain(h.snippet) ||
-                    (h.type !== "project" && h.project_name) ||
-                    "",
-                  blockId: h.block_id,
-                })),
+                hits
+                  .flatMap((h) => {
+                    const to = searchHitTarget(h);
+                    return to ? [{ ...h, to }] : [];
+                  })
+                  .map((h) => ({
+                    key: `${h.type}-${h.id}`,
+                    id: h.to.id,
+                    type: h.to.type,
+                    icon: h.type,
+                    title: h.title || "Untitled",
+                    hint:
+                      plain(h.snippet) ||
+                      (h.type !== "project" && h.project_name) ||
+                      "",
+                    blockId: h.block_id,
+                  })),
               ),
             failed,
           );
@@ -234,11 +247,26 @@ function Body({
               setFilter({ tag: named.tag?.id === t.id ? null : t.name }),
           }))
         : picking === "team"
-          ? teams.map((t) => ({
-              label: named.team?.id === t.id ? `✓ ${t.name}` : t.name,
-              onPress: () =>
-                setFilter({ team: named.team?.id === t.id ? null : t.name }),
-            }))
+          ? [
+              {
+                label:
+                  named.team?.id === PERSONAL_SPACE.id
+                    ? "✓ Personal (no team)"
+                    : "Personal (no team)",
+                onPress: () =>
+                  setFilter({
+                    team:
+                      named.team?.id === PERSONAL_SPACE.id
+                        ? null
+                        : PERSONAL_SPACE.id,
+                  }),
+              },
+              ...teams.map((t) => ({
+                label: named.team?.id === t.id ? `✓ ${t.name}` : t.name,
+                onPress: () =>
+                  setFilter({ team: named.team?.id === t.id ? null : t.name }),
+              })),
+            ]
           : picking === "date"
             ? SEARCH_DATE_CHIPS.map((d) => ({
                 label: filters.date === d.date ? `✓ ${d.label}` : d.label,
@@ -313,7 +341,7 @@ function Body({
             selected={!!named.tag}
             onPress={() => setPicking("tag")}
           />
-          {teams.length > 0 && (
+          {(teams.length > 0 || !!filters.team) && (
             <Chip
               compact
               multi
@@ -361,7 +389,7 @@ function Body({
                 ]}
               >
                 <Icon
-                  name={ICONS[row.type] ?? "search"}
+                  name={ICONS[row.icon] ?? "search"}
                   size={16}
                   color={colors.accent}
                 />
