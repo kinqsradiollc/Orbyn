@@ -61,7 +61,8 @@ test("Arrange orders a group's destinations, hides some, and never hides the way
   const same = (x: string) => x;
   assert.deepEqual(
     arrangeEntries(nav, same, { order: ["Calendar", "Overview"], hidden: [] }),
-    ["Calendar", "Overview", "Agenda", "My tasks"],
+    // The arranged ones swap places; the rest stay where they were.
+    ["Calendar", "Agenda", "My tasks", "Overview"],
   );
   assert.deepEqual(
     arrangeEntries(nav, same, {
@@ -76,6 +77,14 @@ test("Arrange orders a group's destinations, hides some, and never hides the way
     4,
   );
   assert.deepEqual(arrangeEntries(nav, same, null), nav);
+  // A full order (as Settings saves) is followed exactly.
+  assert.deepEqual(
+    arrangeEntries(nav, same, {
+      order: ["My tasks", "Overview", "Calendar", "Agenda"],
+      hidden: [],
+    }),
+    ["My tasks", "Overview", "Calendar", "Agenda"],
+  );
   assert.deepEqual(moveEntry(["a", "b", "c"], "b", -1), ["b", "a", "c"]);
   assert.deepEqual(moveEntry(["a", "b", "c"], "a", -1), ["a", "b", "c"]);
   assert.deepEqual(dropEntry(["a", "b", "c"], "c", "a"), ["c", "a", "b"]);

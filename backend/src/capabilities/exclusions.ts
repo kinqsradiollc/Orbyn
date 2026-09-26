@@ -50,6 +50,8 @@ export const EXCLUSION_REASONS = {
     "How a person arranges their own app (stars, the sidebar, shortcuts, view choices): not data an agent needs.",
   library:
     "Tidying the library (archiving, moving or tagging several pages at once): agents file and change pages with their own page tools, under review.",
+  connections_map:
+    "The Connections map: a drawing of a page's or project's links for the Info panel; agents read the same links through fetch and search.",
   clipper:
     "The Orbyn Clipper browser extension's own routes, signed in with a Clipper key that works nowhere else.",
 } as const;
@@ -282,6 +284,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "PUT /me/prefs": "navigation",
   "DELETE /me/prefs": "navigation",
   "GET /starred": "navigation",
+  "GET /links/map": "connections_map",
   "PUT /docs/:id/archive": "library",
   "PUT /folders/:id/archive": "library",
   "POST /docs/bulk": "library",
@@ -303,9 +306,6 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
 export const PENDING: string[] = [
   // "Linked here" (D3a) waits for the agents' get_links (A4, M4.md).
   "GET /links/here",
-  // The Connections map (D5, CNV-02) reads the same index; get_links (A4)
-  // covers it with "Linked here".
-  "GET /links/map",
   // Saved views and your own fields (D4a). The agents' save_view and query
   // (A4) run the same definition (@orbyn/core views.ts) and cover these.
   "GET /views",

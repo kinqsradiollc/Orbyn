@@ -73,8 +73,7 @@ export async function clipUser(r: FastifyRequest): Promise<UserRow> {
       [digest(token)],
     )
   ).rows[0];
-  if (!u)
-    fail(401, "This Clipper key isn't valid. Connect the Clipper again.");
+  if (!u) fail(401, "This Clipper key isn't valid. Connect the Clipper again.");
   if (u.disabled) fail(403, DISABLED_MESSAGE);
   await pool.query(
     `UPDATE clip_keys SET last_used_at = now()
@@ -229,10 +228,10 @@ export async function clipRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const gone = (
-      await pool.query(
-        "DELETE FROM clip_keys WHERE id = $1 AND user_id = $2",
-        [id, u.id],
-      )
+      await pool.query("DELETE FROM clip_keys WHERE id = $1 AND user_id = $2", [
+        id,
+        u.id,
+      ])
     ).rowCount;
     if (!gone) fail(404, "Key not found");
     await audit({
@@ -304,7 +303,10 @@ export async function clipRoutes(app: FastifyInstance) {
     const zone = isTimeZone(c.time_zone) ? c.time_zone : "UTC";
     const html = c.html ?? "";
     const title =
-      c.title || (html ? htmlTitle(html) : "") || hostOf(c.url) || "Clipped page";
+      c.title ||
+      (html ? htmlTitle(html) : "") ||
+      hostOf(c.url) ||
+      "Clipped page";
     const source = clipSourceLine(c.url, now, zone);
     const result: ClipResult = {
       type: c.type,
@@ -323,9 +325,17 @@ export async function clipRoutes(app: FastifyInstance) {
       c.selection
         ? c.selection
             .split(/\n{2,}/)
-            .map((p) => p.replace(/\s+/g, " ").replace(/orbyn:\/\//gi, "orbyn: //").trim())
+            .map((p) =>
+              p
+                .replace(/\s+/g, " ")
+                .replace(/orbyn:\/\//gi, "orbyn: //")
+                .trim(),
+            )
             .filter(Boolean)
-            .map((text): DocBlock => ({ type: "paragraph", text: text.slice(0, 10000) }))
+            .map((text): DocBlock => ({
+              type: "paragraph",
+              text: text.slice(0, 10000),
+            }))
         : html
           ? articleBlocks(html, c.url)
           : [];
@@ -351,7 +361,10 @@ export async function clipRoutes(app: FastifyInstance) {
         : [];
       const quotes = asCards ? [] : quoteLines(c.highlights, c.url);
       if (asCards && !cards.length)
-        fail(422, "None of the highlights has a word worth hiding. Choose one.");
+        fail(
+          422,
+          "None of the highlights has a word worth hiding. Choose one.",
+        );
       result.cards = cards.length;
       result.lines = asCards ? cards.length : quotes.length;
       if (c.dry_run) return result;

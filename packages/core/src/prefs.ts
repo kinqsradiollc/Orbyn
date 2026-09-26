@@ -51,14 +51,15 @@ export function arrangeEntries<T>(
       (h) => !(ALWAYS_SHOWN as readonly string[]).includes(h),
     ),
   );
-  const rank = (e: T) => {
-    const i = order.indexOf(labelOf(e));
-    return i === -1 ? Number.MAX_SAFE_INTEGER : i;
-  };
+  // The arranged ones take the arranged ones' places, in the chosen order;
+  // anything the list doesn't name (one only the phone has, or a new one)
+  // stays where it was.
+  const ranked = entries
+    .filter((e) => order.includes(labelOf(e)))
+    .sort((a, b) => order.indexOf(labelOf(a)) - order.indexOf(labelOf(b)));
+  let next = 0;
   return entries
-    .map((e, i) => ({ e, i }))
-    .sort((a, b) => rank(a.e) - rank(b.e) || a.i - b.i)
-    .map((x) => x.e)
+    .map((e) => (order.includes(labelOf(e)) ? ranked[next++] : e))
     .filter((e) => showHidden || !hidden.has(labelOf(e)));
 }
 

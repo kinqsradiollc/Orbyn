@@ -65,11 +65,14 @@ export function ArrangeList({
       true,
     ).map((r) => r.title),
   }));
-  const reorder = (group: string, titles: string[]) =>
-    onChange({
-      ...arrangement,
-      order: groups.flatMap((g) => (g.label === group ? titles : g.titles)),
-    });
+  const reorder = (group: string, titles: string[]) => {
+    const order = groups.flatMap((g) =>
+      g.label === group ? titles : g.titles,
+    );
+    // What only the web's sidebar lists keeps its place in the one list.
+    const rest = arrangement.order.filter((t) => !order.includes(t));
+    onChange({ ...arrangement, order: [...order, ...rest] });
+  };
   const row = (group: string, titles: string[], title: string, i: number) => {
     const fixed = ALWAYS_ROWS.includes(title);
     const shown = fixed || !arrangement.hidden.includes(title);

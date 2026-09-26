@@ -87,7 +87,9 @@ export function ArrangeSettings({ user }: { user: User | null }) {
   /** Save a group's new order, keeping the other groups' as they are. */
   const reorder = (group: string, labels: string[]) => {
     const order = groups.flatMap((g) => (g.label === group ? labels : g.items));
-    save({ sidebar: { ...arrangement, order } });
+    // What only the phone lists keeps its place in the one list.
+    const rest = arrangement.order.filter((l) => !order.includes(l));
+    save({ sidebar: { ...arrangement, order: [...order, ...rest] } });
   };
   const hide = (label: string) =>
     save({ sidebar: toggleSidebarHidden(arrangement, label) });
