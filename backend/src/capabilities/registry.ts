@@ -44,6 +44,8 @@ export type ErrorCode =
   | "AMBIGUOUS"
   | "FORBIDDEN"
   | "READ_ONLY"
+  | "VERSION_CONFLICT"
+  | "STALE"
   | "MAINTENANCE"
   | "UNAVAILABLE"
   | "INTERNAL";

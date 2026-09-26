@@ -115,6 +115,12 @@ export function asCapabilityError(
       issuesText(e),
       "Correct the arguments and call again.",
     );
+  if (e instanceof HttpError && e.statusCode === 409)
+    return new CapabilityError(
+      "VERSION_CONFLICT",
+      e.message,
+      "Read the item again for its current version, then retry with that version.",
+    );
   if (e instanceof HttpError && e.statusCode < 500)
     return new CapabilityError(
       e.statusCode === 404
