@@ -340,9 +340,18 @@ export async function createService(
     };
   });
 
+  // Which service this is, for modules that behave differently when they
+  // share a process with the others (see serviceOf).
+  app.decorate(SERVICE, name);
   for (const module of modules) await app.register(module);
   return app;
 }
+
+const SERVICE = "orbynService";
+
+/** The service an app (or a module's scope in it) was built as. */
+export const serviceOf = (app: FastifyInstance): ServiceName =>
+  (app as unknown as Record<typeof SERVICE, ServiceName>)[SERVICE];
 
 /** Listen on `port` and shut down cleanly on SIGINT/SIGTERM. */
 export async function startService(

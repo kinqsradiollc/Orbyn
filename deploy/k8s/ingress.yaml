@@ -237,3 +237,79 @@ spec:
                 name: mcp
                 port:
                   name: http
+---
+# Agents following Orbyn (MCP subscriptions/listen) hold a stream open, so
+# those requests go to the realtime service, never the stateless mcp pods:
+# a canary Ingress on the same host and path, chosen by the Mcp-Method
+# header (the gateway's `map $http_mcp_method` in Compose). The service
+# closes each stream within 15 minutes and sends keep-alives every 25 s.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-mcp-listen
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "Mcp-Method"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "subscriptions/listen"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mcp.orbyn.example
+      secretName: orbyn-mcp-tls
+  rules:
+    - host: mcp.orbyn.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: realtime
+                port:
+                  name: http
+---
+# The same for api.orbyn.example/mcp (older setups).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-api-mcp-listen
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "Mcp-Method"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "subscriptions/listen"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: realtime
+                port:
+                  name: http

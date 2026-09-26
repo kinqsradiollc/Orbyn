@@ -1191,6 +1191,8 @@ export const commentOnDoc = defineCapability({
             {
               area: "docs",
               doc: doc.id,
+              entity_type: "doc",
+              entity_id: doc.id,
             },
           ),
       ],

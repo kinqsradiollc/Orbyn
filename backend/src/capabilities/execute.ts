@@ -18,6 +18,7 @@ import {
   cursorKey,
   type Capability,
   type CapabilityContext,
+  type Progress,
   type CapabilityResult,
   type Registry,
   type ResultLink,
@@ -207,6 +208,8 @@ export type ExecuteOptions = {
   write?: (fn: (db: Queryable) => Promise<unknown>) => Promise<unknown>;
   /** The request, for the activity row of a change. */
   requestId?: string;
+  /** Hears how far a long call has got (see CapabilityContext.progress). */
+  progress?: Progress;
 };
 
 /** Calls `name` for `p` with `args`, as an MCP tool result. */
@@ -269,6 +272,7 @@ export async function execute(
       timezone: prefs.timezone,
       spaces: policy.spaces(p),
       cursor: cursorCodec(p, name, input),
+      ...(options.progress ? { progress: options.progress } : {}),
     };
     const answer = await cap.run(ctx, input as z.output<typeof cap.input>);
     if (grantId) {

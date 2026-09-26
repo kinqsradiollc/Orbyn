@@ -46,6 +46,13 @@ test("2026-07-28: server/discover names the revision, tools and instructions", a
   assert.deepEqual(result.supportedVersions, [MODERN]);
   assert.ok(result.capabilities.tools);
   assert.equal(result.capabilities.tools.listChanged, false);
+  // Resources can be followed (subscriptions/listen), and long jobs are
+  // tasks for clients that declare the extension.
+  assert.equal(result.capabilities.resources.subscribe, true);
+  assert.equal(result.capabilities.resources.listChanged, true);
+  assert.deepEqual(result.capabilities.extensions, {
+    "io.modelcontextprotocol/tasks": {},
+  });
   assert.equal(result.instructions, INSTRUCTIONS);
   assert.equal(result.ttlMs, 300_000);
   assert.equal(result.cacheScope, "private");
@@ -361,9 +368,9 @@ test("405 for GET and DELETE; batches, bad JSON and params:null are refused", as
     assert.equal(r.status, 400, JSON.stringify(body));
     assert.equal(r.body.error.code, -32600);
   }
-  // subscriptions/listen isn't served (no long streams here).
+  // subscriptions/listen needs its filter (the stream itself: mcp-live.test.ts).
   const listen = await h.modern(key, "subscriptions/listen");
-  assert.equal(listen.body.error.code, -32601);
+  assert.equal(listen.body.error.code, -32602);
 });
 
 test("429 past a connection's limit, with Retry-After and a JSON-RPC body", async () => {

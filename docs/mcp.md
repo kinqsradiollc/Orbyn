@@ -45,10 +45,31 @@ Claude (claude.ai, Claude Desktop and the Claude apps), ChatGPT and any MCP clie
 
 - Revisions: `2026-07-28`, `2025-11-25`, `2025-06-18`, `2025-03-26`. `2026-07-28` is served statelessly, with `server/discover`, per-request `_meta` and the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` header checks. A header that disagrees with the body gets `-32020`, and an unsupported revision gets `-32022` with the supported list. Both answer with HTTP 400.
 - The 2025 revisions start with `initialize`, and `ping` answers. No session id is ever issued.
-- `GET` and `DELETE` get `405`. JSON-RPC batches are refused with `400`. Answers are JSON.
+- `GET` and `DELETE` get `405`. JSON-RPC batches are refused with `400`. Answers are JSON, except a call that asks for progress and `subscriptions/listen`, which are answered as a stream of events.
 - Browser pages may call only from claude.ai, chatgpt.com, vscode.dev and insiders.vscode.dev (and the MCP Inspector during local development). Other pages get `403`. Clients that send no `Origin` are fine.
 - `tools/list` may be cached for 5 minutes (`ttlMs`, private). Its order is stable.
 - `X-MCP-Toolsets` and `X-MCP-Readonly` headers can narrow a connection for one call, but never widen it.
+
+## Live updates
+
+An agent can follow what changes (MCP `2026-07-28`, `subscriptions/listen`) instead of asking again and again. Send `subscriptions/listen` to the same address with the `Mcp-Method: subscriptions/listen` header; the answer is a stream of events, held by Orbyn's realtime service.
+
+- `notifications.resourceSubscriptions` follows resources: `orbyn://today`, `orbyn://day/{date}`, `orbyn://task/{id}`, `orbyn://doc/{id}`, `orbyn://project/{id}`, `orbyn://record/{id}`, `orbyn://template/{id}`, `orbyn://view/{id}`. Only what the connection can read now is followed (up to 100); the rest is left out of the acknowledgement, never reported on.
+- `notifications.resourcesListChanged` hears when the list of recent things changes (pages and projects added, moved or renamed).
+- `notifications.taskIds` follows the connection's own long jobs (below).
+- The stream starts with `notifications/subscriptions/acknowledged`, naming what was agreed. Then `notifications/resources/updated` (read the resource again), `notifications/resources/list_changed` and `notifications/tasks`, gathered for half a second so a burst is one note each. Every note carries the listen request's id as `io.modelcontextprotocol/subscriptionId`. Notes say what moved, never what it says.
+- A keep-alive comment every 25 s. The stream ends with a `complete` result after 15 minutes or when the credential ends, whichever is first, when Orbyn restarts, and when the connection's access changes (revoked, paused, a team role changed): open it again. At most 3 streams per connection.
+- Tools and prompts don't change while a connection is open, so their lists aren't followed.
+
+## Long jobs (tasks)
+
+A client that declares the Tasks extension (`io.modelcontextprotocol/tasks` in the call's `_meta` client capabilities, `2026-07-28`) gets a task back from `start_import`, `plan_revision` and `plan_schedule` over more than 7 days or 25 tasks, instead of waiting. Other clients get the same handle as before: an import id to check with `list_imports`, or a `plan_token`.
+
+- `tasks/get` with the `taskId` gives its status (`working`, `completed`, `cancelled`, `failed`), a status line and, once completed, the tool's result. Any copy of the service answers.
+- An import's task follows the import: while it waits for the file, its status line says where to PUT the bytes; it completes with the page (or with why the file couldn't be imported).
+- `tasks/cancel` cancels a task still working (and its import). `tasks/update` isn't used: Orbyn's tasks never wait for input.
+- A task is only ever its own connection's, and is kept 60 minutes after it last changed. Follow it on a listen stream with `taskIds` to hear `notifications/tasks`.
+- Progress: a call with a `progressToken` in its `_meta` (plans) is answered as a stream: `notifications/progress` for each step, then the result.
 
 ## Limits
 
@@ -847,6 +868,8 @@ Catalog version: `2026-09-26`.
 
 ### 2026-09-26
 
+- Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.
+- Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.
 - Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.
 - get_links (backlinks), save_view and saved views in query, related links in link, starting a project from a template, skipping an occurrence in update_tasks, pages from templates in create_doc.
 - Resources for guides (orbyn://spec/markdown, orbyn://spec/views, orbyn://guide/planning), days and views; completions from visible titles; eleven prompts; the "orbyn" Agent Skill.

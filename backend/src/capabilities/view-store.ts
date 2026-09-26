@@ -137,12 +137,18 @@ async function mustEdit(db: Queryable, u: UserRow, view: StoredView) {
     );
 }
 
-const news = (db: Db, view: { user_id: string; team_id: string | null }) =>
+const news = (
+  db: Db,
+  view: { user_id: string; team_id: string | null; id?: string },
+) =>
   announceTo(
     db,
     view.team_id ? { team_id: view.team_id } : { user_id: view.user_id },
     "changed",
-    { area: "organize" },
+    {
+      area: "organize",
+      ...(view.id ? { entity_type: "view" as const, entity_id: view.id } : {}),
+    },
   );
 
 /** Save a new view for `u` (their own, or shared with a team). */

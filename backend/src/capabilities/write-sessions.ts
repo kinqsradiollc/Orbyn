@@ -228,7 +228,9 @@ export const planSchedule = defineCapability({
       ...planPreviewInput.parse(input),
       ...(project ? { project_id: project } : {}),
     };
+    ctx.progress?.(1, 3, "Reading the calendar, tasks and working hours");
     const plan = await computePlan(dbOf(ctx), p.user.id, state, ctx.now);
+    ctx.progress?.(2, 3, "Placing sessions");
     // Only what this connection can see: a plan may place team tasks, and
     // a connection without that team never hears of them.
     const reach = new Set<string | null>([null, ...(ctx.spaces.teamIds ?? [])]);
@@ -287,6 +289,7 @@ export const planSchedule = defineCapability({
       plan_token: token,
       expires_at: new Date(expires).toISOString(),
     };
+    ctx.progress?.(3, 3, "Plan ready");
     const markdown = [
       structured.summary,
       ...structured.sessions

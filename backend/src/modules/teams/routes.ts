@@ -14,6 +14,7 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { syncTeamPages } from "../study/service.js";
+import { announceAuthChange } from "../agents/service.js";
 import {
   LAST_OWNER,
   TEAM_COLUMNS,
@@ -172,6 +173,8 @@ export async function teamRoutes(app: FastifyInstance) {
         "UPDATE team_members SET role=$1 WHERE team_id=$2 AND user_id=$3",
         [d.role, id, userId],
       );
+      // Their agents' open streams check again what the new role reaches.
+      await announceAuthChange(db, { users: [userId], reason: "team_role" });
       await audit(
         {
           actorId: u.id,
@@ -212,6 +215,7 @@ export async function teamRoutes(app: FastifyInstance) {
         "DELETE FROM team_members WHERE team_id=$1 AND user_id=$2",
         [id, userId],
       );
+      await announceAuthChange(db, { users: [userId], reason: "team_left" });
       await audit(
         {
           actorId: u.id,

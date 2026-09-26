@@ -36,7 +36,7 @@ import { announceWrites } from "../presence/live.js";
  * Owners and admins make a team's; everyone on the team uses them.
  */
 export async function templateRoutes(app: FastifyInstance) {
-  announceWrites(app, "templates");
+  announceWrites(app, "templates", "template");
   app.get("/templates", async (r): Promise<ProjectTemplate[]> => {
     const u = await authenticate(r);
     const rows = (

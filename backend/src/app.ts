@@ -49,6 +49,7 @@ import { aiStudyRoutes } from "./modules/ai/study.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
 import { captureRoutes } from "./modules/capture/routes.js";
+import { mcpListenRoutes } from "./modules/mcp-server/listen.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -115,7 +116,13 @@ export const serviceModules: Record<
    * Long-lived streams: live news for the apps and live documents. Scaled on
    * open connections, apart from the API, which scales on requests.
    */
-  realtime: [realtimeRoutes, legacyDocStreamRoutes],
+  realtime: [
+    realtimeRoutes,
+    legacyDocStreamRoutes,
+    // Agents following Orbyn (MCP subscriptions/listen): the gateway sends
+    // a POST /mcp whose Mcp-Method is subscriptions/listen here.
+    mcpListenRoutes,
+  ],
   /**
    * The file store: uploads for importing into Docs, held encrypted until
    * the converter has read them, and never longer than a day. It holds

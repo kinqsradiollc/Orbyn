@@ -26,7 +26,7 @@ import {
  */
 
 export async function folderRoutes(app: FastifyInstance) {
-  announceWrites(app, "organize");
+  announceWrites(app, "organize", "folder");
   app.get("/folders", async (r) => {
     const u = await authenticate(r);
     return (

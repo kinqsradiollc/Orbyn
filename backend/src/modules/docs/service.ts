@@ -1004,9 +1004,11 @@ export const announceDocs = (
   db: Queryable,
   userId: string,
   teamId: string | null,
+  docId?: string,
 ) =>
   announceTo(db as never, { user_id: userId, team_id: teamId }, "changed", {
     area: "docs",
+    ...(docId ? { entity_type: "doc" as const, entity_id: docId } : {}),
   });
 
 /**
@@ -1040,7 +1042,7 @@ export async function createDoc(
     )
   ).rows[0].id;
   await setTags(db, id, u, data.team_id, data.tags);
-  await announceDocs(db, u.id, data.team_id);
+  await announceDocs(db, u.id, data.team_id, id);
   return (
     await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
@@ -1106,7 +1108,7 @@ export async function saveDoc(
     body.folder_id !== undefined ||
     body.project_id !== undefined
   )
-    await announceDocs(db, current.user_id, current.team_id);
+    await announceDocs(db, current.user_id, current.team_id, id);
   return readDoc(db, id);
 }
 
@@ -1123,7 +1125,7 @@ export async function trashDoc(db: Db, u: UserRow, id: string): Promise<Owned> {
   );
   await noteTrash(db, id, u.id, true);
   await searchTrash(db, id, true);
-  await announceDocs(db, doc.user_id, doc.team_id);
+  await announceDocs(db, doc.user_id, doc.team_id, id);
   return doc;
 }
 

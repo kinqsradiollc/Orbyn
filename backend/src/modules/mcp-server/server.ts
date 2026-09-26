@@ -45,7 +45,9 @@ import {
   describe,
   type Capability,
   type CapabilityContext,
+  type Progress,
 } from "../../capabilities/registry.js";
+import { TASKS_EXTENSION } from "./tasks.js";
 import { todayForPrincipal, todayMarkdown } from "../../capabilities/today.js";
 import type { Principal } from "../../capabilities/policy.js";
 import {
@@ -247,6 +249,31 @@ async function dayMarkdown(ctx: CapabilityContext, date: string) {
   return `${cal.markdown}\n\n## Due ${date}\n\n${due.markdown}`;
 }
 
+/**
+ * Progress notifications for a call that asked for them (a progressToken
+ * in its _meta), on the call's own stream: the answer turns into a stream
+ * of events when the first one is sent.
+ */
+function progressFor(ctx: {
+  mcpReq: {
+    _meta?: { progressToken?: string | number };
+    notify: (n: {
+      method: "notifications/progress";
+      params: Record<string, unknown>;
+    }) => Promise<void>;
+  };
+}): Progress | undefined {
+  const token = ctx.mcpReq._meta?.progressToken;
+  if (token === undefined) return undefined;
+  return (progress, total, message) =>
+    void ctx.mcpReq
+      .notify({
+        method: "notifications/progress",
+        params: { progressToken: token, progress, total, message },
+      })
+      .catch(() => {});
+}
+
 /** The server for one call, bound to its caller. */
 export function buildServer(call: CallContext): Server {
   const p = call.caller.principal;
@@ -260,9 +287,14 @@ export function buildServer(call: CallContext): Server {
     {
       capabilities: {
         tools: { listChanged: false },
-        resources: { listChanged: false },
+        // Following resources (subscriptions/listen): a thing's own changes,
+        // and the list of recent things.
+        resources: { subscribe: true, listChanged: true },
         prompts: { listChanged: false },
         completions: {},
+        // Long jobs (imports, large plans) as tasks, for clients that
+        // declare the extension on the call; the others get a handle.
+        extensions: { [TASKS_EXTENSION]: {} },
       },
       instructions: INSTRUCTIONS,
       supportedProtocolVersions: PROTOCOL_VERSIONS,
@@ -351,6 +383,7 @@ export function buildServer(call: CallContext): Server {
         log: call.log,
         write: (fn) => call.write((db) => fn(db)),
         requestId: call.requestId,
+        progress: progressFor(ctx),
       });
     if (scope)
       exec.result._meta = {
@@ -602,16 +635,35 @@ export async function serve(
       authInfo: authInfo(call),
     });
   const server = buildServer(call);
+  // A call that asked for progress is answered as a stream of events (its
+  // notifications, then the result); everything else in plain JSON.
+  const streamed = wantsProgress(body);
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
-    enableJsonResponse: true,
+    enableJsonResponse: !streamed,
   });
   await server.connect(transport);
+  const close = () => server.close().catch(() => {});
+  let open = false;
   try {
     const response = await transport.handleRequest(request, {
       parsedBody: body,
       authInfo: authInfo(call),
     });
+    if (
+      streamed &&
+      response.body &&
+      /text\/event-stream/.test(response.headers.get("content-type") ?? "")
+    ) {
+      // The server goes away when the stream ends.
+      open = true;
+      return new Response(
+        response.body.pipeThrough(
+          new TransformStream({ flush: () => void close() }),
+        ),
+        { status: response.status, headers: response.headers },
+      );
+    }
     // Read the answer before the per-request server goes away.
     const text = await response.text();
     return new Response(text || null, {
@@ -619,6 +671,19 @@ export async function serve(
       headers: response.headers,
     });
   } finally {
-    await server.close().catch(() => {});
+    if (!open) await close();
   }
+}
+
+/** Whether a message is a tool call that asked for progress notifications. */
+export function wantsProgress(body: unknown): boolean {
+  const b = body as {
+    method?: unknown;
+    params?: { _meta?: { progressToken?: unknown } };
+  } | null;
+  const token = b?.params?._meta?.progressToken;
+  return (
+    b?.method === "tools/call" &&
+    (typeof token === "string" || typeof token === "number")
+  );
 }

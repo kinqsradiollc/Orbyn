@@ -250,6 +250,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "mcp_tasks",
+    label: "Agents' long jobs",
+    detail:
+      "The state of imports and large plans outside agents asked after (MCP tasks), an hour after they were last touched.",
+    table: "mcp_tasks",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "oauth_clients",
     label: "Unused registered apps",
     detail:

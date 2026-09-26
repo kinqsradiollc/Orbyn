@@ -145,6 +145,15 @@ const schema = z.object({
    * /.well-known/security.txt (a mailto: or https: address).
    */
   SECURITY_CONTACT: z.string().default("mailto:security@orbyn.dev"),
+  /**
+   * The token the OpenAI apps directory gives to prove Orbyn owns the MCP
+   * address, answered at /.well-known/openai-apps-challenge (404 when
+   * empty). Set only while a directory submission asks for it.
+   */
+  OPENAI_APPS_CHALLENGE: z
+    .string()
+    .regex(/^[\w.-]{0,256}$/)
+    .default(""),
 });
 
 export type Env = z.infer<typeof schema>;

@@ -65,6 +65,14 @@ that made the change, so any API copy reaches readers on any realtime copy, and 
 for a change that rolled back. Each stream closes itself after 15 minutes and the apps reconnect
 with backoff, which spreads readers over new copies and picks up teams joined since.
 
+Outside agents that follow Orbyn (MCP `subscriptions/listen`) are streams too, so they are held
+here and never by the stateless `mcp` copies: the gateway sends a `POST /mcp` whose `Mcp-Method`
+header is `subscriptions/listen` to realtime (`map $http_mcp_method`; a canary Ingress by header in
+Kubernetes). Each listen stream hears the same `LISTEN` news, filtered to what its connection
+can read, closes within 15 minutes or at its credential's end, and closes at once when the
+connection's access changes (`orbyn_auth`). An agent's long jobs (MCP tasks) are rows in
+`mcp_tasks`, so any `mcp` copy answers `tasks/get`.
+
 Presence check-ins (`POST /presence/heartbeat`, about one a minute per open app) are ordinary
 short writes on the API, one row per device. Changes made offline are replayed with an
 `Idempotency-Key`; the first answer is kept in `idempotency_keys` for a day and a repeat gets it

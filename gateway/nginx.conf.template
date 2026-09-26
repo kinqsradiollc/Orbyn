@@ -123,6 +123,14 @@ ${UPSTREAM_MCP}
     keepalive 64;
   }
 
+  # Agents following Orbyn (MCP subscriptions/listen) hold a stream open, so
+  # those requests go to the realtime service, never the stateless mcp
+  # copies: the method is in the Mcp-Method header (MCP 2026-07-28).
+  map $http_mcp_method $mcp_listen {
+    default 0;
+    "subscriptions/listen" 1;
+  }
+
   # The scheme the browser used: kept from a TLS proxy in front, else our own.
   map $http_x_forwarded_proto $fwd_proto {
     default $http_x_forwarded_proto;
@@ -208,6 +216,9 @@ ${UPSTREAM_MCP}
     # service, as on mcp.orbyn.dev.
     location = /mcp {
       ${MCP_GATE}
+      if ($mcp_listen) {
+        rewrite ^ /.mcp-listen last;
+      }
       limit_req zone=per_client burst=100 nodelay;
       limit_req zone=mcp_token burst=60 nodelay;
       limit_conn mcp_conn 8;
@@ -220,6 +231,19 @@ ${UPSTREAM_MCP}
     location @mcp_limited {
       add_header Retry-After 30 always;
       return 429 '{"jsonrpc":"2.0","id":null,"error":{"code":-32029,"message":"That\'s a lot at once. Wait a moment and try again."}}';
+    }
+    # An agent's listen stream: to realtime, unbuffered, kept open up to an
+    # hour (the service closes it within 15 minutes and sends keep-alives).
+    location = /.mcp-listen {
+      internal;
+      limit_req zone=mcp_token burst=10 nodelay;
+      limit_conn mcp_conn 4;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 1h;
+      proxy_next_upstream off;
+      proxy_pass http://realtime/mcp;
+      error_page 429 = @mcp_limited;
     }
 
     # Everything else: the planner API.
@@ -311,6 +335,14 @@ ${UPSTREAM_MCP}
       proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
+    # The OpenAI apps directory's domain check, answered by the mcp service.
+    location = /.well-known/openai-apps-challenge {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://mcp;
+    }
     # Where to report a security problem (RFC 9116), from the API.
     location = /.well-known/security.txt {
       proxy_set_header Host $host;
@@ -362,6 +394,9 @@ ${UPSTREAM_MCP}
 
     location = /mcp {
       ${MCP_GATE}
+      if ($mcp_listen) {
+        rewrite ^ /.mcp-listen last;
+      }
       # A high ceiling per address; the real limits are per credential.
       # Review in phase A2: hosted agents (claude.ai, ChatGPT) share their
       # providers' egress addresses, so raise this for those ranges (or
@@ -379,6 +414,21 @@ ${UPSTREAM_MCP}
     }
     location = /.well-known/oauth-protected-resource/mcp {
       proxy_pass http://mcp;
+    }
+    # The OpenAI apps directory's domain check (its token is OPENAI_APPS_CHALLENGE).
+    location = /.well-known/openai-apps-challenge {
+      proxy_pass http://mcp;
+    }
+    location = /.mcp-listen {
+      internal;
+      limit_req zone=mcp_token burst=10 nodelay;
+      limit_conn mcp_conn 4;
+      proxy_buffering off;
+      proxy_cache off;
+      proxy_read_timeout 1h;
+      proxy_next_upstream off;
+      proxy_pass http://realtime/mcp;
+      error_page 429 = @mcp_limited;
     }
     location @mcp_limited {
       add_header Retry-After 30 always;

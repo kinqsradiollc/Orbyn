@@ -151,13 +151,18 @@ export async function projectVisible(
 /** Tells open apps that a space's projects changed. */
 export const announceProjects = (
   db: Queryable,
-  owner: { user_id: string; team_id: string | null },
+  owner: { user_id: string; team_id: string | null; id?: string },
 ) =>
   announceTo(
     db as never,
     { user_id: owner.user_id, team_id: owner.team_id },
     "changed",
-    { area: "projects" },
+    {
+      area: "projects",
+      ...(owner.id
+        ? { entity_type: "project" as const, entity_id: owner.id }
+        : {}),
+    },
   );
 
 export type ProjectCreate = z.output<typeof projectInput>;
@@ -186,7 +191,7 @@ export async function createProject(
       "INSERT INTO project_stages (project_id, name, position) VALUES ($1,$2,$3)",
       [id, name, position],
     );
-  await announceProjects(db, { user_id: u.id, team_id: data.team_id });
+  await announceProjects(db, { user_id: u.id, team_id: data.team_id, id });
   return loadProject(db, id);
 }
 

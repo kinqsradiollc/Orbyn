@@ -359,8 +359,10 @@ export const planRevisionCapability = defineCapability({
         "That exam isn't on the calendar in the next 60 days.",
         "get_study lists the exams with their keys.",
       );
+    ctx.progress?.(1, 2, "Finding free working time before the exam");
     const plan = await planRevision(me, exam, a.minutes, ctx.now, ctx.db);
     const sealed = await sealRevision(ctx, exam.key, a.minutes, plan.sessions);
+    ctx.progress?.(2, 2, "Plan ready");
     const sessions = plan.sessions.map((s) => ({
       ...s,
       local: both(s.start_at, ctx.timezone)!.local,

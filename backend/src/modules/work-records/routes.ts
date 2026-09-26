@@ -24,7 +24,7 @@ import { announceWrites } from "../presence/live.js";
 
 /** Promises and decisions use the same privacy boundary as their source work. */
 export async function workRecordRoutes(app: FastifyInstance) {
-  announceWrites(app, "records");
+  announceWrites(app, "records", "record");
   app.get("/work-records", async (r) => {
     const u = await authenticate(r);
     const q = listQuery.parse(r.query);

@@ -7753,6 +7753,35 @@
       "tools": ["list_imports", "start_import", "cancel_import", "import_tasks"]
     }
   ],
+  "live": {
+    "method": "subscriptions/listen",
+    "protocol_versions": ["2026-07-28"],
+    "resources": [
+      "orbyn://today",
+      "orbyn://day/{date}",
+      "orbyn://task/{id}",
+      "orbyn://doc/{id}",
+      "orbyn://project/{id}",
+      "orbyn://record/{id}",
+      "orbyn://template/{id}",
+      "orbyn://view/{id}"
+    ],
+    "notifications": [
+      "notifications/subscriptions/acknowledged",
+      "notifications/resources/updated",
+      "notifications/resources/list_changed",
+      "notifications/tasks"
+    ],
+    "keep_alive_seconds": 25,
+    "max_minutes": 15,
+    "streams_per_connection": 3
+  },
+  "tasks": {
+    "extension": "io.modelcontextprotocol/tasks",
+    "tools": ["start_import", "plan_revision", "plan_schedule"],
+    "methods": ["tasks/get", "tasks/cancel", "tasks/update"],
+    "kept_minutes": 60
+  },
   "versioning": [
     "Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.",
     "A new argument is always optional, and leaving it out behaves as before.",
@@ -7764,6 +7793,8 @@
     {
       "date": "2026-09-26",
       "changes": [
+        "Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.",
+        "Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.",
         "Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.",
         "get_links (backlinks), save_view and saved views in query, related links in link, starting a project from a template, skipping an occurrence in update_tasks, pages from templates in create_doc.",
         "Resources for guides (orbyn://spec/markdown, orbyn://spec/views, orbyn://guide/planning), days and views; completions from visible titles; eleven prompts; the \"orbyn\" Agent Skill."

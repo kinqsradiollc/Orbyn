@@ -78,7 +78,15 @@ export type CapabilityContext = {
   /** The spaces reads may reach (for lib/visibility.ts). */
   spaces: Spaces;
   cursor: CursorCodec;
+  /**
+   * Reports how far a long call has got (MCP progress notifications, or a
+   * long job's status), when the caller asked to hear it. Never required.
+   */
+  progress?: Progress;
 };
+
+/** How far a call has got: steps done, of how many, and what it's doing. */
+export type Progress = (done: number, total: number, message: string) => void;
 
 export type ResultLink = {
   uri: string;

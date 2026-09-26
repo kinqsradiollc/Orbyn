@@ -136,6 +136,27 @@ export async function streamDocChanges(
   };
 }
 
+/**
+ * Hears a page's saves on this copy, for a stream other than an editor's
+ * (an agent following the page with subscriptions/listen). Returns a way
+ * to stop.
+ */
+export async function watchDoc(
+  docId: string,
+  onChange: () => void,
+): Promise<() => void> {
+  await ensureListening();
+  const listener: Listener = () => onChange();
+  const set = watchers.get(docId) ?? new Set<Listener>();
+  set.add(listener);
+  watchers.set(docId, set);
+  return () => {
+    const current = watchers.get(docId);
+    current?.delete(listener);
+    if (current && current.size === 0) watchers.delete(docId);
+  };
+}
+
 /** Only for tests: how many readers this copy is serving. */
 export const watcherCount = (docId: string) => watchers.get(docId)?.size ?? 0;
 

@@ -475,4 +475,6 @@ export const PUBLIC: string[] = [
   // The developer page's catalog and the security contact (A5).
   "GET /developers/mcp",
   "GET /.well-known/security.txt",
+  // The OpenAI apps directory's domain check (A7).
+  "GET /.well-known/openai-apps-challenge",
 ];
