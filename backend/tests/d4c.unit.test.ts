@@ -37,6 +37,7 @@ import {
   starterById,
   tickTickTasks,
   todoistTasks,
+  droppedDateNotes,
   waitingPageSave,
   withPendingSave,
   withSummary,
@@ -483,12 +484,82 @@ test("Todoist's CSV: sections become lists, notes join their task, priority 1 is
       status: "todo",
       priority: "high",
       due_at: tasks[0].due_at?.slice(0, 10),
+      all_day: true,
+      rrule: null,
+      timezone: "UTC",
+      date_dropped: null,
       list: "Week 1",
       tags: ["reading"],
     },
   );
-  assert.ok(tasks[0].due_at);
+  assert.equal(tasks[0].due_at, "2026-10-01T00:00:00.000Z");
   assert.equal(tasks[1].priority, "low");
+});
+
+test("Todoist's DATE is what the person typed: only unambiguous dates are taken, repeats kept, the rest reported", () => {
+  const now = new Date("2026-09-27T00:00:00Z"); // Sunday 27 Sept, Sydney
+  const csv = [
+    "TYPE,CONTENT,DESCRIPTION,PRIORITY,INDENT,AUTHOR,RESPONSIBLE,DATE,DATE_LANG,TIMEZONE",
+    "task,No year,,4,1,Me,,Oct 3,en,Australia/Sydney",
+    "task,Words,,4,1,Me,,tomorrow,en,Australia/Sydney",
+    "task,Weekly,,4,1,Me,,every monday,en,Australia/Sydney",
+    "task,Weekly at nine,,4,1,Me,,every other week at 9am,en,",
+    "task,Habit-like,,4,1,Me,,every 3 times a week,en,",
+    "task,With year,,4,1,Me,,Oct 3 2026,en,Australia/Sydney",
+    'task,Time too,,4,1,Me,,"October 3, 2026 5:30 pm",en,Australia/Sydney',
+    "task,Bare ISO,,4,1,Me,,2026-10-03,en,",
+    "task,Old,,4,1,Me,,Oct 3 2001 later,en,",
+    "task,Before 2000,,4,1,Me,,1999-10-03,en,",
+    "task,German,,4,1,Me,,3 Okt 2026,de,",
+    "task,No date,,4,1,Me,,,en,",
+  ].join("\n");
+  const tasks = todoistTasks(csv, "Australia/Sydney", now);
+  const by = Object.fromEntries(tasks.map((t) => [t.title, t]));
+  const local = (iso: string | null) =>
+    iso &&
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Australia/Sydney",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(iso));
+  // Never guessed: "Oct 3" is not 2001-10-03, and nothing lands before 2000.
+  for (const t of ["No year", "Words", "Old", "Before 2000", "German"]) {
+    assert.equal(by[t].due_at, null, t);
+    assert.equal(by[t].date_dropped, "unread", t);
+  }
+  assert.equal(by["No date"].date_dropped, null);
+  assert.equal(by["No date"].due_at, null);
+  // Repeats become a rule from their next day, on the person's clock.
+  assert.equal(by.Weekly.rrule, "FREQ=WEEKLY;BYDAY=MO");
+  assert.equal(by.Weekly.all_day, true);
+  assert.equal(local(by.Weekly.due_at), "2026-09-28, 00:00");
+  assert.equal(by["Weekly at nine"].rrule, "FREQ=WEEKLY;INTERVAL=2");
+  assert.equal(local(by["Weekly at nine"].due_at), "2026-09-27, 09:00");
+  assert.equal(by["Habit-like"].due_at, null);
+  assert.equal(by["Habit-like"].date_dropped, "repeat");
+  // Days stay the day meant in the person's zone.
+  assert.equal(local(by["With year"].due_at), "2026-10-03, 00:00");
+  assert.equal(by["With year"].all_day, true);
+  assert.equal(by["With year"].timezone, "Australia/Sydney");
+  assert.equal(local(by["Time too"].due_at), "2026-10-03, 17:30");
+  assert.equal(by["Time too"].all_day, false);
+  assert.equal(local(by["Bare ISO"].due_at), "2026-10-03, 00:00");
+  assert.deepEqual(droppedDateNotes(tasks), [
+    "5 dates couldn't be read, so those tasks come in with no date.",
+    "1 repeat couldn't be kept, so that task comes in once, without repeating.",
+  ]);
+  // The row's own TIMEZONE wins over the person's.
+  const ny = todoistTasks(
+    "TYPE,CONTENT,DATE,TIMEZONE\ntask,Call,2026-10-03T14:00,America/New_York",
+    "Australia/Sydney",
+    now,
+  )[0];
+  assert.equal(ny.due_at, "2026-10-03T18:00:00.000Z");
+  assert.equal(ny.timezone, "America/New_York");
 });
 
 test("TickTick's backup: the table after its preamble, with done and priority read", () => {
@@ -509,6 +580,21 @@ test("TickTick's backup: the table after its preamble, with done and priority re
   assert.equal(tasks[0].list, "Inbox");
   assert.equal(tasks[1].status, "done");
   assert.deepEqual(tickTickTasks("no,table,here"), []);
+  // All-day in its own zone, and its RRULE kept (or reported when unreadable).
+  const zoned = tickTickTasks(
+    [
+      '"Title","Due Date","Timezone","Is All Day","Repeat"',
+      '"Gym","2026-10-02T14:00:00+0000","Australia/Sydney","true","RRULE:FREQ=WEEKLY;BYDAY=SA"',
+      '"Odd","2026-10-02T14:00:00+0000","Australia/Sydney","false","RRULE:FREQ=SECONDLY"',
+    ].join("\n"),
+  );
+  assert.equal(zoned[0].all_day, true);
+  assert.equal(zoned[0].due_at, "2026-10-02T14:00:00.000Z");
+  assert.equal(zoned[0].timezone, "Australia/Sydney");
+  assert.equal(zoned[0].rrule, "FREQ=WEEKLY;BYDAY=SA");
+  assert.equal(zoned[1].rrule, null);
+  assert.equal(zoned[1].date_dropped, "repeat");
+  assert.equal(zoned[1].due_at, "2026-10-02T14:00:00.000Z");
 });
 
 test("a Markdown export becomes pages in one level of folders, with [[links]] made into links", () => {

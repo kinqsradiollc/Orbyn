@@ -2,6 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   captureAssistInput,
+  clockMinutes,
+  dayTime,
+  DEADLINE_CLOCK,
+  isTimeZone,
+  localDateKey,
   fail,
   serializeDoc,
   type CaptureAssistResult,
@@ -13,6 +18,7 @@ import { authenticate } from "../../lib/auth.js";
 import { strictRateLimit } from "../../lib/params.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { loadPrefs } from "../planner/calendar.js";
 
 /**
  * Assistant chips when sharing, importing or scanning (AI-01): "Summarise"
@@ -50,14 +56,32 @@ const readJson = (content: string): unknown => {
   return JSON.parse(text.slice(start, end + 1));
 };
 
-/** A date the assistant gave, as an ISO time; a bare day is 17:00 UTC. */
-const dueOf = (s: string | null | undefined): string | null => {
+/**
+ * A date the assistant gave, read as the person's own wall clock: a bare day
+ * is that day at the usual deadline hour (17:00) in their zone, and
+ * "YYYY-MM-DDTHH:MM" is that time in their zone. Anything else is no date.
+ */
+export const dueOf = (
+  s: string | null | undefined,
+  timeZone: string,
+): string | null => {
   if (!s) return null;
-  const t = s.trim();
-  const d = /^\d{4}-\d{2}-\d{2}$/.test(t)
-    ? new Date(`${t}T17:00:00Z`)
-    : new Date(t.length === 16 ? `${t}:00Z` : t);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+  const m = s
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2})?)?$/);
+  if (!m) return null;
+  const [, y, mo, d, hh, mm] = m;
+  const month = Number(mo);
+  const day = Number(d);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const check = new Date(Date.UTC(Number(y), month - 1, day));
+  if (check.getUTCDate() !== day) return null;
+  const minutes =
+    hh === undefined
+      ? clockMinutes(DEADLINE_CLOCK)
+      : Number(hh) * 60 + Number(mm);
+  if (hh !== undefined && (Number(hh) > 23 || Number(mm) > 59)) return null;
+  return dayTime(`${y}-${mo}-${d}`, minutes, timeZone).toISOString();
 };
 
 export async function aiCaptureRoutes(app: FastifyInstance) {
@@ -92,7 +116,9 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
           503,
           "The assistant isn't available right now. What you saved is kept; try again later.",
         );
-      const today = new Date().toISOString().slice(0, 10);
+      const zone = (await loadPrefs(pool, u.id)).timezone;
+      const timeZone = zone && isTimeZone(zone) ? zone : "UTC";
+      const today = localDateKey(new Date(), timeZone);
       let content: string;
       try {
         content = await complete(
@@ -146,7 +172,7 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
           summary: "",
           tasks: list.slice(0, 20).map((t) => ({
             title: t.title,
-            due_at: dueOf(t.due),
+            due_at: dueOf(t.due, timeZone),
             source: t.source,
           })),
         };

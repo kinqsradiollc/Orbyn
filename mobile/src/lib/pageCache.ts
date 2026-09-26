@@ -5,6 +5,7 @@ import {
   dropPage,
   encodePageCache,
   keepPage,
+  keepTeamPages,
   type CachedPage,
   type Doc,
 } from "@orbyn/core";
@@ -41,6 +42,26 @@ export async function rememberPage(doc: Doc) {
 export async function forgetPage(id: string) {
   pages = dropPage(await load(), id);
   save();
+}
+
+/** The teams were read again: drop pages from teams the person has left. */
+export async function forgetLostTeams(teamIds: string[]) {
+  const before = await load();
+  const after = keepTeamPages(before, teamIds);
+  if (after.length === before.length) return;
+  pages = after;
+  save();
+}
+
+/**
+ * Opening a kept page answered 404 or 403 (deleted for good, or no longer
+ * shared): stop keeping it. True when it was that.
+ */
+export async function forgetIfGone(id: string, e: unknown) {
+  const code = (e as { status?: number } | null)?.status;
+  if (code !== 404 && code !== 403) return false;
+  await forgetPage(id);
+  return true;
 }
 
 /** A kept page, or null. */

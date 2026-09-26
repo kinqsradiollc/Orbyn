@@ -17,7 +17,7 @@ import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
-import { clearPageCache } from "../lib/pageCache";
+import { clearPageCache, forgetLostTeams } from "../lib/pageCache";
 import {
   clearOutbox,
   flush,
@@ -215,6 +215,8 @@ export function usePlanner() {
         setUser(u);
         setNotices(n);
         setTeams(t);
+        // Pages kept offline from a team they've left go (SHR-03).
+        void forgetLostTeams(t.map((x) => x.id));
         setLists(l);
         setTags(g);
         setPlanned(p);

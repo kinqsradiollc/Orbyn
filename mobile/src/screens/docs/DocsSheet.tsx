@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { headerHiddenAfter, hidesHeaderWhileReading } from "../../lib/reading";
-import { keptPage, keptPages } from "../../lib/pageCache";
+import {
+  forgetIfGone,
+  forgetPage,
+  keptPage,
+  keptPages,
+} from "../../lib/pageCache";
 import { waitingSave } from "../../lib/outbox";
 import {
   AppState,
@@ -464,6 +469,7 @@ export function DocsSheet({
       () =>
         void run(async () => {
           await client.deleteDocForever(page.id);
+          void forgetPage(page.id);
           setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
         }),
     );
@@ -711,6 +717,8 @@ export function DocsSheet({
         onPress: () =>
           void run(async () => {
             await client.deleteDoc(doc.id);
+            // In Trash: no longer kept to open offline (SHR-03).
+            void forgetPage(doc.id);
             setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
             showToast({
               text: "Moved to Trash",
@@ -731,6 +739,8 @@ export function DocsSheet({
       try {
         setOpen(await client.getDoc(id));
       } catch (e) {
+        // Deleted for good or no longer shared: stop keeping it.
+        await forgetIfGone(id, e);
         // No signal: the copy kept on this phone, with any edit waiting.
         const kept = isOfflineError(e) ? await keptPage(id) : null;
         if (!kept) throw e;

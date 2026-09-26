@@ -225,6 +225,39 @@ test("recent changes list who changed which team page or task, with mine hidden"
   assert.notEqual(second.changes[0]?.id, first.changes[0].id);
 });
 
+test("recent changes: Load more keeps every row when many share one moment", async () => {
+  const who = await register("Eve Bulk");
+  const bulk = (await call(who, "POST", "/teams", { name: "Bulk" })).json().id;
+  // An import writes many rows in one transaction: one now() for all.
+  await pool.query(
+    `INSERT INTO team_changes (team_id, user_id, kind, object_id, title, action, first_at, at)
+     SELECT $1, $2, 'page', gen_random_uuid(), 'Imported ' || n, 'created', now(), now()
+       FROM generate_series(1, 7) n`,
+    [bulk, who.id],
+  );
+  const seen: string[] = [];
+  let before: string | null = null;
+  for (let guard = 0; guard < 10; guard++) {
+    const res = await call(
+      who,
+      "GET",
+      `/changes?team_id=${bulk}&hide_mine=false&limit=3${
+        before ? `&before=${encodeURIComponent(before)}` : ""
+      }`,
+    );
+    assert.equal(res.statusCode, 200, res.body);
+    const page = res.json() as {
+      changes: { id: string }[];
+      next: string | null;
+    };
+    seen.push(...page.changes.map((c) => c.id));
+    before = page.next;
+    if (!before) break;
+  }
+  assert.equal(seen.length, 7);
+  assert.equal(new Set(seen).size, 7);
+});
+
 test("recent changes: signed out 401, someone else's team 404, bad input 422", async () => {
   assert.equal((await call(null, "GET", "/changes")).statusCode, 401);
   assert.equal(
@@ -382,6 +415,38 @@ test("first run: 401 signed out, 400 unreadable, 422 bad input, 429 when hammere
 });
 
 // ------------------------------------------------------------- SHR-05
+
+test("a personal API key can't publish to the web, change a published page or the team switch, or run the first run", async () => {
+  const who = await register("Kit Key");
+  const doc = await page(who, "Private notes", [p("mine")]);
+  const folder = (
+    await call(who, "POST", "/folders", { name: "Private folder" })
+  ).json().id as string;
+  const team = (await call(who, "POST", "/teams", { name: "Keyed" })).json()
+    .id as string;
+  const made = await call(who, "POST", "/me/api-keys", { name: "Script" });
+  assert.equal(made.statusCode, 201, made.body);
+  const key: Person = { ...who, token: made.json().key };
+  for (const [method, url, body] of [
+    ["PUT", `/docs/${doc.id}/publish`, {}],
+    ["PUT", `/folders/${folder}/publish`, {}],
+    ["PUT", `/docs/${doc.id}/web-description`, { description: "x" }],
+    ["PUT", `/teams/${team}/publishing`, { allowed: true }],
+    ["POST", "/me/first-run", {}],
+    ["POST", "/me/first-run/skip", {}],
+  ] as const) {
+    const res = await call(key, method, url, body);
+    assert.equal(res.statusCode, 403, `${method} ${url}: ${res.body}`);
+  }
+  // Nothing went public.
+  const state = (await call(who, "GET", `/docs/${doc.id}/publish`)).json();
+  assert.equal(state.published, null);
+  // Reading how it's published is still fine with a key.
+  assert.equal(
+    (await call(key, "GET", `/docs/${doc.id}/publish`)).statusCode,
+    200,
+  );
+});
 
 test("a page published to the web reads at /p/<slug>, hidden from search, and Unpublish ends it", async () => {
   const other = await page(owner, "Other page", [p("Not on the web")]);
@@ -818,6 +883,53 @@ test("Todoist and TickTick CSVs come in as tasks, after a dry run", async () => 
     )
   ).rows[0];
   assert.deepEqual(row, { priority: "high", list: "Uni" });
+  // Dates as people type them in Todoist: nothing lands in 2001, repeats
+  // are kept, and the dry run says what it couldn't read.
+  await pool.query(
+    `INSERT INTO planner_prefs (user_id, timezone) VALUES ($1, 'Australia/Sydney')
+     ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone`,
+    [who.id],
+  );
+  const typed = [
+    "TYPE,CONTENT,PRIORITY,DATE,DATE_LANG,TIMEZONE",
+    "task,Typed no year,4,Oct 3,en,",
+    "task,Typed weekly,4,every monday,en,",
+    "task,Typed day,4,2026-10-03,en,",
+  ].join("\n");
+  const typedDry = await call(who, "POST", "/me/import", {
+    format: "todoist",
+    data: typed,
+  });
+  assert.equal(typedDry.json().created, 3);
+  assert.deepEqual(typedDry.json().errors, [
+    "1 date couldn't be read, so that task comes in with no date.",
+  ]);
+  await call(who, "POST", "/me/import", {
+    format: "todoist",
+    data: typed,
+    dry_run: false,
+  });
+  const typedRows = new Map(
+    (
+      await pool.query<{
+        title: string;
+        due_at: Date | null;
+        rrule: string | null;
+        all_day: boolean;
+        timezone: string;
+      }>(
+        "SELECT title, due_at, rrule, all_day, timezone FROM items WHERE user_id = $1 AND title LIKE 'Typed%'",
+        [who.id],
+      )
+    ).rows.map((r) => [r.title, r]),
+  );
+  assert.equal(typedRows.get("Typed no year")!.due_at, null);
+  assert.equal(typedRows.get("Typed weekly")!.rrule, "FREQ=WEEKLY;BYDAY=MO");
+  assert.equal(typedRows.get("Typed weekly")!.timezone, "Australia/Sydney");
+  const day = typedRows.get("Typed day")!;
+  assert.equal(day.all_day, true);
+  assert.equal(day.timezone, "Australia/Sydney");
+  assert.equal(day.due_at!.toISOString(), "2026-10-02T14:00:00.000Z");
   const tick = await call(who, "POST", "/me/import", {
     format: "ticktick",
     data: '"Date: x"\n"Title","List Name","Priority","Status"\n"Walk","Home","0","0"',
@@ -887,6 +999,41 @@ test("Summarise and Pull out deadlines come back as suggestions, from the hosted
     },
     { title: "Exam", due_at: null, source: "Exam on 20 November." },
   ]);
+  // In Sydney the day given stays the day meant: 17:00 there, and a time is
+  // read on their clock, not as UTC.
+  await pool.query(
+    `INSERT INTO planner_prefs (user_id, timezone) VALUES ($1, 'Australia/Sydney')
+     ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone`,
+    [who.id],
+  );
+  replies = [
+    JSON.stringify({
+      tasks: [
+        { title: "Essay", due: "2026-10-03", source: "Essay due 3 October." },
+        { title: "Talk", due: "2026-10-03T14:00", source: "Talk 3 Oct 2pm." },
+        { title: "Odd", due: "3 October", source: "Odd." },
+      ],
+    }),
+  ];
+  const sydney = await call(who, "POST", "/ai/assist", {
+    action: "deadlines",
+    text: "Essay due 3 October. Talk 3 Oct 2pm.",
+  });
+  assert.equal(sydney.statusCode, 200, sydney.body);
+  const [essay, talk, odd] = sydney.json().tasks;
+  // AEST (+10:00) on 3 October 2026; daylight saving starts on the 4th.
+  assert.equal(essay.due_at, "2026-10-03T07:00:00.000Z");
+  assert.equal(talk.due_at, "2026-10-03T04:00:00.000Z");
+  assert.equal(odd.due_at, null);
+  const local = (iso: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Australia/Sydney",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date(iso));
+  assert.equal(local(essay.due_at), "2026-10-03");
+  assert.equal(local(talk.due_at), "2026-10-03");
   const before = (
     await pool.query("SELECT 1 FROM items WHERE user_id = $1", [who.id])
   ).rowCount;

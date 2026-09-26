@@ -1,4 +1,5 @@
 import {
+  droppedDateNotes,
   itemData,
   tickTickTasks,
   todoistTasks,
@@ -8,6 +9,7 @@ import {
 import type { Db, Queryable } from "../../db/pool.js";
 import { mutate } from "../items/service.js";
 import { loadHabits } from "../planner/habits.js";
+import { loadPrefs } from "../planner/calendar.js";
 
 export type ExportArchive = {
   version: 1;
@@ -30,6 +32,9 @@ type ExportItem = {
   rrule: string | null;
   list: string | null;
   tags: string[];
+  /** A whole day in `timezone` (Todoist, TickTick and later exports). */
+  all_day?: boolean;
+  timezone?: string;
 };
 
 export type ImportSummary = {
@@ -181,9 +186,10 @@ const fromApp = (t: ImportedTask): ExportItem => ({
   end_at: null,
   estimate_minutes: null,
   location: "",
-  rrule: null,
+  rrule: t.rrule,
   list: t.list,
   tags: t.tags,
+  ...(t.due_at ? { all_day: t.all_day, timezone: t.timezone } : {}),
 });
 
 /** Parse a date or datetime to an ISO string with offset, or null. */
@@ -207,14 +213,21 @@ export async function importData(
   dryRun: boolean,
 ): Promise<ImportSummary> {
   let items: ExportItem[];
+  // Dates another app wrote without a zone are read on the person's clock.
+  const zone = (await loadPrefs(db, user.id)).timezone || "UTC";
+  const notes: string[] = [];
   try {
+    const fromApps = (tasks: ImportedTask[]) => {
+      notes.push(...droppedDateNotes(tasks));
+      return tasks.map(fromApp);
+    };
     items =
       format === "csv"
         ? itemsFromCsv(parseCsv(data))
         : format === "todoist"
-          ? todoistTasks(data).map(fromApp)
+          ? fromApps(todoistTasks(data, zone))
           : format === "ticktick"
-            ? tickTickTasks(data).map(fromApp)
+            ? fromApps(tickTickTasks(data, zone))
             : ((JSON.parse(data) as ExportArchive).items ?? []);
     if (format !== "orbyn" && format !== "csv" && !items.length)
       throw new Error("no tasks");
@@ -251,7 +264,7 @@ export async function importData(
   let skipped = 0;
   let listsAdded = 0;
   let tagsAdded = 0;
-  const errors: string[] = [];
+  const errors: string[] = [...notes];
   const sample: string[] = [];
 
   const listId = async (name: string) => {
@@ -315,6 +328,8 @@ export async function importData(
         estimate_minutes: raw.estimate_minutes ?? null,
         location: raw.location ?? "",
         rrule: raw.rrule ?? null,
+        ...(raw.due_at && raw.timezone ? { timezone: raw.timezone } : {}),
+        ...(raw.due_at && raw.all_day ? { all_day: true } : {}),
         ...(list ? { list_id: list } : {}),
         ...(tagIds.length ? { tag_ids: tagIds } : {}),
       });

@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { linkMarkdown } from "./links.js";
+import { findRepeat, firstRepeatDay, repeatRrule } from "./recurrence.js";
+import {
+  dayTime,
+  isTimeZone,
+  isValidRrule,
+  localDateKey,
+  zonedInstant,
+} from "./time.js";
 
 /**
  * Bringing another app's export into Orbyn (DATA-08): Markdown files (a
@@ -73,18 +81,260 @@ export type ImportedTask = {
   priority: "low" | "medium" | "high";
   /** ISO time, or null. */
   due_at: string | null;
+  /** A whole day: `due_at` is its local midnight in `timezone`. */
+  all_day: boolean;
+  /** How it repeats, when the export said so in a form Orbyn reads. */
+  rrule: string | null;
+  /** The zone its day and time were read in. */
+  timezone: string;
+  /** A date that was there but was not used: unreadable, or a repeat left out. */
+  date_dropped: "unread" | "repeat" | null;
   /** The list it goes in (a Todoist section, a TickTick list). */
   list: string | null;
   tags: string[];
 };
 
-/** A date another app wrote, as an ISO time; a bare day is 9:00 local. */
-export function importDate(s: string): string | null {
-  const t = s.trim();
-  if (!t) return null;
-  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
-  const d = day ? new Date(`${t}T09:00:00`) : new Date(t);
-  return isNaN(d.getTime()) ? null : d.toISOString();
+/** What a date another app wrote becomes. */
+export type ImportDate = {
+  due_at: string | null;
+  all_day: boolean;
+  rrule: string | null;
+  dropped: "unread" | "repeat" | null;
+};
+
+const NO_DATE: ImportDate = {
+  due_at: null,
+  all_day: false,
+  rrule: null,
+  dropped: null,
+};
+const UNREAD: ImportDate = { ...NO_DATE, dropped: "unread" };
+
+const MONTH_NAMES = [
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "may",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "oct",
+  "nov",
+  "dec",
+];
+const monthOf = (word: string) => {
+  const w = word.toLowerCase().replace(/\.$/, "");
+  const n = MONTH_NAMES.indexOf(w.slice(0, 3));
+  if (n < 0) return 0;
+  // "Sept" and full names are fine; "Octo" or "Marc" are not.
+  const full = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+  ][n];
+  return w === full || w.length === 3 || (n === 8 && w === "sept") ? n + 1 : 0;
+};
+
+/** "9:30", "17:00", "9am", "5:30 pm" as minutes; a bare "9" is not a time. */
+function clockOf(text: string): number | null | undefined {
+  const t = text
+    .trim()
+    .replace(/^(?:at|@|,)\s*/i, "")
+    .trim();
+  if (!t) return undefined;
+  const m =
+    /^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?$/i.exec(t);
+  if (!m || (m[2] === undefined && !m[3])) return null;
+  let h = Number(m[1]);
+  const min = Number(m[2] ?? 0);
+  if (min > 59) return null;
+  if (m[3]) {
+    if (h < 1 || h > 12) return null;
+    const pm = m[3].toLowerCase().startsWith("p");
+    h = (h % 12) + (pm ? 12 : 0);
+  } else if (h > 23) return null;
+  return h * 60 + min;
+}
+
+const realDay = (y: number, m: number, d: number) =>
+  y >= 2000 &&
+  y <= 2200 &&
+  m >= 1 &&
+  m <= 12 &&
+  d >= 1 &&
+  new Date(Date.UTC(y, m - 1, d)).getUTCDate() === d;
+
+const key = (y: number, m: number, d: number) =>
+  `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+/** A day, maybe with a time, on the person's wall clock in `timeZone`. */
+function onDay(
+  y: number,
+  m: number,
+  d: number,
+  minutes: number | undefined,
+  timeZone: string,
+): ImportDate {
+  if (!realDay(y, m, d)) return UNREAD;
+  if (minutes === undefined)
+    return {
+      ...NO_DATE,
+      all_day: true,
+      due_at: dayTime(key(y, m, d), 0, timeZone).toISOString(),
+    };
+  return {
+    ...NO_DATE,
+    due_at: zonedInstant(
+      y,
+      m,
+      d,
+      Math.floor(minutes / 60),
+      minutes % 60,
+      timeZone,
+    ).toISOString(),
+  };
+}
+
+/**
+ * A date another app wrote (DATA-08). Only dates that can't be misread are
+ * taken: ISO forms ("2026-10-03", "2026-10-03T09:00", with or without an
+ * offset) and a month name with a day and a year ("Oct 3 2026", "3 October
+ * 2026 9am"). A day and time without an offset is read on the person's own
+ * clock in `timeZone`; a bare day is a whole day there. Simple repeats
+ * ("every Monday", "every other week at 9am") become a repeat rule starting
+ * on their next day. Anything else ("Oct 3", "tomorrow", a date before 2000)
+ * is no date, and says why, so the dry run can tell the person rather than
+ * guess. English month names only; `lang` other than English takes ISO
+ * forms only.
+ */
+export function readImportDate(
+  raw: string,
+  timeZone: string,
+  opts: { now?: Date; lang?: string } = {},
+): ImportDate {
+  const t = raw.trim().replace(/\s+/g, " ");
+  if (!t) return NO_DATE;
+  const zone = isTimeZone(timeZone) ? timeZone : "UTC";
+  // An exact instant: an ISO time with its offset.
+  const exact =
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(Z|[+-]\d{2}:?\d{2})$/i.exec(
+      t,
+    );
+  if (exact) {
+    const [, y, mo, d, hh, mm, ss, off] = exact;
+    if (!realDay(+y, +mo, +d) || +hh > 23 || +mm > 59) return UNREAD;
+    const offset =
+      off.toUpperCase() === "Z"
+        ? "Z"
+        : off.includes(":")
+          ? off
+          : `${off.slice(0, 3)}:${off.slice(3)}`;
+    const at = new Date(`${y}-${mo}-${d}T${hh}:${mm}:${ss ?? "00"}${offset}`);
+    return isNaN(at.getTime())
+      ? UNREAD
+      : { ...NO_DATE, due_at: at.toISOString() };
+  }
+  const iso =
+    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?$/.exec(
+      t,
+    );
+  if (iso) {
+    const [, y, mo, d, hh, mm] = iso;
+    if (hh !== undefined && (+hh > 23 || +mm > 59)) return UNREAD;
+    return onDay(
+      +y,
+      +mo,
+      +d,
+      hh === undefined ? undefined : +hh * 60 + +mm,
+      zone,
+    );
+  }
+  const english = !opts.lang || /^en\b/i.test(opts.lang.trim());
+  if (!english) return UNREAD;
+  // "Oct 3 2026", "October 3, 2026", "Sat 3 Oct 2026", then maybe a time.
+  const words = t.replace(/^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+/i, "");
+  const md =
+    /^([a-z]+\.?)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b(.*)$/i.exec(words);
+  const dm =
+    /^(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+\.?),?\s+(\d{4})\b(.*)$/i.exec(words);
+  const parts = md
+    ? { month: md[1], day: md[2], year: md[3], rest: md[4] }
+    : dm
+      ? { month: dm[2], day: dm[1], year: dm[3], rest: dm[4] }
+      : null;
+  if (parts) {
+    const month = monthOf(parts.month);
+    const clock = clockOf(parts.rest);
+    if (!month || clock === null) return UNREAD;
+    return onDay(+parts.year, month, +parts.day, clock, zone);
+  }
+  // A repeat said in words.
+  if (/\b(every|daily|weekly|monthly|yearly|annually|weekdays)\b/i.test(t)) {
+    const today = localDateKey(opts.now ?? new Date(), zone);
+    const found = findRepeat(t, today);
+    const left = { ...NO_DATE, dropped: "repeat" as const };
+    if (!found || found.perPeriod || found.minutes || found.window) return left;
+    let rest = t;
+    for (const span of [...found.spans].sort((a, b) => b.start - a.start))
+      rest = rest.slice(0, span.start) + " " + rest.slice(span.end);
+    const clock = clockOf(rest.replace(/[\s,]+/g, " "));
+    if (clock === null) return left;
+    const first = firstRepeatDay(found, today);
+    if (!first) return left;
+    const rrule = repeatRrule(found, first);
+    if (!isValidRrule(rrule)) return left;
+    const [y, m, d] = first.split("-").map(Number);
+    return { ...onDay(y, m, d, clock, zone), rrule };
+  }
+  return UNREAD;
+}
+
+/** A date another app wrote, as an ISO time, or null (see readImportDate). */
+export function importDate(s: string, timeZone = "UTC"): string | null {
+  return readImportDate(s, timeZone).due_at;
+}
+
+/** The fields a task takes from a date read by readImportDate. */
+const dateFields = (d: ImportDate, timezone: string) => ({
+  due_at: d.due_at,
+  all_day: d.all_day,
+  rrule: d.rrule,
+  timezone,
+  date_dropped: d.dropped,
+});
+
+/** A row's own zone when it names a real one, else the person's. */
+const zoneOf = (named: string, fallback: string) =>
+  named && isTimeZone(named) ? named : isTimeZone(fallback) ? fallback : "UTC";
+
+/**
+ * What the dry run says about dates it left out, in words: "2 dates couldn't
+ * be read, so those tasks come in with no date".
+ */
+export function droppedDateNotes(tasks: ImportedTask[]): string[] {
+  const unread = tasks.filter((t) => t.date_dropped === "unread").length;
+  const repeats = tasks.filter((t) => t.date_dropped === "repeat").length;
+  const notes: string[] = [];
+  if (unread)
+    notes.push(
+      `${unread} date${unread === 1 ? "" : "s"} couldn't be read, so ${unread === 1 ? "that task comes" : "those tasks come"} in with no date.`,
+    );
+  if (repeats)
+    notes.push(
+      `${repeats} repeat${repeats === 1 ? "" : "s"} couldn't be kept, so ${repeats === 1 ? "that task comes" : "those tasks come"} in once, without repeating.`,
+    );
+  return notes;
 }
 
 const pick = (r: Record<string, string>, ...keys: string[]) => {
@@ -98,7 +348,11 @@ const pick = (r: Record<string, string>, ...keys: string[]) => {
  * after it go in; a note joins the task before it; an indented task keeps
  * its place as its own task.
  */
-export function todoistTasks(text: string): ImportedTask[] {
+export function todoistTasks(
+  text: string,
+  timeZone = "UTC",
+  now?: Date,
+): ImportedTask[] {
   const rows = csvRecords(parseCsvTable(text));
   const out: ImportedTask[] = [];
   let section: string | null = null;
@@ -132,7 +386,18 @@ export function todoistTasks(text: string): ImportedTask[] {
       status: "todo",
       priority:
         p === 1 ? "high" : p === 2 ? "high" : p === 4 ? "low" : "medium",
-      due_at: importDate(pick(r, "date", "due date", "deadline")),
+      // DATE holds what the person typed ("Oct 3", "every monday"), read
+      // in the row's TIMEZONE and DATE_LANG.
+      ...(() => {
+        const zone = zoneOf(pick(r, "timezone"), timeZone);
+        return dateFields(
+          readImportDate(pick(r, "date", "due date", "deadline"), zone, {
+            now,
+            lang: pick(r, "date_lang"),
+          }),
+          zone,
+        );
+      })(),
       list: section,
       tags,
     });
@@ -141,11 +406,36 @@ export function todoistTasks(text: string): ImportedTask[] {
 }
 
 /**
+ * TickTick writes "2026-10-03T09:00:00+0000" with its "Timezone" and "Is All
+ * Day" columns, and a "Repeat" column holding an RRULE.
+ */
+function tickTickDate(r: Record<string, string>, timeZone: string, now?: Date) {
+  const zone = zoneOf(pick(r, "timezone"), timeZone);
+  let d = readImportDate(pick(r, "due date", "start date"), zone, { now });
+  if (d.due_at && !d.all_day && /^true$/i.test(pick(r, "is all day"))) {
+    const [y, m, day] = localDateKey(new Date(d.due_at), zone)
+      .split("-")
+      .map(Number);
+    d = onDay(y, m, day, undefined, zone);
+  }
+  const repeat = pick(r, "repeat").replace(/^RRULE:/i, "");
+  if (repeat && d.due_at) {
+    if (isValidRrule(repeat)) d = { ...d, rrule: repeat };
+    else d = { ...d, dropped: "repeat" };
+  }
+  return dateFields(d, zone);
+}
+
+/**
  * TickTick's CSV backup: a few lines about the backup, then a table with
  * "List Name", "Title", "Content", "Tags", "Due Date", "Priority" (0 none,
  * 1 low, 3 medium, 5 high) and "Status" (0 open, 1 or 2 done).
  */
-export function tickTickTasks(text: string): ImportedTask[] {
+export function tickTickTasks(
+  text: string,
+  timeZone = "UTC",
+  now?: Date,
+): ImportedTask[] {
   const table = parseCsvTable(text);
   const headerAt = table.findIndex((r) =>
     r.some((c) => c.trim().toLowerCase() === "title"),
@@ -163,7 +453,7 @@ export function tickTickTasks(text: string): ImportedTask[] {
       notes: pick(r, "content"),
       status: status === "1" || status === "2" ? "done" : "todo",
       priority: p >= 5 ? "high" : p === 1 ? "low" : "medium",
-      due_at: importDate(pick(r, "due date", "start date")),
+      ...tickTickDate(r, timeZone, now),
       list: pick(r, "list name") || null,
       tags: pick(r, "tags")
         .split(/[,;]/)
@@ -295,6 +585,7 @@ export function planPagesImport(
   files: ImportFile[],
   format: PageImportFormat,
   rootName: string,
+  timeZone = "UTC",
 ): PagesImportPlan {
   const left: Record<string, number> = {};
   const leave = (what: string) => (left[what] = (left[what] ?? 0) + 1);
@@ -338,11 +629,15 @@ export function planPagesImport(
             : /low/i.test(r.priority ?? "")
               ? "low"
               : "medium",
-          due_at: importDate(
-            (r.due || r["due date"] || r.deadline || r.date || "").replace(
-              /\s*→.*$/,
-              "",
+          ...dateFields(
+            readImportDate(
+              (r.due || r["due date"] || r.deadline || r.date || "").replace(
+                /\s*→.*$/,
+                "",
+              ),
+              zoneOf("", timeZone),
             ),
+            zoneOf("", timeZone),
           ),
           list: null,
           tags: (r.tags || "")
@@ -401,7 +696,14 @@ export function planPagesImport(
       ? `${n} picture${n === 1 ? "" : "s"} (add them to the pages after)`
       : what === "other files"
         ? `${n} other file${n === 1 ? "" : "s"}`
-        : `${n} ${what}`;
+        : what === "unread dates"
+          ? `${n} task date${n === 1 ? "" : "s"} that couldn't be read (${n === 1 ? "that task comes" : "those tasks come"} in with no date)`
+          : what === "repeats"
+            ? `${n} repeat${n === 1 ? "" : "s"}`
+            : `${n} ${what}`;
+  for (const t of projects.flatMap((x) => x.tasks))
+    if (t.date_dropped)
+      leave(t.date_dropped === "unread" ? "unread dates" : "repeats");
   return {
     folders: [...folders],
     pages,

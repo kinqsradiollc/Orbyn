@@ -10,7 +10,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { sectionKey } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
-import { colors, fonts, themed } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
 const REMEMBER = "orbyn-settings-open";
@@ -133,7 +133,11 @@ export function SettingsSection({
 const s = themed(() =>
   StyleSheet.create({
     section: { padding: 0, overflow: "hidden" },
-    lit: { borderColor: colors.accent, borderWidth: 2, borderRadius: 20 },
+    lit: {
+      borderColor: colors.accent,
+      borderWidth: 2,
+      borderRadius: radii.card,
+    },
     head: {
       flexDirection: "row",
       alignItems: "center",

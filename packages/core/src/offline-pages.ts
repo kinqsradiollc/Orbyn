@@ -83,6 +83,18 @@ export function keepPage(
 export const dropPage = (pages: CachedPage[], id: string) =>
   pages.filter((p) => p.doc.id !== id);
 
+/**
+ * Keep only team pages from teams the person is still in (left, or removed
+ * from, a team: its pages go). Their own pages stay.
+ */
+export const keepTeamPages = (
+  pages: CachedPage[],
+  teamIds: Iterable<string>,
+) => {
+  const mine = new Set(teamIds);
+  return pages.filter((p) => !p.doc.team_id || mine.has(p.doc.team_id));
+};
+
 export const cachedPage = (pages: CachedPage[], id: string) =>
   pages.find((p) => p.doc.id === id)?.doc ?? null;
 

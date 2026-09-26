@@ -8,7 +8,7 @@ import { confirmAction } from "../../lib/confirm";
 import { errorText } from "../../lib/errors";
 import { copyText } from "../../lib/share";
 import { shared } from "../../styles";
-import { colors, fonts, themed } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 
 /**
  * Publish to web (SHR-05, SHR-06) on a phone, for a page or a folder: off
@@ -291,7 +291,7 @@ const s = themed(() =>
     },
     note: {
       padding: 10,
-      borderRadius: 10,
+      borderRadius: radii.input,
       overflow: "hidden",
       backgroundColor: colors.surfaceMuted,
       fontFamily: fonts.regular,

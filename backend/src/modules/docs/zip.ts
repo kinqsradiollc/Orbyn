@@ -239,20 +239,28 @@ export type UnzippedFile = { name: string; body: Buffer };
 
 export class ZipError extends Error {}
 
+const inflateRawAsync = promisify(zlib.inflateRaw);
+
 /**
  * Read the files in a zip (DATA-08: a folder of Markdown notes, a Notion
  * export). Only what imports need: stored and deflated files, found through
  * the central directory, with limits on how many and how big so a crafted
  * archive can't blow up in memory. Directories and zip64 are skipped.
+ *
+ * Only files `read` wants are unpacked, off the main thread, so a large
+ * export full of pictures doesn't hold up other requests; the rest come back
+ * with an empty body (their size still counts toward the limit, from the
+ * central directory).
  */
-export function unzip(
+export async function unzip(
   archive: Buffer,
   limits: {
     maxFiles: number;
     maxBytes: number;
     keep?: (name: string) => boolean;
+    read?: (name: string) => boolean;
   },
-): UnzippedFile[] {
+): Promise<UnzippedFile[]> {
   // The end-of-central-directory record: in the last 64 KB + 22 bytes.
   let end = -1;
   for (
@@ -290,6 +298,11 @@ export function unzip(
     total += size;
     if (size === U32 || packed === U32 || total > limits.maxBytes)
       throw new ZipError("The zip is too big once unpacked.");
+    if (method !== 0 && method !== 8) continue;
+    if (limits.read && !limits.read(name)) {
+      out.push({ name, body: Buffer.alloc(0) });
+      continue;
+    }
     if (
       local + 30 > archive.length ||
       archive.readUInt32LE(local) !== 0x04034b50
@@ -303,9 +316,14 @@ export function unzip(
     const data = archive.subarray(start, start + packed);
     let body: Buffer;
     if (method === 0) body = Buffer.from(data);
-    else if (method === 8)
-      body = zlib.inflateRawSync(data, { maxOutputLength: Math.max(size, 1) });
-    else continue;
+    else
+      try {
+        body = await inflateRawAsync(data, {
+          maxOutputLength: Math.max(size, 1),
+        });
+      } catch {
+        throw new ZipError("The zip file is damaged.");
+      }
     if (body.length !== size) throw new ZipError("The zip file is damaged.");
     out.push({ name, body });
   }

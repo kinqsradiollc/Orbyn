@@ -294,7 +294,7 @@ const s = themed(() =>
     box: {
       width: 22,
       height: 22,
-      borderRadius: 6,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       alignItems: "center",

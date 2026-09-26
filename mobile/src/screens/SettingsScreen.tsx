@@ -1026,6 +1026,7 @@ export function SettingsScreen({
             {importPreview.tags_added} new tag
             {importPreview.tags_added === 1 ? "" : "s"}
             {importPreview.skipped ? `, ${importPreview.skipped} skipped` : ""}.
+            {importPreview.errors.map((e) => `\n${e}`).join("")}
           </Text>
         )}
 

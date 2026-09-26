@@ -96,7 +96,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { readsFirst } from "../../lib/reading";
-import { rememberPage } from "../../lib/pageCache";
+import { forgetPage, rememberPage } from "../../lib/pageCache";
 import { savePageOffline } from "../../lib/outbox";
 import { PublishSheet } from "./PublishSheet";
 import { downloadDoc, formatsHere } from "../../lib/download";
@@ -1894,6 +1894,7 @@ export function DocEditor({
       try {
         if (last && unsaved(last)) await persist(live.current.title, last);
         await client.deleteDoc(doc.id);
+        void forgetPage(doc.id);
       } catch (e) {
         report(e);
         return;

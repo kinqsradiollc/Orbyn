@@ -248,7 +248,13 @@ export function flush(): Promise<void> {
             status(e) === 409 &&
             entry.attempts < 3
           ) {
-            bump(entry, { attempts: entry.attempts + 1 });
+            // A fresh key: the server keeps the 409 under the old one and
+            // would only replay it. The merge makes a resend safe.
+            const attempts = entry.attempts + 1;
+            bump(entry, {
+              attempts,
+              key: `${entry.key.replace(/-m\d+$/, "")}-m${attempts}`,
+            });
             continue;
           }
           if (entry.op.type === "item.update" && status(e) === 409) {

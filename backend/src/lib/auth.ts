@@ -110,7 +110,7 @@ export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, publish to the web, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
@@ -151,6 +151,15 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // granting one write access: a signed-in person only.
   { route: /^\/oauth\// },
   { route: /^\/me\/reauth(?:\/|$)/ },
+  // Publishing to the public web is people only: a key can't make a page
+  // or folder public, change its password, description or noindex, or turn
+  // a team's publishing switch. Reading how it is published, and taking a
+  // page off the web, stay open.
+  { method: "PUT", route: /^\/(?:docs|folders)\/:id\/publish$/ },
+  { method: "PUT", route: /^\/docs\/:id\/web-description$/ },
+  { method: "PUT", route: /^\/teams\/:id\/publishing$/ },
+  // The guided first run, and skipping it: the person's own start.
+  { method: "POST", route: /^\/me\/first-run(?:\/skip)?$/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },

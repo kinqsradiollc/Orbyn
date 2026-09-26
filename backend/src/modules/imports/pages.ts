@@ -11,7 +11,8 @@ import {
   type ImportFile,
   type PagesImportSummary,
 } from "@orbyn/core";
-import { transaction } from "../../db/pool.js";
+import { pool, transaction } from "../../db/pool.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { authenticate } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { unzip, ZipError } from "../docs/zip.js";
@@ -19,14 +20,18 @@ import { unzip, ZipError } from "../docs/zip.js";
 const TEXT = /\.(md|markdown|txt|csv)$/i;
 
 /** The files in what was sent: a zip's text files, or the one file. */
-function filesOf(name: string, bytes: Buffer): ImportFile[] {
+async function filesOf(name: string, bytes: Buffer): Promise<ImportFile[]> {
   if (/\.zip$/i.test(name)) {
     try {
-      return unzip(bytes, {
-        maxFiles: PAGE_IMPORT_LIMITS.maxFiles,
-        maxBytes: PAGE_IMPORT_LIMITS.maxBytes * 5,
-        keep: (n) => !n.startsWith("__MACOSX/"),
-      }).map((f) => ({
+      return (
+        await unzip(bytes, {
+          maxFiles: PAGE_IMPORT_LIMITS.maxFiles,
+          maxBytes: PAGE_IMPORT_LIMITS.maxBytes * 5,
+          keep: (n) => !n.startsWith("__MACOSX/"),
+          // Pictures and other files are counted from the directory, not unpacked.
+          read: (n) => TEXT.test(n),
+        })
+      ).map((f) => ({
         path: f.name,
         // Pictures and other files are only counted, never read.
         text: TEXT.test(f.name) ? f.body.toString("utf8") : "",
@@ -63,8 +68,9 @@ export async function pageImportRoutes(app: FastifyInstance) {
       const bytes = Buffer.from(d.data, "base64");
       if (bytes.length > PAGE_IMPORT_LIMITS.maxBytes)
         fail(413, "That file is over 20 MB. Split the export and try again.");
-      const files = filesOf(d.file_name, bytes);
-      const plan = planPagesImport(files, d.format, d.file_name);
+      const files = await filesOf(d.file_name, bytes);
+      const zone = (await loadPrefs(pool, u.id)).timezone || "UTC";
+      const plan = planPagesImport(files, d.format, d.file_name, zone);
       const taskCount = plan.projects.reduce((n, p) => n + p.tasks.length, 0);
       const errors: string[] = [];
       if (!plan.pages.length && !plan.projects.length)
@@ -153,8 +159,8 @@ export async function pageImportRoutes(app: FastifyInstance) {
           for (const t of project.tasks.slice(0, 2000))
             await db.query(
               `INSERT INTO items (user_id, team_id, title, notes, kind, status,
-                 priority, due_at, project_id, progress)
-                 VALUES ($1, $2, $3, $4, 'task', $5, $6, $7, $8, $9)`,
+                 priority, due_at, project_id, progress, all_day, timezone, rrule)
+                 VALUES ($1, $2, $3, $4, 'task', $5, $6, $7, $8, $9, $10, $11, $12)`,
               [
                 u.id,
                 teamId,
@@ -165,6 +171,9 @@ export async function pageImportRoutes(app: FastifyInstance) {
                 t.due_at,
                 projectId,
                 t.status === "done" ? 100 : 0,
+                !!t.due_at && t.all_day,
+                t.timezone,
+                t.due_at ? t.rrule : null,
               ],
             );
         }

@@ -13,7 +13,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { ToastHost } from "./Toast";
 import { useSwipeDown } from "../hooks/useSwipeDown";
-import { controls, colors, fonts, spacing, themed } from "../theme";
+import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 
 /**
  * Page sheet shared by Teams and the Admin console: the same Modal pattern as
@@ -243,7 +243,7 @@ const s = themed(() =>
     peekHandle: {
       width: 36,
       height: 4,
-      borderRadius: 2,
+      borderRadius: radii.pill,
       backgroundColor: colors.border,
     },
     centered: {
