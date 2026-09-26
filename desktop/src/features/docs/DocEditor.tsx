@@ -12,7 +12,6 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
-  Copy,
   Download,
   FileInput,
   GripVertical,
@@ -20,7 +19,6 @@ import {
   History,
   Info,
   Italic,
-  LayoutTemplate,
   Link,
   Link2,
   ListChecks,
@@ -2602,28 +2600,11 @@ export function DocEditor({
           </button>
           <button
             className="icon-button"
-            onClick={() => setSavingTemplate(true)}
-            aria-label="Save as template"
-            aria-haspopup="dialog"
-            title="Save as template"
-          >
-            <LayoutTemplate size={15} />
-          </button>
-          <button
-            className="icon-button"
             onClick={copyPageLink}
             aria-label="Copy link"
             title="Copy link"
           >
             <Link2 size={15} />
-          </button>
-          <button
-            className="icon-button"
-            onClick={copyMarkdown}
-            aria-label="Copy as Markdown"
-            title="Copy as Markdown"
-          >
-            <Copy size={15} />
           </button>
           {/* On a phone's browser: the system share sheet (SHR-07). */}
           <SharePageButton
@@ -2703,6 +2684,29 @@ export function DocEditor({
                     </button>
                   </li>
                 )}
+                <li>
+                  <button
+                    role="menuitem"
+                    aria-haspopup="dialog"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      setSavingTemplate(true);
+                    }}
+                  >
+                    Save as template
+                  </button>
+                </li>
+                <li>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      copyMarkdown();
+                    }}
+                  >
+                    Copy as Markdown
+                  </button>
+                </li>
                 <li>
                   <button
                     role="menuitem"
