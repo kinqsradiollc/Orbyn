@@ -47,16 +47,13 @@ import {
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/service.js";
-import {
-  visibleItems,
-  visibleProjects,
-  visibleRecords,
-} from "../../../lib/visibility.js";
+import { visibleItems, visibleProjects } from "../../../lib/visibility.js";
 import {
   changeFor,
   proposeChanges,
   type ProposedChange,
 } from "../../docs/service.js";
+import { openDecision } from "../../work-records/service.js";
 
 export { toInstant, whenLabel };
 
@@ -666,15 +663,12 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
           throw new Error(
             "A decision can only be linked to a task in its project.",
           );
-        const decision = (
-          await pool.query<{ id: string; title: string }>(
-            `SELECT w.id, w.title FROM work_records w
-              WHERE w.id = $2 AND w.project_id = $3 AND w.kind = 'decision'
-                AND w.status = 'open' AND w.linked_item_id IS NULL
-                AND ${visibleRecords("w")}`,
-            [ctx.user.id, d.decision_id, data.project_id],
-          )
-        ).rows[0];
+        const decision = await openDecision(
+          pool,
+          ctx.user.id,
+          d.decision_id,
+          data.project_id,
+        );
         if (!decision)
           throw new Error("That open decision is not in this project.");
         decisionTitle = clean(decision.title, 200);

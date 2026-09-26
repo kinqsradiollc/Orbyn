@@ -1,4 +1,4 @@
-import { runDueTemplates } from "../modules/templates/routes.js";
+import { runDueTemplates } from "../modules/templates/service.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { runSweep } from "../lib/sweep.js";

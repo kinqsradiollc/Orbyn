@@ -44,8 +44,9 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
-import { visibleItems, visibleRecords } from "../../lib/visibility.js";
+import { visibleItems } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
+import { linkDecision } from "../work-records/service.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -638,15 +639,14 @@ export async function aiRoutes(app: FastifyInstance) {
               409,
               "The decision task could not be linked. Ask for a new proposal.",
             );
-          const linked = await db.query(
-            `UPDATE work_records w SET linked_item_id = $1, version = version + 1,
-                updated_at = now()
-              WHERE w.id = $2 AND w.kind = 'decision' AND w.status = 'open'
-                AND w.linked_item_id IS NULL AND w.project_id = $3
-                AND ${visibleRecords("w", { user: "$4" })}`,
-            [item.id, link.decision_id, item.project_id, u.id],
+          const linked = await linkDecision(
+            db,
+            u.id,
+            link.decision_id,
+            item.id,
+            item.project_id,
           );
-          if (!linked.rowCount)
+          if (!linked)
             fail(
               409,
               "The decision changed since this proposal. Ask again to review it.",
