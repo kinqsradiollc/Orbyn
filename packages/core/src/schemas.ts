@@ -1344,7 +1344,8 @@ export const plannerPrefsInput = z
       .number()
       .int()
       .refine((n) => SESSION_REMINDER_MINUTES.includes(n), {
-        message: "Choose a reminder as the session starts, or 5, 10 or 15 minutes before.",
+        message:
+          "Choose a reminder as the session starts, or 5, 10 or 15 minutes before.",
       })
       .nullable()
       .optional(),

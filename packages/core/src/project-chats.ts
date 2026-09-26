@@ -114,24 +114,23 @@ export function savedReply(
     id: `saved-${n}`,
     summary: turn.text,
     actions: [],
-    sources: (turn.sources ?? []).map(
-      (s): AssistantSource =>
-        s.doc_id
-          ? {
-              doc_id: s.doc_id,
-              title: s.title,
-              block_id: s.block_id ?? null,
-              quote: s.quote ?? "",
-              ...(s.number ? { number: s.number } : {}),
-            }
-          : {
-              kind: s.kind ?? "task",
-              id: s.id ?? "",
-              title: s.title,
-              quote: s.quote ?? "",
-              ...(s.project_id ? { project_id: s.project_id } : {}),
-              ...(s.number ? { number: s.number } : {}),
-            },
+    sources: (turn.sources ?? []).map((s): AssistantSource =>
+      s.doc_id
+        ? {
+            doc_id: s.doc_id,
+            title: s.title,
+            block_id: s.block_id ?? null,
+            quote: s.quote ?? "",
+            ...(s.number ? { number: s.number } : {}),
+          }
+        : {
+            kind: s.kind ?? "task",
+            id: s.id ?? "",
+            title: s.title,
+            quote: s.quote ?? "",
+            ...(s.project_id ? { project_id: s.project_id } : {}),
+            ...(s.number ? { number: s.number } : {}),
+          },
     ),
   };
 }
