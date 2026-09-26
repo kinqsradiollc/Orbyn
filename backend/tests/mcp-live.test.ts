@@ -1,4 +1,4 @@
-import { test, before, after } from "node:test";
+import { test, before, after, mock } from "node:test";
 import assert from "node:assert/strict";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
@@ -31,7 +31,8 @@ process.env.FILES_SECRET ??= "test-files-secret-0123456789abcdef";
 
 const { buildApp, buildMcpService, buildRealtimeService } =
   await import("../src/app.js");
-const { pool } = await import("../src/db/pool.js");
+const { pool, readPool } = await import("../src/db/pool.js");
+const { announceDocChange } = await import("../src/modules/docs/live.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { limiter, strikes } =
@@ -363,6 +364,119 @@ test("listen: a followed page that can no longer be read is dropped, not told of
   );
   assert.equal(updated.length, 1, s.body);
   assert.equal(updated[0].params.uri, `orbyn://doc/${doc.id}`);
+});
+
+test("listen: a followed page trashed, or task deleted, is told of once, then no more", async () => {
+  const doc = await newDoc(olga, { title: "Soon in the Trash" });
+  const task = (
+    await h.call(olga.token, "POST", "/items", {
+      kind: "task",
+      title: "Soon deleted",
+    })
+  ).json() as { id: string };
+  const docUri = `orbyn://doc/${doc.id}`;
+  const taskUri = `orbyn://task/${task.id}`;
+  const s = await listen(
+    key,
+    { resourceSubscriptions: [docUri, taskUri] },
+    async () => {
+      const trashed = await h.call(olga.token, "DELETE", `/docs/${doc.id}`);
+      assert.ok(trashed.statusCode < 300, trashed.body);
+      const version = (
+        await pool.query("SELECT version FROM items WHERE id = $1", [task.id])
+      ).rows[0].version as number;
+      const gone = await h.call(
+        olga.token,
+        "DELETE",
+        `/items/${task.id}?version=${version}`,
+      );
+      assert.ok(gone.statusCode < 300, gone.body);
+      await new Promise((r) => setTimeout(r, 800));
+      // Later news of either is no longer told.
+      await announceDocChange(pool, doc.id, doc.version + 1, olga.id);
+      await new Promise((r) => setTimeout(r, 800));
+    },
+    3_000,
+  );
+  const told = s.events
+    .filter((e) => e.method === "notifications/resources/updated")
+    .map((e) => e.params.uri as string);
+  assert.equal(told.filter((u) => u === docUri).length, 1, s.body);
+  assert.equal(told.filter((u) => u === taskUri).length, 1, s.body);
+});
+
+test("listen: a failed access re-check holds the note back, never drops what it follows", async () => {
+  const doc = await newDoc(olga, { title: "Through a blip" });
+  const uri = `orbyn://doc/${doc.id}`;
+  // The next `failures` read-only transactions fail to begin.
+  let failures = 0;
+  const connect = readPool.connect.bind(readPool);
+  const blip = mock.method(readPool, "connect", ((...args: unknown[]) => {
+    // pool.query itself connects with a callback: left alone.
+    if (typeof args[0] === "function" || failures === 0)
+      return (connect as (...a: unknown[]) => unknown)(...args);
+    return (connect() as Promise<any>).then((client) => {
+      const query = client.query;
+      client.query = (text: unknown, ...rest: unknown[]) => {
+        client.query = query;
+        if (text === "BEGIN READ ONLY" && failures > 0) {
+          failures--;
+          return Promise.reject(new Error("a replica blip"));
+        }
+        return query.call(client, text, ...rest);
+      };
+      return client;
+    });
+  }) as typeof readPool.connect);
+  const was = { retryMs: LISTEN.retryMs, gatherMs: LISTEN.gatherMs };
+  LISTEN.retryMs = 300;
+  LISTEN.gatherMs = 100;
+  try {
+    // One blip: told late, and still followed afterwards.
+    const s = await listen(
+      key,
+      { resourceSubscriptions: [uri] },
+      async () => {
+        failures = 1;
+        await announceDocChange(pool, doc.id, doc.version + 1, olga.id);
+        await new Promise((r) => setTimeout(r, 900));
+        assert.equal(failures, 0);
+        await announceDocChange(pool, doc.id, doc.version + 2, olga.id);
+        await new Promise((r) => setTimeout(r, 600));
+      },
+      2_500,
+    );
+    const told = s.events.filter(
+      (e) => e.method === "notifications/resources/updated",
+    );
+    assert.equal(told.length, 2, s.body);
+    assert.ok(told.every((e) => e.params.uri === uri));
+
+    // It keeps failing: the stream closes early, "complete", for a fresh start.
+    const started = Date.now();
+    const again = await listen(
+      key,
+      { resourceSubscriptions: [uri] },
+      async () => {
+        failures = 100;
+        await announceDocChange(pool, doc.id, doc.version + 3, olga.id);
+      },
+      10_000,
+    );
+    failures = 0;
+    assert.ok(Date.now() - started < 5_000, "closed before its time limit");
+    assert.equal(
+      again.events.filter((e) => e.method === "notifications/resources/updated")
+        .length,
+      0,
+      again.body,
+    );
+    assert.equal(again.events.at(-1)?.result?.resultType, "complete");
+  } finally {
+    failures = 0;
+    blip.mock.restore();
+    Object.assign(LISTEN, was);
+  }
 });
 
 test("listen: keep-alives, and a close at the credential's end", async () => {

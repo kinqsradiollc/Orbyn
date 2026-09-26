@@ -42,7 +42,9 @@ import { detailed, readTasks, ownTaskIds } from "./tasks.js";
  *   and its own long jobs (taskIds, the Tasks extension). Anything it can't
  *   read is dropped from the acknowledgement, never reported on; a followed
  *   thing is checked again before each note, and dropped once it can't be
- *   read (made private, moved out of a space the connection was given).
+ *   read: silently when it still exists (made private, moved out of a space
+ *   the connection was given), after one last resources/updated when it was
+ *   deleted or trashed (reading it then says it's gone).
  * - Then notifications/resources/updated, notifications/resources/list_changed
  *   and notifications/tasks as things change, gathered for half a second so
  *   a burst is one note each. They say what moved, never what it says: the
@@ -68,6 +70,13 @@ export const LISTEN = {
   /** Resources and tasks one stream may follow. */
   maxUris: 100,
   maxTasks: 50,
+  /**
+   * When the access re-check fails (a database blip), the notes wait this
+   * long for another try; after this many failures in a row the stream
+   * closes and the agent opens it again.
+   */
+  retryMs: 5_000,
+  maxCheckFailures: 3,
 };
 
 const MODERN = "2026-07-28";
@@ -164,15 +173,8 @@ const TABLES = {
   view: ["saved_views", "v", visibleViews],
 } as const;
 
-/**
- * The orbyn://<type>/<id> resources in `uris` that `p` can read now. The
- * rest (other kinds of URI included) are left out.
- */
-async function readableThings(
-  p: Principal,
-  uris: string[],
-): Promise<Set<string>> {
-  const kept = new Set<string>();
+/** The orbyn://<type>/<id> resources in `uris`, by type and lower-case id. */
+function thingsByType(uris: string[]) {
   const byType = new Map<keyof typeof TABLES, Map<string, string>>();
   for (const uri of uris) {
     const m = THING.exec(uri);
@@ -182,6 +184,19 @@ async function readableThings(
     list.set(m[2].toLowerCase(), uri);
     byType.set(type, list);
   }
+  return byType;
+}
+
+/**
+ * The orbyn://<type>/<id> resources in `uris` that `p` can read now. The
+ * rest (other kinds of URI included) are left out.
+ */
+async function readableThings(
+  p: Principal,
+  uris: string[],
+): Promise<Set<string>> {
+  const kept = new Set<string>();
+  const byType = thingsByType(uris);
   if (byType.size)
     await readTransaction(async (db) => {
       for (const [type, ids] of byType) {
@@ -200,6 +215,34 @@ async function readableThings(
       }
     });
   return kept;
+}
+
+/**
+ * The orbyn://<type>/<id> resources in `uris` that were deleted: the row is
+ * gone, or (a page) it is in the Trash. One that still exists but can't be
+ * read (made private, moved out of a space) is not among them.
+ */
+async function deletedThings(uris: string[]): Promise<Set<string>> {
+  const byType = thingsByType(uris);
+  const gone = new Set<string>();
+  if (byType.size)
+    await readTransaction(async (db) => {
+      for (const [type, ids] of byType) {
+        const [table, alias] = TABLES[type];
+        const trash = type === "doc" ? ` AND ${alias}.deleted_at IS NULL` : "";
+        const there = new Set(
+          (
+            await db.query<{ id: string }>(
+              `SELECT ${alias}.id FROM ${table} ${alias}
+                WHERE ${alias}.id = ANY ($1::uuid[])${trash}`,
+              [[...ids.keys()]],
+            )
+          ).rows.map((r) => r.id),
+        );
+        for (const [id, uri] of ids) if (!there.has(id)) gone.add(uri);
+      }
+    });
+  return gone;
 }
 
 /**
@@ -396,6 +439,8 @@ export async function openListen(
   const lastTask = new Map<string, string>();
   const docWatches = new Map<string, () => void>();
   let timer: NodeJS.Timeout | null = null;
+  /** Access re-checks that failed in a row (a database blip). */
+  let checkFailures = 0;
   const flush = async () => {
     timer = null;
     const updated = [...pending.updated];
@@ -407,17 +452,41 @@ export async function openListen(
     pending.list = false;
     pending.tasks.clear();
     pending.allTasks = false;
-    // What it follows may have become private or left a space it was given
-    // since the stream opened: checked again before telling, and dropped
-    // (never told of again) once it can't be read.
+    // What it follows may have become private, left a space it was given
+    // or been deleted since the stream opened: checked again before telling.
+    // One that was deleted is told of a last time (reading it then says it's
+    // gone) and dropped; one that still exists but can't be read is dropped
+    // silently, never told of again. If the check itself fails, nothing is
+    // dropped: the notes wait for the next try, and the stream closes (the
+    // agent opens it again) when it keeps failing.
     const things = updated.filter((u) => THING.test(u));
-    const still = things.length
-      ? await readableThings(p, things).catch(() => new Set<string>())
-      : new Set<string>();
-    const gone = things.filter((u) => !still.has(u));
+    let held = new Set<string>();
+    let gone: string[] = [];
+    let deleted = new Set<string>();
+    if (things.length)
+      try {
+        const still = await readableThings(p, things);
+        gone = things.filter((u) => !still.has(u));
+        if (gone.length) deleted = await deletedThings(gone);
+        checkFailures = 0;
+      } catch {
+        if (closed) return;
+        if (++checkFailures >= LISTEN.maxCheckFailures) {
+          stream.close(true);
+          return;
+        }
+        // Held back for the next try; nothing is dropped.
+        held = new Set(things);
+        gone = [];
+        for (const uri of things) pending.updated.add(uri);
+        timer ??= setTimeout(() => void flush(), LISTEN.retryMs);
+      }
     if (gone.length) forget(gone);
-    for (const uri of updated)
-      if (!gone.includes(uri)) note("notifications/resources/updated", { uri });
+    for (const uri of updated) {
+      if (held.has(uri)) continue;
+      if (gone.includes(uri) && !deleted.has(uri)) continue;
+      note("notifications/resources/updated", { uri });
+    }
     if (list) note("notifications/resources/list_changed");
     if (taskIds.length) {
       const tasks = await readTasks(grantId, taskIds).catch(() => []);
@@ -463,6 +532,7 @@ export async function openListen(
       (u) => !uris.includes(u),
     );
     for (const uri of uris) {
+      pending.updated.delete(uri);
       docWatches.get(uri)?.();
       docWatches.delete(uri);
     }
