@@ -314,6 +314,15 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
 **Uploads** section of Docs, and the file itself is deleted
 (`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
 
+**Keep the original** (off by default): with `keep_original: true` on `POST /imports` (or the
+person's setting, `PUT /me/originals { keep }`), the file is kept after it becomes a page, encrypted in
+the file store's `kept/` folder, within `FILES_KEEP_QUOTA_MB` per person (over it, the page is still
+made and its notes say the original wasn't kept). `GET /me/originals` → `{ keep, used_bytes,
+quota_bytes, files }`. A page's `original` field names it; `GET /docs/:id/original` downloads it for
+anyone who can open the page, `DELETE /docs/:id/original` deletes it (the importer, or an editor of a
+team page). Originals come with `/me/export.zip` (`originals/`), and go when their page is deleted for
+good or the account is deleted.
+
 1. `POST /imports` gives an upload link for one file.
 2. The app `PUT`s the file's bytes to that link. The link goes to the **file store**, not the API.
    It works once and for ten minutes.
@@ -670,6 +679,12 @@ sessions after the task changes hands.
 titles and planning fields only; task notes and document bodies are never included. Access follows
 the same personal-project or team membership rules as `GET /projects/:id`.
 
+Rows now say how a change was made (`origin`: `app`, `planner`, `assistant`, `agent`, `reminder`)
+and name a connected agent (`via_agent`). Sessions are listed too (`entity_type: "session"`,
+`entity_id` = the task; kinds `session_planned`, `session_moved`, `session_started`,
+`session_removed`), one row per task per change ("3 sessions planned: …"), and only to the person
+whose sessions they are — teammates, owners and admins included never see them.
+
 ### `GET /projects/:id/time-machine/checkpoints?before=&limit=100` (auth)
 
 Lists changes newest first with a stable decimal `event_order`, timestamp, summary and actor name.
@@ -686,6 +701,35 @@ status and deadline, plus its stages, tasks, linked note titles and work-record 
 point. Task notes and document bodies are omitted. A change outside the visible project returns
 `404`; invalid event orders return `422`. Historical planning state cannot be edited through
 this endpoint.
+
+### Milestones (auth)
+
+A project's own dated list of checkpoints (never dates on stages; a milestone never writes a task's
+deadline). `GET /projects/:id/milestones` lists them soonest first, each rolled up for the viewer:
+`task_count`, `done_count` (everyone's tasks), and for your part only `needed_minutes`,
+`planned_minutes`, `planned_finish_at` and `unestimated_count`, plus a `status` (`done`, `on_track`,
+`not_planned`, `late`, `passed`, `empty`). `POST` `{ name, due_on: "YYYY-MM-DD", item_ids? }` (edit
+rights, at most 50), `PUT /projects/:id/milestones/:milestoneId` `{ name?, due_on?, done? }`,
+`DELETE` (its tasks stay). `PUT /items/:id/milestone` `{ milestone_id | null }` puts one task in a
+milestone of its own project (`422` for another project's). A task that leaves its project leaves the
+milestone. Changes show in the project's History.
+
+### `PUT /projects/:id/assistant` (auth) → the project
+
+`{ "off": true }` keeps the project out of the assistant: nothing in it (tasks, pages, records, its
+title) reaches any AI — the assistant's tools and preload, a chat scope (`422`), page help and Study
+(`422` for its pages), the morning agenda's summary, search by meaning (its measurements are
+forgotten) and connected agents (every agent query leaves it out). Only the owner of a personal
+project, or a team's owners and admins, may change it (`403`). Projects carry `assistant_off`.
+
+### Saved project chats (auth, ai service)
+
+Each person's own conversations with the assistant about a project. `GET /ai/projects/:id/chats`
+lists yours (newest 50), `GET /ai/chats/:id` reads one with its `turns` (`{ role, text, sources? }`),
+`PUT /ai/chats/:id` `{ project_id, title?, turns }` saves after each reply (the app makes the id;
+`422` for a project kept out of the assistant; `404` for a chat or project that isn't yours),
+`DELETE /ai/chats/:id`. Pending changes are never saved. The sweeper removes chats a year after they
+were last used.
 
 ### `PUT /projects/:id` (auth)
 
@@ -1049,16 +1093,33 @@ creates nothing; the word search above carries on alone, which is how the worksp
 Swapping the image to `pgvector/pgvector:pg17` and re-running migrations creates the tables; nothing
 else changes.
 
-Turning it on is `PUT /ai/settings` with `semantic_search: true`, and `GET /ai/settings` reports both
-`semantic_search` (whether it is wanted) and `semantic_possible` (whether this database could).
+Turning it on is its own setup, `PUT /ai/settings/semantic` (`ai:manage`) with
+`{ "on": true, "embedding_model": "…", "accept": true }`: it needs `pgvector` (`409` without it), a
+connected provider (`409`), a model that measures text (`422`) and the admin's agreement that every
+page is sent to the provider to be measured (`422` without `accept`). `{ "on": false }` turns it off
+and **forgets every measurement**. `PUT /ai/settings` no longer turns it on (`422`). `GET /ai/settings`
+reports `semantic_search`, `semantic_possible` (whether this database could), `embedding_model`,
+`semantic_accepted_at` and `measure_running` (whether the measuring service reported in lately).
 It stays off until asked for because measuring a page means **sending its words to whichever AI
 provider is configured**, which is a decision for whoever runs the workspace rather than a default.
+Pages in projects kept out of the assistant are never measured.
 
-Once on, editing a page queues it; the worker measures its lines a minute at a time, and only the
-lines whose words actually changed. Meaning is then **added to** the word search, never used instead
+Once on, editing a page queues it; the **measuring service** (`node dist/services/measure.js`,
+Compose `measure`, profile `semantic`, never the reminder loop) measures its lines a minute at a time,
+and only the lines whose words actually changed. Meaning is then **added to** the word search, never used instead
 of it: a page the words already found is lifted a little, and a page only meaning found joins the end
 rather than displacing a plain match. If the provider is unreachable the search still returns its word
 results — losing meaning is not losing the search.
+
+### @mentions in a page, and `GET /me/mentions` (auth)
+
+Typing `@` in a line offers the people who can already open the page; picking one writes an ordinary
+Markdown link, `[@Anna Lee](/app/person/<id>)` (a relative path, never an `orbyn:` address). On every
+save, from any write path, who a page names is read again: a person named for the first time is told
+once in Notifications (`kind: "mention"`, `ref: "doc:<page>:<line>"`), and someone who can't open the
+page is never recorded or told. `GET /me/mentions?limit=50` → `[{ doc_id, title, block_id, quote,
+mentioned_by, project_id, created_at }]`, newest first: "Mentioned in". A page you can no longer
+open drops out, so its title never shows.
 
 ### `PUT /docs/:id/comments/:commentId` (auth)
 
@@ -1882,15 +1943,18 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
 | `project_id`     | The task's project, or null                                                                                                                                                                                           |
 
-| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                       |
-| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                           |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                     |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                               |
-| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                        |
-| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
-| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                       |
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                                             |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                                       |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                                                 |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                                          |
+| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days                   |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                                         |
+| `GET /blocks/check-ins`       | Sessions that ended in the last 3 days, not answered yet, whose task is open → `[SessionCheckIn]`                                                                                                                                                                                                                                                                                  |
+| `POST /blocks/:id/check-in`   | `{ "outcome": "done" \| "more" \| "skipped", "more_minutes"? }` → `{ id, outcome, counted_minutes, remaining_minutes }`. Done and more count the session's time into the task once (less focus time already logged inside it); more also sets what is still needed; skip counts nothing. Answering again takes back what the first answer counted. `409` before the session starts |
+| `POST /blocks/:id/start`      | `{ "from"?: "app" \| "reminder" }` → marks the session started (from 15 minutes before it until it ends; `409` otherwise). Focus mode started on its task while it runs does the same                                                                                                                                                                                              |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
 dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones

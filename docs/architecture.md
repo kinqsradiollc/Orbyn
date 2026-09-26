@@ -77,7 +77,12 @@ no sessions, JSON answers.
   booking's events stay the guest's words after the booking or its page is deleted. A project's
   change rows keep their task's source themselves (`project_activity.source`), so a deleted
   task's title stays fenced. Images that would load from another host are removed. No MCP path
-  calls an AI provider or semantic search.
+  calls an AI provider or semantic search. A project **kept out of the assistant**
+  (`projects.assistant_off`) is left out of every agent query (`scopeFor` adds it to the
+  `lib/visibility.ts` builders, and calendar entries and sessions drop its items), as it is from
+  Orbyn's own assistant (`lib/assistant-off.ts`: every tool result is scrubbed, plans leave its
+  tasks out, a chat can't be scoped to it), page help, Study, the agenda's summary and search by
+  meaning.
 - **Rate limits by credential.** The general limit counts an agent's requests against its
   connection only at the MCP address and only once the credential is a live connection's; a
   made-up one counts per address, like any other request, so it can't skip sign-in limits.
