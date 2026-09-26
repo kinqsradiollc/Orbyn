@@ -1277,6 +1277,27 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 | `PUT /teams/:id/agent-access` | Owners and admins: `{ "agent_access": "role"\|"suggest"\|"read"\|"off" }`. This caps every agent in the team. `off` hides the team from agents.                                                                                                                                                                                                                                                             |
 | `GET` / `PUT /admin/agents`   | Admins: `agents_enabled`, `agents_writes_enabled`, `blocked_client_ids`, `allowed_client_hosts`, `dcr_enabled`, `max_grant_days` and `agent_limits`. They apply within 10 s, with no deploy. Changes are audited.                                                                                                                                                                                           |
 
+### Sign in with Orbyn (OAuth)
+
+Apps can also connect by signing in with Orbyn (OAuth 2.1, public clients with PKCE S256, no client secrets). The metadata is at `<APP_URL>/.well-known/oauth-authorization-server`; everything below is also in docs/openapi.yaml.
+
+- `GET /oauth/authorize/check?…` — what the consent page shows: the app (verified for a client ID metadata document, unverified for a registered one), `requested_access`, `requested_bookings`, and with a session your spaces and any earlier connection. 30 a minute.
+- `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day.
+- `POST /oauth/authorize/deny` `{ request }` → `{ redirect_to }` with `error=access_denied`.
+- `POST /oauth/token` (form): `grant_type=authorization_code` (code, redirect_uri, client_id, code_verifier, resource) or `refresh_token`. Access tokens (`oat_`) last an hour and work only at the MCP address; refresh tokens (`ort_`) rotate. A spent refresh token presented again within 60 seconds (twice at most, for retries) gets another pair; after that it counts as copied: the family is revoked, the connection paused and its owner told.
+- `POST /oauth/revoke` (form, RFC 7009): a refresh token takes its family; unknown tokens answer `200`.
+- `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day.
+- `POST /me/reauth` `{ password, code? }` or `{ handle, response }` (after `POST /me/reauth/options`) → `{ reauth_until }`. Open during maintenance.
+
+`allowed_client_hosts` applies to every website an app could send a code to: a registered app must be allowed for each https address it declared. Narrowing the list stops refreshes and MCP calls from apps no longer allowed.
+
+| Method and path                           | Body / result                                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /teams/:id/agents`                   | Team settings → Outside agents: the cap for everyone; for owners and admins also which members' agents reach the team and when an agent first used it. |
+| `GET /admin/agents/clients`               | Admins: apps that signed in, with kind, host, blocked and connections.                                                                                 |
+| `GET /admin/agents/usage?days=30`         | Admins (`analytics:read`): `{ apps }`, connections, people, calls and writes per app.                                                                  |
+| `DELETE /admin/users/:id/agents/:grantId` | Admins: end one of an account's agent connections: `204`.                                                                                              |
+
 Only a person signed in to Orbyn can use these: personal API keys get `403`, and agent credentials get `401`. Making and revoking a key is in the audit log (`agent_key.created`, `agent_key.revoked`), with the request id. A connection that goes over its limits more than 5 times, or is refused more than 50 times, within ten minutes is paused until you restore it (`agent_grant.suspended`, `agent_grant.restored`).
 
 ## AI assistant

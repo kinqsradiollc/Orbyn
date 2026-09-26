@@ -269,8 +269,10 @@ function Consent({
   onReauthed: (until: string) => void;
 }) {
   const existing = account.existing;
+  // What the app asked for (read when it named no scope), never more: a
+  // wider choice is the person's to make.
   const [access, setAccess] = useState<AgentAccess>(
-    existing?.access ?? "write",
+    existing?.access ?? check.requested_access,
   );
   const [personal, setPersonal] = useState(existing?.personal ?? true);
   const usable = account.teams.filter((t) => t.agent_access !== "off");
@@ -412,6 +414,15 @@ function Consent({
 
       <fieldset className="oauth-group">
         <legend>What it may do</legend>
+        <p className="oauth-hint muted">
+          {check.client.name} asked to{" "}
+          {check.requested_access === "write"
+            ? "see and change your things"
+            : check.requested_access === "suggest"
+              ? "see your things and suggest changes"
+              : "see your things"}
+          .
+        </p>
         {AGENT_ACCESS.map((a) => (
           <label
             key={a}

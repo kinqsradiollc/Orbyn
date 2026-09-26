@@ -16,7 +16,7 @@ import { audit } from "../../lib/audit.js";
 import { digest } from "../../lib/auth.js";
 import type { LiveSettings } from "../../lib/settings.js";
 import { announceAuthChange, noticeAgentEvent } from "../agents/service.js";
-import { OAuthError } from "./clients.js";
+import { disallowedHost, OAuthError } from "./clients.js";
 
 /**
  * Codes and tokens for agents that signed in with Orbyn. Everything is
@@ -31,6 +31,10 @@ import { OAuthError } from "./clients.js";
  *   OAUTH_REFRESH_TTL days (30) they lapse, and a family never outlives 90
  *   days or its connection. Using a spent one again means it was copied:
  *   the whole family is revoked, the connection paused, the person told.
+ *   Except just after it was spent (REFRESH_GRACE_SECONDS, a couple of
+ *   times at most): a client that lost the answer to a timeout, or two
+ *   tabs refreshing at once, gets another pair in the same family instead
+ *   of being treated as a thief.
  */
 
 export const ACCESS_PREFIX = "oat_";
@@ -38,6 +42,10 @@ export const REFRESH_PREFIX = "ort_";
 export const CODE_SECONDS = 60;
 /** The most a refresh-token family lasts, however often it rotates. */
 export const FAMILY_MAX_DAYS = 90;
+/** How long a just-spent refresh token may be presented again (a retry). */
+export const REFRESH_GRACE_SECONDS = 60;
+/** How many more pairs one spent refresh token may get within the grace. */
+export const REFRESH_GRACE_REUSES = 2;
 
 /** A token's secret part: 32 random bytes. */
 const secret = () => randomBytes(32).toString("base64url");
@@ -106,10 +114,14 @@ type GrantState = {
   revoked_at: Date | null;
   disabled: boolean;
   client_blocked: boolean | null;
+  client_kind: string | null;
+  client_host: string | null;
+  client_redirect_uris: string[] | null;
 };
 
 const GRANT_STATE = `SELECT g.id, g.user_id, g.client_id, g.client_name, g.access, g.toolsets,
-    g.expires_at, g.suspended_at, g.revoked_at, u.disabled, c.blocked AS client_blocked
+    g.expires_at, g.suspended_at, g.revoked_at, u.disabled, c.blocked AS client_blocked,
+    c.kind AS client_kind, c.host AS client_host, c.redirect_uris AS client_redirect_uris
   FROM agent_grants g JOIN users u ON u.id = g.user_id
   LEFT JOIN oauth_clients c ON c.id = g.client_id`;
 
@@ -127,6 +139,18 @@ function unusable(g: GrantState | undefined, s: LiveSettings): string | null {
     (g.client_id && s.agents.blocked_client_ids.includes(g.client_id))
   )
     return "This app has been blocked by the administrator of this Orbyn.";
+  if (
+    g.client_id &&
+    disallowedHost(
+      {
+        kind: g.client_kind,
+        host: g.client_host ?? "",
+        redirect_uris: g.client_redirect_uris,
+      },
+      s.agents.allowed_client_hosts,
+    ) !== null
+  )
+    return "Apps from this website can't connect to this Orbyn any more.";
   if (!s.agents.agents_enabled)
     return "Outside agents are switched off on this Orbyn for now.";
   return null;
@@ -361,9 +385,24 @@ export async function refreshTokens(
         "This refresh token isn't valid. Sign in again.",
       );
     if (t.used_at) {
-      await refreshReused(db, t.grant_id, t.family);
-      reused = true;
-      return null;
+      // A retry right after it rotated (a lost answer, two tabs at once)
+      // isn't theft: it gets another pair, a couple of times at most.
+      const recent =
+        Date.now() - t.used_at.getTime() < REFRESH_GRACE_SECONDS * 1000;
+      const since = recent
+        ? (
+            await db.query<{ n: number }>(
+              `SELECT count(*)::int AS n FROM agent_tokens
+                WHERE family = $1 AND kind = 'refresh' AND created_at >= $2`,
+              [t.family, t.used_at],
+            )
+          ).rows[0].n
+        : Infinity;
+      if (since >= 1 + REFRESH_GRACE_REUSES) {
+        await refreshReused(db, t.grant_id, t.family);
+        reused = true;
+        return null;
+      }
     }
     if (t.expires_at && t.expires_at.getTime() <= Date.now())
       throw new OAuthError(
@@ -390,8 +429,9 @@ export async function refreshTokens(
         "invalid_scope",
         "A refresh can't widen what this connection may do. Sign in again to change it.",
       );
+    // The first use sets used_at; retries within the grace keep it.
     await db.query(
-      "UPDATE agent_tokens SET used_at = now() WHERE token_hash = $1",
+      "UPDATE agent_tokens SET used_at = coalesce(used_at, now()) WHERE token_hash = $1",
       [digest(refresh_token)],
     );
     const familyEnd =

@@ -152,6 +152,52 @@ export function hostAllowed(host: string, allowed: string[]): boolean {
   return allowed.some((a) => h === a || h.endsWith(`.${a}`));
 }
 
+/**
+ * Every website an app could send a code to. A CIMD app is its id's host
+ * (its document can only list addresses it serves). A self-registered (DCR)
+ * app is every https host among its redirect addresses: any of them may
+ * receive a code, so every one must pass Admin → Agents. A DCR app with no
+ * https address is known by its stored host ("this computer", "an app on
+ * this device").
+ */
+export function clientHosts(c: {
+  kind: string | null;
+  host: string | null;
+  redirect_uris: string[] | null;
+}): string[] {
+  const hosts = new Set<string>();
+  if (c.host) hosts.add(c.host.toLowerCase());
+  if (c.kind === "dcr")
+    for (const uri of c.redirect_uris ?? []) {
+      try {
+        const u = new URL(uri);
+        if (u.protocol === "https:" && u.hostname)
+          hosts.add(u.hostname.toLowerCase());
+      } catch {
+        // Stored addresses were checked at registration; skip anything odd.
+      }
+    }
+  return [...hosts];
+}
+
+/**
+ * The first of an app's websites Admin → Agents doesn't allow, or null when
+ * every one is allowed (or the list is empty).
+ */
+export function disallowedHost(
+  c: {
+    kind: string | null;
+    host: string | null;
+    redirect_uris: string[] | null;
+  },
+  allowed: string[],
+): string | null {
+  if (!allowed.length) return null;
+  const hosts = clientHosts(c);
+  if (!hosts.length) return c.host ?? "";
+  return hosts.find((h) => !hostAllowed(h, allowed)) ?? null;
+}
+
 /** Where an app sends people back, for the consent page. */
 export function redirectHost(uri: string): { host: string; local: boolean } {
   if (isLoopback(uri)) return { host: "this computer", local: true };
@@ -189,10 +235,11 @@ function usable(row: ClientRow, s: LiveSettings) {
       "unauthorized_client",
       "This app has been blocked by the administrator of this Orbyn.",
     );
-  if (!hostAllowed(row.host, s.agents.allowed_client_hosts))
+  const refused = disallowedHost(row, s.agents.allowed_client_hosts);
+  if (refused !== null)
     throw new OAuthError(
       "unauthorized_client",
-      `Apps from ${row.host} can't connect to this Orbyn.`,
+      `Apps from ${refused || row.host} can't connect to this Orbyn.`,
     );
 }
 

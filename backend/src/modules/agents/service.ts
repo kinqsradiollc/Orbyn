@@ -98,8 +98,12 @@ const LISTED = `g.revoked_at IS NULL
   AND (g.kind <> 'oauth' OR g.authorized_at IS NOT NULL)
   AND (g.expires_at IS NULL OR g.expires_at > now() - interval '30 days')`;
 
-/** Connections that count against MAX_GRANTS: not revoked and not expired. */
-const LIVE = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`;
+/**
+ * Connections that count against MAX_GRANTS: not revoked, not expired, and
+ * finished (a sign-in allowed but never completed doesn't count).
+ */
+const LIVE = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+  AND (kind <> 'oauth' OR authorized_at IS NOT NULL)`;
 
 /** The person's connections that haven't ended, newest first. */
 export async function listGrants(

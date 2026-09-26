@@ -525,7 +525,11 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
   assert.equal((await h.legacy(second.access_token, "ping")).status, 200);
 
   heard.length = 0;
-  // The first refresh token again: someone copied it.
+  // The first refresh token again, well after it rotated: someone copied it.
+  await pool.query(
+    "UPDATE agent_tokens SET used_at = now() - interval '2 minutes' WHERE token_hash = $1",
+    [createHash("sha256").update(first.refresh_token).digest("hex")],
+  );
   const reused = await refresh(first.refresh_token);
   assert.equal(reused.statusCode, 400);
   assert.equal(reused.json().error, "invalid_grant");
@@ -558,6 +562,32 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
   const back = await connect(me, { access: "read" });
   assert.equal(back.grant, first.grant);
   assert.equal((await h.legacy(back.access_token, "ping")).status, 200);
+});
+
+test("a refresh retried just after it rotated gets another pair instead of pausing the connection", async () => {
+  const who = await h.register("oauth-retry", "Rey");
+  const first = await connect(who, { access: "read" });
+  const a = await refresh(first.refresh_token);
+  assert.equal(a.statusCode, 200, a.body);
+  // The answer was lost (or two tabs refreshed at once): the same token again.
+  const b = await refresh(first.refresh_token);
+  assert.equal(b.statusCode, 200, b.body);
+  assert.notEqual(b.json().refresh_token, a.json().refresh_token);
+  const paused = async () =>
+    (
+      await pool.query("SELECT suspended_at FROM agent_grants WHERE id = $1", [
+        first.grant,
+      ])
+    ).rows[0].suspended_at;
+  assert.equal(await paused(), null, "a retry isn't theft");
+  // Both answers work.
+  assert.equal((await h.legacy(a.json().access_token, "ping")).status, 200);
+  assert.equal((await h.legacy(b.json().access_token, "ping")).status, 200);
+  // A couple of retries at most: after that it counts as copied.
+  assert.equal((await refresh(first.refresh_token)).statusCode, 200);
+  const again = await refresh(first.refresh_token);
+  assert.equal(again.json().error, "invalid_grant");
+  assert.ok(await paused(), "too many uses of one token pause it");
 });
 
 test("RFC 7009 revocation: a refresh token takes its family; an app with nothing left is disconnected", async () => {
@@ -995,6 +1025,96 @@ test("CIMD through netguard: https only, public addresses, 64 KB, redirects re-c
   }
 });
 
+test("allowed websites: a self-registered app must be allowed for every address it sends people back to", async () => {
+  const reg = (redirect_uris: string[]) =>
+    inject("POST", "/oauth/register", {
+      json: { client_name: "Claude", redirect_uris },
+    });
+  const sneaky = await reg([
+    "https://claude.ai/cb",
+    "https://evil.example.com/cb",
+  ]);
+  assert.equal(sneaky.statusCode, 201, sneaky.body);
+  const honest = await reg(["https://claude.ai/cb"]);
+  assert.equal(honest.statusCode, 201, honest.body);
+  const ask = (clientId: string, redirect: string) => {
+    const p = pkce();
+    return {
+      req: {
+        response_type: "code",
+        client_id: clientId,
+        redirect_uri: redirect,
+        code_challenge: p.challenge,
+        code_challenge_method: "S256",
+        state: "s",
+        scope: "orbyn:read offline_access",
+      },
+      verifier: p.verifier,
+    };
+  };
+  const session = await login(me);
+  // Before the list is narrowed, the sneaky app connects (to use later).
+  const early = ask(sneaky.json().client_id, "https://claude.ai/cb");
+  const allowedEarly = await consent(session, early.req);
+  assert.equal(allowedEarly.statusCode, 200, allowedEarly.body);
+  const earlyTokens = (
+    await exchange(codeOf(allowedEarly.json().redirect_to), early.verifier, {
+      redirect_uri: "https://claude.ai/cb",
+      client_id: sneaky.json().client_id,
+    })
+  ).json();
+  assert.ok(earlyTokens.refresh_token);
+
+  await setting("allowed_client_hosts", ["claude.ai"]);
+  try {
+    // Its first address is allowed, but it could send the code elsewhere.
+    for (const redirect of [
+      "https://claude.ai/cb",
+      "https://evil.example.com/cb",
+    ]) {
+      const { req } = ask(sneaky.json().client_id, redirect);
+      const r = await check(req, session);
+      assert.equal(r.statusCode, 403, redirect);
+      assert.match(r.json().message, /evil\.example\.com can't connect/);
+      assert.equal((await consent(session, req)).statusCode, 403);
+    }
+    // Its tokens stop working too: no refresh, no MCP calls.
+    assert.equal(
+      (await refresh(earlyTokens.refresh_token, sneaky.json().client_id)).json()
+        .error,
+      "invalid_grant",
+    );
+    assert.equal(
+      (await h.legacy(earlyTokens.access_token, "ping")).status,
+      403,
+    );
+    // An app that only goes back to claude.ai is fine.
+    const ok = await check(
+      ask(honest.json().client_id, "https://claude.ai/cb").req,
+      session,
+    );
+    assert.equal(ok.statusCode, 200, ok.body);
+  } finally {
+    await clear("allowed_client_hosts");
+  }
+});
+
+test("allowed websites: narrowing the list stops refreshes from apps no longer allowed", async () => {
+  const who = await h.register("oauth-narrowed", "Nia");
+  const c = await connect(who, { access: "read" });
+  await setting("allowed_client_hosts", ["claude.ai"]);
+  try {
+    const r = await refresh(c.refresh_token);
+    assert.equal(r.statusCode, 400);
+    assert.equal(r.json().error, "invalid_grant");
+    assert.match(r.json().error_description ?? r.json().message, /website/);
+  } finally {
+    await clear("allowed_client_hosts");
+  }
+  // Allowed again, the same refresh token still works (it wasn't spent).
+  assert.equal((await refresh(c.refresh_token)).statusCode, 200);
+});
+
 // ---- the MCP side: step-up and ChatGPT ----
 
 test("step-up: a read connection asking for a write tool gets 403 insufficient_scope; ChatGPT gets it on the result", async () => {
@@ -1422,6 +1542,55 @@ test("sign-ins that were allowed but never finished aren't listed, and are clear
     1,
     "a finished sign-in stays",
   );
+});
+
+test("sign-ins never finished don't count towards the limit, and allowing again restarts their day", async () => {
+  const { MAX_GRANTS } = await import("../src/modules/agents/service.js");
+  const { runSweep } = await import("../src/lib/sweep.js");
+  const who = await h.register("oauth-abandoned", "Abe");
+  await pool.query(
+    `INSERT INTO agent_grants (user_id, kind, client_id, client_name, name, access)
+     SELECT $1, 'oauth', 'https://abandoned.example.com/' || g, 'Gone', 'Gone', 'read'
+       FROM generate_series(1, $2::int) g`,
+    [who.id, MAX_GRANTS],
+  );
+  const c = await connect(who, { access: "read" });
+  assert.ok(c.access_token, "abandoned sign-ins don't block a new one");
+
+  // Allowed a day ago but never finished; allowed again just now.
+  const session = await login(who);
+  const first = await consent(
+    session,
+    request({ client_id: GPT, redirect_uri: GPT_CALLBACK }).req,
+  );
+  assert.equal(first.statusCode, 200, first.body);
+  await pool.query(
+    "UPDATE agent_grants SET created_at = now() - interval '2 days' WHERE user_id = $1 AND client_id = $2",
+    [who.id, GPT],
+  );
+  const again = request({ client_id: GPT, redirect_uri: GPT_CALLBACK });
+  const second = await consent(session, again.req);
+  assert.equal(second.statusCode, 200, second.body);
+  await runSweep();
+  const t = await exchange(codeOf(second.json().redirect_to), again.verifier, {
+    redirect_uri: GPT_CALLBACK,
+    client_id: GPT,
+  });
+  assert.equal(t.statusCode, 200, t.body);
+});
+
+test("maintenance: confirming it's you stays open, so the consent page can grant write access", async () => {
+  const who = await h.register("oauth-maint-reauth", "Mae");
+  await setting("maintenance", { enabled: true, message: "", until: null });
+  try {
+    const r = await inject("POST", "/me/reauth", {
+      token: who.token,
+      json: { password: PASSWORD },
+    });
+    assert.equal(r.statusCode, 200, r.body);
+  } finally {
+    await clear("maintenance");
+  }
 });
 
 test("the consent page can't be framed; the metadata is routed at the issuer", async () => {

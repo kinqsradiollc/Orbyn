@@ -273,7 +273,9 @@ export async function allowRequest(
       await db.query(
         `UPDATE agent_grants SET client_name = $2, name = $2, access = $3, team_ids = $4,
            personal = $5, toolsets = $6, flags = $7,
-           expires_at = now() + make_interval(days => $8::int), suspended_at = NULL
+           expires_at = now() + make_interval(days => $8::int), suspended_at = NULL,
+           -- Not finished yet: the day before the sweep clears it starts again.
+           created_at = CASE WHEN authorized_at IS NULL THEN now() ELSE created_at END
          WHERE id = $1`,
         [
           id,
@@ -289,8 +291,10 @@ export async function allowRequest(
     } else {
       const live = (
         await db.query<{ n: number }>(
+          // Sign-ins that were allowed but never finished don't count.
           `SELECT count(*)::int AS n FROM agent_grants WHERE user_id = $1
-              AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`,
+              AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+              AND (kind <> 'oauth' OR authorized_at IS NOT NULL)`,
           [user.id],
         )
       ).rows[0].n;

@@ -20,7 +20,7 @@ import {
 } from "../../capabilities/policy.js";
 import type { Capability } from "../../capabilities/registry.js";
 import { legacyGrant } from "../agents/service.js";
-import { hostAllowed } from "../oauth/clients.js";
+import { disallowedHost } from "../oauth/clients.js";
 
 /**
  * Who is calling the MCP address: an agent key (oak_), an agent access
@@ -82,6 +82,8 @@ type GrantRow = {
   flags: { notify_teammates?: boolean; hide_outside_content?: boolean };
   client_blocked: boolean | null;
   client_host: string | null;
+  client_kind: string | null;
+  client_redirect_uris: string[] | null;
   expires_at: Date | null;
   token_expires_at: Date | null;
   resource: string | null;
@@ -147,7 +149,8 @@ const GRANT_SELECT = `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_nam
     g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
     t.expires_at AS token_expires_at, t.resource, g.last_write_at,
     g.suspended_at, g.revoked_at, u.id AS user_id, u.name AS user_name, u.disabled,
-    c.blocked AS client_blocked, c.host AS client_host
+    c.blocked AS client_blocked, c.host AS client_host,
+    c.kind AS client_kind, c.redirect_uris AS client_redirect_uris
   FROM agent_tokens t
   JOIN agent_grants g ON g.id = t.grant_id
   JOIN users u ON u.id = g.user_id
@@ -176,7 +179,14 @@ function check(row: GrantRow, s: LiveSettings) {
     );
   if (
     row.kind === "oauth" &&
-    !hostAllowed(row.client_host ?? "", s.agents.allowed_client_hosts)
+    disallowedHost(
+      {
+        kind: row.client_kind,
+        host: row.client_host ?? "",
+        redirect_uris: row.client_redirect_uris,
+      },
+      s.agents.allowed_client_hosts,
+    ) !== null
   )
     throw new McpAuthError(
       403,
@@ -286,7 +296,8 @@ export async function resolveCaller(
                 NULL::timestamptz AS token_expires_at, NULL AS resource,
                 g.last_write_at, g.suspended_at, g.revoked_at,
                 u.id AS user_id, u.name AS user_name, u.disabled,
-                NULL::boolean AS client_blocked, NULL AS client_host
+                NULL::boolean AS client_blocked, NULL AS client_host,
+                NULL AS client_kind, NULL::text[] AS client_redirect_uris
            FROM agent_grants g JOIN users u ON u.id = g.user_id
           WHERE g.id = $1`,
         [grant.id],

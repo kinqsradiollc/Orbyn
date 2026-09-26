@@ -39,6 +39,9 @@ const OPEN_DURING_MAINTENANCE = [
   "/devices",
   "/ai/chat",
   "/oauth/",
+  // Confirming it's you, as signing in does: the consent page needs it to
+  // grant write access or bookings while /oauth/ stays open.
+  "/me/reauth",
 ];
 /**
  * Paths that answer maintenance mode themselves: MCP lets reads through and
