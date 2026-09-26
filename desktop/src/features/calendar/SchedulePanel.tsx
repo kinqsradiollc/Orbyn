@@ -35,7 +35,7 @@ export function SchedulePanel({ items, onSchedule }: Props) {
         !isClosed(i.status) &&
         stillToPlan(byItem.get(i.id)) !== 0,
     )
-    .sort(byScore());
+    .sort(byScore(new Date(), items));
   const shown = all ? open : open.slice(0, SHOWN);
   /** Its status, when a row would show one ("At risk", "Short 2h"…). */
   const status = (i: Item) => {

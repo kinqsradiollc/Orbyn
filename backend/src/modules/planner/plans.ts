@@ -612,7 +612,9 @@ export async function makePlan(
     at_risk: computed.at_risk.map(withDeadline),
     moves,
   };
-  const summary = describePlan(result, days);
+  const summary =
+    (await projectHorizonNote(db, state, start, days)) +
+    describePlan(result, days);
   const checklist = planTasks(tasks, excluded, state, result, guessed, now);
   // Tuning makes the same days again, even once tomorrow has become today.
   const stored: PlanState = { ...state, start_date: start };
@@ -654,6 +656,30 @@ export async function makePlan(
     superseded_by: null,
     estimates_saved: estimatesSaved,
   };
+}
+
+/**
+ * A project plan looks at most two weeks ahead, so a project whose deadline
+ * is further away (or has none) is planned in slices: say so first.
+ */
+async function projectHorizonNote(
+  db: Db,
+  state: PlanState,
+  start: string,
+  days: number,
+) {
+  if (!state.project_id) return "";
+  const deadline = (
+    await db.query<{ deadline: Date | null }>(
+      "SELECT deadline FROM projects WHERE id = $1",
+      [state.project_id],
+    )
+  ).rows[0]?.deadline;
+  const horizonEnd = Date.parse(`${start}T00:00:00Z`) + (days + 1) * 86_400_000;
+  if (deadline && deadline.getTime() <= horizonEnd) return "";
+  return days >= 14
+    ? "Planned the next 2 weeks. "
+    : `Planned the next ${days} days. `;
 }
 
 /** Keep a project preview scoped through later tuning and stale checks. */

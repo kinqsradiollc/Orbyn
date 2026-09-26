@@ -14,16 +14,17 @@ import {
   Ellipsis,
   Trash2,
   Sparkles,
+  X,
 } from "lucide-react";
 import {
   changeProjectDeadline,
   projectDeadlineParts,
+  projectPlanStatus,
   projectProgress,
   projectTimeline,
   projectReentry,
   deadlineOf,
   shortMinutes,
-  itemBody,
   snippetRuns,
   type Item,
   type ProjectActivity,
@@ -42,6 +43,24 @@ import { Timeline } from "./Timeline";
 import { DateField } from "../../components/DateField";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
+
+/** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
+function dayLabel(iso: string, withTime = false) {
+  const at = new Date(iso);
+  const day = at.toLocaleDateString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  if (!withTime) return day;
+  const time = at
+    .toLocaleTimeString([], {
+      hour: "numeric",
+      minute: at.getMinutes() ? "2-digit" : undefined,
+    })
+    .toLowerCase();
+  return `${day}, ${time}`;
+}
 
 const HISTORY_FIELDS: Record<string, string> = {
   name: "Name",
@@ -139,6 +158,13 @@ export function ProjectDetail({
   const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** Unassigned team tasks ticked to claim with "Plan this project". */
+  const [claiming, setClaiming] = useState<string[]>([]);
+  /** The ⋯ menu's Rename or Summary & brief dialog, with what's typed. */
+  const [editing, setEditing] = useState<{
+    kind: "rename" | "summary";
+    text: string;
+  } | null>(null);
   const [mode, setMode] = useState<
     "home" | "list" | "board" | "timeline" | "notes" | "decisions" | "history"
   >(initialSection);
@@ -151,15 +177,17 @@ export function ProjectDetail({
   const [reentry, setReentry] = useState<ReturnType<
     typeof projectReentry
   > | null>(null);
-  const [assistantTools, setAssistantTools] = useState(false);
+  // "Explain what changed" needs the assistant; "Draft an update" also
+  // needs a provider that can use tools (drafting a page is one).
+  const [assistant, setAssistant] = useState({ enabled: false, tools: false });
   useEffect(() => {
     let live = true;
     client.aiCapabilities().then(
       (capabilities) => {
-        if (live) setAssistantTools(capabilities.tools);
+        if (live) setAssistant(capabilities);
       },
       () => {
-        if (live) setAssistantTools(false);
+        if (live) setAssistant({ enabled: false, tools: false });
       },
     );
     return () => {
@@ -176,7 +204,7 @@ export function ProjectDetail({
   const [addingLink, setAddingLink] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
-  const [searchRecords, setSearchRecords] = useState<WorkRecord[]>([]);
+  const [searchRecords, setSearchRecords] = useState<SearchHit[]>([]);
   const [searchIndex, setSearchIndex] = useState(0);
   useEffect(() => {
     setSearchQuery("");
@@ -340,20 +368,14 @@ export function ProjectDetail({
     setSearchIndex(0);
     let active = true;
     const timer = setTimeout(() => {
-      Promise.all([
-        client.search(q, { project: project.id, limit: 30 }),
-        client.listWorkRecords({ project_id: project.id }),
-      ]).then(
-        ([hits, records]) => {
+      // One server search: pages, tasks and the project's decisions.
+      client.search(q, { project: project.id, limit: 30 }).then(
+        (hits) => {
           if (!active) return;
-          setSearchHits(hits);
+          setSearchHits(hits.filter((hit) => hit.type !== "record"));
           setSearchRecords(
-            records.filter(
-              (record) =>
-                record.kind === "decision" &&
-                `${record.title} ${record.details}`
-                  .toLowerCase()
-                  .includes(q.toLowerCase()),
+            hits.filter(
+              (hit) => hit.type === "record" && hit.kind === "decision",
             ),
           );
           setSearchIndex(0);
@@ -369,18 +391,17 @@ export function ProjectDetail({
     };
   }, [searchQuery, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openSearchHit = (hit: SearchHit | WorkRecord) => {
-    if ("type" in hit) {
-      if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
-      else {
-        const item = items.find((task) => task.id === hit.id);
-        if (item) onOpenItem(item);
-      }
-    } else setMode("decisions");
+  const openSearchHit = (hit: SearchHit) => {
+    if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
+    else if (hit.type === "record") setMode("decisions");
+    else {
+      const item = items.find((task) => task.id === hit.id);
+      if (item) onOpenItem(item);
+    }
   };
   const searchTasks = searchHits.filter((hit) => hit.type === "task");
   const searchPages = searchHits.filter((hit) => hit.type === "doc");
-  const searchResults: (SearchHit | WorkRecord)[] = [
+  const searchResults: SearchHit[] = [
     ...searchTasks,
     ...searchPages,
     ...searchRecords,
@@ -397,7 +418,7 @@ export function ProjectDetail({
       </>
     );
   };
-  const renderSearchResult = (hit: SearchHit | WorkRecord, index: number) => (
+  const renderSearchResult = (hit: SearchHit, index: number) => (
     <li key={hit.id}>
       <button
         className={index === searchIndex ? "is-selected" : ""}
@@ -405,19 +426,15 @@ export function ProjectDetail({
         onClick={() => openSearchHit(hit)}
       >
         <strong>{markQuery(hit.title)}</strong>
-        {"type" in hit ? (
-          <span className="muted">
-            {snippetRuns(hit.snippet ?? "").map((run, part) =>
-              run.hit ? (
-                <mark key={part}>{run.text}</mark>
-              ) : (
-                <span key={part}>{run.text}</span>
-              ),
-            )}
-          </span>
-        ) : (
-          <span className="muted">{markQuery(hit.details)}</span>
-        )}
+        <span className="muted">
+          {snippetRuns(hit.snippet ?? "").map((run, part) =>
+            run.hit ? (
+              <mark key={part}>{run.text}</mark>
+            ) : (
+              <span key={part}>{run.text}</span>
+            ),
+          )}
+        </span>
       </button>
     </li>
   );
@@ -504,19 +521,20 @@ export function ProjectDetail({
     await imports.importFiles(files);
   };
 
+  /** Plans your tasks, and the unassigned ones ticked (they become yours). */
   const planProject = () => {
+    if (!canWrite) return;
     setBusy(true);
+    const claimed = claiming.filter((id) =>
+      unassigned.some((item) => item.id === id),
+    );
     client
-      .planProject(project.id, deviceTimeZone())
-      .then(onOpenPlan, report)
-      .finally(() => setBusy(false));
-  };
-
-  const claimTask = (item: Item) => {
-    setBusy(true);
-    client
-      .updateItem(item.id, { ...itemBody(item), assignee_id: userId })
-      .then(() => onItemsChanged(), report)
+      .planProject(project.id, deviceTimeZone(), claimed)
+      .then((plan) => {
+        setClaiming([]);
+        if (claimed.length) onItemsChanged();
+        onOpenPlan(plan);
+      }, report)
       .finally(() => setBusy(false));
   };
 
@@ -695,8 +713,7 @@ export function ProjectDetail({
                 <button
                   onClick={() => {
                     setMenuOpen(false);
-                    const name = prompt("Project name", project.name)?.trim();
-                    if (name && name !== project.name) save({ name });
+                    setEditing({ kind: "rename", text: project.name });
                   }}
                 >
                   Rename
@@ -704,9 +721,7 @@ export function ProjectDetail({
                 <button
                   onClick={() => {
                     setMenuOpen(false);
-                    const summary = prompt("Summary & brief", project.summary);
-                    if (summary !== null && summary.trim() !== project.summary)
-                      save({ summary: summary.trim() });
+                    setEditing({ kind: "summary", text: project.summary });
                   }}
                 >
                   Summary & brief
@@ -753,6 +768,103 @@ export function ProjectDetail({
           </div>
         )}
       </div>
+
+      {editing && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEditing(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setEditing(null);
+          }}
+        >
+          <form
+            className="modal modal-small"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-edit-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = editing.text.trim();
+              setEditing(null);
+              if (editing.kind === "rename") {
+                if (text && text !== project.name) save({ name: text });
+              } else if (text !== project.summary) save({ summary: text });
+            }}
+          >
+            <div className="section-heading">
+              <h2 id="project-edit-title">
+                {editing.kind === "rename"
+                  ? "Rename project"
+                  : "Summary & brief"}
+              </h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Cancel"
+                onClick={() => setEditing(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <label>
+              {editing.kind === "rename" ? "Name" : "Summary"}
+              {editing.kind === "rename" ? (
+                <input
+                  autoFocus
+                  required
+                  maxLength={200}
+                  value={editing.text}
+                  onChange={(event) =>
+                    setEditing({ ...editing, text: event.target.value })
+                  }
+                />
+              ) : (
+                <textarea
+                  autoFocus
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="One or two lines on what this project is for"
+                  value={editing.text}
+                  onChange={(event) =>
+                    setEditing({ ...editing, text: event.target.value })
+                  }
+                />
+              )}
+            </label>
+            {editing.kind === "summary" && onOpenNote && (
+              <p className="muted modal-lead">
+                The brief is the project's page, for everything longer.{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditing(null);
+                    if (project.doc_id) onOpenNote(project.doc_id);
+                    else void createProjectPage(true);
+                  }}
+                >
+                  {project.doc_id ? "Open the brief" : "Write a brief"}
+                </button>
+              </p>
+            )}
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setEditing(null)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="primary" disabled={busy}>
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <div className="project-search">
         <input
@@ -846,7 +958,7 @@ export function ProjectDetail({
           <button className="secondary" onClick={openHistory}>
             View history
           </button>
-          {onAskProject && assistantTools && reentry.total >= 2 && (
+          {onAskProject && assistant.enabled && reentry.total >= 2 && (
             <div className="project-reentry-actions">
               <button
                 className="secondary"
@@ -859,17 +971,19 @@ export function ProjectDetail({
               >
                 Explain what changed
               </button>
-              <button
-                className="secondary"
-                onClick={() =>
-                  onAskProject(
-                    project,
-                    "Draft a project update page from the changes since my last visit. Show me the draft to edit and keep.",
-                  )
-                }
-              >
-                Draft an update
-              </button>
+              {assistant.tools && (
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    onAskProject(
+                      project,
+                      "Draft a project update page from the changes since my last visit. Show me the draft to edit and keep.",
+                    )
+                  }
+                >
+                  Draft an update
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -916,61 +1030,111 @@ export function ProjectDetail({
           className="project-planning"
           aria-label="Project planning status"
         >
-          <strong>Your part</strong>
-          <button className="secondary" disabled={busy} onClick={planProject}>
-            Plan this project
-          </button>
-          <p className="muted">
-            Plans your assigned tasks for up to two weeks. Claim unassigned team
-            tasks before planning them.
-          </p>
-          {canWrite && project.team_id && unassigned.length > 0 && (
-            <div className="project-unassigned">
-              <span className="muted">Unassigned work</span>
-              {unassigned.map((item) => (
-                <div key={item.id}>
-                  <span>{item.title}</span>{" "}
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => claimTask(item)}
-                  >
-                    Claim task
-                  </button>
+          {(() => {
+            const chip = projectPlanStatus(planning);
+            const late = planning.late_session_count;
+            return (
+              <>
+                <div className="project-planning-head">
+                  <p>
+                    {project.deadline && (
+                      <>
+                        <strong>
+                          Deadline {dayLabel(project.deadline, true)}
+                        </strong>{" "}
+                        ·{" "}
+                      </>
+                    )}
+                    Your part: needs {shortMinutes(planning.needed_minutes)} ·{" "}
+                    {shortMinutes(planning.planned_minutes)} planned
+                    {project.deadline ? " before it" : ""} ·{" "}
+                    {shortMinutes(planning.unplanned_minutes)} not planned
+                    {planning.planned_finish_at &&
+                      ` · Planned finish ${dayLabel(planning.planned_finish_at)}`}
+                  </p>
+                  {chip && (
+                    <span
+                      className={
+                        "chip " +
+                        (chip.status === "on_track" ? "is-ok" : "chip-warn")
+                      }
+                    >
+                      {chip.label}
+                    </span>
+                  )}
+                  {canWrite && (
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={planProject}
+                    >
+                      Plan this project
+                    </button>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-          <p>
-            {planning.unestimated_tasks.length
-              ? "Estimated work needs "
-              : "Needs "}
-            {shortMinutes(planning.needed_minutes)} ·{" "}
-            {shortMinutes(planning.planned_minutes)} planned
-            {project.deadline ? " before the deadline" : ""} ·{" "}
-            {shortMinutes(planning.unplanned_minutes)} not planned
-            {planning.planned_finish_at &&
-              ` · Planned finish ${new Date(planning.planned_finish_at).toLocaleDateString([], { month: "short", day: "numeric" })}`}
-          </p>
-          {planning.late_session_count > 0 && (
-            <p className="muted">
-              {planning.late_session_count} session
-              {planning.late_session_count === 1 ? "" : "s"} after a planning
-              deadline
-            </p>
-          )}
-          {planning.unestimated_tasks.length > 0 && (
-            <p className="muted">
-              Needs an estimate:{" "}
-              {planning.unestimated_tasks.map((task) => task.title).join(", ")}
-            </p>
-          )}
-          {planning.team_planned_minutes !== undefined && (
-            <p className="muted">
-              Team: {shortMinutes(planning.team_planned_minutes)} planned · Only
-              your sessions are counted above
-            </p>
-          )}
+                {planning.needed_minutes > 0 && (
+                  <span
+                    className="project-plan-bar"
+                    role="img"
+                    aria-label={`${shortMinutes(planning.planned_minutes)} of ${shortMinutes(planning.needed_minutes)} planned`}
+                  >
+                    <i
+                      style={{
+                        width: `${Math.min(100, Math.round((planning.planned_minutes / planning.needed_minutes) * 100))}%`,
+                      }}
+                    />
+                  </span>
+                )}
+                {late > 0 && (
+                  <p className="project-planning-warn">
+                    {late === 1
+                      ? "1 session after its task's deadline"
+                      : `${late} sessions after their tasks' deadlines`}
+                  </p>
+                )}
+                {planning.unestimated_tasks.length > 0 && (
+                  <p className="muted">
+                    Needs an estimate:{" "}
+                    {planning.unestimated_tasks
+                      .map((task) => task.title)
+                      .join(", ")}
+                  </p>
+                )}
+                {project.team_id && (
+                  <p className="muted">
+                    {planning.team_planned_minutes !== undefined
+                      ? `Team: ${shortMinutes(planning.team_planned_minutes)} planned by everyone`
+                      : "Only your sessions are counted"}
+                  </p>
+                )}
+                {canWrite && project.team_id && unassigned.length > 0 && (
+                  <fieldset className="project-unassigned">
+                    <legend className="muted">
+                      Unassigned tasks: tick the ones you'll take on, and they
+                      are yours and planned with Plan this project.
+                    </legend>
+                    {unassigned.map((item) => (
+                      <label key={item.id}>
+                        <input
+                          type="checkbox"
+                          checked={claiming.includes(item.id)}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setClaiming((ids) =>
+                              event.target.checked
+                                ? [...ids, item.id]
+                                : ids.filter((id) => id !== item.id),
+                            )
+                          }
+                        />{" "}
+                        {item.title}
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+              </>
+            );
+          })()}
         </section>
       )}
 

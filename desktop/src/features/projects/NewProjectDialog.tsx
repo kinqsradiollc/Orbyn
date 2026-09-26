@@ -130,11 +130,16 @@ export function NewProjectDialog({
     if (!proposal) return;
     setBusy(true);
     try {
-      await client.applyProposal(proposal.id, {
+      const { project_id } = await client.applyProposal(proposal.id, {
         give_tasks_deadlines: giveTasksDeadlines,
       });
       setState("applied");
-      onCreated(null);
+      // Open the project it made.
+      onCreated(
+        project_id
+          ? await client.getProject(project_id).catch(() => null)
+          : null,
+      );
     } catch (e) {
       setError(errorText(e));
       report(e);

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Boxes, FileText, GraduationCap } from "lucide-react";
 import {
-  projectAtRisk,
   projectProgress,
   type Doc,
   type DocSummary,
@@ -77,9 +76,6 @@ export function WorkspaceStrip({
                       {p.done_count} of {p.task_count} done
                     </small>
                   </span>
-                  {projectAtRisk(p) && (
-                    <span className="chip chip-warn">At risk</span>
-                  )}
                   <span className="project-bar strip-bar" aria-hidden="true">
                     <i style={{ width: `${projectProgress(p)}%` }} />
                   </span>

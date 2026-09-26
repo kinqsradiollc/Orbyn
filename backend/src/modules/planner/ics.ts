@@ -9,9 +9,11 @@ import {
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { withSessionFacts } from "./sessions.js";
 import {
   busyIntervals,
   loadOverrides,
+  loadPrefs,
   occurrenceEnd,
   timeBlocks,
   type SeriesRow,
@@ -271,6 +273,35 @@ export type FeedOptions = {
 
 const DAY = 86_400_000;
 
+/** "Fri 16 Oct, 5:00 pm" in the planner's zone; "Fri 16 Oct" for a whole day. */
+function dueLabel(iso: string, timeZone: string, allDay: boolean) {
+  // An all-day deadline is the end of its day: name that day.
+  const at = new Date(Date.parse(iso) - (allDay ? 60_000 : 0));
+  let zone = timeZone;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+  } catch {
+    zone = "UTC";
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+  const day = `${parts.weekday} ${parts.day} ${parts.month}`;
+  return allDay
+    ? day
+    : `${day}, ${parts.hour}:${parts.minute} ${String(parts.dayPeriod).toLowerCase()}`;
+}
+
 export async function icsFeed(
   db: Db,
   userId: string,
@@ -339,12 +370,23 @@ export async function icsFeed(
   );
   if (options.includeBlocks) {
     const stamp = utc(new Date(now));
-    for (const b of await timeBlocks(
-      db,
+    const zone = (
+      await loadPrefs(db as Parameters<typeof loadPrefs>[0], userId)
+    ).timezone;
+    const blocks = await withSessionFacts(
+      db as Parameters<typeof withSessionFacts>[0],
       userId,
-      new Date(now - 60 * DAY),
-      new Date(now + 180 * DAY),
-    ))
+      await timeBlocks(
+        db,
+        userId,
+        new Date(now - 60 * DAY),
+        new Date(now + 180 * DAY),
+      ),
+    );
+    for (const b of blocks) {
+      // Where the session's task is due: the deadline planning works to
+      // (its own, or its project's when that comes first).
+      const due = b.planning_deadline_at ?? b.deadline_at;
       body.push(
         "BEGIN:VEVENT",
         `UID:block-${b.id}@orbyn`,
@@ -352,9 +394,17 @@ export async function icsFeed(
         `DTSTART:${utc(new Date(b.start_at))}`,
         `DTEND:${utc(new Date(b.end_at))}`,
         `SUMMARY:${text(`Focus: ${b.title}`)}`,
+        ...(due
+          ? [
+              `DESCRIPTION:${text(
+                `Due ${dueLabel(due, zone, !b.planning_deadline_at && !!b.due_all_day)}`,
+              )}`,
+            ]
+          : []),
         "TRANSP:OPAQUE",
         "END:VEVENT",
       );
+    }
   }
   return calendar("PUBLISH", `Orbyn · ${name}`, body);
 }

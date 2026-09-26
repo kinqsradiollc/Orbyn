@@ -23,6 +23,7 @@ import { loadItem } from "../items/service.js";
 import { projectPlanning } from "./planning.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
 import { makeProjectPlan } from "../planner/plans.js";
+import { queueWebhooks } from "../../lib/webhooks.js";
 import { z } from "zod";
 
 /**
@@ -174,6 +175,8 @@ export async function projectRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const input = projectLinkInput.parse(r.body);
     const link = await transaction(async (db) => {
+      // requireProject locks the project row (FOR UPDATE), so two adds at
+      // once are counted one after the other and never pass 20 together.
       await requireProject(db, id, u, "items:write");
       const existing = await db.query(
         "SELECT 1 FROM project_links WHERE project_id = $1 AND url = $2",
@@ -257,20 +260,14 @@ export async function projectRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!project) fail(404, "Project not found");
-    const role = project.team_id
-      ? (
-          await db.query<{ role: string }>(
-            "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
-            [project.team_id, u.id],
-          )
-        ).rows[0]?.role
-      : null;
-    return projectPlanning(
-      db,
-      u.id,
-      project,
-      role === "owner" || role === "admin",
-    );
+    // Team totals follow the capacity view's show-hours rule (teams/capacity.ts):
+    // only the team's effective owners and admins see hours across people.
+    const showHours = project.team_id
+      ? ["owner", "admin"].includes(
+          (await requireTeam(project.team_id, u, "items:read")).effective,
+        )
+      : false;
+    return projectPlanning(db, u.id, project, showHours);
   });
 
   /** Actual sessions on this project's timeline, belonging only to the viewer. */
@@ -304,17 +301,23 @@ export async function projectRoutes(app: FastifyInstance) {
     }));
   });
 
-  /** Preview only work this person owns in this project. Team tasks must be
-   * claimed through the normal item edit before they can enter their plan. */
+  /** Preview only work this person owns in this project, plus the unassigned
+   * team tasks they claim with this call (claiming makes them the assignee;
+   * only the assignee is written, so other edits to those tasks are kept).
+   * Planning puts sessions on your calendar, so it needs edit rights. */
   app.post("/projects/:id/plan", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { timezone } = z
-      .object({ timezone: z.string().max(100).optional() })
+    const { timezone, claim_item_ids: claim } = z
+      .object({
+        timezone: z.string().max(100).optional(),
+        claim_item_ids: z.array(z.string().uuid()).max(50).optional(),
+      })
       .strict()
       .parse(r.body ?? {});
     return transaction(async (db) => {
-      const project = await requireProject(db, id, u, "items:read");
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      const project = await requireProject(db, id, u, "items:write");
       const details = (
         await db.query<{ status: string; deadline: Date | null }>(
           "SELECT status, deadline FROM projects WHERE id = $1",
@@ -323,6 +326,31 @@ export async function projectRoutes(app: FastifyInstance) {
       ).rows[0];
       if (details.status !== "active")
         fail(422, "Only active projects can be planned.");
+      if (claim?.length) {
+        if (!project.team_id) fail(422, "Only team tasks can be claimed.");
+        const claimed = (
+          await db.query<{ id: string }>(
+            `UPDATE items SET assignee_id = $2, version = version + 1, updated_at = now()
+              WHERE id = ANY($1::uuid[]) AND project_id = $3 AND team_id = $4
+                AND kind = 'task' AND assignee_id IS NULL
+                AND status NOT IN ('done', 'cancelled')
+              RETURNING id`,
+            [[...new Set(claim)], u.id, id, project.team_id],
+          )
+        ).rows;
+        if (claimed.length !== new Set(claim).size)
+          fail(
+            409,
+            "Someone else took one of those tasks, or it's finished. Refresh and try again.",
+          );
+        for (const row of claimed)
+          await queueWebhooks(
+            db,
+            "item.updated",
+            { user_id: u.id, team_id: project.team_id },
+            await loadItem(db, row.id),
+          );
+      }
       const tasks = (
         await db.query<{ id: string }>(
           `SELECT id FROM items WHERE project_id = $1 AND kind = 'task'
@@ -336,7 +364,7 @@ export async function projectRoutes(app: FastifyInstance) {
       if (!tasks.length)
         fail(
           422,
-          "No tasks assigned to you in this project. Claim an unassigned task first.",
+          "No tasks assigned to you in this project. Claim an unassigned task to plan it.",
         );
       if (tasks.length > 200)
         fail(422, "A project plan can include up to 200 assigned tasks.");
@@ -399,6 +427,12 @@ export async function projectRoutes(app: FastifyInstance) {
     return transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       await requireProject(db, id, u, "items:write");
+      const before = (
+        await db.query<{ name: string; deadline: Date | null }>(
+          "SELECT name, deadline FROM projects WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
       await db.query(
         `UPDATE projects SET
            name = coalesce($2, name),
@@ -419,6 +453,24 @@ export async function projectRoutes(app: FastifyInstance) {
           body.doc_id ?? null,
         ],
       );
+      // Pages are found by their project's name too: index them again.
+      if (body.name !== undefined && body.name !== before.name)
+        await db.query(
+          "UPDATE docs SET project_id = project_id WHERE project_id = $1",
+          [id],
+        );
+      // Tasks carry their project's deadline (their latest date): open apps
+      // and offline copies pick up the change on their next sync.
+      if (
+        body.deadline !== undefined &&
+        (body.deadline ? Date.parse(body.deadline) : null) !==
+          (before.deadline?.getTime() ?? null)
+      )
+        await db.query(
+          `UPDATE items SET updated_at = now()
+            WHERE project_id = $1 AND status NOT IN ('done', 'cancelled')`,
+          [id],
+        );
       if (body.stages) {
         // Stages given without an id are new; ones left out are removed, and
         // the tasks that sat in them fall back to the project with no stage.

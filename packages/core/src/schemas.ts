@@ -509,8 +509,12 @@ export const docAskRequest = z
 export const searchQuery = z
   .object({
     q: z.string().trim().min(1).max(200),
-    /** "doc" searches pages only, "task" tasks only; both by default. */
-    type: z.enum(["doc", "task"]).optional(),
+    /**
+     * "doc" searches pages only, "task" tasks only, "record" work records
+     * (decisions and the like) only. By default pages and tasks, plus records
+     * when searching one project.
+     */
+    type: z.enum(["doc", "task", "record"]).optional(),
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),

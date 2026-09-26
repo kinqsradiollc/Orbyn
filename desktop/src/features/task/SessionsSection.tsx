@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { CalendarClock, CalendarPlus, Wand2 } from "lucide-react";
 import {
   atRiskReason,
+  dueAfterProject,
   dueDate,
   fitTone,
   isClosed,
+  itemBody,
   type HttpError,
   type Item,
   type ItemSessions,
@@ -253,6 +255,32 @@ export function SessionsSection({
           {error}
         </div>
       )}
+      {data?.project_deadline &&
+        dueAfterProject(data.deadline_at, data.project_deadline) && (
+          <p className="drawer-hint sessions-latest" role="status">
+            Due after the project ({rowDay(data.project_deadline)})
+            {canWrite && open && !item.rrule && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending}
+                onClick={() =>
+                  void change(() =>
+                    // Your own edit: the project never writes task deadlines.
+                    client.updateItem(item.id, {
+                      ...itemBody(item),
+                      due_at: data.project_deadline,
+                      end_at: null,
+                      all_day: false,
+                    }),
+                  )
+                }
+              >
+                Use {rowDay(data.project_deadline)}
+              </button>
+            )}
+          </p>
+        )}
       {data === null && !error ? (
         <p className="drawer-hint">Loading sessions…</p>
       ) : sessions.length ? (

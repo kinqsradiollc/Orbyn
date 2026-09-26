@@ -174,6 +174,9 @@ export async function applyProject(
       409,
       "The calendar or planning settings changed. Draft this project again to review a fresh schedule.",
     );
+  // Project history names who made it (the project and its stages are written
+  // before any task, which would otherwise set this).
+  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [user.id]);
   // Started for a team: the project and its tasks are the team's.
   const teamId = stored.team_id ?? null;
   const projectId = (

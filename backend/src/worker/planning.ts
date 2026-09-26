@@ -508,7 +508,15 @@ export async function scanProjectDeadlineMoves(now = new Date()) {
       const prefs = await loadPrefs(pool, person.user_id);
       const day = localDateKey(change.created_at, prefs.timezone);
       const ref = `${change.project_id}:${day}`;
-      const body = `${change.name}'s deadline moved earlier to ${whenFormat(prefs.timezone).format(change.new_deadline)}. ${plural(person.count, "session")} now ends after it. Your sessions stay where they are; review the project plan.`;
+      const at = whenFormat(prefs.timezone).format(change.new_deadline);
+      const ends =
+        person.count === 1
+          ? "1 session ends after it"
+          : `${plural(person.count, "session")} end after it`;
+      // A first deadline isn't a move: say it was set.
+      const body = change.old_deadline
+        ? `${change.name}'s deadline moved earlier to ${at}. ${ends}. Your sessions stay where they are; review the project plan.`
+        : `${change.name} now has a deadline: ${at}. ${ends}. Your sessions stay where they are; review the project plan.`;
       await notify(
         {
           userId: person.user_id,

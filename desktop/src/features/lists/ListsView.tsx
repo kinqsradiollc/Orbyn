@@ -163,7 +163,9 @@ export function ListsView({
   ];
 
   const inList = active
-    ? items.filter((i) => i.list_id === active.id).sort(byScore())
+    ? items
+        .filter((i) => i.list_id === active.id)
+        .sort(byScore(new Date(), items))
     : [];
 
   return (

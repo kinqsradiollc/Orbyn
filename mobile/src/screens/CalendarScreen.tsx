@@ -892,7 +892,7 @@ export function CalendarScreen({
             }),
         },
         {
-          label: "Move the deadline",
+          label: `Move the deadline to ${shortDay(start.toISOString())}, ${clockLabel(start.toISOString())}`,
           icon: "clock",
           run: () => void moveEntry(entry, start, null),
         },
@@ -1250,6 +1250,22 @@ export function CalendarScreen({
       onMoveBlock={saveBlock}
       onMoveEntry={(entry, start, end) => void moveEntry(entry, start, end)}
       onMoveDeadline={dropDeadline}
+      onDeadlineGroup={(due, at) =>
+        setMenu({
+          title: `Due · ${due.length} tasks`,
+          detail: `${shortDay(at.toISOString())}, ${clockLabel(at.toISOString())}`,
+          actions: [
+            ...due.map((entry) => ({
+              label: entry.title,
+              run: () => {
+                setSelectedTask(entry.item_id);
+                openItem(entry.item_id, entry);
+              },
+            })),
+            { label: "Cancel", run: () => {} },
+          ],
+        })
+      }
       onExternal={showExternal}
       onGhostMenu={ghostMenu}
       onMoveGhost={pinGhost}

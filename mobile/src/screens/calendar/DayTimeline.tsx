@@ -98,11 +98,18 @@ function layoutTimeline(slots: TimelineSlot[], day: Date) {
     slots.filter((slot) => !isMarker(slot)),
     day,
   );
-  const markers = slots.filter(isMarker).map((slot) => ({
-    slot,
-    start: slot.start,
-    end: slot.start,
-    top: offsetFor(day, slot.start),
+  // Several deadlines at the same minute share one marker ("Due · 3 tasks").
+  const byMinute = new Map<number, TimelineSlot[]>();
+  for (const slot of slots.filter(isMarker)) {
+    const minute = Math.floor(slot.start.getTime() / 60_000);
+    byMinute.set(minute, [...(byMinute.get(minute) ?? []), slot]);
+  }
+  const markers = [...byMinute.values()].map((group) => ({
+    slot: group[0],
+    group: group.length > 1 ? group : undefined,
+    start: group[0].start,
+    end: group[0].start,
+    top: offsetFor(day, group[0].start),
     height: 44,
     column: 0,
     columns: 1,
@@ -254,6 +261,7 @@ export function DayTimeline({
   onEntryMenu,
   onMoveEntry,
   onMoveDeadline,
+  onDeadlineGroup,
   onExternal,
   onMoveBlock,
   onGhostMenu,
@@ -298,6 +306,8 @@ export function DayTimeline({
   /** Save an event's new times after a drag or resize; events can't move without it. */
   onMoveEntry?: (entry: CalendarEntry, start: Date, end: Date) => void;
   onMoveDeadline?: (entry: CalendarEntry, start: Date) => void;
+  /** Several deadlines at one minute were tapped: offer them to choose from. */
+  onDeadlineGroup?: (entries: CalendarEntry[], at: Date) => void;
   /** Details of an event from a subscribed calendar (read-only). */
   onExternal?: (event: ExternalEntry) => void;
   /** Save a block's new times after a drag, resize or screen-reader action. */
@@ -1098,6 +1108,40 @@ export function DayTimeline({
             const t = statusTones[e.status];
             // Its own colour first, then its list's, then its status.
             const color = e.color || listColor(e.list_id);
+            const group =
+              "group" in p
+                ? (p.group as TimelineSlot[] | undefined)
+                : undefined;
+            if (e.kind === "task" && !e.end_at && group) {
+              const due = group.flatMap((g) =>
+                g.type === "entry" ? [g.entry] : [],
+              );
+              return (
+                <Pressable
+                  key={"due:" + slot.key}
+                  style={[box, { height: 44 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${due.length} tasks due at ${timeLabel(p.start)}. Choose one`}
+                  onPress={() =>
+                    onDeadlineGroup
+                      ? onDeadlineGroup(due, p.start)
+                      : selectOrOpen(due[0].item_id, due[0])
+                  }
+                >
+                  <View style={s.deadlineMarker}>
+                    <View
+                      style={[
+                        s.deadlineRule,
+                        { backgroundColor: color || t.fg },
+                      ]}
+                    />
+                    <Text numberOfLines={1} style={s.eventTitle}>
+                      Due · {due.length} tasks
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }
             if (e.kind === "task" && !e.end_at) {
               const m: Movable = {
                 id: slot.key,

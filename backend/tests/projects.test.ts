@@ -519,8 +519,8 @@ test("team planning totals are visible only to owners and admins", async () => {
   });
   await scanProjectDeadlineMoves(new Date());
   const movedNotices = (
-    await pool.query<{ user_id: string }>(
-      "SELECT user_id FROM notifications WHERE kind = 'project' AND ref LIKE $1 AND channel = 'inapp'",
+    await pool.query<{ user_id: string; body: string }>(
+      "SELECT user_id, body FROM notifications WHERE kind = 'project' AND ref LIKE $1 AND channel = 'inapp'",
       [`${project.id}:%`],
     )
   ).rows;
@@ -528,6 +528,9 @@ test("team planning totals are visible only to owners and admins", async () => {
     movedNotices.map((notice) => notice.user_id),
     [ownerId],
   );
+  // The project had no deadline before: it was set, not moved.
+  assert.match(movedNotices[0].body, /now has a deadline/);
+  assert.doesNotMatch(movedNotices[0].body, /moved earlier/);
 });
 
 test("project plan previews only assigned work and respects project access", async () => {
@@ -682,6 +685,98 @@ test("project plan previews only assigned work and respects project access", asy
         (task: { item_id: string }) => task.item_id === unassigned.id,
       ),
   );
+});
+
+test("plan this project claims unassigned tasks with the plan and needs edit rights", async () => {
+  const memberEmail = `claimer-${randomUUID()}@example.com`;
+  const viewerEmail = `viewer-${randomUUID()}@example.com`;
+  const register2 = async (email: string) =>
+    (
+      await app.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: { email, password: "a-long-test-password", name: "Claimer" },
+      })
+    ).json().token as string;
+  const member = await register2(memberEmail);
+  const viewer = await register2(viewerEmail);
+  const memberId = (
+    await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [
+      memberEmail,
+    ])
+  ).rows[0].id;
+  const team = (await call("POST", "/teams", { name: "Claim team" })).json();
+  await call("POST", `/teams/${team.id}/members`, {
+    email: memberEmail,
+    role: "member",
+  });
+  await call("POST", `/teams/${team.id}/members`, {
+    email: viewerEmail,
+    role: "viewer",
+  });
+  const project = (
+    await call("POST", "/projects", { name: "Claim plan", team_id: team.id })
+  ).json();
+  const open = (
+    await call("POST", "/items", {
+      title: "Open for anyone",
+      notes: "Keep these notes",
+      kind: "task",
+      team_id: team.id,
+      project_id: project.id,
+      estimate_minutes: 60,
+    })
+  ).json();
+  // A viewer can read the project but not plan it.
+  const viewed = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    {},
+    () => viewer,
+  );
+  assert.equal(viewed.statusCode, 403, viewed.body);
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `/projects/${project.id}/plan`,
+        { claim_item_ids: ["not-a-uuid"] },
+        () => member,
+      )
+    ).statusCode,
+    422,
+  );
+  const planned = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    { timezone: "Australia/Melbourne", claim_item_ids: [open.id] },
+    () => member,
+  );
+  assert.equal(planned.statusCode, 200, planned.body);
+  assert.ok(
+    planned
+      .json()
+      .tasks.some((task: { item_id: string }) => task.item_id === open.id),
+  );
+  // No deadline: the plan looks two weeks ahead and says so.
+  assert.match(planned.json().summary, /^Planned the next 2 weeks\./);
+  const row = (
+    await pool.query<{ assignee_id: string; notes: string; version: number }>(
+      "SELECT assignee_id, notes, version FROM items WHERE id = $1",
+      [open.id],
+    )
+  ).rows[0];
+  assert.equal(row.assignee_id, memberId);
+  assert.equal(row.notes, "Keep these notes");
+  assert.equal(row.version, open.version + 1);
+  // Claimed already: a second claim is a conflict, not a silent take-over.
+  const again = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    { claim_item_ids: [open.id] },
+    () => member,
+  );
+  assert.equal(again.statusCode, 409, again.body);
 });
 
 test("a near project deadline sends one planning notice per local day", async () => {
@@ -959,4 +1054,67 @@ test("saved sessions occupy their real position on a project timeline", () => {
   assert.equal(ticks.length, 1);
   assert.equal(ticks[0].left, 0);
   assert.ok(ticks[0].width > 0);
+});
+
+test("tasks carry their project's deadline, and a new deadline reaches them on sync", async () => {
+  const first = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  const project = (
+    await call("POST", "/projects", { name: "Latest date", deadline: first })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Due after the project",
+      kind: "task",
+      project_id: project.id,
+      due_at: new Date(Date.now() + 40 * 86_400_000).toISOString(),
+    })
+  ).json();
+  assert.equal(task.project_deadline, first);
+  const before = (
+    await pool.query<{ updated_at: Date }>(
+      "SELECT updated_at FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0].updated_at;
+  // Scored against the project's deadline (3 days), not its own (40).
+  const scored = (await call("GET", "/items?sort=score")).json() as {
+    id: string;
+    score: number;
+  }[];
+  const plain = (
+    await call("POST", "/items", {
+      title: "Same but unfiled",
+      kind: "task",
+      due_at: new Date(Date.now() + 40 * 86_400_000).toISOString(),
+    })
+  ).json();
+  const rescored = (await call("GET", "/items?sort=score")).json() as {
+    id: string;
+    score: number;
+  }[];
+  assert.ok(
+    rescored.find((i) => i.id === task.id)!.score >
+      rescored.find((i) => i.id === plain.id)!.score,
+    JSON.stringify(scored.slice(0, 3)),
+  );
+  const moved = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const saved = await call("PUT", `/projects/${project.id}`, {
+    deadline: moved,
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const after = (
+    await pool.query<{ updated_at: Date; version: number }>(
+      "SELECT updated_at, version FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0];
+  assert.ok(after.updated_at > before, "the task syncs again");
+  assert.equal(after.version, task.version, "never an edit of the task");
+  const reloaded = (await call("GET", `/items/${task.id}`)).json();
+  assert.equal(reloaded.project_deadline, moved);
+  assert.equal(
+    reloaded.due_at,
+    task.due_at,
+    "the project never writes a task's deadline",
+  );
 });

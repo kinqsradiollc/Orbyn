@@ -9,6 +9,7 @@ import { reader, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
+import { docReadableBy } from "../../lib/doc-visibility.js";
 
 const eventOrderSchema = z
   .string()
@@ -119,8 +120,7 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
          UNION ALL
          SELECT 'note', d.id FROM docs d WHERE (d.project_id = $1 OR EXISTS (
            SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = d.id))
-           AND ((d.team_id IS NULL AND d.user_id = $2)
-             OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+           AND ${docReadableBy("$2")}
          UNION ALL
          SELECT 'record', w.id FROM work_records w WHERE (w.project_id = $1 OR EXISTS (
            SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = w.id))

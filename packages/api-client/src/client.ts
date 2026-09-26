@@ -813,10 +813,17 @@ export class OrbynClient {
     return this.request<ProjectSession[]>(`/projects/${id}/sessions`);
   }
   /** Preview a project plan using only tasks assigned to the signed-in person. */
-  planProject(id: string, timezone?: string) {
+  /**
+   * Preview a plan for your tasks in a project. `claimItemIds` are unassigned
+   * team tasks you take on with it: they become yours and are planned too.
+   */
+  planProject(id: string, timezone?: string, claimItemIds: string[] = []) {
     return this.request<Plan>(`/projects/${id}/plan`, {
       method: "POST",
-      body: { timezone },
+      body: {
+        timezone,
+        ...(claimItemIds.length ? { claim_item_ids: claimItemIds } : {}),
+      },
     });
   }
   /** Recent changes to a project, with private task and note content omitted. */
@@ -2079,10 +2086,14 @@ export class OrbynClient {
     );
   }
   applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
-    return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {
-      method: "POST",
-      body: options ?? {},
-    });
+    // `project_id`: the project a drafted-project proposal made, else null.
+    return this.request<{ applied: boolean; project_id: string | null }>(
+      `/ai/proposals/${id}/apply`,
+      {
+        method: "POST",
+        body: options ?? {},
+      },
+    );
   }
 
   // ---- teams ----

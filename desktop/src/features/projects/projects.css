@@ -294,6 +294,57 @@
 .project-planning p {
   margin: 0;
 }
+/* The status line, its "On track" / "Not fully planned" chip and Plan this project. */
+.project-planning-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.project-planning-head .chip.is-ok {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+/* Planned time, solid; what's not planned yet, hatched. */
+.project-plan-bar {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-track) 0 4px,
+    var(--color-border) 4px 8px
+  );
+}
+.project-plan-bar i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+.project-planning-warn {
+  color: var(--color-warn);
+  font-size: 13px;
+}
+.project-unassigned {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.project-unassigned legend {
+  padding: 0 4px;
+  font-size: 13px;
+}
+.project-unassigned label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
 .project-meta {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto auto;

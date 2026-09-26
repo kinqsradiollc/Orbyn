@@ -121,8 +121,12 @@ const negate = (n: number | null | undefined) => (n == null ? null : -n);
  * `score` each item comes with (none for events and finished tasks, which go
  * last); ties go to the more pressing task.
  */
-function sortBy(sort: ItemSort, now: Date): (a: Item, b: Item) => number {
-  const pressing = byScore(now);
+function sortBy(
+  sort: ItemSort,
+  now: Date,
+  among: Item[],
+): (a: Item, b: Item) => number {
+  const pressing = byScore(now, among);
   switch (sort) {
     case "newest":
       return (a, b) =>
@@ -280,7 +284,7 @@ export function TasksView({
               ? !!i.team_id && !i.assignee_id
               : i.assignee_id === assignee)),
     )
-    .sort(sortBy(sort, now));
+    .sort(sortBy(sort, now, items));
   const counts = statusCounts(matching);
   const visible =
     filter === "all" ? matching : matching.filter((i) => i.status === filter);

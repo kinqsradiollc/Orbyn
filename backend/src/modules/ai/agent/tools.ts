@@ -47,6 +47,8 @@ import {
   rankTasks,
 } from "./workspace.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
+import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { searchPages } from "../../search/routes.js";
 
 export { toInstant, whenLabel };
 
@@ -1912,39 +1914,25 @@ async function searchDocs(
       : (a.project_id ?? null);
   const taskId =
     ctx.scope?.kind === "task" && !ctx.allowOutsideScope ? ctx.scope.id : null;
+  // The same search as the search box and a project's search.
   const rows = (
-    await pool.query<{
-      id: string;
-      title: string;
-      kind: string;
-      project_name: string | null;
-      updated_at: string;
-      snippet: string;
-      block_id: string | null;
-    }>(
-      `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq)
-       SELECT d.id, d.title, d.kind, p.name AS project_name, d.updated_at,
-              ts_headline('english', doc_words(d.content, NULL), q.tsq,
-                          'StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1')
-                AS snippet,
-              (SELECT b->>'id' FROM jsonb_array_elements(d.content) b
-                WHERE b->>'text' IS NOT NULL AND b->>'id' IS NOT NULL
-                  AND to_tsvector('english', b->>'text') @@ q.tsq LIMIT 1) AS block_id
-         FROM docs d
-         LEFT JOIN projects p ON p.id = d.project_id
-         CROSS JOIN q
-        WHERE ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
-          AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
-          AND ($3::text IS NULL OR d.kind = $3)
-          AND ($5::uuid IS NULL OR d.project_id = $5)
-          AND ($6::uuid IS NULL OR d.item_id = $6 OR EXISTS (
-            SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $6))
-        ORDER BY ts_rank_cd(d.search, q.tsq) DESC, d.updated_at DESC
-        LIMIT $4`,
-      [ctx.user.id, a.query, a.kind ?? null, a.limit, projectId, taskId],
-    )
-  ).rows;
+    await searchPages(pool, ctx.user.id, {
+      q: a.query,
+      kind: a.kind,
+      project: projectId ?? undefined,
+      task: taskId ?? undefined,
+      limit: a.limit,
+      marks: "StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1",
+    })
+  ).map((hit) => ({
+    id: hit.id,
+    title: hit.title,
+    kind: hit.kind,
+    project_name: hit.project_name,
+    updated_at: hit.updated_at,
+    snippet: hit.snippet,
+    block_id: hit.block_id,
+  }));
   const items = rows.map((row) => {
     const number = recordSource(ctx, row.id, {
       doc_id: row.id,
@@ -1978,8 +1966,7 @@ async function readDoc(
     }>(
       `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
         WHERE d.id = $2
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${docVisibleTo("$1")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
@@ -2141,9 +2128,7 @@ async function proposeDocEdit(
     await pool.query<{ id: string; content: DocBlock[]; title: string }>(
       `SELECT d.id, d.content, d.title FROM docs d
         WHERE d.id = $2
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members
-                                 WHERE user_id = $1))
+          AND ${docVisibleTo("$1")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,

@@ -584,3 +584,12 @@ button.step-title {
 .sessions-empty .drawer-hint {
   margin: 0;
 }
+
+/* "Due after the project (Fri 16 Oct)" with its "Use Fri 16 Oct" action. */
+.sessions-latest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--color-warn);
+}

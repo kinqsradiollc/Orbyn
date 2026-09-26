@@ -407,3 +407,43 @@ test("invalid plans twice are a provider error", async () => {
   assert.equal(r.statusCode, 502);
   assert.equal(requests.length, 2);
 });
+
+test("a scoped question on the no-tools provider still returns its preloaded sources", async () => {
+  const me = await newUser();
+  const project = await app.inject({
+    method: "POST",
+    url: "/projects",
+    headers: auth(me.token),
+    payload: { name: "Graph launch" },
+  });
+  assert.equal(project.statusCode, 201, project.body);
+  const projectId = project.json().id as string;
+  await addItem(me.token, {
+    title: "Write the launch checklist",
+    project_id: projectId,
+    due_at: new Date(Date.now() + 86_400_000).toISOString(),
+  });
+  reset("Next is **Write the launch checklist** [1].");
+  const r = await app.inject({
+    method: "POST",
+    url: "/ai/chat",
+    remoteAddress: address(),
+    headers: auth(me.token),
+    payload: {
+      message: "What's next in this project?",
+      timezone: TZ,
+      scope: { kind: "project", id: projectId },
+    },
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  const sources = r.json().sources as {
+    kind?: string;
+    title: string;
+    used: boolean;
+  }[];
+  const task = sources.find((s) => s.title === "Write the launch checklist");
+  assert.ok(task, JSON.stringify(sources));
+  assert.equal(task.kind, "task");
+  assert.equal(task.used, true);
+  assert.match(r.json().summary, /\[1\]/);
+});

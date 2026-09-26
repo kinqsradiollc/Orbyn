@@ -29,6 +29,7 @@ import {
 import { hourLabel, minutesOf, timeLabel } from "./dates";
 import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
+import { Popover } from "../../components/Popover";
 import { entryClass, listLook } from "./MonthView";
 import type { MateBusy } from "./Teammates";
 import {
@@ -207,6 +208,11 @@ export function CalendarGrid({
   } | null>(null);
   const dragRef = useRef(drag);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [duePicker, setDuePicker] = useState<{
+    entries: CalendarEntry[];
+    at: Date;
+    anchor: DOMRect;
+  } | null>(null);
   const setDrag = (next: typeof drag) => {
     dragRef.current = next;
     setDragState(next);
@@ -647,63 +653,97 @@ export function CalendarGrid({
                     </div>
                   );
                 })}
-                {entries
-                  .filter(
+                {deadlineGroups(
+                  entries.filter(
                     (e) =>
                       e.kind === "task" &&
                       !e.end_at &&
                       !isAllDayEntry(e) &&
                       sameDay(new Date(e.start_at), d),
-                  )
-                  .map((e) => {
-                    const key = "e:" + entryKey(e);
-                    const shown =
-                      moving?.id === key ? moving.start : new Date(e.start_at);
-                    const minutes = shown.getHours() * 60 + shown.getMinutes();
-                    const draggable = canDragEntry(e);
+                  ),
+                  (e) =>
+                    moving?.id === "e:" + entryKey(e)
+                      ? moving.start
+                      : new Date(e.start_at),
+                  (e) => moving?.id === "e:" + entryKey(e),
+                ).map(({ at: shown, entries: due }) => {
+                  const minutes = shown.getHours() * 60 + shown.getMinutes();
+                  if (due.length > 1) {
+                    // Several deadlines at the same minute: one marker and
+                    // a picker, never a pile of overlapping lines.
+                    const selected = due.some(
+                      (e) => e.item_id === selectedTaskId,
+                    );
                     return (
                       <button
-                        key={key}
+                        key={"due:" + shown.getTime()}
                         type="button"
                         className={
-                          "tg-deadline-marker" +
-                          (selectedTaskId === e.item_id ? " is-selected" : "")
+                          "tg-deadline-marker is-group" +
+                          (selected ? " is-selected" : "")
                         }
                         style={{ top: minutes * PX_PER_MIN }}
-                        aria-label={`${e.title} deadline, ${timeLabel(shown)}`}
-                        aria-pressed={selectedTaskId === e.item_id}
+                        aria-label={`${due.length} tasks due at ${timeLabel(shown)}`}
                         aria-haspopup="dialog"
-                        onPointerDown={
-                          draggable
-                            ? (ev) =>
-                                begin(
-                                  ev,
-                                  { kind: "entry", entry: e },
-                                  key,
-                                  "move",
-                                  n,
-                                )
-                            : undefined
+                        onClick={(ev) =>
+                          setDuePicker({
+                            entries: due,
+                            at: shown,
+                            anchor: ev.currentTarget.getBoundingClientRect(),
+                          })
                         }
-                        onPointerMove={draggable ? move : undefined}
-                        onPointerUp={draggable ? finish : undefined}
-                        onPointerCancel={draggable ? cancel : undefined}
-                        onClick={(ev) => {
-                          if (suppressClick.current) {
-                            suppressClick.current = false;
-                            return;
-                          }
-                          setSelectedTaskId(e.item_id);
-                          onEntry(e, ev.currentTarget.getBoundingClientRect());
-                        }}
                       >
                         <span className="tg-deadline-line" aria-hidden="true" />
                         <span className="tg-deadline-label">
-                          {e.title} · due {timeLabel(shown)}
+                          Due · {due.length} tasks
                         </span>
                       </button>
                     );
-                  })}
+                  }
+                  const e = due[0];
+                  const key = "e:" + entryKey(e);
+                  const draggable = canDragEntry(e);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={
+                        "tg-deadline-marker" +
+                        (selectedTaskId === e.item_id ? " is-selected" : "")
+                      }
+                      style={{ top: minutes * PX_PER_MIN }}
+                      aria-label={`${e.title} deadline, ${timeLabel(shown)}`}
+                      aria-pressed={selectedTaskId === e.item_id}
+                      aria-haspopup="dialog"
+                      onPointerDown={
+                        draggable
+                          ? (ev) =>
+                              begin(
+                                ev,
+                                { kind: "entry", entry: e },
+                                key,
+                                "move",
+                                n,
+                              )
+                          : undefined
+                      }
+                      onPointerMove={draggable ? move : undefined}
+                      onPointerUp={draggable ? finish : undefined}
+                      onPointerCancel={draggable ? cancel : undefined}
+                      onClick={(ev) => {
+                        if (suppressClick.current) {
+                          suppressClick.current = false;
+                          return;
+                        }
+                        setSelectedTaskId(e.item_id);
+                        onEntry(e, ev.currentTarget.getBoundingClientRect());
+                      }}
+                    >
+                      <span className="tg-deadline-line" aria-hidden="true" />
+                      <span className="tg-deadline-label">Due · {e.title}</span>
+                    </button>
+                  );
+                })}
                 {layoutSpans(spans, d, 0, 24).map((p) => {
                   const short = p.height * PX_PER_MIN < 38;
                   const place = {
@@ -1131,6 +1171,55 @@ export function CalendarGrid({
           })}
         </div>
       </div>
+      {duePicker && (
+        <Popover
+          anchor={duePicker.anchor}
+          label={`Due at ${timeLabel(duePicker.at)}`}
+          onClose={() => setDuePicker(null)}
+        >
+          <div className="popover-head">
+            <strong>Due · {duePicker.entries.length} tasks</strong>
+            <small>{timeLabel(duePicker.at)}</small>
+          </div>
+          <div className="popover-actions">
+            {duePicker.entries.map((e) => (
+              <button
+                key={entryKey(e)}
+                type="button"
+                onClick={() => {
+                  const anchor = duePicker.anchor;
+                  setDuePicker(null);
+                  setSelectedTaskId(e.item_id);
+                  onEntry(e, anchor);
+                }}
+              >
+                {e.title}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      )}
     </div>
   );
+}
+
+/**
+ * Deadlines on one day grouped by the minute they fall on, in time order.
+ * An entry being dragged (`alone`) always keeps its own marker.
+ */
+function deadlineGroups(
+  due: CalendarEntry[],
+  shownAt: (e: CalendarEntry) => Date,
+  alone: (e: CalendarEntry) => boolean,
+) {
+  const groups = new Map<string, { at: Date; entries: CalendarEntry[] }>();
+  for (const e of due) {
+    const shown = shownAt(e);
+    const minute = Math.floor(shown.getTime() / 60_000);
+    const key = alone(e) ? "alone:" + entryKey(e) : String(minute);
+    const group = groups.get(key);
+    if (group) group.entries.push(e);
+    else groups.set(key, { at: shown, entries: [e] });
+  }
+  return [...groups.values()].sort((a, b) => a.at.getTime() - b.at.getTime());
 }

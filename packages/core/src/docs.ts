@@ -1128,10 +1128,13 @@ export function reanchorSuggestions(
 
 // ---------------------------------------------------------------- search ---
 
-/** One thing found by a search: a page, or a task. */
+/**
+ * One thing found by a search: a page, a task, or a record (a decision,
+ * promise or other work record; only in a project's search).
+ */
 export type SearchHit = {
   id: string;
-  type: "doc" | "task";
+  type: "doc" | "task" | "record";
   title: string;
   kind: string;
   team_id: string | null;

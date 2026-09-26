@@ -593,6 +593,24 @@ test("drafting a project returns a reviewable proposal, applied on request", asy
     ["Invite subscribers", "Pick a platform", "Write the first issue"],
     "every task is filed in the project",
   );
+  // The apply answers with the project it made, again on a retry.
+  assert.equal(applied.json().project_id, project.id);
+  const again = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: headers(alice),
+  });
+  assert.deepEqual(again.json(), { applied: true, project_id: project.id });
+  // Its history names who made the project and its stages.
+  const actors = (
+    await pool.query<{ kind: string; actor_id: string | null }>(
+      `SELECT kind, actor_id FROM project_activity
+        WHERE project_id = $1 AND kind IN ('project_created', 'stage_added')`,
+      [project.id],
+    )
+  ).rows;
+  assert.ok(actors.length >= 2);
+  assert.ok(actors.every((row) => row.actor_id === project.user_id));
 });
 
 test("an approved project persists its dependencies, its stages and its calendar blocks", async () => {

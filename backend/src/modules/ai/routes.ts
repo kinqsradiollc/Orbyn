@@ -19,6 +19,7 @@ import {
 import { pool, transaction } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -139,8 +140,7 @@ async function scopeOverview(
     }>(
       `SELECT d.id AS doc_id, d.title, l.block_id, d.content
          FROM doc_task_links l JOIN docs d ON d.id = l.doc_id
-        WHERE l.item_id = $2 AND ((d.team_id IS NULL AND d.user_id = $1)
-          OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+        WHERE l.item_id = $2 AND ${docVisibleTo("$1")}
         ORDER BY l.created_at LIMIT 1`,
       [u.id, scope.id],
     ),
@@ -608,18 +608,21 @@ export async function aiRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!p) fail(404, "Proposal not found");
-      if (p.applied) return { applied: true };
+      if (p.applied)
+        return { applied: true, project_id: p.applied_project_id ?? null };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      let projectId: string | null = null;
       if (p.project)
-        await applyProject(
+        ({ project_id: projectId } = await applyProject(
           db,
           u,
           p.project,
           new Date(),
           undefined,
           choice.give_tasks_deadlines,
-        );
+        ));
       else
         for (const [index, raw] of p.actions.entries()) {
           const action = actionSchema.parse(raw);
@@ -656,7 +659,10 @@ export async function aiRoutes(app: FastifyInstance) {
         }
       if (p.session_change)
         await applySessionChange(db, u.id, p.session_change);
-      await db.query("UPDATE proposals SET applied=true WHERE id=$1", [p.id]);
+      await db.query(
+        "UPDATE proposals SET applied=true, applied_project_id=$2 WHERE id=$1",
+        [p.id, projectId],
+      );
       await audit(
         {
           actorId: u.id,
@@ -670,7 +676,7 @@ export async function aiRoutes(app: FastifyInstance) {
         },
         db,
       );
-      return { applied: true };
+      return { applied: true, project_id: projectId };
     });
   });
 }

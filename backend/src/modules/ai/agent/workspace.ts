@@ -2,7 +2,7 @@ import {
   deadlineOf,
   isClosed,
   priorityScore,
-  projectAtRisk,
+  projectPlanStatus,
   projectProgress,
   type AssistantSource,
 } from "@orbyn/core";
@@ -31,6 +31,7 @@ import { projectPlanning } from "../../projects/planning.js";
 import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
+import { docVisibleTo } from "../../../lib/doc-visibility.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
@@ -204,12 +205,27 @@ const projectView = (p: ProjectRow, timezone: string) => {
     deadline: p.deadline ? localDate(p.deadline, timezone) : null,
     tasks: `${p.done_count} of ${p.task_count} done`,
     progress_percent: projectProgress(counts),
-    at_risk: projectAtRisk({
-      ...counts,
-      deadline: p.deadline?.toISOString() ?? null,
-    }),
   };
 };
+
+/** How many projects' plans list_projects checks, nearest deadline first. */
+const RISK_CHECKS = 12;
+
+/**
+ * At risk the way the project page's strip says it (`projectPlanStatus`):
+ * the person's part isn't fully planned before the deadline. Only active
+ * projects with a deadline can be; finished tasks never count.
+ */
+async function projectRisk(userId: string, p: ProjectRow) {
+  if (p.status !== "active" || !p.deadline) return false;
+  const planning = await projectPlanning(
+    pool,
+    userId,
+    { id: p.id, deadline: p.deadline, team_id: p.team_id },
+    false,
+  );
+  return projectPlanStatus(planning)?.status === "not_fully_planned";
+}
 
 /** Every project this person can see, with progress and whether it is at risk. */
 export async function listProjects(
@@ -225,7 +241,27 @@ export async function listProjects(
       [ctx.user.id],
     )
   ).rows;
-  return { projects: rows.map((p) => projectView(p, ctx.timezone)) };
+  const checked = new Set(
+    rows
+      .filter((p) => p.status === "active" && p.deadline)
+      .sort((a, b) => a.deadline!.getTime() - b.deadline!.getTime())
+      .slice(0, RISK_CHECKS)
+      .map((p) => p.id),
+  );
+  const risks = new Map(
+    await Promise.all(
+      rows
+        .filter((p) => checked.has(p.id))
+        .map(async (p) => [p.id, await projectRisk(ctx.user.id, p)] as const),
+    ),
+  );
+  return {
+    projects: rows.map((p) => ({
+      ...projectView(p, ctx.timezone),
+      // Unchecked (no deadline, not active, or beyond the nearest few): left out.
+      ...(risks.has(p.id) ? { at_risk: risks.get(p.id) } : {}),
+    })),
+  };
 }
 
 /**
@@ -284,8 +320,7 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
                   ORDER BY b.pos LIMIT 4) x), '[]'::jsonb) AS lines
          FROM docs d
         WHERE d.project_id = $2
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-            OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${docVisibleTo("$1")}
         ORDER BY (d.id = $3) DESC, d.updated_at DESC LIMIT 20`,
       [ctx.user.id, a.project_id, project.doc_id],
     ),

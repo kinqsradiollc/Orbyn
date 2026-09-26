@@ -81,6 +81,11 @@ export type Item = ItemInput & {
   /** The project this task belongs to, and which of its stages. */
   project_id?: string | null;
   stage_id?: string | null;
+  /**
+   * Its project's deadline: a latest date for the task, never its own
+   * deadline (see `latestDates`). Null outside a project or without one.
+   */
+  project_deadline?: string | null;
   id: string;
   version: number;
   /** Creator for team items; owner for personal items. */

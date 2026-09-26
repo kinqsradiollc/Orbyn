@@ -1266,7 +1266,14 @@ export function CalendarView({
                   else void saveMove(drop.entry, drop.start, drop.end, false);
                 }}
               >
-                Move deadline
+                Move the deadline to{" "}
+                {deadlineDrop.start.toLocaleString([], {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
               </button>
               <button
                 type="button"

@@ -1,3 +1,4 @@
+import { docReadableBy } from "../../lib/doc-visibility.js";
 /** Visibility of an activity entry's current target, using `a` as its alias. */
 export function visibleProjectActivity(userParameter: string) {
   const member = `SELECT team_id FROM team_members WHERE user_id = ${userParameter}`;
@@ -9,8 +10,7 @@ export function visibleProjectActivity(userParameter: string) {
           OR i.team_id IN (${member}))))
     OR (a.entity_type = 'note' AND EXISTS (
       SELECT 1 FROM docs d WHERE d.id = a.entity_id
-        AND ((d.team_id IS NULL AND d.user_id = ${userParameter})
-          OR d.team_id IN (${member}))))
+        AND ${docReadableBy(userParameter)}))
     OR (a.entity_type = 'record' AND EXISTS (
       SELECT 1 FROM work_records w WHERE w.id = a.entity_id
         AND ((w.team_id IS NULL AND w.created_by = ${userParameter})

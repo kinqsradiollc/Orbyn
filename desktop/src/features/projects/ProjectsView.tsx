@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Boxes, LayoutTemplate, Plus } from "lucide-react";
 import {
-  projectAtRisk,
   projectProgress,
   hasTeamPermission,
   type Item,
@@ -219,7 +218,6 @@ export function ProjectsView({
         <ul className="project-grid">
           {projects.map((p) => {
             const percent = projectProgress(p);
-            const risk = projectAtRisk(p);
             return (
               <li key={p.id}>
                 <button
@@ -230,7 +228,6 @@ export function ProjectsView({
                 >
                   <span className="project-card-top">
                     <strong>{p.name}</strong>
-                    {risk && <span className="chip chip-warn">At risk</span>}
                   </span>
                   {p.summary && <small className="muted">{p.summary}</small>}
                   <span className="project-bar" aria-hidden="true">

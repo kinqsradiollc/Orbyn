@@ -59,6 +59,14 @@ import {
 } from "./ScopeDialog";
 import { DateField } from "./DateField";
 
+/** "Fri 16 Oct". */
+const shortDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+
 type Props = {
   editing: Item | "new";
   /** Your teams; the "Share with" picker offers those you can write to. */
@@ -648,8 +656,7 @@ export function ItemEditor({
               )}
               {afterProject && project?.deadline && (
                 <p className="field-hint" role="status">
-                  This task is due after {project.name}'s deadline (
-                  {new Date(project.deadline).toLocaleString()}).{" "}
+                  Due after the project ({shortDay(project.deadline)}){" "}
                   <button
                     type="button"
                     className="text-button"
@@ -659,7 +666,7 @@ export function ItemEditor({
                       setEndValue("");
                     }}
                   >
-                    Use project deadline
+                    Use {shortDay(project.deadline)}
                   </button>
                 </p>
               )}

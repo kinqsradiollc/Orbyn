@@ -97,7 +97,7 @@ function Body({
         canEdit(i) &&
         stillToPlan(byItem.get(i.id)) !== 0,
     )
-    .sort(byPriority());
+    .sort(byPriority(new Date(), items));
   const shown = all ? tasks : tasks.slice(0, SHOWN);
   /** Its status, when it's a warning ("At risk", "Short 2h"…). */
   const status = (t: Item) => {

@@ -1037,7 +1037,8 @@ export function RootScreen() {
               (doc) => {
                 setNote(doc);
                 setNoteBlockId(blockId ?? null);
-                setSheet("note");
+                // Closing the page returns to the task.
+                present({ sheet: "note" });
               },
               (e) => setError(errorText(e)),
             )

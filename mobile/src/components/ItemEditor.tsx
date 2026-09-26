@@ -48,6 +48,7 @@ import {
   ESTIMATES,
   LIST_COLORS,
   minutesLabel,
+  shortDay,
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
@@ -680,12 +681,11 @@ function Form({
           {afterProject && project?.deadline && (
             <View style={s.projectDeadlineWarning}>
               <Text style={shared.small}>
-                This task is due after {project.name}'s deadline (
-                {new Date(project.deadline).toLocaleString()}).
+                Due after the project ({shortDay(project.deadline)})
               </Text>
               {!readOnly && (
                 <Button
-                  title="Use project deadline"
+                  title={`Use ${shortDay(project.deadline)}`}
                   secondary
                   onPress={() => {
                     setPicker(null);

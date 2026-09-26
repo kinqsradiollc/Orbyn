@@ -122,6 +122,29 @@ export function projectAtRisk(
   return days <= soonDays && projectProgress(p) < 50;
 }
 
+/**
+ * The project page's planned-vs-deadline chip, by the same rule as task rows:
+ * "On track" when all of your part is planned before the deadline, "Not fully
+ * planned" when some of it isn't (time not planned, a task with no estimate,
+ * or a session after its task's deadline). Null without a deadline or open
+ * work. Finished tasks never count. The one "at risk" rule for projects: the
+ * list, the assistant and the page all use it.
+ */
+export function projectPlanStatus(p: {
+  deadline: string | null;
+  task_count: number;
+  unplanned_minutes: number;
+  late_session_count: number;
+  unestimated_tasks: { id: string }[];
+}): { status: "on_track" | "not_fully_planned"; label: string } | null {
+  if (!p.deadline || p.task_count === 0) return null;
+  return p.unplanned_minutes > 0 ||
+    p.late_session_count > 0 ||
+    p.unestimated_tasks.length > 0
+    ? { status: "not_fully_planned", label: "Not fully planned" }
+    : { status: "on_track", label: "On track" };
+}
+
 // ---------------------------------------------------------- deadline ---
 
 /**

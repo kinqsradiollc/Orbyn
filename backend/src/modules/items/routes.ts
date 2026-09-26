@@ -10,6 +10,8 @@ import {
   itemsQuery,
   parseQuickAdd,
   priorityScore,
+  deadlineOf,
+  planningDeadline,
   progressUpdateInput,
   quickAddInput,
   skipOccurrenceInput,
@@ -54,6 +56,7 @@ import {
   setItemStatus,
   type ItemRow,
 } from "./service.js";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
 
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
@@ -162,6 +165,8 @@ type ScoreRow = {
   estimate_minutes: number | null;
   spent_minutes: number;
   created_at: Date | string;
+  /** Its project's deadline: a latest date the score counts to. */
+  project_deadline?: Date | string | null;
 };
 
 const isoOrNull = (v: Date | string | null) =>
@@ -169,16 +174,28 @@ const isoOrNull = (v: Date | string | null) =>
 
 /**
  * The priority score of an open task; null for events and closed tasks.
- * Its urgency counts to the task's deadline (`deadlineOf`).
+ * Its urgency counts to the task's deadline (`deadlineOf`), or its project's
+ * when that comes first, as the planner does.
  */
-const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
-  i.kind === "task" && !isClosed(i.status)
-    ? priorityScore(
-        { ...i, due_at: isoOrNull(i.due_at), end_at: isoOrNull(i.end_at) },
-        now,
-        slot,
-      )
-    : null;
+const scoreOf = (i: ScoreRow, now: Date, slot: number) => {
+  if (i.kind !== "task" || isClosed(i.status)) return null;
+  const task = {
+    ...i,
+    due_at: isoOrNull(i.due_at),
+    end_at: isoOrNull(i.end_at),
+  };
+  return priorityScore(
+    {
+      ...task,
+      deadline_at: planningDeadline(
+        deadlineOf(task),
+        isoOrNull(i.project_deadline ?? null),
+      ),
+    },
+    now,
+    slot,
+  );
+};
 
 export async function itemRoutes(app: FastifyInstance) {
   app.get("/items", async (r) => {
@@ -286,7 +303,8 @@ export async function itemRoutes(app: FastifyInstance) {
       const ranked = (
         await db.query<ScoreRow>(
           `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.end_at, i.all_day,
-                  i.timezone, i.estimate_minutes, i.spent_minutes, i.created_at
+                  i.timezone, i.estimate_minutes, i.spent_minutes, i.created_at,
+                  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline
            FROM items i WHERE ${where} LIMIT ${MAX_SCORED}`,
           filters,
         )
@@ -477,8 +495,7 @@ export async function itemRoutes(app: FastifyInstance) {
               ORDER BY created_at, block_id LIMIT 1
            ) l ON true
           WHERE (d.item_id = $1 OR l.block_id IS NOT NULL)
-            AND ((d.team_id IS NULL AND d.user_id = $2)
-              OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+            AND ${docVisibleTo("$2")}
           ORDER BY (l.block_id IS NOT NULL) DESC,
                    l.created_at ASC NULLS LAST, d.updated_at DESC, d.id
           LIMIT 101`,

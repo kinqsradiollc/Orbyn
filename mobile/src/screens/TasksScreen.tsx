@@ -324,7 +324,7 @@ export function TasksScreen({
   const found = searchItems(items, search).filter(matches);
   const count = (f: StatusFilter) =>
     f === "all" ? found.length : found.filter((i) => i.status === f).length;
-  const order = sorter(sort, byPriority(now));
+  const order = sorter(sort, byPriority(now, items));
   // Finished and cancelled items always go last, whatever the order.
   const visible = found
     .filter((i) => status === "all" || i.status === status)

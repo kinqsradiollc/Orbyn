@@ -16,6 +16,7 @@ import { comingDays, dateReminder, namedDays } from "./prompt.js";
 import { dropNullFields } from "./protocol.js";
 import { MAX_ACTIONS, runTool, type AgentContext } from "./tools.js";
 import type { AgentResult } from "./loop.js";
+import { finalizeSources } from "./sources.js";
 
 /**
  * The assistant for providers that are weak at multi-step tool use (Maincode's
@@ -500,16 +501,21 @@ export async function runGraph(
     }
   };
 
-  const result = (summary: string): AgentResult => ({
-    summary,
-    actions: ctx.actions,
-    follow_ups: [],
-    sources: [],
-    notes: [],
-    legacy: false,
-    steps: calls,
-    partial: false,
-  });
+  // The scoped preload (answer() reads a project's tasks, decisions, changes and
+  // pages before the run) is cited here too, so the no-tools provider shows sources.
+  const result = (summary: string): AgentResult => {
+    const checked = finalizeSources(summary, [...(ctx.cited?.values() ?? [])]);
+    return {
+      summary: checked.summary,
+      actions: ctx.actions,
+      follow_ups: [],
+      sources: checked.sources,
+      notes: ctx.notes ?? [],
+      legacy: false,
+      steps: calls,
+      partial: false,
+    };
+  };
 
   if (!change) {
     const { content } = await ask(messages, false);

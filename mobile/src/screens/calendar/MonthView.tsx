@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { monthGrid, sameDay, type FrameOccurrence } from "@orbyn/core";
 import { colors, fonts, radii, themed, tint } from "../../theme";
+import { Icon } from "../../components/Icon";
 import { covers } from "./dates";
 import { layoutWeek, type MonthThing } from "./month";
 
@@ -136,18 +137,33 @@ export function MonthView({
                     </View>
                   </View>
                   {sessionTotal > 0 ? (
-                    <Text
-                      numberOfLines={1}
-                      maxFontSizeMultiplier={MAX_SCALE}
-                      style={s.sessionCount}
-                    >
-                      {sessionTotal}{" "}
-                      {compact
-                        ? "◷"
-                        : sessionTotal === 1
-                          ? "session"
-                          : "sessions"}
-                    </Text>
+                    compact ? (
+                      // Too narrow for the word: the number and a clock,
+                      // read out in full.
+                      <View
+                        accessible
+                        accessibilityLabel={`${sessionTotal} ${sessionTotal === 1 ? "session" : "sessions"}`}
+                        style={s.sessionCompact}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          maxFontSizeMultiplier={MAX_SCALE}
+                          style={s.sessionCount}
+                        >
+                          {sessionTotal}
+                        </Text>
+                        <Icon name="clock" size={10} color={colors.accent} />
+                      </View>
+                    ) : (
+                      <Text
+                        numberOfLines={1}
+                        maxFontSizeMultiplier={MAX_SCALE}
+                        style={s.sessionCount}
+                      >
+                        {sessionTotal}{" "}
+                        {sessionTotal === 1 ? "session" : "sessions"}
+                      </Text>
+                    )
                   ) : (
                     compact &&
                     count > 0 && (
@@ -243,9 +259,16 @@ export function MonthView({
 
 const s = themed(() =>
   StyleSheet.create({
+    sessionCompact: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+      paddingTop: 2,
+    },
     sessionCount: {
       fontFamily: fonts.medium,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.accent,
       textAlign: "center",
       paddingHorizontal: 2,

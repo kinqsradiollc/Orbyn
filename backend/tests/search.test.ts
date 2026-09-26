@@ -199,6 +199,68 @@ test("project search includes its tasks and pages but excludes other projects", 
   assert.deepEqual(outsider, []);
 });
 
+test("a project's search finds its decisions, and pages by its new name", async () => {
+  const project = await post("/projects", { name: "Harbour move" });
+  assert.equal(project.statusCode, 201, project.body);
+  const projectId = project.json().id as string;
+  const decision = await post("/work-records", {
+    kind: "decision",
+    title: "Pick the removalist",
+    details: "Compare three removalist quotes before Friday.",
+    project_id: projectId,
+  });
+  assert.equal(decision.statusCode, 201, decision.body);
+  const page = await post("/docs", {
+    title: "Packing list",
+    project_id: projectId,
+    content: [{ type: "paragraph", text: "Boxes and tape.", id: "p1" }],
+  });
+  assert.equal(page.statusCode, 201, page.body);
+
+  const hits = (await call(`/search?q=removalist&project=${projectId}`)).json();
+  const record = hits.find(
+    (hit: { id: string }) => hit.id === decision.json().id,
+  );
+  assert.ok(record, JSON.stringify(hits));
+  assert.equal(record.type, "record");
+  assert.equal(record.kind, "decision");
+  assert.match(record.snippet, /\[\[removalist\]\]/i);
+  // Records only come with one project's search (or when asked for).
+  assert.ok(
+    !(await call("/search?q=removalist"))
+      .json()
+      .some((hit: { type: string }) => hit.type === "record"),
+  );
+  assert.equal(
+    (await call("/search?q=removalist&type=record")).json()[0].id,
+    decision.json().id,
+  );
+  assert.deepEqual(
+    (
+      await call(
+        `/search?q=removalist&project=${projectId}`,
+        () => strangerToken,
+      )
+    ).json(),
+    [],
+  );
+
+  // Pages are found by their project's name; renaming it reindexes them.
+  const renamed = await app.inject({
+    method: "PUT",
+    url: `/projects/${projectId}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { name: "Quayside relocation" },
+  });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  const byName = (await call("/search?q=quayside&type=doc")).json();
+  assert.ok(
+    byName.some((hit: { id: string }) => hit.id === page.json().id),
+    JSON.stringify(byName),
+  );
+  assert.equal((await call("/search?q=x&type=bogus")).statusCode, 422);
+});
+
 test("a search only finds what the searcher may see", async () => {
   const mine = (await call("/search?q=quotas")).json();
   assert.ok(mine.length > 0);

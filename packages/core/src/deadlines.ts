@@ -61,6 +61,77 @@ export function planningDeadline(
   );
 }
 
+/** A task as `latestDates` reads it. */
+export type LatestDateTask = DeadlineSource & {
+  id: string;
+  kind?: string;
+  status: string;
+  project_id?: string | null;
+  /** Its project's deadline, as loaded with the task. */
+  project_deadline?: string | null;
+  /** Tasks this one waits on. */
+  prerequisite_ids?: string[];
+};
+
+/**
+ * Each task's latest date, the one planning warns and sorts against: the
+ * earliest of its own deadline, its project's deadline, and the latest date of
+ * any open task waiting on it (directly or through a chain). Matches the
+ * server's `planningDeadline` with dependent targets, so task lists sort the
+ * way the planner plans. Never a deadline to save: task deadlines are only
+ * written by the person.
+ */
+export function latestDates(
+  tasks: LatestDateTask[],
+  /** Project deadlines by project; each task's own `project_deadline` when left out. */
+  projectDeadlines?: ReadonlyMap<string, string | null | undefined>,
+): Map<string, string | null> {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  // Who waits on each task: the open tasks that list it as a prerequisite.
+  const waiting = new Map<string, LatestDateTask[]>();
+  for (const t of tasks) {
+    if ((t.kind && t.kind !== "task") || t.status === "done") continue;
+    if (t.status === "cancelled") continue;
+    for (const id of t.prerequisite_ids ?? [])
+      if (byId.has(id)) waiting.set(id, [...(waiting.get(id) ?? []), t]);
+  }
+  const out = new Map<string, string | null>();
+  const visiting = new Set<string>();
+  const latest = (t: LatestDateTask): string | null => {
+    if (out.has(t.id)) return out.get(t.id)!;
+    if (visiting.has(t.id)) return null; // A loop: stop here.
+    visiting.add(t.id);
+    const project = !t.project_id
+      ? null
+      : projectDeadlines
+        ? (projectDeadlines.get(t.project_id) ?? null)
+        : (t.project_deadline ?? null);
+    let at = planningDeadline(deadlineOf(t), project);
+    for (const next of waiting.get(t.id) ?? [])
+      at = planningDeadline(at, latest(next));
+    visiting.delete(t.id);
+    out.set(t.id, at);
+    return at;
+  };
+  for (const t of tasks) latest(t);
+  return out;
+}
+
+/**
+ * Whether a task's own deadline falls after its project's, when the task
+ * page offers "Use <project deadline>".
+ */
+export function dueAfterProject(
+  taskDeadline: string | null | undefined,
+  projectDeadline: string | null | undefined,
+) {
+  return (
+    !!taskDeadline &&
+    !!projectDeadline &&
+    Date.parse(taskDeadline) > Date.parse(projectDeadline)
+  );
+}
+
 /** Whether something ending at `end` ends after `deadline`. No deadline: never. */
 export function endsAfterDeadline(
   end: string | Date,

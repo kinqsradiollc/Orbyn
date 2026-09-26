@@ -3,8 +3,10 @@ import { StyleSheet, Text, View } from "react-native";
 import {
   atRiskReason,
   deadlineOf,
+  dueAfterProject,
   dueDate,
   fitTone,
+  itemBody,
   moveTimes,
   planDaysBefore,
   type Item,
@@ -21,6 +23,7 @@ import { Icon } from "./Icon";
 import { Pill } from "./Pill";
 import { SmallAction } from "./SmallAction";
 import { client } from "../lib/api";
+import * as outbox from "../lib/outbox";
 import {
   dayStart,
   deviceTimeZone,
@@ -223,6 +226,33 @@ export function SessionsPanel({
         </Text>
       </View>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
+      {!!data?.project_deadline &&
+        dueAfterProject(data.deadline_at, data.project_deadline) && (
+          <View style={s.latestRow} accessibilityRole="text">
+            <Text style={[shared.small, s.riskText]}>
+              Due after the project ({rowDay(data.project_deadline)})
+            </Text>
+            {canWork && !item.rrule && (
+              <SmallAction
+                label={`Use ${rowDay(data.project_deadline)}`}
+                disabled={busy}
+                onPress={() =>
+                  run(async () => {
+                    // Your own edit: the project never writes task deadlines.
+                    await outbox.updateItem(item, {
+                      ...itemBody(item),
+                      due_at: data.project_deadline,
+                      end_at: null,
+                      all_day: false,
+                    });
+                    await load();
+                    onChanged?.();
+                  })
+                }
+              />
+            )}
+          </View>
+        )}
       {!data && !error && <Text style={shared.small}>Loading sessions…</Text>}
       {!!data && sessions.length > 0 && (
         <>
@@ -438,6 +468,13 @@ const s = themed(() =>
     },
     summary: { marginBottom: 8 },
     fitRow: { flexDirection: "row", marginBottom: 8 },
+    latestRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      columnGap: 10,
+      marginBottom: 8,
+    },
     riskText: { color: colors.warning, marginBottom: 8 },
     lateChip: {
       alignSelf: "flex-start",

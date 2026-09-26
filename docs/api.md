@@ -518,12 +518,20 @@ without names or session times. `404` when the project is not visible to you.
 
 ### `POST /projects/:id/plan` (auth)
 
-Body: `{ "timezone": "Australia/Melbourne" }` (time zone optional). Creates an expiring plan
-preview for your open tasks in an active project. Team tasks must be assigned to you first;
-unassigned and other people's tasks are excluded, including when the preview is tuned. The
-horizon ends on the project's deadline if it is within two weeks; otherwise it covers two weeks.
-Returns the usual planner `Plan`. The preview does not change tasks or sessions. `404` when the
-project is not visible; `422` for an inactive project, invalid time zone or no assigned work.
+Body: `{ "timezone": "Australia/Melbourne", "claim_item_ids": ["…"] }` (both optional). Needs
+edit rights (`403` for a viewer). Creates an expiring plan preview for your open tasks in an
+active project, plus the unassigned team tasks in `claim_item_ids` (up to 50): claiming makes you
+their assignee in the same transaction, writing only the assignee (and version), so other edits
+to those tasks are kept. Other people's tasks are excluded, including when the preview is tuned.
+The horizon ends on the project's deadline if it is within two weeks; otherwise it covers two
+weeks and the summary starts "Planned the next 2 weeks." Returns the usual planner `Plan`. The
+preview does not change sessions. `404` when the project is not visible; `409` when a task to
+claim was taken or finished meanwhile; `422` for an inactive project, invalid time zone, a
+personal project with claims, or no assigned work.
+
+Clients put Home together from `GET /projects/:id`, `/planning`, `/sessions`, `/links`, `/visit`
+and the page and task lists rather than one `GET /projects/:id/home` payload (a recorded
+deviation from the plan: each piece is cached and refreshed on its own).
 
 ### `GET /projects/:id/sessions` (auth)
 
@@ -855,9 +863,12 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc` or `task`; leave it out for both, ranked together on one scale. `project` limits
-results to that project's pages and tasks; every hit still passes the caller's normal visibility
-check. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
+`type` is `doc`, `task` or `record`; leave it out for pages and tasks, ranked together on one
+scale. `project` limits results to that project's pages and tasks, and adds its work records
+(decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
+searched with `type=record`. Every hit still passes the caller's normal visibility check, and
+pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
+Renaming a project reindexes its pages, which are found by their project's name. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
 body D — and on the **letters**
 of the title as well, so `Lanch breif` finds Launch brief. Rank is the text match lifted for a
 recently edited page, plus a little for a title that merely looks like what was typed.
@@ -1136,7 +1147,11 @@ score = 3 × priority (low 1, medium 2, high 3) + 4 × urgency + 2 if overdue + 
 
 Urgency rises from 0 a week before the deadline to 1 at it, and a task is overdue once its deadline
 has passed; the deadline follows the one rule in [Sessions](#sessions-blocks) (the end of the day
-for an all-day task, the end time for a task that has one). `size_fit` is 1 when the remaining
+for an all-day task, the end time for a task that has one), or is the task's project deadline when
+that comes first. Every item carries `project_deadline` (its project's deadline, or null): the
+apps sort by the same latest date (`latestDates` in `@orbyn/core`, which also counts tasks waiting
+on it). Changing a project's deadline touches its open tasks' `updated_at` (not their version) so
+synced copies pick it up. `size_fit` is 1 when the remaining
 estimate (estimate − time spent) fits the largest free working slot left today (or on the next
 working day once today's hours are over), 0.5 when it doesn't, and 0.75 for a task without an
 estimate. The planner ranks tasks with the same score, comparing with the first planned day.
@@ -1546,7 +1561,9 @@ block; the assistant only chooses the days and times to keep free.
 
 ### `POST /ai/proposals/:id/apply` (auth)
 
-Optional body `{ "give_tasks_deadlines": false }` creates a proposed project's tasks without their suggested due dates; the reviewed sessions are still created. The default is `true`. Applies every action in one transaction. → `{ "applied": true }`. Idempotent. Returns `409` if the
+Optional body `{ "give_tasks_deadlines": false }` creates a proposed project's tasks without their suggested due dates; the reviewed sessions are still created. The default is `true`. Applies every action in one transaction. → `{ "applied": true, "project_id": "…" | null }`
+(`project_id` is the project a drafted project made; the same on a repeat). Idempotent. Project
+history names the person who applied it as the author of the project and its stages. Returns `409` if the
 proposal expired (15 minutes) or an item version is stale, and `404` if any action targets an item
 the user does not own, in which case nothing is applied.
 

@@ -788,6 +788,16 @@ test("the calendar feed has all-day dates, free time, alerts and changed occurre
     start_at: local(1, 15),
     end_at: local(1, 16),
   });
+  const slides = await create(me.token, {
+    title: "Draft slides",
+    kind: "task",
+    due_at: local(6, 17),
+  });
+  await call(me.token, "POST", "/blocks", {
+    item_id: slides.id,
+    start_at: local(5, 10),
+    end_at: local(5, 11),
+  });
 
   const path = await feedPath(me.token);
   const read = async (url: string) => {
@@ -819,6 +829,16 @@ test("the calendar feed has all-day dates, free time, alerts and changed occurre
   });
   ics = await read(path);
   assert.match(ics, /SUMMARY:Focus: Write report/);
+  // A session says when its task is due; one with no deadline says nothing.
+  const session = (title: string) =>
+    ics
+      .split("BEGIN:VEVENT")
+      .find((event) => event.includes(`SUMMARY:Focus: ${title}`))!;
+  assert.match(
+    session("Draft slides"),
+    /DESCRIPTION:Due \w{3} \d{1,2} \w{3}\\, \d{1,2}:\d{2} [ap]m/,
+  );
+  assert.doesNotMatch(session("Write report"), /DESCRIPTION:/);
 
   // Round trip: what we publish, our own parser reads back.
   const parsed = parseIcs(ics, TZ);
