@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../motion";
 import { Icon } from "./Icon";
 import { colors, fonts, radii, themed } from "../theme";
 import type { outboxState } from "../lib/outbox";

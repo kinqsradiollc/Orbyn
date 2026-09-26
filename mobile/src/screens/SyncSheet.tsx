@@ -285,7 +285,7 @@ const s = themed(() =>
     send: { marginTop: 14, marginBottom: 0 },
     entry: { paddingVertical: 12, gap: 3 },
     firstEntry: { marginTop: 12 },
-    entryTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    entryTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     failed: { color: colors.danger },
     actions: { flexDirection: "row", gap: 8, marginTop: 6 },
     divider: {

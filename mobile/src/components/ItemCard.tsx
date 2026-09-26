@@ -1,5 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   dateLabel,
   isClosed,
@@ -25,7 +31,7 @@ import {
   subtasksLabel,
   updatesLabel,
 } from "../lib/progress";
-import { pop, usePressScale, useReducedMotion } from "../motion";
+import { pop, usePressScale, useReducedMotion, Pressable } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { tap } from "../lib/haptics";
 import { copyLink } from "../lib/share";
@@ -98,6 +104,11 @@ export function ItemCard({
   const reduced = useReducedMotion();
   const press = usePressScale();
   const tick = useRef(new Animated.Value(1)).current;
+  // The tick box grows with the phone's text size, as the title does, but
+  // never shrinks below 22 so its touch area stays full size.
+  const box = Math.round(
+    22 * Math.max(1, Math.min(2, useWindowDimensions().fontScale)),
+  );
   const wasDone = useRef(done);
   const longPressed = useRef(false);
   useEffect(() => {
@@ -218,11 +229,21 @@ export function ItemCard({
           if (!done) tap();
           onToggle(item);
         }}
-        style={[s.check, done && s.checked, readOnly && s.checkLocked]}
+        style={[
+          s.check,
+          { width: box, height: box },
+          done && s.checked,
+          readOnly && s.checkLocked,
+        ]}
       >
         {done && (
           <Animated.View style={{ transform: [{ scale: tick }] }}>
-            <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
+            <Icon
+              name="check"
+              size={Math.round(box * 0.6)}
+              color={colors.white}
+              strokeWidth={3}
+            />
           </Animated.View>
         )}
       </Pressable>
@@ -393,7 +414,7 @@ const s = themed(() =>
     check: {
       width: 22,
       height: 22,
-      borderRadius: 7,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       backgroundColor: colors.surface,
@@ -424,7 +445,7 @@ const s = themed(() =>
     metaText: {
       flexShrink: 1,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
     },
     priority: {
@@ -472,7 +493,7 @@ const s = themed(() =>
     },
     teamText: {
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.accent,
     },
     progress: {
@@ -490,7 +511,7 @@ const s = themed(() =>
     },
     footer: {
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 6,
     },
@@ -504,7 +525,7 @@ const s = themed(() =>
     },
     subtasksText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
     turned: { transform: [{ rotate: "90deg" }] },

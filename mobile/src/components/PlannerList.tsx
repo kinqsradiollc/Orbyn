@@ -1,17 +1,10 @@
 import React, { useRef, useState } from "react";
-import {
-  Animated,
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import type { Item, Status } from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ItemCard } from "./ItemCard";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 

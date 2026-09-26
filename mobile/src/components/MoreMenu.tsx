@@ -3,11 +3,11 @@ import {
   Animated,
   Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Pressable } from "../motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { useSwipeDown } from "../hooks/useSwipeDown";
@@ -114,6 +114,7 @@ export function ActionSheet({
     >
       <View style={s.fill}>
         <Pressable
+          quiet
           style={s.backdrop}
           accessibilityRole="button"
           accessibilityLabel="Close menu"

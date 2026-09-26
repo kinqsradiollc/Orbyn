@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Linking,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -22,7 +21,7 @@ import { formatUntil } from "../components/MaintenanceBanner";
 import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -738,7 +737,7 @@ const s = themed(() =>
       marginBottom: 8,
     },
     fieldLabel: { flex: 1, marginBottom: 0 },
-    reset: { fontFamily: fonts.semibold, fontSize: 12, color: colors.accent },
+    reset: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
     input: { marginBottom: 6 },
     multiline: { minHeight: 76, textAlignVertical: "top", paddingTop: 13 },
     hint: { marginBottom: 14 },
@@ -783,7 +782,7 @@ const s = themed(() =>
     },
     chipText: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
     },
     chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },
@@ -799,7 +798,7 @@ const s = themed(() =>
     kvValue: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     commit: { marginTop: 4, marginBottom: 10 },

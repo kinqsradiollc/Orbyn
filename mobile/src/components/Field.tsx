@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -9,6 +8,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { Pressable } from "../motion";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
@@ -320,7 +320,7 @@ const s = themed(() =>
     hint: { marginTop: 8 },
     numberRow: { flexDirection: "row", alignItems: "center", gap: 10 },
     number: { width: 110 },
-    suffix: { fontFamily: fonts.medium, fontSize: 14, color: colors.muted },
+    suffix: { fontFamily: fonts.medium, fontSize: 15, color: colors.muted },
     pickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     pick: {
       flex: 1,

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   daysLeft,
   daysLeftText,
@@ -187,7 +188,7 @@ const s = themed(() =>
     flex: { flex: 1 },
     rowTitle: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     done: { color: colors.muted, textDecorationLine: "line-through" },
-    left: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+    left: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     late: { color: colors.warning, fontFamily: fonts.semibold },
     tick: {
       width: 20,

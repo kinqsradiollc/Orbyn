@@ -140,14 +140,14 @@ const s = themed(() =>
   StyleSheet.create({
     h1: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       lineHeight: 32,
       color: colors.text,
       marginBottom: 2,
     },
     h2: {
       fontFamily: fonts.display,
-      fontSize: 17,
+      fontSize: 18,
       lineHeight: 23,
       color: colors.text,
       marginTop: 20,

@@ -32,6 +32,7 @@ import {
 import type { MouseEvent } from "react";
 import { useReveal } from "../../hooks/useReveal";
 import { stagger } from "../../lib/motion";
+import { LinkDemo, WeekDemo } from "./HomeDemos";
 import { FAQ } from "./faq";
 import "./home.css";
 
@@ -408,6 +409,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               finds the time between your meetings, in an order that makes
               sense, and shows you the plan before anything moves.
             </p>
+            <WeekDemo />
           </div>
           <PointList points={PLANNING} />
         </section>
@@ -448,11 +450,12 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <h3>Docs and notes that stay with the work.</h3>
               <p>
                 Write briefs and meeting notes with headings, checklists that
-                become tasks, code and maths. Comment on the exact words,
-                suggest changes for someone else to accept, and go back to any
-                earlier version. Ask a page a question, or ask it to rewrite a
-                line.
+                become tasks, code and maths. Edit together live, comment on the
+                exact words, suggest changes for someone else to accept, and go
+                back to any earlier version. Ask a page a question, or ask it to
+                rewrite a line.
               </p>
+              <LinkDemo />
               <div className="home-feature-note">
                 <span /> Download as PDF, Word, Markdown or HTML.
               </div>

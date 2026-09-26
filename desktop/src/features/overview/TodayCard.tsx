@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   ArrowRight,
   CalendarClock,
-  CalendarDays,
   Play,
   Sun,
   Timer,
@@ -20,6 +19,7 @@ import {
 import { EmptyState } from "../../components/EmptyState";
 import { SessionCheckIns } from "./SessionCheckIns";
 import "./today.css";
+import { CONCEPT_ICON } from "../../app/concept-icons";
 
 /** Late tasks shown before "Show all". */
 const LATE_SHOWN = 5;
@@ -50,7 +50,7 @@ const dayName = (day: string) => {
 };
 
 const ICONS: Record<string, LucideIcon> = {
-  event: CalendarDays,
+  event: CONCEPT_ICON.event,
   session: Timer,
   today: CalendarClock,
   late: AlertTriangle,

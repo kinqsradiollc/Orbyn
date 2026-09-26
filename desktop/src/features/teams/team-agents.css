@@ -51,3 +51,19 @@
     grid-row: 2;
   }
 }
+
+/* On a phone the policy sits on its own full-width line under the heading,
+   so its words aren't cut off. */
+@media (max-width: 520px) {
+  .team-agents .subheading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .team-agents .subheading > :not(h3) {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .team-agents .subheading select {
+    width: 100%;
+  }
+}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   focusPhaseLabel,
   focusRemaining,
@@ -114,7 +115,7 @@ const s = themed(() =>
       borderColor: colors.softBorder,
     },
     title: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
-    detail: { fontFamily: fonts.medium, fontSize: 12, color: colors.textSoft },
+    detail: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
     action: { paddingHorizontal: 6, paddingVertical: 4 },
     actionText: {
       fontFamily: fonts.semibold,

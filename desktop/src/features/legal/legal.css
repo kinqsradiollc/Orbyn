@@ -28,7 +28,7 @@
 }
 .legal-text h1 {
   font-family: "Manrope", sans-serif;
-  font-size: 32px;
+  font-size: 36px;
   line-height: 1.2;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
@@ -89,13 +89,13 @@
   background: var(--color-sunken);
 }
 .consent-reader .legal-text {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .consent-reader .legal-text h1 {
   font-size: 18px;
 }
 .consent-reader .legal-text h2 {
-  font-size: 14px;
+  font-size: 15px;
   margin-top: 16px;
 }
 .auth-card .consent-analytics {
@@ -130,7 +130,7 @@
   padding: 0;
   display: grid;
   gap: 2px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .privacy-history li {
   display: flex;

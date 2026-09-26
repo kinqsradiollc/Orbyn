@@ -10,7 +10,6 @@ import {
 import { waitingSave } from "../../lib/outbox";
 import {
   AppState,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -47,6 +46,7 @@ import {
 } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
+import { EmptyState } from "../../components/EmptyState";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { tap } from "../../lib/haptics";
@@ -70,7 +70,7 @@ import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
 import { useDocComments } from "./useDocComments";
-import { PressableScale } from "../../motion";
+import { PressableScale, Pressable } from "../../motion";
 import { errorText } from "../../lib/errors";
 import { showToast } from "../../components/Toast";
 import { PageTemplatesPanel } from "./PageTemplates";
@@ -1647,8 +1647,11 @@ export function DocsSheet({
                       <Text style={styles.empty}>Loading…</Text>
                     ) : trash.length === 0 ? (
                       <View style={styles.emptyLibrary}>
-                        <Icon name="trash" size={22} color={colors.muted} />
-                        <Text style={styles.empty}>Trash is empty.</Text>
+                        <EmptyState
+                          icon="trash"
+                          title="Trash is empty"
+                          body={`Deleted pages wait here for ${TRASH_DAYS} days.`}
+                        />
                       </View>
                     ) : (
                       trash.map((page) => (
@@ -1723,16 +1726,19 @@ export function DocsSheet({
                   shown.length === 0 &&
                   (docs.length === 0 && !query ? (
                     <View style={styles.emptyLibrary}>
-                      <View style={styles.emptyLibraryIcon}>
-                        <Icon name="fileText" size={22} color={colors.accent} />
-                      </View>
-                      <Text style={styles.emptyLibraryTitle}>
-                        A home for every idea.
-                      </Text>
-                      <Text style={styles.emptyLibraryBody}>
-                        Create a page or a quick note. Folders will keep them
-                        easy to find as your library grows.
-                      </Text>
+                      <EmptyState
+                        icon="fileText"
+                        title="Nothing in here yet"
+                        body="Keep notes, briefs and working out next to your tasks."
+                        actions={[
+                          { label: "New page", onPress: () => create() },
+                          {
+                            label: imports.busy ? "Uploading…" : "Import",
+                            disabled: imports.busy,
+                            onPress: importFile,
+                          },
+                        ]}
+                      />
                     </View>
                   ) : (
                     <Text style={styles.empty}>
@@ -2152,14 +2158,14 @@ const styles = themed(() =>
     rowTags: { color: colors.muted, fontFamily: fonts.regular },
     monthHeading: {
       fontFamily: fonts.display,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
       marginTop: 18,
       marginBottom: 4,
     },
     weekHeading: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       letterSpacing: 0.6,
       textTransform: "uppercase",
       color: colors.muted,
@@ -2227,7 +2233,7 @@ const styles = themed(() =>
     },
     navHeading: {
       color: colors.muted,
-      fontSize: 12,
+      fontSize: 13,
       fontFamily: fonts.semibold,
       marginTop: 16,
       letterSpacing: 1,
@@ -2243,7 +2249,7 @@ const styles = themed(() =>
     navTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 16,
+      fontSize: 15,
       fontFamily: fonts.medium,
     },
     navChildren: {
@@ -2268,7 +2274,7 @@ const styles = themed(() =>
       paddingHorizontal: 12,
       fontFamily: fonts.regular,
     },
-    found: { color: colors.muted, fontSize: 12 },
+    found: { color: colors.muted, fontSize: 13 },
     newFolder: { flexDirection: "row", gap: 8, alignItems: "center" },
     rowIcon: {
       minWidth: 44,
@@ -2321,7 +2327,7 @@ const styles = themed(() =>
     },
     filingTitle: {
       color: colors.text,
-      fontSize: 14,
+      fontSize: 15,
       fontFamily: fonts.semibold,
     },
     list: { gap: 12 },
@@ -2350,31 +2356,31 @@ const styles = themed(() =>
     rowKind: {
       flex: 1,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
     rowTop: { flexDirection: "row", alignItems: "center", gap: 8 },
     rowTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 17,
+      fontSize: 18,
       lineHeight: 24,
       fontFamily: fonts.semibold,
     },
     rowPreview: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-    rowWhen: { color: colors.muted, fontSize: 12 },
+    rowWhen: { color: colors.muted, fontSize: 13 },
     page: { gap: 12 },
-    title: { color: colors.text, fontSize: 22, fontFamily: fonts.display },
-    meta: { color: colors.muted, fontSize: 12, marginTop: -6 },
+    title: { color: colors.text, fontSize: 24, fontFamily: fonts.display },
+    meta: { color: colors.muted, fontSize: 13, marginTop: -6 },
     hint: {
       color: colors.muted,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 18,
       borderTopWidth: 1,
       borderTopColor: colors.border,
       paddingTop: 10,
     },
-    empty: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+    empty: { color: colors.muted, fontSize: 15, lineHeight: 20 },
     trashNote: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     trashActions: {
       flexDirection: "row",
@@ -2383,35 +2389,10 @@ const styles = themed(() =>
       paddingBottom: 10,
     },
     emptyLibrary: {
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 22,
-      paddingVertical: 30,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,
       backgroundColor: colors.surface,
-    },
-    emptyLibraryIcon: {
-      width: 52,
-      height: 52,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 16,
-      backgroundColor: colors.accentSoft,
-    },
-    emptyLibraryTitle: {
-      color: colors.text,
-      fontFamily: fonts.display,
-      fontSize: 19,
-      textAlign: "center",
-    },
-    emptyLibraryBody: {
-      color: colors.muted,
-      fontFamily: fonts.regular,
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: "center",
     },
   }),
 );

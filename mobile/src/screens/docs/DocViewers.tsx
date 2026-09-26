@@ -82,7 +82,11 @@ const s = themed(() =>
       justifyContent: "center",
     },
     overlap: { marginLeft: -6 },
-    initials: { fontFamily: fonts.semibold, fontSize: 9, color: colors.accent },
+    initials: {
+      fontFamily: fonts.semibold,
+      fontSize: 11,
+      color: colors.accent,
+    },
     more: {
       marginLeft: 4,
       fontFamily: fonts.medium,

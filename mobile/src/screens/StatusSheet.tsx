@@ -370,7 +370,7 @@ const s = themed(() =>
     },
     bannerTitle: {
       fontFamily: fonts.display,
-      fontSize: 17,
+      fontSize: 18,
       letterSpacing: -0.3,
       marginBottom: 2,
     },

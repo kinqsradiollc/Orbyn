@@ -3,7 +3,6 @@ import {
   AppState,
   Animated,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -37,6 +36,7 @@ import {
   pop,
   PressableScale,
   useReducedMotion,
+  Pressable,
 } from "../motion";
 import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
@@ -660,7 +660,7 @@ const s = themed(() =>
     column: { width: "100%", maxWidth: 600, alignSelf: "center" },
     title: {
       fontFamily: fonts.display,
-      fontSize: 28,
+      fontSize: 24,
       lineHeight: 34,
       letterSpacing: -0.8,
       color: colors.text,
@@ -679,7 +679,7 @@ const s = themed(() =>
     },
     timer: {
       fontFamily: fonts.display,
-      fontSize: 56,
+      fontSize: 36,
       letterSpacing: -1.5,
       color: colors.text,
       fontVariant: ["tabular-nums"],
@@ -700,7 +700,7 @@ const s = themed(() =>
     },
     ringClock: {
       fontFamily: fonts.display,
-      fontSize: 42,
+      fontSize: 36,
       letterSpacing: -1,
       color: colors.text,
       fontVariant: ["tabular-nums"],
@@ -786,7 +786,7 @@ const s = themed(() =>
     next: { marginTop: 8 },
     nextTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
     },
     nextButton: { marginTop: 12, marginBottom: 0 },

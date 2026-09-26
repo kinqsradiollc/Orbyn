@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
 import {
   AI_PROVIDER_KINDS,
@@ -24,7 +17,7 @@ import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
-import { FadeIn, PressableScale } from "../motion";
+import { FadeIn, PressableScale, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -698,7 +691,7 @@ const s = themed(() =>
     kvValue: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     flushButton: { marginTop: 10, marginBottom: 0 },
@@ -743,7 +736,7 @@ const s = themed(() =>
     },
     chipText: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
     },
     chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },

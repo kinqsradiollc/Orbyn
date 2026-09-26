@@ -244,7 +244,7 @@ export function BookingsInbox({
           <EmptyState
             icon={CalendarCheck}
             title="No booking pages yet."
-            body="Make a booking page and share its link. Bookings show up here."
+            body="Bookings show up here once you share a booking page."
           >
             <button className="primary" onClick={onNewPage}>
               <Plus size={15} /> New booking page

@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   blockText,
   canFold,
@@ -195,6 +196,7 @@ export function DocBody({
   const readable = (index: number, node: React.ReactNode) =>
     onDoubleTapBlock ? (
       <Pressable
+        quiet
         onPress={() => readerTap(index)}
         accessibilityActions={[{ name: "activate", label: "Edit this line" }]}
         onAccessibilityAction={(e) => {
@@ -245,6 +247,7 @@ export function DocBody({
       index,
       onEditBlock ? (
         <Pressable
+          quiet
           onLongPress={() => onEditBlock(index)}
           delayLongPress={450}
           accessibilityHint="Touch and hold to edit this line"
@@ -347,6 +350,7 @@ export function DocBody({
             return decorate(
               index,
               <Pressable
+                quiet
                 onLongPress={onEditBlock ? () => onEditBlock(index) : undefined}
                 delayLongPress={450}
               >
@@ -577,7 +581,7 @@ const styles = themed(() =>
     },
     badgeText: {
       color: colors.accent,
-      fontSize: 12,
+      fontSize: 13,
       fontFamily: fonts.semibold,
     },
     editing: { gap: 6, alignItems: "flex-start" },
@@ -595,8 +599,8 @@ const styles = themed(() =>
       minHeight: 44,
     },
     heading: { color: colors.text, fontFamily: fonts.display },
-    h1: { fontSize: 20 },
-    h2: { fontSize: 16 },
+    h1: { fontSize: 18 },
+    h2: { fontSize: 15 },
     text: { color: colors.text, fontSize: 15, lineHeight: 22, flex: 1 },
     done: { color: colors.muted, textDecorationLine: "line-through" },
     todoText: {
@@ -606,7 +610,7 @@ const styles = themed(() =>
       flexWrap: "wrap",
       gap: 6,
     },
-    tag: { color: colors.muted, fontSize: 12, fontFamily: fonts.semibold },
+    tag: { color: colors.muted, fontSize: 13, fontFamily: fonts.semibold },
     row: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
     marker: { color: colors.muted, fontSize: 15, lineHeight: 22, width: 16 },
     // Room for two digits, lined up on their dots.

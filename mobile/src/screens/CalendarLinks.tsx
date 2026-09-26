@@ -1,12 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
 import {
   CALENDAR_KINDS,
@@ -29,7 +22,7 @@ import { client } from "../lib/api";
 import { LIST_COLORS, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -638,7 +631,7 @@ const s = themed(() =>
     switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     switchLabel: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     sub: { gap: 8 },

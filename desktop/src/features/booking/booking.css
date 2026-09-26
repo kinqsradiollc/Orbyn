@@ -16,7 +16,7 @@
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   background: #f6f8f4;
   color: #6f7b72;
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -62,7 +62,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 .booking-page-main .status-pill {
@@ -113,7 +113,7 @@
   border-radius: var(--radius-pill);
   background: var(--tone-bg);
   color: var(--tone-fg);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -155,7 +155,7 @@
   border-radius: var(--radius-pill);
   background: #fbf1dc;
   color: #8a6116;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -197,7 +197,7 @@
   padding: 10px 23px 8px;
   border-top: 1px solid var(--color-divider);
   background: #fafbf8;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -257,7 +257,7 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textSoft);
 }
 .booking-row-status {
@@ -301,13 +301,13 @@
 }
 .booking-section h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
 }
 .booking-section > header p,
 .booking-section-note {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--color-textSoft);
 }
@@ -337,7 +337,7 @@
 }
 .hours-day > strong {
   padding-top: 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .hours-day > .link-button {
@@ -353,12 +353,12 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .hours-closed {
   padding: 7px 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .booking-form .hours-range input,
@@ -373,7 +373,7 @@
   border-radius: var(--radius-sm);
   background: #fff;
   color: #3f5038;
-  font-size: 12px;
+  font-size: 13px;
 }
 .override-list {
   display: grid;
@@ -513,7 +513,7 @@
 }
 .booking-step label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .booking-step textarea,
@@ -557,7 +557,7 @@
   display: contents;
 }
 .booking-dl dt {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
   overflow-wrap: anywhere;
 }
@@ -682,7 +682,7 @@
   padding: 24px;
 }
 .public-nav .brand {
-  font-size: 26px;
+  font-size: 24px;
   padding: 0;
   text-decoration: none;
   color: inherit;
@@ -713,7 +713,7 @@
   margin-bottom: 12px;
 }
 .public-message h1 {
-  font-size: 26px;
+  font-size: 24px;
 }
 .public-message .primary {
   margin-top: 8px;
@@ -727,7 +727,7 @@
   gap: 32px;
 }
 .booking-intro h1 {
-  font-size: 28px;
+  font-size: 24px;
   margin-bottom: 4px;
   overflow-wrap: anywhere;
 }
@@ -794,12 +794,12 @@
   background: var(--color-surface);
 }
 .date-strip button small {
-  font-size: 10px;
+  font-size: 11px;
   color: #6f7b72;
 }
 .date-strip button strong {
   font:
-    650 16px "Manrope",
+    650 15px "Manrope",
     sans-serif;
 }
 .date-strip button.active {
@@ -832,7 +832,7 @@
 .booking-form-public label {
   display: block;
   margin-bottom: 14px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .booking-form-public input,
@@ -848,7 +848,7 @@
 }
 .booking-chosen {
   margin: 8px 0 16px;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-text);
 }
 .booking-form-public select {
@@ -873,7 +873,7 @@
 }
 .booking-choice legend {
   padding: 0;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .booking-form-public .booking-choice label {
@@ -897,7 +897,7 @@
   align-items: center;
   gap: 7px;
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textSoft);
 }
 .booking-approval-note svg {
@@ -937,12 +937,12 @@
   margin: 4vh auto 0;
 }
 .manage-card h1 {
-  font-size: 26px;
+  font-size: 24px;
   margin-bottom: 4px;
   overflow-wrap: anywhere;
 }
 .manage-card h2 {
-  font-size: 16px;
+  font-size: 15px;
   margin: 6px 0 14px;
 }
 .manage-when {
@@ -1012,7 +1012,7 @@
     gap: 3px;
   }
   .date-strip button strong {
-    font-size: 14px;
+    font-size: 15px;
   }
 }
 

@@ -380,7 +380,7 @@ const s = themed(() =>
     after: { fontFamily: fonts.regular, fontSize: 13, color: colors.text },
     stale: {
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.text,
       backgroundColor: colors.warningSoft,
       borderRadius: radii.input,

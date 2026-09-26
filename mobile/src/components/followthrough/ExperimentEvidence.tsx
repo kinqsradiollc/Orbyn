@@ -62,14 +62,14 @@ const s = themed(() =>
     label: {
       flex: 1.4,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
     },
     cell: {
       flex: 1,
       textAlign: "right",
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.text,
       fontVariant: ["tabular-nums"],
     },

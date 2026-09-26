@@ -91,9 +91,9 @@ const s = themed(() =>
       backgroundColor: colors.surface,
     },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
-    where: { color: colors.accent, fontSize: 12 },
+    where: { color: colors.accent, fontSize: 13 },
     preview: { color: colors.muted, fontSize: 13, lineHeight: 19 },
-    why: { color: colors.muted, fontSize: 12, fontStyle: "italic" },
+    why: { color: colors.muted, fontSize: 13, fontStyle: "italic" },
     actions: {
       flexDirection: "row",
       alignItems: "center",
@@ -101,6 +101,6 @@ const s = themed(() =>
       gap: 10,
       flexWrap: "wrap",
     },
-    lines: { color: colors.muted, fontSize: 12 },
+    lines: { color: colors.muted, fontSize: 13 },
   }),
 );

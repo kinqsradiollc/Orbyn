@@ -6,14 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   dateOptions,
   dateTitle,
@@ -33,8 +27,9 @@ import {
   type ObjectRef,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { tap } from "../../lib/haptics";
 import { openAppUrl } from "../../hooks/useAppLinks";
-import { Icon, type IconName } from "../../components/Icon";
+import { CONCEPT_ICON, Icon, type IconName } from "../../components/Icon";
 import { colors, controls, fonts, radii, themed } from "../../theme";
 
 /**
@@ -54,10 +49,10 @@ export function openObject(ref: ObjectRef, block?: string | null) {
 }
 
 const ICONS: Record<LinkKind, IconName> = {
-  doc: "fileText",
-  task: "squareCheck",
-  event: "calendar",
-  project: "folder",
+  doc: CONCEPT_ICON.page,
+  task: CONCEPT_ICON.task,
+  event: CONCEPT_ICON.event,
+  project: CONCEPT_ICON.project,
   person: "users",
   date: "calendar",
 };
@@ -206,7 +201,14 @@ export function LinkPillText({
         openable && onCard ? "Touch and hold for more" : undefined
       }
       onPress={openable ? () => openObject(target) : undefined}
-      onLongPress={openable && onCard ? () => onCard(target) : undefined}
+      onLongPress={
+        openable && onCard
+          ? () => {
+              tap();
+              onCard(target);
+            }
+          : undefined
+      }
     >
       {" "}
       {ref.kind === "task" && pill ? (

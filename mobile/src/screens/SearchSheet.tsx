@@ -1,12 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   commandsOn,
   EMPTY_MEMORY,
@@ -34,7 +28,7 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Chip } from "../components/Chip";
-import { Icon, type IconName } from "../components/Icon";
+import { CONCEPT_ICON, Icon, type IconName } from "../components/Icon";
 import { ActionSheet, type MoreAction } from "../components/MoreMenu";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
@@ -58,10 +52,10 @@ type Row = {
 };
 
 const ICONS: Record<string, IconName> = {
-  doc: "fileText",
-  task: "listTodo",
-  event: "calendar",
-  project: "boxes",
+  doc: CONCEPT_ICON.page,
+  task: CONCEPT_ICON.task,
+  event: CONCEPT_ICON.event,
+  project: CONCEPT_ICON.project,
   record: "check",
 };
 
@@ -588,7 +582,7 @@ const s = themed(() =>
     empty: {
       paddingVertical: 14,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.muted,
     },
     row: {

@@ -4,11 +4,11 @@ import {
   Animated,
   Modal,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { Pressable } from "../motion";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { ToastHost } from "./Toast";
@@ -112,6 +112,10 @@ export function Sheet({
             ]}
             pointerEvents={collapsed ? "none" : "auto"}
           >
+            {/* The grab handle: pull the header down to close. */}
+            <View pointerEvents="none" style={s.grabRow}>
+              <View style={s.grab} />
+            </View>
             {onBack && (
               <Pressable
                 accessibilityRole="button"
@@ -235,6 +239,19 @@ const s = themed(() =>
       borderBottomColor: colors.border,
     },
     spacer: { flex: 1 },
+    grabRow: {
+      position: "absolute",
+      top: 5,
+      left: 0,
+      right: 0,
+      alignItems: "center",
+    },
+    grab: {
+      width: 36,
+      height: 5,
+      borderRadius: radii.pill,
+      backgroundColor: colors.border,
+    },
     peekStrip: {
       height: 14,
       alignItems: "center",

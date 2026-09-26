@@ -114,7 +114,7 @@ const s = themed(() =>
       justifyContent: "space-between",
     },
     cost: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
-    outcome: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    outcome: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     bad: { color: colors.danger },
   }),
 );

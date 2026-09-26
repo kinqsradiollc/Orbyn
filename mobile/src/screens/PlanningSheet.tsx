@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -51,7 +50,7 @@ import {
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TimeZonePicker } from "./booking/TimeZonePicker";
@@ -1760,7 +1759,7 @@ const s = themed(() =>
       color: colors.text,
       marginBottom: 2,
     },
-    addText: { fontFamily: fonts.semibold, fontSize: 14, color: colors.accent },
+    addText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.accent },
     form: { padding: 16 },
     formActions: { flexDirection: "row", gap: 10 },
     flex: { flex: 1 },

@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   describeRrule,
   findRepeat,
@@ -334,12 +328,12 @@ const s = themed(() =>
     name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     meta: {
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 2,
     },
     task: { paddingVertical: 8, gap: 2 },
-    taskTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    taskTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,

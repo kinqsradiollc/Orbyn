@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../../motion";
 import { MAX_ALIASES } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
 import { colors, controls, fonts, radii, themed } from "../../theme";

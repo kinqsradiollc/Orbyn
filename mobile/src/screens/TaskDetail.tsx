@@ -3,7 +3,6 @@ import {
   Alert,
   Animated,
   Linking,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -69,6 +68,7 @@ import {
   pop,
   PressableScale,
   useReducedMotion,
+  Pressable,
 } from "../motion";
 import {
   controls,
@@ -1650,7 +1650,7 @@ const s = themed(() =>
     },
     linkTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
     },
     subtask: {
@@ -1709,7 +1709,7 @@ const s = themed(() =>
     bigPercent: {
       marginLeft: "auto",
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       letterSpacing: -0.6,
     },
     progressHint: { marginTop: -2 },
@@ -1757,7 +1757,7 @@ const s = themed(() =>
     stepRename: { flex: 1, minHeight: 40, paddingVertical: 8 },
     segmentText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
     },
     cardHeading: {
@@ -1768,7 +1768,7 @@ const s = themed(() =>
     counter: {
       marginLeft: "auto",
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
       backgroundColor: colors.surfaceMuted,
       borderRadius: 6,
@@ -1856,12 +1856,12 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    avatarText: { fontFamily: fonts.bold, fontSize: 14, color: colors.accent },
+    avatarText: { fontFamily: fonts.bold, fontSize: 15, color: colors.accent },
     updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
     author: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     updateBody: { ...shared.body, marginTop: 3 },

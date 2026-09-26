@@ -489,7 +489,7 @@ const s = themed(() =>
       flexWrap: "wrap",
       gap: 6,
     },
-    sourcesLabel: { color: colors.muted, fontSize: 10, letterSpacing: 0.7 },
+    sourcesLabel: { color: colors.muted, fontSize: 11, letterSpacing: 0.7 },
     heading: {
       fontFamily: fonts.bold,
       fontSize: 15,
@@ -509,7 +509,7 @@ const s = themed(() =>
     bulletText: { flex: 1 },
     bulletDot: {
       fontFamily: fonts.bold,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       color: colors.accent,
     },
@@ -542,7 +542,7 @@ const s = themed(() =>
     chipText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.textSoft,
     },
     notes: { flexBasis: "100%", marginTop: 2 },
@@ -601,7 +601,7 @@ const s = themed(() =>
     followUpText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
   }),

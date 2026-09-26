@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   hasSystemPermission,
   type AdminOverview,
@@ -26,7 +19,7 @@ import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { TeamList } from "../components/TeamList";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AdminAgents } from "./AdminAgents";
@@ -505,7 +498,7 @@ const s = themed(() =>
     },
     tileValue: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       color: colors.text,
       marginBottom: 2,
     },
@@ -538,7 +531,7 @@ const s = themed(() =>
     auditRow: { paddingVertical: 13, paddingHorizontal: 16, gap: 2 },
     auditAction: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
   }),

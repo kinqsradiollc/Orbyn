@@ -15,12 +15,12 @@
   padding: 16px 18px;
 }
 .storage-stat > small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .storage-stat > strong {
   font-family: "Manrope", sans-serif;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 750;
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
@@ -62,7 +62,7 @@
 .storage-head p {
   margin: 4px 0 0;
   max-width: 62ch;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .storage-actions {
   display: flex;
@@ -71,7 +71,7 @@
 }
 .storage-note {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--color-accentText);
 }
 .storage-empty {
@@ -103,7 +103,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-accentSoft);
   color: var(--color-accentText);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 .storage-kind.is-pdf {
@@ -121,13 +121,13 @@
   min-width: 0;
 }
 .storage-main strong {
-  font-size: 13.5px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .storage-main small {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .storage-delete {
@@ -150,7 +150,7 @@
 .storage-table table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .storage-table th,
 .storage-table td {

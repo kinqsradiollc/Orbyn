@@ -98,11 +98,11 @@ const s = themed(() =>
     },
     faded: { opacity: 0.7 },
     author: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
-    change: { fontSize: 14, lineHeight: 20 },
+    change: { fontSize: 15, lineHeight: 20 },
     was: { color: colors.muted, textDecorationLine: "line-through" },
     arrow: { color: colors.muted },
     now: { color: colors.accent, fontFamily: fonts.semibold },
-    note: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+    note: { color: colors.muted, fontSize: 13, lineHeight: 18 },
     actions: {
       flexDirection: "row",
       gap: 8,

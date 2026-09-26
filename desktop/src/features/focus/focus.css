@@ -29,7 +29,7 @@
   padding: 10px 32px 40px;
 }
 .focus-main h1 {
-  font-size: 38px;
+  font-size: 36px;
   letter-spacing: -1.4px;
   margin-bottom: 10px;
   overflow-wrap: anywhere;
@@ -59,7 +59,7 @@
 }
 .focus-clock {
   font:
-    600 64px "Manrope",
+    600 36px "Manrope",
     sans-serif;
   letter-spacing: -2px;
   font-variant-numeric: tabular-nums;
@@ -73,7 +73,7 @@
 }
 .focus-controls .primary,
 .focus-controls .secondary {
-  font-size: 14px;
+  font-size: 15px;
   padding: 12px 20px;
 }
 .focus-hint {
@@ -97,7 +97,7 @@
   background: var(--color-surface);
 }
 .focus-next h2 {
-  font-size: 14px;
+  font-size: 15px;
   margin-bottom: 12px;
 }
 .focus-next ul {
@@ -161,7 +161,7 @@
 }
 .focus-celebrate-card strong {
   font:
-    700 20px "Manrope",
+    700 18px "Manrope",
     sans-serif;
   color: var(--color-text);
 }
@@ -217,10 +217,10 @@
     padding: 16px 20px;
   }
   .focus-main h1 {
-    font-size: 28px;
+    font-size: 24px;
   }
   .focus-clock {
-    font-size: 48px;
+    font-size: 36px;
   }
 }
 

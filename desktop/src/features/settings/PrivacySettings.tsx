@@ -130,10 +130,9 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Usage analytics</h2>
         <p className="muted">
-          Orbyn counts, per day, how many requests, changes and assistant
-          questions your account makes — never what you write. Admins see these
-          counts added up across everyone. There are no ads and no third-party
-          trackers.
+          Orbyn counts how many requests, changes and questions your account
+          makes each day, never what you write; admins see only the totals, and
+          there are no ads or trackers.
         </p>
         <label className="switch-line settings-field">
           <input
@@ -194,9 +193,9 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Delete my account</h2>
         <p className="muted">
-          This deletes your account and everything only you can see, for good.
-          Teams you own pass to another member, and shared work stays with the
-          team. Download your data first if you want a copy.
+          This deletes your account and everything only you can see, for good;
+          teams you own pass to another member, so download your data first if
+          you want a copy.
         </p>
         {!confirming ? (
           <button className="danger" onClick={() => setConfirming(true)}>

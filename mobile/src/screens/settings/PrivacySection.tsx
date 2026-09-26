@@ -110,8 +110,8 @@ export function PrivacySection({
           <View style={{ flex: 1 }}>
             <Text style={s.rowTitle}>Usage analytics</Text>
             <Text style={shared.small}>
-              Counts your requests, changes and assistant questions per day —
-              never what you write. Turning it off clears what was counted.
+              Counts your requests, changes and questions per day, never what
+              you write; turning it off clears the counts.
             </Text>
           </View>
           <Switch
@@ -152,7 +152,7 @@ export function PrivacySection({
 
       <SettingsSection title="Delete my account">
         <Text style={shared.body}>
-          Deletes {email} and everything only you can see, for good. Shared work
+          Deletes {email} and everything only you can see, for good; shared work
           stays with its team.
         </Text>
         <Text style={[shared.label, { marginTop: 12 }]}>

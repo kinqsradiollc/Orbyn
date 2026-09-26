@@ -6,14 +6,8 @@ import {
 import { PrivacySection } from "./settings/PrivacySection";
 import { ArrangeList, StartChoice } from "./settings/LayoutSection";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../motion";
 import { Switch } from "../components/Switch";
 import {
   hasSystemPermission,
@@ -440,8 +434,8 @@ export function SettingsScreen({
                   Count session time as worked when I complete a task
                 </Text>
                 <Text style={shared.small}>
-                  The sessions you had for it, up to now, are added to its time
-                  spent. Each session counts once.
+                  The sessions you had for it so far are added to its time
+                  spent, each once.
                 </Text>
               </View>
               <Switch
@@ -480,8 +474,8 @@ export function SettingsScreen({
           <View style={{ flex: 1 }}>
             <Text style={s.prefTitle}>Open pages for reading</Text>
             <Text style={shared.small}>
-              No handles or keyboard until you want them. Double-tap a line, or
-              choose Edit this page, to change it.
+              No handles or keyboard until you double-tap a line or choose Edit
+              this page.
             </Text>
           </View>
           <Switch
@@ -555,8 +549,8 @@ export function SettingsScreen({
             <View style={s.divider} />
             <Text style={s.prefTitle}>Planner notices</Text>
             <Text style={[shared.small, s.prefText]}>
-              Work to roll forward, tasks at risk or due soon, and clashes. They
-              always show in your inbox.
+              Work to roll forward, tasks at risk or due soon, and clashes,
+              which always show in your inbox too.
             </Text>
             {(["push", "email"] as const).map((channel) => (
               <View key={channel} style={[s.preference, { marginBottom: 10 }]}>
@@ -640,7 +634,7 @@ export function SettingsScreen({
           <View style={{ marginTop: 12 }}>
             <Text style={s.prefTitle}>Save your recovery codes</Text>
             <Text style={shared.small}>
-              Each works once if you lose your authenticator. They won’t be
+              Each works once if you lose your authenticator, and they won’t be
               shown again.
             </Text>
             {tfaCodes.map((c) => (
@@ -789,8 +783,8 @@ export function SettingsScreen({
 
       <SettingsSection title="Chat delivery">
         <Text style={shared.body}>
-          Get your daily digest in Slack or Discord. Paste an incoming-webhook
-          URL from your workspace or server.
+          Get your daily digest in Slack or Discord by pasting an
+          incoming-webhook URL.
         </Text>
         {chat === null ? null : chat.kind ? (
           <View style={s.importRow}>
@@ -861,9 +855,8 @@ export function SettingsScreen({
 
       <SettingsSection title="Email to task">
         <Text style={shared.body}>
-          Send an email to your private address and it becomes a task — the
-          subject is the task, the body its notes. Only mail from your own
-          account address is accepted.
+          Mail from your own address sent to your private address becomes a
+          task: the subject is the title and the body its notes.
         </Text>
         {inbox === null ? null : !inbox.configured ? (
           <Text style={[shared.small, { marginTop: 8 }]}>
@@ -954,7 +947,7 @@ export function SettingsScreen({
         <Text style={[shared.label, { marginTop: 16 }]}>Tasks</Text>
         <Text style={[shared.small, { marginTop: 4 }]}>
           An Orbyn export, a Todoist or TickTick CSV, or any CSV with a title
-          column. Nothing is written until you confirm.
+          column, written only once you confirm.
         </Text>
         <View style={{ marginTop: 8 }}>
           <Segmented
@@ -1055,10 +1048,8 @@ export function SettingsScreen({
           Pages from Markdown or Notion
         </Text>
         <Text style={[shared.small, { marginTop: 4 }]}>
-          A folder of Markdown notes as a .zip (or one .md file), or a Notion
-          export (Markdown & CSV). Pages keep their folders, [[links]] between
-          them work, and Notion databases become projects with their rows as
-          tasks.
+          Markdown notes (a .zip or one .md) or a Notion export, keeping folders
+          and [[links]], with Notion databases becoming projects.
         </Text>
         <View style={{ marginTop: 8 }}>
           <Segmented
@@ -1168,8 +1159,8 @@ export function SettingsScreen({
 
       <SettingsSection title="AI provider">
         <Text style={shared.body}>
-          An admin connects the AI provider in Admin → AI. Keys stay on the
-          server, never on this device.
+          An admin connects the AI provider in Admin → AI, and its keys stay on
+          the server, never on this device.
         </Text>
       </SettingsSection>
 
@@ -1271,7 +1262,7 @@ const s = themed(() =>
     },
     avatarText: {
       fontFamily: fonts.display,
-      fontSize: 20,
+      fontSize: 18,
       color: colors.accent,
     },
     section: { marginTop: 8 },
@@ -1299,7 +1290,7 @@ const s = themed(() =>
       minHeight: 90,
       maxHeight: 200,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
     },
     importRow: {
       flexDirection: "row",

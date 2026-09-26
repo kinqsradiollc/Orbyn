@@ -93,3 +93,18 @@
 .team-policies h3 {
   margin: 0;
 }
+/* Inside a team's card the switches are a section of that card, not a card
+   in a card, and they keep the same inset as Members and Recent changes. */
+.team-detail .team-policies {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  padding: 18px 23px;
+}
+@media (max-width: 480px) {
+  .team-detail .team-policies {
+    padding-left: 17px;
+    padding-right: 17px;
+  }
+}

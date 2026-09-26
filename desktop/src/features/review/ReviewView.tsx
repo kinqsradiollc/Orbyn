@@ -193,7 +193,7 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
           <EmptyState
             icon={Inbox}
             title="Nothing waits for you"
-            body="When an agent suggests something risky, like deleting a task or emailing people, it waits here until you approve it."
+            body="Risky agent suggestions, like deleting a task, wait here for your approval."
           />
         )}
         {inbox.recent.length > 0 && (

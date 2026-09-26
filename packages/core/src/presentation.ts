@@ -154,7 +154,7 @@ export const emptySearch = {
 /** Empty state for a calendar day with nothing planned, on web and mobile. */
 export const emptyDay = {
   title: "A little breathing room.",
-  body: "No plans for this day. Add something worth making time for.",
+  body: "No plans for this day.",
 };
 
 /** Heading for the selected calendar day, e.g. "Monday, 14 Sep". */
@@ -171,6 +171,73 @@ export const dayHeading = (day: Date) =>
  * desktop. Long enough to reach Undo, short enough not to linger.
  */
 export const TOAST_MS = 4_000;
+
+/**
+ * The one type scale, shared by web and mobile: six sizes in CSS pixels /
+ * React Native points, nothing smaller than 11. Hierarchy comes from size
+ * and weight, not from sizes in between. Web font sizes and mobile
+ * `fontSize` values must be one of these (a test keeps both apps on it);
+ * phone text still grows with the system text size on top of these.
+ */
+export const TYPE_SCALE = [11, 13, 15, 18, 24, 36] as const;
+
+export type TypeSize = (typeof TYPE_SCALE)[number];
+
+/** The scale by role, for code that names what the text is. */
+export const typeScale = {
+  /** Captions, counts, small caps labels. */
+  caption: 11,
+  /** Secondary lines, meta and compact controls. */
+  small: 13,
+  /** Body text, rows and fields. */
+  body: 15,
+  /** Section and card titles. */
+  title: 18,
+  /** Screen headings. */
+  heading: 24,
+  /** Display text: big numbers, the home page's headlines. */
+  display: 36,
+} as const satisfies Record<string, TypeSize>;
+
+/**
+ * The nearest size on the scale (a tie goes to the larger size, so text
+ * never gets harder to read when it is tidied).
+ */
+export function snapToTypeScale(size: number): TypeSize {
+  let best: TypeSize = TYPE_SCALE[0];
+  for (const s of TYPE_SCALE)
+    if (Math.abs(s - size) <= Math.abs(best - size)) best = s;
+  return best;
+}
+
+/** Up to two initials for a person's name ("Ada Lovelace" → "AL"). */
+export const initialsOf = (name: string | null | undefined): string =>
+  (name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
+
+/** The ideas that always carry the same icon. */
+export type Concept =
+  "page" | "project" | "task" | "event" | "agenda" | "study";
+
+/**
+ * One icon per idea, everywhere: the nav, ⌘K and Search & do, link pills,
+ * starred lists, empty states and the + sheet, on web and mobile. Values are
+ * lucide icon ids; the web maps them to lucide-react components
+ * (`desktop/src/app/concept-icons.ts`) and the phone to its own copies of
+ * the same shapes (`mobile/src/components/Icon.tsx`).
+ */
+export const CONCEPT_ICONS = {
+  page: "file-text",
+  project: "boxes",
+  task: "list-todo",
+  event: "calendar-days",
+  agenda: "newspaper",
+  study: "graduation-cap",
+} as const satisfies Record<Concept, string>;
 
 /**
  * Motion shared by web and mobile so both apps move alike. Durations are in

@@ -108,13 +108,13 @@ const s = themed(() =>
     },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 16,
+      fontSize: 15,
       lineHeight: 22,
       color: colors.text,
     },
     text: {
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       color: colors.text,
     },

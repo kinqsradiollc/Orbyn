@@ -10,7 +10,7 @@
   padding: 0 23px 22px;
 }
 .ai-facts dt {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.4px;
   color: var(--muted);
   margin-bottom: 5px;
@@ -23,7 +23,7 @@
 }
 .ai-providers-note {
   margin: -8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* Provider table (its own class: the chat's Markdown tables are .ai-table) */
@@ -35,7 +35,7 @@
 }
 .ai-kind {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 4px;
 }

@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import {
   Platform,
-  Pressable,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Pressable } from "../../motion";
 import {
   MILESTONE_STATUS_LABELS,
   addDays,

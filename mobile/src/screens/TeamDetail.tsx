@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import {
   freshItem,
   hasSystemPermission,
   hasTeamPermission,
+  initialsOf,
   type Item,
   type TeamDetail,
   type TeamMember,
@@ -33,7 +33,7 @@ import { sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { toggledStatus } from "../lib/progress";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamAgents } from "./TeamAgents";
@@ -283,6 +283,48 @@ export function TeamDetailPage({
         )}
 
         <Text style={[shared.eyebrow, s.eyebrow]}>MEMBERS</Text>
+        {/* Calm, as on the web: add someone by email, then everyone with
+            their initials and role. */}
+        {canManage && assignable.length > 0 && (
+          <View style={[shared.card, s.addCard]}>
+            <TextInput
+              style={[shared.input, s.gap]}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Add someone by email"
+              accessibilityLabel="Add someone by email"
+              placeholderTextColor={colors.faint}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="emailAddress"
+            />
+            <Segmented
+              wrap
+              accessibilityLabel="Role for new member"
+              options={assignable}
+              labels={TEAM_ROLE_LABELS}
+              value={addRole}
+              onChange={setNewRole}
+            />
+            <Button
+              title="Add"
+              icon="userPlus"
+              style={s.addButton}
+              disabled={busy || !email.trim()}
+              onPress={() =>
+                run(async () => {
+                  await client.addTeamMember(teamId, {
+                    email: email.trim(),
+                    role: addRole,
+                  });
+                  setEmail("");
+                })
+              }
+            />
+          </View>
+        )}
+
         <View style={s.list}>
           {detail.members.map((m, n) => {
             const me = m.user_id === user?.id;
@@ -307,7 +349,7 @@ export function TeamDetailPage({
                 >
                   <View style={s.avatar}>
                     <Text style={s.avatarText}>
-                      {(m.name[0] || m.email[0] || "?").toUpperCase()}
+                      {initialsOf(m.name || m.email)}
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
@@ -372,46 +414,6 @@ export function TeamDetailPage({
             );
           })}
         </View>
-
-        {canManage && assignable.length > 0 && (
-          <View style={shared.card}>
-            <Text style={shared.label}>Add a member</Text>
-            <TextInput
-              style={[shared.input, s.gap]}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="name@example.com"
-              placeholderTextColor={colors.faint}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="emailAddress"
-            />
-            <Segmented
-              wrap
-              accessibilityLabel="Role for new member"
-              options={assignable}
-              labels={TEAM_ROLE_LABELS}
-              value={addRole}
-              onChange={setNewRole}
-            />
-            <Button
-              title="Add member"
-              icon="userPlus"
-              style={s.addButton}
-              disabled={busy || !email.trim()}
-              onPress={() =>
-                run(async () => {
-                  await client.addTeamMember(teamId, {
-                    email: email.trim(),
-                    role: addRole,
-                  });
-                  setEmail("");
-                })
-              }
-            />
-          </View>
-        )}
 
         {canRead && detail.role && (
           <TeamTime
@@ -498,7 +500,8 @@ const s = themed(() =>
   StyleSheet.create({
     titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
     gap: { marginBottom: 14 },
-    eyebrow: { marginTop: 8 },
+    eyebrow: { marginTop: 16 },
+    addCard: { marginBottom: 12 },
     list: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -529,7 +532,7 @@ const s = themed(() =>
     },
     avatarText: {
       fontFamily: fonts.display,
-      fontSize: 15,
+      fontSize: 13,
       color: colors.accent,
     },
     memberName: {

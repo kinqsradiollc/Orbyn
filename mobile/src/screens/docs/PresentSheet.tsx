@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import {
   Modal,
-  Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { Pressable } from "../../motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listLayout, pageSlides, type DocBlock } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
@@ -74,12 +74,14 @@ export function PresentSheet({
         </View>
         <View style={s.stage}>
           <Pressable
+            quiet
             style={s.half}
             accessibilityRole="button"
             accessibilityLabel="Previous slide"
             onPress={back}
           />
           <Pressable
+            quiet
             style={[s.half, s.right]}
             accessibilityRole="button"
             accessibilityLabel="Next slide"

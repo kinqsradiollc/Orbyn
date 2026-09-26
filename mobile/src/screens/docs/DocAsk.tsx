@@ -1,6 +1,5 @@
 import React, { useRef, useState } from "react";
 import {
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,7 +22,7 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
 import { Sheet } from "../../components/Sheet";
 import { client } from "../../lib/api";
-import { PressableScale } from "../../motion";
+import { PressableScale, Pressable } from "../../motion";
 import { controls, colors, fonts, radii, spacing, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 

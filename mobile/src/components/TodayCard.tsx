@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import {
   SESSION_OUTCOME_LABELS,
   checkInNote,
@@ -18,7 +18,7 @@ import { tap } from "../lib/haptics";
 import { Icon, type IconName } from "./Icon";
 import { Pill, chipTone } from "./Pill";
 import { readLocal, saveLocal } from "../lib/localPrefs";
-import { FadeIn, PressableScale, animateLayout } from "../motion";
+import { FadeIn, PressableScale, animateLayout, Pressable } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 

@@ -155,7 +155,7 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    title: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     link: { color: colors.accent },
     bad: { color: colors.danger },
   }),

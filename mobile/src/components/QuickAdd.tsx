@@ -253,7 +253,7 @@ const s = themed(() =>
     chipText: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
     },
     actions: { flexDirection: "row" },

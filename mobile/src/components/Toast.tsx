@@ -1,14 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  AccessibilityInfo,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TOAST_MS } from "@orbyn/core";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { Icon } from "./Icon";
 import { colors, fonts, radii, themed } from "../theme";
 

@@ -47,8 +47,8 @@ export function ChatDelivery({ report }: { report: (e: unknown) => void }) {
         <MessagesSquare size={18} aria-hidden="true" /> Chat delivery
       </h2>
       <p className="muted">
-        Get your daily digest in Slack or Discord. Paste an incoming-webhook URL
-        from your workspace or server.
+        Get your daily digest in Slack or Discord by pasting an incoming-webhook
+        URL.
       </p>
 
       {channel === null ? (

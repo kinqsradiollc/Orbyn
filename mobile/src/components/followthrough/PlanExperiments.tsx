@@ -229,7 +229,7 @@ const s = themed(() =>
     meta: {
       color: colors.muted,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 18,
     },
     error: { color: colors.danger, fontFamily: fonts.regular },

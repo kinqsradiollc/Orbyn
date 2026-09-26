@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import {
   projectTimeline,
   projectSessionTicks,
@@ -173,7 +174,7 @@ const s = themed(() =>
       letterSpacing: 0.8,
       fontFamily: fonts.semibold,
     },
-    range: { color: colors.muted, fontSize: 12 },
+    range: { color: colors.muted, fontSize: 13 },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     chart: { position: "relative", gap: 10 },
     mark: { position: "absolute", top: 0, bottom: 0, width: 1 },

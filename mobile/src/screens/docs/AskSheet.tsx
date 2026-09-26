@@ -84,7 +84,7 @@ const s = themed(() =>
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     input: {
       color: colors.text,
-      fontSize: 14,
+      fontSize: 15,
       minHeight: 40,
       borderWidth: 1,
       borderColor: colors.border,

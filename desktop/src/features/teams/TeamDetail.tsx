@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  UserMinus,
   UserPlus,
   X,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   canChangeTeamMember,
   hasSystemPermission,
   hasTeamPermission,
+  initialsOf,
   TEAM_ROLE_LABELS,
   TEAM_ROLES,
   type HttpError,
@@ -267,87 +269,13 @@ export function TeamDetail({
         </div>
       )}
 
+      {/* The members card, kept calm: add someone by email, then everyone
+          with their initials and a role. Nothing else lives here. */}
       <div className="subheading">
         <h3>
           Members <span>{team.members.length}</span>
         </h3>
       </div>
-      <div className="table-wrap">
-        <table className="data-table stack-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.members.map((m, n) => {
-              const self = m.user_id === user?.id;
-              const options = TEAM_ROLES.filter(
-                (r) => r === m.role || canChangeTeamMember(actor, m.role, r),
-              );
-              const canRemove =
-                !self && canChangeTeamMember(actor, m.role, null);
-              return (
-                <tr
-                  key={m.user_id}
-                  className="fade-up stagger"
-                  style={stagger(n)}
-                >
-                  <td>
-                    <strong>{m.name}</strong>
-                    {self && <span className="you-tag">You</span>}
-                  </td>
-                  <td data-label="Email">{m.email}</td>
-                  <td data-label="Role">
-                    <Select
-                      className="role-select"
-                      aria-label={`Role for ${m.name}`}
-                      value={m.role}
-                      disabled={busy || options.length < 2}
-                      onChange={(e) =>
-                        changeRole(m, e.target.value as TeamRole)
-                      }
-                    >
-                      {options.map((r) => (
-                        <option key={r} value={r}>
-                          {TEAM_ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                  <td className="row-actions">
-                    {self ? (
-                      <button
-                        className="danger-text"
-                        disabled={busy}
-                        onClick={leave}
-                      >
-                        <LogOut size={13} /> Leave team
-                      </button>
-                    ) : (
-                      canRemove && (
-                        <button
-                          className="danger-text"
-                          disabled={busy}
-                          onClick={() => remove(m)}
-                        >
-                          Remove
-                        </button>
-                      )
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
       {canManage && (
         <form
           className="inline-form add-member"
@@ -380,14 +308,10 @@ export function TeamDetail({
             type="email"
             required
             maxLength={254}
-            aria-label="New member email"
-            placeholder="teammate@example.com"
+            aria-label="Add someone by email"
+            placeholder="Add someone by email"
           />
-          <Select
-            name="role"
-            aria-label="New member role"
-            defaultValue="member"
-          >
+          <Select name="role" aria-label="Their role" defaultValue="member">
             {assignableTeamRoles(actor).map((r) => (
               <option key={r} value={r}>
                 {TEAM_ROLE_LABELS[r]}
@@ -395,10 +319,69 @@ export function TeamDetail({
             ))}
           </Select>
           <button className="primary" disabled={busy}>
-            <UserPlus size={15} /> Add member
+            <UserPlus size={15} /> Add
           </button>
         </form>
       )}
+      <ul className="member-list">
+        {team.members.map((m, n) => {
+          const self = m.user_id === user?.id;
+          const options = TEAM_ROLES.filter(
+            (r) => r === m.role || canChangeTeamMember(actor, m.role, r),
+          );
+          const canRemove = !self && canChangeTeamMember(actor, m.role, null);
+          return (
+            <li key={m.user_id} className="fade-up stagger" style={stagger(n)}>
+              <span className="member-initials" aria-hidden="true">
+                {initialsOf(m.name)}
+              </span>
+              <span className="member-main">
+                <strong>
+                  <span className="member-name">{m.name}</span>
+                  {self && <span className="you-tag">You</span>}
+                </strong>
+                <small>{m.email}</small>
+              </span>
+              <Select
+                className="role-select"
+                aria-label={`Role for ${m.name}`}
+                value={m.role}
+                disabled={busy || options.length < 2}
+                onChange={(e) => changeRole(m, e.target.value as TeamRole)}
+              >
+                {options.map((r) => (
+                  <option key={r} value={r}>
+                    {TEAM_ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </Select>
+              {self ? (
+                <button
+                  className="icon-button danger-text"
+                  aria-label="Leave team"
+                  title="Leave team"
+                  disabled={busy}
+                  onClick={leave}
+                >
+                  <LogOut size={15} />
+                </button>
+              ) : canRemove ? (
+                <button
+                  className="icon-button danger-text"
+                  aria-label={`Remove ${m.name}`}
+                  title="Remove from team"
+                  disabled={busy}
+                  onClick={() => remove(m)}
+                >
+                  <UserMinus size={15} />
+                </button>
+              ) : (
+                <span className="member-action-space" aria-hidden="true" />
+              )}
+            </li>
+          );
+        })}
+      </ul>
 
       {!override && (
         <TeamAgents

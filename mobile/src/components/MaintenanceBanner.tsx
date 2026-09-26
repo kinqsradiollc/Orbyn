@@ -79,13 +79,13 @@ const s = themed(() =>
     },
     headline: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 17,
       color: maintenanceTone.fg,
     },
     details: {
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 17,
       color: maintenanceTone.fg,
       marginTop: 1,

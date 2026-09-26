@@ -95,8 +95,8 @@ export function TagSettings({ teams, report }: Props) {
     >
       <h2 id="tags-title">Tags</h2>
       <p className="muted">
-        Tags cut across lists, like “errand” or “waiting”. Personal tags go on
-        personal items; a team&apos;s tags go on its items.
+        Tags cut across lists, like “errand” or “waiting”, and a team&apos;s
+        tags go on its items.
       </p>
       {sections.map((s) => (
         <div key={s.key} className="tag-section">

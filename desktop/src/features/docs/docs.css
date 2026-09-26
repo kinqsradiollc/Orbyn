@@ -23,7 +23,7 @@
   gap: 8px;
 }
 .docs-count {
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 
 .docs-list {
@@ -62,12 +62,12 @@
 }
 .doc-row-main strong {
   font-family: "Manrope", sans-serif;
-  font-size: 0.95rem;
+  font-size: 15px;
 }
 .doc-row-main small,
 .doc-row-when {
   color: var(--color-muted);
-  font-size: 0.82rem;
+  font-size: 13px;
 }
 .doc-row-main small {
   overflow: hidden;
@@ -108,7 +108,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--color-muted);
   min-height: 18px;
 }
@@ -139,7 +139,7 @@
 
 .doc-title {
   font-family: "Manrope", sans-serif;
-  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-size: 36px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--color-text);
@@ -171,6 +171,13 @@
   gap: 2px;
   min-width: 0;
 }
+/* Lines of text longer than about 680px are hard to follow, so text is
+   capped there; the rest of the column is left for the handles and
+   comments. Tables, code, live lists, embeds, maths and images are not
+   lines of text and keep the whole column. */
+.doc-body > :not(.is-wide) {
+  max-width: 680px;
+}
 /* Grid items default to min-width:auto, which lets a long formula or code
    line push the whole page sideways. Let them shrink so their own
    overflow-x takes over instead. */
@@ -199,7 +206,7 @@
 .doc-input {
   font: inherit;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: max(0.9rem, var(--control-fs));
+  font-size: max(15px, var(--control-fs));
   line-height: 1.6;
   color: var(--color-text);
   background: var(--color-sunken);
@@ -390,13 +397,13 @@
   color: var(--color-text);
 }
 h2.doc-heading {
-  font-size: 1.3rem;
+  font-size: 18px;
 }
 h3.doc-heading {
-  font-size: 1.1rem;
+  font-size: 18px;
 }
 h4.doc-heading {
-  font-size: 0.98rem;
+  font-size: 15px;
 }
 
 .doc-p {
@@ -457,7 +464,7 @@ h4.doc-heading {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow-x: auto;
-  font-size: 0.86rem;
+  font-size: 13px;
 }
 .doc-code code {
   background: none;
@@ -493,7 +500,7 @@ h4.doc-heading {
   padding-top: 12px;
   border-top: 1px solid var(--color-border);
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -516,7 +523,7 @@ h4.doc-heading {
 }
 .folder-chip {
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 13px;
   color: var(--color-muted);
   background: var(--color-chip);
   border: 1px solid transparent;
@@ -576,7 +583,7 @@ h4.doc-heading {
   border-radius: var(--radius-pill);
   background: var(--color-chip);
   color: var(--color-chipText);
-  font-size: 0.7rem;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   vertical-align: 1px;
@@ -601,10 +608,10 @@ h4.doc-heading {
   gap: 8px;
   margin: 0;
   font-family: "Manrope", sans-serif;
-  font-size: 1rem;
+  font-size: 15px;
 }
 .doc-comment-n {
-  font-size: 0.74rem;
+  font-size: 11px;
   font-weight: 600;
   padding: 1px 8px;
   border-radius: var(--radius-pill);
@@ -630,7 +637,7 @@ h4.doc-heading {
 }
 .doc-comment-list p {
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 15px;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -641,7 +648,7 @@ h4.doc-heading {
   min-width: 0;
 }
 .doc-comment-head strong {
-  font-size: 0.88rem;
+  font-size: 15px;
   font-family: "Manrope", sans-serif;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -650,7 +657,7 @@ h4.doc-heading {
 }
 .doc-comment-head small {
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
   white-space: nowrap;
 }
 /* The actions sit at the end of the line, away from the name. */
@@ -690,15 +697,15 @@ h4.doc-heading {
   min-width: 0;
   padding: 3px 9px;
   border-radius: var(--radius-pill);
-  font-size: 0.78rem;
+  font-size: 13px;
   color: var(--color-muted);
   background: var(--color-soft);
 }
 
 /* ---- block handle, menus, and the add-a-block row ---- */
 
-/* The handle lives in a gutter to the left of the text. It stays faintly
-   visible so you can find it, and comes up fully on the row you're on. */
+/* The handle lives in a gutter to the left of the text. It shows only on
+   the line you're on or pointing at, so the page reads as plain text. */
 .doc-block-row {
   position: relative;
   min-width: 0;
@@ -717,7 +724,7 @@ h4.doc-heading {
   background: transparent;
   color: var(--color-muted);
   cursor: grab;
-  opacity: 0.35;
+  opacity: 0;
   transition: opacity 120ms ease;
 }
 /* A heading's space above belongs to the row, so the handle lines up with
@@ -761,7 +768,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-muted);
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 13px;
   cursor: pointer;
   justify-self: start;
 }
@@ -773,7 +780,7 @@ h4.doc-heading {
 .doc-menu kbd {
   margin-left: auto;
   font:
-    600 0.7rem ui-monospace,
+    600 11px ui-monospace,
     "SF Mono",
     Menlo,
     monospace;
@@ -792,11 +799,11 @@ h4.doc-heading {
   margin: 0;
   padding: 0 4px 2px;
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
   line-height: 1.45;
 }
 .doc-menu-label {
-  font-size: 0.7rem;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-weight: 600;
@@ -831,7 +838,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-text);
   font: inherit;
-  font-size: 0.88rem;
+  font-size: 15px;
   text-align: left;
   cursor: pointer;
 }
@@ -862,7 +869,7 @@ h4.doc-heading {
 }
 .doc-menu-text small {
   color: var(--color-muted);
-  font-size: 0.76rem;
+  font-size: 13px;
 }
 
 /* ---- page history ---- */
@@ -928,7 +935,7 @@ h4.doc-heading {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.95rem;
+  font-size: 15px;
   margin: 0;
 }
 .doc-history-list {
@@ -958,12 +965,12 @@ h4.doc-heading {
   background: var(--color-selected);
 }
 .doc-history-item strong {
-  font-size: 0.9rem;
+  font-size: 15px;
   font-weight: 600;
 }
 .doc-history-item small {
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
 }
 .doc-history-preview {
   border-top: 1px solid var(--color-border);
@@ -982,13 +989,13 @@ h4.doc-heading {
 .doc-history-title {
   margin: 0;
   font-family: "Manrope", sans-serif;
-  font-size: 1.05rem;
+  font-size: 18px;
   font-weight: 700;
 }
 /* Read-only: no hover tint, no text cursor, so it is plainly not editable. */
 .doc-history-body .doc-block.is-static {
   cursor: default;
-  font-size: 0.92rem;
+  font-size: 15px;
 }
 .doc-history-body .doc-block.is-static:hover {
   background: none;
@@ -1013,7 +1020,7 @@ h4.doc-heading {
   align-items: center;
   gap: 7px;
   margin: 0 0 8px;
-  font-size: 0.82rem;
+  font-size: 13px;
   color: var(--color-muted);
   font-weight: 600;
 }
@@ -1063,7 +1070,7 @@ h4.doc-heading {
   padding-left: 8px;
   border-left: 2px solid var(--color-accent);
   color: var(--color-muted);
-  font-size: 0.8rem;
+  font-size: 13px;
   line-height: 1.5;
   overflow: hidden;
   display: -webkit-box;
@@ -1107,17 +1114,17 @@ h4.doc-heading {
   gap: 7px;
 }
 .doc-remark header strong {
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
 }
 .doc-remark header small {
   color: var(--color-muted);
-  font-size: 0.74rem;
+  font-size: 11px;
   margin-right: auto;
 }
 .doc-remark p {
   margin: 0;
-  font-size: 0.86rem;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1227,7 +1234,7 @@ h4.doc-heading {
 }
 .doc-reply-open {
   justify-self: start;
-  font-size: 0.78rem;
+  font-size: 13px;
 }
 /* Words a remark points at that have since gone from the page. */
 .doc-card-quote.is-detached {
@@ -1293,12 +1300,12 @@ h4.doc-heading {
   background: var(--color-hover);
 }
 .doc-mention-list strong {
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
 }
 .doc-mention-list small {
   color: var(--color-muted);
-  font-size: 0.72rem;
+  font-size: 11px;
 }
 
 /* How the page is being worked on. A page you can change offers the choice;
@@ -1327,7 +1334,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-muted);
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 13px;
   cursor: pointer;
 }
 .doc-mode button:hover,
@@ -1346,12 +1353,12 @@ h4.doc-heading {
   gap: 5px;
   margin-right: auto;
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
 }
 /* A page being read has a title, not a field to type one in. */
 .doc-title.is-reading {
   margin: 0;
-  font-size: 1.9rem;
+  font-size: 36px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -1374,7 +1381,7 @@ h4.doc-heading {
 }
 .doc-suggestions h3 {
   margin: 0;
-  font-size: 0.74rem;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1401,16 +1408,16 @@ h4.doc-heading {
   gap: 7px;
 }
 .doc-suggest header strong {
-  font-size: 0.82rem;
+  font-size: 13px;
   font-weight: 600;
 }
 .doc-suggest header small {
   color: var(--color-muted);
-  font-size: 0.74rem;
+  font-size: 11px;
 }
 .doc-suggest-change {
   margin: 0;
-  font-size: 0.86rem;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1432,7 +1439,7 @@ h4.doc-heading {
 .doc-suggest-stale {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1462,7 +1469,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-text);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -1507,7 +1514,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-text);
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -1516,7 +1523,7 @@ h4.doc-heading {
 }
 .doc-download-menu small {
   color: var(--color-muted);
-  font-size: 0.72rem;
+  font-size: 11px;
 }
 
 /* Long author names and action rows must fit narrow document margins. */
@@ -1539,7 +1546,8 @@ h4.doc-heading {
     min-height: 44px;
   }
   .doc-mention-box textarea {
-    font-size: 16px;
+    /* 16px or more, or iOS zooms the page into the field. */
+    font-size: var(--control-fs);
   }
 }
 
@@ -1591,7 +1599,7 @@ h4.doc-heading {
   gap: 7px;
   margin: 0;
   margin-right: auto;
-  font-size: 0.92rem;
+  font-size: 15px;
 }
 .doc-chat-target {
   display: flex;
@@ -1601,7 +1609,7 @@ h4.doc-heading {
 }
 .doc-chat-target label {
   color: var(--color-muted);
-  font-size: 0.78rem;
+  font-size: 13px;
 }
 .doc-chat-target .select {
   flex: 1;
@@ -1617,7 +1625,7 @@ h4.doc-heading {
 .doc-chat-empty {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.82rem;
+  font-size: 13px;
   line-height: 1.5;
 }
 .doc-chat-turn {
@@ -1627,7 +1635,7 @@ h4.doc-heading {
   padding: 8px 10px;
   border-radius: var(--radius-md);
   background: var(--color-sunken);
-  font-size: 0.86rem;
+  font-size: 13px;
   line-height: 1.5;
 }
 .doc-chat-turn p {
@@ -1649,7 +1657,7 @@ h4.doc-heading {
   background: none;
   color: var(--color-muted);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -1728,7 +1736,7 @@ h4.doc-heading {
 }
 .docs-navigation h2 {
   margin: 4px 8px 16px;
-  font-size: 1rem;
+  font-size: 15px;
 }
 .docs-nav-title {
   display: flex;
@@ -1780,7 +1788,7 @@ h4.doc-heading {
   color: var(--color-muted);
   text-align: left;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 13px;
   cursor: pointer;
 }
 .docs-navigation button:hover,
@@ -1808,7 +1816,7 @@ h4.doc-heading {
   padding-left: 8px;
   margin-top: 20px;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 13px;
 }
 .docs-nav-heading button {
   width: 40px;
@@ -1844,13 +1852,14 @@ h4.doc-heading {
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
+  font-size: var(--control-fs);
 }
 .docs-library-tools input {
   flex: 1;
   min-width: 120px;
 }
 .docs-head h2 {
-  font-size: 1.2rem;
+  font-size: 18px;
   margin-block: 0;
   overflow-wrap: anywhere;
 }
@@ -1938,7 +1947,7 @@ h4.doc-heading {
   justify-content: center;
 }
 .doc-row-location {
-  font-size: 0.75rem;
+  font-size: 13px;
   color: var(--color-muted);
   margin-top: 4px;
   overflow: hidden;
@@ -1950,12 +1959,12 @@ h4.doc-heading {
   gap: 4px;
 }
 .docs-move-menu > strong {
-  font-size: 0.9rem;
+  font-size: 15px;
   padding: 4px 8px 0;
 }
 .docs-move-menu > p {
   margin: 0 8px 8px;
-  font-size: 0.8rem;
+  font-size: 13px;
   color: var(--color-muted);
   overflow-wrap: anywhere;
 }
@@ -1981,6 +1990,7 @@ h4.doc-heading {
   color: var(--color-text);
   background: var(--color-surface);
   font: inherit;
+  font-size: var(--control-fs);
 }
 .docs-folder-form > div {
   display: flex;
@@ -2032,7 +2042,7 @@ h4.doc-heading {
   background: var(--color-accentSoft);
   color: var(--color-accent);
   font:
-    700 10px "Manrope",
+    700 11px "Manrope",
     sans-serif;
   font-style: normal;
 }
@@ -2095,7 +2105,7 @@ h4.doc-heading {
   justify-content: space-between;
   gap: 10px 16px;
   margin-bottom: 14px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .agenda-bar > span {
   display: inline-flex;
@@ -2119,7 +2129,7 @@ h4.doc-heading {
 }
 .docs-group-month {
   margin: 8px 0 10px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 650;
   color: var(--color-text);
 }
@@ -2128,7 +2138,7 @@ h4.doc-heading {
 }
 .docs-group-title {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2150,7 +2160,7 @@ h4.doc-heading {
 }
 .uploads-hint {
   margin: -6px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-faint);
 }
 .uploads-empty {
@@ -2166,11 +2176,11 @@ h4.doc-heading {
 }
 .uploads-empty strong {
   color: var(--color-text);
-  font-size: 14px;
+  font-size: 15px;
 }
 .uploads-empty p {
   margin: 0 0 6px;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .uploads-list {
   list-style: none;
@@ -2197,7 +2207,7 @@ h4.doc-heading {
   border-radius: var(--radius-sm);
   background: var(--color-accentSoft);
   color: var(--color-accentText);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.05em;
 }
@@ -2216,14 +2226,14 @@ h4.doc-heading {
   min-width: 0;
 }
 .upload-main strong {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .upload-main small {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .upload-row.is-failed .upload-main small {
@@ -2282,7 +2292,7 @@ h4.doc-heading {
   text-align: center;
 }
 .docs-drop strong {
-  font-size: 16px;
+  font-size: 15px;
 }
 .docs-drop span {
   font-size: 13px;
@@ -2492,7 +2502,7 @@ h4.doc-heading {
   border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: var(--color-textSoft);
-  font-size: 0.92em;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -2667,7 +2677,7 @@ h4.doc-heading {
   border-radius: var(--radius-pill);
   background: var(--color-chip);
   color: var(--color-chipText);
-  font-size: 0.94em;
+  font-size: 13px;
   line-height: 1.5;
   vertical-align: baseline;
   white-space: nowrap;
@@ -2697,7 +2707,7 @@ h4.doc-heading {
 }
 .link-pill-due {
   color: var(--color-muted);
-  font-size: 0.86em;
+  font-size: 11px;
 }
 .link-pill-tick {
   display: inline-flex;
@@ -2725,7 +2735,7 @@ h4.doc-heading {
   color: var(--color-accentText);
   font: inherit;
   font-style: normal;
-  font-size: 0.9em;
+  font-size: 13px;
   cursor: pointer;
 }
 .link-pill-action:hover {
@@ -3185,6 +3195,9 @@ h4.doc-heading {
 @media (max-width: 720px) {
   .doc-fold {
     left: -26px;
+  }
+  /* No pointer to hover with: the arrow shows on the line you're on. */
+  .doc-block-row:focus-within .doc-fold {
     opacity: 1;
   }
 }
@@ -3221,7 +3234,7 @@ h4.doc-heading {
   position: relative;
   padding: 0 1px;
   color: var(--color-accentText);
-  font-size: 0.72em;
+  font-size: 11px;
   cursor: help;
 }
 .doc-fn-ref:hover::after {

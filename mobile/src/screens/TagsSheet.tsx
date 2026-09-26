@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -19,7 +18,7 @@ import { client } from "../lib/api";
 import { LIST_COLORS } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
+import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { Swatches } from "./ListsSheet";

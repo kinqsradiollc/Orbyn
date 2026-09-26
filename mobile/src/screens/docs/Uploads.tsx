@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { KeepOriginals } from "./OriginalFile";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import {
@@ -514,7 +515,7 @@ const s = themed(() =>
     list: { gap: 10 },
     hint: {
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 17,
       color: colors.faint,
       marginTop: -4,
@@ -574,12 +575,12 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    kindText: { fontFamily: fonts.semibold, fontSize: 10, letterSpacing: 0.5 },
+    kindText: { fontFamily: fonts.semibold, fontSize: 11, letterSpacing: 0.5 },
     main: { flex: 1, minWidth: 0, gap: 3 },
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     status: {
       fontFamily: fonts.regular,
-      fontSize: 12.5,
+      fontSize: 13,
       lineHeight: 18,
       color: colors.muted,
     },

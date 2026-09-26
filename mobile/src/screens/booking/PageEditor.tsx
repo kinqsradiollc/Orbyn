@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -36,7 +35,7 @@ import {
   shareText,
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { animateLayout } from "../../motion";
+import { animateLayout, Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
@@ -1114,7 +1113,7 @@ const s = themed(() =>
     linkCard: { padding: 16 },
     link: {
       fontFamily: fonts.medium,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.accent,
       marginBottom: 12,
     },

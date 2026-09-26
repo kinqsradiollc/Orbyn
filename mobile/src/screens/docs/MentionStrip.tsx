@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 
 export type MentionPerson = { id: string; name: string; email: string };

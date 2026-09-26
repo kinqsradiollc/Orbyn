@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,12 +26,13 @@ import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
+import { EmptyState } from "../components/EmptyState";
 import * as Haptics from "expo-haptics";
 import { client } from "../lib/api";
 import { useImports } from "./docs/Uploads";
 import { confirmAction } from "../lib/confirm";
 import { deviceTimeZone } from "../lib/planning";
-import { animateLayout } from "../motion";
+import { animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -313,7 +313,7 @@ function Home({
             ? `${data.due_today} due · ${data.new_cards} new · about ${Math.max(1, Math.round((toReview * 8) / 60))} min`
             : totalCards
               ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
-              : "Get your first cards below."}
+              : "Add cards from a page, or start a study page below."}
         </Text>
         {toReview > 0 ? (
           <Button
@@ -388,13 +388,11 @@ function Home({
           </View>
         )}
         <View style={s.row}>
-          {totalCards > 0 && (
-            <SmallAction
-              label="Add cards"
-              disabled={false}
-              onPress={() => onMode({ kind: "pick" })}
-            />
-          )}
+          <SmallAction
+            label="Add cards"
+            disabled={false}
+            onPress={() => onMode({ kind: "pick" })}
+          />
           <SmallAction
             label="Make it a daily habit"
             disabled={false}
@@ -513,66 +511,24 @@ function Home({
       )}
 
       {data.decks.length === 0 ? (
-        <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>GET YOUR FIRST CARDS</Text>
-          <View style={shared.card}>
-            {[
+        <View style={shared.card}>
+          <EmptyState
+            icon="graduationCap"
+            title="No cards yet"
+            body="Any line written as Question :: Answer in a page becomes a card."
+            actions={[
+              { label: "New study page", onPress: onNewPage },
               {
-                title: "Write cards",
-                body: "A new page. Any line written as question :: answer becomes a card.",
-                action: "New study page",
-                run: onNewPage,
-              },
-              {
-                title: "Import lecture notes",
-                body: "A PDF or Word file becomes a page; then Orbyn suggests cards from it.",
-                action: imports.busy ? "Uploading…" : "Import file",
-                run: () =>
+                label: imports.busy ? "Uploading…" : "Import notes",
+                disabled: imports.busy,
+                onPress: () =>
                   void imports
                     .pickAndImport()
                     .catch((e: Error) => onError(errorText(e))),
               },
-              {
-                title: "From a page you have",
-                body: "Pick a page, and keep the suggested cards you want.",
-                action: "Choose a page",
-                run: () => onMode({ kind: "pick" }),
-              },
-            ].map((w, n) => (
-              <View key={w.title} style={[s.way, n > 0 && s.divider]}>
-                <Text style={s.title}>{w.title}</Text>
-                <Text style={shared.small}>{w.body}</Text>
-                <View style={s.rowTight}>
-                  <SmallAction
-                    label={w.action}
-                    disabled={imports.busy && n === 1}
-                    onPress={w.run}
-                  />
-                </View>
-              </View>
-            ))}
-          </View>
-          <View
-            style={s.sample}
-            accessible
-            accessibilityLabel="An example card"
-          >
-            <View style={s.sampleSide}>
-              <Text style={s.faceLabel}>QUESTION</Text>
-              <Text style={shared.body}>What does CAP stand for?</Text>
-            </View>
-            <View style={[s.sampleSide, s.sampleBack]}>
-              <Text style={s.faceLabel}>ANSWER</Text>
-              <Text style={shared.small}>
-                Consistency, availability, partition tolerance
-              </Text>
-            </View>
-          </View>
-          <Text style={[shared.small, s.syntax]}>
-            Also: “A ::: B” asks both ways, and “The {"{{leader}}"} sends
-            heartbeats” hides a word.
-          </Text>
-        </>
+            ]}
+          />
+        </View>
       ) : (
         <>
           <Text style={[shared.eyebrow, s.eyebrow]}>
@@ -803,6 +759,10 @@ function Picker({
           ))
         )}
       </View>
+      <Text style={[shared.small, s.gapTop]}>
+        Writing your own: {"“Question\u00a0::\u00a0Answer”"} makes a card,{" "}
+        {"“A\u00a0:::\u00a0B”"} asks both ways, and {"“{{word}}”"} hides a word.
+      </Text>
     </>
   );
 }
@@ -1312,25 +1272,9 @@ const s = themed(() =>
     forecastToday: { backgroundColor: colors.accent },
     forecastLabel: {
       fontFamily: fonts.regular,
-      fontSize: 10,
+      fontSize: 11,
       color: colors.muted,
     },
-    way: { gap: 4, paddingVertical: 10 },
-    sample: {
-      flexDirection: "row",
-      borderRadius: radii.input,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      overflow: "hidden",
-    },
-    sampleSide: { flex: 1, padding: 12, gap: 2 },
-    sampleBack: {
-      borderLeftWidth: 1,
-      borderStyle: "dashed",
-      borderLeftColor: colors.border,
-    },
-    syntax: { marginTop: -2 },
     deckRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -1381,7 +1325,7 @@ const s = themed(() =>
     },
     statValue: {
       fontFamily: fonts.display,
-      fontSize: 22,
+      fontSize: 24,
       color: colors.text,
     },
     note: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
@@ -1403,10 +1347,10 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
-    dateDay: { fontFamily: fonts.display, fontSize: 19, color: colors.accent },
+    dateDay: { fontFamily: fonts.display, fontSize: 18, color: colors.accent },
     dateMonth: {
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
       letterSpacing: 0.6,
       color: colors.accent,
     },
@@ -1448,7 +1392,7 @@ const s = themed(() =>
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
     },
-    sourceText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    sourceText: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     face: { alignItems: "center", gap: 8, paddingVertical: 18 },
     faceAnswer: {
       paddingTop: 18,
@@ -1458,11 +1402,11 @@ const s = themed(() =>
     },
     faceLabel: {
       fontFamily: fonts.semibold,
-      fontSize: 10.5,
+      fontSize: 11,
       letterSpacing: 1,
       color: colors.muted,
     },
-    questionSmall: { fontSize: 17, lineHeight: 23 },
+    questionSmall: { fontSize: 18, lineHeight: 23 },
     callout: {
       padding: 12,
       borderRadius: radii.input,
@@ -1475,7 +1419,7 @@ const s = themed(() =>
     eyebrow: { marginTop: 8 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
       marginBottom: 2,
     },
@@ -1495,14 +1439,14 @@ const s = themed(() =>
     flash: { gap: 4, minHeight: 220 },
     question: {
       fontFamily: fonts.display,
-      fontSize: 22,
+      fontSize: 24,
       lineHeight: 29,
       color: colors.text,
       textAlign: "center",
     },
     answerText: {
       fontFamily: fonts.regular,
-      fontSize: 17,
+      fontSize: 18,
       lineHeight: 24,
       color: colors.text,
       textAlign: "center",
@@ -1525,7 +1469,7 @@ const s = themed(() =>
       borderColor: colors.accent,
       backgroundColor: colors.accentSoft,
     },
-    rateLabel: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
+    rateLabel: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     weak: { gap: 4, paddingVertical: 8 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,

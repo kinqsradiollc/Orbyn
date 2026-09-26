@@ -1,5 +1,6 @@
 import React from "react";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
+import type { Concept } from "@orbyn/core";
 import { colors } from "../theme";
 
 /**
@@ -94,6 +95,27 @@ const ICONS = {
     ["path", { d: "m3 17 2 2 4-4" }],
     ["rect", { x: "3", y: "4", width: "6", height: "6", rx: "1" }],
   ],
+  // lucide "newspaper": the agenda, as on the web.
+  newspaper: [
+    ["path", { d: "M15 18h-5" }],
+    ["path", { d: "M18 14h-8" }],
+    [
+      "path",
+      {
+        d: "M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2",
+      },
+    ],
+    ["rect", { x: "10", y: "6", width: "8", height: "4", rx: "1" }],
+  ],
+  // lucide "list-checks": lists, as on the web.
+  listChecks: [
+    ["path", { d: "M13 5h8" }],
+    ["path", { d: "M13 12h8" }],
+    ["path", { d: "M13 19h8" }],
+    ["path", { d: "m3 17 2 2 4-4" }],
+    ["path", { d: "m3 7 2 2 4-4" }],
+  ],
+  // lucide "calendar-days": events and the calendar.
   calendar: [
     ["path", { d: "M8 2v4" }],
     ["path", { d: "M16 2v4" }],
@@ -664,6 +686,20 @@ const ICONS = {
 } satisfies Record<string, Shape[]>;
 
 export type IconName = keyof typeof ICONS;
+
+/**
+ * One icon per idea (`CONCEPT_ICONS` in @orbyn/core), the same shapes the
+ * web draws: in Workspace, Search & do, link pills, starred lists, empty
+ * states and the + sheet.
+ */
+export const CONCEPT_ICON: Record<Concept, IconName> = {
+  page: "fileText",
+  project: "boxes",
+  task: "listTodo",
+  event: "calendar",
+  agenda: "newspaper",
+  study: "graduationCap",
+};
 
 export function Icon({
   name,

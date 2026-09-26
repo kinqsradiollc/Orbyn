@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Switch } from "../components/Switch";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -15,7 +15,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { LegalSheet } from "../components/LegalSheet";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
+import { FadeIn, Pressable } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -165,8 +165,8 @@ const s = themed(() =>
     eyebrow: { marginTop: 36 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 34,
-      lineHeight: 40,
+      fontSize: 36,
+      lineHeight: 42,
       letterSpacing: -1.2,
       color: colors.text,
     },
@@ -211,7 +211,7 @@ const s = themed(() =>
     agreeText: {
       flex: 1,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       lineHeight: 21,
       color: colors.text,
     },

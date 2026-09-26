@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
 import { Button } from "../../components/Button";
 import { DocThread } from "./DocThread";

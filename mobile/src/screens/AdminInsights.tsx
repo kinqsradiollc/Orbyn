@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
-  Pressable,
   Share,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { Pressable } from "../motion";
 import {
   AGENT_ACCESS_LABELS,
   type AdminAnalytics,
@@ -964,11 +964,11 @@ const s = themed(() =>
       justifyContent: "space-between",
       gap: 8,
     },
-    title: { color: colors.text, fontFamily: fonts.semibold, fontSize: 14 },
+    title: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
     name: {
       color: colors.text,
       fontFamily: fonts.display,
-      fontSize: 19,
+      fontSize: 18,
       flexShrink: 1,
     },
     eyebrow: { marginTop: 8, marginBottom: 0 },
@@ -989,7 +989,7 @@ const s = themed(() =>
     facts: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10 },
     fact: { width: "46%", gap: 2 },
     factLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11 },
-    factValue: { color: colors.text, fontFamily: fonts.semibold, fontSize: 14 },
+    factValue: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
     bars: {
       flexDirection: "row",
       alignItems: "flex-end",
@@ -1037,9 +1037,9 @@ const s = themed(() =>
       borderRadius: radii.input,
       backgroundColor: colors.surface,
     },
-    tileValue: { color: colors.text, fontFamily: fonts.display, fontSize: 22 },
+    tileValue: { color: colors.text, fontFamily: fonts.display, fontSize: 24 },
     back: { flexDirection: "row", alignItems: "center", gap: 4 },
-    backText: { color: colors.accent, fontFamily: fonts.medium, fontSize: 14 },
+    backText: { color: colors.accent, fontFamily: fonts.medium, fontSize: 15 },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
     linkBox: {
       gap: 6,

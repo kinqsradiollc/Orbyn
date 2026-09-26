@@ -1,11 +1,6 @@
 import React, { useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable } from "../motion";
 import { controls, colors, fonts, radii, themed } from "../theme";
 
 /**

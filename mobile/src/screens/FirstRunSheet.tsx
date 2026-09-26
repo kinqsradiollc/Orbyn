@@ -1,12 +1,6 @@
 import React, { useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   defaultStarter,
   FIRST_RUN_PURPOSES,

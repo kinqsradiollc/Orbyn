@@ -229,7 +229,7 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
 const s = themed(() =>
   StyleSheet.create({
     flat: { marginBottom: 0 },
-    title: { color: colors.text, fontFamily: fonts.semibold, fontSize: 14 },
+    title: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
     label: { marginTop: 12, marginBottom: 6 },
     missing: {
       fontFamily: fonts.regular,
@@ -257,7 +257,7 @@ const s = themed(() =>
     },
     docTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
       marginBottom: 2,
     },

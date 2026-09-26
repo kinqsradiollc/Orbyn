@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../motion";
 import { Switch } from "../components/Switch";
 import {
   SYSTEM_ROLES,
@@ -503,10 +504,10 @@ const s = themed(() =>
       paddingVertical: 10,
     },
     divided: { borderTopWidth: 1, borderTopColor: colors.divider },
-    tableName: { color: colors.text, fontFamily: fonts.semibold, fontSize: 14 },
+    tableName: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
     back: { flexDirection: "row", alignItems: "center", gap: 4 },
-    backText: { color: colors.accent, fontFamily: fonts.medium, fontSize: 14 },
-    title: { color: colors.text, fontFamily: fonts.display, fontSize: 20 },
+    backText: { color: colors.accent, fontFamily: fonts.medium, fontSize: 15 },
+    title: { color: colors.text, fontFamily: fonts.display, fontSize: 18 },
     card: {
       gap: 6,
       padding: 14,
@@ -520,7 +521,7 @@ const s = themed(() =>
       width: 110,
       color: colors.muted,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
     },
     cellValue: {
       flex: 1,
@@ -541,12 +542,12 @@ const s = themed(() =>
       backgroundColor: colors.accentSoft,
       color: colors.accent,
       fontFamily: fonts.semibold,
-      fontSize: 10,
+      fontSize: 11,
     },
     code: {
       color: colors.textSoft,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
     },
     editor: {
       gap: 10,
@@ -567,6 +568,6 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "space-between",
     },
-    switchLabel: { color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
+    switchLabel: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
   }),
 );

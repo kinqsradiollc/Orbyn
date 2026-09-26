@@ -142,7 +142,7 @@
   gap: 6px;
   align-items: center;
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-muted);
 }
 .review-note.warn {
@@ -159,7 +159,7 @@
 }
 .review-hint {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: 13px;
   text-align: right;
 }
 @media (max-width: 900px) {

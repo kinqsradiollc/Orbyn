@@ -6,7 +6,8 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../../motion";
 import { sectionKey } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
 import { readLocal, saveLocal } from "../../lib/localPrefs";

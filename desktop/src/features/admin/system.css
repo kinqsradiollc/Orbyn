@@ -5,7 +5,7 @@
 .system-lead {
   margin: -8px 0 18px;
   padding: 0 23px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .system-body {
   padding: 0 23px 22px;
@@ -15,7 +15,7 @@
 }
 .system-loading {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .system-body > .system-outcome + .secondary {
   margin-top: 12px;
@@ -52,18 +52,18 @@
   font-weight: 500;
 }
 .system-field-head h3 {
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
 }
 .system-field-head .link-button {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 11px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .system-source {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.2px;
   border-radius: var(--radius-xs);
@@ -148,11 +148,11 @@
   padding: 0;
 }
 .system-remove .link-button {
-  font-size: 10px;
+  font-size: 11px;
 }
 .system-clear {
   margin-top: 6px;
-  font-size: 10px;
+  font-size: 11px;
 }
 .system-footer {
   display: flex;
@@ -204,7 +204,7 @@
 }
 .system-switch-row strong {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 .system-switch-row small {
   display: block;
@@ -217,7 +217,7 @@
   flex: none;
 }
 .system-pill {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: var(--radius-pill);
   padding: 4px 9px;
@@ -238,11 +238,11 @@
 
 /* Version and updates */
 .system-subtitle {
-  font-size: 12px;
+  font-size: 13px;
   margin: 0 0 10px;
 }
 .system-note {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.55;
   margin: 0;
 }
@@ -324,7 +324,7 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .system-form .system-days input,
 .system-days input {
@@ -346,7 +346,7 @@
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
   color: var(--color-warn);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
 }
 .legal-admin-docs {
@@ -370,7 +370,7 @@
 }
 .legal-admin-doc small {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .legal-admin-actions {
   display: flex;

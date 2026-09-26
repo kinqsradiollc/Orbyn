@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   dayTime,
   freshItem,
@@ -13,7 +13,7 @@ import { SmallAction } from "../components/SmallAction";
 import type { Editing } from "../components/ItemEditor";
 import { client } from "../lib/api";
 import { onLive } from "../lib/live";
-import { animateLayout } from "../motion";
+import { animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -288,7 +288,7 @@ const s = themed(() =>
     },
     initials: {
       fontFamily: fonts.semibold,
-      fontSize: 9,
+      fontSize: 11,
       color: colors.textSoft,
     },
     presence: {
@@ -327,7 +327,7 @@ const s = themed(() =>
     picked: { borderColor: colors.accent, borderWidth: 2 },
     cellText: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.text,
       fontVariant: ["tabular-nums"],
     },
@@ -345,7 +345,7 @@ const s = themed(() =>
     },
     detailTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     unplaced: { marginTop: 8 },

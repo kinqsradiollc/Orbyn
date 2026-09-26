@@ -32,7 +32,7 @@
 .agents-admin-switch small {
   color: var(--color-muted);
   font-weight: 400;
-  font-size: 12px;
+  font-size: 13px;
 }
 .agents-admin-hosts {
   display: grid;
@@ -41,7 +41,7 @@
   margin-bottom: 16px;
 }
 .agents-admin-hosts label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .agents-admin-hosts textarea {
@@ -89,7 +89,7 @@
 .agents-admin-limits label {
   display: grid;
   gap: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .agents-admin-limits input {

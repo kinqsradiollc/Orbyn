@@ -1,10 +1,16 @@
 import React, { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "@orbyn/core";
 import { TABS, type Tab } from "../app/tabs";
 import { Icon, type IconName } from "./Icon";
-import { easeOut, pop, usePressScale, useReducedMotion } from "../motion";
+import {
+  easeOut,
+  pop,
+  usePressScale,
+  useReducedMotion,
+  Pressable,
+} from "../motion";
 import { colors, fonts, spacing, themed } from "../theme";
 
 /** Bottom navigation. Extends under the home indicator and pads for it. */

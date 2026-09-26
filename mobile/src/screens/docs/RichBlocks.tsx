@@ -9,7 +9,6 @@ import {
   Image,
   Modal,
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { Pressable } from "../../motion";
 import Svg, {
   Circle as SvgCircle,
   G,

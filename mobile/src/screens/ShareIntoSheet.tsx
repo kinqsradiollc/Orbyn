@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   captureTask,
   choiceKey,
@@ -372,7 +373,7 @@ export function ShareIntoSheet({
               shared.url ? `Inbox task “${task?.title}”` : "Inbox task",
               shared.url ? "With the link on it" : task?.title,
             )}
-            {row("agenda", "sun", "Add to today’s agenda", "Under Notes")}
+            {row("agenda", "newspaper", "Add to today’s agenda", "Under Notes")}
             {row(
               "page",
               "fileText",
@@ -496,7 +497,7 @@ const s = themed(() =>
     rowOn: { backgroundColor: colors.accentSoft },
     rowWords: { flex: 1, minWidth: 0 },
     rowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
-    rowDetail: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted },
+    rowDetail: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     picker: { gap: 2, paddingLeft: 42, paddingBottom: 6 },
     search: {
       minHeight: controls.tap - 6,
@@ -522,7 +523,7 @@ const s = themed(() =>
     optionText: {
       flex: 1,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     muted: {

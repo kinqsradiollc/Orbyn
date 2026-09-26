@@ -1,11 +1,5 @@
 import React, { useEffect, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
   inProgressEmpty,
   emptyPlans,
@@ -32,7 +26,7 @@ import {
   SectionHeading,
   type ListHandlers,
 } from "../components/PlannerList";
-import { Bump, FadeIn } from "../motion";
+import { Bump, FadeIn, Pressable } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
@@ -309,7 +303,7 @@ export function TodayScreen({
       <View style={s.quickLinks}>
         {(
           [
-            ["agenda", "sun", "Agenda"],
+            ["agenda", "newspaper", "Agenda"],
             ["docs", "fileText", "Docs"],
             ["projects", "boxes", "Projects"],
           ] as const
@@ -403,10 +397,10 @@ const s = themed(() =>
     },
     statTop: { flexDirection: "row", alignItems: "center", gap: 7 },
     statDot: { width: 7, height: 7, borderRadius: 4 },
-    statLabel: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted },
+    statLabel: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     statValue: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       color: colors.text,
       marginTop: 4,
     },
@@ -434,7 +428,7 @@ const s = themed(() =>
     },
     momentumValue: {
       fontFamily: fonts.display,
-      fontSize: 26,
+      fontSize: 24,
       color: colors.text,
     },
     momentumHint: { marginTop: 10 },

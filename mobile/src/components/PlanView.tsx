@@ -1,5 +1,6 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Pressable } from "../motion";
 import {
   atRiskLine,
   dueDateOf,
@@ -316,7 +317,7 @@ const s = themed(() =>
     },
     dayTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.muted,
       marginBottom: 2,
     },
@@ -329,7 +330,7 @@ const s = themed(() =>
       width: 118,
       flexShrink: 0,
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.accent,
       paddingTop: 1,
     },
@@ -343,7 +344,7 @@ const s = themed(() =>
     },
     blockTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.text,
     },
     notes: { marginTop: 14 },
@@ -354,7 +355,7 @@ const s = themed(() =>
       color: colors.text,
     },
     note: { paddingVertical: 6 },
-    noteTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.text },
+    noteTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     noteAction: { flexDirection: "row", marginTop: 6 },
     move: {
       flexDirection: "row",

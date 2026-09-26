@@ -179,14 +179,13 @@ type Dialog =
   | { kind: "frame"; frameId: string }
   | null;
 /**
- * A short message under the toolbar, sometimes with Undo, or with its own
- * choices ("Keep it", "Find time before").
+ * A choice to make, under the toolbar ("Keep it", "Find time before").
+ * Anything that only reports or offers Undo goes to the app's one toast.
  */
 type Note = {
   text: string;
-  undo?: () => void;
   tone?: "warn";
-  actions?: { label: string; run: () => void }[];
+  actions: { label: string; run: () => void }[];
 };
 
 const shortDay = (iso: string) =>
@@ -440,19 +439,23 @@ export function CalendarView({
       const moved = await client.rescheduleBlock(block.id, {
         before_deadline: true,
       });
-      setNote({
+      setNote(null);
+      toast({
         text: `Moved to ${movedTo(moved.start_at)}, before the deadline.`,
-        undo: () =>
-          void mutate(() =>
-            client.updateBlock(block.id, {
-              start_at: block.start_at,
-              end_at: block.end_at,
-            }),
-          ),
+        action: {
+          label: "Undo",
+          run: () =>
+            void mutate(() =>
+              client.updateBlock(block.id, {
+                start_at: block.start_at,
+                end_at: block.end_at,
+              }),
+            ),
+        },
       });
     } catch (e) {
       if ((e as HttpError).status === 401) report(e);
-      else setNote({ tone: "warn", text: errorText(e) });
+      else toast({ tone: "warn", text: errorText(e) });
     }
     await reload();
   };
@@ -488,11 +491,11 @@ export function CalendarView({
         });
         if (lateSessionWarning(block)) warnIfLate(block);
         else
-          setNote({
+          toast({
             text: `Planned “${item.title}” for ${movedTo(block.start_at)}.`,
           });
       } catch (e) {
-        setNote({ tone: "warn", text: errorText(e) });
+        toast({ tone: "warn", text: errorText(e) });
       }
       await reload();
     })();
@@ -1010,19 +1013,7 @@ export function CalendarView({
             role={note.tone === "warn" ? "alert" : "status"}
           >
             <span>{note.text}</span>
-            {note.undo && (
-              <button
-                className="text-button"
-                onClick={() => {
-                  const undo = note.undo!;
-                  setNote(null);
-                  undo();
-                }}
-              >
-                Undo
-              </button>
-            )}
-            {note.actions?.map((a) => (
+            {note.actions.map((a) => (
               <button key={a.label} className="text-button" onClick={a.run}>
                 {a.label}
               </button>
