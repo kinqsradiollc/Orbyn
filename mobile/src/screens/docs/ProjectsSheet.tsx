@@ -57,6 +57,7 @@ import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 import { LinkedHere } from "./links";
+import { FieldsSection } from "../views/FieldsSection";
 import { deviceTimeZone } from "../../lib/planning";
 
 /** "Fri 16 Oct, 5 pm", or just the day. */
@@ -1582,6 +1583,19 @@ export function ProjectsSheet({
                       />
                     </View>
                   )}
+                  {/* Your own fields on the project (ORG-02). */}
+                  <FieldsSection
+                    target="project"
+                    targetId={open.id}
+                    revision={open.updated_at}
+                    report={(e) => setError(errorText(e as Error))}
+                    frame={(content) => (
+                      <View style={styles.homeSection}>
+                        <Text style={styles.reentryTitle}>Fields</Text>
+                        {content}
+                      </View>
+                    )}
+                  />
                   {/* Pages in the project and pages that link to it. */}
                   <LinkedHere
                     kind="project"

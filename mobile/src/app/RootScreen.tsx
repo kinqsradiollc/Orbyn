@@ -25,6 +25,7 @@ import {
   type LegalSummary,
   type Notice,
   type Plan,
+  type SavedView,
   type Status,
   type TaskList,
   type AppLink,
@@ -65,6 +66,7 @@ import { FocusScreen } from "../screens/FocusScreen";
 import { HabitsSheet } from "../screens/HabitsSheet";
 import { InboxScreen } from "../screens/InboxScreen";
 import { ListsSheet } from "../screens/ListsSheet";
+import { ViewsSheet } from "../screens/views/ViewsSheet";
 import { PlanningSheet } from "../screens/PlanningSheet";
 import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
@@ -123,6 +125,7 @@ type SheetName =
   | "settings"
   | "sync"
   | "progress"
+  | "views"
   | "search";
 /** What to present next: a sheet, the item editor, or "Save to Orbyn". */
 type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
@@ -197,6 +200,9 @@ export function RootScreen() {
     };
   }, [token]);
   const [tab, setTab] = useState<Tab>("Today");
+  useEffect(() => {
+    if (token && tab === "Browse") loadPinnedViews();
+  }, [token, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<SheetName | null>(null);
@@ -208,6 +214,16 @@ export function RootScreen() {
   const [note, setNote] = useState<Doc | null>(null);
   const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
   const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  /** A saved view to open (from a link or Browse), and the pinned ones. */
+  const [viewToOpen, setViewToOpen] = useState<string | null>(null);
+  const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
+  const loadPinnedViews = () =>
+    void client.listViews().then(
+      (views) => setPinnedViews(views.filter((v) => v.pinned)),
+      () => {
+        // Browse goes without pinned views until the next look.
+      },
+    );
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
@@ -707,6 +723,9 @@ export function RootScreen() {
       case "project":
         setProjectsStart({ open: link.id });
         return present({ sheet: "projects" });
+      case "view":
+        setViewToOpen(link.id);
+        return present({ sheet: "views" });
     }
   };
 
@@ -1068,6 +1087,16 @@ export function RootScreen() {
                     onScrollTo={scrollToView}
                     controlsSlot={calendarControls}
                     jump={calendarJump}
+                    onOpenFieldTarget={(target, id) => {
+                      if (target === "project") {
+                        setProjectsStart({ open: id });
+                        present({ sheet: "projects" });
+                      } else
+                        void act(async () => {
+                          setNote(await client.getDoc(id));
+                          present({ sheet: "note" });
+                        });
+                    }}
                     {...listHandlers}
                   />
                 )}
@@ -1159,6 +1188,11 @@ export function RootScreen() {
                 {tab === "Browse" && (
                   <BrowseScreen
                     user={user}
+                    pinnedViews={pinnedViews}
+                    onOpenView={(id) => {
+                      setViewToOpen(id);
+                      setSheet("views");
+                    }}
                     onOpen={(to) =>
                       to === "booking"
                         ? openBookings()
@@ -1352,6 +1386,35 @@ export function RootScreen() {
             setTab("Calendar");
             setCalendarJump({ at, key: Date.now() });
           }}
+        />
+        <ViewsSheet
+          visible={sheet === "views"}
+          teams={teams}
+          userId={user?.id}
+          openViewId={viewToOpen}
+          onViewOpened={() => setViewToOpen(null)}
+          actions={{
+            onToggle: listHandlers.onToggle,
+            onSetStatus: listHandlers.onSetStatus,
+          }}
+          onOpenRow={(row) => {
+            if (row.kind === "task")
+              void act(async () => openTask(await client.getItem(row.id)));
+            else if (row.kind === "page")
+              void act(async () => {
+                setNote(await client.getDoc(row.id));
+                present({ sheet: "note" });
+              });
+            else {
+              setProjectsStart({ open: row.id });
+              present({ sheet: "projects" });
+            }
+          }}
+          onClose={() => {
+            closeSheet();
+            loadPinnedViews();
+          }}
+          onDismiss={onSheetDismissed}
         />
         <ListsSheet
           visible={sheet === "lists"}

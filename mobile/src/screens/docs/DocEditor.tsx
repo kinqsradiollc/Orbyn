@@ -17,6 +17,8 @@ import {
   addedInlineTags,
   adoptTaskTicks,
   BLOCK_KINDS,
+  LIVE_LIST_LANG,
+  liveListText,
   blockDepth,
   blockText,
   blockToType,
@@ -1046,6 +1048,39 @@ export function DocEditor({
     setPicking(line);
   };
 
+  /**
+   * The open line as a live list (SRCH-02): the page's project's open tasks,
+   * or what's due this week. It shows its rows as soon as the line closes;
+   * what it lists can be changed on the web or desktop.
+   */
+  const liveListLine = () => {
+    if (focused === null || !structural) return;
+    remember();
+    const next = blocks.slice();
+    next[focused] = {
+      type: "code",
+      lang: LIVE_LIST_LANG,
+      id: blocks[focused].id,
+      text: liveListText(
+        doc.project_id
+          ? {
+              title: "Open tasks",
+              definition: {
+                source: "tasks",
+                filters: { project: doc.project_id },
+              },
+            }
+          : {
+              title: "Due this week",
+              definition: { source: "tasks", filters: { due_within_days: 7 } },
+            },
+      ),
+    };
+    setFocused(null);
+    update(keepStart(next, focused));
+    Keyboard.dismiss();
+  };
+
   const deleteLine = () => {
     if (focused === null) return;
     if (!structural) return;
@@ -1412,6 +1447,7 @@ export function DocEditor({
         onCreateLink={(kind, name) => void createAndLink(kind, name)}
         report={report}
         onTodo={todoLine}
+        onLiveList={structural && !suggesting ? liveListLine : undefined}
         onIndent={indentLine}
         onComment={commentOnLine}
         onAsk={askLine}

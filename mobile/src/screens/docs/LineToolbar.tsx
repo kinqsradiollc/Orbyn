@@ -69,6 +69,7 @@ export function LineToolbar({
   onCreateLink,
   report,
   onTodo,
+  onLiveList,
   onIndent,
   onComment,
   onAsk,
@@ -97,6 +98,8 @@ export function LineToolbar({
   report: (e: unknown) => void;
   /** Make the line a to-do, or a to-do a task. */
   onTodo: () => void;
+  /** Make the line a live list (SRCH-02); left out where it can't be. */
+  onLiveList?: () => void;
   onIndent: (by: 1 | -1) => void;
   onComment: () => void;
   onAsk: () => void;
@@ -180,6 +183,23 @@ export function LineToolbar({
               </Pressable>
             );
           })}
+          {onLiveList && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Live list"
+              accessibilityHint="Tasks or pages that match, kept up to date"
+              onPress={() => {
+                setPanel(null);
+                onLiveList();
+              }}
+              style={({ pressed }) => [
+                s.kind,
+                pressed && { backgroundColor: colors.surfaceMuted },
+              ]}
+            >
+              <Text style={s.kindText}>Live list</Text>
+            </Pressable>
+          )}
         </View>
       )}
       {linkQuery !== null && !bracketShut ? (

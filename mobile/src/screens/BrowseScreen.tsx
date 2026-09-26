@@ -1,6 +1,11 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { hasSystemPermission, type User } from "@orbyn/core";
+import {
+  hasSystemPermission,
+  VIEW_SOURCE_LABELS,
+  type SavedView,
+  type User,
+} from "@orbyn/core";
 import { Icon, type IconName } from "../components/Icon";
 import { FadeIn } from "../motion";
 import { shared } from "../styles";
@@ -13,6 +18,7 @@ export type Destination =
   | "agenda"
   | "projects"
   | "docs"
+  | "views"
   | "study"
   | "lists"
   | "progress"
@@ -53,6 +59,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         icon: "fileText",
         title: "Docs",
         detail: "Notes, briefs and meeting notes",
+      },
+      {
+        to: "views",
+        icon: "table",
+        title: "Views",
+        detail: "Saved filters as lists, tables, boards and calendars",
       },
       {
         to: "study",
@@ -131,13 +143,52 @@ const GROUPS: { label: string; rows: Row[] }[] = [
 export function BrowseScreen({
   user,
   onOpen,
+  pinnedViews = [],
+  onOpenView,
 }: {
   user: User | null;
   onOpen: (to: Destination) => void;
+  /** Saved views pinned here, first of all. */
+  pinnedViews?: SavedView[];
+  onOpenView?: (id: string) => void;
 }) {
   const admin = hasSystemPermission(user?.role, "admin:access");
   return (
     <>
+      {pinnedViews.length > 0 && onOpenView && (
+        <FadeIn>
+          <View style={shared.card}>
+            <Text style={shared.eyebrow}>PINNED VIEWS</Text>
+            <View style={s.rows}>
+              {pinnedViews.map((v, index) => (
+                <Pressable
+                  key={v.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={v.name}
+                  onPress={() => onOpenView(v.id)}
+                  style={({ pressed }) => [
+                    s.row,
+                    index > 0 && s.rowDivider,
+                    pressed && s.pressed,
+                  ]}
+                >
+                  <View style={s.iconTile}>
+                    <Icon name="table" size={19} color={colors.accent} />
+                  </View>
+                  <View style={s.text}>
+                    <Text style={s.title}>{v.name}</Text>
+                    <Text style={s.detail}>
+                      {VIEW_SOURCE_LABELS[v.source]}
+                      {v.team_name ? ` · ${v.team_name}` : ""}
+                    </Text>
+                  </View>
+                  <Icon name="chevronRight" size={16} color={colors.faint} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </FadeIn>
+      )}
       {GROUPS.map((group, n) => {
         const rows = group.rows.filter((r) => !r.adminOnly || admin);
         if (!rows.length) return null;

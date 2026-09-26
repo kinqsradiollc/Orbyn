@@ -19,6 +19,7 @@ import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { colors, fonts, themed } from "../../theme";
 import { DocViewers } from "./DocViewers";
 import { PageTags } from "./PageTags";
+import { FieldsSection } from "../views/FieldsSection";
 
 const KIND_NAMES: Record<Doc["kind"], string> = {
   doc: "Page",
@@ -131,6 +132,7 @@ export function PageInfo({
             <Text style={s.small}>No tags.</Text>
           )}
         </Section>
+        <FieldsBlock docId={doc.id} version={doc.version} report={report} />
         {!!info?.linked_here && (
           <Section label="Linked here">
             <Pressable
@@ -189,6 +191,27 @@ export function PageInfo({
         )}
       </View>
     </BottomSheet>
+  );
+}
+
+/** Your own fields (ORG-02), under their own heading once there are any. */
+function FieldsBlock({
+  docId,
+  version,
+  report,
+}: {
+  docId: string;
+  version: number;
+  report: (e: unknown) => void;
+}) {
+  return (
+    <FieldsSection
+      target="page"
+      targetId={docId}
+      revision={version}
+      report={report}
+      frame={(content) => <Section label="Fields">{content}</Section>}
+    />
   );
 }
 

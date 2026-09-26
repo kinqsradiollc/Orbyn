@@ -1,7 +1,14 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { blockText, listLayout, mathToText, type DocBlock } from "@orbyn/core";
+import {
+  blockText,
+  LIVE_LIST_LANG,
+  listLayout,
+  mathToText,
+  type DocBlock,
+} from "@orbyn/core";
 import { Inline } from "./Inline";
+import { LiveList } from "../views/LiveList";
 import { Icon } from "../../components/Icon";
 import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -282,6 +289,9 @@ export function DocBody({
               </View>,
             );
           case "code":
+            // A live list (SRCH-02) is drawn as its rows, not its settings.
+            if (block.lang === LIVE_LIST_LANG)
+              return line(index, <LiveList text={block.text} />);
             return line(
               index,
               <View style={styles.block}>
