@@ -1,12 +1,20 @@
+import type { z } from "zod";
 import {
   IMPORT_LIMITS,
+  fail,
+  importCreateInput,
+  importRefusal,
+  importTypeOf,
   type ImportCapabilities,
   type ImportJob,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { pool } from "../../db/pool.js";
 import type { Queryable } from "../../db/pool.js";
-import { importsEnabled } from "./tokens.js";
+import type { UserRow } from "../../lib/auth.js";
+import { requireTeam } from "../../lib/teams.js";
+import { announceTo } from "../presence/live.js";
+import { importsEnabled, uploadToken } from "./tokens.js";
 /**
  * The imports service: import jobs as their owner sees them and what this
  * server can read. The routes and the admin console's storage page use it.
@@ -107,9 +115,11 @@ export async function jobs(db: Queryable, userId: string, id?: string) {
 }
 
 /** What this server can read, from the converter's latest report. */
-export async function importCapabilities(): Promise<ImportCapabilities> {
+export async function importCapabilities(
+  db: Queryable = pool,
+): Promise<ImportCapabilities> {
   const state = (
-    await pool.query<{ scans: string; formulas: boolean; fresh: boolean }>(
+    await db.query<{ scans: string; formulas: boolean; fresh: boolean }>(
       `SELECT scans, formulas, updated_at > now() - interval '2 minutes' AS fresh
          FROM converter_state WHERE id = 1`,
     )
@@ -136,4 +146,113 @@ export async function importCapabilities(): Promise<ImportCapabilities> {
         : IMPORT_LIMITS.scanPagesPerDay,
     },
   };
+}
+
+/**
+ * Start an import: the import, and a path to upload the file to, good for
+ * ten minutes and one upload (the file store queues it for the converter
+ * when the upload finishes). A project's team must be the one the caller
+ * saw, so a file never lands in a space they didn't choose.
+ */
+export async function startImport(
+  db: Queryable,
+  u: UserRow,
+  input: z.input<typeof importCreateInput>,
+) {
+  const d = importCreateInput.parse(input);
+  if (!importsEnabled())
+    fail(503, "Importing files isn't set up on this server yet.");
+  const type = importTypeOf(d.file_name, d.mime);
+  if (!type) fail(422, importRefusal(d.file_name, d.mime)!);
+  let projectTeamId: string | null = null;
+  if (d.project_id) {
+    if (d.project_team_id === undefined)
+      fail(400, "The project's current team is required for an import.");
+    const project = (
+      await db.query<{ user_id: string; team_id: string | null }>(
+        "SELECT user_id, team_id FROM projects WHERE id = $1",
+        [d.project_id],
+      )
+    ).rows[0];
+    if (!project || (!project.team_id && project.user_id !== u.id))
+      fail(404, "Project not found");
+    if (project.team_id) await requireTeam(project.team_id, u, "items:write");
+    if (project.team_id !== d.project_team_id)
+      fail(
+        409,
+        "This project changed teams. Review who can read the file and try again.",
+      );
+    projectTeamId = project.team_id;
+  }
+  const active = Number(
+    (
+      await db.query<{ n: string }>(
+        `SELECT count(*) AS n FROM imports
+        WHERE user_id = $1 AND created_at > now() - interval '1 day'
+          AND (status IN ('queued','reading','ocr')
+               OR (status = 'waiting'
+                   AND created_at > now() - interval '15 minutes'))`,
+        [u.id],
+      )
+    ).rows[0].n,
+  );
+  if (active >= IMPORT_LIMITS.activePerUser)
+    fail(
+      429,
+      `You have ${active} files importing. Wait for one to finish, then add the next.`,
+    );
+  const id = (
+    await db.query<{ id: string }>(
+      `INSERT INTO imports (user_id, file_name, file_type, bytes,
+       project_id, project_team_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [u.id, d.file_name, type, d.bytes, d.project_id ?? null, projectTeamId],
+    )
+  ).rows[0].id;
+  const expires =
+    Math.floor(Date.now() / 1000) + IMPORT_LIMITS.uploadLinkMinutes * 60;
+  const token = uploadToken({
+    i: id,
+    u: u.id,
+    e: expires,
+    m: IMPORT_LIMITS.maxBytes,
+    t: type!,
+  });
+  return {
+    import: (await jobs(db, u.id, id))[0],
+    upload_path: `/files/u/${token}`,
+    expires_at: new Date(expires * 1000).toISOString(),
+  };
+}
+
+/**
+ * Cancel an import still going, or clear a finished one that kept no file
+ * from the list. A cancelled import's file is deleted by the converter or
+ * the file store's sweep.
+ */
+export async function cancelImport(db: Queryable, userId: string, id: string) {
+  const cancelled = (
+    await db.query(
+      `UPDATE imports SET status = 'cancelled', finished_at = now()
+      WHERE id = $1 AND user_id = $2
+        AND status IN ('waiting','queued','reading','ocr')
+      RETURNING id`,
+      [id, userId],
+    )
+  ).rowCount;
+  if (cancelled)
+    await db.query(
+      "DELETE FROM import_pages WHERE import_id = $1 AND done_at IS NULL",
+      [id],
+    );
+  else {
+    const removed = (
+      await db.query(
+        "DELETE FROM imports WHERE id = $1 AND user_id = $2 AND object_id IS NULL",
+        [id, userId],
+      )
+    ).rowCount;
+    if (!removed) fail(404, "Import not found");
+  }
+  await announceTo(db, { user_id: userId }, "changed").catch(() => {});
 }

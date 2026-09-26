@@ -4,6 +4,8 @@ import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
+  AGENT_TOOLSETS,
+  AGENT_TOOLSET_LABELS,
   AGENT_SETUP_CLIENTS,
   AGENT_SETUP_LABELS,
   AGENT_SIGN_IN_STEPS,
@@ -14,6 +16,7 @@ import {
   type AgentActivity,
   type AgentGrant,
   type AgentSetupClient,
+  type AgentToolset,
   type AgentsOverview,
   type Team,
 } from "@orbyn/core";
@@ -41,6 +44,66 @@ const ACCESS_TAG: Record<AgentAccess, string> = {
 };
 
 const EXPIRY_CHOICES = [7, 30, 90, 365];
+
+/** Toolsets a connection can have besides core (which every one has). */
+const OPTIONAL_TOOLSETS = AGENT_TOOLSETS.filter(
+  (t) => t !== "core",
+) as AgentToolset[];
+
+/** "Planner, Study" for a connection's toolsets besides core. */
+function toolsetsText(g: AgentGrant) {
+  const extra = g.toolsets.filter((t) => t !== "core");
+  return extra.length
+    ? extra.map((t) => AGENT_TOOLSET_LABELS[t].name).join(", ")
+    : "Core tools only";
+}
+
+/** Choosing toolsets: one checkbox each, with what it adds. */
+function ToolsetChoice({
+  value,
+  onChange,
+  bookings,
+  idPrefix,
+}: {
+  value: AgentToolset[];
+  onChange: (next: AgentToolset[]) => void;
+  /** Bookings can be chosen (not for an app that signed in without them). */
+  bookings: boolean;
+  idPrefix: string;
+}) {
+  return (
+    <fieldset className="check-group agents-toolsets">
+      <legend>Tools</legend>
+      <small className="muted">
+        {AGENT_TOOLSET_LABELS.core.name} are always on. Add more:
+      </small>
+      <div className="check-grid">
+        {OPTIONAL_TOOLSETS.filter((t) => bookings || t !== "booking").map(
+          (t) => (
+            <label key={t} className="check-line" htmlFor={`${idPrefix}-${t}`}>
+              <input
+                id={`${idPrefix}-${t}`}
+                type="checkbox"
+                checked={value.includes(t)}
+                onChange={(e) =>
+                  onChange(
+                    e.target.checked
+                      ? [...value, t]
+                      : value.filter((x) => x !== t),
+                  )
+                }
+              />
+              <span>
+                {AGENT_TOOLSET_LABELS[t].name}
+                <small>{AGENT_TOOLSET_LABELS[t].blurb}</small>
+              </span>
+            </label>
+          ),
+        )}
+      </div>
+    </fieldset>
+  );
+}
 
 /** The app a connection is for, in the list's first column. */
 function clientLabel(g: AgentGrant) {
@@ -96,6 +159,11 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
     Record<string, AgentActivity[] | null>
   >({});
   const [connecting, setConnecting] = useState(false);
+  /** The connection whose toolsets are being changed, and the choice so far. */
+  const [editing, setEditing] = useState<{
+    id: string;
+    toolsets: AgentToolset[];
+  } | null>(null);
   const connectRef = useRef<HTMLDivElement>(null);
   const action = useAction(report);
 
@@ -168,6 +236,17 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
     });
   };
 
+  const saveToolsets = () => {
+    if (!editing) return;
+    const target = editing;
+    void action.run(async () => {
+      await client.setAgentToolsets(target.id, target.toolsets);
+      setEditing(null);
+      await load();
+      return "Its tools changed. The agent sees them the next time it lists its tools (within five minutes).";
+    });
+  };
+
   const restore = (g: AgentGrant) =>
     void action.run(async () => {
       await client.restoreAgent(g.id);
@@ -202,7 +281,10 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           AI agents you’ve let into Orbyn, like Claude, ChatGPT, Claude Code,
           Codex and Cursor. They can only see what you can, in the spaces you
           choose. Each one uses its own AI: Orbyn sends it only what it asks
-          for.
+          for.{" "}
+          <a href="/developers/mcp" className="link-button">
+            For developers
+          </a>
         </p>
         <button type="button" className="primary" onClick={openConnect}>
           <Plus size={14} /> Connect an agent
@@ -246,6 +328,9 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                       </span>
                     )}
                     <span className="agents-tag">{spacesText(g)}</span>
+                    {g.kind !== "legacy" && (
+                      <span className="agents-tag">{toolsetsText(g)}</span>
+                    )}
                     {g.hide_outside_content && (
                       <span className="agents-tag">Outside content hidden</span>
                     )}
@@ -303,6 +388,27 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     >
                       Activity
                     </button>
+                    {g.kind !== "legacy" && (
+                      <button
+                        type="button"
+                        className="link-button"
+                        aria-expanded={editing?.id === g.id}
+                        onClick={() =>
+                          setEditing(
+                            editing?.id === g.id
+                              ? null
+                              : {
+                                  id: g.id,
+                                  toolsets: g.toolsets.filter(
+                                    (t) => t !== "core",
+                                  ),
+                                },
+                          )
+                        }
+                      >
+                        Tools
+                      </button>
+                    )}
                     {g.suspended_at && (
                       <button
                         type="button"
@@ -322,6 +428,44 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                       {g.kind === "key" ? "Revoke" : "Disconnect"}
                     </button>
                   </div>
+                  {editing?.id === g.id && (
+                    <div className="agents-tools-edit">
+                      <ToolsetChoice
+                        idPrefix={`tools-${g.id}`}
+                        value={editing.toolsets}
+                        bookings={
+                          g.kind === "key" || g.toolsets.includes("booking")
+                        }
+                        onChange={(toolsets) =>
+                          setEditing({ id: g.id, toolsets })
+                        }
+                      />
+                      {g.kind === "oauth" &&
+                        !g.toolsets.includes("booking") && (
+                          <small className="muted">
+                            Bookings need {g.client_name || "the app"} to ask
+                            for them when it signs in again.
+                          </small>
+                        )}
+                      <div className="agents-tools-actions">
+                        <button
+                          type="button"
+                          className="primary"
+                          disabled={action.pending}
+                          onClick={saveToolsets}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setEditing(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {open !== undefined && (
                     <div className="agents-activity" aria-live="polite">
                       {open === null ? (
@@ -428,6 +572,7 @@ function ConnectAgent({
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [days, setDays] = useState(30);
   const [hideOutside, setHideOutside] = useState(false);
+  const [toolsets, setToolsets] = useState<AgentToolset[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const action = useAction(report);
@@ -454,6 +599,7 @@ function ConnectAgent({
         team_ids: teamIds,
         expires_in_days: days,
         hide_outside_content: hideOutside,
+        toolsets: ["core", ...toolsets],
       });
       setFresh(made.key);
       setName("");
@@ -610,6 +756,12 @@ function ConnectAgent({
                     ))}
                   </div>
                 </fieldset>
+                <ToolsetChoice
+                  idPrefix="agent-key-tools"
+                  value={toolsets}
+                  bookings
+                  onChange={setToolsets}
+                />
                 <label className="switch-line">
                   <input
                     type="checkbox"

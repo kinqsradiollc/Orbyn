@@ -262,3 +262,28 @@
     align-self: stretch;
   }
 }
+
+/* Tools a connection has besides core: chosen when a key is made, and
+   changed from a connection's row. */
+.agents-toolsets .check-grid {
+  margin-top: 6px;
+}
+.agents-toolsets .check-line span {
+  display: grid;
+  gap: 2px;
+}
+.agents-toolsets .check-line small {
+  color: var(--color-muted);
+}
+.agents-tools-edit {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.agents-tools-actions {
+  display: flex;
+  gap: 8px;
+}

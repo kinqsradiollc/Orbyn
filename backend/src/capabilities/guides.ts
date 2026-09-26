@@ -87,6 +87,7 @@ A saved view is a named filter, sort, grouping and layout, like an Obsidian Base
 | updated_after | as due_after |
 | kind | a task, page or record kind |
 | links_to | \`doc:<id>\`, \`task:<id>\` or \`project:<id>\`: rows that link there (or are related to it) |
+| starred | true: only what the person starred (pages and projects) |
 | sort | ${list(VIEW_SORTS)} |
 | group_by | ${list(VIEW_GROUPS)} |
 | columns | ${list(VIEW_COLUMNS)} (tables) |

@@ -23,11 +23,11 @@ const { registry } = await import("../src/capabilities/index.js");
 const { keyBlockedRoute } = await import("../src/lib/auth.js");
 
 /**
- * The most routes that may wait for a capability. Lower it when a phase
- * covers routes; never raise it (a new signed-in route is covered or
- * excluded with a reason instead).
+ * The most routes that may wait for a capability: none since A5. Never
+ * raise it (a new signed-in route is covered or excluded with a reason
+ * instead).
  */
-const MAX_PENDING = 143;
+const MAX_PENDING = 0;
 
 /** Routes between services, never for people or agents. */
 const INTERNAL = /^\/internal\//;

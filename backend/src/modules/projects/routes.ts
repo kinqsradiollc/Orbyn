@@ -35,6 +35,9 @@ import {
   announceProjects,
   createProject,
   deleteProject,
+  updateProject,
+  addProjectLink,
+  removeProjectLink,
 } from "./service.js";
 /**
  * Projects group planner tasks into a named piece of work with ordered
@@ -93,30 +96,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const input = projectLinkInput.parse(r.body);
-    const link = await transaction(async (db) => {
-      // requireProject locks the project row (FOR UPDATE), so two adds at
-      // once are counted one after the other and never pass 20 together.
-      const owned = await requireProject(db, id, u, "items:write");
-      await announceProjects(db, owned);
-      const existing = await db.query(
-        "SELECT 1 FROM project_links WHERE project_id = $1 AND url = $2",
-        [id, input.url],
-      );
-      const count = await db.query<{ count: string }>(
-        "SELECT count(*)::text AS count FROM project_links WHERE project_id = $1",
-        [id],
-      );
-      if (!existing.rows.length && Number(count.rows[0].count) >= 20)
-        fail(409, "Project links are full");
-      return (
-        await db.query<ProjectLink>(
-          `INSERT INTO project_links (project_id, url, title) VALUES ($1, $2, $3)
-           ON CONFLICT (project_id, url) DO UPDATE SET title = EXCLUDED.title
-           RETURNING id, project_id, url, title, created_at`,
-          [id, input.url, input.title],
-        )
-      ).rows[0];
-    });
+    const link = await transaction((db) => addProjectLink(db, u, id, input));
     reply.code(201);
     return link;
   });
@@ -124,15 +104,9 @@ export async function projectRoutes(app: FastifyInstance) {
   app.delete("/projects/:id/links/:linkId", async (r, reply) => {
     const u = await authenticate(r);
     const params = z.object({ id: z.uuid(), linkId: z.uuid() }).parse(r.params);
-    await transaction(async (db) => {
-      const owned = await requireProject(db, params.id, u, "items:write");
-      await announceProjects(db, owned);
-      const removed = await db.query(
-        "DELETE FROM project_links WHERE id = $1 AND project_id = $2 RETURNING id",
-        [params.linkId, params.id],
-      );
-      if (!removed.rows.length) fail(404, "Link not found");
-    });
+    await transaction((db) =>
+      removeProjectLink(db, u, params.id, params.linkId),
+    );
     reply.code(204);
   });
 
@@ -337,78 +311,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = projectUpdate.parse(r.body);
-    return transaction(async (db) => {
-      await actAs(db, u.id);
-      const owned = await requireProject(db, id, u, "items:write");
-      await announceProjects(db, owned);
-      const before = (
-        await db.query<{ name: string; deadline: Date | null }>(
-          "SELECT name, deadline FROM projects WHERE id = $1",
-          [id],
-        )
-      ).rows[0];
-      await db.query(
-        `UPDATE projects SET
-           name = coalesce($2, name),
-           summary = coalesce($3, summary),
-           status = coalesce($4, status),
-           deadline = CASE WHEN $5::boolean THEN $6::timestamptz ELSE deadline END,
-           doc_id = CASE WHEN $7::boolean THEN $8::uuid ELSE doc_id END,
-           updated_at = now()
-         WHERE id = $1`,
-        [
-          id,
-          body.name ?? null,
-          body.summary ?? null,
-          body.status ?? null,
-          body.deadline !== undefined,
-          body.deadline ?? null,
-          body.doc_id !== undefined,
-          body.doc_id ?? null,
-        ],
-      );
-      // Pages are found by their project's name too: index them again.
-      if (body.name !== undefined && body.name !== before.name)
-        await db.query(
-          "UPDATE docs SET project_id = project_id WHERE project_id = $1",
-          [id],
-        );
-      // Tasks carry their project's deadline (their latest date): open apps
-      // and offline copies pick up the change on their next sync.
-      if (
-        body.deadline !== undefined &&
-        (body.deadline ? Date.parse(body.deadline) : null) !==
-          (before.deadline?.getTime() ?? null)
-      )
-        await db.query(
-          `UPDATE items SET updated_at = now()
-            WHERE project_id = $1 AND status NOT IN ('done', 'cancelled')`,
-          [id],
-        );
-      if (body.stages) {
-        // Stages given without an id are new; ones left out are removed, and
-        // the tasks that sat in them fall back to the project with no stage.
-        const keep = body.stages.filter((s) => s.id).map((s) => s.id!);
-        await db.query(
-          `DELETE FROM project_stages
-            WHERE project_id = $1 AND NOT (id = ANY($2::uuid[]))`,
-          [id, keep],
-        );
-        for (const [position, stage] of body.stages.entries()) {
-          if (stage.id)
-            await db.query(
-              "UPDATE project_stages SET name = $2, position = $3 WHERE id = $1 AND project_id = $4",
-              [stage.id, stage.name, position, id],
-            );
-          else
-            await db.query(
-              "INSERT INTO project_stages (project_id, name, position) VALUES ($1,$2,$3)",
-              [id, stage.name, position],
-            );
-        }
-      }
-      return loadProject(db, id);
-    });
+    return transaction((db) => updateProject(db, u, id, body));
   });
 
   app.delete("/projects/:id", async (r, reply) => {

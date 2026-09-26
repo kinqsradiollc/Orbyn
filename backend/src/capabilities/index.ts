@@ -7,6 +7,39 @@ import { query } from "./query.js";
 import { Registry } from "./registry.js";
 import { getLinks } from "./links.js";
 import { saveView } from "./views.js";
+import {
+  commentOnDoc,
+  getHistory,
+  organize,
+  resolveSuggestions,
+  saveTemplate,
+  tasksFromDoc,
+  updateProjectCapability,
+} from "./workspace.js";
+import {
+  getWorkPatterns,
+  logFocus,
+  manageRoutines,
+  setFocusTimer,
+  updatePlannerSettings,
+  whatIfCapability,
+} from "./planner.js";
+import { getStudy, planRevisionCapability, updateStudy } from "./study.js";
+import {
+  addProgress,
+  answerAsk,
+  getFollowThrough,
+  markNotificationsReadCapability,
+  saveRecord,
+} from "./followthrough.js";
+import { findTime, getTeam } from "./teams.js";
+import { bookingActionCapability, getBookings } from "./booking.js";
+import {
+  cancelImportCapability,
+  importTasks,
+  listImports,
+  startImportCapability,
+} from "./files.js";
 import { findPassages, search } from "./search.js";
 import { getToday } from "./today.js";
 import {
@@ -59,9 +92,45 @@ export const registry = new Registry([
   link,
   createProjectCapability,
   proposeChanges,
-  // Links and saved views (phase A4).
+  // Links (phase A4): the core toolset's 21st tool.
   getLinks,
+  // The workspace toolset (A4-A5).
   saveView,
+  updateProjectCapability,
+  getHistory,
+  saveTemplate,
+  organize,
+  commentOnDoc,
+  resolveSuggestions,
+  tasksFromDoc,
+  // The planner toolset (A5).
+  getWorkPatterns,
+  whatIfCapability,
+  logFocus,
+  setFocusTimer,
+  manageRoutines,
+  updatePlannerSettings,
+  // The study toolset (A5).
+  getStudy,
+  updateStudy,
+  planRevisionCapability,
+  // The follow-through toolset (A5).
+  getFollowThrough,
+  addProgress,
+  answerAsk,
+  saveRecord,
+  markNotificationsReadCapability,
+  // The teams toolset (A5).
+  getTeam,
+  findTime,
+  // The booking add-on (A5).
+  getBookings,
+  bookingActionCapability,
+  // The files toolset (A5).
+  listImports,
+  startImportCapability,
+  cancelImportCapability,
+  importTasks,
 ]);
 
 export { Registry };

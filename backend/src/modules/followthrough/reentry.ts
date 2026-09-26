@@ -46,170 +46,7 @@ const snippet = (s: string, n = 90) =>
 export async function reentryRoutes(app: FastifyInstance) {
   app.get("/me/reentry", async (r): Promise<ReentryBrief | null> => {
     const u = await authenticate(r);
-    const db = reader(r.headers);
-    const state = (
-      await db.query<{ away_from: Date | null; away_until: Date | null }>(
-        `SELECT away_from, away_until FROM reentry
-          WHERE user_id = $1 AND dismissed_at IS NULL
-            AND away_until > now() - make_interval(days => $2)`,
-        [u.id, SHOW_DAYS],
-      )
-    ).rows[0];
-    if (!state?.away_from || !state.away_until) return null;
-    const since = state.away_from;
-    const mine = `(i.assignee_id = $1 OR (i.user_id = $1 AND i.assignee_id IS NULL))`;
-    const [assigned, changed, asks, mentions, due, pages] = await Promise.all([
-      db.query<{
-        id: string;
-        title: string;
-        who: string;
-        due_at: Date | null;
-        end_at: Date | null;
-        all_day: boolean;
-        timezone: string;
-      }>(
-        `SELECT i.id, i.title, o.name AS who, i.due_at, i.end_at, i.all_day, i.timezone
-           FROM items i
-           JOIN users o ON o.id = i.user_id
-          WHERE i.assignee_id = $1 AND i.user_id <> $1
-            AND i.status NOT IN ('done', 'cancelled') AND i.updated_at >= $2
-          ORDER BY i.updated_at DESC LIMIT ${LIMIT}`,
-        [u.id, since],
-      ),
-      db.query<{
-        id: string;
-        title: string;
-        who: string;
-        body: string;
-        status: string | null;
-      }>(
-        `SELECT DISTINCT ON (i.id) i.id, i.title, w.name AS who, x.body, x.status
-           FROM item_updates x JOIN items i ON i.id = x.item_id
-           JOIN users w ON w.id = x.user_id
-          WHERE x.created_at >= $2 AND x.user_id <> $1 AND ${mine}
-          ORDER BY i.id, x.created_at DESC LIMIT ${LIMIT}`,
-        [u.id, since],
-      ),
-      db.query<{ id: string; title: string; who: string; status: string }>(
-        `SELECT a.id, i.title, b.name AS who, a.status FROM task_asks a
-           JOIN items i ON i.id = a.item_id JOIN users b ON b.id = a.asked_by
-          WHERE (a.asked_of = $1 AND a.status = 'open')
-             OR (a.asked_by = $1 AND a.status = 'countered')
-          ORDER BY a.updated_at DESC LIMIT ${LIMIT}`,
-        [u.id],
-      ),
-      db.query<{ title: string; body: string }>(
-        `SELECT title, body FROM notifications
-          WHERE user_id = $1 AND kind = 'mention' AND channel = 'inapp'
-            AND created_at >= $2
-          ORDER BY created_at DESC LIMIT ${LIMIT}`,
-        [u.id, since],
-      ),
-      db.query<{
-        id: string;
-        title: string;
-        due_at: Date;
-        end_at: Date | null;
-        all_day: boolean;
-        timezone: string;
-      }>(
-        `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone FROM items i
-          WHERE ${mine} AND i.kind = 'task'
-            AND i.status NOT IN ('done', 'cancelled')
-            AND i.due_at IS NOT NULL AND i.due_at < now() + interval '3 days'
-          ORDER BY i.due_at LIMIT ${LIMIT}`,
-        [u.id],
-      ),
-      db.query<{ id: string; title: string; team: string }>(
-        `SELECT d.id, d.title, t.name AS team FROM docs d JOIN teams t ON t.id = d.team_id
-          WHERE ${inMyTeams("d")}
-            AND d.updated_at >= $2 AND d.kind = 'doc' AND d.deleted_at IS NULL
-          ORDER BY d.updated_at DESC LIMIT ${LIMIT}`,
-        [u.id, since],
-      ),
-    ]);
-    const now = Date.now();
-    // Your zone, for the times in "due" lines.
-    const zone = [...assigned.rows, ...due.rows].some(
-      (x) => x.due_at && !x.all_day,
-    )
-      ? (await loadPrefs(db, u.id)).timezone
-      : undefined;
-    /**
-     * A task's deadline (`deadlineOf`) and how to say it: an all-day task is
-     * due by the end of its day and names that day (in its own zone, where
-     * the day is kept); a time is named in yours.
-     */
-    const deadlineWords = (x: {
-      due_at: Date;
-      end_at: Date | null;
-      all_day: boolean;
-      timezone: string;
-    }) => {
-      const at = deadlineOf(x)!;
-      return {
-        at,
-        words: dueDate(at, x.all_day, x.all_day ? x.timezone : zone),
-      };
-    };
-    const brief: ReentryBrief = {
-      away_from: since.toISOString(),
-      away_until: state.away_until.toISOString(),
-      days_away: Math.max(
-        1,
-        Math.round((state.away_until.getTime() - since.getTime()) / 86_400_000),
-      ),
-      assigned: assigned.rows.map((x): ReentryLine => ({
-        item_id: x.id,
-        title: x.title,
-        detail: `From ${x.who}${
-          x.due_at
-            ? ` · due ${deadlineWords({ ...x, due_at: x.due_at }).words}`
-            : ""
-        }`,
-      })),
-      changed: changed.rows.map((x) => ({
-        item_id: x.id,
-        title: x.title,
-        detail:
-          x.status === "done"
-            ? `${x.who} finished it`
-            : x.status
-              ? `${x.who} set it to ${x.status.replace("_", " ")}`
-              : `${x.who}: ${snippet(x.body)}`,
-      })),
-      asks: asks.rows.map((x) => ({
-        ask_id: x.id,
-        title: x.title,
-        detail:
-          x.status === "countered"
-            ? "Suggested another date — your call"
-            : `${x.who} asked you`,
-      })),
-      mentions: mentions.rows.map((x) => ({
-        title: x.title,
-        detail: snippet(x.body),
-      })),
-      due: due.rows.map((x) => {
-        // Overdue once the deadline has passed: not during an all-day
-        // task's own day.
-        const deadline = deadlineWords(x);
-        return {
-          item_id: x.id,
-          title: x.title,
-          detail:
-            Date.parse(deadline.at) < now
-              ? `Overdue since ${deadline.words}`
-              : `Due ${deadline.words}`,
-        };
-      }),
-      pages: pages.rows.map((x) => ({
-        doc_id: x.id,
-        title: x.title || "Untitled",
-        detail: `Changed in ${x.team}`,
-      })),
-    };
-    return brief;
+    return reentryBrief(reader(r.headers), u.id);
   });
 
   app.post("/me/reentry/dismiss", async (r) => {
@@ -220,4 +57,179 @@ export async function reentryRoutes(app: FastifyInstance) {
     );
     return { ok: true };
   });
+}
+
+/**
+ * The "while you were away" brief, when `userId` came back lately and
+ * hasn't dismissed it: what was handed to them, what moved on their tasks,
+ * what waits for their answer, mentions, what's due, and their teams'
+ * changed pages (five of each). Null when there's none.
+ */
+export async function reentryBrief(
+  db: Queryable,
+  userId: string,
+): Promise<ReentryBrief | null> {
+  const state = (
+    await db.query<{ away_from: Date | null; away_until: Date | null }>(
+      `SELECT away_from, away_until FROM reentry
+      WHERE user_id = $1 AND dismissed_at IS NULL
+        AND away_until > now() - make_interval(days => $2)`,
+      [userId, SHOW_DAYS],
+    )
+  ).rows[0];
+  if (!state?.away_from || !state.away_until) return null;
+  const since = state.away_from;
+  const mine = `(i.assignee_id = $1 OR (i.user_id = $1 AND i.assignee_id IS NULL))`;
+  const [assigned, changed, asks, mentions, due, pages] = await Promise.all([
+    db.query<{
+      id: string;
+      title: string;
+      who: string;
+      due_at: Date | null;
+      end_at: Date | null;
+      all_day: boolean;
+      timezone: string;
+    }>(
+      `SELECT i.id, i.title, o.name AS who, i.due_at, i.end_at, i.all_day, i.timezone
+       FROM items i
+       JOIN users o ON o.id = i.user_id
+      WHERE i.assignee_id = $1 AND i.user_id <> $1
+        AND i.status NOT IN ('done', 'cancelled') AND i.updated_at >= $2
+      ORDER BY i.updated_at DESC LIMIT ${LIMIT}`,
+      [userId, since],
+    ),
+    db.query<{
+      id: string;
+      title: string;
+      who: string;
+      body: string;
+      status: string | null;
+    }>(
+      `SELECT DISTINCT ON (i.id) i.id, i.title, w.name AS who, x.body, x.status
+       FROM item_updates x JOIN items i ON i.id = x.item_id
+       JOIN users w ON w.id = x.user_id
+      WHERE x.created_at >= $2 AND x.user_id <> $1 AND ${mine}
+      ORDER BY i.id, x.created_at DESC LIMIT ${LIMIT}`,
+      [userId, since],
+    ),
+    db.query<{ id: string; title: string; who: string; status: string }>(
+      `SELECT a.id, i.title, b.name AS who, a.status FROM task_asks a
+       JOIN items i ON i.id = a.item_id JOIN users b ON b.id = a.asked_by
+      WHERE (a.asked_of = $1 AND a.status = 'open')
+         OR (a.asked_by = $1 AND a.status = 'countered')
+      ORDER BY a.updated_at DESC LIMIT ${LIMIT}`,
+      [userId],
+    ),
+    db.query<{ title: string; body: string }>(
+      `SELECT title, body FROM notifications
+      WHERE user_id = $1 AND kind = 'mention' AND channel = 'inapp'
+        AND created_at >= $2
+      ORDER BY created_at DESC LIMIT ${LIMIT}`,
+      [userId, since],
+    ),
+    db.query<{
+      id: string;
+      title: string;
+      due_at: Date;
+      end_at: Date | null;
+      all_day: boolean;
+      timezone: string;
+    }>(
+      `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone FROM items i
+      WHERE ${mine} AND i.kind = 'task'
+        AND i.status NOT IN ('done', 'cancelled')
+        AND i.due_at IS NOT NULL AND i.due_at < now() + interval '3 days'
+      ORDER BY i.due_at LIMIT ${LIMIT}`,
+      [userId],
+    ),
+    db.query<{ id: string; title: string; team: string }>(
+      `SELECT d.id, d.title, t.name AS team FROM docs d JOIN teams t ON t.id = d.team_id
+      WHERE ${inMyTeams("d")}
+        AND d.updated_at >= $2 AND d.kind = 'doc' AND d.deleted_at IS NULL
+      ORDER BY d.updated_at DESC LIMIT ${LIMIT}`,
+      [userId, since],
+    ),
+  ]);
+  const now = Date.now();
+  // Your zone, for the times in "due" lines.
+  const zone = [...assigned.rows, ...due.rows].some(
+    (x) => x.due_at && !x.all_day,
+  )
+    ? (await loadPrefs(db, userId)).timezone
+    : undefined;
+  /**
+   * A task's deadline (`deadlineOf`) and how to say it: an all-day task is
+   * due by the end of its day and names that day (in its own zone, where
+   * the day is kept); a time is named in yours.
+   */
+  const deadlineWords = (x: {
+    due_at: Date;
+    end_at: Date | null;
+    all_day: boolean;
+    timezone: string;
+  }) => {
+    const at = deadlineOf(x)!;
+    return {
+      at,
+      words: dueDate(at, x.all_day, x.all_day ? x.timezone : zone),
+    };
+  };
+  const brief: ReentryBrief = {
+    away_from: since.toISOString(),
+    away_until: state.away_until.toISOString(),
+    days_away: Math.max(
+      1,
+      Math.round((state.away_until.getTime() - since.getTime()) / 86_400_000),
+    ),
+    assigned: assigned.rows.map((x): ReentryLine => ({
+      item_id: x.id,
+      title: x.title,
+      detail: `From ${x.who}${
+        x.due_at
+          ? ` · due ${deadlineWords({ ...x, due_at: x.due_at }).words}`
+          : ""
+      }`,
+    })),
+    changed: changed.rows.map((x) => ({
+      item_id: x.id,
+      title: x.title,
+      detail:
+        x.status === "done"
+          ? `${x.who} finished it`
+          : x.status
+            ? `${x.who} set it to ${x.status.replace("_", " ")}`
+            : `${x.who}: ${snippet(x.body)}`,
+    })),
+    asks: asks.rows.map((x) => ({
+      ask_id: x.id,
+      title: x.title,
+      detail:
+        x.status === "countered"
+          ? "Suggested another date — your call"
+          : `${x.who} asked you`,
+    })),
+    mentions: mentions.rows.map((x) => ({
+      title: x.title,
+      detail: snippet(x.body),
+    })),
+    due: due.rows.map((x) => {
+      // Overdue once the deadline has passed: not during an all-day
+      // task's own day.
+      const deadline = deadlineWords(x);
+      return {
+        item_id: x.id,
+        title: x.title,
+        detail:
+          Date.parse(deadline.at) < now
+            ? `Overdue since ${deadline.words}`
+            : `Due ${deadline.words}`,
+      };
+    }),
+    pages: pages.rows.map((x) => ({
+      doc_id: x.id,
+      title: x.title || "Untitled",
+      detail: `Changed in ${x.team}`,
+    })),
+  };
+  return brief;
 }

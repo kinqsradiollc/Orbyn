@@ -458,7 +458,9 @@ export async function mcpServerRoutes(app: FastifyInstance) {
           ? "write"
           : cap?.limitGroup === "search" || method === "completion/complete"
             ? "search"
-            : "call";
+            : cap?.limitGroup === "heavy"
+              ? "heavy"
+              : "call";
       const slot = await limiter.take(
         grantId,
         p.user.id,

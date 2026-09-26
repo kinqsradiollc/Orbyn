@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { z } from "zod";
 import {
   blankDate,
   fail,
@@ -373,28 +374,9 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
   app.post("/page-templates", async (r, reply): Promise<PageTemplate> => {
     const u = await authenticate(r);
     const d = pageTemplateInput.parse(r.body);
-    const id = await transaction(async (db) => {
-      if (d.team_id) await requireTeam(d.team_id, u, "items:write", db);
-      await checkSpace(db, u, d.team_id, d);
-      const made = (
-        await db.query<{ id: string }>(
-          `INSERT INTO page_templates
-             (user_id, team_id, name, description, title, content, folder_id)
-           VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING id`,
-          [
-            u.id,
-            d.team_id,
-            d.name,
-            d.description,
-            d.title,
-            JSON.stringify(templateFromPage(d.content)),
-            d.folder_id,
-          ],
-        )
-      ).rows[0].id;
-      await setTemplateTags(db, made, d.tags);
-      return made;
-    });
+    const id = await transaction(
+      async (db) => (await createPageTemplate(db, u, d)).id,
+    );
     reply.code(201);
     return toTemplate(u, await loadTemplate(pool, u, id));
   });
@@ -403,48 +385,14 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = pageTemplateUpdate.parse(r.body);
-    await transaction(async (db) => {
-      const current = toTemplate(u, await loadTemplate(db, u, id));
-      if (!current.can_edit)
-        fail(
-          403,
-          "Only its maker, or a team's owners and admins, can change it.",
-        );
-      await checkSpace(db, u, current.team_id, d);
-      await db.query(
-        `UPDATE page_templates SET
-           name = coalesce($2, name),
-           description = coalesce($3, description),
-           title = coalesce($4, title),
-           content = coalesce($5::jsonb, content),
-           folder_id = CASE WHEN $6::boolean THEN $7::uuid ELSE folder_id END,
-           updated_at = now()
-         WHERE id = $1`,
-        [
-          id,
-          d.name ?? null,
-          d.description ?? null,
-          d.title ?? null,
-          d.content ? JSON.stringify(templateFromPage(d.content)) : null,
-          d.folder_id !== undefined,
-          d.folder_id ?? null,
-        ],
-      );
-      if (d.tags) await setTemplateTags(db, id, d.tags);
-    });
+    await transaction((db) => updatePageTemplate(db, u, id, d));
     return toTemplate(u, await loadTemplate(pool, u, id));
   });
 
   app.delete("/page-templates/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const current = toTemplate(u, await loadTemplate(pool, u, id));
-    if (!current.can_edit)
-      fail(
-        403,
-        "Only its maker, or a team's owners and admins, can delete it.",
-      );
-    await pool.query("DELETE FROM page_templates WHERE id = $1", [id]);
+    await deletePageTemplate(pool, u, id);
     reply.code(204);
   });
 
@@ -460,49 +408,9 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
       const u = await authenticate(r);
       const docId = idParam(r);
       const d = pageTemplateFromDoc.parse(r.body ?? {});
-      const id = await transaction(async (db) => {
-        const doc = (
-          await db.query<{
-            title: string;
-            content: DocBlock[];
-            team_id: string | null;
-            folder_id: string | null;
-          }>(
-            `SELECT d.title, d.content, d.team_id, d.folder_id FROM docs d
-              WHERE d.id = $2 AND d.deleted_at IS NULL
-                AND ${readableDocs("d")}`,
-            [u.id, docId],
-          )
-        ).rows[0];
-        if (!doc) fail(404, "Document not found");
-        const teamId = d.personal ? null : doc.team_id;
-        if (teamId) await requireTeam(teamId, u, "items:write", db);
-        const folderId = await folderIn(db, u, teamId, doc.folder_id);
-        const tags = await tagsIn(
-          db,
-          u,
-          teamId,
-          (await pageTags(db, docId)).map((t) => t.id),
-        );
-        const made = (
-          await db.query<{ id: string }>(
-            `INSERT INTO page_templates
-               (user_id, team_id, name, description, title, content, folder_id)
-             VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING id`,
-            [
-              u.id,
-              teamId,
-              (d.name ?? (doc.title.trim() || "Untitled")).slice(0, 120),
-              d.description ?? "",
-              doc.title.slice(0, 200),
-              JSON.stringify(templateFromPage(doc.content ?? [])),
-              folderId,
-            ],
-          )
-        ).rows[0].id;
-        await setTemplateTags(db, made, tags);
-        return made;
-      });
+      const id = await transaction(
+        async (db) => (await pageTemplateFromPage(db, u, docId, d)).id,
+      );
       reply.code(201);
       return toTemplate(u, await loadTemplate(pool, u, id));
     },
@@ -527,4 +435,168 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
     reply.code(made.existing ? 200 : 201);
     return made;
   });
+}
+
+/** Save a page template (its lines, title, folder and tags). */
+export async function createPageTemplate(
+  db: Db,
+  u: UserRow,
+  input: z.input<typeof pageTemplateInput>,
+): Promise<PageTemplate> {
+  const d = pageTemplateInput.parse(input);
+  if (d.team_id) await requireTeam(d.team_id, u, "items:write", db);
+  await checkSpace(db, u, d.team_id, d);
+  const made = (
+    await db.query<{ id: string }>(
+      `INSERT INTO page_templates
+     (user_id, team_id, name, description, title, content, folder_id)
+   VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING id`,
+      [
+        u.id,
+        d.team_id,
+        d.name,
+        d.description,
+        d.title,
+        JSON.stringify(templateFromPage(d.content)),
+        d.folder_id,
+      ],
+    )
+  ).rows[0].id;
+  await setTemplateTags(db, made, d.tags);
+  return toTemplate(u, await loadTemplate(db, u, made));
+}
+
+/**
+ * Save a page as a template: its title and lines, with every box unticked,
+ * and the folder and tags it has. A team page makes a team template;
+ * `personal` keeps a copy of your own instead.
+ */
+export async function pageTemplateFromPage(
+  db: Db,
+  u: UserRow,
+  docId: string,
+  input: z.input<typeof pageTemplateFromDoc>,
+): Promise<PageTemplate> {
+  const d = pageTemplateFromDoc.parse(input);
+  const doc = (
+    await db.query<{
+      title: string;
+      content: DocBlock[];
+      team_id: string | null;
+      folder_id: string | null;
+    }>(
+      `SELECT d.title, d.content, d.team_id, d.folder_id FROM docs d
+  WHERE d.id = $2 AND d.deleted_at IS NULL
+    AND ${readableDocs("d")}`,
+      [u.id, docId],
+    )
+  ).rows[0];
+  if (!doc) fail(404, "Document not found");
+  const teamId = d.personal ? null : doc.team_id;
+  if (teamId) await requireTeam(teamId, u, "items:write", db);
+  const folderId = await folderIn(db, u, teamId, doc.folder_id);
+  const tags = await tagsIn(
+    db,
+    u,
+    teamId,
+    (await pageTags(db, docId)).map((t) => t.id),
+  );
+  const made = (
+    await db.query<{ id: string }>(
+      `INSERT INTO page_templates
+   (user_id, team_id, name, description, title, content, folder_id)
+ VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7) RETURNING id`,
+      [
+        u.id,
+        teamId,
+        (d.name ?? (doc.title.trim() || "Untitled")).slice(0, 120),
+        d.description ?? "",
+        doc.title.slice(0, 200),
+        JSON.stringify(templateFromPage(doc.content ?? [])),
+        folderId,
+      ],
+    )
+  ).rows[0].id;
+  await setTemplateTags(db, made, tags);
+  return toTemplate(u, await loadTemplate(db, u, made));
+}
+
+/** Remove a page template (its maker, or a team's owners and admins). */
+export async function deletePageTemplate(
+  db: Queryable,
+  u: UserRow,
+  id: string,
+) {
+  const current = toTemplate(u, await loadTemplate(db, u, id));
+  if (!current.can_edit)
+    fail(403, "Only its maker, or a team's owners and admins, can delete it.");
+  await db.query("DELETE FROM page_templates WHERE id = $1", [id]);
+}
+
+/** Page templates `u` can use: saved ones, then the starters. */
+export async function listPageTemplates(
+  db: Queryable,
+  u: UserRow,
+): Promise<PageTemplate[]> {
+  const rows = (
+    await db.query<Row>(
+      `SELECT ${COLUMNS} FROM page_templates t ${JOINS}
+        WHERE ${VISIBLE} ORDER BY t.team_id NULLS FIRST, lower(t.name)`,
+      [u.id],
+    )
+  ).rows;
+  return [
+    ...rows.map((row) => toTemplate(u, row)),
+    ...PAGE_TEMPLATE_STARTERS.map(starter),
+  ];
+}
+
+/** Make a page from a template: a starter's id, or a saved one's. */
+export async function usePageTemplateById(
+  db: Db,
+  u: UserRow,
+  rawId: string,
+  input: z.input<typeof pageTemplateUse>,
+) {
+  const d = pageTemplateUse.parse(input);
+  const found = PAGE_TEMPLATE_STARTERS.find((x) => x.id === rawId);
+  const template = found
+    ? starter(found)
+    : toTemplate(u, await loadTemplate(db, u, rawId));
+  return usePageTemplate(db, u, template, d);
+}
+
+/** Change a page template (its maker, or a team's owners and admins). */
+export async function updatePageTemplate(
+  db: Db,
+  u: UserRow,
+  id: string,
+  input: z.input<typeof pageTemplateUpdate>,
+): Promise<PageTemplate> {
+  const d = pageTemplateUpdate.parse(input);
+  const current = toTemplate(u, await loadTemplate(db, u, id));
+  if (!current.can_edit)
+    fail(403, "Only its maker, or a team's owners and admins, can change it.");
+  await checkSpace(db, u, current.team_id, d);
+  await db.query(
+    `UPDATE page_templates SET
+   name = coalesce($2, name),
+   description = coalesce($3, description),
+   title = coalesce($4, title),
+   content = coalesce($5::jsonb, content),
+   folder_id = CASE WHEN $6::boolean THEN $7::uuid ELSE folder_id END,
+   updated_at = now()
+ WHERE id = $1`,
+    [
+      id,
+      d.name ?? null,
+      d.description ?? null,
+      d.title ?? null,
+      d.content ? JSON.stringify(templateFromPage(d.content)) : null,
+      d.folder_id !== undefined,
+      d.folder_id ?? null,
+    ],
+  );
+  if (d.tags) await setTemplateTags(db, id, d.tags);
+  return toTemplate(u, await loadTemplate(db, u, id));
 }

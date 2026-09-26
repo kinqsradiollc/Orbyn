@@ -108,6 +108,18 @@ export const agentKeyInput = z
   });
 export type AgentKeyInput = z.input<typeof agentKeyInput>;
 
+/**
+ * Changing a connection's toolsets in Settings → Connected agents. Core is
+ * always on. Bookings can be added to an agent key here; a connection that
+ * signed in (OAuth) gets bookings only by signing in again and allowing it.
+ */
+export const agentToolsetsInput = z
+  .object({
+    toolsets: z.array(z.enum(AGENT_TOOLSETS)).max(8),
+  })
+  .strict();
+export type AgentToolsetsInput = z.input<typeof agentToolsetsInput>;
+
 /** One connection, as the Connected agents list shows it. */
 export type AgentGrant = {
   id: string;
@@ -466,20 +478,28 @@ export const AGENT_TOOLSET_LABELS: Record<
     name: "Tasks, calendar, projects and pages",
     blurb: "Always on.",
   },
-  workspace: { name: "Folders, tags and lists", blurb: "Organising pages." },
-  planner: { name: "Planner", blurb: "Sessions, your usual day and plans." },
-  study: { name: "Study", blurb: "Flashcards and reviews." },
+  workspace: {
+    name: "Projects, history and organising",
+    blurb:
+      "Project changes, history, templates, saved views, lists, tags, folders, comments and suggestions.",
+  },
+  planner: {
+    name: "Planner",
+    blurb:
+      "How you work, what-if plans, focus time, routines and planner settings.",
+  },
+  study: { name: "Study", blurb: "Flashcards, exams and revision sessions." },
   followthrough: {
     name: "Follow-through",
-    blurb: "Asks, promises and decisions.",
+    blurb: "Asks, promises, decisions, progress and notices.",
   },
-  teams: { name: "Teams", blurb: "Team members and their time." },
+  teams: { name: "Teams", blurb: "Team members, workload and meeting times." },
   booking: {
     name: "Bookings",
     blurb:
       "Booking pages, and your guests’ names and contact details. Booking changes email your guests, so they always wait for your review.",
   },
-  files: { name: "Files", blurb: "Imported files." },
+  files: { name: "Files", blurb: "Imports into pages, and bulk task imports." },
 };
 
 /** The parameters of an authorization request, as an app sends them. */
@@ -669,3 +689,47 @@ export type AdminAgentGrant = Pick<
   | "suspended_at"
   | "created_at"
 >;
+
+/**
+ * The published description of Orbyn's MCP server (GET /developers/mcp):
+ * what the public developer page shows. The same as docs/mcp-catalog.json,
+ * with this server's address and live limits.
+ */
+export type McpCatalog = {
+  version: string;
+  server: {
+    name: string;
+    title: string;
+    address: string;
+    protocol_versions: string[];
+    instructions: string;
+  };
+  tools: {
+    name: string;
+    title: string;
+    description: string;
+    kind: "read" | "write" | "destructive";
+    access: AgentAccess;
+    toolset: AgentToolset;
+    legacy_only?: boolean;
+  }[];
+  toolsets: { name: AgentToolset; title: string; tools: string[] }[];
+  resources: { uri: string; name: string; public?: boolean }[];
+  resource_templates: {
+    uri_template: string;
+    name: string;
+    description: string;
+  }[];
+  prompts: {
+    name: string;
+    title: string;
+    description: string;
+    arguments: { name: string; required: boolean }[];
+  }[];
+  versioning: string[];
+  changelog: { date: string; changes: string[] }[];
+  limits: AgentLimits;
+  agents_enabled: boolean;
+  security: string;
+  status_url: string;
+};

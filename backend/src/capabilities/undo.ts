@@ -15,11 +15,16 @@ import {
   saveDoc,
   trashDoc,
 } from "../modules/docs/service.js";
-import { deleteProject, requireProject } from "../modules/projects/service.js";
+import {
+  deleteProject,
+  requireProject,
+  updateProject,
+} from "../modules/projects/service.js";
 import { mergedItem } from "../modules/proposals/service.js";
 import { announceDocChange } from "../modules/docs/live.js";
 import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
+import { savePrefs } from "../modules/planner/routines.js";
 import { deleteView, findView, updateView } from "../modules/views/service.js";
 
 /**
@@ -106,6 +111,25 @@ export type UndoOp =
       target_id: string;
       present: boolean;
     }
+  /** A project it changed: put its fields (and stages) back. */
+  | {
+      op: "project.restore";
+      id: string;
+      /** When the agent's change left it, to tell a later change apart. */
+      updated_at: string;
+      fields: {
+        name: string;
+        summary: string;
+        status: string;
+        deadline: string | null;
+        doc_id: string | null;
+      };
+      stages: { id: string; name: string }[] | null;
+    }
+  /** Habit sessions it planned: remove them. */
+  | { op: "habit_blocks.delete"; ids: string[] }
+  /** Planner settings it changed: put the old values back. */
+  | { op: "prefs.restore"; fields: Record<string, unknown> }
   /** A saved view it made: remove it. */
   | { op: "view.delete"; id: string; version: number }
   /** A saved view it changed: put it back. */
@@ -314,6 +338,35 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
         );
         break;
       }
+      case "project.restore": {
+        await requireProject(db, op.id, u, "items:write");
+        const now = (
+          await db.query<{ updated_at: Date }>(
+            "SELECT updated_at FROM projects WHERE id = $1",
+            [op.id],
+          )
+        ).rows[0];
+        if (!now) break;
+        if (now.updated_at.toISOString() !== op.updated_at) changedSince();
+        await updateProject(db, u, op.id, {
+          name: op.fields.name,
+          summary: op.fields.summary,
+          status: op.fields.status as never,
+          deadline: op.fields.deadline,
+          doc_id: op.fields.doc_id,
+          ...(op.stages ? { stages: op.stages } : {}),
+        });
+        break;
+      }
+      case "habit_blocks.delete":
+        await db.query(
+          "DELETE FROM habit_blocks WHERE id = ANY ($1::uuid[]) AND user_id = $2",
+          [op.ids, u.id],
+        );
+        break;
+      case "prefs.restore":
+        await savePrefs(db, u.id, op.fields as never);
+        break;
       case "view.delete": {
         const view = await findView(db, everySpace(u.id), op.id, true);
         if (!view) break;

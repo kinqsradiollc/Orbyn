@@ -140,6 +140,11 @@ const schema = z.object({
   OAUTH_ACCESS_TTL: z.coerce.number().int().min(60).max(86_400).default(3600),
   /** Days an unused agent refresh token (ort_) lasts; 90 at most in all. */
   OAUTH_REFRESH_TTL: z.coerce.number().int().min(1).max(90).default(30),
+  /**
+   * Where security problems are reported: the Contact line of
+   * /.well-known/security.txt (a mailto: or https: address).
+   */
+  SECURITY_CONTACT: z.string().default("mailto:security@orbyn.dev"),
 });
 
 export type Env = z.infer<typeof schema>;

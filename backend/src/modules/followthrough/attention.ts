@@ -83,30 +83,7 @@ export async function attentionRoutes(app: FastifyInstance) {
       .strict()
       .parse(r.query);
     await requireTeam(teamId, u, "items:read");
-    const db = reader(r.headers);
-    const week = await weekOf(db, u.id, q.week);
-    const budget = await budgetOf(db, teamId);
-    const members = (await teamMembers(teamId)).slice(0, 50);
-    return {
-      week_start: week.start,
-      budget_minutes: budget,
-      members: await Promise.all(
-        members.map(async (m) => {
-          const minutes = await meetingMinutes(
-            db,
-            m.user_id,
-            week.from,
-            week.to,
-          );
-          return {
-            user_id: m.user_id,
-            name: m.name,
-            meeting_minutes: minutes,
-            over: budget !== null && minutes > budget,
-          };
-        }),
-      ),
-    };
+    return teamAttention(reader(r.headers), u.id, teamId, q.week);
   });
 
   app.put("/teams/:id/attention", async (r) => {
@@ -140,7 +117,7 @@ export async function attentionRoutes(app: FastifyInstance) {
       u.id,
       localDateKey(start, (await loadPrefs(db, u.id)).timezone),
     );
-    const members = (await teamMembers(teamId))
+    const members = (await teamMembers(teamId, db as never))
       .filter((m) => !d.user_ids || d.user_ids.includes(m.user_id))
       .slice(0, 50);
     const over: AttentionCheck["over"] = [];
@@ -161,4 +138,31 @@ export async function attentionRoutes(app: FastifyInstance) {
     }
     return { budget_minutes: budget, over };
   });
+}
+
+/** How much of each member's week meetings take, against the team's budget. */
+export async function teamAttention(
+  db: Queryable,
+  userId: string,
+  teamId: string,
+  weekDay?: string,
+): Promise<TeamAttention> {
+  const week = await weekOf(db, userId, weekDay);
+  const budget = await budgetOf(db, teamId);
+  const members = (await teamMembers(teamId, db as never)).slice(0, 50);
+  return {
+    week_start: week.start,
+    budget_minutes: budget,
+    members: await Promise.all(
+      members.map(async (m) => {
+        const minutes = await meetingMinutes(db, m.user_id, week.from, week.to);
+        return {
+          user_id: m.user_id,
+          name: m.name,
+          meeting_minutes: minutes,
+          over: budget !== null && minutes > budget,
+        };
+      }),
+    ),
+  };
 }

@@ -12,6 +12,7 @@ import {
 } from "../lib/visibility.js";
 import { describeView } from "@orbyn/core";
 import { findView } from "../modules/views/service.js";
+import { jobs } from "../modules/imports/service.js";
 import { runView } from "./query.js";
 import { READ, minutesText, spaceName } from "./common.js";
 import {
@@ -54,6 +55,7 @@ const FETCH_TYPES = [
   "template",
   "proposal",
   "view",
+  "import",
 ] as const;
 
 const output = z.object({
@@ -714,6 +716,39 @@ async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   };
 }
 
+/** An import into Docs: its status, and the page it became once ready. */
+async function fetchImport(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
+  if (!ctx.principal.personal) throw notFound();
+  const job = (await jobs(ctx.db, ctx.principal.user.id, ref.id))[0];
+  if (!job) throw notFound();
+  const page = job.doc_id ? refs({ type: "doc", id: job.doc_id }) : null;
+  const r = refs({ type: "import", id: job.id });
+  return {
+    id: r.id,
+    title: cleanTitle(job.file_name),
+    text: [
+      `# Import: ${cleanTitle(job.file_name)}`,
+      `- ${job.status}${job.pages ? `, ${job.pages} pages` : ""}`,
+      ...(job.error ? [`- ${clean(job.error, 500)}`] : []),
+      ...(page ? [`- Page: ${page.id} · ${page.url}`] : []),
+    ].join("\n"),
+    url: page?.url ?? r.url,
+    metadata: {
+      type: "import",
+      uri: r.uri,
+      team: "Personal",
+      team_id: null,
+      project_id: null,
+      status: job.status,
+      version: null,
+      updated_at: job.finished_at,
+      provenance: "import",
+      truncated: false,
+      next_block: null,
+    },
+  };
+}
+
 export async function fetchAny(
   ctx: CapabilityContext,
   input: string,
@@ -745,6 +780,8 @@ export async function fetchAny(
       return fetchProposal(ctx, ref);
     case "view":
       return fetchView(ctx, ref);
+    case "import":
+      return fetchImport(ctx, ref);
     default:
       throw new CapabilityError(
         "UNAVAILABLE",
@@ -758,7 +795,7 @@ export const fetchCapability = defineCapability({
   name: "fetch",
   title: "Open by id",
   description:
-    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table) or proposal:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
+    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table), proposal: or import:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
   input: z
     .object({
       id: z.string().trim().min(1).max(500).describe("What to open."),

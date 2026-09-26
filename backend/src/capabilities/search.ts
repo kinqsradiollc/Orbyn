@@ -9,7 +9,15 @@ import {
   visibleRecords,
   visibleTemplates,
   visibleViews,
+  visibleFolders,
+  visiblePageTemplates,
+  visibleOwned,
+  type Scope,
 } from "../lib/visibility.js";
+
+/** Lists and tags follow the owner-or-team rule of everything else. */
+const visibleOwnedOf = (alias: string, scope: Scope) =>
+  visibleOwned(alias, "user_id", scope);
 import {
   READ,
   cursorInput,
@@ -65,6 +73,9 @@ const SEARCH_TYPES = [
   "record",
   "view",
   "template",
+  "folder",
+  "list",
+  "tag",
 ] as const;
 
 const hit = z.object({
@@ -275,25 +286,33 @@ async function runSearch(
     rows.push(...found.rows.map((r) => ({ ...r, type: "record" as const })));
   }
 
-  // Saved views and project templates, by name (no project filter applies).
+  // Saved views, templates (project and page), folders, lists and tags, by
+  // name (no project filter applies).
   for (const [type, table, alias, vis, name] of [
     ["view", "saved_views", "v", visibleViews, "v.name"],
     ["template", "project_templates", "t", visibleTemplates, "t.name"],
+    ["template", "page_templates", "t", visiblePageTemplates, "t.name"],
+    ["folder", "folders", "f", visibleFolders, "f.name"],
+    ["list", "lists", "l", visibleOwnedOf, "l.name"],
+    ["tag", "tags", "g", visibleOwnedOf, "g.name"],
   ] as const) {
     if (!types.has(type) || project || a.status === "closed") continue;
     const params = new Params();
     const scope = scopeFor(ctx.spaces, params);
     const q = params.add(a.query);
+    const stamp = ["folders", "lists", "tags"].includes(table)
+      ? `${alias}.created_at`
+      : `${alias}.updated_at`;
     const where = [
       vis(alias, scope),
       `(${name} ILIKE '%' || ${q} || '%' OR similarity(${name}, ${q}) > 0.3)`,
-      ...common(alias, params),
+      ...common(alias, params, stamp),
     ];
     const found = await ctx.db.query<SearchRow>(
       `SELECT ${alias}.id, '${type}' AS kind, ${name} AS title, ${alias}.team_id,
-              ${alias}.user_id, u.name AS author_name, ${alias}.updated_at,
+              ${alias}.user_id, u.name AS author_name, ${stamp} AS updated_at,
               false AS imported, NULL AS block_id, NULL AS snippet,
-              (similarity(${name}, ${q}) * 0.6 + 0.4 / (1 + extract(epoch FROM now() - ${alias}.updated_at) / 2592000))::text AS rank
+              (similarity(${name}, ${q}) * 0.6 + 0.4 / (1 + extract(epoch FROM now() - ${stamp}) / 2592000))::text AS rank
          FROM ${table} ${alias} JOIN users u ON u.id = ${alias}.user_id
         WHERE ${where.join(" AND ")}
         ORDER BY rank DESC LIMIT ${want}`,
@@ -352,7 +371,7 @@ export const search = defineCapability({
   name: "search",
   title: "Search Orbyn",
   description:
-    'Find tasks, events, pages, projects, work records, saved views and project templates by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
+    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
   input: searchInput,
   output: z.object({
     results: z.array(hit),

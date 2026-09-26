@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { fail, WORK_RECORD_KINDS, type WorkRecord } from "@orbyn/core";
+import {
+  fail,
+  WORK_RECORD_KINDS,
+  workRecordInput,
+  workRecordUpdate,
+  type ExperimentEvidence,
+  type WorkRecord,
+  type WorkRecordInput,
+  type WorkRecordUpdate,
+} from "@orbyn/core";
+import { actAs } from "../../lib/actor.js";
+import { periodMeasures } from "../followthrough/reality.js";
 import { type Db, type Queryable } from "../../db/pool.js";
 import { type UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -233,4 +244,186 @@ export async function linkDecision(
       [itemId, decisionId, projectId, userId],
     )
   ).rowCount;
+}
+
+/** Make a promise, decision or experiment (a promise may be offered to a teammate). */
+export async function createRecord(
+  db: Db,
+  u: UserRow,
+  input: WorkRecordInput,
+): Promise<WorkRecord> {
+  const d = workRecordInput.parse(input);
+  const ownerId = d.owner_id ?? u.id;
+  if (d.team_id) await requireTeam(d.team_id, u, "items:write", db);
+  await checkProject(db, d.project_id, d.team_id, u);
+  await checkDoc(db, d.source_doc_id, d.source_block_id, d.team_id, u);
+  await checkItem(db, d.source_item_id, d.team_id, u, false);
+  await checkItem(db, d.linked_item_id, d.team_id, u, true);
+  await checkOwner(db, ownerId, d.team_id, u);
+  if (ownerId !== u.id && d.kind !== "promise")
+    fail(422, "Only a promise can be offered to someone else.");
+  await actAs(db, u.id);
+  const id = (
+    await db.query<{ id: string }>(
+      `INSERT INTO work_records
+        (created_by, owner_id, team_id, project_id, kind, title, details,
+         status, due_at, review_at, source_doc_id, source_block_id,
+         source_item_id, linked_item_id, meeting_minutes, participant_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       RETURNING id`,
+      [
+        u.id,
+        ownerId,
+        d.team_id,
+        d.project_id,
+        d.kind,
+        d.title,
+        d.details,
+        ownerId === u.id ? "open" : "proposed",
+        d.due_at,
+        d.review_at,
+        d.source_doc_id,
+        d.source_block_id,
+        d.source_item_id,
+        d.linked_item_id,
+        d.meeting_minutes,
+        d.participant_count,
+      ],
+    )
+  ).rows[0].id;
+  if (ownerId !== u.id)
+    await notifyPromise(
+      db,
+      ownerId,
+      id,
+      `${u.name} asked you to promise: ${d.title}`,
+      d.due_at
+        ? "Take it on or say no in Projects → Promises."
+        : "Take it on or say no in Projects → Promises.",
+    );
+  return readRecord(db, id, u);
+}
+
+/** Change a record (version-checked). */
+export async function updateRecord(
+  db: Db,
+  u: UserRow,
+  id: string,
+  input: WorkRecordUpdate,
+): Promise<WorkRecord> {
+  const d = workRecordUpdate.parse(input);
+  const current = await lockRecord(db, id, u);
+  if (current.version !== d.version)
+    fail(409, "This record changed. Refresh and try again.");
+  if (d.status === "proposed" || d.status === "declined")
+    fail(422, "Use the response action for a proposed promise.");
+  if (d.status && ["proposed", "declined"].includes(current.status))
+    fail(409, "This promise is waiting for its owner's response.");
+  if (d.linked_item_id !== undefined)
+    await checkItem(db, d.linked_item_id, current.team_id, u, true);
+  await actAs(db, u.id);
+  await db.query(
+    `UPDATE work_records SET
+      title = coalesce($2, title), details = coalesce($3, details),
+      status = coalesce($4, status),
+      due_at = CASE WHEN $5::boolean THEN $6::timestamptz ELSE due_at END,
+      review_at = CASE WHEN $7::boolean THEN $8::timestamptz ELSE review_at END,
+      linked_item_id = CASE WHEN $9::boolean THEN $10::uuid ELSE linked_item_id END,
+      outcome = coalesce($11, outcome),
+      version = version + 1, updated_at = now()
+     WHERE id = $1`,
+    [
+      id,
+      d.title ?? null,
+      d.details ?? null,
+      d.status ?? null,
+      d.due_at !== undefined,
+      d.due_at ?? null,
+      d.review_at !== undefined,
+      d.review_at ?? null,
+      d.linked_item_id !== undefined,
+      d.linked_item_id ?? null,
+      d.outcome ?? null,
+    ],
+  );
+  return readRecord(db, id, u);
+}
+
+/** Take on, or turn down, a promise offered to `u`. */
+export async function respondToRecord(
+  db: Db,
+  u: UserRow,
+  id: string,
+  decision: "accept" | "decline",
+): Promise<WorkRecord> {
+  const current = (
+    await db.query<RecordRow>(
+      "SELECT id, created_by, team_id, owner_id, project_id, kind, status, version FROM work_records WHERE id = $1 FOR UPDATE",
+      [id],
+    )
+  ).rows[0];
+  if (!current || current.owner_id !== u.id) fail(404, "Promise not found");
+  if (current.team_id) await requireTeam(current.team_id, u, "items:read", db);
+  if (current.kind !== "promise" || current.status !== "proposed")
+    fail(409, "This promise is no longer waiting for a response.");
+  await actAs(db, u.id);
+  await db.query(
+    "UPDATE work_records SET status = $2, version = version + 1, updated_at = now() WHERE id = $1",
+    [id, decision === "accept" ? "open" : "declined"],
+  );
+  const record = await readRecord(db, id, u);
+  await notifyPromise(
+    db,
+    current.created_by,
+    id,
+    decision === "accept"
+      ? `${u.name} promised: ${record.title}`
+      : `${u.name} can't promise: ${record.title}`,
+    decision === "accept"
+      ? "It's on their list now."
+      : "You may want to ask someone else.",
+  );
+  return record;
+}
+
+/**
+ * An experiment's before and after, from what was planned, focused on and
+ * finished: a fair look, not a verdict.
+ */
+export async function recordEvidence(
+  db: Queryable,
+  u: UserRow,
+  id: string,
+): Promise<ExperimentEvidence> {
+  const record = await readRecord(db, id, u);
+  if (record.kind !== "experiment")
+    fail(422, "Only an experiment has before and after.");
+  const start = new Date(record.created_at);
+  const end = new Date(
+    Math.min(
+      Date.now(),
+      record.review_at ? Date.parse(record.review_at) : Date.now(),
+    ),
+  );
+  // At least a week either side, so a new experiment still compares.
+  const span = Math.max(end.getTime() - start.getTime(), 7 * 86_400_000);
+  const before = { from: new Date(start.getTime() - span), to: start };
+  const during = { from: start, to: new Date(start.getTime() + span) };
+  const who = record.owner_id ?? record.created_by;
+  const [b, d] = await Promise.all([
+    periodMeasures(db, who, before.from, before.to),
+    periodMeasures(db, who, during.from, during.to),
+  ]);
+  return {
+    before: {
+      ...b,
+      from: before.from.toISOString(),
+      to: before.to.toISOString(),
+    },
+    during: {
+      ...d,
+      from: during.from.toISOString(),
+      to: during.to.toISOString(),
+    },
+  };
 }

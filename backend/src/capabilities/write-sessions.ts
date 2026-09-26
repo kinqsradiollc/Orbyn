@@ -20,7 +20,7 @@ import {
 import { cleanTitle, localTime } from "./format.js";
 import { minutesText, projectId, uuidOf } from "./common.js";
 import { READ } from "./common.js";
-import { refUrl } from "./refs.js";
+import { appUrl, refUrl } from "./refs.js";
 import {
   CapabilityError,
   defineCapability,
@@ -31,6 +31,7 @@ import {
   ADDS,
   EDITS,
   MAX_BATCH,
+  actorOf,
   clientRefInput,
   dbOf,
   destination,
@@ -41,6 +42,12 @@ import {
   type DoneEntry,
 } from "./write.js";
 import { visibleItem } from "./write-tasks.js";
+import { applyHabitPlan, habitPlan } from "../modules/planner/routines.js";
+import {
+  applyRevision,
+  planRevision,
+  studyOverview,
+} from "../modules/study/service.js";
 
 /**
  * Sessions (time set aside for a task): previewing a plan without touching
@@ -67,6 +74,10 @@ type Sealed = {
   d: string;
   /** Expiry (ms since the epoch). */
   x: number;
+  /** A habit or revision plan instead of a task plan, and what it needs. */
+  k?: "habits" | "revision";
+  h?: { start_date?: string; days: number };
+  r?: { key: string; minutes: number };
 };
 
 let planKey: Promise<Buffer> | null = null;
@@ -148,7 +159,7 @@ export const planSchedule = defineCapability({
   name: "plan_schedule",
   title: "Preview a plan",
   description:
-    "Previews sessions for open tasks over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.",
+    "Previews sessions for open tasks (or, mode habits, for the person's habits) over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.",
   input: z
     .object({
       days: z.number().int().min(1).max(14).optional(),
@@ -163,6 +174,10 @@ export const planSchedule = defineCapability({
         .optional()
         .describe("Only plan these tasks."),
       project: z.string().trim().max(300).optional(),
+      mode: z
+        .enum(["tasks", "habits"])
+        .optional()
+        .describe("habits: sessions for the person's habits instead."),
     })
     .strict(),
   output: z.object({
@@ -201,6 +216,7 @@ export const planSchedule = defineCapability({
         "FORBIDDEN",
         "Plans are made on the person's own calendar, which this connection can't reach.",
       );
+    if (a.mode === "habits") return planHabits(ctx, a.days ?? 7, a.start_date);
     const input = {
       ...(a.days ? { days: a.days } : {}),
       ...(a.start_date ? { start_date: a.start_date } : {}),
@@ -289,6 +305,111 @@ export const planSchedule = defineCapability({
   },
 });
 
+/** What a habit or revision plan places, as one digest. */
+const blocksDigest = (
+  blocks: { id?: string; start_at: string; end_at: string }[],
+) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(blocks.map((b) => [b.id ?? "", b.start_at, b.end_at])),
+    )
+    .digest("base64url");
+
+/** Habit sessions previewed (plan_schedule mode habits). */
+async function planHabits(
+  ctx: CapabilityContext,
+  days: number,
+  startDate: string | undefined,
+) {
+  const p = ctx.principal;
+  const h = { ...(startDate ? { start_date: startDate } : {}), days };
+  const plan = await habitPlan(ctx.db, p.user.id, h, ctx.now);
+  const expires = ctx.now.getTime() + PLAN_TOKEN_MINUTES * 60_000;
+  const token = await sealPlan({
+    u: p.user.id,
+    g: p.grant_id,
+    s: {},
+    n: ctx.now.toISOString(),
+    f: "",
+    d: blocksDigest(plan.blocks.map((b) => ({ id: b.habit_id, ...b }))),
+    x: expires,
+    k: "habits",
+    h,
+  });
+  const tz = ctx.timezone;
+  const minutes = plan.blocks.reduce(
+    (n, b) => n + (Date.parse(b.end_at) - Date.parse(b.start_at)) / 60_000,
+    0,
+  );
+  const structured = {
+    summary: plan.blocks.length
+      ? `${plan.blocks.length} habit session${plan.blocks.length === 1 ? "" : "s"} over ${days} day${days === 1 ? "" : "s"}.`
+      : "No habit sessions to place.",
+    sessions: plan.blocks.map((b) => ({
+      task: `habit:${b.habit_id}`,
+      title: cleanTitle(b.name),
+      start_at: b.start_at,
+      end_at: b.end_at,
+      local: `${localTime(new Date(b.start_at), tz)}–${localTime(new Date(b.end_at), tz).slice(-5)}`,
+      part: null,
+    })),
+    moves: [],
+    unplaced: plan.summary
+      .filter((s) => s.placed < s.needed)
+      .map((s) => ({
+        task: `habit:${s.habit_id}`,
+        title: cleanTitle(s.name),
+        reason: s.reason ?? `${s.placed} of ${s.needed} placed`,
+      })),
+    at_risk: [],
+    planned_minutes: Math.round(minutes),
+    free_minutes: 0,
+    plan_token: token,
+    expires_at: new Date(expires).toISOString(),
+  };
+  return {
+    structured,
+    markdown: [
+      structured.summary,
+      ...structured.sessions.map((s) => `- ${s.local} · ${s.title}`),
+      ...structured.unplaced.map(
+        (u) => `- Not all placed: ${u.title} (${u.reason})`,
+      ),
+      "",
+      `Nothing is on the calendar yet. To keep these, call schedule_sessions with plan_token (valid ${PLAN_TOKEN_MINUTES} minutes).`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * A revision plan (plan_revision) as a plan_token: schedule_sessions works
+ * it out again, and puts a "Revise for …" task with its sessions on the
+ * calendar when nothing changed.
+ */
+export async function sealRevision(
+  ctx: CapabilityContext,
+  key: string,
+  minutes: number,
+  sessions: { start_at: string; end_at: string }[],
+) {
+  const p = ctx.principal;
+  const expires = ctx.now.getTime() + PLAN_TOKEN_MINUTES * 60_000;
+  return {
+    token: await sealPlan({
+      u: p.user.id,
+      g: p.grant_id,
+      s: {},
+      n: ctx.now.toISOString(),
+      f: "",
+      d: blocksDigest(sessions),
+      x: expires,
+      k: "revision",
+      r: { key, minutes },
+    }),
+    expires_at: new Date(expires).toISOString(),
+  };
+}
+
 // --- schedule_sessions -------------------------------------------------
 
 /** Sessions as the answers list them. */
@@ -308,7 +429,7 @@ export const scheduleSessions = defineCapability({
   name: "schedule_sessions",
   title: "Put sessions on the calendar",
   description:
-    "Adds sessions to the person's calendar: a plan_token's plan, or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.",
+    "Adds sessions to the person's calendar: a plan_token's plan (from plan_schedule or plan_revision), or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.",
   input: z
     .object({
       plan_token: z.string().trim().max(8000).optional(),
@@ -364,6 +485,7 @@ export const scheduleSessions = defineCapability({
           "That plan was already put on the calendar.",
           "Call plan_schedule again for a new plan.",
         );
+      if (sealed.k) return scheduleSealed(ctx, sealed);
       const state = {
         ...planPreviewInput.parse(sealed.s),
         ...(sealed.s.project_id ? { project_id: sealed.s.project_id } : {}),
@@ -485,6 +607,104 @@ export const scheduleSessions = defineCapability({
     });
   },
 });
+
+/** Habit and revision plans: worked out again, then put on the calendar. */
+async function scheduleSealed(ctx: CapabilityContext, sealed: Sealed) {
+  const p = ctx.principal;
+  const db = dbOf(ctx);
+  const at = new Date(sealed.n);
+  if (destination(ctx, null, "W1") === "review")
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "This connection can only suggest changes, and habit and revision plans don't go through review.",
+      "Ask the person to apply the plan in Orbyn.",
+    );
+  const stale = () =>
+    new CapabilityError(
+      "STALE",
+      "The calendar changed since this plan was made.",
+      "Preview it again and schedule the new plan.",
+    );
+  const undo: UndoOp[] = [];
+  const done: DoneEntry[] = [];
+  if (sealed.k === "habits") {
+    const again = await habitPlan(db, p.user.id, sealed.h!, at);
+    if (
+      blocksDigest(again.blocks.map((b) => ({ id: b.habit_id, ...b }))) !==
+      sealed.d
+    )
+      throw stale();
+    if (!again.blocks.length)
+      return finishWrite(ctx, "Scheduling", { done: [] });
+    const before = new Set(
+      (
+        await db.query<{ id: string }>(
+          "SELECT id FROM habit_blocks WHERE user_id = $1",
+          [p.user.id],
+        )
+      ).rows.map((r) => r.id),
+    );
+    const placed = (
+      await applyHabitPlan(db, p.user.id, {
+        blocks: again.blocks.map((b) => ({
+          habit_id: b.habit_id,
+          start_at: b.start_at,
+          end_at: b.end_at,
+        })),
+      })
+    ).filter((b) => !before.has(b.id));
+    if (placed.length)
+      undo.push({ op: "habit_blocks.delete", ids: placed.map((b) => b.id) });
+    for (const b of placed)
+      done.push({
+        id: `habit:${b.habit_id}`,
+        title: `${cleanTitle(b.name)} · ${localTime(new Date(b.start_at), ctx.timezone)}`,
+        url: `${appUrl()}/app/today`,
+        version: null,
+        change: `Planned (habit session ${b.id})`,
+      });
+    return finishWrite(ctx, "Scheduling", {
+      done,
+      skipped:
+        placed.length < again.blocks.length
+          ? [
+              {
+                index: 0,
+                reason: `${again.blocks.length - placed.length} left out: the time is taken now.`,
+              },
+            ]
+          : [],
+      undo,
+    });
+  }
+  const r = sealed.r!;
+  const overview = await studyOverview(p.user.id, at, db);
+  const exam = overview.exams.find((e) => e.key === r.key);
+  if (!exam) throw stale();
+  const again = await planRevision(p.user.id, exam, r.minutes, at, db);
+  if (blocksDigest(again.sessions) !== sealed.d) throw stale();
+  if (!again.sessions.length)
+    return finishWrite(ctx, "Scheduling", { done: [] });
+  const made = await applyRevision(db, actorOf(p) as never, {
+    key: r.key,
+    sessions: again.sessions,
+  });
+  const task = (
+    await db.query<{ version: number; title: string }>(
+      "SELECT version, title FROM items WHERE id = $1",
+      [made.item_id],
+    )
+  ).rows[0];
+  undo.push({ op: "item.delete", id: made.item_id, version: task.version });
+  done.push({
+    id: `task:${made.item_id}`,
+    title: cleanTitle(task.title),
+    url: refUrl({ type: "task", id: made.item_id }),
+    version: task.version,
+    change: `Made, with ${made.block_ids.length} revision session${made.block_ids.length === 1 ? "" : "s"}`,
+  });
+  return finishWrite(ctx, "Scheduling", { done, undo });
+}
 
 // --- reschedule_sessions -----------------------------------------------
 

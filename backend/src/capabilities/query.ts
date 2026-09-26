@@ -122,6 +122,7 @@ export const filterFields = {
     .max(300)
     .optional()
     .describe("Rows linking to doc:, task: or project:."),
+  starred: z.boolean().optional(),
   sort: z.enum(VIEW_SORTS).optional(),
   group_by: z.enum(VIEW_GROUPS).optional(),
 };
@@ -265,6 +266,11 @@ export async function runView(
         WHERE l.link_kind = 'related' AND l.target_kind = '${source}'
           AND l.target_id = ${x}.id::text
           AND l.source_kind = ${k} AND l.source_id::text = ${t}))`);
+  }
+  if (d.starred) {
+    if (over !== "docs" && over !== "projects") unsupported("starred");
+    where.push(`EXISTS (SELECT 1 FROM favourites f WHERE f.user_id = ${scope.user}
+      AND f.kind = '${over === "docs" ? "doc" : "project"}' AND f.target_id = ${x}.id)`);
   }
   const projectName = (col: string) => {
     const ps = scopeFor(ctx.spaces, p);

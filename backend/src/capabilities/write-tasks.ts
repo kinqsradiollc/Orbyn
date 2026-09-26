@@ -14,6 +14,7 @@ import {
   type ItemRow,
 } from "../modules/items/service.js";
 import { editSteps, mergedItem } from "../modules/proposals/service.js";
+import { skipOccurrence } from "../modules/items/occurrences.js";
 import { cleanTitle } from "./format.js";
 import { projectId, teamFilter, uuidOf } from "./common.js";
 import { parseRef, refUrl } from "./refs.js";
@@ -333,6 +334,9 @@ const change = z
       .describe(
         'Move it to "personal" or another team: always goes to review.',
       ),
+    skip: iso
+      .optional()
+      .describe("A repeating item: skip this one occurrence (its start)."),
   })
   .strict();
 
@@ -380,7 +384,20 @@ export const updateTasks = defineCapability({
           "Fetch it again for its current version, then retry with that version.",
           { id: `task:${row.id}`, version: row.version },
         );
-      const { id: _id, version: _v, team, project, ...fields } = c;
+      const { id: _id, version: _v, team, project, skip, ...fields } = c;
+      if (skip) {
+        destination(ctx, row.team_id, "W2");
+        await skipOccurrence(db, actor, row.id, skip);
+        const after = await lockItem(db, row.id);
+        done.push(itemEntry(after, "Skipped one occurrence"));
+        lastTeam = row.team_id;
+        if (
+          !Object.keys(fields).length &&
+          team === undefined &&
+          project === undefined
+        )
+          continue;
+      }
       const patch: Record<string, unknown> = { ...fields };
       if (project !== undefined)
         patch.project_id = project === null ? null : projectId(project);

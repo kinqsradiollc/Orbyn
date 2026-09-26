@@ -42,6 +42,7 @@ import { createProject, deleteProject } from "../projects/service.js";
 import { applyProject } from "../ai/project-proposal.js";
 import { applySessionChange } from "../ai/session-change.js";
 import { linkDecision } from "../work-records/service.js";
+import { actionStaleness, applyAction } from "./actions.js";
 
 /**
  * Proposals: changes waiting for a person's approval (the Review inbox).
@@ -396,6 +397,8 @@ async function staleness(
         return "The task is closed or gone.";
       return null;
     }
+    case "action":
+      return actionStaleness(db, userId, c);
     default:
       return null;
   }
@@ -555,6 +558,8 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
         headline: `Unlink ${quote(c.title)}`,
         rows: [],
       };
+    case "action":
+      return { ...base, headline: c.headline, rows: c.rows };
   }
 }
 
@@ -982,6 +987,9 @@ export async function applyChange(
       return {};
     case "link.remove":
       await removeLink(db, u, c);
+      return {};
+    case "action":
+      await applyAction(db, u, c);
       return {};
   }
 }

@@ -1,5 +1,8 @@
 import {
   HttpError,
+  type AgentGrant,
+  type AgentToolset,
+  type McpCatalog,
   type SavedView,
   type SavedViewInput,
   type SavedViewRows,
@@ -2097,6 +2100,17 @@ export class OrbynClient {
   /** Your connected agents, the MCP address, and until when old keys work there. */
   agents() {
     return this.request<AgentsOverview>("/me/agents");
+  }
+  /** The MCP server's public description, for the developer page. */
+  developerCatalog() {
+    return this.request<McpCatalog>("/developers/mcp", { anonymous: true });
+  }
+  /** A connection's toolsets besides core (Settings → Connected agents). */
+  setAgentToolsets(id: string, toolsets: AgentToolset[]) {
+    return this.request<AgentGrant>(`/me/agents/${id}/toolsets`, {
+      method: "PUT",
+      body: { toolsets },
+    });
   }
   /** A new agent key; the returned `key` is shown once. */
   createAgentKey(input: AgentKeyInput) {

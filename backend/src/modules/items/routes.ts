@@ -55,6 +55,7 @@ import {
   via,
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { addProgressUpdate, logTime } from "./progress.js";
 import {
   visibleItems,
   visibleOwned,
@@ -305,15 +306,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = timeLogInput.parse(r.body);
-    return transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      await db.query(
-        "UPDATE items SET spent_minutes = spent_minutes + $1, updated_at = now() WHERE id = $2",
-        [d.minutes, id],
-      );
-      return itemDetail(id, via(db));
-    });
+    return transaction((db) => logTime(db, u, id, d.minutes));
   });
 
   // Remove one occurrence from a repeating item ("delete this one").
@@ -577,55 +570,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = progressUpdateInput.parse(r.body);
-    const detail = await transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      if (d.progress !== undefined) {
-        const steps = (
-          await db.query<{ n: number }>(
-            "SELECT count(*)::int AS n FROM item_steps WHERE item_id=$1",
-            [id],
-          )
-        ).rows[0].n;
-        if (steps > 0) fail(409, "This task's progress follows its checklist.");
-      }
-      // A new status goes the way every edit does (see setItemStatus): a
-      // finished task loses its future sessions, a repeating one moves on to
-      // its next occurrence, and webhooks and open apps hear about it.
-      const changed =
-        d.status && d.status !== item.status
-          ? await setItemStatus(db, u, id, d.status)
-          : null;
-      // A repeating task that moved on has already said so in its timeline,
-      // so a bare tick doesn't add a second, empty entry.
-      const movedOn = !!changed && changed.status !== d.status;
-      if (d.body || d.progress !== undefined || !movedOn) {
-        await db.query(
-          "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
-          [
-            id,
-            u.id,
-            d.body,
-            movedOn ? null : (d.status ?? null),
-            d.progress ?? null,
-          ],
-        );
-        await db.query(
-          "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
-          [id],
-        );
-      }
-      if (d.progress !== undefined)
-        await db.query(
-          `UPDATE items SET
-             progress = $1::int,
-             status = CASE WHEN status = 'todo' AND $1::int > 0 THEN 'in_progress' ELSE status END,
-             updated_at = now()
-           WHERE id = $2`,
-          [d.progress, id],
-        );
-      return itemDetail(id, via(db));
-    });
+    const detail = await transaction((db) => addProgressUpdate(db, u, id, d));
     reply.code(201);
     return detail;
   });

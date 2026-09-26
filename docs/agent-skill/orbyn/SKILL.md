@@ -216,6 +216,7 @@ A saved view is a named filter, sort, grouping and layout, like an Obsidian Base
 | updated_after                     | as due_after                                                                                 |
 | kind                              | a task, page or record kind                                                                  |
 | links_to                          | `doc:<id>`, `task:<id>` or `project:<id>`: rows that link there (or are related to it)       |
+| starred                           | true: only what the person starred (pages and projects)                                      |
 | sort                              | `due`, `updated`, `created`, `priority`, `title`                                             |
 | group_by                          | `status`, `priority`, `project`, `stage`, `assignee`, `team`, `kind`, `due`                  |
 | columns                           | `status`, `due`, `priority`, `project`, `assignee`, `team`, `updated`, `provenance` (tables) |

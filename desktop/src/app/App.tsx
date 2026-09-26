@@ -53,6 +53,7 @@ import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
+import { DeveloperPage } from "../features/developers/DeveloperPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -342,15 +343,26 @@ export function App() {
                   description: "Whether every part of Orbyn is up right now.",
                   index: false,
                 }
-              : token
-                ? { title: view + " · Orbyn", description: app, index: false }
-                : path === "/login"
-                  ? { title: "Sign in · Orbyn", description: app, index: false }
-                  : {
-                      title: "Create your space · Orbyn",
-                      description: app,
-                      index: false,
-                    },
+              : path === "/developers/mcp"
+                ? {
+                    title: "Orbyn for AI agents (MCP) · Orbyn",
+                    description:
+                      "Connect Claude, ChatGPT, Claude Code, Codex or Cursor to Orbyn over MCP: the address, signing in, limits, errors and every tool.",
+                    index: true,
+                  }
+                : token
+                  ? { title: view + " · Orbyn", description: app, index: false }
+                  : path === "/login"
+                    ? {
+                        title: "Sign in · Orbyn",
+                        description: app,
+                        index: false,
+                      }
+                    : {
+                        title: "Create your space · Orbyn",
+                        description: app,
+                        index: false,
+                      },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -375,6 +387,7 @@ export function App() {
   const inShell = !(
     isOAuth ||
     path === "/status" ||
+    path === "/developers/mcp" ||
     path === "/terms" ||
     path === "/privacy" ||
     (!nativeDesktop && path === "/")
@@ -652,6 +665,16 @@ export function App() {
   if (path === "/status")
     return (
       <StatusPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
+  // The developer page: public, signed in or not.
+  if (path === "/developers/mcp")
+    return (
+      <DeveloperPage
         signedIn={!!token}
         onNavigate={navigatePath}
         onHome={nativeDesktop ? undefined : () => navigatePath("/")}

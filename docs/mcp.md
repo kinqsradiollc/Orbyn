@@ -13,7 +13,7 @@ Older setups that use the web app's `/api/mcp` reach the same server.
 ## Signing in
 
 - **Agent keys.** Make a key in Settings → Connected agents. Choose what it may do and which spaces it sees (Personal and any of your teams). Keys last 30 days unless you choose otherwise, and never more than 365. Send it as `Authorization: Bearer oak_…`. The key is shown once and stored only as a hash. You can revoke it at any time, and each key has its own activity list.
-- **Access levels.** See: Read your tasks, calendar, projects and pages. Only what you can open. See and suggest: Every change waits in your Review inbox until you approve it. See and change: Creates and edits tasks, sessions and pages directly. Deletes, emails to people and big changes still wait for your review. In phase A1 every tool reads; changes arrive in phase A3.
+- **Access levels.** See: Read your tasks, calendar, projects and pages. Only what you can open. See and suggest: Every change waits in your Review inbox until you approve it. See and change: Creates and edits tasks, sessions and pages directly. Deletes, emails to people and big changes still wait for your review.
 - **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off (only when signed in; a personal API key can't change it). Leaving a team takes it off your agent keys, and joining again doesn't give it back to them.
 - **Hide outside content.** A connection can leave out text from outside Orbyn: events from subscribed calendars (shown as busy time), what imported files say, tasks and events sent by email (their titles show as "Task from email" or "Event from email", everywhere they are listed) and what booking guests typed (their events show as "Booking"). The agent sees that something is there, not what it says. Imported pages keep their titles. Without it, that text comes back fenced as untrusted content and labelled with where it came from; a booking guest's email address never shows.
 - **Personal API keys (`ok_`).** They keep working here as a legacy connection for 90 days from this release. Answers carry `Deprecation` and `Sunset` headers. After that they work only with the REST API and CalDAV.
@@ -97,32 +97,76 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 - `search` and `fetch` follow OpenAI's contract: `search` needs only `query`, `fetch` takes `id`, and their text content is the JSON of the structured content.
 - Search is by words, the letters of a title, and recency. No embeddings or AI are used here.
 
+## Toolsets
+
+Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.
+
+| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                       |
+| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links` |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                        |
+| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                |
+| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                     |
+| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                            |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                             |
+
 ## Tools
 
-| Tool                  | Title                        | Kind        | Needs            |
-| --------------------- | ---------------------------- | ----------- | ---------------- |
-| `get_context`         | Who and where                | read        | read, core       |
-| `search`              | Search Orbyn                 | read        | read, core       |
-| `fetch`               | Open by id                   | read        | read, core       |
-| `get_today`           | Today                        | read        | read, core       |
-| `get_calendar`        | Calendar                     | read        | read, core       |
-| `query`               | List with filters            | read        | read, core       |
-| `get_project`         | Open a project               | read        | read, core       |
-| `find_passages`       | Find passages with citations | read        | read, core       |
-| `create_tasks`        | Add tasks or events          | write       | suggest, core    |
-| `update_tasks`        | Change tasks or events       | destructive | suggest, core    |
-| `complete_tasks`      | Complete or reopen tasks     | destructive | write, core      |
-| `edit_checklist`      | Edit a task's checklist      | destructive | write, core      |
-| `plan_schedule`       | Preview a plan               | read        | read, core       |
-| `schedule_sessions`   | Put sessions on the calendar | write       | write, core      |
-| `reschedule_sessions` | Move or remove sessions      | destructive | write, core      |
-| `create_doc`          | Write a new page             | write       | suggest, core    |
-| `edit_doc`            | Edit a page                  | destructive | suggest, core    |
-| `link`                | Link or unlink               | write       | write, core      |
-| `create_project`      | Start a project              | write       | suggest, core    |
-| `propose_changes`     | Propose changes for review   | write       | suggest, core    |
-| `get_links`           | Backlinks and links          | read        | read, core       |
-| `save_view`           | Save a view                  | write       | write, workspace |
+| Tool                      | Title                                  | Kind        | Needs                |
+| ------------------------- | -------------------------------------- | ----------- | -------------------- |
+| `get_context`             | Who and where                          | read        | read, core           |
+| `search`                  | Search Orbyn                           | read        | read, core           |
+| `fetch`                   | Open by id                             | read        | read, core           |
+| `get_today`               | Today                                  | read        | read, core           |
+| `get_calendar`            | Calendar                               | read        | read, core           |
+| `query`                   | List with filters                      | read        | read, core           |
+| `get_project`             | Open a project                         | read        | read, core           |
+| `find_passages`           | Find passages with citations           | read        | read, core           |
+| `create_tasks`            | Add tasks or events                    | write       | suggest, core        |
+| `update_tasks`            | Change tasks or events                 | destructive | suggest, core        |
+| `complete_tasks`          | Complete or reopen tasks               | destructive | write, core          |
+| `edit_checklist`          | Edit a task's checklist                | destructive | write, core          |
+| `plan_schedule`           | Preview a plan                         | read        | read, core           |
+| `schedule_sessions`       | Put sessions on the calendar           | write       | write, core          |
+| `reschedule_sessions`     | Move or remove sessions                | destructive | write, core          |
+| `create_doc`              | Write a new page                       | write       | suggest, core        |
+| `edit_doc`                | Edit a page                            | destructive | suggest, core        |
+| `link`                    | Link or unlink                         | write       | write, core          |
+| `create_project`          | Start a project                        | write       | suggest, core        |
+| `propose_changes`         | Propose changes for review             | write       | suggest, core        |
+| `get_links`               | Backlinks and links                    | read        | read, core           |
+| `save_view`               | Save a view                            | write       | write, workspace     |
+| `update_project`          | Change a project                       | destructive | write, workspace     |
+| `get_history`             | Show history                           | read        | read, workspace      |
+| `save_template`           | Save a template                        | write       | write, workspace     |
+| `organize`                | Organise lists, tags and folders       | write       | write, workspace     |
+| `comment_on_doc`          | Comment on a page                      | write       | write, workspace     |
+| `resolve_suggestions`     | Take or leave suggestions              | destructive | write, workspace     |
+| `tasks_from_doc`          | Make tasks from a page                 | write       | write, workspace     |
+| `get_work_patterns`       | How you work                           | read        | read, planner        |
+| `what_if`                 | What if…                               | read        | read, planner        |
+| `log_focus`               | Log focus time                         | write       | write, planner       |
+| `set_focus_timer`         | Start or stop the focus timer          | destructive | write, planner       |
+| `manage_routines`         | Frames, habits and places              | destructive | write, planner       |
+| `update_planner_settings` | Change planner settings                | destructive | write, planner       |
+| `get_study`               | Study overview                         | read        | read, study          |
+| `update_study`            | Record reviews and exams               | write       | write, study         |
+| `plan_revision`           | Preview revision sessions              | read        | read, study          |
+| `get_follow_through`      | Follow-through                         | read        | read, followthrough  |
+| `add_progress`            | Add a progress note                    | write       | write, followthrough |
+| `answer_ask`              | Answer an ask                          | destructive | write, followthrough |
+| `save_record`             | Save a promise, decision or experiment | destructive | write, followthrough |
+| `mark_notifications_read` | Mark notices read                      | destructive | write, followthrough |
+| `get_team`                | Open a team                            | read        | read, teams          |
+| `find_time`               | Find a time                            | read        | read, teams          |
+| `get_bookings`            | Bookings                               | read        | read, booking        |
+| `booking_action`          | Act on a booking                       | destructive | write, booking       |
+| `list_imports`            | Imports                                | read        | read, files          |
+| `start_import`            | Start an import                        | write       | write, files         |
+| `cancel_import`           | Cancel an import                       | destructive | write, files         |
+| `import_tasks`            | Import tasks                           | write       | write, files         |
 
 ### `get_context`
 
@@ -132,23 +176,23 @@ No arguments.
 
 ### `search`
 
-Find tasks, events, pages, projects, work records, saved views and project templates by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.
+Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.
 
-| Argument           | Type                                                                    | Notes                                                                                                          |
-| ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `query` (required) | string                                                                  | Words to look for.                                                                                             |
-| `types`            | list of `task`, `event`, `doc`, `project`, `record`, `view`, `template` | Only these kinds of things.                                                                                    |
-| `match`            | `words`, `title`                                                        | "title" finds things by name as the quick switcher does; "words" searches everything written. Default "words". |
-| `project`          | string                                                                  | A project: `project:<id>`, its id or its link.                                                                 |
-| `team`             | string                                                                  | "personal", or a team id from get_context.                                                                     |
-| `status`           | `open`, `closed`, `any`                                                 | Tasks and projects that are open, finished, or either. Default "any".                                          |
-| `updated_after`    | ISO 8601 instant                                                        | Only things changed since this instant.                                                                        |
-| `limit`            | integer                                                                 | Default 10.                                                                                                    |
-| `cursor`           | string                                                                  | next_cursor from the previous page of the same call.                                                           |
+| Argument           | Type                                                                                             | Notes                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `query` (required) | string                                                                                           | Words to look for.                                                                                             |
+| `types`            | list of `task`, `event`, `doc`, `project`, `record`, `view`, `template`, `folder`, `list`, `tag` | Only these kinds of things.                                                                                    |
+| `match`            | `words`, `title`                                                                                 | "title" finds things by name as the quick switcher does; "words" searches everything written. Default "words". |
+| `project`          | string                                                                                           | A project: `project:<id>`, its id or its link.                                                                 |
+| `team`             | string                                                                                           | "personal", or a team id from get_context.                                                                     |
+| `status`           | `open`, `closed`, `any`                                                                          | Tasks and projects that are open, finished, or either. Default "any".                                          |
+| `updated_after`    | ISO 8601 instant                                                                                 | Only things changed since this instant.                                                                        |
+| `limit`            | integer                                                                                          | Default 10.                                                                                                    |
+| `cursor`           | string                                                                                           | next_cursor from the previous page of the same call.                                                           |
 
 ### `fetch`
 
-Open one thing: task:, `event:<id>@<occurrence>`, `doc:<id>#<line>`, project:, record:, template:, view: (run: its rows as a table) or proposal:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.
+Open one thing: task:, `event:<id>@<occurrence>`, `doc:<id>#<line>`, project:, record:, template:, view: (run: its rows as a table), proposal: or import:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.
 
 | Argument        | Type   | Notes                                                      |
 | --------------- | ------ | ---------------------------------------------------------- |
@@ -195,6 +239,7 @@ Runs a saved view `(view:<id>)` or an ad-hoc one over tasks, events, pages, proj
 | `folder`        | id                                                                          |                                                      |
 | `kind`          | string                                                                      |                                                      |
 | `links_to`      | string                                                                      | Rows linking to doc:, task: or project:.             |
+| `starred`       | boolean                                                                     |                                                      |
 | `sort`          | `due`, `updated`, `created`, `priority`, `title`                            |                                                      |
 | `group_by`      | `status`, `priority`, `project`, `stage`, `assignee`, `team`, `kind`, `due` |                                                      |
 | `limit`         | integer                                                                     | Default 25.                                          |
@@ -263,18 +308,19 @@ Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch
 
 ### `plan_schedule`
 
-Previews sessions for open tasks over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.
+Previews sessions for open tasks (or, mode habits, for the person's habits) over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.
 
-| Argument     | Type           | Notes                                           |
-| ------------ | -------------- | ----------------------------------------------- |
-| `days`       | integer        |                                                 |
-| `start_date` | string         | First day (YYYY-MM-DD, the person's time zone). |
-| `tasks`      | list of string | Only plan these tasks.                          |
-| `project`    | string         |                                                 |
+| Argument     | Type              | Notes                                             |
+| ------------ | ----------------- | ------------------------------------------------- |
+| `days`       | integer           |                                                   |
+| `start_date` | string            | First day (YYYY-MM-DD, the person's time zone).   |
+| `tasks`      | list of string    | Only plan these tasks.                            |
+| `project`    | string            |                                                   |
+| `mode`       | `tasks`, `habits` | habits: sessions for the person's habits instead. |
 
 ### `schedule_sessions`
 
-Adds sessions to the person's calendar: a plan_token's plan, or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.
+Adds sessions to the person's calendar: a plan_token's plan (from plan_schedule or plan_revision), or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.
 
 | Argument     | Type           | Notes                                                                                                                                      |
 | ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -295,16 +341,17 @@ Moves sessions, pushes them to the next free working slot, or removes them (ids 
 
 Makes a page, note or meeting note from Markdown (at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an id. Where this connection may only suggest, it waits in the Review inbox.
 
-| Argument              | Type                     | Notes                                                                                                                                      |
-| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `title` (required)    | string                   |                                                                                                                                            |
-| `markdown` (required) | string                   |                                                                                                                                            |
-| `kind`                | `doc`, `note`, `meeting` | Default "doc".                                                                                                                             |
-| `team`                | string                   | "personal" (the default), or a team id.                                                                                                    |
-| `folder_id`           | id                       |                                                                                                                                            |
-| `project`             | string                   |                                                                                                                                            |
-| `event`               | string                   | An event this page is the notes of `(event:<id>)`.                                                                                         |
-| `client_ref`          | string                   | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+| Argument           | Type                     | Notes                                                                                                                                      |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `title` (required) | string                   |                                                                                                                                            |
+| `markdown`         | string                   | The page's lines (or template instead).                                                                                                    |
+| `template`         | string                   | A page template's id, or a starter's (search types: template).                                                                             |
+| `kind`             | `doc`, `note`, `meeting` | Default "doc".                                                                                                                             |
+| `team`             | string                   | "personal" (the default), or a team id.                                                                                                    |
+| `folder_id`        | id                       |                                                                                                                                            |
+| `project`          | string                   |                                                                                                                                            |
+| `event`            | string                   | An event this page is the notes of `(event:<id>)`.                                                                                         |
+| `client_ref`       | string                   | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `edit_doc`
 
@@ -344,11 +391,12 @@ Starts a personal or team project with stages, first tasks and an optional main 
 | `deadline`        | ISO 8601 instant | The latest date for its tasks (ISO 8601).                                                                                                  |
 | `stages`          | list of object   |                                                                                                                                            |
 | `page`            | object           |                                                                                                                                            |
+| `template`        | string           | Start from a saved template `(template:<id>)`: always reviewed.                                                                            |
 | `client_ref`      | string           | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `propose_changes`
 
-Files one proposal the person approves or declines in Orbyn's Review inbox, and changes nothing else. For what agents never do directly: deleting tasks, pages or projects, removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with `fetch("proposal:<id>")`. A proposal waits 72 hours.
+Files one proposal the person approves or declines in Orbyn's Review inbox, and changes nothing else. For what agents never do directly: deleting anything (delete_task, delete_doc, delete_project, or delete with what), removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, a page review verdict (review_doc), changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with `fetch("proposal:<id>")`. A proposal waits 72 hours.
 
 | Argument             | Type           | Notes                                                                                                                                      |
 | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -396,11 +444,360 @@ Creates a saved view, or changes one (view + version): a name, what it lists and
 | `folder`        | id                                                                                          |                                                                                                                                            |
 | `kind`          | string                                                                                      |                                                                                                                                            |
 | `links_to`      | string                                                                                      | Rows linking to doc:, task: or project:.                                                                                                   |
+| `starred`       | boolean                                                                                     |                                                                                                                                            |
 | `sort`          | `due`, `updated`, `created`, `priority`, `title`                                            |                                                                                                                                            |
 | `group_by`      | `status`, `priority`, `project`, `stage`, `assignee`, `team`, `kind`, `due`                 |                                                                                                                                            |
 | `columns`       | list of `status`, `due`, `priority`, `project`, `assignee`, `team`, `updated`, `provenance` |                                                                                                                                            |
 | `star`          | boolean                                                                                     |                                                                                                                                            |
 | `client_ref`    | string                                                                                      | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `update_project`
+
+Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home. Removing stages or unpinning goes to the Review inbox.
+
+| Argument             | Type                         | Notes                                                                                                                                      |
+| -------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project` (required) | string                       |                                                                                                                                            |
+| `name`               | string                       |                                                                                                                                            |
+| `summary`            | string                       |                                                                                                                                            |
+| `status`             | `active`, `done`, `archived` |                                                                                                                                            |
+| `deadline`           | ISO 8601 instant or null     |                                                                                                                                            |
+| `main_page`          | string or null               | `doc:<id>`, or null for none.                                                                                                              |
+| `stages`             | list of object               | Rename (with id), add (without) or reorder (all ids).                                                                                      |
+| `remove_stages`      | list of id                   |                                                                                                                                            |
+| `pin`                | list of object               |                                                                                                                                            |
+| `unpin`              | list of id                   |                                                                                                                                            |
+| `client_ref`         | string                       | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `get_history`
+
+What changed and when, with who (and via which agent): a project's timeline (at: a point's snapshot of stages and tasks), a page's versions (version: that version's Markdown), open comments and suggestions, or a task's progress notes.
+
+| Argument        | Type    | Notes                                 |
+| --------------- | ------- | ------------------------------------- |
+| `of` (required) | string  | project:, doc: or task:.              |
+| `version`       | integer | Pages: one version's content.         |
+| `at`            | string  | Projects: the ref of a history point. |
+| `limit`         | integer | Default 30.                           |
+
+### `save_template`
+
+Saves a project template (kind "project": from_project, or tasks with estimates and days from the start, and an optional repeat rule such as FREQ=WEEKLY;BYDAY=MO) or a page template (kind "page": from_page, or Markdown). template changes a saved one. A team's project templates need its owners or admins.
+
+| Argument          | Type              | Notes                                                                                                                                      |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kind` (required) | `project`, `page` |                                                                                                                                            |
+| `template`        | string            | A saved template to change: `template:<id>` or `page_template:<id>`.                                                                       |
+| `from_project`    | string            |                                                                                                                                            |
+| `from_page`       | string            |                                                                                                                                            |
+| `name`            | string            |                                                                                                                                            |
+| `description`     | string            |                                                                                                                                            |
+| `space`           | string            | "personal" or a team id.                                                                                                                   |
+| `tasks`           | list of object    |                                                                                                                                            |
+| `repeat`          | string or null    |                                                                                                                                            |
+| `markdown`        | string            | A page template's lines.                                                                                                                   |
+| `client_ref`      | string            | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `organize`
+
+Up to 25 changes: create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: a page; add: tag names, remove: tag ids). Deleting a list, tag or folder goes through propose_changes. search finds lists, tags and folders by name.
+
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `changes` (required) | list of object |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `comment_on_doc`
+
+Adds a comment on a page or one of its lines (line: its anchor), replies (reply_to), or resolves and reopens a comment. mentions (person ids) notify people, so they are kept only when this connection may notify teammates; otherwise they are left out and the answer says so. Only people who can read the page can be named.
+
+| Argument         | Type                                    | Notes                                                                                                                                      |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required) | string                                  |                                                                                                                                            |
+| `action`         | `comment`, `reply`, `resolve`, `reopen` | Default "comment".                                                                                                                         |
+| `body`           | string                                  |                                                                                                                                            |
+| `line`           | string                                  |                                                                                                                                            |
+| `quote`          | string                                  |                                                                                                                                            |
+| `reply_to`       | id                                      |                                                                                                                                            |
+| `comment`        | id                                      | For resolve and reopen.                                                                                                                    |
+| `mentions`       | list of id                              |                                                                                                                                            |
+| `client_ref`     | string                                  | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `resolve_suggestions`
+
+Takes or leaves suggested edits on a page (ids from get_history). On the person's own pages it's done at once (taking one keeps a version first); on team pages it goes to the Review inbox, so an agent never pushes words into a teammate's page.
+
+| Argument         | Type       | Notes                                                                                                                                      |
+| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required) | string     |                                                                                                                                            |
+| `take`           | list of id |                                                                                                                                            |
+| `leave`          | list of id |                                                                                                                                            |
+| `client_ref`     | string     | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `tasks_from_doc`
+
+Turns a page's open checklist lines (all of them, or lines: their anchors) into tasks in the page's space, each tied to its line so ticking either ticks the other. At most 25 at once.
+
+| Argument         | Type           | Notes                                                                                                                                      |
+| ---------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required) | string         |                                                                                                                                            |
+| `lines`          | list of string |                                                                                                                                            |
+| `project`        | string         | Put the tasks in this project.                                                                                                             |
+| `client_ref`     | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `get_work_patterns`
+
+What the planner has learned: how long tasks really take against their estimates, the hours that usually go well, how much a day usually holds, planned against done over four weeks by weekday, focus totals (and the timer, if running), where planned time went, unfinished sessions from the last two weeks, and the person's routines (frames, habits, places, with ids).
+
+| Argument | Type    | Notes       |
+| -------- | ------- | ----------- |
+| `days`   | integer | Default 28. |
+
+### `what_if`
+
+Compares the plan as things are with a scenario (add tasks, days off, a moved deadline, dropped tasks) over up to 14 days, and keeps neither: planned minutes, capacity, and tasks at risk or that don't fit, before and after. At most 10 a minute.
+
+| Argument    | Type           | Notes      |
+| ----------- | -------------- | ---------- |
+| `days`      | integer        | Default 7. |
+| `add_tasks` | list of object |            |
+| `days_off`  | list of string |            |
+| `move_due`  | list of object |            |
+| `drop`      | list of string |            |
+
+### `log_focus`
+
+Records a finished focus session (started_at and ended_at, optionally on a task), or adds minutes spent to a task. session_id (a uuid you make) or client_ref makes a retry the same record.
+
+| Argument             | Type             | Notes                                                                                                                                      |
+| -------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task`               | string           |                                                                                                                                            |
+| `minutes` (required) | integer          |                                                                                                                                            |
+| `started_at`         | ISO 8601 instant |                                                                                                                                            |
+| `ended_at`           | ISO 8601 instant |                                                                                                                                            |
+| `completed`          | boolean          | Default true.                                                                                                                              |
+| `session_id`         | id               |                                                                                                                                            |
+| `client_ref`         | string           | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `set_focus_timer`
+
+Starts the focus timer shown on all the person's devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.
+
+| Argument            | Type            | Notes                                                                                                                                      |
+| ------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `action` (required) | `start`, `stop` |                                                                                                                                            |
+| `task`              | string          |                                                                                                                                            |
+| `rhythm`            | string          | Default "25-5".                                                                                                                            |
+| `client_ref`        | string          | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `manage_routines`
+
+Up to 25 changes to the person's routines: add or change a frame (a part of the week kept for something), a habit or a place, or skip or unskip one date of a frame. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting goes through propose_changes; habit sessions are previewed with plan_schedule.
+
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `changes` (required) | list of object |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `update_planner_settings`
+
+Changes working days and hours ("HH:MM"), the planning horizon, padding, splitting, minimum session length, breaks, buffers, default travel time, deadline notices and the learning switches. The time zone and digest emails stay in the app. Undo puts the old values back.
+
+| Argument              | Type   | Notes                                                                                                                                      |
+| --------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `settings` (required) | object |                                                                                                                                            |
+| `client_ref`          | string | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `get_study`
+
+Decks (pages with Question :: Answer cards), cards due today and ahead, upcoming exams with their pages and readiness, and, with queue, the cards to review now (answers hidden unless reveal is true, so the person can be quizzed).
+
+| Argument | Type    | Notes                                     |
+| -------- | ------- | ----------------------------------------- |
+| `queue`  | boolean | Default false.                            |
+| `deck`   | string  | Only this page's cards.                   |
+| `ahead`  | boolean | Include cards not due yet. Default false. |
+| `reveal` | boolean | Default false.                            |
+| `limit`  | integer | Default 20.                               |
+
+### `update_study`
+
+Records how the person recalled cards (again, hard, good or easy) after quizzing them, and sets which pages are revised for an exam (key from get_study; pages they can't read are left out). New cards come from editing pages with Question :: Answer lines.
+
+| Argument     | Type           | Notes                                                                                                                                      |
+| ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reviews`    | list of object |                                                                                                                                            |
+| `exam`       | object         |                                                                                                                                            |
+| `client_ref` | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `plan_revision`
+
+Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a "Revise for …" task.
+
+| Argument          | Type    | Notes                          |
+| ----------------- | ------- | ------------------------------ |
+| `exam` (required) | string  | The exam's key from get_study. |
+| `minutes`         | integer | Default 30.                    |
+
+### `get_follow_through`
+
+Asks waiting on the person and on others; open promises, decisions and experiments (evidence: a record id for an experiment's before and after); tasks at risk of missing their deadline; the "while you were away" brief; work finished in the last days with its proof; pages going stale; and unread notices.
+
+| Argument   | Type    | Notes                         |
+| ---------- | ------- | ----------------------------- |
+| `days`     | integer | For finished work. Default 7. |
+| `evidence` | string  |                               |
+
+### `add_progress`
+
+Adds a progress note to a task, optionally setting its status or percent done, and/or a proof (a link or a note: the pull request, the sent file). Teammates see it on team tasks.
+
+| Argument          | Type                                                  | Notes                                                                                                                                      |
+| ----------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task` (required) | string                                                |                                                                                                                                            |
+| `note`            | string                                                |                                                                                                                                            |
+| `status`          | `todo`, `in_progress`, `blocked`, `done`, `cancelled` |                                                                                                                                            |
+| `percent`         | integer                                               |                                                                                                                                            |
+| `proof_url`       | string                                                |                                                                                                                                            |
+| `proof_note`      | string                                                |                                                                                                                                            |
+| `client_ref`      | string                                                | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `answer_ask`
+
+Answers an ask handed to the person (accept, counter with another date or length, or decline), or settles one they sent (agree to a counter, keep their date, or withdraw). It notifies the teammate, so it runs at once only when this connection may notify teammates; otherwise it waits in the Review inbox.
+
+| Argument            | Type                                                        | Notes                                                                                                                                      |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ask` (required)    | id                                                          |                                                                                                                                            |
+| `action` (required) | `accept`, `counter`, `decline`, `agree`, `keep`, `withdraw` |                                                                                                                                            |
+| `message`           | string                                                      | Default "".                                                                                                                                |
+| `due_at`            | ISO 8601 instant or null                                    |                                                                                                                                            |
+| `estimate_minutes`  | integer or null                                             |                                                                                                                                            |
+| `client_ref`        | string                                                      | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `save_record`
+
+Creates a promise, decision or experiment (in Personal or a team, optionally in a project, from a page line or about a task), changes one (record + version: title, details, status, deadline, review date, outcome), or answers a promise offered to the person (respond). Offering a promise to a teammate, and answering one, notify them: at once only when this connection may notify teammates, otherwise through the Review inbox.
+
+| Argument      | Type                                                   | Notes                                                                                                                                      |
+| ------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `record`      | string                                                 |                                                                                                                                            |
+| `version`     | integer                                                |                                                                                                                                            |
+| `respond`     | `accept`, `decline`                                    |                                                                                                                                            |
+| `kind`        | `promise`, `decision`, `experiment`, `meeting_outcome` |                                                                                                                                            |
+| `title`       | string                                                 |                                                                                                                                            |
+| `details`     | string                                                 |                                                                                                                                            |
+| `space`       | string                                                 |                                                                                                                                            |
+| `project`     | string                                                 |                                                                                                                                            |
+| `owner`       | id                                                     | A teammate to offer a promise to.                                                                                                          |
+| `status`      | `proposed`, `open`, `done`, `declined`, `superseded`   |                                                                                                                                            |
+| `due_at`      | ISO 8601 instant or null                               |                                                                                                                                            |
+| `review_at`   | ISO 8601 instant or null                               |                                                                                                                                            |
+| `outcome`     | string                                                 |                                                                                                                                            |
+| `source_page` | string                                                 | `doc:<id>#<line>`.                                                                                                                         |
+| `about_task`  | string                                                 |                                                                                                                                            |
+| `client_ref`  | string                                                 | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `mark_notifications_read`
+
+Marks in-app notices read: up to 100 by id (from get_follow_through or get_today), or all unread with all.
+
+| Argument     | Type       | Notes                                                                                                                                      |
+| ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ids`        | list of id |                                                                                                                                            |
+| `all`        | boolean    |                                                                                                                                            |
+| `client_ref` | string     | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `get_team`
+
+A team: its members and roles (emails only for owners and admins), each member's workload over the next week (capacity, assigned work, tasks at risk), free capacity per day (hours only for owners and admins), and each member's meeting time this week against the team's meeting budget.
+
+| Argument          | Type    | Notes      |
+| ----------------- | ------- | ---------- |
+| `team` (required) | id      |            |
+| `days`            | integer | Default 7. |
+
+### `find_time`
+
+Finds meeting times inside working hours when the person and up to 10 teammates are all free (people, or a team's members), least disruptive first; or, with no one else, the person's own free stretches of that length. Teammates only ever show as busy or free.
+
+| Argument             | Type             | Notes                       |
+| -------------------- | ---------------- | --------------------------- |
+| `minutes` (required) | integer          |                             |
+| `team`               | id               |                             |
+| `people`             | list of id       |                             |
+| `from`               | ISO 8601 instant |                             |
+| `to`                 | ISO 8601 instant | At most 14 days after from. |
+
+### `get_bookings`
+
+Booking pages and bookings (view upcoming, needs_approval, past, cancelled or all; or one booking with its answers and history; slots_for: the times a booking could move to), with stats and open invites. Guests' names and answers are outside content; their email addresses are always masked.
+
+| Argument    | Type                                                     | Notes               |
+| ----------- | -------------------------------------------------------- | ------------------- |
+| `view`      | `upcoming`, `needs_approval`, `past`, `cancelled`, `all` | Default "upcoming". |
+| `page`      | id                                                       |                     |
+| `booking`   | id                                                       |                     |
+| `slots_for` | id                                                       |                     |
+| `limit`     | integer                                                  | Default 25.         |
+| `offset`    | integer                                                  | Default 0.          |
+
+### `booking_action`
+
+Marks a no-show or keeps a private note on a booking (done at once). Approve, decline, cancel and reschedule email the guest, and saving or deleting a booking page or creating or withdrawing an open invite changes what outsiders can book, so these always go to the person's Review inbox.
+
+| Argument            | Type                                                                                                                            | Notes                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `action` (required) | `no_show`, `note`, `approve`, `decline`, `cancel`, `reschedule`, `save_page`, `delete_page`, `create_invite`, `withdraw_invite` |                                                                                                                                            |
+| `booking`           | id                                                                                                                              |                                                                                                                                            |
+| `no_show`           | boolean                                                                                                                         |                                                                                                                                            |
+| `note`              | string                                                                                                                          |                                                                                                                                            |
+| `reason`            | string                                                                                                                          |                                                                                                                                            |
+| `start_at`          | ISO 8601 instant                                                                                                                | For reschedule: a slot from get_bookings slots_for.                                                                                        |
+| `page`              | id                                                                                                                              | The booking page to change or delete.                                                                                                      |
+| `invite`            | id                                                                                                                              |                                                                                                                                            |
+| `fields`            | object                                                                                                                          | A page's or invite's fields, as the app saves them.                                                                                        |
+| `client_ref`        | string                                                                                                                          | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `list_imports`
+
+The person's imports into Docs (still going, and the last week's), each with its status, pages, queue wait and the page it became, plus what this server can read (PDF, Word, scans, photos, equations) and its limits.
+
+| Argument | Type   | Notes |
+| -------- | ------ | ----- |
+| `import` | string |       |
+
+### `start_import`
+
+Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (valid 10 minutes): PUT the file's bytes to it, then poll list_imports with the import id until its page is ready.
+
+| Argument               | Type    | Notes                                                                                                                                      |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `file_name` (required) | string  |                                                                                                                                            |
+| `bytes` (required)     | integer |                                                                                                                                            |
+| `mime`                 | string  |                                                                                                                                            |
+| `project`              | string  |                                                                                                                                            |
+| `client_ref`           | string  | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `cancel_import`
+
+Cancels an import still going, or clears a finished one that kept no file from the list. The page an import made stays.
+
+| Argument            | Type   | Notes                                                                                                                                      |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `import` (required) | string |                                                                                                                                            |
+| `client_ref`        | string | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `import_tasks`
+
+Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, list, tags, …) into Personal. A dry run (the default) counts and checks without writing; a real run is a bulk change, so it waits in the person's Review inbox.
+
+| Argument            | Type           | Notes                                                                                                                                      |
+| ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `format` (required) | `orbyn`, `csv` |                                                                                                                                            |
+| `data` (required)   | string         |                                                                                                                                            |
+| `dry_run`           | boolean        | Default true.                                                                                                                              |
+| `client_ref`        | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ## Resources
 
@@ -451,8 +848,34 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - `add_task`: Kept for older connections; adds a task to the person's own planner. The answer has the new task's id and a link that opens it in Orbyn.
 - `get_agenda`: Kept for older connections; get_today and get_calendar are the newer tools. Open tasks due and events from the start of today through the next few days (default 7, at most 31), in the person's time zone, repeating events once per occurrence, subscribed calendars included.
 
-## Changes
+## Versioning and deprecation
 
-Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.
+- Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.
+- A new argument is always optional, and leaving it out behaves as before.
+- A tool that is going away is marked "Deprecated:" at the start of its description, with what to use instead, at least 90 days before it is removed. Removals are listed here and in the changelog first.
+- Error codes and their meaning never change; new codes may be added.
+- Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Routes: 52 of the app's signed-in routes are covered by tools, 162 are never for agents, and 143 are still to come.
+Catalog version: `2026-09-26`.
+
+## Changelog
+
+### 2026-09-26
+
+- Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.
+- get_links (backlinks), save_view and saved views in query, related links in link, starting a project from a template, skipping an occurrence in update_tasks, pages from templates in create_doc.
+- Resources for guides (orbyn://spec/markdown, orbyn://spec/views, orbyn://guide/planning), days and views; completions from visible titles; eleven prompts; the "orbyn" Agent Skill.
+
+### 2026-09-24
+
+- Changes and the Review inbox: create_tasks, update_tasks, complete_tasks, edit_checklist, plan_schedule, schedule_sessions, reschedule_sessions, create_doc, edit_doc, link, create_project and propose_changes.
+- Signing in with Orbyn (OAuth 2.1) for Claude, ChatGPT and other clients.
+- The read tools: get_context, search, fetch, get_today, get_calendar, query, get_project and find_passages; agent keys.
+
+## Status and security
+
+- Whether every part of Orbyn is up: https://orbyn.dev/status.
+- Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
+- The developer page, with this catalog: https://orbyn.dev/developers/mcp.
+
+Routes: 194 of the app's signed-in routes are covered by tools, 164 are never for agents, and 0 are still to come.

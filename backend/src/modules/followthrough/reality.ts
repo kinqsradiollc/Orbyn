@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { z } from "zod";
 import {
   addDays,
   dayTime,
@@ -131,36 +132,49 @@ export async function realityRoutes(app: FastifyInstance) {
   app.post("/planner/what-if", async (r): Promise<WhatIfResult> => {
     const u = await authenticate(r);
     const d = whatIfInput.parse(r.body);
-    const scenario = {
-      add_tasks: d.add_tasks.map((t) => ({ ...t, id: newId() })),
-      days_off: d.days_off,
-      move_due: d.move_due,
-      drop_item_ids: d.drop_item_ids,
-    };
-    const titles = new Map(scenario.add_tasks.map((t) => [t.id, t.title]));
-    return transaction(async (db) => {
-      const side = async (withChange: boolean): Promise<WhatIfSide> => {
-        const { result } = await computePlan(
-          db,
-          u.id,
-          planPreviewInput.parse({ days: d.days }),
-          new Date(),
-          withChange ? scenario : {},
-        );
-        const name = (t: { item_id: string; title: string }) => ({
-          item_id: t.item_id,
-          title: titles.get(t.item_id) ?? t.title,
-        });
-        return {
-          planned_minutes: Math.round(result.planned_minutes),
-          capacity_minutes: Math.round(result.capacity_minutes),
-          at_risk: result.at_risk.map(name),
-          unplaced: result.unplaced.map(name),
-        };
-      };
-      const before = await side(false);
-      const after = await side(true);
-      return { before, after, ...whatIfVerdict(before, after) };
-    });
+    return transaction((db) => whatIf(db, u.id, d));
   });
+}
+
+/**
+ * "What if I take this on / take Friday off / push that deadline?" Two
+ * plans are worked out, as things are and with the change; neither is
+ * kept. It works in `db` and writes nothing.
+ */
+export async function whatIf(
+  db: Queryable,
+  userId: string,
+  input: z.input<typeof whatIfInput>,
+  now = new Date(),
+): Promise<WhatIfResult> {
+  const d = whatIfInput.parse(input);
+  const scenario = {
+    add_tasks: d.add_tasks.map((t) => ({ ...t, id: newId() })),
+    days_off: d.days_off,
+    move_due: d.move_due,
+    drop_item_ids: d.drop_item_ids,
+  };
+  const titles = new Map(scenario.add_tasks.map((t) => [t.id, t.title]));
+  const side = async (withChange: boolean): Promise<WhatIfSide> => {
+    const { result } = await computePlan(
+      db,
+      userId,
+      planPreviewInput.parse({ days: d.days }),
+      now,
+      withChange ? scenario : {},
+    );
+    const name = (t: { item_id: string; title: string }) => ({
+      item_id: t.item_id,
+      title: titles.get(t.item_id) ?? t.title,
+    });
+    return {
+      planned_minutes: Math.round(result.planned_minutes),
+      capacity_minutes: Math.round(result.capacity_minutes),
+      at_risk: result.at_risk.map(name),
+      unplaced: result.unplaced.map(name),
+    };
+  };
+  const before = await side(false);
+  const after = await side(true);
+  return { before, after, ...whatIfVerdict(before, after) };
 }

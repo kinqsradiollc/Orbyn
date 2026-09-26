@@ -5,6 +5,8 @@ import {
   AGENT_ACCESS_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
+  AGENT_TOOLSETS,
+  AGENT_TOOLSET_LABELS,
   AGENT_SETUP_LABELS,
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
@@ -14,6 +16,7 @@ import {
   type AgentActivity,
   type AgentGrant,
   type AgentSetupClient,
+  type AgentToolset,
   type AgentsOverview,
   type Team,
 } from "@orbyn/core";
@@ -37,6 +40,61 @@ const ACCESS_TAG: Record<AgentAccess, string> = {
   write: "Change",
 };
 const EXPIRY_CHOICES = [7, 30, 90, 365];
+
+/** Toolsets besides core (which every connection has). */
+const OPTIONAL_TOOLSETS = AGENT_TOOLSETS.filter(
+  (t) => t !== "core",
+) as AgentToolset[];
+
+/** "Planner, Study", or core only. */
+const toolsetsText = (g: AgentGrant) => {
+  const extra = g.toolsets.filter((t) => t !== "core");
+  return extra.length
+    ? extra.map((t) => AGENT_TOOLSET_LABELS[t].name).join(", ")
+    : "Core tools only";
+};
+
+/** Chips to choose toolsets, each with what it adds below. */
+function ToolsetChips({
+  value,
+  onChange,
+  bookings,
+}: {
+  value: AgentToolset[];
+  onChange: (next: AgentToolset[]) => void;
+  bookings: boolean;
+}) {
+  const shown = OPTIONAL_TOOLSETS.filter((t) => bookings || t !== "booking");
+  return (
+    <Field
+      label="Tools"
+      hint={`${AGENT_TOOLSET_LABELS.core.name} are always on. ${shown
+        .filter((t) => value.includes(t))
+        .map(
+          (t) =>
+            `${AGENT_TOOLSET_LABELS[t].name}: ${AGENT_TOOLSET_LABELS[t].blurb}`,
+        )
+        .join(" ")}`}
+    >
+      <ChipRow label="Tools" multi>
+        {shown.map((t) => {
+          const on = value.includes(t);
+          return (
+            <Chip
+              key={t}
+              multi
+              label={AGENT_TOOLSET_LABELS[t].name}
+              selected={on}
+              onPress={() =>
+                onChange(on ? value.filter((x) => x !== t) : [...value, t])
+              }
+            />
+          );
+        })}
+      </ChipRow>
+    </Field>
+  );
+}
 
 /** "Personal, Design team"; old API keys reach every team, now and later. */
 const spacesText = (g: AgentGrant) =>
@@ -84,7 +142,13 @@ export function ConnectedAgentsCard({
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [days, setDays] = useState(30);
   const [hideOutside, setHideOutside] = useState(false);
+  const [toolsets, setToolsets] = useState<AgentToolset[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
+  /** The connection whose tools are being changed, and the choice so far. */
+  const [editing, setEditing] = useState<{
+    id: string;
+    toolsets: AgentToolset[];
+  } | null>(null);
 
   const reload = async () => setOverview(await client.agents());
   useEffect(() => {
@@ -153,6 +217,15 @@ export function ConnectedAgentsCard({
     );
   };
 
+  const saveTools = () =>
+    void run(async () => {
+      if (!editing) return;
+      await client.setAgentToolsets(editing.id, editing.toolsets);
+      animateLayout();
+      setEditing(null);
+      await reload();
+    });
+
   const restore = (g: AgentGrant) =>
     void run(async () => {
       await client.restoreAgent(g.id);
@@ -171,6 +244,7 @@ export function ConnectedAgentsCard({
         team_ids: teamIds,
         expires_in_days: days,
         hide_outside_content: hideOutside,
+        toolsets: ["core", ...toolsets],
       });
       animateLayout();
       setFresh(made.key);
@@ -208,6 +282,7 @@ export function ConnectedAgentsCard({
                     <Pill label={ACCESS_TAG[g.access]} tone="accent" />
                   )}
                   <Pill label={spacesText(g)} />
+                  {g.kind !== "legacy" && <Pill label={toolsetsText(g)} />}
                   {g.hide_outside_content && (
                     <Pill label="Outside content hidden" />
                   )}
@@ -248,6 +323,25 @@ export function ConnectedAgentsCard({
                     disabled={busy}
                     onPress={() => toggleActivity(g)}
                   />
+                  {g.kind !== "legacy" && (
+                    <SmallAction
+                      label={editing?.id === g.id ? "Close tools" : "Tools"}
+                      disabled={busy}
+                      onPress={() => {
+                        animateLayout();
+                        setEditing(
+                          editing?.id === g.id
+                            ? null
+                            : {
+                                id: g.id,
+                                toolsets: g.toolsets.filter(
+                                  (t) => t !== "core",
+                                ),
+                              },
+                        );
+                      }}
+                    />
+                  )}
                   {g.suspended_at && (
                     <SmallAction
                       label="Restore"
@@ -262,6 +356,39 @@ export function ConnectedAgentsCard({
                     onPress={() => revoke(g)}
                   />
                 </View>
+                {editing?.id === g.id && (
+                  <FadeIn style={s.activity}>
+                    <ToolsetChips
+                      value={editing.toolsets}
+                      bookings={
+                        g.kind === "key" || g.toolsets.includes("booking")
+                      }
+                      onChange={(next) =>
+                        setEditing({ id: g.id, toolsets: next })
+                      }
+                    />
+                    {g.kind === "oauth" && !g.toolsets.includes("booking") && (
+                      <Text style={shared.small}>
+                        Bookings need {g.client_name || "the app"} to ask for
+                        them when it signs in again.
+                      </Text>
+                    )}
+                    <View style={s.actions}>
+                      <Button
+                        title="Save"
+                        style={s.flexButton}
+                        disabled={busy}
+                        onPress={saveTools}
+                      />
+                      <Button
+                        secondary
+                        title="Cancel"
+                        style={s.flexButton}
+                        onPress={() => setEditing(null)}
+                      />
+                    </View>
+                  </FadeIn>
+                )}
                 {open !== undefined && (
                   <FadeIn style={s.activity}>
                     {open === null ? (
@@ -445,6 +572,11 @@ export function ConnectedAgentsCard({
                     ))}
                   </ChipRow>
                 </Field>
+                <ToolsetChips
+                  value={toolsets}
+                  bookings
+                  onChange={setToolsets}
+                />
                 <View style={s.switchRow}>
                   <View style={s.flex}>
                     <Text style={shared.label}>Hide outside content</Text>

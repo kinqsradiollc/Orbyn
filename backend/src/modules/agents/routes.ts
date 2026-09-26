@@ -34,6 +34,7 @@ import {
   restoreGrant,
   revokeConnections,
   revokeGrant,
+  setGrantToolsets,
 } from "./service.js";
 import { cancelTeamProposals } from "../proposals/service.js";
 
@@ -79,6 +80,16 @@ export async function agentRoutes(app: FastifyInstance) {
     await restoreGrant(u.id, idParam(r), r.id);
     return reply.code(204).send();
   });
+
+  // Which toolsets a connection has, besides core (Settings).
+  app.put("/me/agents/:id/toolsets", async (r) =>
+    setGrantToolsets(
+      (await authenticate(r)).id,
+      idParam(r),
+      r.body as never,
+      r.id,
+    ),
+  );
 
   app.get("/me/agents/:id/activity", async (r) => {
     const u = await authenticate(r);

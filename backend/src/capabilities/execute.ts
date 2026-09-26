@@ -121,6 +121,13 @@ export function asCapabilityError(
       e.message,
       "Read the item again for its current version, then retry with that version.",
     );
+  // Not set up here, or busy (too many imports at once): say so plainly.
+  if (e instanceof HttpError && (e.statusCode === 503 || e.statusCode === 429))
+    return new CapabilityError(
+      "UNAVAILABLE",
+      e.message,
+      "Try again later, or do it in Orbyn.",
+    );
   if (e instanceof HttpError && e.statusCode < 500)
     return new CapabilityError(
       e.statusCode === 404

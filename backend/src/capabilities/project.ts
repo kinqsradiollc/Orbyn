@@ -152,6 +152,9 @@ export const projectOutput = z.object({
       kind: z.string(),
     }),
   ),
+  pins: z.array(
+    z.object({ id: z.string(), title: z.string(), url: z.string() }),
+  ),
 });
 export type ProjectHub = z.output<typeof projectOutput>;
 
@@ -535,6 +538,16 @@ export async function projectHub(
     },
     planning: await planningOf(ctx, project),
     linked_here: await linkedHere(ctx, id),
+    pins: (
+      await ctx.db.query<{ id: string; title: string; url: string }>(
+        "SELECT id, title, url FROM project_links WHERE project_id = $1 ORDER BY created_at, id LIMIT 20",
+        [id],
+      )
+    ).rows.map((l) => ({
+      id: l.id,
+      title: cleanTitle(l.title) || l.url.slice(0, 200),
+      url: l.url,
+    })),
   };
 }
 
@@ -631,6 +644,10 @@ export function projectMarkdown(h: ProjectHub): string {
       out.push(
         `- ${r.kind}: ${r.title} (${r.status}${r.due ? `, due ${r.due.local}` : ""})${r.gap ? ` — ${r.gap}` : ""}`,
       );
+  }
+  if (h.pins.length) {
+    out.push("", "## Pinned links");
+    for (const l of h.pins) out.push(`- ${mdLink(l.title, l.url)}`);
   }
   if (h.linked_here.length) {
     out.push("", "## Linked here");

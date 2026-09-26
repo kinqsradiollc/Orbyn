@@ -1,4 +1,9 @@
-import { AGENT_ACCESS_LABELS, DEFAULT_AGENT_LIMITS } from "@orbyn/core";
+import {
+  AGENT_ACCESS_LABELS,
+  AGENT_TOOLSETS,
+  AGENT_TOOLSET_LABELS,
+  DEFAULT_AGENT_LIMITS,
+} from "@orbyn/core";
 import { SUSPEND_AFTER } from "../modules/mcp-server/limits.js";
 import { EXCLUDED, PENDING, COVERED } from "./exclusions.js";
 import { registry } from "./index.js";
@@ -28,8 +33,51 @@ const kindOf = (c: Capability) =>
       ? "destructive"
       : "write";
 
+/**
+ * The catalog's version: the date of the last change to any tool's
+ * contract. Bump it (and add a CHANGELOG entry) with every change.
+ */
+export const CATALOG_VERSION = "2026-09-26";
+
+/**
+ * How tools change (the versioning and deprecation policy), in the words
+ * the developer page and docs/mcp.md use.
+ */
+export const VERSIONING_POLICY = [
+  "Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.",
+  "A new argument is always optional, and leaving it out behaves as before.",
+  'A tool that is going away is marked "Deprecated:" at the start of its description, with what to use instead, at least 90 days before it is removed. Removals are listed here and in the changelog first.',
+  "Error codes and their meaning never change; new codes may be added.",
+  "Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.",
+];
+
+/** What changed in the MCP server, newest first. */
+export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-26",
+    changes: [
+      "Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.",
+      "get_links (backlinks), save_view and saved views in query, related links in link, starting a project from a template, skipping an occurrence in update_tasks, pages from templates in create_doc.",
+      'Resources for guides (orbyn://spec/markdown, orbyn://spec/views, orbyn://guide/planning), days and views; completions from visible titles; eleven prompts; the "orbyn" Agent Skill.',
+    ],
+  },
+  {
+    date: "2026-09-24",
+    changes: [
+      "Changes and the Review inbox: create_tasks, update_tasks, complete_tasks, edit_checklist, plan_schedule, schedule_sessions, reschedule_sessions, create_doc, edit_doc, link, create_project and propose_changes.",
+      "Signing in with Orbyn (OAuth 2.1) for Claude, ChatGPT and other clients.",
+      "The read tools: get_context, search, fetch, get_today, get_calendar, query, get_project and find_passages; agent keys.",
+    ],
+  },
+];
+
+/** Where to report a security problem (also /.well-known/security.txt). */
+export const SECURITY_POLICY =
+  "Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.";
+
 export function buildCatalog(facts: ServerFacts) {
   return {
+    version: CATALOG_VERSION,
     server: {
       name: "orbyn",
       title: "Orbyn",
@@ -80,6 +128,15 @@ export function buildCatalog(facts: ServerFacts) {
       })),
       toolsets: p.needs,
     })),
+    toolsets: AGENT_TOOLSETS.map((t) => ({
+      name: t,
+      title: AGENT_TOOLSET_LABELS[t].name,
+      tools: registry.all
+        .filter((c) => c.toolset === t && !c.legacyOnly)
+        .map((c) => c.name),
+    })),
+    versioning: VERSIONING_POLICY,
+    changelog: CHANGELOG,
     routes: {
       covered: Object.keys(COVERED).length,
       excluded: Object.keys(EXCLUDED).length,
@@ -151,7 +208,7 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- **Agent keys.** Make a key in Settings → Connected agents. Choose what it may do and which spaces it sees (Personal and any of your teams). Keys last 30 days unless you choose otherwise, and never more than 365. Send it as `Authorization: Bearer oak_…`. The key is shown once and stored only as a hash. You can revoke it at any time, and each key has its own activity list.",
     `- **Access levels.** ${Object.values(AGENT_ACCESS_LABELS)
       .map((l) => `${l.name}: ${l.blurb}`)
-      .join(" ")} In phase A1 every tool reads; changes arrive in phase A3.`,
+      .join(" ")}`,
     "- **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off (only when signed in; a personal API key can't change it). Leaving a team takes it off your agent keys, and joining again doesn't give it back to them.",
     '- **Hide outside content.** A connection can leave out text from outside Orbyn: events from subscribed calendars (shown as busy time), what imported files say, tasks and events sent by email (their titles show as "Task from email" or "Event from email", everywhere they are listed) and what booking guests typed (their events show as "Booking"). The agent sees that something is there, not what it says. Imported pages keep their titles. Without it, that text comes back fenced as untrusted content and labelled with where it came from; a booking guest\'s email address never shows.',
     "- **Personal API keys (`ok_`).** They keep working here as a legacy connection for 90 days from this release. Answers carry `Deprecation` and `Sunset` headers. After that they work only with the REST API and CalDAV.",
@@ -235,6 +292,17 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- `search` and `fetch` follow OpenAI's contract: `search` needs only `query`, `fetch` takes `id`, and their text content is the JSON of the structured content.",
     "- Search is by words, the letters of a title, and recency. No embeddings or AI are used here.",
     "",
+    "## Toolsets",
+    "",
+    "Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.",
+    "",
+    "| Toolset | What | Tools |",
+    "| --- | --- | --- |",
+    ...catalog.toolsets.map(
+      (t) =>
+        `| \`${t.name}\` | ${cell(t.title)} | ${t.tools.map((x) => `\`${x}\``).join(", ")} |`,
+    ),
+    "",
     "## Tools",
     "",
     "| Tool | Title | Kind | Needs |",
@@ -308,9 +376,25 @@ export function catalogMarkdown(catalog: Catalog): string {
     "",
     ...legacy.map((t) => `- \`${t.name}\`: ${prose(t.description)}`),
     "",
-    "## Changes",
+    "## Versioning and deprecation",
     "",
-    "Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.",
+    ...VERSIONING_POLICY.map((p) => `- ${prose(p)}`),
+    "",
+    `Catalog version: \`${catalog.version}\`.`,
+    "",
+    "## Changelog",
+    "",
+    ...catalog.changelog.flatMap((c) => [
+      `### ${c.date}`,
+      "",
+      ...c.changes.map((x) => `- ${prose(x)}`),
+      "",
+    ]),
+    "## Status and security",
+    "",
+    "- Whether every part of Orbyn is up: https://orbyn.dev/status.",
+    `- ${SECURITY_POLICY}`,
+    "- The developer page, with this catalog: https://orbyn.dev/developers/mcp.",
     "",
     `Routes: ${catalog.routes.covered} of the app's signed-in routes are covered by tools, ${catalog.routes.excluded} are never for agents, and ${catalog.routes.pending} are still to come.`,
     "",

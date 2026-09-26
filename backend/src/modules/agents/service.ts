@@ -11,7 +11,10 @@ import {
   type AgentKeyInput,
   type AgentOutcome,
   type AgentToolset,
+  type AgentToolsetsInput,
+  AGENT_TOOLSETS,
   agentKeyInput,
+  agentToolsetsInput,
 } from "@orbyn/core";
 import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
@@ -553,4 +556,62 @@ export async function grantActivity(
     at: a.at.toISOString(),
     undone_at: a.undone_at?.toISOString() ?? null,
   }));
+}
+
+/**
+ * A connection's toolsets, chosen in Settings → Connected agents (core is
+ * always on). Adding bookings to a connection that signed in needs its
+ * consent page (the orbyn:bookings scope), so here it can only be taken
+ * away; agent keys can have it added. Every copy hears of it at once.
+ */
+export async function setGrantToolsets(
+  userId: string,
+  grantId: string,
+  input: AgentToolsetsInput,
+  requestId?: string,
+): Promise<AgentGrant> {
+  const d = agentToolsetsInput.parse(input);
+  return transaction(async (db) => {
+    const row = (
+      await db.query<{
+        id: string;
+        kind: string;
+        name: string;
+        toolsets: string[];
+      }>(
+        `SELECT id, kind, name, toolsets FROM agent_grants
+          WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE`,
+        [grantId, userId],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Connection not found");
+    const wanted = new Set<string>(["core", ...d.toolsets]);
+    if (
+      wanted.has("booking") &&
+      !row.toolsets.includes("booking") &&
+      row.kind === "oauth"
+    )
+      fail(
+        422,
+        "Bookings need the app to sign in again and ask for them, so you can allow them there.",
+      );
+    const toolsets = AGENT_TOOLSETS.filter((t) => wanted.has(t));
+    await db.query("UPDATE agent_grants SET toolsets = $2 WHERE id = $1", [
+      row.id,
+      toolsets,
+    ]);
+    await announceAuthChange(db, { grants: [row.id], reason: "toolsets" });
+    await audit(
+      {
+        actorId: userId,
+        action: "agent_grant.toolsets",
+        targetType: "agent_grant",
+        targetId: row.id,
+        details: { name: row.name, from: row.toolsets, to: toolsets },
+        requestId,
+      },
+      db,
+    );
+    return (await grantView(db, userId, row.id))!;
+  });
 }

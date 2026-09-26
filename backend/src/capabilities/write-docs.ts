@@ -17,12 +17,17 @@ import {
   type ProposedChange,
 } from "../modules/docs/service.js";
 import { announceDocChange } from "../modules/docs/live.js";
+import { usePageTemplateById } from "../modules/templates/pages.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import { cleanTitle } from "./format.js";
 import { docId, projectId, teamFilter } from "./common.js";
 import { visibleItem } from "./write-tasks.js";
 import { refUrl } from "./refs.js";
-import { CapabilityError, defineCapability } from "./registry.js";
+import {
+  CapabilityError,
+  defineCapability,
+  type CapabilityContext,
+} from "./registry.js";
 import {
   ADDS,
   EDITS,
@@ -80,7 +85,11 @@ const docEntry = (
 });
 
 /** Opens editors and Study once the change is committed. */
-const afterSave = (id: string, version: number, grant: string | null) => [
+export const afterSave = (
+  id: string,
+  version: number,
+  grant: string | null,
+) => [
   () => announceDocChange(pool, id, version, `agent:${grant ?? "session"}`),
   () => syncSavedPages(id),
 ];
@@ -95,7 +104,19 @@ export const createDocCapability = defineCapability({
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
-      markdown: z.string().max(MAX_DOC_BYTES),
+      markdown: z
+        .string()
+        .max(MAX_DOC_BYTES)
+        .optional()
+        .describe("The page's lines (or template instead)."),
+      template: z
+        .string()
+        .trim()
+        .max(300)
+        .optional()
+        .describe(
+          "A page template's id, or a starter's (search types: template).",
+        ),
       kind: z.enum(["doc", "note", "meeting"]).default("doc"),
       team: z
         .string()
@@ -124,7 +145,14 @@ export const createDocCapability = defineCapability({
     refuseSecrets(a.title, a.markdown);
     const team = teamFilter(a.team);
     const teamId = team && "team" in team ? team.team : null;
-    const content = withIds(parseDoc(a.markdown));
+    if (a.template) return fromTemplate(ctx, a, teamId);
+    if (a.markdown === undefined)
+      throw new CapabilityError(
+        "INVALID",
+        "Give the page's markdown, or a template.",
+      );
+    const markdown = a.markdown;
+    const content = withIds(parseDoc(markdown));
     checkSize(content);
     const project = a.project ? (projectId(a.project) ?? null) : null;
     const where = destination(ctx, teamId, teamId ? "W2" : "W1");
@@ -137,7 +165,7 @@ export const createDocCapability = defineCapability({
             title: a.title,
             team_id: teamId,
             kind: a.kind,
-            markdown: a.markdown,
+            markdown,
             folder_id: a.folder_id ?? null,
             project_id: project,
           },
@@ -163,6 +191,56 @@ export const createDocCapability = defineCapability({
     });
   },
 });
+
+/** A page made from a page template (the app's "New page from template"). */
+async function fromTemplate(
+  ctx: CapabilityContext,
+  a: {
+    title: string;
+    template?: string;
+    folder_id?: string;
+    project?: string;
+    event?: string;
+  },
+  teamId: string | null,
+) {
+  const where = destination(ctx, teamId, teamId ? "W2" : "W1");
+  if (where === "review")
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "This connection can only suggest changes there; give markdown to propose a page instead.",
+    );
+  const raw = a.template!.replace(/^(template|page_template):/, "");
+  const event = a.event ? await visibleItem(ctx, a.event) : null;
+  const made = await usePageTemplateById(
+    dbOf(ctx),
+    actorOf(ctx.principal),
+    raw,
+    {
+      title: a.title,
+      team_id: teamId,
+      ...(a.folder_id ? { folder_id: a.folder_id } : {}),
+      project_id: a.project ? (projectId(a.project) ?? null) : null,
+      event_id: event?.id ?? null,
+    },
+  );
+  const doc = made.doc;
+  return finishWrite(ctx, "Writing a page", {
+    done: [
+      docEntry(
+        doc,
+        made.existing
+          ? "Already the event's notes"
+          : "Written from the template",
+      ),
+    ],
+    undo: made.existing
+      ? []
+      : [{ op: "doc.trash", doc_id: doc.id, version: doc.version }],
+    after: made.existing ? [] : [() => syncSavedPages(doc.id)],
+    teamId,
+  });
+}
 
 // --- edit_doc ----------------------------------------------------------
 

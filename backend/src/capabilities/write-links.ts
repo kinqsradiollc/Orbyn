@@ -10,6 +10,7 @@ import {
   scopeFor,
   visibleDocs,
   visibleProjects,
+  visibleTemplates,
 } from "../lib/visibility.js";
 import { createDoc, saveDoc } from "../modules/docs/service.js";
 import { mutate } from "../modules/items/service.js";
@@ -44,7 +45,8 @@ import {
   writeOutput,
   type DoneEntry,
 } from "./write.js";
-import { parseDoc } from "@orbyn/core";
+import { parseDoc, REVIEW_DELETABLE } from "@orbyn/core";
+import { actionChange, quoted } from "./shared.js";
 
 /**
  * Connecting things (link), starting projects (create_project) and filing
@@ -59,7 +61,7 @@ const notFound = () =>
   );
 
 /** A page the connection can see, locked for a change. */
-async function visibleDoc(ctx: CapabilityContext, input: string) {
+export async function visibleDoc(ctx: CapabilityContext, input: string) {
   const params = new Params();
   const scope = scopeFor(ctx.spaces, params);
   const doc = (
@@ -83,7 +85,7 @@ async function visibleDoc(ctx: CapabilityContext, input: string) {
 }
 
 /** A project the connection can see. */
-async function visibleProject(ctx: CapabilityContext, input: string) {
+export async function visibleProject(ctx: CapabilityContext, input: string) {
   const params = new Params();
   const scope = scopeFor(ctx.spaces, params);
   const row = (
@@ -453,6 +455,14 @@ export const createProjectCapability = defineCapability({
         })
         .strict()
         .optional(),
+      template: z
+        .string()
+        .trim()
+        .max(300)
+        .optional()
+        .describe(
+          "Start from a saved template (template:<id>): always reviewed.",
+        ),
       client_ref: clientRefInput,
     })
     .strict(),
@@ -471,6 +481,43 @@ export const createProjectCapability = defineCapability({
     );
     const team = teamFilter(a.team);
     const teamId = team && "team" in team ? team.team : null;
+    if (a.template) {
+      // A template schedules its tasks, so starting from one is reviewed:
+      // approving it starts the project the way the app does.
+      const ref = parseRef(a.template);
+      if (ref.type === "title")
+        throw new CapabilityError("INVALID", "template must be template:<id>.");
+      const params = new Params();
+      const scope = scopeFor(ctx.spaces, params);
+      const t = (
+        await ctx.db.query<{ id: string; name: string; tasks: unknown[] }>(
+          `SELECT t.id, t.name, t.tasks FROM project_templates t
+            WHERE t.id = ${params.add(ref.id)} AND ${visibleTemplates("t", scope)}`,
+          params.values,
+        )
+      ).rows[0];
+      if (!t) throw notFound();
+      destination(ctx, teamId, "W3");
+      return finishWrite(ctx, "Starting a project", {
+        done: [],
+        review: [
+          actionChange({
+            action: "template.use",
+            target_id: t.id,
+            title: a.name,
+            team_id: teamId,
+            headline: `Start the project ${quoted(a.name)} from the template ${quoted(t.name)}`,
+            rows: (t.tasks as { title?: string }[]).slice(0, 15).map((x) => ({
+              label: "Task",
+              before: null,
+              after: String(x.title ?? ""),
+            })),
+            input: { id: t.id, title: a.name, team_id: teamId },
+          }),
+        ],
+        teamId,
+      });
+    }
     const count = (a.stages ?? []).reduce(
       (n, s) => n + (s.tasks?.length ?? 0),
       0,
@@ -585,6 +632,132 @@ export const createProjectCapability = defineCapability({
 
 // --- propose_changes ---------------------------------------------------
 
+const DELETABLE_TABLE: Record<
+  (typeof REVIEW_DELETABLE)[number],
+  { table: string; name: string; label: string; personalOnly?: boolean }
+> = {
+  list: { table: "lists", name: "name", label: "the list" },
+  tag: { table: "tags", name: "name", label: "the tag" },
+  folder: { table: "folders", name: "name", label: "the folder" },
+  view: { table: "saved_views", name: "name", label: "the saved view" },
+  template: {
+    table: "project_templates",
+    name: "name",
+    label: "the project template",
+  },
+  page_template: {
+    table: "page_templates",
+    name: "name",
+    label: "the page template",
+  },
+  frame: {
+    table: "frames",
+    name: "name",
+    label: "the frame",
+    personalOnly: true,
+  },
+  habit: {
+    table: "habits",
+    name: "name",
+    label: "the habit",
+    personalOnly: true,
+  },
+  place: {
+    table: "places",
+    name: "label",
+    label: "the place",
+    personalOnly: true,
+  },
+  comment: { table: "doc_comments", name: "body", label: "a comment" },
+  proof: { table: "item_proofs", name: "note", label: "a proof" },
+  project_link: {
+    table: "project_links",
+    name: "title",
+    label: "a pinned link",
+  },
+  habit_session: {
+    table: "habit_blocks",
+    name: "to_char(start_at, 'YYYY-MM-DD HH24:MI')",
+    label: "the habit session",
+    personalOnly: true,
+  },
+};
+
+/** A delete of something organising (a list, a routine, a comment …) for review. */
+async function deletion(
+  ctx: CapabilityContext,
+  what: (typeof REVIEW_DELETABLE)[number],
+  target: string,
+  on: string | undefined,
+): Promise<ReviewChangeInput & { team_id: string | null }> {
+  const ref = parseRef(target);
+  if (ref.type === "title")
+    throw new CapabilityError("INVALID", "Name what to delete by its id.");
+  const t = DELETABLE_TABLE[what];
+  let team: string | null = null;
+  let parent: string | null = null;
+  let title = "";
+  if (what === "comment" || what === "proof" || what === "project_link") {
+    if (!on)
+      throw new CapabilityError(
+        "INVALID",
+        `Deleting ${t.label} needs on: what it is on.`,
+      );
+    const holder =
+      what === "comment"
+        ? await visibleDoc(ctx, on)
+        : what === "proof"
+          ? await visibleItem(ctx, on)
+          : await visibleProject(ctx, on);
+    parent = holder.id;
+    team = holder.team_id;
+    const col =
+      what === "comment"
+        ? "doc_id"
+        : what === "proof"
+          ? "item_id"
+          : "project_id";
+    const row = (
+      await ctx.db.query<{ title: string }>(
+        `SELECT coalesce(${t.name}, '') AS title FROM ${t.table} WHERE id = $1 AND ${col} = $2`,
+        [ref.id, parent],
+      )
+    ).rows[0];
+    if (!row) throw notFound();
+    title = row.title;
+  } else {
+    const row = (
+      await ctx.db.query<{
+        title: string;
+        team_id: string | null;
+        user_id: string;
+      }>(
+        `SELECT ${t.name} AS title, ${t.personalOnly ? "NULL::uuid" : "team_id"} AS team_id, user_id
+           FROM ${t.table} WHERE id = $1`,
+        [ref.id],
+      )
+    ).rows[0];
+    if (!row) throw notFound();
+    team = row.team_id;
+    const reach = row.team_id
+      ? ctx.principal.teams.some((x) => x.id === row.team_id)
+      : ctx.principal.personal && row.user_id === ctx.principal.user.id;
+    if (!reach) throw notFound();
+    title = row.title;
+  }
+  return {
+    ...actionChange({
+      action: "delete",
+      target_id: ref.id,
+      title: title.slice(0, 200) || t.label,
+      team_id: team,
+      headline: `Delete ${t.label} ${quoted(title.slice(0, 80))}`,
+      input: { kind: what, id: ref.id, parent_id: parent },
+    }),
+    team_id: team,
+  };
+}
+
 const PROPOSED = [
   "delete_task",
   "delete_doc",
@@ -596,6 +769,8 @@ const PROPOSED = [
   "invite",
   "remove_session",
   "unlink",
+  "delete",
+  "review_doc",
 ] as const;
 
 /** One proposed change: `type` says which fields it needs. */
@@ -620,6 +795,14 @@ const proposed = z
     due_at: isoTime.nullable().optional(),
     assignee_id: idField.nullable().optional(),
     status: z.enum(["todo", "in_progress", "blocked", "cancelled"]).optional(),
+    what: z
+      .enum(REVIEW_DELETABLE)
+      .optional()
+      .describe(
+        "delete: what target is; on: a comment's page, a proof's task.",
+      ),
+    on: z.string().trim().max(300).optional(),
+    verdict: z.enum(["still_true", "needs_update"]).optional(),
   })
   .strict();
 type Proposed = z.output<typeof proposed>;
@@ -642,7 +825,7 @@ export const proposeChanges = defineCapability({
   name: "propose_changes",
   title: "Propose changes for review",
   description:
-    'Files one proposal the person approves or declines in Orbyn\'s Review inbox, and changes nothing else. For what agents never do directly: deleting tasks, pages or projects, removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with fetch("proposal:<id>"). A proposal waits 72 hours.',
+    'Files one proposal the person approves or declines in Orbyn\'s Review inbox, and changes nothing else. For what agents never do directly: deleting anything (delete_task, delete_doc, delete_project, or delete with what), removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, a page review verdict (review_doc), changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with fetch("proposal:<id>"). A proposal waits 72 hours.',
   input: z
     .object({
       summary: z
@@ -824,6 +1007,40 @@ export const proposeChanges = defineCapability({
             from_start_at: b.start_at.toISOString(),
             from_end_at: b.end_at.toISOString(),
           });
+          break;
+        }
+        case "delete": {
+          const change = await deletion(ctx, needs(c, "what"), c.target, c.on);
+          may(change.team_id);
+          changes.push(change);
+          break;
+        }
+        case "review_doc": {
+          const doc = await visibleDoc(ctx, c.target);
+          may(doc.team_id);
+          const verdict = needs(c, "verdict");
+          changes.push(
+            actionChange({
+              action: "doc.review",
+              target_id: doc.id,
+              title: doc.title,
+              team_id: doc.team_id,
+              headline:
+                verdict === "still_true"
+                  ? `Confirm ${quoted(doc.title)} is still true`
+                  : `Mark ${quoted(doc.title)} as needing an update (a task for its author)`,
+              rows: c.notes
+                ? [{ label: "Note", before: null, after: c.notes }]
+                : [],
+              input: {
+                id: doc.id,
+                review:
+                  verdict === "still_true"
+                    ? { verdict }
+                    : { verdict, note: (c.notes ?? "").slice(0, 1000) },
+              },
+            }),
+          );
           break;
         }
         case "unlink": {

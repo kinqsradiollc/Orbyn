@@ -122,8 +122,8 @@ export type Capability<
   jsonText?: boolean;
   /** Only for old personal API keys on the legacy address (aliases). */
   legacyOnly?: boolean;
-  /** Counted against the lower search limit. */
-  limitGroup?: "search";
+  /** Counted against the lower search limit, or the CPU-heavy one. */
+  limitGroup?: "search" | "heavy";
   run(
     ctx: CapabilityContext,
     input: z.output<I>,

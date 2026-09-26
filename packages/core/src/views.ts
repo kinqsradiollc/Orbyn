@@ -123,6 +123,8 @@ export const viewFilters = z
     kind: z.string().trim().min(1).max(40).optional(),
     /** Only rows that link to this (a typed id: doc:, task:, project:). */
     links_to: z.string().trim().min(1).max(120).optional(),
+    /** Only what the person starred (pages and projects). */
+    starred: z.boolean().optional(),
     sort: z.enum(VIEW_SORTS).optional(),
   })
   .strict();

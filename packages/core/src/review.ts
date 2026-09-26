@@ -40,6 +40,47 @@ const space = z.uuid().nullable();
 /** Fields a proposed task change sets (the item's own field names). */
 const taskFields = z.record(z.string().max(40), z.unknown());
 
+/** Changes of type "action": each is applied by its own service. */
+export const REVIEW_ACTIONS = [
+  "ask.reply",
+  "ask.settle",
+  "record.create",
+  "record.respond",
+  "suggestions.resolve",
+  "project.update",
+  "doc.review",
+  "booking.approve",
+  "booking.decline",
+  "booking.cancel",
+  "booking.reschedule",
+  "booking_page.save",
+  "booking_page.delete",
+  "invite.create",
+  "invite.withdraw",
+  "template.use",
+  "tasks.import",
+  "delete",
+] as const;
+export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
+
+/** What a "delete" action can remove. */
+export const REVIEW_DELETABLE = [
+  "list",
+  "tag",
+  "folder",
+  "view",
+  "template",
+  "page_template",
+  "frame",
+  "habit",
+  "place",
+  "comment",
+  "proof",
+  "project_link",
+  "habit_session",
+] as const;
+export type ReviewDeletable = (typeof REVIEW_DELETABLE)[number];
+
 /** One proposed change. Each names what it is about by title, for people. */
 export const reviewChange = z.discriminatedUnion("type", [
   z.object({
@@ -196,6 +237,37 @@ export const reviewChange = z.discriminatedUnion("type", [
     to_id: id,
     title,
     team_id: space,
+  }),
+  /**
+   * Any other change, run through its own service when approved (see
+   * REVIEW_ACTIONS): answering an ask, a promise that notifies someone,
+   * taking suggestions on a team page, removing a project's stages,
+   * bookings changes (they email the guest), a bulk import, and deleting
+   * lists, tags, folders, views, templates, routines, comments and proofs.
+   * `input` is the service's own input, checked again on approval; the
+   * headline and rows are what the inbox shows.
+   */
+  z.object({
+    type: z.literal("action"),
+    action: z.enum(REVIEW_ACTIONS),
+    target_id: id.nullable(),
+    title,
+    team_id: space,
+    headline: z.string().max(300),
+    rows: z
+      .array(
+        z.object({
+          label: z.string().max(60),
+          before: z.string().max(2000).nullable(),
+          after: z.string().max(2000).nullable(),
+        }),
+      )
+      .max(60)
+      .default([]),
+    emails: z.array(z.string().max(320)).max(100).default([]),
+    input: z.record(z.string(), z.unknown()),
+    /** The target's version when proposed, when it has one. */
+    version: z.number().int().nullable().default(null),
   }),
 ]);
 export type ReviewChange = z.output<typeof reviewChange>;
