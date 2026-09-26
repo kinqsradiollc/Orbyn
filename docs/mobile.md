@@ -150,11 +150,27 @@ If your Expo account has "enhanced push security" enabled, set `EXPO_ACCESS_TOKE
 ## Links into the app, and the app icon's quick actions
 
 One listener in the app (`mobile/src/hooks/useAppLinks.ts`, read by `parseAppLink` in
-`@orbyn/core`) opens every link into the app: `orbyn://add` (a new task; with `?text=` it's added
-straight away, below), `orbyn://agenda`, `orbyn://scan`, `orbyn://assistant`,
-`orbyn://share?url=&text=` (Save to Orbyn), `orbyn://today`, and `orbyn://doc/<id>`,
-`orbyn://task/<id>` and `orbyn://project/<id>` — or the web app's `/app/…` paths for the same. A
-link that arrives signed out opens after sign-in.
+`@orbyn/core`) opens every link into the app: `orbyn://add` (a new task; with `?text=` the words
+fill Today's quick add for you to check and add — a link never adds anything by itself),
+`orbyn://agenda`, `orbyn://scan`, `orbyn://assistant`, `orbyn://share?url=&text=` (Save to Orbyn),
+`orbyn://today`, `orbyn://review[/<id>]` (the Inbox until the Review inbox arrives),
+`orbyn://search?q=` (Search, with the words typed), and `orbyn://doc/<id>`, `orbyn://task/<id>` and
+`orbyn://project/<id>` — or the web app's `/app/…` paths for the same. A link that arrives signed
+out opens after sign-in.
+
+**Universal links and app links.** `mobile/app.config.js` adds `associatedDomains`
+(`applinks:<host>`) on iOS and a verified `https://<host>/app/` intent filter on Android to what
+`app.json` holds, without changing `app.json`. The host is `EXPO_PUBLIC_WEB_URL`'s (https only),
+else `orbyn.dev`. The web host serves the matching `/.well-known/apple-app-site-association` and
+`assetlinks.json` once the API has `APPLE_TEAM_ID` and `ANDROID_CERT_FINGERPRINTS` (see
+docs/api.md). This takes effect in a new native build; the Associated Domains capability must be on
+for the app id.
+
+**Copy link** is in the ⋯ of a page, task and project (expo-clipboard; a build made before it was
+added falls back to the share sheet). **Search** (Workspace → Search) finds pages, tasks and
+projects with the web's filters and operators (`tag:`, `project:`, `team:`, `is:`, `edited:`) and a
+one-line summary; with nothing typed it lists what you opened last on any device. **Settings →
+Privacy → Security and data** shows the dated page the web has at `/security`.
 
 Long-pressing the app icon offers **New task, Today's agenda, Scan notes and Ask assistant**, each
 opening one of those links. They come from a config plugin and a small local module,
@@ -173,8 +189,9 @@ link parser are checked; the icon menu itself is verified on a device after that
 
 ## Quick capture with Siri / Shortcuts
 
-The app registers the `orbyn://` URL scheme, and opening `orbyn://add?text=<your task>` adds a task
-from the text (via `POST /items/quick`) and refreshes. No native extension is needed:
+The app registers the `orbyn://` URL scheme, and opening `orbyn://add?text=<your task>` opens Today
+with the text in quick add, parsed as you'd typed it; one tap on + adds it (via `POST /items/quick`).
+No native extension is needed:
 
 1. In the **Shortcuts** app, add an **Open URL** action with `orbyn://add?text=Buy%20milk` (or use
    an **Ask for Input** / dictation step and put its result in the `text` query value).

@@ -39,7 +39,7 @@ import { Pill } from "../../components/Pill";
 import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { MoreMenu } from "../../components/MoreMenu";
-import { shareLink } from "../../lib/share";
+import { copyLink, shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
@@ -139,6 +139,10 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  // Opened: it leads the search's recent list, and ⌘K's on the web.
+  useEffect(() => {
+    if (open?.id) void client.recordRecent("project", open.id).catch(() => {});
+  }, [open?.id]);
   const [newSummary, setNewSummary] = useState("");
   const [newTeam, setNewTeam] = useState<string | null>(null);
   const [newDue, setNewDue] = useState<string | null>(null);
@@ -958,6 +962,14 @@ export function ProjectsSheet({
                     title={open.name}
                     disabled={busy}
                     actions={[
+                      {
+                        label: "Copy link",
+                        onPress: () =>
+                          void copyLink(
+                            { kind: "project", id: open.id },
+                            open.name,
+                          ),
+                      },
                       {
                         label: "Share link…",
                         onPress: () =>

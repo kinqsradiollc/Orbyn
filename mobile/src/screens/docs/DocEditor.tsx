@@ -68,7 +68,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { downloadDoc, formatsHere } from "../../lib/download";
-import { shareLink, sharePageFile } from "../../lib/share";
+import { copyLink, shareLink, sharePageFile } from "../../lib/share";
 import { setOpenDoc } from "../../lib/live";
 import { SmallAction } from "../../components/SmallAction";
 import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
@@ -161,6 +161,10 @@ export function DocEditor({
   canWrite?: boolean;
   report: (e: unknown) => void;
 }) {
+  // Opened: it leads the search's recent list, and ⌘K's on the web.
+  useEffect(() => {
+    void client.recordRecent("doc", doc.id).catch(() => {});
+  }, [doc.id]);
   /**
    * A page opens the way it was last worked on, and always read-only for
    * someone who cannot change it: landing in an editor that will refuse the
@@ -1328,9 +1332,16 @@ export function DocEditor({
       />
     ) : null;
 
-  /** The page's ⋯: Ask, Share, Export, History, template and Trash. */
+  /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
     { label: "Ask about this page", onPress: () => setTalking(true) },
+    {
+      label: "Copy link",
+      onPress: () =>
+        void copyLink({ kind: "doc", id: doc.id }, title || "Untitled").catch(
+          report,
+        ),
+    },
     { label: "Share…", onPress: () => setMenu("share") },
     { label: "Export…", onPress: () => setMenu("export") },
     { label: "History", onPress: () => onShowHistory?.() },

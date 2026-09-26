@@ -8,6 +8,7 @@ import { colors, fonts, themed } from "../theme";
 
 /** Every destination the tab bar has no room for. */
 export type Destination =
+  | "search"
   | "planning"
   | "agenda"
   | "projects"
@@ -35,6 +36,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
   {
     label: "YOUR WORK",
     rows: [
+      {
+        to: "search",
+        icon: "search",
+        title: "Search",
+        detail: "Pages, tasks and projects, with filters",
+      },
       {
         to: "projects",
         icon: "boxes",

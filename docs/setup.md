@@ -225,6 +225,12 @@ build time. To produce installers:
 npm run package -w desktop   # output in desktop/release/
 ```
 
+The installed app registers the `orbyn://` scheme (`build.protocols` in `desktop/package.json`) and
+runs as one copy: `orbyn://task/<id>`, `doc/<id>`, `project/<id>`, `today`, `review/<id>`,
+`search?q=` and `add?text=` open in it as the web app's `/app/…` links do (a link that adds opens ⌘K
+filled in, to confirm). `desktop/preload.cjs` is the only bridge to the page. Copied links point at
+`VITE_WEB_URL` (else `VITE_API_URL` without `/api`, else an `orbyn://` link).
+
 ## 4. Tests
 
 Tests run against a separate, disposable database, never the one the app uses. Start it and run

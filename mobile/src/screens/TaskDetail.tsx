@@ -48,7 +48,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { SessionsPanel } from "../components/SessionsPanel";
 import { HeaderButton, Sheet, sheetStyles } from "../components/Sheet";
 import { ActionSheet } from "../components/MoreMenu";
-import { shareLink } from "../lib/share";
+import { copyLink, shareLink } from "../lib/share";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
@@ -156,6 +156,11 @@ export function TaskDetail({
 }) {
   /** The ⋯ in the header: sharing the task's link. */
   const [menu, setMenu] = useState(false);
+  // Opened: it leads the search's recent list, and ⌘K's on the web.
+  const openedId = visible ? item?.id : undefined;
+  useEffect(() => {
+    if (openedId) void client.recordRecent("task", openedId).catch(() => {});
+  }, [openedId]);
   return (
     <Sheet
       avoidKeyboard={false}
@@ -199,6 +204,11 @@ export function TaskDetail({
           label={item.kind === "event" ? "Event options" : "Task options"}
           title={item.title}
           actions={[
+            {
+              label: "Copy link",
+              onPress: () =>
+                void copyLink({ kind: "task", id: item.id }, item.title),
+            },
             {
               label: "Share link…",
               onPress: () =>

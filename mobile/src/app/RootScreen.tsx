@@ -92,6 +92,7 @@ import { TeamsSheet } from "../screens/TeamsSheet";
 import { TodayScreen } from "../screens/TodayScreen";
 import { SyncSheet } from "../screens/SyncSheet";
 import { ProgressSheet } from "../screens/ProgressSheet";
+import { SearchSheet } from "../screens/SearchSheet";
 import { SyncBar } from "../components/SyncBar";
 import { WelcomeBack } from "../components/followthrough/WelcomeBack";
 import { FocusElsewhere } from "../components/FocusElsewhere";
@@ -121,7 +122,8 @@ type SheetName =
   | "projects"
   | "settings"
   | "sync"
-  | "progress";
+  | "progress"
+  | "search";
 /** What to present next: a sheet, the item editor, or "Save to Orbyn". */
 type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
 
@@ -298,6 +300,13 @@ export function RootScreen() {
   const [projectsStart, setProjectsStart] = useState<{
     new?: boolean;
     open?: string;
+  } | null>(null);
+  /** Words the search sheet opens with (orbyn://search?q=). */
+  const [searchStart, setSearchStart] = useState("");
+  /** Words from an add link, waiting in Today's quick add to be confirmed. */
+  const [quickAddPrefill, setQuickAddPrefill] = useState<{
+    text: string;
+    key: number;
   } | null>(null);
   /** Opens a link into the app; set on each signed-in render. */
   const openLink = useRef<((link: AppLink) => void) | null>(null);
@@ -657,18 +666,24 @@ export function RootScreen() {
   openLink.current = (link) => {
     switch (link.kind) {
       case "add":
-        // Words to add go straight in, as a Shortcut expects; a bare link
-        // opens a new task to fill in.
+        // Words to add fill Today's quick add, to check and add with a tap:
+        // a link never adds anything by itself, whoever sent it. A bare
+        // link opens a new task to fill in.
         if (link.text) {
-          void client
-            .quickAdd(link.text, deviceTimeZone())
-            .then(() => refresh({ animate: true }))
-            .catch(() => {
-              // Offline or a hiccup: it can still be added by hand.
-            });
+          setSheet(null);
+          setTab("Today");
+          setQuickAddPrefill({ text: link.text, key: Date.now() });
           return;
         }
         return runCreate("task");
+      case "review":
+        // Waiting approvals are in the Inbox until the Review inbox lands.
+        setSheet(null);
+        setTab("Inbox");
+        return;
+      case "search":
+        setSearchStart(link.q);
+        return present({ sheet: "search" });
       case "today":
         setTab("Today");
         return;
@@ -982,6 +997,7 @@ export function RootScreen() {
                     onQuickAdded={() =>
                       void refresh({ animate: true }).catch(() => {})
                     }
+                    quickAddPrefill={quickAddPrefill}
                     onAsk={(text) => {
                       setTab("AI");
                       void assistant.ask(text);
@@ -1130,7 +1146,11 @@ export function RootScreen() {
                   <BrowseScreen
                     user={user}
                     onOpen={(to) =>
-                      to === "booking" ? openBookings() : setSheet(to)
+                      to === "booking"
+                        ? openBookings()
+                        : to === "search"
+                          ? (setSearchStart(""), setSheet("search"))
+                          : setSheet(to)
                     }
                   />
                 )}
@@ -1366,6 +1386,26 @@ export function RootScreen() {
             </View>
           </ScrollView>
         </Sheet>
+        <SearchSheet
+          visible={sheet === "search"}
+          initialQuery={searchStart}
+          teams={teams}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onOpen={(type, id, blockId) => {
+            if (type === "doc")
+              void act(async () => {
+                setNote(await client.getDoc(id));
+                setNoteBlockId(blockId);
+                present({ sheet: "note" });
+              });
+            else if (type === "project") {
+              setProjectsStart({ open: id });
+              present({ sheet: "projects" });
+            } else if (type === "task" || type === "event")
+              void act(async () => openTask(await client.getItem(id)));
+          }}
+        />
         <ProgressSheet
           visible={sheet === "progress"}
           teams={teams}

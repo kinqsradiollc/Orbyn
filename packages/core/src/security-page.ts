@@ -76,3 +76,15 @@ export function securityPageDate(locale?: string): string {
     timeZone: "UTC",
   });
 }
+
+/** The page as the Markdown the legal documents use (the phone shows it so). */
+export function securityPageMarkdown(locale?: string): string {
+  return [
+    "# Security and data",
+    `Last checked ${securityPageDate(locale)}`,
+    ...SECURITY_PAGE.flatMap((section) => [
+      `## ${section.heading}`,
+      section.lines.map((line) => `- ${line}`).join("\n"),
+    ]),
+  ].join("\n\n");
+}

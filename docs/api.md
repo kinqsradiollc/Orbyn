@@ -1025,8 +1025,11 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc`, `task` or `record`; leave it out for pages and tasks, ranked together on one
-scale. `project` limits results to that project's pages and tasks, and adds its work records
+`type` is `doc`, `task`, `project` or `record`; leave it out for pages, tasks and projects, ranked
+together on one scale (projects match on their name and summary, and aren't included when `tag`,
+`kind` or `project` narrows the search). `q` may be left out when another filter is set: the search
+then lists what fits, newest first (the filter chips use this: "Pages tagged physics"); with nothing
+at all to go on it answers 422. `project` limits results to that project's pages and tasks, and adds its work records
 (decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
 searched with `type=record`. Every hit still passes the caller's normal visibility check, and
 pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
@@ -1040,6 +1043,33 @@ matched words in `[[` and `]]` — markers rather than markup, so nothing has to
 the database as HTML.
 
 A search only ever returns what the searcher can already see.
+
+### `GET /find?q=&type=&limit=` (auth)
+
+The quick switcher (⌘K on the web, Search on the phone). → `[ { "id", "type", "title", "hint",
+"team_id", "updated_at", "recent" } ]`. `type` (`doc`, `task` or `project`) narrows it; a hit's
+`type` is `doc`, `task`, `event` or `project`. `q` (up to 200 characters) matches **names** from the
+first letter: the whole name, its start, anywhere in it (`%` and `_` are letters), then names that
+look alike, lifted for what you opened lately (`recent: true`) and for what changed lately; done
+tasks and archived projects sink. With no `q` it lists what you opened last, newest first, topped up
+with your latest pages, open tasks and active projects. `limit` 1–30 (default 12). Only what you can
+see, never a page in the Trash.
+
+### `POST /recents` (auth)
+
+`{ "kind": "doc" | "task" | "project", "id" }` → 204. Something was opened: it goes to the top of
+your recent list. The apps call it when a page, task or project opens. Only the newest 50 are kept
+per person, and the sweeper clears entries untouched for 90 days (`recent_opens`). An id you can't see
+is never listed.
+
+## Links into the apps
+
+### `GET /.well-known/apple-app-site-association`, `GET /.well-known/assetlinks.json` (public)
+
+The files iOS and Android check before opening the web app's `/app/…` links in the Orbyn app
+(universal links and verified app links), served from the web host through the gateway. Built from
+`APPLE_TEAM_ID` (`<team>.com.orbyn.planner`, paths `/app/*`) and `ANDROID_CERT_FINGERPRINTS` (the
+signing certificates' SHA-256, comma separated). Unset, they are empty and links stay in the browser.
 
 ### Finding a page by meaning
 

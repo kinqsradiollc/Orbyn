@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   StyleSheet,
@@ -88,8 +88,14 @@ export function QuickAdd({
   userId,
   onCreated,
   onAsk,
+  prefill,
 }: {
   userId?: string;
+  /**
+   * Words from a link (orbyn://add?text=…): put in the box to check and
+   * add with a tap, never added on their own. A new `key` fills it again.
+   */
+  prefill?: { text: string; key: number } | null;
   /** The item it made, or null when the text made a habit. */
   onCreated: (item: Item | null) => void;
   /** Hand the text to the assistant. */
@@ -98,6 +104,12 @@ export function QuickAdd({
   const { lists, tags } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [text, setText] = useState("");
+  const field = useRef<TextInput>(null);
+  useEffect(() => {
+    if (!prefill) return;
+    setText(prefill.text.slice(0, 500));
+    field.current?.focus();
+  }, [prefill?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const zone = deviceTimeZone();
   const parsed = useMemo(() => {
     if (!text.trim()) return null;
@@ -137,6 +149,7 @@ export function QuickAdd({
     <View style={[shared.card, s.card]}>
       <View style={s.row}>
         <TextInput
+          ref={field}
           style={[shared.input, s.input]}
           value={text}
           onChangeText={setText}
