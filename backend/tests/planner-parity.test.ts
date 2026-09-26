@@ -561,9 +561,11 @@ test("planner notices: roll forward, at risk and due soon, once a day, on the la
     estimate_minutes: 30,
     due_at: local(0, 16),
   });
+  // Its session is still to come at the scan (10 am) and ends by the
+  // deadline (4 pm), so it counts: a session after the deadline wouldn't.
   await pool.query(
-    "INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, now() + interval '1 minute', now() + interval '31 minutes')",
-    [covered.id, me.id],
+    "INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [covered.id, me.id, local(0, 11), local(0, 11, 30)],
   );
 
   // Before work starts there's no roll-forward notice yet.
@@ -723,6 +725,8 @@ test("team workload lists the team's at-risk tasks", async () => {
       assignee_id: mate.id,
       assignee_name: "Planner",
       due_at: new Date(local(1, 12)).toISOString(),
+      deadline_at: new Date(local(1, 12)).toISOString(),
+      due_all_day: false,
       remaining_minutes: 2000,
     },
     {
@@ -731,6 +735,8 @@ test("team workload lists the team's at-risk tasks", async () => {
       assignee_id: mate.id,
       assignee_name: "Planner",
       due_at: new Date(local(3, 12)).toISOString(),
+      deadline_at: new Date(local(3, 12)).toISOString(),
+      due_all_day: false,
       remaining_minutes: 15,
     },
   ]);
@@ -738,5 +744,128 @@ test("team workload lists the team's at-risk tasks", async () => {
   assert.deepEqual(
     workload.body.find((m: Json) => m.user_id === lead.id).at_risk_items,
     [],
+  );
+});
+
+test("team workload counts free time up to each task's deadline", async () => {
+  const lead = await newUser();
+  const mate = await newUser();
+  const team = await newTeam(lead.id, [mate.id]);
+  // Tomorrow and the day after, 9 to 5: 8 h free each day.
+  // All day tomorrow, as the editors save it: its whole day counts.
+  const allDay = await task(lead.token, {
+    title: "Tax return",
+    team_id: team,
+    assignee_id: mate.id,
+    estimate_minutes: 240,
+    due_at: local(1, 0),
+    end_at: local(2, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  // Runs 9 to 5 the day after: due when it ends, so that day counts too.
+  const span = await task(lead.token, {
+    title: "Workshop prep",
+    team_id: team,
+    assignee_id: mate.id,
+    estimate_minutes: 600,
+    due_at: local(2, 9),
+    end_at: local(2, 17),
+  });
+  // All day the day after, with more than is left before its day ends.
+  const late = await task(lead.token, {
+    title: "Board pack",
+    team_id: team,
+    assignee_id: mate.id,
+    estimate_minutes: 300,
+    due_at: local(2, 0),
+    all_day: true,
+    timezone: TZ,
+  });
+  const workload = await call(
+    lead.token,
+    "GET",
+    `/teams/${team}/workload?${range(1, 3)}`,
+  );
+  assert.equal(workload.status, 200, workload.raw.body);
+  const mine = workload.body.find((m: Json) => m.user_id === mate.id);
+  assert.equal(mine.capacity_minutes, 960);
+  // Neither of the first two is at risk: 240 of the 480 minutes free before
+  // tomorrow ends, then 840 of 960 before the workshop ends. Going by when
+  // they start would have flagged both.
+  assert.deepEqual(
+    mine.at_risk_items.map((i: Json) => i.id),
+    [late.id],
+  );
+  assert.ok(
+    ![allDay.id, span.id].some((id) =>
+      mine.at_risk_items.some((i: Json) => i.id === id),
+    ),
+  );
+  assert.deepEqual(mine.at_risk_items[0], {
+    id: late.id,
+    title: "Board pack",
+    assignee_id: mate.id,
+    assignee_name: "Planner",
+    due_at: new Date(local(2, 0)).toISOString(),
+    deadline_at: new Date(local(3, 0)).toISOString(),
+    due_all_day: true,
+    remaining_minutes: 300,
+  });
+  assert.equal(mine.at_risk, 1);
+});
+
+test("the conflict and daily notice scans reach everyone, a page at a time", async () => {
+  const people = [await newUser(), await newUser(), await newUser()];
+  const blocks: string[] = [];
+  const tasks: string[] = [];
+  for (const p of people) {
+    const t = await task(p.token, {
+      title: "Paged work",
+      estimate_minutes: 15,
+      due_at: local(0, 16),
+    });
+    tasks.push(t.id);
+    blocks.push(
+      (
+        await pool.query<{ id: string }>(
+          "INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id",
+          [t.id, p.id, local(2, 9), local(2, 10)],
+        )
+      ).rows[0].id,
+    );
+    await call(p.token, "POST", "/items", {
+      title: "Clash",
+      kind: "event",
+      due_at: local(2, 9),
+      end_at: local(2, 10),
+    });
+  }
+  // One person per page: more people than a page still all hear about it.
+  await scanConflicts(new Date(), 1);
+  const conflicts = (
+    await pool.query<{ ref: string }>(
+      "SELECT ref FROM notifications WHERE kind = 'conflict' AND channel = 'inapp' AND ref = ANY ($1)",
+      [blocks],
+    )
+  ).rows.map((r) => r.ref);
+  assert.deepEqual(conflicts.sort(), [...blocks].sort());
+
+  await pool.query("DELETE FROM time_blocks WHERE id = ANY ($1)", [blocks]);
+  await scanPlanningNotices(
+    new Date(local(0, 10)),
+    people.map((p) => p.id),
+    1,
+  );
+  const due = (
+    await pool.query<{ item_id: string }>(
+      "SELECT item_id FROM notifications WHERE kind = 'deadline' AND channel = 'inapp' AND user_id = ANY ($1)",
+      [people.map((p) => p.id)],
+    )
+  ).rows.map((r) => r.item_id);
+  assert.deepEqual(due.sort(), [...tasks].sort());
+  await pool.query(
+    "UPDATE notifications SET state = 'cancelled' WHERE user_id = ANY ($1) AND state = 'pending'",
+    [people.map((p) => p.id)],
   );
 });

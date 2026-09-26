@@ -36,6 +36,7 @@ const statusLabel = (status: string | null) =>
 
 /** Small, project-scoped trail of commitments and their outcomes. */
 export function ProjectRecords({
+  focusId = null,
   project,
   items,
   userId,
@@ -43,6 +44,7 @@ export function ProjectRecords({
   onOpenNote,
   report,
 }: {
+  focusId?: string | null;
   project: Project;
   items: Item[];
   userId: string;
@@ -390,7 +392,17 @@ export function ProjectRecords({
       ) : (
         <ul className="project-record-list">
           {records.map((record) => (
-            <li key={record.id}>
+            <li
+              key={record.id}
+              className={
+                record.id === focusId ? "project-source-focus" : undefined
+              }
+              ref={
+                record.id === focusId
+                  ? (element) => element?.scrollIntoView({ block: "center" })
+                  : undefined
+              }
+            >
               <div className="project-record-top">
                 <span className="project-record-kind">
                   {kinds.find((k) => k.value === record.kind)?.label}

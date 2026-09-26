@@ -16,6 +16,7 @@ import {
   motion,
   planDayPrompt,
   readArrangement,
+  deadlineOf,
   hasSystemPermission,
   hasTeamPermission,
   itemBody,
@@ -46,7 +47,7 @@ import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { PlanningProvider } from "../lib/planningContext";
-import { planIncluding } from "../lib/plans";
+import { planIncluding, planOnly } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale, isReducedMotion } from "../motion";
@@ -150,6 +151,8 @@ export function RootScreen() {
     teams,
     lists,
     tags,
+    planned,
+    today: todayList,
     reloadPlanning,
     error,
     setError,
@@ -166,7 +169,11 @@ export function RootScreen() {
     twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
-  usePresence(token, () => void refresh({ silent: true }).catch(() => {}));
+  // News from another device may be a session: planned time is asked again.
+  usePresence(
+    token,
+    () => void refresh({ silent: true, planned: true }).catch(() => {}),
+  );
   const insets = useSafeAreaInsets();
   /** The current Terms version, to know whether to ask for agreement. */
   const [legal, setLegal] = useState<LegalSummary | null>(null);
@@ -197,6 +204,12 @@ export function RootScreen() {
   const [task, setTask] = useState<Item | null>(null);
   /** The meeting note being read, opened from its event. */
   const [note, setNote] = useState<Doc | null>(null);
+  const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  const [projectSectionToOpen, setProjectSectionToOpen] = useState<
+    "decisions" | "history" | null
+  >(null);
+  const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   /** A page to suggest study cards from, when Study opens from Uploads. */
   const [studySuggest, setStudySuggest] = useState<{
     docId: string;
@@ -218,6 +231,15 @@ export function RootScreen() {
   const back = useRef<SheetName[]>([]);
   /** An unapplied plan shown as faint blocks on the calendar. */
   const [preview, setPreview] = useState<Plan | null>(null);
+  /** A day for the calendar to show ("Show" on a task's session). */
+  const [calendarJump, setCalendarJump] = useState<{
+    at: string;
+    key: number;
+  } | null>(null);
+  // Only once: coming back to the calendar later starts where it usually does.
+  useEffect(() => {
+    if (tab !== "Calendar") setCalendarJump(null);
+  }, [tab]);
   /** A time block is being dragged: the page holds still. */
   const [dragging, setDragging] = useState(false);
   const scroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
@@ -532,9 +554,44 @@ export function RootScreen() {
     act(async () =>
       openPlanner(await client.rollForward(), "Move work forward"),
     );
-  /** A plan that includes this task (at-risk and due-soon notices). */
+  /**
+   * A plan that includes this task (at-risk and due-soon notices), looking
+   * ahead as far as its deadline.
+   */
   const startPlanIt = (itemId?: string | null) =>
-    act(async () => openPlanner(await planIncluding(itemId), "Plan my day"));
+    act(async () => {
+      const known = itemId ? items.find((i) => i.id === itemId) : undefined;
+      const item =
+        known ??
+        (itemId ? await client.getItem(itemId).catch(() => null) : null);
+      openPlanner(
+        await planIncluding(itemId, item ? deadlineOf(item) : null),
+        "Plan my day",
+      );
+    });
+  /**
+   * "Plan it" on a Today row: a plan for that task alone, looking ahead as
+   * far as its deadline.
+   */
+  const startPlanOnly = (itemId: string) =>
+    act(async () => {
+      const item =
+        items.find((i) => i.id === itemId) ??
+        (await client.getItem(itemId).catch(() => null));
+      openPlanner(
+        await planOnly(itemId, item ? deadlineOf(item) : null),
+        "Plan it",
+      );
+    });
+  /** Opens a task or event by id, fetching it when the list doesn't have it. */
+  const openTaskById = (id: string) => {
+    const found = items.find((i) => i.id === id);
+    if (found) openTask(found);
+    else
+      void act(async () => {
+        openTask(await client.getItem(id));
+      });
+  };
   /** A planner notice's action; the notice is marked read alongside. */
   const noticeAction = (n: Notice, start: () => Promise<void>) => {
     if (!n.read)
@@ -646,7 +703,10 @@ export function RootScreen() {
     if (kind === "rollforward") void startRollForward();
     else if (kind === "at_risk" || kind === "deadline")
       void startPlanIt(itemId);
-    else if (kind === "conflict") setTab("Inbox");
+    else if (kind === "project" && text("ref")) {
+      setProjectToOpen(text("ref").split(":")[0]);
+      present({ sheet: "projects" });
+    } else if (kind === "conflict") setTab("Inbox");
     else if (kind === "template" && text("ref")) {
       setTemplateToOpen(text("ref"));
       present({ sheet: "projects" });
@@ -744,7 +804,13 @@ export function RootScreen() {
   };
 
   return (
-    <PlanningProvider lists={lists} tags={tags} reload={reloadPlanning}>
+    <PlanningProvider
+      lists={lists}
+      tags={tags}
+      reload={reloadPlanning}
+      planned={planned}
+      today={todayList}
+    >
       <View style={s.screen}>
         <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
           <View style={s.headerRow}>
@@ -925,6 +991,17 @@ export function RootScreen() {
                       setSearch("");
                     }}
                     onFocus={openFocus}
+                    onOpenById={openTaskById}
+                    onPlanTask={(id) => void startPlanOnly(id)}
+                    onPlanAgain={(id) =>
+                      void act(async () =>
+                        openPlanner(
+                          await client.rollForward([id]),
+                          "Move work forward",
+                        ),
+                      )
+                    }
+                    onOpenCalendar={() => setTab("Calendar")}
                     {...listHandlers}
                   />
                 )}
@@ -960,26 +1037,47 @@ export function RootScreen() {
                     onFocus={openFocus}
                     onScrollTo={scrollToView}
                     controlsSlot={calendarControls}
+                    jump={calendarJump}
                     {...listHandlers}
                   />
                 )}
                 {tab === "AI" && (
                   <AssistantScreen
                     assistant={assistant}
+                    onBackToProject={(id) => {
+                      setProjectToOpen(id);
+                      setSheet("projects");
+                    }}
                     items={items}
                     busy={busy}
-                    onOpenSource={(source) =>
-                      void client.getDoc(source.doc_id).then((doc) => {
-                        setNote(doc);
-                        setSheet("note");
-                      })
-                    }
+                    onOpenSource={(source) => {
+                      if ("doc_id" in source)
+                        void client.getDoc(source.doc_id).then((doc) => {
+                          setNoteBlockId(source.block_id ?? null);
+                          setNote(doc);
+                          setSheet("note");
+                        });
+                      else if (source.kind === "task") openTaskById(source.id);
+                      else if (source.project_id) {
+                        setProjectToOpen(source.project_id);
+                        setProjectSectionToOpen(
+                          source.kind === "decision" ? "decisions" : "history",
+                        );
+                        setProjectSourceId(source.id);
+                        setSheet("projects");
+                      }
+                    }}
                     onKeptNote={(docId) =>
                       void client.getDoc(docId).then((doc) => {
                         setNote(doc);
                         setSheet("note");
                       })
                     }
+                    onShowOnCalendar={(at) => {
+                      setSearch("");
+                      setTab("Calendar");
+                      setCalendarJump({ at, key: Date.now() });
+                    }}
                   />
                 )}
                 {tab === "Inbox" && (
@@ -1009,6 +1107,12 @@ export function RootScreen() {
                     onOpenTemplate={(n) =>
                       void noticeAction(n, async () => {
                         setTemplateToOpen(n.ref ?? null);
+                        present({ sheet: "projects" });
+                      })
+                    }
+                    onOpenProject={(n) =>
+                      void noticeAction(n, async () => {
+                        setProjectToOpen(n.ref?.split(":")[0] ?? null);
                         present({ sheet: "projects" });
                       })
                     }
@@ -1122,6 +1226,28 @@ export function RootScreen() {
             setTaskOccurrence(null);
             setTask(i);
           }}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            setSheet("projects");
+          }}
+          onAskTask={(item) => {
+            assistant.setScope({ kind: "task", id: item.id, name: item.title });
+            back.current = [];
+            pending.current = null;
+            setSheet(null);
+            setTab("AI");
+          }}
+          onOpenPage={(id, blockId) =>
+            void client.getDoc(id).then(
+              (doc) => {
+                setNote(doc);
+                setNoteBlockId(blockId ?? null);
+                // Closing the page returns to the task.
+                present({ sheet: "note" });
+              },
+              (e) => setError(errorText(e)),
+            )
+          }
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           occurrence={
@@ -1148,6 +1274,14 @@ export function RootScreen() {
           onEdit={editItem}
           onFocus={openFocus}
           onChanged={planChanged}
+          onShowOnCalendar={(at) => {
+            // Straight to the calendar: nothing reopens behind it.
+            back.current = [];
+            setSheet(null);
+            setSearch("");
+            setTab("Calendar");
+            setCalendarJump({ at, key: Date.now() });
+          }}
         />
         <FocusScreen
           item={sheet === "focus" ? focus : null}
@@ -1175,6 +1309,14 @@ export function RootScreen() {
             setTab("Calendar");
             setSearch("");
             closeSheet();
+          }}
+          onShowDay={(at) => {
+            // Straight to the calendar: nothing reopens behind it.
+            back.current = [];
+            setSheet(null);
+            setSearch("");
+            setTab("Calendar");
+            setCalendarJump({ at, key: Date.now() });
           }}
         />
         <ListsSheet
@@ -1249,6 +1391,10 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "docs"}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            present({ sheet: "projects" });
+          }}
           userId={user?.id}
           canWriteDoc={canWriteIn}
           onClose={closeSheet}
@@ -1268,7 +1414,12 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "note"}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            present({ sheet: "projects" });
+          }}
           initialDoc={note}
+          initialBlockId={noteBlockId}
           userId={user?.id}
           canWriteDoc={canWriteIn}
           onClose={closeSheet}
@@ -1285,6 +1436,14 @@ export function RootScreen() {
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          initialProjectId={projectToOpen}
+          initialSection={projectSectionToOpen}
+          initialSourceId={projectSourceId}
+          onInitialProjectShown={() => {
+            setProjectToOpen(null);
+            setProjectSectionToOpen(null);
+            setProjectSourceId(null);
+          }}
           canWriteIn={canWriteIn}
           userId={user?.id}
           visible={sheet === "projects"}
@@ -1301,10 +1460,24 @@ export function RootScreen() {
           }}
           onDismiss={onSheetDismissed}
           onOpenItem={openTask}
-          onOpenNote={(docId) =>
+          onOpenPlanner={openPlanner}
+          onAskProject={(project, question) => {
+            assistant.setScope({
+              kind: "project",
+              id: project.id,
+              name: project.name,
+            });
+            if (question) assistant.setMessage(question);
+            back.current = [];
+            pending.current = null;
+            setSheet(null);
+            setTab("AI");
+          }}
+          onOpenNote={(docId, blockId) =>
             void client.getDoc(docId).then((doc) => {
               setNote(doc);
-              setSheet("note");
+              setNoteBlockId(blockId ?? null);
+              present({ sheet: "note" });
             })
           }
           onItemsChanged={() => void refresh()}

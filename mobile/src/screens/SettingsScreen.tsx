@@ -273,7 +273,7 @@ export function SettingsScreen({
           <Text style={[shared.eyebrow, s.section]}>WHERE YOUR TIME GOES</Text>
           <View style={shared.card}>
             <Text style={shared.body}>
-              {Math.round(analytics.planned_minutes / 60)} h set aside and{" "}
+              {Math.round(analytics.planned_minutes / 60)} h in sessions and{" "}
               {analytics.completed} task
               {analytics.completed === 1 ? "" : "s"} finished in the last 30
               days.
@@ -304,18 +304,18 @@ export function SettingsScreen({
             <View style={s.preference}>
               <View style={{ flex: 1 }}>
                 <Text style={s.prefTitle}>
-                  Count blocked time as worked when I complete a task
+                  Count session time as worked when I complete a task
                 </Text>
                 <Text style={shared.small}>
-                  The time blocks you had for it, up to now, are added to its
-                  time spent. Each block counts once.
+                  The sessions you had for it, up to now, are added to its time
+                  spent. Each session counts once.
                 </Text>
               </View>
               <Switch
                 value={countBlocks}
                 disabled={busy}
                 trackColor={{ true: colors.accent }}
-                accessibilityLabel="Count blocked time as worked when I complete a task"
+                accessibilityLabel="Count session time as worked when I complete a task"
                 onValueChange={(value) =>
                   void saveNotices({ count_blocks_as_spent: value })
                 }
@@ -390,7 +390,7 @@ export function SettingsScreen({
               Warn before a due date
             </Text>
             <Text style={[shared.small, s.prefText]}>
-              When a task has no time set aside yet.
+              When a task has no sessions planned yet.
             </Text>
             <ChipRow label="Days before a due date">
               {[...new Set([...NOTICE_DAYS, notices.days])]

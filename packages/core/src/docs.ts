@@ -278,6 +278,11 @@ export type Doc = {
    * start, as the calendar's `occurrence`. Null for any other page.
    */
   occurrence?: string | null;
+  /**
+   * The checklist lines tied to a task, by block id (one page at a time,
+   * not in lists). Any line can carry an id, so only these are tasks.
+   */
+  linked_block_ids?: string[];
 };
 
 /** A note an event has (`GET /docs/event-notes`): enough to mark the event. */
@@ -1043,6 +1048,116 @@ export function mergeDocs(
 }
 
 /**
+ * Take the ticks a save came back with for the lines tied to tasks.
+ *
+ * The server stores such a line as its task now stands, which isn't always
+ * how it was sent: a repeating task that was just ticked has moved on to its
+ * next occurrence and reads unticked again, and a tick the task refused
+ * reads as the task really is. The page takes that state for every such line
+ * whose tick hasn't changed again here since the save went out (`sent` is
+ * what was sent, `local` is what is on screen now), so the next save doesn't
+ * carry the old tick back. Other lines are left as they are.
+ *
+ * Returns `local` itself when nothing changes, and the ids of the lines that
+ * took a new tick.
+ */
+export function adoptTaskTicks(
+  local: DocBlock[],
+  sent: DocBlock[],
+  saved: Pick<Doc, "content" | "linked_block_ids">,
+): { blocks: DocBlock[]; changed: string[] } {
+  const linked = new Set(saved.linked_block_ids ?? []);
+  if (!linked.size) return { blocks: local, changed: [] };
+  const now = new Map<string, boolean>();
+  for (const b of saved.content)
+    if (b.type === "todo" && b.id && linked.has(b.id)) now.set(b.id, b.done);
+  const was = new Map<string, boolean>();
+  for (const b of sent) if (b.type === "todo" && b.id) was.set(b.id, b.done);
+  const changed: string[] = [];
+  const blocks = local.map((b) => {
+    if (b.type !== "todo" || !b.id) return b;
+    const server = now.get(b.id);
+    if (server === undefined || server === b.done) return b;
+    // Ticked or unticked again since the save: that's a new change of its own.
+    if (was.get(b.id) !== b.done) return b;
+    changed.push(b.id);
+    return { ...b, done: server };
+  });
+  return changed.length ? { blocks, changed } : { blocks: local, changed };
+}
+
+/**
+ * The version of a page that the ticks on screen were taken from, which an
+ * editor sends with each save (`ticksFrom` on updateDoc) so the server can
+ * tell a tick the person just made from one it has already counted.
+ *
+ * An editor keeps this beside the version it saves against, starting from
+ * the version it opened. Each time a copy from the server arrives (a save's
+ * answer, a fresh read, a copy merged in), it moves to that copy's version
+ * only when every line tied to a task shows the tick that copy has for it:
+ * then any tick made from here on is made on the lines as they stand. While
+ * a tick made here is still unsaved it stays at `held`, the version the
+ * tick was made on, even as newer copies are merged around it. Sent as if
+ * taken from the newer copy, a tick the server already counted (its answer
+ * lost, or another open copy of the page ticking the same line) would count
+ * again.
+ */
+export function ticksTakenFrom(
+  held: number,
+  server: Pick<Doc, "version" | "content" | "linked_block_ids">,
+  screen: DocBlock[],
+): number {
+  if (server.version <= held) return held;
+  // Without the list, every named checklist line might be a task.
+  const linked = server.linked_block_ids
+    ? new Set(server.linked_block_ids)
+    : null;
+  const theirs = new Map<string, boolean>();
+  for (const b of server.content)
+    if (b.type === "todo" && b.id) theirs.set(b.id, b.done);
+  for (const b of screen) {
+    if (b.type !== "todo" || !b.id || (linked && !linked.has(b.id))) continue;
+    if (theirs.get(b.id) !== b.done) return held;
+  }
+  return server.version;
+}
+
+/**
+ * Whether a newer copy of a page differs from an older one only in the
+ * ticks of lines tied to tasks: a task was finished or reopened, and nobody
+ * wrote on the page. An editor then says so rather than that someone else
+ * edited it.
+ */
+export function onlyTaskTicksMoved(
+  before: DocBlock[],
+  after: Pick<Doc, "content" | "linked_block_ids">,
+): boolean {
+  if (before.length !== after.content.length) return false;
+  const linked = new Set(after.linked_block_ids ?? []);
+  return after.content.every((b, i) => {
+    const a = before[i];
+    if (sameBlock(a, b)) return true;
+    return (
+      a.type === "todo" &&
+      b.type === "todo" &&
+      !!b.id &&
+      a.id === b.id &&
+      linked.has(b.id) &&
+      sameBlock({ ...a, done: b.done }, b)
+    );
+  });
+}
+
+/**
+ * A checklist line's Markdown with its box set to `done`, for a line open
+ * for editing whose tick changed underneath it. Anything that isn't a
+ * checklist line comes back as it was.
+ */
+export function setTodoSource(source: string, done: boolean): string {
+  return source.replace(/^(\s*[-*]\s+\[)[ xX](\])/, `$1${done ? "x" : " "}$2`);
+}
+
+/**
  * The kinds of block a person can ask for by name — in a slash menu, a
  * "turn into" menu, or a toolbar. One list, so every surface offers the same
  * things in the same order and with the same words. `shorthand` is what you
@@ -1332,10 +1447,13 @@ export function reanchorSuggestions(
 
 // ---------------------------------------------------------------- search ---
 
-/** One thing found by a search: a page, or a task. */
+/**
+ * One thing found by a search: a page, a task, or a record (a decision,
+ * promise or other work record; only in a project's search).
+ */
 export type SearchHit = {
   id: string;
-  type: "doc" | "task";
+  type: "doc" | "task" | "record";
   title: string;
   kind: string;
   team_id: string | null;
@@ -1405,12 +1523,25 @@ export type DocAnswer = {
  * citation worth showing someone.
  */
 export type DocSource = {
+  kind?: "page";
   doc_id: string;
   title: string;
   /** The line that matched, when a search found one. */
   block_id: string | null;
   quote: string;
 };
+
+/** A planner fact the assistant actually read and the user can open. */
+export type AssistantSource = (
+  | DocSource
+  | {
+      kind: "task" | "decision" | "change";
+      id: string;
+      project_id?: string;
+      title: string;
+      quote: string;
+    }
+) & { used?: boolean; number?: number };
 
 /**
  * A line as it reads, with its Markdown markers taken off.

@@ -85,6 +85,17 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 7,
   },
   {
+    key: "item_deadline_moves",
+    label: "Task deadline changes",
+    detail:
+      "Earlier deadlines kept briefly so affected sessions can be noticed.",
+    table: "item_deadline_moves",
+    where: olderThan("created_at"),
+    days: 7,
+    configurable: true,
+    min: 2,
+  },
+  {
     key: "webhook_deliveries",
     label: "Webhook deliveries",
     detail: "Webhook calls that have finished, delivered or not.",
@@ -247,6 +258,16 @@ export const SWEEP_RULES: SweepRule[] = [
     where: `kind = 'dcr' AND coalesce(last_used_at, created_at) < now() - interval '7 days'
       AND NOT EXISTS (SELECT 1 FROM agent_grants g
                        WHERE g.client_id = oauth_clients.id AND g.revoked_at IS NULL)`,
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "project_history_access",
+    label: "Unused project history access",
+    detail: "Access metadata whose project history has been removed.",
+    table: "project_history_access",
+    where:
+      "NOT EXISTS (SELECT 1 FROM project_activity a WHERE a.entity_type = project_history_access.entity_type AND a.entity_id = project_history_access.entity_id)",
     days: 0,
     configurable: false,
   },

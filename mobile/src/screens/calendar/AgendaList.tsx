@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import {
   dayHeading,
+  sessionLine,
   type CalendarEntry,
   type ExternalEntry,
   type PlannedBlock,
@@ -204,6 +205,8 @@ function AgendaRow({
   let extra: React.ReactNode = null;
   let dashed = false;
   let done = false;
+  /** A session that ends after its task's deadline. */
+  let late = false;
   if ("entry" in r) {
     const e = r.entry;
     color = e.color || listColor(e.list_id) || statusTones[e.status].fg;
@@ -238,9 +241,10 @@ function AgendaRow({
     color = listColor(b.list_id) ?? colors.accent;
     title = b.title;
     when = timeLabel(new Date(b.start_at));
-    detail = `Time block · ${rangeLabel(b.start_at, b.end_at)}`;
+    detail = `${sessionLine(b) ?? "Session"} · ${rangeLabel(b.start_at, b.end_at)}`;
     dashed = true;
     done = b.status === "done";
+    late = !!b.after_deadline && !done;
     onPress = () => onOpen(b.item_id);
     onLongPress = () => onBlockMenu(b);
   } else if ("external" in r) {
@@ -300,7 +304,7 @@ function AgendaRow({
             </Text>
           </View>
           {!!detail && (
-            <Text style={shared.small} numberOfLines={1}>
+            <Text style={[shared.small, late && s.late]} numberOfLines={1}>
               {detail}
             </Text>
           )}
@@ -365,6 +369,7 @@ const s = themed(() =>
     titleRow: { flexDirection: "row", alignItems: "center", gap: 4 },
     title: { fontFamily: fonts.semibold, fontSize: 14, color: colors.text },
     doneText: { color: colors.faint, textDecorationLine: "line-through" },
+    late: { fontFamily: fonts.semibold, color: colors.warningStrong },
     extra: { flexDirection: "row", alignItems: "center", gap: 6 },
     join: { marginBottom: 0, minHeight: 44, paddingHorizontal: 12 },
   }),

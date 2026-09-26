@@ -105,8 +105,8 @@ export function CalendarFeedCard({ report }: Props) {
         await client.updateCalendarFeedSettings({ include_blocks: on }),
       );
       return on
-        ? "Time blocks are in the feed now."
-        : "Time blocks are left out of the feed.";
+        ? "Sessions are in the feed now."
+        : "Sessions are left out of the feed.";
     });
 
   const linkSection = (busy: boolean) => {
@@ -176,7 +176,7 @@ export function CalendarFeedCard({ report }: Props) {
               onChange={(e) => includeBlocks(e.target.checked)}
             />
             <span>
-              Include time blocks
+              Include sessions
               <small>Shown as “Focus: task name” in the full feed.</small>
             </span>
           </label>

@@ -10,6 +10,10 @@ import {
   type PageTemplateInput,
   type PageTemplateUpdate,
   type PageTemplateUse,
+  type ItemSessions,
+  type ItemContext,
+  type PlannedFeed,
+  type TodayList,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -54,6 +58,9 @@ import {
   type FavouriteKind,
   type Folder,
   type Project,
+  type ProjectLink,
+  type ProjectPlanning,
+  type ProjectSession,
   type ProjectActivity,
   type ProjectCheckpoint,
   type ProjectSnapshot,
@@ -79,6 +86,7 @@ import {
   type Passkey,
   type InboxInfo,
   type ChatTurn,
+  type ChatScope,
   type Credentials,
   type Item,
   type ItemDetail,
@@ -127,6 +135,9 @@ import {
   type ReauthInput,
   type Reauthenticated,
   type BlockDuplicateInput,
+  type BlockRescheduleInput,
+  type PlanApplied,
+  type PlanApplyInput,
   type BlockInput,
   type BlockUpdate,
   type Booking,
@@ -237,6 +248,8 @@ export type DocNews = {
   trashed: boolean;
   /** Only the page's tags changed; its words and version are as they were. */
   tags: boolean;
+  /** Who made the change, so an editor can skip its own saves ("" when unknown). */
+  by: string;
 };
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
@@ -302,6 +315,8 @@ export type RequestOptions = {
   raw?: boolean;
   /** Send once: a retry with the same key gets the first answer back. */
   idempotencyKey?: string;
+  /** Extra request headers. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -403,6 +418,7 @@ export class OrbynClient {
             ? { "Idempotency-Key": idempotencyKey }
             : {}),
           "X-Orbyn-Editor": this.editorId,
+          ...options.headers,
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -879,6 +895,47 @@ export class OrbynClient {
   getProject(id: string) {
     return this.request<Project>(`/projects/${id}`);
   }
+  listProjectLinks(id: string) {
+    return this.request<ProjectLink[]>(`/projects/${id}/links`);
+  }
+  addProjectLink(id: string, input: { url: string; title?: string }) {
+    return this.request<ProjectLink>(`/projects/${id}/links`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  removeProjectLink(id: string, linkId: string) {
+    return this.request<void>(`/projects/${id}/links/${linkId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Mark a project visit and return the prior visit for cross-device catch-up. */
+  visitProject(id: string) {
+    return this.request<{ since_at: string | null; visited_at: string }>(
+      `/projects/${id}/visit`,
+      { method: "POST" },
+    );
+  }
+  projectPlanning(id: string) {
+    return this.request<ProjectPlanning>(`/projects/${id}/planning`);
+  }
+  projectSessions(id: string) {
+    return this.request<ProjectSession[]>(`/projects/${id}/sessions`);
+  }
+  /** Preview a project plan using only tasks assigned to the signed-in person. */
+  /**
+   * Preview a plan for your tasks in a project. `claimItemIds` are unassigned
+   * team tasks you take on with it: they become yours and are planned too.
+   */
+  planProject(id: string, timezone?: string, claimItemIds: string[] = []) {
+    return this.request<Plan>(`/projects/${id}/plan`, {
+      method: "POST",
+      body: {
+        timezone,
+        ...(claimItemIds.length ? { claim_item_ids: claimItemIds } : {}),
+      },
+    });
+  }
   /** Recent changes to a project, with private task and note content omitted. */
   projectActivity(id: string, limit = 100) {
     return this.request<ProjectActivity[]>(
@@ -925,15 +982,26 @@ export class OrbynClient {
   deleteProject(id: string) {
     return this.request<void>(`/projects/${id}`, { method: "DELETE" });
   }
-  /** Move a task into a project and stage, or pass null to unfile it. */
+  /**
+   * Move a task into a project and stage, or pass null to unfile it. The
+   * answer carries the task as it now stands.
+   */
   setItemProject(
     itemId: string,
     input: { project_id: string | null; stage_id?: string | null },
   ) {
-    return this.request<{ ok: true }>(`/items/${itemId}/project`, {
+    return this.request<{ ok: true; item: Item }>(`/items/${itemId}/project`, {
       method: "PUT",
       body: input,
     });
+  }
+  /**
+   * What a task hangs off and what hangs off it: its project and stage, the
+   * page line it came from and the other pages about it (only pages you can
+   * open).
+   */
+  itemContext(itemId: string) {
+    return this.request<ItemContext>(`/items/${itemId}/context`);
   }
 
   /** Promises, decisions, experiments and meeting outcomes visible to this user. */
@@ -1171,6 +1239,12 @@ export class OrbynClient {
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
+  /**
+   * Save a page. An editor passes `ticksFrom`, the version of the page its
+   * checklist ticks were taken from (the version it last read or saved when
+   * the content was put together), so a tick made on a line as it now stands
+   * counts, and one carried over from before doesn't count twice.
+   */
   updateDoc(
     id: string,
     input: {
@@ -1181,8 +1255,15 @@ export class OrbynClient {
       tags?: string[];
       version: number;
     },
+    options: { ticksFrom?: number } = {},
   ) {
-    return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
+    return this.request<Doc>(`/docs/${id}`, {
+      method: "PUT",
+      body: input,
+      ...(options.ticksFrom
+        ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
+        : {}),
+    });
   }
   /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
@@ -1229,8 +1310,11 @@ export class OrbynClient {
 
   /**
    * Watch a document for changes made elsewhere. Calls `onChange` with the
-   * version the document has reached; the caller then re-reads it. Returns a
-   * function that stops watching.
+   * version the document has reached and who moved it on: another editor's
+   * id, "task" when a task tied to one of its lines was finished or reopened
+   * somewhere else, or "agenda" when the day's agenda was written again
+   * from the calendar. The caller then re-reads it. Returns a function that
+   * stops watching.
    *
    * This reads the stream with `fetch` rather than `EventSource`, which
    * cannot carry an Authorization header and would force the token into the
@@ -1287,10 +1371,12 @@ export class OrbynClient {
                   version?: number;
                   trashed?: boolean;
                   tags?: boolean;
+                  by?: string;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
                   tags: payload.tags === true,
+                  by: typeof payload.by === "string" ? payload.by : "",
                 });
               } catch {
                 // A half-written event: the next one will bring us up to date.
@@ -1350,6 +1436,10 @@ export class OrbynClient {
     const q = new URLSearchParams({ from, to });
     return this.request<TimeBlock[]>(`/blocks?${q}`);
   }
+  /** Your sessions for one task, past ones too, with its deadline. Makes no plan. */
+  itemSessions(itemId: string) {
+    return this.request<ItemSessions>(`/items/${itemId}/sessions`);
+  }
   createBlock(input: BlockInput) {
     return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
   }
@@ -1362,10 +1452,15 @@ export class OrbynClient {
   deleteBlock(id: string) {
     return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
   }
-  /** Move a block to the next free working time of the same length. */
-  rescheduleBlock(id: string) {
+  /**
+   * Move a block to the next free working time of the same length, one that
+   * ends by its task's deadline when there is one. With `before_deadline`,
+   * only such a time will do (409 when there's none).
+   */
+  rescheduleBlock(id: string, input: BlockRescheduleInput = {}) {
     return this.request<TimeBlock>(`/blocks/${id}/reschedule`, {
       method: "POST",
+      body: input,
     });
   }
   /** Another block for the same task and length, at `start_at` or the next free time after it. */
@@ -1399,6 +1494,30 @@ export class OrbynClient {
   /** What to do now: the free time until your next event and tasks for it. */
   getUpNext() {
     return this.request<UpNext>("/planner/next");
+  }
+  /**
+   * Today, planned and due in one list: events, your sessions, tasks due
+   * today and late ones, and unfinished sessions from earlier days. The day
+   * is `timezone`'s (pass the device's), or the planner's.
+   */
+  today(timezone?: string) {
+    const q = timezone ? `?${new URLSearchParams({ timezone })}` : "";
+    return this.request<TodayList>(`/today${q}`);
+  }
+  /**
+   * Your planned time, task by task, with each task's status: some tasks
+   * (`item_ids`), or every open task that's yours to plan plus any with a
+   * session in the window (`from`, `to`), whose sessions each lists.
+   */
+  planned(options: { item_ids?: string[]; from?: string; to?: string } = {}) {
+    const q = new URLSearchParams();
+    if (options.item_ids?.length) q.set("item_ids", options.item_ids.join(","));
+    if (options.from && options.to) {
+      q.set("from", options.from);
+      q.set("to", options.to);
+    }
+    const text = q.toString();
+    return this.request<PlannedFeed>(`/planned${text ? `?${text}` : ""}`);
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {
@@ -1518,11 +1637,16 @@ export class OrbynClient {
   planStale(id: string) {
     return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
   }
-  applyPlan(id: string) {
-    return this.request<{ blocks: TimeBlock[]; skipped: number }>(
-      `/planner/plans/${id}/apply`,
-      { method: "POST" },
-    );
+  /**
+   * Save a plan: its new sessions, and the late sessions to move before
+   * their deadline (`moves`, block ids; the ones the planner ticked when
+   * omitted).
+   */
+  applyPlan(id: string, input: PlanApplyInput = {}) {
+    return this.request<PlanApplied>(`/planner/plans/${id}/apply`, {
+      method: "POST",
+      body: input,
+    });
   }
   /** Unfinished blocks, tasks at risk, and blocks that clash with events. */
   plannerReview() {
@@ -2147,11 +2271,27 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
+  /** Whether the configured assistant can read with tools and draft pages. */
+  aiCapabilities() {
+    return this.request<{ enabled: boolean; tools: boolean }>(
+      "/ai/capabilities",
+    );
+  }
   /** Draft a project (subtasks) from a prompt, as a proposal to review. */
-  draftProject(prompt: string, timezone: string, teamId?: string | null) {
+  draftProject(
+    prompt: string,
+    timezone: string,
+    teamId?: string | null,
+    details?: { summary?: string; deadline?: string | null },
+  ) {
     return this.request<Proposal>("/ai/project", {
       method: "POST",
-      body: { prompt, timezone, ...(teamId ? { team_id: teamId } : {}) },
+      body: {
+        prompt,
+        timezone,
+        ...(teamId ? { team_id: teamId } : {}),
+        ...details,
+      },
     });
   }
   /**
@@ -2160,10 +2300,15 @@ export class OrbynClient {
    * model (one on the user's own machine) is never cut off by a proxy's
    * limit on a single request, and a dropped poll is simply tried again.
    */
-  async chat(message: string, timezone: string, history: ChatTurn[] = []) {
+  async chat(
+    message: string,
+    timezone: string,
+    history: ChatTurn[] = [],
+    scope: ChatScope | null = null,
+  ) {
     const { id } = await this.request<{ id: string }>("/ai/chat/start", {
       method: "POST",
-      body: { message, timezone, history: history.slice(-12) },
+      body: { message, timezone, history: history.slice(-12), scope },
     });
     const until = Date.now() + CHAT_WAIT_MS;
     let delay = CHAT_POLL_MS;
@@ -2180,10 +2325,15 @@ export class OrbynClient {
       "That took too long to answer. Try again, or ask for less at once.",
     );
   }
-  applyProposal(id: string) {
-    return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {
-      method: "POST",
-    });
+  applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
+    // `project_id`: the project a drafted-project proposal made, else null.
+    return this.request<{ applied: boolean; project_id: string | null }>(
+      `/ai/proposals/${id}/apply`,
+      {
+        method: "POST",
+        body: options ?? {},
+      },
+    );
   }
 
   // ---- teams ----

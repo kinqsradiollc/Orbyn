@@ -272,7 +272,7 @@ export async function editFollowing(
       actor,
       { operation: "update", item_id: id, version, data },
       undefined,
-      when,
+      { editedFrom: when },
     );
   const tags = (
     await db.query<{ tag_id: string }>(

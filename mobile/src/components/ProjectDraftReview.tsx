@@ -50,16 +50,19 @@ export function ProjectDraftReview({
       <Text accessibilityRole="header" style={s.title}>
         {project.title}
       </Text>
+      {!!project.summary && <Text style={s.text}>{project.summary}</Text>}
+      {!!project.deadline && (
+        <Text style={s.meta}>Project deadline: {time(project.deadline)}</Text>
+      )}
       <Text style={s.meta}>
-        Creates a project with a parent task and {project.tasks.length}{" "}
-        subtasks. Times are in {project.timezone}. Review covers {project.days}{" "}
-        days.
+        Creates a project with {project.tasks.length} tasks. Times are in{" "}
+        {project.timezone}. Review covers {project.days} days.
       </Text>
       {project.unplaced.length > 0 && (
         <Text style={s.warning}>
           {project.unplaced.length}{" "}
-          {project.unplaced.length === 1 ? "subtask cannot" : "subtasks cannot"}{" "}
-          be fully scheduled. Their unscheduled work needs another plan.
+          {project.unplaced.length === 1 ? "task cannot" : "tasks cannot"} be
+          fully scheduled. Their unscheduled work needs another plan.
         </Text>
       )}
       {project.tasks.map((task) => (

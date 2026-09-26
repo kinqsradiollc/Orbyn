@@ -37,13 +37,15 @@ const EVENT_LABELS: Record<WebhookEvent, string> = {
   "item.updated": "Item updated",
   "item.completed": "Item completed",
   "item.deleted": "Item deleted",
-  "block.scheduled": "Time scheduled",
+  "block.scheduled": "A session is planned",
+  "block.updated": "A session is moved",
+  "block.deleted": "A session is removed",
   "booking.requested": "Booking requested",
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled or declined",
   "event.starting": "An event is about to start",
-  "block.started": "A time block starts",
+  "block.started": "A session starts",
   "task.at_risk": "A task is at risk",
 };
 /** Minutes before a busy event that `event.starting` goes (the server's range). */

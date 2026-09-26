@@ -1,5 +1,7 @@
 import type { ProjectDecomposition } from "./projectDraft.js";
-import type { DocSource, DraftNote } from "./docs.js";
+import type { AssistantSource, DraftNote } from "./docs.js";
+import type { SessionChange } from "./schemas.js";
+import type { DeadlineFit } from "./fit.js";
 
 import type { z } from "zod";
 import type {
@@ -7,6 +9,7 @@ import type {
   agentReply,
   blockDuplicateInput,
   blockInput,
+  blockRescheduleInput,
   blockUpdate,
   bookingPageInput,
   bookingPageUpdate,
@@ -48,6 +51,7 @@ import type {
   placeInput,
   placeUpdate,
   plannerPrefsInput,
+  planApplyInput,
   planPreviewInput,
   planScope,
   planTuneInput,
@@ -77,6 +81,11 @@ export type Item = ItemInput & {
   /** The project this task belongs to, and which of its stages. */
   project_id?: string | null;
   stage_id?: string | null;
+  /**
+   * Its project's deadline: a latest date for the task, never its own
+   * deadline (see `latestDates`). Null outside a project or without one.
+   */
+  project_deadline?: string | null;
   id: string;
   version: number;
   /** Creator for team items; owner for personal items. */
@@ -332,6 +341,8 @@ export type Notice = {
     | "rollforward"
     | "at_risk"
     | "deadline"
+    /** Your part of a project needs planning (`ref` = project id:local day). */
+    | "project"
     /** Someone you invited answered (`item_id` = the event, `ref` = the attendee). */
     | "rsvp"
     /** A template with a rhythm is ready to start (`ref` = the template). */
@@ -365,11 +376,19 @@ export type Proposal = AgentReply & {
    */
   follow_ups?: string[];
   /** Pages the assistant read while answering, so an answer can be checked. */
-  sources?: DocSource[];
+  sources?: AssistantSource[];
   /** Notes it has drafted, which become pages only when someone keeps them. */
   notes?: DraftNote[];
   /** A schedule the assistant planned; the apps show it to review and apply. */
   plan?: Plan | null;
+  /** One session move or removal awaiting the same approval as item changes. */
+  session_change?: SessionChange | null;
+  /** A reviewed create action that will deliver an open project decision. */
+  decision_links?: {
+    action_index: number;
+    decision_id: string;
+    decision_title: string;
+  }[];
 };
 
 /** A status page component's current condition. */
@@ -627,6 +646,71 @@ export type TimeBlock = {
   team_id: string | null;
   list_id: string | null;
   estimate_minutes: number | null;
+  // The rest come with `GET /blocks`, `GET /calendar`, `GET
+  // /items/:id/sessions` and the session webhooks; lists built for other
+  // uses (the review, the assistant) leave them out.
+  /**
+   * When the session's task is due, as the task shows it. For a repeating
+   * task, the occurrence this session is for (see `sessionDueFor`). Null
+   * without a date.
+   */
+  due_at?: string | null;
+  /** That due date is a whole day: due by the end of it. */
+  due_all_day?: boolean;
+  /** The moment it's due by (see `deadlineOf`); null without a date. */
+  deadline_at?: string | null;
+  /** Earlier task or project target used for planning, without editing the task. */
+  planning_deadline_at?: string | null;
+  /** The task's project, if it's in one. */
+  project_id?: string | null;
+  /**
+   * This session's number among all of your sessions for the task (for a
+   * repeating task, for that occurrence), in time order: "Session 2 of 3".
+   */
+  part?: number;
+  parts?: number;
+  /** The session ends after the deadline. */
+  after_deadline?: boolean;
+};
+
+/**
+ * `GET /items/:id/sessions`: your sessions for one task, past ones too, and
+ * how much of the time still to come ends by its deadline.
+ */
+export type ItemSessions = {
+  item_id: string;
+  /** Whether the task still belongs to this person; their old sessions remain removable. */
+  assigned_to_me: boolean;
+  /** When the task is due (the current occurrence of a repeating one). */
+  due_at: string | null;
+  due_all_day: boolean;
+  /** The moment it's due by (see `deadlineOf`). */
+  deadline_at: string | null;
+  /**
+   * Its project's deadline, a latest date for the project's tasks. Never a
+   * task's own deadline.
+   */
+  project_deadline: string | null;
+  /** Earliest deadline of an open task that depends on this one, directly or through a chain. */
+  dependent_deadline?: string | null;
+  /** The earlier target used by planning, without changing the task's due date. */
+  planning_deadline_at?: string | null;
+  /**
+   * Your sessions for it, oldest first. For a repeating task, those for the
+   * current occurrence and later ones.
+   */
+  sessions: TimeBlock[];
+  /** Minutes still to come in sessions that end by the deadline (all of them without one). */
+  planned_minutes: number;
+  /** Minutes still to come in sessions that end after the deadline. */
+  late_minutes: number;
+  /**
+   * Whether your sessions cover what it still needs before its deadline
+   * (see `deadlineFit`): "On track", "Short 2h", "Session after the
+   * deadline"… Null for a finished task, or one that isn't yours to plan (a
+   * teammate's).
+   */
+  fit: DeadlineFit | null;
 };
 
 /** One occurrence of an item on the calendar. */
@@ -993,7 +1077,55 @@ export type UnplacedTask = {
   item_id: string;
   title: string;
   due_at: string | null;
+  /** When it's due by (`deadlineOf`): the end of its day when all-day, its end time when it has one. */
+  deadline_at?: string | null;
+  /** Due on a whole day (by the end of it) rather than at a time. */
+  due_all_day?: boolean;
   reason: string;
+  /**
+   * For a task at risk: what it still needs before the deadline, and the
+   * free working time there was for it before then.
+   */
+  remaining_minutes?: number;
+  free_minutes?: number;
+};
+
+/**
+ * A session that ends after its task's deadline, which a plan offers to move
+ * to free time before it. Sessions the planner made are ticked (`selected`);
+ * ones you placed by hand are offered unticked. Nothing moves until the plan
+ * is applied with it ticked.
+ */
+export type PlanMove = {
+  /** The session. */
+  block_id: string;
+  item_id: string;
+  title: string;
+  /** Where it is now. */
+  from_start_at: string;
+  from_end_at: string;
+  /** Where it would go, ending by the deadline. */
+  start_at: string;
+  end_at: string;
+  /** The deadline it would end by, and whether that's a whole day. */
+  deadline_at: string | null;
+  due_all_day?: boolean;
+  /** Who placed it: the planner, or you. */
+  source: "manual" | "planner";
+  /** Ticked to move when the plan is applied. */
+  selected: boolean;
+};
+
+/** `POST /planner/plans/:id/apply`: what was added, moved and left out. */
+export type PlanApplied = {
+  /** The sessions added. */
+  blocks: TimeBlock[];
+  /** Sessions left out because something else is there now. */
+  skipped: number;
+  /** Sessions moved before their deadline. */
+  moved: TimeBlock[];
+  /** Moves left out: the session changed or went, or the time is taken now. */
+  moves_skipped: number;
 };
 
 export type PlanScope = z.output<typeof planScope>;
@@ -1003,6 +1135,9 @@ export type PlanTask = {
   item_id: string;
   title: string;
   due_at: string | null;
+  /** When it's due by (`deadlineOf`), and whether that's a whole day. */
+  deadline_at?: string | null;
+  due_all_day?: boolean;
   priority: Priority;
   team_id: string | null;
   list_id: string | null;
@@ -1020,15 +1155,27 @@ export type PlanTask = {
   } | null;
   /** False for tasks left out of this plan. */
   included: boolean;
-  /** Minutes the plan gives it (pinned blocks included). */
+  /** Minutes the plan gives it (pinned blocks and ticked moves included). */
   planned_minutes: number;
+  /**
+   * Of those, minutes in the ticked sessions the plan moves before the
+   * deadline (one of yours it offers unticked isn't counted).
+   */
+  moved_minutes?: number;
   /** Why it wasn't (fully) planned, or why it was left out; null when it fits. */
   reason: string | null;
   at_risk: boolean;
+  /**
+   * Its "does it fit?" status once the plan is applied as proposed (see
+   * `deadlineFit`); left out for tasks the plan leaves out.
+   */
+  fit?: DeadlineFit | null;
 };
 
 /** The options a plan was made with, resolved from the request and preferences. */
 export type PlanOptions = {
+  /** Present for a project plan; refresh must keep its ownership filter. */
+  project_id?: string;
   start_date: string;
   days: number;
   pad_percent: number;
@@ -1054,6 +1201,11 @@ export type Plan = {
   unplaced: UnplacedTask[];
   /** Tasks that can't get enough time before they are due. */
   at_risk: UnplacedTask[];
+  /**
+   * Sessions after their task's deadline that the plan can move to free
+   * time before it. A plan may hold only moves.
+   */
+  moves?: PlanMove[];
   capacity_minutes: number;
   planned_minutes: number;
   applied: boolean;
@@ -1172,6 +1324,10 @@ export type TeamAtRiskItem = {
   assignee_id: string;
   assignee_name: string;
   due_at: string;
+  /** The moment it's due by (see `deadlineOf`): free time before this counts. */
+  deadline_at: string;
+  /** Due on a whole day: name the day, not a time. */
+  due_all_day: boolean;
   remaining_minutes: number;
 };
 
@@ -1532,6 +1688,8 @@ export type PlanPreviewInput = z.input<typeof planPreviewInput>;
 export type PlanTuneInput = z.input<typeof planTuneInput>;
 export type FrameSkipInput = z.input<typeof frameSkipInput>;
 export type BlockDuplicateInput = z.input<typeof blockDuplicateInput>;
+export type BlockRescheduleInput = z.input<typeof blockRescheduleInput>;
+export type PlanApplyInput = z.input<typeof planApplyInput>;
 export type BookingPageInput = z.input<typeof bookingPageInput>;
 export type BookingPageUpdate = z.input<typeof bookingPageUpdate>;
 export type BookingRequest = z.input<typeof bookingRequest>;

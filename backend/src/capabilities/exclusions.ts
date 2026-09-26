@@ -57,6 +57,7 @@ export const COVERED: Record<string, string[]> = {
   "GET /teams": ["get_context"],
   "GET /me": ["get_context"],
   "GET /planner/prefs": ["get_context"],
+  "GET /today": ["get_today"],
 };
 
 /** Routes agents never reach, with the reason. */
@@ -167,6 +168,9 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/chat/test": "credentials",
   "POST /me/consent": "account",
   "GET /me/export": "account",
+  "GET /me/export.zip": "account",
+  "GET /ai/capabilities": "hosted_ai",
+  "POST /capture/preview": "outside_fetch",
   "POST /me/import": "account",
   "DELETE /me/inbox": "account",
   "GET /me/inbox": "account",
@@ -216,6 +220,35 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
  * shrink: the inventory test holds its length.
  */
 export const PENDING: string[] = [
+  // Built alongside A1–A2 on the planning and pages tracks (merged in the
+  // M1–M4 integration); agents reach them in A3–A5.
+  "GET /items/:id/context",
+  "GET /items/:id/sessions",
+  "GET /planned",
+  "GET /docs/:id/versions/:version/changes",
+  "GET /agenda/:date",
+  "POST /agenda/:date",
+  "PUT /docs/:id/tags",
+  "POST /docs/:id/tags",
+  "GET /docs/event-notes",
+  "GET /docs/trash",
+  "POST /docs/:id/restore",
+  "DELETE /docs/:id/forever",
+  "POST /capture",
+  "GET /projects/:id/links",
+  "POST /projects/:id/links",
+  "DELETE /projects/:id/links/:linkId",
+  "POST /projects/:id/visit",
+  "GET /projects/:id/planning",
+  "GET /projects/:id/sessions",
+  "POST /projects/:id/plan",
+  "GET /page-templates",
+  "POST /page-templates",
+  "PUT /page-templates/:id",
+  "DELETE /page-templates/:id",
+  "POST /page-templates/from-doc/:id",
+  "POST /page-templates/:id/use",
+
   "GET /agenda/today",
   "GET /asks",
   "POST /asks/:id/reply",

@@ -34,7 +34,11 @@ type LocalFile = {
  * Upload one local file for importing: start the import, send the bytes,
  * and cancel the import if the upload doesn't arrive.
  */
-export async function sendLocalFile(file: LocalFile): Promise<void> {
+export async function sendLocalFile(
+  file: LocalFile,
+  projectId?: string,
+  projectTeamId?: string | null,
+): Promise<void> {
   // On the web the picker hands over the File itself; on a phone, a local
   // copy that fetch can read as a Blob.
   const body: Blob =
@@ -45,6 +49,8 @@ export async function sendLocalFile(file: LocalFile): Promise<void> {
     file_name: file.name,
     bytes: file.size ?? body.size,
     mime: file.mimeType ?? undefined,
+    project_id: projectId,
+    project_team_id: projectId ? projectTeamId : undefined,
   });
   try {
     await client.uploadImportFile(
@@ -181,7 +187,12 @@ async function takeNotesPhoto(
  * notes; it uploads, is read on the server, and becomes a page in Uploads.
  * The imports going on are refreshed while any is still being read.
  */
-export function useImports(onError: (m: string) => void, onReady: () => void) {
+export function useImports(
+  onError: (m: string) => void,
+  onReady: () => void,
+  projectId?: string,
+  projectTeamId?: string | null,
+) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [uploading, setUploading] = useState(0);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
@@ -246,7 +257,7 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     }
     setUploading((n) => n + 1);
     try {
-      await sendLocalFile(file);
+      await sendLocalFile(file, projectId, projectTeamId);
     } catch (e) {
       onError(errorText(e));
     } finally {

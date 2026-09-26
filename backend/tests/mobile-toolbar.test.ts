@@ -27,7 +27,7 @@ import {
   undoStep,
   wordsRange,
 } from "@orbyn/core";
-import { linkTarget, routeLink } from "../../desktop/src/app/app-link.ts";
+import { deepLinkOf } from "../../desktop/src/app/deep-link.ts";
 
 /**
  * The phone's page editor and its + (the mobile app has no test runner of
@@ -355,34 +355,29 @@ test("pages, tasks and projects share links the web app opens", () => {
 test("the web app opens a shared page, task or project link", () => {
   for (const kind of ["doc", "task", "project"] as const) {
     const path = appPath({ kind, id: ID });
-    // Signed in: back to /app, with the thing opened over it.
-    assert.deepEqual(routeLink(path, true), {
-      go: "/app",
-      open: { kind, id: ID },
-      remember: null,
-    });
-    // Signed out: to sign-in, remembering what to open after.
-    assert.deepEqual(routeLink(path, false), {
-      go: "/login",
-      open: null,
-      remember: { kind, id: ID },
-    });
-    assert.deepEqual(linkTarget(`${path}/`), { kind, id: ID });
+    const want =
+      kind === "doc" ? { kind, id: ID, block: null } : { kind, id: ID };
+    assert.deepEqual(deepLinkOf(path), want);
+    assert.deepEqual(deepLinkOf(`${path}/`), want);
   }
-  // Anything else under /app still asks a signed-out visitor to sign in.
-  for (const path of ["/app", "/app/settings", `/app/doc/not-an-id`])
-    assert.deepEqual(routeLink(path, false), {
-      go: "/login",
-      open: null,
-      remember: null,
-    });
-  assert.deepEqual(routeLink("/login", true).go, "/app");
-  for (const path of ["/", "/terms", "/book/x", "/application"]) {
-    assert.deepEqual(routeLink(path, false).go, null, path);
-    assert.equal(linkTarget(path), null);
-  }
-  assert.equal(linkTarget("/app/agenda"), null);
-  assert.equal(linkTarget("/app/add"), null);
+  // A page link can carry the line to bring into view.
+  assert.deepEqual(deepLinkOf(appPath({ kind: "doc", id: ID }), "#b12"), {
+    kind: "doc",
+    id: ID,
+    block: "b12",
+  });
+  for (const path of [
+    "/",
+    "/app",
+    "/app/settings",
+    "/app/doc/not-an-id",
+    "/terms",
+    "/book/x",
+    "/application",
+    "/app/agenda",
+    "/app/add",
+  ])
+    assert.equal(deepLinkOf(path), null, path);
 });
 
 // ------------------------------------------------ app icon quick actions ---

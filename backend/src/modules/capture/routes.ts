@@ -99,8 +99,7 @@ async function shareTask(
       }),
     },
     undefined,
-    undefined,
-    project ? { project_id: project.id, stage_id: stage } : undefined,
+    project ? { place: { project_id: project.id, stage_id: stage } } : {},
   );
   if (!item) fail(500, "The task couldn't be made.");
   return item;

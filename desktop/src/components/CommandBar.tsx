@@ -71,13 +71,15 @@ type Props = {
   onPlanDay: () => void;
   onNavigate: (view: View) => void;
   /** Opens a document found by search. */
-  onOpenDoc?: (doc: Doc) => void;
-  /** Switches to a view (a project found by search). */
-  onGoToProjects?: () => void;
+  onOpenDoc?: (doc: Doc, blockId?: string | null) => void;
+  /** Opens the project found by search. */
+  onGoToProjects?: (id: string) => void;
   /** Shows a day in the calendar (from an event search result). */
   onJumpToDate: (date: Date) => void;
-  onApplyPlan: (plan: Plan) => Promise<string>;
+  onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   onOpenPlan: (plan: Plan) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
   onOpenSource?: (source: DocSource) => void;
   /** Opens a note once it has been kept. */
@@ -170,6 +172,7 @@ export function CommandBar({
   onJumpToDate,
   onApplyPlan,
   onOpenPlan,
+  onShowOnCalendar,
   onOpenSource,
   onKeptNote,
   onApplied,
@@ -424,7 +427,7 @@ export function CommandBar({
     run: go(() => {
       void client
         .getDoc(h.id)
-        .then((full) => onOpenDoc?.(full))
+        .then((full) => onOpenDoc?.(full, h.block_id))
         .catch(() => {});
     }),
   }));
@@ -440,7 +443,7 @@ export function CommandBar({
           hint: `${pr.done_count} of ${pr.task_count} done`,
           icon: Boxes,
           group: "Projects",
-          run: go(() => onGoToProjects?.()),
+          run: go(() => onGoToProjects?.(pr.id)),
         }))
     : [];
 
@@ -637,6 +640,13 @@ export function CommandBar({
                     onClose();
                     onOpenPlan(plan);
                   }}
+                  onShowOnCalendar={
+                    onShowOnCalendar &&
+                    ((at) => {
+                      onClose();
+                      onShowOnCalendar(at);
+                    })
+                  }
                 />
               ) : null}
             </div>

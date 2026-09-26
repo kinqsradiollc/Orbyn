@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Keyboard,
   Pressable,
@@ -9,6 +15,7 @@ import {
 } from "react-native";
 import {
   addedInlineTags,
+  adoptTaskTicks,
   BLOCK_KINDS,
   blockDepth,
   blockText,
@@ -37,8 +44,11 @@ import {
   wordsRange,
   newBlockId,
   mergeDocs,
+  onlyTaskTicksMoved,
   parseDoc,
   serializeBlock,
+  setTodoSource,
+  ticksTakenFrom,
   proposeEdit,
   type Doc,
   type DocBlock,
@@ -99,8 +109,18 @@ const sourceOf = (list: DocBlock[], index: number): string =>
 /** Where each page's chosen mode is remembered, between visits. */
 const MODE_KEY = "orbyn-doc-mode:";
 
+/**
+ * What to say when the only news is a task tied to a line being finished or
+ * reopened: nothing when the page heard it came from the task itself (most
+ * likely ticked beside the page), and no talk of anyone else otherwise.
+ */
+const taskNews = (by?: string) =>
+  by === "task" ? "" : "A task on this page changed.";
+
 export function DocEditor({
   doc,
+  initialBlockId,
+  onTargetOffset,
   comments,
   userId,
   onBlocksChange,
@@ -115,6 +135,10 @@ export function DocEditor({
   report,
 }: {
   doc: Doc;
+  /** A line to bring into view when the page opens (a source, a link). */
+  initialBlockId?: string | null;
+  /** Where that line sits, for the sheet to scroll to. */
+  onTargetOffset?: (y: number) => void;
   /** The sheet's header, for the page's Info and ⋯ buttons. */
   headerSlot?: SlotHandle;
   /** The space over the keyboard, for the toolbar of the line being typed. */
@@ -164,6 +188,29 @@ export function DocEditor({
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
   const [title, setTitle] = useState(doc.title);
+  const bodyOffset = useRef<number | null>(null);
+  const targetOffset = useRef<number | null>(null);
+  const jumped = useRef(false);
+  useEffect(() => {
+    bodyOffset.current = null;
+    targetOffset.current = null;
+    jumped.current = false;
+  }, [doc.id, initialBlockId]);
+  const sendTarget = () => {
+    if (
+      jumped.current ||
+      bodyOffset.current === null ||
+      targetOffset.current === null
+    )
+      return;
+    jumped.current = true;
+    onTargetOffset?.(bodyOffset.current + targetOffset.current);
+  };
+  /** The lines tied to a task, as the server last said. */
+  const linked = useMemo(
+    () => new Set(doc.linked_block_ids ?? []),
+    [doc.linked_block_ids],
+  );
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [EMPTY],
   );
@@ -248,6 +295,13 @@ export function DocEditor({
   const [, setHistoryShown] = useState(0);
 
   const version = useRef(doc.version);
+  /**
+   * The version the ticks on screen were taken from, sent with each save so
+   * a tick already counted isn't counted again (see ticksTakenFrom). It
+   * stays put while a tick made here is unsaved, even as other copies are
+   * merged in.
+   */
+  const ticksFrom = useRef(doc.version);
   /** Whether an edit here is waiting to be saved. */
   const dirty = useRef(false);
   /** Which line is open, readable from the live subscription. */
@@ -258,8 +312,29 @@ export function DocEditor({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const flushOnClose = useRef<() => void>(() => {});
 
+  /** The open line's Markdown, readable from callbacks made earlier. */
+  const draftRef = useRef(draft);
   live.current = { title, blocks };
   focusedRef.current = focused;
+  draftRef.current = draft;
+
+  /**
+   * What is on screen, with the open line as it's being typed: a tick typed
+   * into its Markdown is on the page before the line is put back.
+   */
+  const onScreen = useCallback((): DocBlock[] => {
+    const at = focusedRef.current;
+    const shown = live.current.blocks;
+    if (at === null || !shown[at]) return shown;
+    const parsed = parseDoc(draftRef.current);
+    const next = shown.slice();
+    next.splice(
+      at,
+      1,
+      ...carryBlockIds(shown[at], parsed.length ? parsed : [EMPTY]),
+    );
+    return next;
+  }, []);
 
   // What is on screen, for whoever needs to match something to a line before
   // the page has been saved.
@@ -272,6 +347,7 @@ export function DocEditor({
     setTitle(doc.title);
     setBlocks(doc.content.length ? doc.content : [EMPTY]);
     version.current = doc.version;
+    ticksFrom.current = doc.version;
     base.current = doc.content;
     dirty.current = false;
     setFocused(null);
@@ -324,6 +400,7 @@ export function DocEditor({
   useEffect(() => {
     if (doc.version <= version.current) return;
     version.current = doc.version;
+    ticksFrom.current = doc.version;
     base.current = doc.content;
     dirty.current = false;
     setTitle(doc.title);
@@ -341,37 +418,116 @@ export function DocEditor({
     return () => clearTimeout(t);
   }, [note]);
 
-  /** Fold a copy that was saved elsewhere into what is on screen. */
-  const reconcile = useCallback((theirs: Doc): DocBlock[] => {
-    const merge = mergeDocs(base.current, live.current.blocks, theirs.content);
-    const next = merge.blocks.length ? merge.blocks : [EMPTY];
-    version.current = theirs.version;
-    base.current = theirs.content;
-    // Stepping back past someone else's edits would take them away.
-    history.current = emptyUndo();
-    setBlocks(next);
-    setTitle(theirs.title);
-    live.current = { title: theirs.title, blocks: next };
-    setNote(
-      merge.conflicts.length === 1
-        ? "Someone else edited this. The line you changed is kept below theirs."
-        : merge.conflicts.length > 1
-          ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
-          : "Updated with someone else's changes.",
+  /**
+   * Fold a copy that was saved elsewhere into what is on screen. `by` is who
+   * moved it on, when the live stream said.
+   */
+  const reconcile = useCallback(
+    (theirs: Doc, by?: string): DocBlock[] => {
+      const tasksOnly =
+        theirs.title === live.current.title &&
+        onlyTaskTicksMoved(base.current, theirs);
+      const merge = mergeDocs(
+        base.current,
+        live.current.blocks,
+        theirs.content,
+      );
+      const next = merge.blocks.length ? merge.blocks : [EMPTY];
+      version.current = theirs.version;
+      base.current = theirs.content;
+      // Stepping back past someone else's edits would take them away.
+      history.current = emptyUndo();
+      setBlocks(next);
+      setTitle(theirs.title);
+      live.current = { title: theirs.title, blocks: next };
+      // A tick kept from before the merge was made on the older copy, and
+      // is still sent as one.
+      ticksFrom.current = ticksTakenFrom(ticksFrom.current, theirs, onScreen());
+      const news =
+        merge.conflicts.length === 1
+          ? "Someone else edited this. The line you changed is kept below theirs."
+          : merge.conflicts.length > 1
+            ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
+            : tasksOnly
+              ? taskNews(by)
+              : "Updated with someone else's changes.";
+      if (news) setNote(news);
+      return next;
+    },
+    [onScreen],
+  );
+
+  /**
+   * Take the ticks a save came back with for the lines tied to tasks. A
+   * repeating task ticked here has moved on to its next occurrence and reads
+   * unticked again; showing the old tick would send it back with the next
+   * save. A line ticked or unticked again since keeps what was done here.
+   * Whatever it took is saved straight away, so the page also says it to
+   * anything that saves it without saying where its ticks came from.
+   */
+  const adoptTicks = useCallback((sent: DocBlock[], saved: Doc): boolean => {
+    const { blocks: next, changed } = adoptTaskTicks(
+      live.current.blocks,
+      sent,
+      saved,
     );
-    return next;
+    if (!changed.length) return false;
+    // The open line holds its own copy of its Markdown in the draft.
+    const at = focusedRef.current;
+    const open = at === null ? undefined : next[at];
+    if (open?.type === "todo" && open.id && changed.includes(open.id)) {
+      const done = open.done;
+      draftRef.current = setTodoSource(draftRef.current, done);
+      setDraft((d) => setTodoSource(d, done));
+    }
+    live.current = { ...live.current, blocks: next };
+    setBlocks(next);
+    return true;
   }, []);
+
+  /** The latest `persist`, for a save that has to follow the one running. */
+  const persistRef = useRef<
+    (nextTitle: string, nextBlocks: DocBlock[]) => Promise<void>
+  >(async () => {});
+  /** Queue a save of what is on screen now, behind the one running. */
+  const saveAgain = useCallback(() => {
+    dirty.current = true;
+    void persistRef.current(live.current.title, live.current.blocks);
+  }, []);
+
+  /**
+   * A save came back: take its ticks, and note the version the ticks on
+   * screen are now taken from. Anything that took a new tick is saved again,
+   * after that, so the save says so.
+   */
+  const settle = useCallback(
+    (sent: DocBlock[], saved: Doc) => {
+      const took = adoptTicks(sent, saved);
+      ticksFrom.current = ticksTakenFrom(ticksFrom.current, saved, onScreen());
+      if (took) saveAgain();
+    },
+    [adoptTicks, saveAgain, onScreen],
+  );
 
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
+      // The version these lines' ticks were taken from, as they are now. A
+      // save queued behind one still running goes out after that one's
+      // answer, but its ticks are still the ones from before it: the server
+      // mustn't count them again.
+      const from = ticksFrom.current;
       const write = async () => {
         setSaving(true);
         try {
-          const saved = await client.updateDoc(doc.id, {
-            title: nextTitle,
-            content: nextBlocks,
-            version: version.current,
-          });
+          const saved = await client.updateDoc(
+            doc.id,
+            {
+              title: nextTitle,
+              content: nextBlocks,
+              version: version.current,
+            },
+            { ticksFrom: from },
+          );
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
@@ -379,6 +535,7 @@ export function DocEditor({
             live.current.blocks !== nextBlocks;
           setSavedAt(saved.updated_at);
           setNow(new Date());
+          settle(nextBlocks, saved);
           onChanged(saved);
         } catch (e) {
           // Someone saved first: take their copy, fold this edit into it and
@@ -386,16 +543,25 @@ export function DocEditor({
           if ((e as { statusCode?: number }).statusCode === 409) {
             try {
               const merged = reconcile(await client.getDoc(doc.id));
-              const saved = await client.updateDoc(doc.id, {
-                title: live.current.title,
-                content: merged,
-                version: version.current,
-              });
+              const mergedTitle = live.current.title;
+              // Not theirs.version: a tick kept from before the merge was
+              // made on the older copy (see reconcile).
+              const saved = await client.updateDoc(
+                doc.id,
+                {
+                  title: mergedTitle,
+                  content: merged,
+                  version: version.current,
+                },
+                { ticksFrom: ticksFrom.current },
+              );
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
-                live.current.title !== nextTitle ||
-                live.current.blocks !== nextBlocks;
+                live.current.title !== mergedTitle ||
+                live.current.blocks !== merged;
+              setSavedAt(saved.updated_at);
+              settle(merged, saved);
               onChanged(saved);
             } catch (again) {
               report(again);
@@ -408,8 +574,9 @@ export function DocEditor({
       saveQueue.current = saveQueue.current.then(write, write);
       return saveQueue.current;
     },
-    [doc.id, onChanged, reconcile, report],
+    [doc.id, onChanged, reconcile, report, settle],
   );
+  persistRef.current = persist;
 
   /**
    * The page with the open line's words in it, including any typed since
@@ -444,7 +611,10 @@ export function DocEditor({
    * which on a phone is a request storm rather than a nuisance.
    */
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
-  onEvent.current = (remote: number, { trashed, tags: retagged }: DocNews) => {
+  onEvent.current = (
+    remote: number,
+    { trashed, tags: retagged, by }: DocNews,
+  ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
@@ -470,7 +640,13 @@ export function DocEditor({
       if (theirs.version <= version.current) return;
       // A line open for editing counts as ours even before a keystroke.
       if (!dirty.current && focusedRef.current === null) {
+        const news =
+          theirs.title === live.current.title &&
+          onlyTaskTicksMoved(base.current, theirs)
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
         version.current = theirs.version;
+        ticksFrom.current = theirs.version;
         base.current = theirs.content;
         tagBase.current = theirs.content;
         setTags(theirs.tags ?? []);
@@ -478,11 +654,11 @@ export function DocEditor({
         setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
         live.current = { title: theirs.title, blocks: theirs.content };
         history.current = emptyUndo();
-        setNote("Updated with someone else's changes.");
+        if (news) setNote(news);
         onChanged(theirs);
         return;
       }
-      const merged = reconcile(theirs);
+      const merged = reconcile(theirs, by);
       if (dirty.current) void persist(live.current.title, merged);
       else onChanged(theirs);
     }, report);
@@ -502,8 +678,10 @@ export function DocEditor({
       dirty.current = true;
       live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
+      // What is on screen when the clock runs out, not when it started: a
+      // save or a merge that landed meanwhile may have changed it.
       timer.current = setTimeout(
-        () => void persist(nextTitle, nextBlocks),
+        () => void persist(live.current.title, live.current.blocks),
         SAVE_AFTER_MS,
       );
     },
@@ -889,6 +1067,7 @@ export function DocEditor({
       .then(({ doc: saved }) => {
         if (saved) {
           version.current = saved.version;
+          ticksFrom.current = saved.version;
           base.current = saved.content;
           setBlocks(saved.content);
           onChanged(saved);
@@ -965,6 +1144,7 @@ export function DocEditor({
         const { created, doc: updated } = await client.docToTasks(doc.id, only);
         if (updated && updated.version > version.current) {
           version.current = updated.version;
+          ticksFrom.current = updated.version;
           base.current = updated.content;
           onChanged(updated);
           if (!dirty.current && live.current.blocks === sent)
@@ -1092,9 +1272,20 @@ export function DocEditor({
     focused !== null && indentBlocks(openBlocks, focused, 1) !== openBlocks;
 
   // Lines already tied to a task are not offered again.
-  const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
-  ).length;
+  // Lines already tied to a task are not offered again. The server says
+  // which: a line gets an id once it's remarked on, so an id alone doesn't
+  // make it a task. An agenda's lines copy tasks you already have, so it
+  // offers none.
+  const openTodos =
+    doc.kind === "agenda"
+      ? 0
+      : blocks.filter(
+          (b) =>
+            b.type === "todo" &&
+            !b.done &&
+            !(b.id && linked.has(b.id)) &&
+            b.text.trim().length > 0,
+        ).length;
 
   /** The line being typed, as the keyboard toolbar shows it. */
   const current = focused !== null ? (parseDoc(draft)[0] ?? EMPTY) : null;
@@ -1274,83 +1465,96 @@ export function DocEditor({
         />
       )}
 
-      <DocBody
-        content={blocks}
-        editing={focused}
-        draft={draft}
-        onDraftChange={changeDraft}
-        onCommit={commit}
-        onBlurLine={syncDraft}
-        selection={caret}
-        onSelectionChange={onSelect}
-        inputRef={lineInput}
-        counts={comments.counts}
-        marks={markRanges(comments.anchored)}
-        onOpenComments={(blockId) =>
-          setOpenThread((open) => (open === blockId ? null : blockId))
-        }
-        renderUnder={(blockId) => {
-          const list = comments.anchored.get(blockId) ?? [];
-          const waiting = pending?.blockId === blockId;
-          if (picking?.blockId === blockId)
+      <View
+        onLayout={(event) => {
+          bodyOffset.current = event.nativeEvent.layout.y;
+          sendTarget();
+        }}
+      >
+        <DocBody
+          content={blocks}
+          targetBlockId={initialBlockId}
+          onTargetLayout={(y) => {
+            targetOffset.current = y;
+            sendTarget();
+          }}
+          tasks={linked}
+          editing={focused}
+          draft={draft}
+          onDraftChange={changeDraft}
+          onCommit={commit}
+          onBlurLine={syncDraft}
+          selection={caret}
+          onSelectionChange={onSelect}
+          inputRef={lineInput}
+          counts={comments.counts}
+          marks={markRanges(comments.anchored)}
+          onOpenComments={(blockId) =>
+            setOpenThread((open) => (open === blockId ? null : blockId))
+          }
+          renderUnder={(blockId) => {
+            const list = comments.anchored.get(blockId) ?? [];
+            const waiting = pending?.blockId === blockId;
+            if (picking?.blockId === blockId)
+              return (
+                <WordPicker
+                  source={picking.source}
+                  onCancel={() => setPicking(null)}
+                  onAsk={(range) => {
+                    setPicking(null);
+                    setAsking({ blockId, ...range });
+                  }}
+                  onPick={(range) => {
+                    setPicking(null);
+                    setPending({
+                      blockId,
+                      quote: range.quote.slice(0, 400),
+                      range_start: range.start,
+                      range_end: range.end,
+                    });
+                    setOpenThread(blockId);
+                  }}
+                />
+              );
+            if (asking?.blockId === blockId)
+              return (
+                <AskSheet
+                  quote={asking.quote}
+                  busy={deciding}
+                  onCancel={() => setAsking(null)}
+                  onAsk={(action, instruction) =>
+                    void assist(action, instruction)
+                  }
+                />
+              );
+            if (openThread !== blockId && !waiting) return null;
             return (
-              <WordPicker
-                source={picking.source}
-                onCancel={() => setPicking(null)}
-                onAsk={(range) => {
-                  setPicking(null);
-                  setAsking({ blockId, ...range });
+              <DocThread
+                comments={list}
+                state={comments}
+                userId={userId}
+                quote={list[0]?.quote ?? pending?.quote}
+                placeholder="Comment on this line…"
+                autoFocus={waiting}
+                anchor={{
+                  block_id: blockId,
+                  quote: pending?.quote ?? list[0]?.quote ?? "",
+                  range_start: pending?.range_start,
+                  range_end: pending?.range_end,
                 }}
-                onPick={(range) => {
-                  setPicking(null);
-                  setPending({
-                    blockId,
-                    quote: range.quote.slice(0, 400),
-                    range_start: range.start,
-                    range_end: range.end,
-                  });
+                // Stay open on the line just commented on, so the remark
+                // that was written is there to read rather than folding away.
+                onDone={() => {
+                  setPending(null);
                   setOpenThread(blockId);
                 }}
               />
             );
-          if (asking?.blockId === blockId)
-            return (
-              <AskSheet
-                quote={asking.quote}
-                busy={deciding}
-                onCancel={() => setAsking(null)}
-                onAsk={(action, instruction) =>
-                  void assist(action, instruction)
-                }
-              />
-            );
-          if (openThread !== blockId && !waiting) return null;
-          return (
-            <DocThread
-              comments={list}
-              state={comments}
-              userId={userId}
-              quote={list[0]?.quote ?? pending?.quote}
-              placeholder="Comment on this line…"
-              autoFocus={waiting}
-              anchor={{
-                block_id: blockId,
-                quote: pending?.quote ?? list[0]?.quote ?? "",
-                range_start: pending?.range_start,
-                range_end: pending?.range_end,
-              }}
-              // Stay open on the line just commented on, so the remark
-              // that was written is there to read rather than folding away.
-              onDone={() => {
-                setPending(null);
-                setOpenThread(blockId);
-              }}
-            />
-          );
-        }}
-        onEditBlock={reading && !suggesting ? undefined : openLine}
-        onToggleTodo={reading || !structural ? undefined : toggle}
-      />
+          }}
+          onEditBlock={reading && !suggesting ? undefined : openLine}
+          onToggleTodo={reading || !structural ? undefined : toggle}
+        />
+      </View>
 
       {/* The toolbar rides on the keyboard (the sheet docks it there); a
           page shown anywhere else keeps it under the line. */}

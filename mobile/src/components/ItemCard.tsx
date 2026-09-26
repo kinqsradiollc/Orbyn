@@ -10,6 +10,9 @@ import {
 } from "react-native";
 import {
   dateLabel,
+  isClosed,
+  plannedLabel,
+  rowFitChip,
   statusLabels,
   statusOrder,
   type Item,
@@ -18,7 +21,8 @@ import {
 } from "@orbyn/core";
 import { Icon } from "./Icon";
 import { PlanningMeta } from "./PlanningMeta";
-import { StatusPill } from "./Pill";
+import { Pill, StatusPill, chipTone } from "./Pill";
+import { usePlanned } from "../lib/plannedContext";
 import { ProgressBar } from "./ProgressBar";
 import { SmallAction } from "./SmallAction";
 import { shortDay } from "../lib/planning";
@@ -107,6 +111,12 @@ export function ItemCard({
     wasDone.current = done;
   }, [done, reduced, tick]);
   const showProgress = item.kind === "task" || percent > 0;
+  // "Planned 9:15" for a session today, and the task's status only within a
+  // week of its deadline or with a session after it.
+  const planned = usePlanned().byItem.get(item.id);
+  const planning = item.kind === "task" && !isClosed(item.status);
+  const plannedToday = planning ? plannedLabel(planned) : null;
+  const fitChip = planning ? rowFitChip(planned?.fit) : null;
   const footer = [
     stepsLabel(item.steps_done, item.steps_total),
     subtasks ? "" : subtasksLabel(item),
@@ -274,6 +284,14 @@ export function ItemCard({
           )}
         </View>
         <PlanningMeta item={item} />
+        {(!!plannedToday || !!fitChip) && (
+          <View style={s.plan}>
+            {!!plannedToday && <Pill label={plannedToday} tone="accent" />}
+            {!!fitChip && (
+              <Pill label={fitChip.text} tone={chipTone(fitChip.tone)} />
+            )}
+          </View>
+        )}
         {showProgress && (
           <View style={s.progress}>
             <ProgressBar
@@ -400,6 +418,7 @@ const s = themed(() =>
       marginTop: 2,
     },
     moveRow: { flexDirection: "row", marginTop: 8 },
+    plan: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
     team: {
       flexDirection: "row",
       alignItems: "center",

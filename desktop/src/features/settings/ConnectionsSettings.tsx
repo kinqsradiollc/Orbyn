@@ -36,13 +36,15 @@ const EVENT_LABELS: Partial<Record<WebhookEvent, string>> = {
   "item.updated": "Item updated",
   "item.completed": "Item completed",
   "item.deleted": "Item deleted",
-  "block.scheduled": "Time scheduled",
+  "block.scheduled": "Session planned",
+  "block.updated": "Session moved",
+  "block.deleted": "Session removed",
   "booking.requested": "Booking requested",
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled",
   "event.starting": "Event starting soon",
-  "block.started": "Time block started",
+  "block.started": "Session started",
   "task.at_risk": "Task at risk",
 };
 

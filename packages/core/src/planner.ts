@@ -1,5 +1,6 @@
 import { addDays, dayTime } from "./time.js";
 import { sameDay } from "./dates.js";
+import { dueDayAt } from "./deadlines.js";
 import { isClosed } from "./schemas.js";
 import type { Item, ItemInput } from "./types.js";
 
@@ -83,20 +84,32 @@ export type PlannerGroups = {
   done: Item[];
 };
 
-/** Buckets used by the Overview / Today screens on every client. */
+/**
+ * Buckets used by the Overview / Today screens on every client. A task goes
+ * by its deadline's day (`dueDayAt`): an all-day task is due today until the
+ * day is over, one running over several days is due on its last, and one
+ * with an end time on the day it ends. Events go by when they start.
+ */
 export function groupItems(items: Item[], now = new Date()): PlannerGroups {
   // Cancelled items are closed: neither pending nor done.
   const pending = items.filter((i) => !isClosed(i.status));
   const done = items.filter((i) => i.status === "done");
+  const dueDay = new Map(pending.map((i) => [i, dueDayAt(i)]));
   const today = pending
-    .filter((i) => i.due_at && sameDay(new Date(i.due_at), now))
+    .filter((i) => {
+      const at = dueDay.get(i);
+      return !!at && sameDay(at, now);
+    })
     .sort(byDueDate);
-  const overdue = pending.filter(
-    (i) =>
-      i.due_at && new Date(i.due_at) < now && !sameDay(new Date(i.due_at), now),
-  );
+  const overdue = pending.filter((i) => {
+    const at = dueDay.get(i);
+    return !!at && at < now && !sameDay(at, now);
+  });
   const upcoming = pending
-    .filter((i) => i.due_at && new Date(i.due_at) >= now)
+    .filter((i) => {
+      const at = dueDay.get(i);
+      return !!at && at >= now;
+    })
     .sort(byDueDate);
   return { pending, today, overdue, upcoming, done };
 }

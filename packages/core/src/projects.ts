@@ -1,3 +1,6 @@
+import { deadlineOf } from "./deadlines.js";
+import { clockMinutes, dayTime, zonedParts } from "./time.js";
+
 /**
  * Projects: a named piece of work with ordered stages and the tasks that make
  * it up. Tasks stay ordinary planner items — a project only groups them — so
@@ -12,6 +15,15 @@ export type ProjectStage = {
   project_id: string;
   name: string;
   position: number;
+};
+
+/** A web resource pinned to a project Home. */
+export type ProjectLink = {
+  id: string;
+  project_id: string;
+  url: string;
+  title: string;
+  created_at: string;
 };
 
 export type Project = {
@@ -30,6 +42,30 @@ export type Project = {
   /** Tasks in the project, and how many are finished. */
   task_count: number;
   done_count: number;
+};
+
+/** Your open work in a project, measured against each task's planning target. */
+export type ProjectPlanning = {
+  project_id: string;
+  deadline: string | null;
+  task_count: number;
+  needed_minutes: number;
+  planned_minutes: number;
+  unplanned_minutes: number;
+  late_session_count: number;
+  /** Last counted session when every estimated minute has been covered. */
+  planned_finish_at: string | null;
+  unestimated_tasks: { id: string; title: string }[];
+  /** Shown only to a team owner or admin, without names or session times. */
+  team_planned_minutes?: number;
+};
+
+/** One of the viewer's actual scheduled sessions in a project. */
+export type ProjectSession = {
+  id: string;
+  item_id: string;
+  start_at: string;
+  end_at: string;
 };
 
 /** A compact record of a meaningful change to a project's work. */
@@ -86,6 +122,83 @@ export function projectAtRisk(
   return days <= soonDays && projectProgress(p) < 50;
 }
 
+/**
+ * The project page's planned-vs-deadline chip, by the same rule as task rows:
+ * "On track" when all of your part is planned before the deadline, "Not fully
+ * planned" when some of it isn't (time not planned, a task with no estimate,
+ * or a session after its task's deadline). Null without a deadline or open
+ * work. Finished tasks never count. The one "at risk" rule for projects: the
+ * list, the assistant and the page all use it.
+ */
+export function projectPlanStatus(p: {
+  deadline: string | null;
+  task_count: number;
+  unplanned_minutes: number;
+  late_session_count: number;
+  unestimated_tasks: { id: string }[];
+}): { status: "on_track" | "not_fully_planned"; label: string } | null {
+  if (!p.deadline || p.task_count === 0) return null;
+  return p.unplanned_minutes > 0 ||
+    p.late_session_count > 0 ||
+    p.unestimated_tasks.length > 0
+    ? { status: "not_fully_planned", label: "Not fully planned" }
+    : { status: "on_track", label: "On track" };
+}
+
+// ---------------------------------------------------------- deadline ---
+
+/**
+ * A project's deadline is a moment: the day picked, at 5 pm in the zone of
+ * whoever picked it, unless they picked a time too. Creating and editing
+ * use this one rule, and the day and time are always shown in the viewer's
+ * own zone, so nobody sees the day before or after the one that was meant.
+ */
+export const DEADLINE_CLOCK = "17:00";
+
+/** The instant for a deadline on `day` ("YYYY-MM-DD") at `clock` ("HH:mm"). */
+export function projectDeadlineAt(
+  day: string,
+  clock: string | null | undefined,
+  timeZone: string,
+): string {
+  return dayTime(
+    day,
+    clockMinutes(clock || DEADLINE_CLOCK),
+    timeZone,
+  ).toISOString();
+}
+
+/** A saved deadline as the day and time ("HH:mm") it falls on in `timeZone`. */
+export function projectDeadlineParts(
+  deadline: string,
+  timeZone: string,
+): { day: string; clock: string } {
+  const p = zonedParts(new Date(deadline), timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    day: `${p.year}-${pad(p.month)}-${pad(p.day)}`,
+    clock: `${pad(p.hour)}:${pad(p.minute)}`,
+  };
+}
+
+/**
+ * The deadline after one part of it changes: a new day keeps the time that
+ * was saved (5 pm for a first deadline), and a new time keeps the day. No
+ * day means no deadline.
+ */
+export function changeProjectDeadline(
+  saved: string | null,
+  change: { day?: string | null; clock?: string | null },
+  timeZone: string,
+): string | null {
+  const was = saved ? projectDeadlineParts(saved, timeZone) : null;
+  const day = change.day === undefined ? (was?.day ?? null) : change.day;
+  if (!day) return null;
+  const clock =
+    change.clock === undefined ? (was?.clock ?? DEADLINE_CLOCK) : change.clock;
+  return projectDeadlineAt(day, clock, timeZone);
+}
+
 /** The stages a new project starts with, so a board is never empty. */
 export const DEFAULT_STAGES = ["Planning", "In progress", "Review", "Done"];
 
@@ -99,7 +212,7 @@ export type TimelineBar = {
   left: number;
   width: number;
   done: boolean;
-  /** Due before now and not finished. */
+  /** Its deadline (`deadlineOf`) has passed and it isn't finished. */
   late: boolean;
 };
 
@@ -120,9 +233,12 @@ const MIN_BAR_MINUTES = 60;
 const clampPercent = (n: number) => Math.max(0, Math.min(100, n));
 
 /**
- * Lay a project's dated tasks on one time axis: each bar runs from when the
- * work would have to start (its due time less its estimate) to when it is due.
- * Undated tasks are left out — a timeline can only show what has a date.
+ * Lay a project's dated tasks on one time axis: each bar ends at the task's
+ * deadline (`deadlineOf`: the end of its day for an all-day task, its end
+ * time when it has one) and starts when the work would have to start (the
+ * deadline less its estimate), or earlier when the task's own dates start
+ * earlier (an all-day task covers its day). Undated tasks are left out — a
+ * timeline can only show what has a date.
  */
 export function projectTimeline(
   project: {
@@ -133,24 +249,35 @@ export function projectTimeline(
     id: string;
     title: string;
     due_at?: string | null;
+    end_at?: string | null;
+    all_day?: boolean | null;
+    timezone?: string | null;
     estimate_minutes?: number | null;
     status: string;
     stage_id?: string | null;
   }[],
   now = new Date(),
+  sessions: ProjectSession[] = [],
 ): Timeline | null {
   const stageName = new Map(project.stages.map((s) => [s.id, s.name]));
   const dated = tasks.filter((t) => t.due_at);
-  if (!dated.length) return null;
+  if (!dated.length && !sessions.length) return null;
 
   const spans = dated.map((t) => {
-    const due = new Date(t.due_at!).getTime();
+    const to = Date.parse(deadlineOf({ ...t, due_at: t.due_at })!);
     const minutes = Math.max(t.estimate_minutes ?? 0, MIN_BAR_MINUTES);
-    return { task: t, from: due - minutes * 60_000, to: due };
+    const from = Math.min(to - minutes * 60_000, Date.parse(t.due_at!));
+    return { task: t, from, to };
   });
 
-  let start = Math.min(...spans.map((s) => s.from));
-  let end = Math.max(...spans.map((s) => s.to));
+  let start = Math.min(
+    ...spans.map((s) => s.from),
+    ...sessions.map((s) => Date.parse(s.start_at)),
+  );
+  let end = Math.max(
+    ...spans.map((s) => s.to),
+    ...sessions.map((s) => Date.parse(s.end_at)),
+  );
   if (project.deadline)
     end = Math.max(end, new Date(project.deadline).getTime());
   // A range needs width, even when everything falls on one moment.
@@ -184,8 +311,39 @@ export function projectTimeline(
           // Keep a sliver visible for very short work.
           width: Math.max(1.5, at(to) - left),
           done: task.status === "done",
+          // Late once its deadline has passed: not during an all-day
+          // task's own day, nor before a task with an end time ends.
           late: task.status !== "done" && to < nowMs,
         };
       }),
   };
+}
+
+/** Exact positions of saved sessions on a project's time axis. */
+export function projectSessionTicks(
+  line: Timeline,
+  sessions: ProjectSession[],
+) {
+  const start = Date.parse(line.start);
+  const span = Date.parse(line.end) - start;
+  return sessions
+    .filter(
+      (session) =>
+        Date.parse(session.end_at) > start &&
+        Date.parse(session.start_at) < start + span,
+    )
+    .map((session) => {
+      const left = clampPercent(
+        ((Date.parse(session.start_at) - start) / span) * 100,
+      );
+      return {
+        ...session,
+        left,
+        width: Math.max(
+          1.5,
+          clampPercent(((Date.parse(session.end_at) - start) / span) * 100) -
+            left,
+        ),
+      };
+    });
 }

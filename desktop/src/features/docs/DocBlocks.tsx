@@ -138,6 +138,7 @@ export function BlockView({
   onToggleTodo,
   number,
   depth = 0,
+  isTask = false,
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
@@ -147,6 +148,8 @@ export function BlockView({
   number?: number | null;
   /** How far a list line is tucked in (see `listLayout`). */
   depth?: number;
+  /** A checklist line tied to a task in the planner. */
+  isTask?: boolean;
 }) {
   // A nested list line steps in from the left by its depth.
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
@@ -197,7 +200,7 @@ export function BlockView({
             <Inline text={block.text} marks={marks} />
             {/* A line tied to a task says so, so ticking it here is clearly
                 the same as ticking it in the planner. */}
-            {block.id && (
+            {isTask && (
               <span
                 className="doc-linked"
                 title="This is a task in your planner"

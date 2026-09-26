@@ -28,6 +28,7 @@ import {
   type DocSummary,
   type Favourite,
   type Folder,
+  type Project,
   type SearchHit,
 } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
@@ -72,6 +73,7 @@ export function DocsSheet({
   visible,
   agenda,
   initialDoc,
+  initialBlockId,
   userId,
   canWriteDoc,
   onClose,
@@ -82,6 +84,7 @@ export function DocsSheet({
   startInTemplates,
   startNew,
   onStarted,
+  onOpenProject,
 }: {
   /** Open on Uploads (after files were shared to Orbyn). */
   startInUploads?: boolean;
@@ -90,6 +93,7 @@ export function DocsSheet({
   /** Start a new page of this kind straight away (the + sheet's New page). */
   startNew?: DocKind | null;
   onStarted?: () => void;
+  onOpenProject?: (projectId: string) => void;
   /** Suggest study cards from a page (opens Study). */
   onMakeCards?: (docId: string, title: string) => void;
   visible: boolean;
@@ -97,6 +101,7 @@ export function DocsSheet({
   agenda?: boolean;
   /** Opens straight onto one page — a meeting note, say — not the list. */
   initialDoc?: Doc | null;
+  initialBlockId?: string | null;
   /** Whether this reader may change a page, by the team it belongs to. */
   canWriteDoc?: (teamId: string | null) => boolean;
   /** Whose comments offer a remove button. */
@@ -145,6 +150,7 @@ export function DocsSheet({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** A page whose folder is being chosen. */
   const [filing, setFiling] = useState<DocSummary | null>(null);
+  const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
   /** Whether a new folder is being named, and what it will be called. */
   const [naming, setNaming] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -183,6 +189,26 @@ export function DocsSheet({
     });
     return () => sub.remove();
   }, [agenda]);
+
+  useEffect(() => {
+    if (!filing?.in_uploads || filing.team_id) {
+      setPersonalProjects([]);
+      return;
+    }
+    let active = true;
+    void client.listProjects().then(
+      (projects) => {
+        if (active)
+          setPersonalProjects(projects.filter((project) => !project.team_id));
+      },
+      (reason: Error) => {
+        if (active) setError(errorText(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [filing?.id, setError]);
 
   useEffect(() => {
     if (!visible) return;
@@ -284,6 +310,16 @@ export function DocsSheet({
               : d,
           ) ?? all,
       );
+    });
+  const fileInProject = (doc: DocSummary, projectId: string) =>
+    void run(async () => {
+      const full = await client.getDoc(doc.id);
+      await client.updateDoc(doc.id, {
+        version: full.version,
+        project_id: projectId,
+      });
+      setFiling(null);
+      await loadList();
     });
 
   /** Start a folder. Named here rather than in a settings screen. */
@@ -803,6 +839,18 @@ export function DocsSheet({
                 <OpenDoc
                   key={open!.id}
                   doc={open!}
+                  onOpenProject={onOpenProject}
+                  initialBlockId={
+                    initialDoc?.id === open!.id ? initialBlockId : null
+                  }
+                  onTargetOffset={(y) =>
+                    requestAnimationFrame(() =>
+                      scroller.current?.scrollTo({
+                        y: Math.max(0, y - 80),
+                        animated: true,
+                      }),
+                    )
+                  }
                   isToday={
                     !open!.agenda_date || open!.agenda_date === agendaToday
                   }
@@ -1071,6 +1119,20 @@ export function DocsSheet({
                       />
                     ))}
                   </ChipRow>
+                  {filing.in_uploads &&
+                    !filing.team_id &&
+                    personalProjects.length > 0 && (
+                      <ChipRow label="Personal project">
+                        {personalProjects.map((project) => (
+                          <Chip
+                            key={project.id}
+                            label={project.name}
+                            selected={false}
+                            onPress={() => fileInProject(filing, project.id)}
+                          />
+                        ))}
+                      </ChipRow>
+                    )}
                   <SmallAction
                     label="Cancel"
                     disabled={false}
@@ -1331,6 +1393,9 @@ export function DocsSheet({
 function OpenDoc({
   doc,
   isToday = true,
+  onOpenProject,
+  initialBlockId,
+  onTargetOffset,
   userId,
   canWriteDoc,
   onChanged,
@@ -1351,6 +1416,9 @@ function OpenDoc({
   onShowHistory?: () => void;
   /** For an agenda: whether it is today's, the only one Rewrite writes. */
   isToday?: boolean;
+  onOpenProject?: (projectId: string) => void;
+  initialBlockId?: string | null;
+  onTargetOffset?: (y: number) => void;
   userId?: string;
   canWriteDoc?: (teamId: string | null) => boolean;
   onChanged: (doc: Doc) => void;
@@ -1391,6 +1459,13 @@ function OpenDoc({
     );
   return (
     <>
+      {doc.project_id && doc.project_name && (
+        <SmallAction
+          label={`In project: ${doc.project_name}`}
+          onPress={() => onOpenProject?.(doc.project_id!)}
+          disabled={!onOpenProject}
+        />
+      )}
       {doc.kind === "agenda" && (
         <View style={styles.agendaBar}>
           <Text style={[shared.small, { flex: 1 }]}>
@@ -1408,6 +1483,8 @@ function OpenDoc({
       )}
       <DocEditor
         doc={doc}
+        initialBlockId={initialBlockId}
+        onTargetOffset={onTargetOffset}
         comments={comments}
         userId={userId}
         canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}

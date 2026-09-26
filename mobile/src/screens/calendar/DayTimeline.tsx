@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import {
   sameDay,
+  sessionLine,
   statusLabels,
   zonedParts,
   type BusyInterval,
@@ -87,6 +88,36 @@ type Drag = {
 /** Anything that can be dragged: a saved block, or a planned one. */
 type Movable = { id: string; start_at: string; end_at: string };
 
+/** Deadline marks do not reserve time or participate in event overlap columns. */
+function layoutTimeline(slots: TimelineSlot[], day: Date) {
+  const isMarker = (slot: TimelineSlot) =>
+    slot.type === "entry" &&
+    slot.entry.kind === "task" &&
+    !slot.entry.end_at &&
+    !slot.allDay;
+  const layout = layoutDay(
+    slots.filter((slot) => !isMarker(slot)),
+    day,
+  );
+  // Several deadlines at the same minute share one marker ("Due · 3 tasks").
+  const byMinute = new Map<number, TimelineSlot[]>();
+  for (const slot of slots.filter(isMarker)) {
+    const minute = Math.floor(slot.start.getTime() / 60_000);
+    byMinute.set(minute, [...(byMinute.get(minute) ?? []), slot]);
+  }
+  const markers = [...byMinute.values()].map((group) => ({
+    slot: group[0],
+    group: group.length > 1 ? group : undefined,
+    start: group[0].start,
+    end: group[0].start,
+    top: offsetFor(day, group[0].start),
+    height: 44,
+    column: 0,
+    columns: 1,
+  }));
+  return { ...layout, placed: [...layout.placed, ...markers] };
+}
+
 /**
  * The whole hours a day needs: every timed plan and frame, plus an hour either
  * side of now today (a quiet day that isn't today starts at 8 AM), widened
@@ -143,7 +174,7 @@ export function hoursFor({
       ghost,
     })),
   ];
-  const { placed } = layoutDay(all, day);
+  const { placed } = layoutTimeline(all, day);
   const spans = [...frames, ...keepFree.filter((r) => covers(r, day))].map(
     (r) => {
       const top = offsetFor(day, new Date(r.start_at));
@@ -225,9 +256,13 @@ export function DayTimeline({
   frames = [],
   zones = [],
   onOpen,
+  selectedTask,
+  onSelectTask,
   onBlockMenu,
   onEntryMenu,
   onMoveEntry,
+  onMoveDeadline,
+  onDeadlineGroup,
   onExternal,
   onMoveBlock,
   onGhostMenu,
@@ -263,11 +298,17 @@ export function DayTimeline({
   zones?: string[];
   /** Open the task or event behind an entry or block (with the entry, for its occurrence). */
   onOpen: (itemId: string, entry?: CalendarEntry) => void;
+  /** Selection is shared across the displayed days. A second tap opens details. */
+  selectedTask?: string | null;
+  onSelectTask?: (itemId: string) => void;
   onBlockMenu: (block: TimeBlock) => void;
   /** Options for an entry (long-press). */
   onEntryMenu: (entry: CalendarEntry) => void;
   /** Save an event's new times after a drag or resize; events can't move without it. */
   onMoveEntry?: (entry: CalendarEntry, start: Date, end: Date) => void;
+  onMoveDeadline?: (entry: CalendarEntry, start: Date) => void;
+  /** Several deadlines at one minute were tapped: offer them to choose from. */
+  onDeadlineGroup?: (entries: CalendarEntry[], at: Date) => void;
   /** Details of an event from a subscribed calendar (read-only). */
   onExternal?: (event: ExternalEntry) => void;
   /** Save a block's new times after a drag, resize or screen-reader action. */
@@ -302,6 +343,10 @@ export function DayTimeline({
   }[];
 }) {
   const now = useNow(60_000);
+  const selectOrOpen = (itemId: string, entry?: CalendarEntry) => {
+    if (onSelectTask && selectedTask !== itemId) onSelectTask(itemId);
+    else onOpen(itemId, entry);
+  };
   const { listById } = usePlanning();
   /** Two lines of title need more room at larger text sizes. */
   const compactBelow = COMPACT_HEIGHT * useWindowDimensions().fontScale;
@@ -349,7 +394,7 @@ export function DayTimeline({
       };
     }),
   ];
-  const { placed, allDay } = layoutDay(shownSlots, day);
+  const { placed, allDay } = layoutTimeline(shownSlots, day);
   const isToday = sameDay(day, now);
   const nowTop = offsetFor(day, now);
   const showNow =
@@ -861,6 +906,16 @@ export function DayTimeline({
             const compact = p.height < compactBelow;
             const range = `${timeLabel(p.start)} – ${timeLabel(p.end)}`;
             const box = {
+              opacity:
+                selectedTask &&
+                (slot.type === "external" ||
+                  (slot.type === "entry"
+                    ? slot.entry.item_id
+                    : slot.type === "block"
+                      ? slot.block.item_id
+                      : slot.ghost.item_id) !== selectedTask)
+                  ? 0.35
+                  : 1,
               position: "absolute" as const,
               top: p.top - shift,
               height: p.height,
@@ -871,8 +926,9 @@ export function DayTimeline({
             };
             if (slot.type === "ghost") {
               const g = slot.ghost;
-              const part = g.parts > 1 ? ` · ${g.part}/${g.parts}` : "";
-              const label = `Planned, not saved yet${g.pinned ? ", pinned" : ""}: ${g.title}, ${range}${g.parts > 1 ? `, part ${g.part} of ${g.parts}` : ""}`;
+              const part =
+                g.parts > 1 ? ` · Session ${g.part} of ${g.parts}` : "";
+              const label = `Planned, not saved yet${g.pinned ? ", pinned" : ""}: ${g.title}, ${range}${g.parts > 1 ? `, session ${g.part} of ${g.parts}` : ""}`;
               const content = (
                 <>
                   <View style={s.blockTop}>
@@ -947,6 +1003,9 @@ export function DayTimeline({
               const color = listColor(b.list_id);
               const lifted = drag?.id === b.id;
               const save = (from: Date, to: Date) => onMoveBlock?.(b, from, to);
+              // "Session 2 · due Fri 5 pm", or a late session's warning.
+              const line = sessionLine(b, now);
+              const late = !!b.after_deadline && b.status !== "done";
               return (
                 <DraggableBlock
                   key={slot.key}
@@ -955,20 +1014,21 @@ export function DayTimeline({
                     s.event,
                     s.block,
                     !!color && { borderColor: color },
+                    late && s.lateBlock,
                   ]}
                   canDrag={canDrag(b, !!onMoveBlock)}
                   lifted={lifted}
                   gripColor={color ?? colors.accent}
                   badge={dayBadge(b.id)}
-                  accessibilityLabel={`Time block for ${b.title}, ${range}. Opens task details`}
-                  onTap={() => onOpen(b.item_id)}
+                  accessibilityLabel={`Session for ${b.title}, ${range}${line ? `, ${line}` : ""}. ${selectedTask === b.item_id ? "Opens task details" : "Highlights linked sessions and deadline"}`}
+                  onTap={() => selectOrOpen(b.item_id)}
                   onMenu={() => onBlockMenu(b)}
                   onBegin={() => begin(b)}
                   onDrag={(mode, dy, dx) => dragTo(b, mode, dy, dx)}
                   onEnd={(commit) => finish(b, commit, save)}
                   onAction={(name) =>
                     name === "activate"
-                      ? onOpen(b.item_id)
+                      ? selectOrOpen(b.item_id)
                       : name === MORE.name
                         ? onBlockMenu(b)
                         : nudge(b, name, save)
@@ -981,7 +1041,7 @@ export function DayTimeline({
                       color={color ?? colors.accent}
                     />
                     <Text
-                      numberOfLines={compact ? 1 : 2}
+                      numberOfLines={compact || line ? 1 : 2}
                       style={[
                         s.eventTitle,
                         color ? s.grow : s.blockTitle,
@@ -991,6 +1051,15 @@ export function DayTimeline({
                       {b.title}
                     </Text>
                   </View>
+                  {/* A late session says so even when its tile is small. */}
+                  {(!compact || late) && !!line && (
+                    <Text
+                      numberOfLines={1}
+                      style={[s.sessionLine, late && s.lateLine]}
+                    >
+                      {line}
+                    </Text>
+                  )}
                   {!compact && (
                     <Text
                       numberOfLines={1}
@@ -1043,6 +1112,89 @@ export function DayTimeline({
             const t = statusTones[e.status];
             // Its own colour first, then its list's, then its status.
             const color = e.color || listColor(e.list_id);
+            const group =
+              "group" in p
+                ? (p.group as TimelineSlot[] | undefined)
+                : undefined;
+            if (e.kind === "task" && !e.end_at && group) {
+              const due = group.flatMap((g) =>
+                g.type === "entry" ? [g.entry] : [],
+              );
+              return (
+                <Pressable
+                  key={"due:" + slot.key}
+                  style={[box, { height: 44 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${due.length} tasks due at ${timeLabel(p.start)}. Choose one`}
+                  onPress={() =>
+                    onDeadlineGroup
+                      ? onDeadlineGroup(due, p.start)
+                      : selectOrOpen(due[0].item_id, due[0])
+                  }
+                >
+                  <View style={s.deadlineMarker}>
+                    <View
+                      style={[
+                        s.deadlineRule,
+                        { backgroundColor: color || t.fg },
+                      ]}
+                    />
+                    <Text numberOfLines={1} style={s.eventTitle}>
+                      Due · {due.length} tasks
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            }
+            if (e.kind === "task" && !e.end_at) {
+              const m: Movable = {
+                id: slot.key,
+                start_at: e.start_at,
+                end_at: new Date(
+                  new Date(e.start_at).getTime() + SNAP * 60_000,
+                ).toISOString(),
+              };
+              const save = (from: Date) => onMoveDeadline?.(e, from);
+              return (
+                <DraggableBlock
+                  key={slot.key}
+                  style={[
+                    box,
+                    { height: 44 },
+                    drag?.id === slot.key && s.above,
+                  ]}
+                  blockStyle={s.deadlineMarker}
+                  canDrag={canDrag(m, !!onMoveDeadline)}
+                  canResize={false}
+                  lifted={drag?.id === slot.key}
+                  gripColor={color || t.fg}
+                  badge={dayBadge(slot.key)}
+                  accessibilityLabel={`Due ${timeLabel(p.start)}: ${e.title}. ${selectedTask === e.item_id ? "Opens task details" : "Highlights linked sessions"}`}
+                  onTap={() => selectOrOpen(e.item_id, e)}
+                  onMenu={() => onEntryMenu(e)}
+                  onBegin={() => begin(m)}
+                  onDrag={(mode, dy, dx) => dragTo(m, mode, dy, dx)}
+                  onEnd={(commit) => finish(m, commit, save)}
+                  onAction={(name) =>
+                    name === "activate"
+                      ? selectOrOpen(e.item_id, e)
+                      : name === MORE.name
+                        ? onEntryMenu(e)
+                        : nudge(m, name, save)
+                  }
+                >
+                  <View
+                    style={[s.deadlineRule, { backgroundColor: color || t.fg }]}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[s.eventTitle, e.status === "done" && s.doneText]}
+                  >
+                    Due · {e.title}
+                  </Text>
+                </DraggableBlock>
+              );
+            }
             const tone = color
               ? { backgroundColor: tint(color, 0.16), borderLeftColor: color }
               : { backgroundColor: t.bg, borderLeftColor: t.fg };
@@ -1117,7 +1269,11 @@ export function DayTimeline({
                   accessibilityRole="button"
                   accessibilityLabel={label}
                   accessibilityHint="Long-press for options"
-                  onPress={() => onOpen(e.item_id, e)}
+                  onPress={() =>
+                    e.kind === "task"
+                      ? selectOrOpen(e.item_id, e)
+                      : onOpen(e.item_id, e)
+                  }
                   {...menuProps(slotMenu(slot))}
                   style={({ pressed }) => [
                     s.event,
@@ -1258,6 +1414,7 @@ function DraggableBlock({
   style,
   blockStyle,
   canDrag,
+  canResize = true,
   lifted,
   gripColor,
   badge,
@@ -1273,6 +1430,7 @@ function DraggableBlock({
   style: StyleProp<ViewStyle>;
   blockStyle: StyleProp<ViewStyle>;
   canDrag: boolean;
+  canResize?: boolean;
   lifted: boolean;
   gripColor: string;
   /** Shown on the block while it's dragged, e.g. the day it moves to. */
@@ -1391,14 +1549,18 @@ function DraggableBlock({
             : "Hold for options"
         }
         accessibilityActions={
-          canDrag ? BLOCK_ACTIONS : BLOCK_ACTIONS.slice(0, 2)
+          canDrag
+            ? canResize
+              ? BLOCK_ACTIONS
+              : BLOCK_ACTIONS.slice(0, 4)
+            : BLOCK_ACTIONS.slice(0, 2)
         }
         onAccessibilityAction={(e) => onAction(e.nativeEvent.actionName)}
         style={[blockStyle, pressed && s.pressed, lifted && s.lifted]}
         {...body.panHandlers}
       >
         {children}
-        {canDrag && (
+        {canDrag && canResize && (
           <View style={s.grip} {...grip.panHandlers}>
             <View style={[s.gripBar, { backgroundColor: gripColor }]} />
           </View>
@@ -1417,6 +1579,12 @@ function DraggableBlock({
 
 const s = themed(() =>
   StyleSheet.create({
+    deadlineMarker: {
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+      minHeight: 44,
+    },
+    deadlineRule: { height: 2, marginBottom: 3 },
     card: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -1621,6 +1789,15 @@ const s = themed(() =>
       color: colors.accent,
     },
     softTime: { color: colors.textSoft },
+    /** A session that ends after its task's deadline. */
+    lateBlock: { borderStyle: "solid", borderColor: colors.warningStrong },
+    sessionLine: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      marginTop: 1,
+      color: colors.textSoft,
+    },
+    lateLine: { fontFamily: fonts.semibold, color: colors.warningStrong },
     eventTitle: {
       flexShrink: 1,
       fontFamily: fonts.semibold,

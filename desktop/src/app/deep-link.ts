@@ -1,5 +1,3 @@
-import "./deep-link.css";
-
 /**
  * Links that open one thing in Orbyn, as agents (MCP) and emails carry them:
  *

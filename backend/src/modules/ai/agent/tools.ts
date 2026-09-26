@@ -3,6 +3,7 @@ import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
   blockText,
+  dueDayAt,
   estimateModelOf,
   isClosed,
   KINDS,
@@ -10,14 +11,20 @@ import {
   PRIORITIES,
   STATUSES,
   itemData,
+  planDaysBefore,
+  sessionChangeSchema,
   type Action,
   type DocBlock,
-  type DocSource,
+  type AssistantSource,
   type DraftNote,
   type Plan,
   type SystemRole,
+  type ChatScope,
+  type SessionChange,
 } from "@orbyn/core";
-import { makePlan } from "../../planner/plans.js";
+import { makePlan, makeProjectPlan } from "../../planner/plans.js";
+import { busyIntervals } from "../../planner/calendar.js";
+import { itemSessions } from "../../planner/sessions.js";
 import { loadLearning } from "../../planner/learning.js";
 import { upNext } from "../../planner/next.js";
 import { loadPrefs } from "../../planner/calendar.js";
@@ -40,6 +47,8 @@ import {
   rankTasks,
 } from "./workspace.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
+import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { searchPages } from "../../search/routes.js";
 
 export { toInstant, whenLabel };
 
@@ -54,23 +63,50 @@ export type AgentContext = {
   timezone: string;
   /** The latest request, which decides whether changes and deletions are allowed. */
   intentText: string;
+  scope?: ChatScope | null;
+  allowOutsideScope?: boolean;
   actions: Action[];
   projectDraft?: ProjectDraft;
   clarification: { question: string; options: string[] } | null;
   /** A schedule planned this turn, for the user to review and apply. */
   plan?: Plan | null;
+  /** At most one session move or removal in this review. */
+  sessionChange?: SessionChange | null;
+  /** New task proposals linked to an open project decision on apply. */
+  decisionLinks?: {
+    action_index: number;
+    decision_id: string;
+    decision_title: string;
+  }[];
   /**
    * The pages read while answering, so the reply can point at them. These
    * are what the assistant actually looked at, not what it claims to have
    * used, which is the only version of a citation worth showing.
    */
-  cited?: Map<string, DocSource>;
+  cited?: Map<string, AssistantSource>;
   /** Notes drafted this turn, for the user to keep or discard. */
   notes?: DraftNote[];
 };
 
 export const MAX_ACTIONS = 20;
 const MAX_RESULT_CHARS = 8000;
+
+/** Give a checked source a stable number for this assistant turn. */
+export function recordSource(
+  ctx: AgentContext,
+  key: string,
+  source: AssistantSource,
+): number | null {
+  if (!ctx.cited) return null;
+  const previous = ctx.cited.get(key);
+  const number = previous?.number ?? ctx.cited.size + 1;
+  const located =
+    previous && "doc_id" in previous && "doc_id" in source && previous.block_id
+      ? { ...source, block_id: previous.block_id, quote: previous.quote }
+      : source;
+  ctx.cited.set(key, { ...located, number });
+  return number;
+}
 
 type Row = {
   id: string;
@@ -82,6 +118,8 @@ type Row = {
   priority: string;
   due_at: Date | null;
   end_at: Date | null;
+  all_day?: boolean;
+  timezone?: string;
   reminder_minutes: number;
   /** Minutes before, from the item's alerts column (ITEM_SELECT is i.*). */
   alerts: number[] | null;
@@ -93,6 +131,8 @@ type Row = {
   version: number;
   estimate_minutes?: number | null;
   project_name?: string | null;
+  project_id?: string | null;
+  stage_id?: string | null;
 };
 
 /** An item as the model sees it: local times, short text, no owner ids. */
@@ -151,6 +191,16 @@ const draftProperties: Record<string, JsonSchema> = {
     maximum: 10080,
     description: "How long the task takes, in minutes (the planner uses it).",
   },
+  stage_id: {
+    type: "string",
+    description:
+      "A stage id from get_project. Use only for a task in that project.",
+  },
+  decision_id: {
+    type: "string",
+    description:
+      "An open decision id from get_project that this new task delivers.",
+  },
   location: { type: "string", description: "Where an event happens." },
   meeting_url: {
     type: "string",
@@ -176,13 +226,19 @@ const draft = z
     team_id: z.string().max(60).nullable().optional(),
     progress: z.number().int().min(0).max(100).optional(),
     estimate_minutes: z.number().int().min(1).max(10080).nullable().optional(),
+    stage_id: z.string().max(60).nullable().optional(),
+    decision_id: z.uuid().optional(),
     location: z.string().max(300).optional(),
     meeting_url: z.string().max(500).optional(),
     rrule: z.string().max(200).nullable().optional(),
   })
   .strict();
-const partialDraft = draft.partial().strict();
-type Draft = z.output<typeof partialDraft>;
+const createPartialDraft = draft.partial().strict();
+const partialDraft = draft.omit({ decision_id: true }).partial().strict();
+type Draft = z.output<typeof createPartialDraft>;
+const updateDraftProperties = Object.fromEntries(
+  Object.entries(draftProperties).filter(([name]) => name !== "decision_id"),
+);
 
 type Tool = {
   spec: ToolSpec;
@@ -218,7 +274,12 @@ export async function overview(ctx: AgentContext) {
     new Date(Date.now() + 7 * 86_400_000),
     ctx.timezone,
   );
-  const day = (r: Row) => (r.due_at ? localDate(r.due_at, ctx.timezone) : "");
+  // The day a task is due by (`dueDayAt`): an all-day task is due today
+  // until the day is over, one with an end time on the day it ends.
+  const day = (r: Row) => {
+    const at = dueDayAt(r);
+    return at ? localDate(at, ctx.timezone) : "";
+  };
   const open = rows.filter((r) => !isClosed(r.status));
   const overdue = open.filter((r) => r.due_at && day(r) < today);
   const dueToday = open.filter((r) => day(r) === today);
@@ -287,6 +348,7 @@ const COMMON_WORDS = new Set(
 export async function related(ctx: AgentContext, message: string) {
   const words = requestWords(message);
   if (!words.length) return [];
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
   const rows = (
     await pool.query<Row>(
       `SELECT * FROM (
@@ -295,10 +357,17 @@ export async function related(ctx: AgentContext, message: string) {
             WHERE lower(i.title) LIKE '%' || w || '%') AS hits
          FROM items i LEFT JOIN teams t ON t.id = i.team_id
          WHERE ${VISIBLE_ITEMS}
+           AND ($3::uuid IS NULL OR i.project_id = $3)
+           AND ($4::uuid IS NULL OR i.id = $4)
            AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '14 days')
        ) m
        WHERE hits > 0 ORDER BY hits DESC, (due_at IS NULL), due_at LIMIT 12`,
-      [ctx.user.id, words],
+      [
+        ctx.user.id,
+        words,
+        inside?.kind === "project" ? inside.id : null,
+        inside?.kind === "task" ? inside.id : null,
+      ],
     )
   ).rows;
   return rows.map((r) => brief(r, ctx.timezone));
@@ -348,8 +417,9 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
     add("i.team_id = $?", a.team_id);
   }
   if (a.no_due_date) where.push("i.due_at IS NULL");
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
   for (const [field, value] of [
-    ["project_id", a.project_id],
+    ["project_id", inside?.kind === "project" ? inside.id : a.project_id],
     ["list_id", a.list_id],
   ] as const) {
     if (!value) continue;
@@ -359,6 +429,7 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
       );
     add(`i.${field} = $?`, value);
   }
+  if (inside?.kind === "task") add("i.id = $?", inside.id);
   for (const [value, op, end] of [
     [a.due_from, ">=", false],
     [a.due_to, "<=", true],
@@ -394,23 +465,34 @@ async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
 /** An item this user can see, or null (other people's ids look like missing ones). */
 async function visibleItem(ctx: AgentContext, id: string): Promise<Row | null> {
   if (!isUuid(id)) return null;
-  return (
+  const row =
     (
       await pool.query<Row>(
         `${ITEM_SELECT} WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
         [ctx.user.id, id],
       )
-    ).rows[0] ?? null
-  );
+    ).rows[0] ?? null;
+  if (row && ctx.scope && !ctx.allowOutsideScope) {
+    if (ctx.scope.kind === "project" && row.project_id !== ctx.scope.id)
+      return null;
+    if (ctx.scope.kind === "task" && row.id !== ctx.scope.id) return null;
+  }
+  return row;
 }
 
 const NO_SUCH_ITEM =
   "No item with that id in this planner. Use an id from search_items.";
 
-async function getItem(ctx: AgentContext, a: { id: string }) {
+export async function getItem(ctx: AgentContext, a: { id: string }) {
   const row = await visibleItem(ctx, a.id);
   if (!row) throw new Error(NO_SUCH_ITEM);
-  const [steps, updates] = await Promise.all([
+  const sourceNumber = recordSource(ctx, `task:${row.id}`, {
+    kind: "task",
+    id: row.id,
+    title: clean(row.title, 200),
+    quote: whenLabel(row.due_at, row.end_at, ctx.timezone) ?? "No deadline",
+  });
+  const [steps, updates, planning] = await Promise.all([
     pool.query<{ title: string; done: boolean }>(
       "SELECT title, done FROM item_steps WHERE item_id = $1 ORDER BY position, created_at LIMIT 30",
       [row.id],
@@ -427,11 +509,36 @@ async function getItem(ctx: AgentContext, a: { id: string }) {
        WHERE u.item_id = $1 ORDER BY u.created_at DESC LIMIT 5`,
       [row.id],
     ),
+    row.kind === "task"
+      ? itemSessions(pool, ctx.user.id, row.id)
+      : Promise.resolve(null),
   ]);
   return {
     ...brief(row, ctx.timezone),
+    source_ref: sourceNumber ? `[${sourceNumber}]` : null,
     notes: clean(row.notes, 2000),
     reminder_minutes: row.reminder_minutes,
+    planning: planning
+      ? {
+          deadline_at: planning.deadline_at,
+          project_deadline: planning.project_deadline,
+          dependent_deadline: planning.dependent_deadline,
+          planning_deadline_at: planning.planning_deadline_at,
+          status: planning.fit?.label ?? null,
+          needed_minutes: planning.fit?.needed_minutes ?? null,
+          planned_minutes: planning.planned_minutes,
+          late_minutes: planning.late_minutes,
+          next_sessions: planning.sessions
+            .filter((session) => Date.parse(session.end_at) > Date.now())
+            .slice(0, 5)
+            .map((session) => ({
+              id: session.id,
+              start_at: localIso(session.start_at, ctx.timezone),
+              end_at: localIso(session.end_at, ctx.timezone),
+              after_deadline: session.after_deadline,
+            })),
+        }
+      : null,
     checklist: steps.rows.map((s) => ({
       title: clean(s.title, 200),
       done: s.done,
@@ -504,10 +611,67 @@ const TOO_MANY = `At most ${MAX_ACTIONS} changes fit in one reply; tell the user
 
 async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
   if (!mayChange(ctx.intentText)) throw new Error(NOT_A_CHANGE);
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
+  const project =
+    inside?.kind === "project"
+      ? (
+          await pool.query<{ team_id: string | null; user_id: string }>(
+            "SELECT team_id, user_id FROM projects WHERE id = $1",
+            [inside.id],
+          )
+        ).rows[0]
+      : null;
+  if (inside?.kind === "project") {
+    if (!project) throw new Error("Project not found.");
+    if (project.team_id && !(await canWriteTeam(ctx, project.team_id)))
+      throw new Error("You can view this project but cannot add tasks to it.");
+    if (!project.team_id && project.user_id !== ctx.user.id)
+      throw new Error("Project not found.");
+  }
   const results = [];
   for (const [index, d] of a.items.entries()) {
     try {
-      const data = itemData.parse(normalize(d, ctx.timezone));
+      const { decision_id: _decisionId, ...itemDraft } = d;
+      const normalized = normalize(itemDraft, ctx.timezone);
+      const data = itemData.parse(
+        project && inside?.kind === "project"
+          ? { ...normalized, team_id: project.team_id, project_id: inside.id }
+          : normalized,
+      );
+      if (data.stage_id) {
+        const stageProject =
+          inside?.kind === "project" ? inside.id : data.project_id;
+        if (
+          !stageProject ||
+          !(
+            await pool.query(
+              "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
+              [data.stage_id, stageProject],
+            )
+          ).rowCount
+        )
+          throw new Error("That stage is not in the selected project.");
+      }
+      let decisionTitle: string | null = null;
+      if (d.decision_id) {
+        if (data.kind !== "task" || !data.project_id)
+          throw new Error(
+            "A decision can only be linked to a task in its project.",
+          );
+        const decision = (
+          await pool.query<{ id: string; title: string }>(
+            `SELECT w.id, w.title FROM work_records w
+              WHERE w.id = $2 AND w.project_id = $3 AND w.kind = 'decision'
+                AND w.status = 'open' AND w.linked_item_id IS NULL
+                AND ((w.team_id IS NULL AND w.created_by = $1)
+                  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+            [ctx.user.id, d.decision_id, data.project_id],
+          )
+        ).rows[0];
+        if (!decision)
+          throw new Error("That open decision is not in this project.");
+        decisionTitle = clean(decision.title, 200);
+      }
       if (data.team_id && !(await canWriteTeam(ctx, data.team_id)))
         throw new Error(
           "You can't add items to that team (not a member, or a viewer). Use list_teams.",
@@ -520,8 +684,25 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
       // Proposing the same item again in one reply is a correction (a
       // different repeat, a fixed time): it replaces the earlier draft.
       const earlier = ctx.actions.findIndex(same);
+      if (
+        d.decision_id &&
+        ctx.decisionLinks?.some(
+          (link) =>
+            link.decision_id === d.decision_id && link.action_index !== earlier,
+        )
+      )
+        throw new Error("This decision already has a task in this proposal.");
       if (earlier >= 0) {
         ctx.actions[earlier] = { operation: "create", data };
+        ctx.decisionLinks = (ctx.decisionLinks ?? []).filter(
+          (link) => link.action_index !== earlier,
+        );
+        if (d.decision_id && decisionTitle)
+          ctx.decisionLinks.push({
+            action_index: earlier,
+            decision_id: d.decision_id,
+            decision_title: decisionTitle,
+          });
         results.push({
           index,
           ok: true,
@@ -544,6 +725,12 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
           `This item already exists (id ${existing.id}); update it instead of adding a copy.`,
         );
       ctx.actions.push({ operation: "create", data });
+      if (d.decision_id && decisionTitle)
+        (ctx.decisionLinks ??= []).push({
+          action_index: ctx.actions.length - 1,
+          decision_id: d.decision_id,
+          decision_title: decisionTitle,
+        });
       results.push({
         index,
         ok: true,
@@ -656,6 +843,32 @@ async function proposeUpdate(
       );
       if (!pending && full(ctx)) throw new Error(TOO_MANY);
       const fields = normalize(change.fields, ctx.timezone);
+      if (fields.stage_id) {
+        const stageProject =
+          ctx.scope?.kind === "project" && !ctx.allowOutsideScope
+            ? ctx.scope.id
+            : row.project_id;
+        if (
+          !stageProject ||
+          !(
+            await pool.query(
+              "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
+              [fields.stage_id, stageProject],
+            )
+          ).rowCount
+        )
+          throw new Error("That stage is not in this task's project.");
+      }
+      if (
+        row.kind === "task" &&
+        (fields.due_at !== undefined || fields.end_at !== undefined) &&
+        !/\b(deadline|due(?:\s+date)?|due\s+(?:on|by)|date\s+(?:for|of)\s+(?:the|this|my)?\s*task)\b/i.test(
+          ctx.intentText,
+        )
+      )
+        throw new Error(
+          "Ask for a deadline or due date before changing a task's due date.",
+        );
       if (fields.progress !== undefined && row.steps_total > 0)
         throw new Error(
           "This task's progress follows its checklist, so it can't be set directly.",
@@ -777,6 +990,10 @@ async function planSchedule(
     item_ids?: string[];
   },
 ) {
+  if (ctx.sessionChange)
+    throw new Error(
+      "Review the single session change before making a separate plan.",
+    );
   const keepFree = (a.keep_free ?? []).map((k) => ({
     start_at: toInstant(k.start_at, ctx.timezone),
     end_at: toInstant(k.end_at, ctx.timezone, true),
@@ -789,15 +1006,43 @@ async function planSchedule(
     )
   )
     throw new Error("keep_free times must be dates or date-times.");
-  const plan = await makePlan(pool, ctx.user.id, {
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
+  const input = {
     start_date: a.start_date,
-    days: a.days,
+    days: a.days ?? (inside ? 7 : undefined),
     use_frames: true,
     keep_free: keepFree,
-    item_ids: a.item_ids ? a.item_ids.filter(isUuid) : undefined,
+    item_ids:
+      inside?.kind === "task"
+        ? [inside.id]
+        : a.item_ids
+          ? a.item_ids.filter(isUuid)
+          : undefined,
     exclude_item_ids: [],
     timezone: ctx.timezone,
-  });
+  };
+  let plan;
+  if (inside?.kind === "project") {
+    const project = (
+      await pool.query<{ status: string; deadline: Date | null }>(
+        "SELECT status, deadline FROM projects WHERE id = $1",
+        [inside.id],
+      )
+    ).rows[0];
+    if (!project || project.status !== "active")
+      throw new Error("Only active projects can be planned.");
+    plan = await makeProjectPlan(pool, ctx.user.id, inside.id, {
+      ...input,
+      days: Math.min(
+        input.days ?? 7,
+        planDaysBefore(
+          project.deadline?.toISOString(),
+          new Date(),
+          ctx.timezone,
+        ) ?? 7,
+      ),
+    });
+  } else plan = await makePlan(pool, ctx.user.id, input);
   ctx.plan = plan;
   return {
     summary: plan.summary,
@@ -814,9 +1059,103 @@ async function planSchedule(
       title: clean(u.title, 200),
       reason: u.reason,
     })),
-    note: "Proposed only: the user reviews this plan and applies it to add the blocks to their calendar.",
+    note: "Proposed only: the user reviews this plan and applies it to add the sessions to their calendar.",
     as_markdown: planMarkdown(plan, ctx.timezone),
   };
+}
+
+/** Preview one change to a session the viewer owns. Apply rechecks it. */
+async function proposeSessionChange(
+  ctx: AgentContext,
+  a: {
+    block_id: string;
+    operation: "move" | "remove";
+    start_at?: string;
+    end_at?: string;
+  },
+) {
+  if (!mayChange(ctx.intentText)) throw new Error(NOT_A_CHANGE);
+  if (a.operation === "remove" && !wantsDeletion(ctx.intentText))
+    throw new Error("Ask to remove a session before proposing its removal.");
+  if (ctx.plan || ctx.projectDraft)
+    throw new Error(
+      "Review the plan or project draft separately from a session change.",
+    );
+  const block = (
+    await pool.query<{
+      id: string;
+      item_id: string;
+      title: string;
+      start_at: Date;
+      end_at: Date;
+    }>(
+      `SELECT b.id, b.item_id, i.title, b.start_at, b.end_at
+         FROM time_blocks b JOIN items i ON i.id = b.item_id
+        WHERE b.id = $2 AND b.user_id = $1 AND i.kind = 'task'`,
+      [ctx.user.id, a.block_id],
+    )
+  ).rows[0];
+  if (!block || !(await visibleItem(ctx, block.item_id)))
+    throw new Error("No session with that id in this project or task.");
+  if (ctx.sessionChange && ctx.sessionChange.block_id !== block.id)
+    throw new Error("Change one session per reply.");
+  const base = {
+    block_id: block.id,
+    item_id: block.item_id,
+    project_id:
+      ctx.scope?.kind === "project" && !ctx.allowOutsideScope
+        ? ctx.scope.id
+        : null,
+    title: clean(block.title, 200),
+    from_start_at: block.start_at.toISOString(),
+    from_end_at: block.end_at.toISOString(),
+  };
+  if (a.operation === "remove") {
+    ctx.sessionChange = sessionChangeSchema.parse({
+      operation: "remove",
+      ...base,
+    });
+  } else {
+    if (!a.start_at)
+      throw new Error("Choose the new start time for this session.");
+    const start = toInstant(a.start_at, ctx.timezone);
+    const end = a.end_at
+      ? toInstant(a.end_at, ctx.timezone, true)
+      : new Date(
+          Date.parse(start) + block.end_at.getTime() - block.start_at.getTime(),
+        ).toISOString();
+    if (
+      !Number.isFinite(Date.parse(start)) ||
+      !Number.isFinite(Date.parse(end)) ||
+      Date.parse(end) <= Date.parse(start) ||
+      Date.parse(end) - Date.parse(start) > 24 * 60 * 60_000
+    )
+      throw new Error(
+        "The new session must last more than zero and no more than 24 hours.",
+      );
+    const busy = await busyIntervals(
+      pool,
+      ctx.user.id,
+      new Date(start),
+      new Date(end),
+      {
+        blocks: true,
+        derived: true,
+        excludeBlockIds: [block.id],
+      },
+    );
+    if (busy.some((time) => time.start_at < end && start < time.end_at))
+      throw new Error(
+        "That time overlaps another calendar entry. Find a free time.",
+      );
+    ctx.sessionChange = sessionChangeSchema.parse({
+      operation: "move",
+      ...base,
+      start_at: start,
+      end_at: end,
+    });
+  }
+  return { proposed: ctx.sessionChange, note: PROPOSED };
 }
 
 const NO_ARGS: JsonSchema = {
@@ -837,7 +1176,12 @@ export const TOOLS: Tool[] = [
     async (ctx, draft) => {
       if (!mayChange(ctx.intentText))
         throw new Error("The user must ask to draft or decompose a project.");
-      if (ctx.actions.length || ctx.plan || ctx.projectDraft)
+      if (
+        ctx.actions.length ||
+        ctx.plan ||
+        ctx.projectDraft ||
+        ctx.sessionChange
+      )
         throw new Error(
           "Review one project at a time; do not mix it with other changes.",
         );
@@ -870,6 +1214,11 @@ export const TOOLS: Tool[] = [
             enum: ["doc", "note", "agenda", "meeting"],
             description: "Narrow to one kind of page.",
           },
+          project_id: {
+            type: "string",
+            description:
+              "Search only pages in this project, using an id from list_projects.",
+          },
           limit: { type: "number", description: "At most 10; 5 by default." },
         },
       },
@@ -878,6 +1227,7 @@ export const TOOLS: Tool[] = [
       .object({
         query: z.string().trim().min(1).max(200),
         kind: z.enum(["doc", "note", "agenda", "meeting"]).optional(),
+        project_id: z.uuid().optional(),
         limit: z.number().int().min(1).max(10).default(5),
       })
       .strict(),
@@ -887,17 +1237,27 @@ export const TOOLS: Tool[] = [
     {
       name: "get_doc",
       description:
-        "Read one page in full, line by line, with the block ids to cite lines by. Use after search_docs when the snippet is not enough.",
+        "Read one page in numbered parts, with block ids to cite exact lines. Start at line 1, then use next_line until null.",
       parameters: {
         type: "object",
         additionalProperties: false,
         required: ["doc_id"],
         properties: {
           doc_id: { type: "string", description: "An id from search_docs." },
+          start_line: {
+            type: "integer",
+            minimum: 1,
+            description: "First line to read; 1 by default.",
+          },
         },
       },
     },
-    z.object({ doc_id: z.uuid() }).strict(),
+    z
+      .object({
+        doc_id: z.uuid(),
+        start_line: z.number().int().min(1).default(1),
+      })
+      .strict(),
     (ctx, a) => readDoc(ctx, a),
   ),
   tool(
@@ -1166,7 +1526,7 @@ export const TOOLS: Tool[] = [
             : "Not enough finished tasks with an estimate and logged time yet.",
         best_hours: l.rhythm.peak
           ? `${clock(l.rhythm.peak.start_hour)}–${clock(l.rhythm.peak.end_hour)}`
-          : "Not enough planned blocks or focus sessions yet.",
+          : "Not enough sessions or focus time yet.",
         hours_that_slip: l.rhythm.confidence
           ? l.rhythm.hours
               .map((v, h) => ({ v, h }))
@@ -1224,7 +1584,7 @@ export const TOOLS: Tool[] = [
     {
       name: "find_free_time",
       description:
-        "Free stretches in the user's working hours over the coming days, around events and booked time. Use for 'when am I free', 'do I have time for X'. Read only; to place tasks use plan_schedule.",
+        "Free stretches in the user's working hours over the coming days, around events and sessions. Use for 'when am I free', 'do I have time for X'. Read only; to place tasks use plan_schedule.",
       parameters: {
         type: "object",
         additionalProperties: false,
@@ -1365,7 +1725,7 @@ export const TOOLS: Tool[] = [
                 fields: {
                   type: "object",
                   additionalProperties: false,
-                  properties: draftProperties,
+                  properties: updateDraftProperties,
                 },
               },
             },
@@ -1497,6 +1857,39 @@ export const TOOLS: Tool[] = [
       .strict(),
     planSchedule,
   ),
+  tool(
+    {
+      name: "propose_session_change",
+      description:
+        "Propose moving or removing one of the user's own task sessions. Give its session id from get_item or get_project. A move keeps its duration unless end_at is provided. Nothing changes before approval.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["block_id", "operation"],
+        properties: {
+          block_id: { type: "string" },
+          operation: { type: "string", enum: ["move", "remove"] },
+          start_at: {
+            type: "string",
+            description: "New start with local offset; required for move.",
+          },
+          end_at: {
+            type: "string",
+            description: "Optional new end; omit to keep the duration.",
+          },
+        },
+      },
+    },
+    z
+      .object({
+        block_id: z.uuid(),
+        operation: z.enum(["move", "remove"]),
+        start_at: z.string().max(40).optional(),
+        end_at: z.string().max(40).optional(),
+      })
+      .strict(),
+    proposeSessionChange,
+  ),
 ];
 
 export const TOOL_SPECS = TOOLS.map((t) => t.spec);
@@ -1513,48 +1906,44 @@ const errorResult = (message: string) => ({
  */
 async function searchDocs(
   ctx: AgentContext,
-  a: { query: string; kind?: string; limit: number },
+  a: { query: string; kind?: string; project_id?: string; limit: number },
 ) {
+  const projectId =
+    ctx.scope?.kind === "project" && !ctx.allowOutsideScope
+      ? ctx.scope.id
+      : (a.project_id ?? null);
+  const taskId =
+    ctx.scope?.kind === "task" && !ctx.allowOutsideScope ? ctx.scope.id : null;
+  // The same search as the search box and a project's search.
   const rows = (
-    await pool.query<{
-      id: string;
-      title: string;
-      kind: string;
-      project_name: string | null;
-      updated_at: string;
-      snippet: string;
-      block_id: string | null;
-    }>(
-      `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq)
-       SELECT d.id, d.title, d.kind, p.name AS project_name, d.updated_at,
-              ts_headline('english', doc_words(d.content, NULL), q.tsq,
-                          'StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1')
-                AS snippet,
-              (SELECT b->>'id' FROM jsonb_array_elements(d.content) b
-                WHERE b->>'text' IS NOT NULL AND b->>'id' IS NOT NULL
-                  AND to_tsvector('english', b->>'text') @@ q.tsq LIMIT 1) AS block_id
-         FROM docs d
-         LEFT JOIN projects p ON p.id = d.project_id
-         CROSS JOIN q
-        WHERE d.deleted_at IS NULL
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
-          AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
-          AND ($3::text IS NULL OR d.kind = $3)
-        ORDER BY ts_rank_cd(d.search, q.tsq) DESC, d.updated_at DESC
-        LIMIT $4`,
-      [ctx.user.id, a.query, a.kind ?? null, a.limit],
-    )
-  ).rows;
-  for (const row of rows)
-    ctx.cited?.set(row.id, {
+    await searchPages(pool, ctx.user.id, {
+      q: a.query,
+      kind: a.kind,
+      project: projectId ?? undefined,
+      task: taskId ?? undefined,
+      limit: a.limit,
+      marks: "StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1",
+    })
+  ).map((hit) => ({
+    id: hit.id,
+    title: hit.title,
+    kind: hit.kind,
+    project_name: hit.project_name,
+    updated_at: hit.updated_at,
+    snippet: hit.snippet,
+    block_id: hit.block_id,
+  }));
+  const items = rows.map((row) => {
+    const number = recordSource(ctx, row.id, {
       doc_id: row.id,
       title: row.title,
       block_id: row.block_id,
       quote: (row.snippet || "").slice(0, 300),
     });
+    return { ...row, source_ref: number ? `[${number}]` : null };
+  });
   return {
-    items: rows,
+    items,
     note: rows.length
       ? "Cite a page with its id and the block_id that matched."
       : "Nothing written down matches. Say so rather than answering from memory.",
@@ -1562,7 +1951,11 @@ async function searchDocs(
 }
 
 /** One page as plain text, line by line, with the names to cite lines by. */
-async function readDoc(ctx: AgentContext, a: { doc_id: string }) {
+async function readDoc(
+  ctx: AgentContext,
+  a: { doc_id: string; start_line: number },
+) {
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
   const doc = (
     await pool.query<{
       id: string;
@@ -1572,30 +1965,53 @@ async function readDoc(ctx: AgentContext, a: { doc_id: string }) {
       updated_at: string;
     }>(
       `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
-        WHERE d.id = $2 AND d.deleted_at IS NULL
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
-      [ctx.user.id, a.doc_id],
+        WHERE d.id = $2
+          AND ${docVisibleTo("$1")}
+          AND ($3::uuid IS NULL OR d.project_id = $3)
+          AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
+            SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
+      [
+        ctx.user.id,
+        a.doc_id,
+        inside?.kind === "project" ? inside.id : null,
+        inside?.kind === "task" ? inside.id : null,
+      ],
     )
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
-  ctx.cited?.set(doc.id, {
+  const allLines = doc.content
+    .filter((block) => (block.text ?? "").trim())
+    .map((block, index) => ({
+      line: index + 1,
+      block_id: block.id ?? null,
+      text: block.text ?? "",
+    }));
+  const lines: typeof allLines = [];
+  let size = 0;
+  for (const line of allLines.slice(a.start_line - 1)) {
+    if (lines.length >= 40 || (lines.length && size + line.text.length > 5_000))
+      break;
+    lines.push({ ...line, text: line.text.slice(0, 5_000) });
+    size += line.text.length;
+  }
+  const sourceNumber = recordSource(ctx, doc.id, {
     doc_id: doc.id,
     title: doc.title,
-    block_id: null,
-    quote: (doc.content.find((b) => (b.text ?? "").trim())?.text ?? "").slice(
-      0,
-      300,
-    ),
+    block_id: lines[0]?.block_id ?? null,
+    quote: (lines[0]?.text ?? "").slice(0, 300),
   });
   return {
     id: doc.id,
+    source_ref: sourceNumber ? `[${sourceNumber}]` : null,
     title: doc.title,
     kind: doc.kind,
     updated_at: doc.updated_at,
-    lines: doc.content
-      .filter((b) => (b.text ?? "").trim())
-      .map((b) => ({ block_id: b.id ?? null, text: b.text })),
+    lines,
+    total_lines: allLines.length,
+    next_line:
+      lines.length && lines.at(-1)!.line < allLines.length
+        ? lines.at(-1)!.line + 1
+        : null,
   };
 }
 
@@ -1616,6 +2032,21 @@ async function draftNote(
   if (!ctx.notes) throw new Error("Notes cannot be drafted here.");
   if (ctx.notes.length >= 3)
     throw new Error("That is enough notes for one turn.");
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
+  if (inside?.kind === "project") {
+    if (a.project_id && a.project_id !== inside.id)
+      throw new Error("This chat is scoped to another project.");
+    a = { ...a, project_id: inside.id };
+  }
+  if (inside?.kind === "task") {
+    if (a.item_id && a.item_id !== inside.id)
+      throw new Error("This chat is scoped to another task.");
+    if (a.project_id)
+      throw new Error(
+        "Choose the selected task; its project will be used automatically.",
+      );
+    a = { ...a, item_id: inside.id };
+  }
   // A project or task named here has to be one this person can actually
   // see; the model is not trusted with an id it invented.
   let project: { id: string; name: string; team_id: string | null } | null =
@@ -1632,13 +2063,31 @@ async function draftNote(
           [ctx.user.id, a.project_id],
         )
       ).rows[0] ?? null;
-  let item: { id: string; team_id: string | null } | null = null;
+  let item: {
+    id: string;
+    team_id: string | null;
+    project_id: string | null;
+  } | null = null;
   if (a.item_id)
     item =
       (
-        await pool.query<{ id: string; team_id: string | null }>(
-          `SELECT i.id, i.team_id FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+        await pool.query<{
+          id: string;
+          team_id: string | null;
+          project_id: string | null;
+        }>(
+          `SELECT i.id, i.team_id, i.project_id FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
           [ctx.user.id, a.item_id],
+        )
+      ).rows[0] ?? null;
+  if (item?.project_id && !project)
+    project =
+      (
+        await pool.query<{ id: string; name: string; team_id: string | null }>(
+          `SELECT p.id, p.name, p.team_id FROM projects p
+            WHERE p.id = $2 AND ((p.team_id IS NULL AND p.user_id = $1)
+              OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+          [ctx.user.id, item.project_id],
         )
       ).rows[0] ?? null;
 
@@ -1674,14 +2123,21 @@ async function proposeDocEdit(
     why?: string;
   },
 ) {
+  const inside = ctx.scope && !ctx.allowOutsideScope ? ctx.scope : null;
   const doc = (
     await pool.query<{ id: string; content: DocBlock[]; title: string }>(
       `SELECT d.id, d.content, d.title FROM docs d
-        WHERE d.id = $2 AND d.deleted_at IS NULL
-          AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members
-                                 WHERE user_id = $1))`,
-      [ctx.user.id, a.doc_id],
+        WHERE d.id = $2
+          AND ${docVisibleTo("$1")}
+          AND ($3::uuid IS NULL OR d.project_id = $3)
+          AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
+            SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
+      [
+        ctx.user.id,
+        a.doc_id,
+        inside?.kind === "project" ? inside.id : null,
+        inside?.kind === "task" ? inside.id : null,
+      ],
     )
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
@@ -1734,6 +2190,40 @@ export async function runTool(
   ctx: AgentContext,
 ): Promise<{ content: string; isError: boolean }> {
   const name = call.name.replace(/^functions\./, "").trim();
+  if (ctx.scope && !ctx.allowOutsideScope) {
+    const projectTools = new Set([
+      "search_docs",
+      "get_doc",
+      "propose_note",
+      "propose_doc_edit",
+      "search_items",
+      "get_item",
+      "get_project",
+      "propose_create",
+      "propose_update",
+      "propose_delete",
+      "ask_clarification",
+      "plan_schedule",
+      "propose_session_change",
+    ]);
+    const taskTools = new Set([
+      "search_docs",
+      "get_doc",
+      "propose_note",
+      "propose_doc_edit",
+      "search_items",
+      "get_item",
+      "propose_update",
+      "propose_delete",
+      "ask_clarification",
+      "plan_schedule",
+      "propose_session_change",
+    ]);
+    if (!(ctx.scope.kind === "project" ? projectTools : taskTools).has(name))
+      return errorResult(
+        "This chat is scoped to the selected project or task. Ask to search outside it first.",
+      );
+  }
   if (
     ctx.projectDraft &&
     (name.startsWith("propose_") || name === "plan_schedule")

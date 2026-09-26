@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Boxes, FileText, GraduationCap } from "lucide-react";
 import {
-  projectAtRisk,
   projectProgress,
   type Doc,
   type DocSummary,
@@ -24,9 +23,11 @@ const when = (iso: string) => {
  */
 export function WorkspaceStrip({
   onOpenDoc,
+  onOpenProject,
   onNavigate,
 }: {
   onOpenDoc: (doc: Doc) => void;
+  onOpenProject: (id: string) => void;
   onNavigate: (view: "Projects" | "Docs" | "Study") => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -67,7 +68,7 @@ export function WorkspaceStrip({
               <li key={p.id}>
                 <button
                   className="strip-row"
-                  onClick={() => onNavigate("Projects")}
+                  onClick={() => onOpenProject(p.id)}
                 >
                   <span className="strip-main">
                     <strong>{p.name}</strong>
@@ -75,9 +76,6 @@ export function WorkspaceStrip({
                       {p.done_count} of {p.task_count} done
                     </small>
                   </span>
-                  {projectAtRisk(p) && (
-                    <span className="chip chip-warn">At risk</span>
-                  )}
                   <span className="project-bar strip-bar" aria-hidden="true">
                     <i style={{ width: `${projectProgress(p)}%` }} />
                   </span>

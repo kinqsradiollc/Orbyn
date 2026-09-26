@@ -1,6 +1,12 @@
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Item } from "@orbyn/core";
+import {
+  dueDateOf,
+  rowFitChip,
+  stillToPlan,
+  stillToPlanLabel,
+  type Item,
+} from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import {
@@ -10,7 +16,9 @@ import {
   TimeField,
 } from "../../components/Field";
 import { Sheet, sheetStyles } from "../../components/Sheet";
+import { Pill, chipTone } from "../../components/Pill";
 import { SmallAction } from "../../components/SmallAction";
+import { usePlanned } from "../../lib/plannedContext";
 import { client } from "../../lib/api";
 import {
   byPriority,
@@ -40,7 +48,8 @@ const nextHalfHour = () => {
 
 /**
  * "Tasks to place": open tasks, most pressing first, each with a form to set
- * time aside for it on any day (a time block of 5 to 1440 minutes).
+ * time aside for it on any day (a session of 5 to 1440 minutes). Tasks
+ * already on track are left out; the rest say how much is still to plan.
  */
 export function TasksToPlaceSheet({
   visible,
@@ -79,15 +88,26 @@ function Body({
   const [start, setStart] = useState(nextHalfHour);
   const [lengthText, setLengthText] = useState("30");
   const [done, setDone] = useState("");
+  const { byItem } = usePlanned();
   const tasks = items
     .filter(
       (i) =>
         i.kind === "task" &&
         !["done", "cancelled"].includes(i.status) &&
-        canEdit(i),
+        canEdit(i) &&
+        stillToPlan(byItem.get(i.id)) !== 0,
     )
-    .sort(byPriority());
+    .sort(byPriority(new Date(), items));
   const shown = all ? tasks : tasks.slice(0, SHOWN);
+  /** Its status, when it's a warning ("At risk", "Short 2h"…). */
+  const status = (t: Item) => {
+    const chip = rowFitChip(byItem.get(t.id)?.fit);
+    return chip && chip.tone === "warn" ? (
+      <View style={s.status}>
+        <Pill label={chip.text} tone={chipTone(chip.tone)} />
+      </View>
+    ) : null;
+  };
   const length = parseMinutes(lengthText);
   const lengthOk =
     length !== null && length >= MIN_LENGTH && length <= MAX_LENGTH;
@@ -116,7 +136,7 @@ function Body({
       });
       animateLayout();
       setOpen(null);
-      setDone(`Time set aside for ${task.title}: ${slotLabel(start, end)}.`);
+      setDone(`Session planned for ${task.title}: ${slotLabel(start, end)}.`);
       onBooked(start);
     });
 
@@ -130,8 +150,8 @@ function Body({
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
-          Set time aside for a task. It shows on the calendar as a block you can
-          move later.
+          Plan a session for a task. It shows on the calendar, and you can move
+          it later.
         </Text>
         {!!done && (
           <Text style={s.done} accessibilityRole="alert">
@@ -139,7 +159,9 @@ function Body({
           </Text>
         )}
         {tasks.length === 0 ? (
-          <Text style={shared.small}>No open tasks. A clear runway.</Text>
+          <Text style={shared.small}>
+            Nothing left to place: every open task has its time planned.
+          </Text>
         ) : (
           <View style={s.list}>
             {shown.map((t, n) => (
@@ -150,11 +172,9 @@ function Body({
                       {t.title}
                     </Text>
                     <Text style={shared.small}>
-                      {t.estimate_minutes
-                        ? minutesLabel(t.estimate_minutes)
-                        : "No estimate · 30m"}
-                      {t.due_at ? ` · due ${dateLabel(t.due_at)}` : ""}
+                      {placeLine(t, stillToPlan(byItem.get(t.id)))}
                     </Text>
+                    {status(t)}
                   </View>
                   <SmallAction
                     label={open === t.id ? "Close" : "Schedule"}
@@ -256,6 +276,22 @@ const s = themed(() =>
       marginBottom: 2,
     },
     form: { paddingHorizontal: 14, paddingBottom: 14 },
+    status: { flexDirection: "row", marginTop: 6 },
     last: { marginBottom: 0 },
   }),
 );
+
+/**
+ * "2 h still to plan · due Fri 2 Oct, 5 pm", or, without the planned feed,
+ * the estimate: "45 min · due …" ("No estimate · 30m").
+ */
+function placeLine(t: Item, toPlan: number | null) {
+  const size =
+    toPlan != null
+      ? stillToPlanLabel(toPlan)
+      : t.estimate_minutes
+        ? minutesLabel(t.estimate_minutes)
+        : "No estimate · 30m";
+  const due = dueDateOf(t);
+  return due ? `${size} · due ${due}` : size;
+}

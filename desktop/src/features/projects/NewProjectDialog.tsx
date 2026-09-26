@@ -3,6 +3,7 @@ import { LayoutTemplate, Plus, Sparkles, X } from "lucide-react";
 import {
   DEFAULT_STAGES,
   hasTeamPermission,
+  projectDeadlineAt,
   type Item,
   type Project,
   type Proposal,
@@ -14,6 +15,7 @@ import { Select } from "../../components/Select";
 import { ProposalReview } from "../../components/ProposalReview";
 import type { TurnState } from "../../hooks/useAssistant";
 import { errorText } from "../../lib/errors";
+import { deviceTimeZone } from "../../lib/planning";
 
 type Mode = "manual" | "assistant";
 
@@ -75,8 +77,9 @@ export function NewProjectDialog({
         name: trimmed,
         summary: summary.trim(),
         team_id: teamId || null,
+        // 5 pm on the day, where you are (the same rule as editing it).
         deadline: deadline
-          ? new Date(`${deadline}T17:00:00`).toISOString()
+          ? projectDeadlineAt(deadline, null, deviceTimeZone())
           : null,
         stages,
       });
@@ -106,6 +109,12 @@ export function NewProjectDialog({
           text,
           Intl.DateTimeFormat().resolvedOptions().timeZone,
           teamId || null,
+          {
+            summary: brief.trim(),
+            deadline: deadline
+              ? projectDeadlineAt(deadline, null, deviceTimeZone())
+              : null,
+          },
         ),
       );
       setState("pending");
@@ -117,13 +126,20 @@ export function NewProjectDialog({
     }
   };
 
-  const approve = async () => {
+  const approve = async (giveTasksDeadlines = true) => {
     if (!proposal) return;
     setBusy(true);
     try {
-      await client.applyProposal(proposal.id);
+      const { project_id } = await client.applyProposal(proposal.id, {
+        give_tasks_deadlines: giveTasksDeadlines,
+      });
       setState("applied");
-      onCreated(null);
+      // Open the project it made.
+      onCreated(
+        project_id
+          ? await client.getProject(project_id).catch(() => null)
+          : null,
+      );
     } catch (e) {
       setError(errorText(e));
       report(e);
@@ -231,7 +247,7 @@ export function NewProjectDialog({
                   </Select>
                 </label>
                 <label>
-                  Due (optional)
+                  Deadline (optional)
                   <DateField
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}
@@ -303,7 +319,9 @@ export function NewProjectDialog({
                 items={items}
                 busy={busy}
                 state={state}
-                onApply={() => void approve()}
+                onApply={(giveTasksDeadlines) =>
+                  void approve(giveTasksDeadlines)
+                }
                 onDismiss={() => {
                   setProposal(null);
                   setState("discarded");
@@ -352,7 +370,7 @@ export function NewProjectDialog({
                   </Select>
                 </label>
                 <label>
-                  Due (optional)
+                  Deadline (optional)
                   <DateField
                     value={deadline}
                     onChange={(e) => setDeadline(e.target.value)}

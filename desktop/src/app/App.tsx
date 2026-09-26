@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
+  deadlineOf,
   hasSystemPermission,
   hasTeamPermission,
   planDayPrompt,
@@ -30,6 +31,9 @@ import {
   takeDeepLink,
   type DeepLink,
 } from "./deep-link";
+import "./deep-link.css";
+import { usePlannedData } from "../hooks/usePlannedData";
+import { PlanningProviders } from "./PlanningProviders";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -59,7 +63,7 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { Doc, LegalSummary } from "@orbyn/core";
+import type { AssistantSource, Doc, LegalSummary } from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
@@ -127,6 +131,7 @@ export function App() {
     refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
+  const planned = usePlannedData(token, revision);
   /** The current Terms version, to know whether to ask for agreement. */
   const [legal, setLegal] = useState<LegalSummary | null>(null);
   useEffect(() => {
@@ -176,11 +181,15 @@ export function App() {
   const [focusTask, setFocusTask] = useState<Item | null>(null);
   /** A meeting note opened from its event, handed to the Docs view. */
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
+  const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  const [projectSectionToOpen, setProjectSectionToOpen] = useState<
+    "decisions" | "history" | null
+  >(null);
+  const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
-  /** A project to open, from a link (/app/project/<id>). */
-  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
@@ -378,12 +387,28 @@ export function App() {
     setEditing("new");
   };
 
-  /** Open a page the assistant cited, where the assistant cited it. */
-  const openSource = (source: { doc_id: string }) =>
-    void client.getDoc(source.doc_id).then((doc) => {
+  const openPage = (docId: string, blockId?: string | null) =>
+    void client.getDoc(docId).then((doc) => {
+      setNoteBlockId(blockId ?? null);
       setNoteDoc(doc);
       setView("Docs");
     }, report);
+
+  /** Open a fact the assistant read at its task, page, or project section. */
+  const openSource = (source: AssistantSource) => {
+    if ("doc_id" in source) {
+      openPage(source.doc_id, source.block_id);
+    } else if (source.kind === "task") {
+      openItemById(source.id);
+    } else if (source.project_id) {
+      setProjectToOpen(source.project_id);
+      setProjectSectionToOpen(
+        source.kind === "decision" ? "decisions" : "history",
+      );
+      setProjectSourceId(source.id);
+      setView("Projects");
+    }
+  };
 
   /** Personal pages are always yours; a team's need `items:write`. */
   const canWriteIn = (teamId: string | null) =>
@@ -480,32 +505,60 @@ export function App() {
     setCalendarMode("day");
     setPlanRequest({ key: Date.now(), days: 1 });
   };
-  const applyPlan = async (plan: Plan) => {
-    const result = await client.applyPlan(plan.id);
+  const applyPlan = async (plan: Plan, moves?: string[]) => {
+    const result = await client.applyPlan(plan.id, moves ? { moves } : {});
     await refresh();
-    return appliedText(result);
+    return appliedText(result, plan);
   };
-  /** "Roll forward" on a notice: a plan for unfinished blocks, in the calendar. */
-  const rollForward = async () => {
+  /**
+   * "Roll forward" on a notice: a plan for unfinished blocks (all of them,
+   * or those named: "Plan again" on Today), in the calendar.
+   */
+  const rollForward = async (blockIds?: string[]) => {
     try {
-      openPlan(await client.rollForward());
+      openPlan(await client.rollForward(blockIds));
     } catch (e) {
       report(e);
     }
   };
-  /** "Plan it" on a notice: a preview that includes the task, up to its due day. */
-  const planIt = (n: Notice) => {
-    if (!n.item_id) return;
-    const due = items.find((i) => i.id === n.item_id)?.due_at;
-    const daysLeft = due
-      ? Math.ceil((Date.parse(due) - Date.now()) / 86_400_000)
-      : 0;
+  /**
+   * "Plan it" on a notice: a preview that includes the task, looking ahead
+   * as far as its deadline (days counted in the planner's zone). On a Today
+   * row (`only`) the preview plans that task alone, as "Find time before
+   * the deadline" does.
+   */
+  const planTask = (itemId: string, only = false) => {
+    const item = items.find((i) => i.id === itemId);
     navigate("Calendar");
     setPlanRequest({
       key: Date.now(),
-      days: daysLeft > 0 ? Math.min(7, daysLeft) : undefined,
-      include: [n.item_id],
+      until: item ? deadlineOf(item) : undefined,
+      ...(only ? { only: [itemId] } : { include: [itemId] }),
     });
+  };
+  const planIt = (n: Notice) => {
+    if (n.item_id) planTask(n.item_id);
+  };
+  /**
+   * "Find time before the deadline" on a task: the calendar's planner,
+   * previewing only this task over the days up to its deadline.
+   */
+  const findTimeFor = (item: Item) => {
+    closeTask();
+    navigate("Calendar");
+    setPlanRequest({
+      key: Date.now(),
+      until: deadlineOf(item),
+      only: [item.id],
+    });
+  };
+  /** "Show on calendar" on a session: its week, with the task panel closed. */
+  const showOnCalendar = (at: string) => {
+    closeTask();
+    navigate("Calendar");
+    setCalendarDate(new Date(at));
+    if (calendarMode === "month" || calendarMode === "agenda")
+      setCalendarMode("week");
   };
   /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
   const openItemById = (id: string) => {
@@ -703,7 +756,7 @@ export function App() {
   };
 
   return (
-    <PlanningContext.Provider value={planning}>
+    <PlanningProviders planning={planning} planned={planned}>
       <div className={"app" + (railed ? " is-railed" : "")}>
         <Sidebar
           open={mobileNav}
@@ -773,6 +826,10 @@ export function App() {
                   {...listProps}
                   onNewItem={() => newItem()}
                   onNavigate={navigate}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   onOpenDoc={(found) => {
                     setNoteDoc(found);
                     setView("Docs");
@@ -782,6 +839,11 @@ export function App() {
                     void assistant.ask(planDayPrompt);
                   }}
                   onFocus={startFocus}
+                  onOpenById={openItemById}
+                  onPlanIt={(id) => planTask(id, true)}
+                  onPlanAgain={(id) => void rollForward([id])}
+                  onPlanMyDay={planMyDay}
+                  onShowLate={() => navigate("My tasks")}
                 />
               )}
               {view === "My tasks" && (
@@ -812,6 +874,10 @@ export function App() {
               {view === "Docs" && (
                 <DocsView
                   report={report}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   userId={user?.id}
                   canWriteDoc={canWriteIn}
                   teamNameFor={(id) =>
@@ -819,7 +885,11 @@ export function App() {
                   }
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
-                  onInitialDocShown={() => setNoteDoc(null)}
+                  initialBlockId={noteBlockId}
+                  onInitialDocShown={() => {
+                    setNoteDoc(null);
+                    setNoteBlockId(null);
+                  }}
                 />
               )}
               {view === "Study" && (
@@ -834,6 +904,14 @@ export function App() {
               )}
               {view === "Projects" && (
                 <ProjectsView
+                  initialProjectId={projectToOpen}
+                  initialSection={projectSectionToOpen}
+                  initialSourceId={projectSourceId}
+                  onInitialProjectShown={() => {
+                    setProjectToOpen(null);
+                    setProjectSectionToOpen(null);
+                    setProjectSourceId(null);
+                  }}
                   items={items}
                   userId={user?.id ?? ""}
                   teams={teams}
@@ -844,9 +922,20 @@ export function App() {
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
-                  onOpenNote={(docId) =>
+                  onOpenPlan={openPlan}
+                  onAskProject={(project, question) => {
+                    assistant.setScope({
+                      kind: "project",
+                      id: project.id,
+                      name: project.name,
+                    });
+                    if (question) assistant.setMessage(question);
+                    setView("AI assistant");
+                  }}
+                  onOpenNote={(docId, blockId) =>
                     void client.getDoc(docId).then((doc) => {
                       setNoteDoc(doc);
+                      setNoteBlockId(blockId ?? null);
                       setView("Docs");
                     }, report)
                   }
@@ -889,8 +978,9 @@ export function App() {
                   assistant={assistant}
                   onApplyPlan={applyPlan}
                   onOpenPlan={openPlan}
+                  onShowOnCalendar={showOnCalendar}
                   onOpenSource={openSource}
-                  onKeptNote={(docId) => openSource({ doc_id: docId })}
+                  onKeptNote={(docId) => openPage(docId)}
                 />
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
@@ -916,13 +1006,17 @@ export function App() {
                   notices={notices}
                   onRead={planner.markRead}
                   onReschedule={reschedule}
-                  onRollForward={rollForward}
+                  onRollForward={() => rollForward()}
                   onPlanIt={planIt}
                   onOpenItem={openItemById}
                   onOpenCalendar={() => navigate("Calendar")}
                   onOpenBooking={openBooking}
                   onOpenTemplate={(id) => {
                     setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
                     navigate("Projects");
                   }}
                   onOpenDoc={(id) =>
@@ -977,6 +1071,28 @@ export function App() {
                 ? openOccurrence.occurrence
                 : null
             }
+            onFindTime={findTimeFor}
+            onShowOnCalendar={showOnCalendar}
+            onOpenProject={(id) => {
+              closeTask();
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
+            onAskTask={(item) => {
+              closeTask();
+              assistant.setScope({
+                kind: "task",
+                id: item.id,
+                name: item.title,
+              });
+              setView("AI assistant");
+            }}
+            onOpenDoc={(doc, blockId) => {
+              closeTask();
+              setNoteBlockId(blockId ?? null);
+              setNoteDoc(doc);
+              setView("Docs");
+            }}
             onOpenNote={(event, series) => {
               void client
                 // Opened on one class of a repeating event: that class's
@@ -1029,18 +1145,23 @@ export function App() {
             items={items}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
-            onOpenDoc={(found) => {
+            onOpenDoc={(found, blockId) => {
               setNoteDoc(found);
+              setNoteBlockId(blockId ?? null);
               setView("Docs");
             }}
-            onGoToProjects={() => setView("Projects")}
+            onGoToProjects={(id) => {
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
             onNewItem={() => newItem()}
             onPlanDay={planMyDay}
             onNavigate={navigate}
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
+            onShowOnCalendar={showOnCalendar}
             onOpenSource={openSource}
-            onKeptNote={(docId) => openSource({ doc_id: docId })}
+            onKeptNote={(docId) => openPage(docId)}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
             teams={teams}
@@ -1054,6 +1175,6 @@ export function App() {
         )}
         <Celebration />
       </div>
-    </PlanningContext.Provider>
+    </PlanningProviders>
   );
 }

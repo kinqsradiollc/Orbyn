@@ -25,12 +25,14 @@ const KINDS: { id: WorkRecordKind; label: string }[] = [
 
 /** The same project commitments as desktop, with one short form on a phone. */
 export function ProjectRecords({
+  focusId = null,
   project,
   items,
   userId,
   canWrite,
   onOpenNote,
 }: {
+  focusId?: string | null;
   project: Project;
   items: Item[];
   userId?: string;
@@ -361,195 +363,205 @@ export function ProjectRecords({
       ) : records.length === 0 ? (
         <Text style={styles.meta}>No commitments recorded yet.</Text>
       ) : (
-        records.map((record) => (
-          <View key={record.id} style={styles.card}>
-            <View style={styles.top}>
-              <Text style={styles.kind}>
-                {KINDS.find((k) => k.id === record.kind)?.label}
-              </Text>
-              <Text style={styles.meta}>
-                {record.status === "done"
-                  ? "Completed"
-                  : record.status === "proposed"
-                    ? "Awaiting response"
-                    : record.status.charAt(0).toUpperCase() +
-                      record.status.slice(1)}
-              </Text>
-            </View>
-            <Text style={styles.title}>{record.title}</Text>
-            {record.kind === "promise" &&
-              record.owner_id !== record.created_by && (
-                <Text style={styles.meta}>Promised by {record.owner_name}</Text>
-              )}
-            {!!record.details && (
-              <Text style={styles.body}>{record.details}</Text>
-            )}
-            {record.kind === "meeting_outcome" &&
-              !!record.meeting_minutes &&
-              !!record.participant_count && (
+        [...records]
+          .sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId))
+          .map((record) => (
+            <View
+              key={record.id}
+              style={[styles.card, record.id === focusId && styles.sourceFocus]}
+            >
+              <View style={styles.top}>
+                <Text style={styles.kind}>
+                  {KINDS.find((k) => k.id === record.kind)?.label}
+                </Text>
                 <Text style={styles.meta}>
-                  {record.meeting_minutes} minutes · {record.participant_count}{" "}
-                  people ·{" "}
-                  {(
-                    (record.meeting_minutes * record.participant_count) /
-                    60
-                  ).toLocaleString(undefined, {
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  person-hours
+                  {record.status === "done"
+                    ? "Completed"
+                    : record.status === "proposed"
+                      ? "Awaiting response"
+                      : record.status.charAt(0).toUpperCase() +
+                        record.status.slice(1)}
+                </Text>
+              </View>
+              <Text style={styles.title}>{record.title}</Text>
+              {record.kind === "promise" &&
+                record.owner_id !== record.created_by && (
+                  <Text style={styles.meta}>
+                    Promised by {record.owner_name}
+                  </Text>
+                )}
+              {!!record.details && (
+                <Text style={styles.body}>{record.details}</Text>
+              )}
+              {record.kind === "meeting_outcome" &&
+                !!record.meeting_minutes &&
+                !!record.participant_count && (
+                  <Text style={styles.meta}>
+                    {record.meeting_minutes} minutes ·{" "}
+                    {record.participant_count} people ·{" "}
+                    {(
+                      (record.meeting_minutes * record.participant_count) /
+                      60
+                    ).toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    person-hours
+                  </Text>
+                )}
+              {!!record.source_doc_id && !!onOpenNote && (
+                <SmallAction
+                  label={`Source: ${notes.find((note) => note.id === record.source_doc_id)?.title || "Open note"}`}
+                  disabled={false}
+                  onPress={() => onOpenNote(record.source_doc_id!)}
+                />
+              )}
+              {!!record.outcome && (
+                <Text style={styles.body}>Outcome: {record.outcome}</Text>
+              )}
+              {!!record.linked_item_title && (
+                <Text style={styles.meta}>
+                  Task: {record.linked_item_title} ·{" "}
+                  {record.linked_item_status === "in_progress"
+                    ? "in progress"
+                    : record.linked_item_status === "todo"
+                      ? "not started"
+                      : record.linked_item_status}
                 </Text>
               )}
-            {!!record.source_doc_id && !!onOpenNote && (
-              <SmallAction
-                label={`Source: ${notes.find((note) => note.id === record.source_doc_id)?.title || "Open note"}`}
-                disabled={false}
-                onPress={() => onOpenNote(record.source_doc_id!)}
-              />
-            )}
-            {!!record.outcome && (
-              <Text style={styles.body}>Outcome: {record.outcome}</Text>
-            )}
-            {!!record.linked_item_title && (
-              <Text style={styles.meta}>
-                Task: {record.linked_item_title} ·{" "}
-                {record.linked_item_status === "in_progress"
-                  ? "in progress"
-                  : record.linked_item_status === "todo"
-                    ? "not started"
-                    : record.linked_item_status}
-              </Text>
-            )}
-            {!!record.due_at && (
-              <Text style={styles.meta}>
-                Due {new Date(record.due_at).toLocaleDateString()}
-              </Text>
-            )}
-            {!!record.review_at && (
-              <Text style={styles.meta}>
-                Review {new Date(record.review_at).toLocaleDateString()}
-              </Text>
-            )}
-            {record.kind === "decision" &&
-              record.status === "open" &&
-              !record.linked_item_id && (
-                <View style={styles.gap}>
-                  <Text style={styles.gapText}>No task delivers this yet.</Text>
-                  {canWrite && (
-                    <SmallAction
-                      label="Make a task"
-                      disabled={busy}
-                      onPress={() =>
-                        void perform(async () => {
-                          const task = await client.createItem({
-                            kind: "task",
-                            title: record.title,
-                            team_id: project.team_id,
-                          });
-                          await client.setItemProject(task.id, {
-                            project_id: project.id,
-                          });
-                          await client.updateWorkRecord(record.id, {
-                            version: record.version,
-                            linked_item_id: task.id,
-                          });
-                        })
-                      }
-                    />
-                  )}
-                </View>
+              {!!record.due_at && (
+                <Text style={styles.meta}>
+                  Due {new Date(record.due_at).toLocaleDateString()}
+                </Text>
               )}
-            {record.status === "proposed" && record.owner_id === userId ? (
-              <View style={styles.actions}>
-                <SmallAction
-                  label="Accept"
-                  disabled={busy}
-                  onPress={() =>
-                    void perform(() =>
-                      client.respondWorkRecord(record.id, "accept"),
-                    )
-                  }
-                />
-                <SmallAction
-                  label="Decline"
-                  disabled={busy}
-                  onPress={() =>
-                    void perform(() =>
-                      client.respondWorkRecord(record.id, "decline"),
-                    )
-                  }
-                />
-              </View>
-            ) : (
-              canWrite &&
-              (record.status === "open" || record.status === "done") && (
-                <>
-                  {editingOutcome === record.id && (
-                    <View style={styles.form}>
-                      <TextInput
-                        style={[styles.input, styles.details]}
-                        value={outcome}
-                        onChangeText={setOutcome}
-                        multiline
-                        maxLength={4000}
-                        textAlignVertical="top"
-                        placeholder="What happened?"
-                        placeholderTextColor={colors.faint}
-                        accessibilityLabel="Record outcome"
-                      />
-                      <Button
-                        title="Save outcome"
-                        disabled={busy || !outcome.trim()}
+              {!!record.review_at && (
+                <Text style={styles.meta}>
+                  Review {new Date(record.review_at).toLocaleDateString()}
+                </Text>
+              )}
+              {record.kind === "decision" &&
+                record.status === "open" &&
+                !record.linked_item_id && (
+                  <View style={styles.gap}>
+                    <Text style={styles.gapText}>
+                      No task delivers this yet.
+                    </Text>
+                    {canWrite && (
+                      <SmallAction
+                        label="Make a task"
+                        disabled={busy}
                         onPress={() =>
                           void perform(async () => {
+                            const task = await client.createItem({
+                              kind: "task",
+                              title: record.title,
+                              team_id: project.team_id,
+                            });
+                            await client.setItemProject(task.id, {
+                              project_id: project.id,
+                            });
                             await client.updateWorkRecord(record.id, {
                               version: record.version,
-                              outcome: outcome.trim(),
-                              status: "done",
+                              linked_item_id: task.id,
                             });
-                            setEditingOutcome(null);
-                            setOutcome("");
                           })
                         }
                       />
+                    )}
+                  </View>
+                )}
+              {record.status === "proposed" && record.owner_id === userId ? (
+                <View style={styles.actions}>
+                  <SmallAction
+                    label="Accept"
+                    disabled={busy}
+                    onPress={() =>
+                      void perform(() =>
+                        client.respondWorkRecord(record.id, "accept"),
+                      )
+                    }
+                  />
+                  <SmallAction
+                    label="Decline"
+                    disabled={busy}
+                    onPress={() =>
+                      void perform(() =>
+                        client.respondWorkRecord(record.id, "decline"),
+                      )
+                    }
+                  />
+                </View>
+              ) : (
+                canWrite &&
+                (record.status === "open" || record.status === "done") && (
+                  <>
+                    {editingOutcome === record.id && (
+                      <View style={styles.form}>
+                        <TextInput
+                          style={[styles.input, styles.details]}
+                          value={outcome}
+                          onChangeText={setOutcome}
+                          multiline
+                          maxLength={4000}
+                          textAlignVertical="top"
+                          placeholder="What happened?"
+                          placeholderTextColor={colors.faint}
+                          accessibilityLabel="Record outcome"
+                        />
+                        <Button
+                          title="Save outcome"
+                          disabled={busy || !outcome.trim()}
+                          onPress={() =>
+                            void perform(async () => {
+                              await client.updateWorkRecord(record.id, {
+                                version: record.version,
+                                outcome: outcome.trim(),
+                                status: "done",
+                              });
+                              setEditingOutcome(null);
+                              setOutcome("");
+                            })
+                          }
+                        />
+                        <SmallAction
+                          label="Cancel"
+                          disabled={busy}
+                          onPress={() => setEditingOutcome(null)}
+                        />
+                      </View>
+                    )}
+                    {record.status === "open" &&
+                    (record.kind === "experiment" ||
+                      record.kind === "meeting_outcome") ? (
                       <SmallAction
-                        label="Cancel"
+                        label="Record outcome"
                         disabled={busy}
-                        onPress={() => setEditingOutcome(null)}
+                        onPress={() => {
+                          setEditingOutcome(record.id);
+                          setOutcome(record.outcome);
+                        }}
                       />
-                    </View>
-                  )}
-                  {record.status === "open" &&
-                  (record.kind === "experiment" ||
-                    record.kind === "meeting_outcome") ? (
-                    <SmallAction
-                      label="Record outcome"
-                      disabled={busy}
-                      onPress={() => {
-                        setEditingOutcome(record.id);
-                        setOutcome(record.outcome);
-                      }}
-                    />
-                  ) : (
-                    <SmallAction
-                      label={
-                        record.status === "open" ? "Mark complete" : "Reopen"
-                      }
-                      disabled={busy}
-                      onPress={() =>
-                        void perform(() =>
-                          client.updateWorkRecord(record.id, {
-                            version: record.version,
-                            status: record.status === "open" ? "done" : "open",
-                          }),
-                        )
-                      }
-                    />
-                  )}
-                </>
-              )
-            )}
-          </View>
-        ))
+                    ) : (
+                      <SmallAction
+                        label={
+                          record.status === "open" ? "Mark complete" : "Reopen"
+                        }
+                        disabled={busy}
+                        onPress={() =>
+                          void perform(() =>
+                            client.updateWorkRecord(record.id, {
+                              version: record.version,
+                              status:
+                                record.status === "open" ? "done" : "open",
+                            }),
+                          )
+                        }
+                      />
+                    )}
+                  </>
+                )
+              )}
+            </View>
+          ))
       )}
     </View>
   );
@@ -584,6 +596,10 @@ const styles = themed(() =>
       borderColor: colors.border,
       borderRadius: radii.card,
       backgroundColor: colors.surface,
+    },
+    sourceFocus: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentSoft,
     },
     top: {
       flexDirection: "row",

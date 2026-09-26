@@ -330,7 +330,7 @@ export function PlanningSettings({ teams, report }: Props) {
             />
             <NumberInput
               id="pref-min"
-              label="Shortest block (min)"
+              label="Shortest session (min)"
               value={draft.min_block_minutes}
               min={5}
               max={240}
@@ -363,24 +363,23 @@ export function PlanningSettings({ teams, report }: Props) {
               onChange={(e) => set("count_blocks_as_spent", e.target.checked)}
             />
             <span>
-              Count blocked time as worked when I complete a task
+              Count session time as worked when I complete a task
               <small>
-                The past part of its time blocks is added to the time spent on
-                it.
+                The past part of its sessions is added to the time spent on it.
               </small>
             </span>
           </label>
 
           <h3 className="settings-subtitle">Planner notices</h3>
           <p className="muted">
-            Heads-ups about unfinished blocks, tasks at risk, tasks due soon and
-            clashes. They always show in Notifications.
+            Heads-ups about unfinished sessions, tasks at risk, tasks due soon
+            and clashes. They always show in Notifications.
           </p>
           <div className="settings-grid">
             <NumberInput
               id="pref-deadline"
               label="Warn about tasks due within (days)"
-              hint="For tasks with no time set aside. 0 turns this off."
+              hint="For tasks with no sessions planned. 0 turns this off."
               value={draft.deadline_notice_days ?? 1}
               min={0}
               max={14}
@@ -426,9 +425,9 @@ export function PlanningSettings({ teams, report }: Props) {
 
           <h3 className="settings-subtitle">What Orbyn has learned</h3>
           <p className="muted">
-            The planner learns from your own finished tasks, planned blocks and
-            focus sessions, and nobody else’s. Your tasks aren’t changed; only
-            where and how long they’re planned.
+            The planner learns from your own finished tasks, sessions and focus
+            time, and nobody else’s. Your tasks aren’t changed; only where and
+            how long they’re planned.
           </p>
           <div className="settings-grid">
             <label className="switch-line settings-field">
@@ -515,7 +514,7 @@ export function PlanningSettings({ teams, report }: Props) {
               />
               <span>
                 Morning agenda
-                <small>Today’s events, due tasks and set-aside time.</small>
+                <small>Today’s events, due tasks and sessions.</small>
               </span>
             </label>
             <label className="settings-field">

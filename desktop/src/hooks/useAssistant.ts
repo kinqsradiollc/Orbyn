@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   proposalNote,
   type ChatTurn,
+  type ChatScope,
   type Item,
   type Proposal,
 } from "@orbyn/core";
@@ -22,6 +23,8 @@ export type Turn =
       before: Item[];
     };
 
+export type AssistantScope = ChatScope & { name: string };
+
 let sequence = 0;
 const nextId = () => `turn-${++sequence}`;
 
@@ -39,6 +42,9 @@ export function useAssistant({
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [scope, setScopeState] = useState<AssistantScope | null>(null);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const sending = useRef(false);
   const generation = useRef(0);
   const turnsRef = useRef(turns);
@@ -53,6 +59,8 @@ export function useAssistant({
     setThinking(false);
     setTurns([]);
     setMessage("");
+    setScopeState(null);
+    scopeRef.current = null;
     return () => {
       generation.current += 1;
     };
@@ -98,6 +106,10 @@ export function useAssistant({
           trimmed,
           Intl.DateTimeFormat().resolvedOptions().timeZone,
           prior,
+          scopeRef.current && {
+            kind: scopeRef.current.kind,
+            id: scopeRef.current.id,
+          },
         );
         if (request !== generation.current) return;
         const touched = new Set(
@@ -112,7 +124,10 @@ export function useAssistant({
             id: nextId(),
             role: "assistant",
             proposal,
-            state: proposal.actions.length ? "pending" : "info",
+            state:
+              proposal.actions.length || proposal.session_change
+                ? "pending"
+                : "info",
             before: itemsRef.current.filter((i) => touched.has(i.id)),
           },
         ]);
@@ -158,7 +173,10 @@ export function useAssistant({
             id: nextId(),
             role: "assistant",
             proposal,
-            state: proposal.actions.length ? "pending" : "info",
+            state:
+              proposal.actions.length || proposal.session_change
+                ? "pending"
+                : "info",
             before: [],
           },
         ]);
@@ -189,13 +207,15 @@ export function useAssistant({
     );
 
   /** Approve a reply's changes; defaults to the most recent pending one. */
-  const apply = (turnId?: unknown) => {
+  const apply = (turnId?: unknown, giveTasksDeadlines = true) => {
     const id = typeof turnId === "string" ? turnId : latestPending()?.id;
     const turn = turnsRef.current.find((t) => t.id === id);
     if (!turn || turn.role !== "assistant" || turn.state !== "pending")
       return Promise.resolve();
     return act(async () => {
-      await client.applyProposal(turn.proposal.id);
+      await client.applyProposal(turn.proposal.id, {
+        give_tasks_deadlines: giveTasksDeadlines,
+      });
       setState(turn.id, "applied");
       await refresh();
     });
@@ -213,12 +233,29 @@ export function useAssistant({
     setMessage("");
   };
 
+  const setScope = (next: AssistantScope | null) => {
+    if (
+      scopeRef.current?.kind === next?.kind &&
+      scopeRef.current?.id === next?.id
+    )
+      return;
+    generation.current += 1;
+    sending.current = false;
+    setThinking(false);
+    scopeRef.current = next;
+    setScopeState(next);
+    setTurns([]);
+    setMessage("");
+  };
+
   const pending = latestPending();
   return {
     message,
     setMessage,
     turns,
     thinking,
+    scope,
+    setScope,
     /** The most recent reply still awaiting approval, if any. */
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,

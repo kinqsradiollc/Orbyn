@@ -8,6 +8,46 @@
   min-width: 0;
 }
 
+.project-home {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+.project-home-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  min-width: 0;
+}
+.project-home-section h3,
+.project-home-section p {
+  margin: 0;
+}
+.project-home-section ul {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.project-home-section li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 5px 12px;
+  min-width: 0;
+}
+.project-home-section .muted {
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .projects-head {
   display: flex;
   flex-wrap: wrap;
@@ -50,6 +90,11 @@
 }
 .project-reentry li + li {
   margin-top: 3px;
+}
+.project-reentry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .project-grid {
@@ -121,6 +166,97 @@
 .project-bar-top > .text-button {
   white-space: nowrap;
 }
+.project-search {
+  display: grid;
+  gap: 10px;
+}
+.project-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.project-search-results {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.project-search-results h3,
+.project-search-results p {
+  margin: 0;
+}
+.project-search-results h3 {
+  font-size: 0.85rem;
+}
+.project-search-results ul {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+.project-search-results li button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.project-search-results li button:hover,
+.project-search-results li button.is-selected {
+  background: var(--color-hover);
+}
+.project-search-results .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-search mark {
+  background: var(--color-accentSoft);
+  color: var(--color-text);
+}
+.project-manage {
+  position: relative;
+}
+.project-manage-menu {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  top: calc(100% + 6px);
+  display: grid;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.project-manage-menu button {
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.project-manage-menu button:hover {
+  background: var(--color-hover);
+}
+.project-manage-menu button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .project-header {
   display: grid;
@@ -146,6 +282,68 @@
 .project-header p {
   margin: 0;
   font-size: 0.9rem;
+}
+.project-planning {
+  display: grid;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-sunken);
+}
+.project-planning p {
+  margin: 0;
+}
+/* The status line, its "On track" / "Not fully planned" chip and Plan this project. */
+.project-planning-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.project-planning-head .chip.is-ok {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+/* Planned time, solid; what's not planned yet, hatched. */
+.project-plan-bar {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-track) 0 4px,
+    var(--color-border) 4px 8px
+  );
+}
+.project-plan-bar i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+}
+.project-planning-warn {
+  color: var(--color-warn);
+  font-size: 13px;
+}
+.project-unassigned {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.project-unassigned legend {
+  padding: 0 4px;
+  font-size: 13px;
+}
+.project-unassigned label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
 }
 .project-meta {
   display: grid;
@@ -557,6 +755,22 @@
 }
 .timeline-bar:hover {
   filter: brightness(0.95);
+}
+.timeline-session {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  min-width: 5px;
+  border: 1px solid var(--color-text);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface);
+  cursor: pointer;
+  padding: 0;
+}
+.timeline-swatch.is-session {
+  border: 1px solid var(--color-text);
+  background: var(--color-surface);
 }
 
 .timeline-key {
@@ -1241,4 +1455,23 @@
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+.project-source-focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.project-home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.project-home-actions > button,
+.project-home-actions > .text-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
 }

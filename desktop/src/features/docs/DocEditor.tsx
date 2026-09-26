@@ -61,13 +61,17 @@ import {
   type DocSuggestion,
   type InlineStyle,
   type Restyled,
+  adoptTaskTicks,
   carryBlockIds,
   mergeDocs,
   carryNewIds,
   newBlockId,
+  onlyTaskTicksMoved,
   parseDoc,
   serializeBlock,
   serializeDoc,
+  setTodoSource,
+  ticksTakenFrom,
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
@@ -148,6 +152,14 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 const MERGE_NOTE_MS = 6_000;
 
 /**
+ * What to say when the only news is a task tied to a line being finished or
+ * reopened: nothing when the page heard it came from the task itself (most
+ * likely ticked beside the page), and no talk of anyone else otherwise.
+ */
+const taskNews = (by?: string) =>
+  by === "task" ? "" : "A task on this page changed.";
+
+/**
  * Re-read an edited line, so "# " or "- " changes the block's type. Pasting
  * several lines yields several blocks, which the caller splices in, so nothing
  * typed or pasted is dropped.
@@ -207,7 +219,9 @@ const fitTitle = (el: HTMLTextAreaElement | null) => {
 
 export function DocEditor({
   doc,
+  initialBlockId,
   onBack,
+  onOpenProject,
   onChanged,
   onDeleted,
   onItemsChanged,
@@ -218,8 +232,12 @@ export function DocEditor({
   onUndoDelete,
 }: {
   doc: Doc;
+  /** A source or citation line to bring into view after opening. */
+  initialBlockId?: string | null;
   /** Left out for the agenda, which has no list to go back to. */
   onBack?: () => void;
+  /** Opens the visible project this page is filed in. */
+  onOpenProject?: (id: string) => void;
   onChanged: (doc: Doc) => void;
   onDeleted: (id: string) => void;
   /**
@@ -256,6 +274,11 @@ export function DocEditor({
   const [deciding, setDeciding] = useState(false);
   /** What a line being suggested on has been typed into, before it is sent. */
   const suggestDraft = useRef<string | null>(null);
+  /** The lines tied to a task, as the server last said. */
+  const linked = useMemo(
+    () => new Set(doc.linked_block_ids ?? []),
+    [doc.linked_block_ids],
+  );
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -263,6 +286,13 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>("idle");
   const version = useRef(doc.version);
+  /**
+   * The version the ticks on screen were taken from, sent with each save so
+   * a tick already counted isn't counted again (see ticksTakenFrom). It
+   * stays put while a tick made here is unsaved, even as other copies are
+   * merged in.
+   */
+  const ticksFrom = useRef(doc.version);
   const dirty = useRef(false);
   /**
    * The document as the server last had it. Merging needs this: it is what
@@ -360,6 +390,7 @@ export function DocEditor({
       doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
     );
     version.current = doc.version;
+    ticksFrom.current = doc.version;
     base.current = doc.content;
     dirty.current = false;
     setSave("idle");
@@ -409,10 +440,14 @@ export function DocEditor({
    * screen. Lines only one side touched are kept as they are; where both
    * sides changed the same line, the version that is already saved stands
    * and the other is put back on the line below, so nothing typed is lost.
-   * Returns the blocks now on screen.
+   * `by` is who moved it on, when the live stream said. Returns the blocks
+   * now on screen.
    */
-  const reconcile = useCallback((theirs: Doc): DocBlock[] => {
+  const reconcile = useCallback((theirs: Doc, by?: string): DocBlock[] => {
     const mine = live.current.blocks;
+    const tasksOnly =
+      theirs.title === live.current.title &&
+      onlyTaskTicksMoved(base.current, theirs);
     const merge = mergeDocs(base.current, mine, theirs.content);
     const next = merge.blocks.length
       ? merge.blocks
@@ -423,31 +458,104 @@ export function DocEditor({
     // The title is one field; whoever saved last has it.
     if (theirs.title !== live.current.title) setTitle(theirs.title);
     live.current = { title: theirs.title, blocks: next };
-    setNote(
+    // A tick kept from before the merge was made on the older copy, and is
+    // still sent as one.
+    ticksFrom.current = ticksTakenFrom(ticksFrom.current, theirs, next);
+    const news =
       merge.conflicts.length === 1
         ? "Someone else edited this. The line you changed is kept below theirs."
         : merge.conflicts.length > 1
           ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
-          : "Updated with someone else's changes.",
-    );
+          : tasksOnly
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
+    if (news) setNote(news);
     return next;
   }, []);
 
+  /**
+   * Take the ticks a save came back with for the lines tied to tasks. A
+   * repeating task ticked here has moved on to its next occurrence and reads
+   * unticked again; showing the old tick would send it back with the next
+   * save. A line ticked or unticked again since keeps what was done here.
+   * Whatever it took is saved straight away, so the page also says it to
+   * anything that saves it without saying where its ticks came from.
+   */
+  const adoptTicks = useCallback((sent: DocBlock[], saved: Doc): boolean => {
+    const { blocks: next, changed } = adoptTaskTicks(
+      live.current.blocks,
+      sent,
+      saved,
+    );
+    if (!changed.length) return false;
+    // A line open for editing holds its own copy of its Markdown.
+    const at = focusedRef.current;
+    const open = at === null ? undefined : next[at];
+    if (
+      areaRef.current &&
+      open?.type === "todo" &&
+      open.id &&
+      changed.includes(open.id)
+    )
+      areaRef.current.value = setTodoSource(areaRef.current.value, open.done);
+    live.current = { ...live.current, blocks: next };
+    setBlocks(next);
+    return true;
+  }, []);
+
+  /** The latest `persist`, for a save that has to follow the one running. */
+  const persistRef = useRef<
+    (nextTitle: string, nextBlocks: DocBlock[]) => Promise<void>
+  >(async () => {});
+  /** Queue a save of what is on screen now, behind the one running. */
+  const saveAgain = useCallback(() => {
+    dirty.current = true;
+    void persistRef.current(live.current.title, live.current.blocks);
+  }, []);
+
+  /**
+   * A save came back: take its ticks, and note the version the ticks on
+   * screen are now taken from. Anything that took a new tick is saved again,
+   * after that, so the save says so.
+   */
+  const settle = useCallback(
+    (sent: DocBlock[], saved: Doc) => {
+      const took = adoptTicks(sent, saved);
+      ticksFrom.current = ticksTakenFrom(
+        ticksFrom.current,
+        saved,
+        live.current.blocks,
+      );
+      if (took) saveAgain();
+    },
+    [adoptTicks, saveAgain],
+  );
+
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
+      // The version these lines' ticks were taken from, as they are now. A
+      // save queued behind one still running goes out after that one's
+      // answer, but its ticks are still the ones from before it: the server
+      // mustn't count them again.
+      const from = ticksFrom.current;
       const write = async () => {
         setSave("saving");
         try {
-          const saved = await client.updateDoc(doc.id, {
-            title: nextTitle,
-            content: nextBlocks,
-            version: version.current,
-          });
+          const saved = await client.updateDoc(
+            doc.id,
+            {
+              title: nextTitle,
+              content: nextBlocks,
+              version: version.current,
+            },
+            { ticksFrom: from },
+          );
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
+          settle(nextBlocks, saved);
           setSave("saved");
           setSavedAt(saved.updated_at);
           setNow(new Date());
@@ -459,16 +567,24 @@ export function DocEditor({
             try {
               const theirs = await client.getDoc(doc.id);
               const merged = reconcile(theirs);
-              const saved = await client.updateDoc(doc.id, {
-                title: live.current.title,
-                content: merged,
-                version: version.current,
-              });
+              const mergedTitle = live.current.title;
+              // Not theirs.version: a tick kept from before the merge was
+              // made on the older copy (see reconcile).
+              const saved = await client.updateDoc(
+                doc.id,
+                {
+                  title: mergedTitle,
+                  content: merged,
+                  version: version.current,
+                },
+                { ticksFrom: ticksFrom.current },
+              );
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
-                live.current.title !== nextTitle ||
-                live.current.blocks !== nextBlocks;
+                live.current.title !== mergedTitle ||
+                live.current.blocks !== merged;
+              settle(merged, saved);
               setSave("saved");
               onChanged(saved);
               return;
@@ -485,8 +601,9 @@ export function DocEditor({
       saveQueue.current = saveQueue.current.then(write, write);
       return saveQueue.current;
     },
-    [doc.id, onChanged, reconcile, report],
+    [doc.id, onChanged, reconcile, report, settle],
   );
+  persistRef.current = persist;
 
   flushOnClose.current = () => {
     if (!canWrite || !dirty.current) return;
@@ -499,8 +616,10 @@ export function DocEditor({
       dirty.current = true;
       live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
+      // What is on screen when the clock runs out, not when it started: a
+      // save or a merge that landed meanwhile may have changed it.
       timer.current = setTimeout(
-        () => void persist(nextTitle, nextBlocks),
+        () => void persist(live.current.title, live.current.blocks),
         SAVE_AFTER_MS,
       );
     },
@@ -522,7 +641,10 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every keystroke.
    */
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
-  onEvent.current = (remote: number, { trashed, tags: retagged }: DocNews) => {
+  onEvent.current = (
+    remote: number,
+    { trashed, tags: retagged, by }: DocNews,
+  ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
@@ -549,7 +671,13 @@ export function DocEditor({
       // A line open for editing counts as ours even before a keystroke:
       // replacing the whole page would pull the text out from under it.
       if (!dirty.current && focusedRef.current === null) {
+        const news =
+          theirs.title === live.current.title &&
+          onlyTaskTicksMoved(base.current, theirs)
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
         version.current = theirs.version;
+        ticksFrom.current = theirs.version;
         base.current = theirs.content;
         tagBase.current = theirs.content;
         setTags(theirs.tags ?? []);
@@ -559,11 +687,11 @@ export function DocEditor({
             ? theirs.content
             : [{ type: "paragraph", text: "" }],
         );
-        setNote("Updated with someone else's changes.");
+        if (news) setNote(news);
         onChanged(theirs);
         return;
       }
-      const merged = reconcile(theirs);
+      const merged = reconcile(theirs, by);
       // Only send the merged page back when something of ours was waiting;
       // an open but untouched line has nothing to add.
       if (dirty.current) void persist(live.current.title, merged);
@@ -735,6 +863,7 @@ export function DocEditor({
       .then(({ doc: saved }) => {
         if (saved) {
           version.current = saved.version;
+          ticksFrom.current = saved.version;
           base.current = saved.content;
           setBlocks(saved.content);
           onChanged(saved);
@@ -923,6 +1052,12 @@ export function DocEditor({
     setActiveComment(blockId);
   };
 
+  useEffect(() => {
+    if (!initialBlockId) return;
+    const frame = requestAnimationFrame(() => goToBlock(initialBlockId));
+    return () => cancelAnimationFrame(frame);
+  }, [doc.id, initialBlockId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * A proposal is a stretch of one named line, so there is no way to propose
    * a line added, taken away, moved, copied, or a box ticked. Every one of
@@ -989,6 +1124,7 @@ export function DocEditor({
     const { created, doc: updated } = await client.docToTasks(doc.id, blockIds);
     if (updated && updated.version > version.current) {
       version.current = updated.version;
+      ticksFrom.current = updated.version;
       base.current = updated.content;
       setSavedAt(updated.updated_at);
       onChanged(updated);
@@ -1500,10 +1636,20 @@ export function DocEditor({
     }
   };
 
-  // Lines already tied to a task are not offered again.
-  const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
-  ).length;
+  // Lines already tied to a task are not offered again. The server says
+  // which: every line gets an id once it's remarked on, so an id alone
+  // doesn't make a line a task. An agenda's lines copy tasks you already
+  // have, so it offers none.
+  const openTodos =
+    doc.kind === "agenda"
+      ? 0
+      : blocks.filter(
+          (b) =>
+            b.type === "todo" &&
+            !b.done &&
+            !(b.id && linked.has(b.id)) &&
+            b.text.trim().length > 0,
+        ).length;
 
   /** Turn the unticked checklist lines into real tasks. */
   const makeTasks = () =>
@@ -1557,6 +1703,14 @@ export function DocEditor({
 
   return (
     <div className="doc-editor">
+      {doc.project_id && doc.project_name && onOpenProject && (
+        <button
+          className="text-button"
+          onClick={() => onOpenProject(doc.project_id!)}
+        >
+          In project: {doc.project_name}
+        </button>
+      )}
       <div className="doc-bar">
         {onBack && (
           <button className="text-button" onClick={onBack}>
@@ -2024,6 +2178,7 @@ export function DocEditor({
                         }
                         number={layout[index].number}
                         depth={layout[index].depth}
+                        isTask={!!block.id && linked.has(block.id)}
                       />
                     </div>
                   </div>
@@ -2129,6 +2284,7 @@ export function DocEditor({
             onRestored={(restored) => {
               // The restored page is the page now: adopt it whole.
               version.current = restored.version;
+              ticksFrom.current = restored.version;
               base.current = restored.content;
               dirty.current = false;
               setTitle(restored.title);

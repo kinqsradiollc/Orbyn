@@ -10,6 +10,8 @@ import {
   itemsQuery,
   parseQuickAdd,
   priorityScore,
+  deadlineOf,
+  planningDeadline,
   progressUpdateInput,
   quickAddInput,
   skipOccurrenceInput,
@@ -17,6 +19,9 @@ import {
   stepUpdate,
   timeLogInput,
   type ItemDetail,
+  type ItemContext,
+  type DocBlock,
+  quoteOf,
   type ItemSort,
   type ItemSyncPage,
   type OccurrenceChanges,
@@ -40,7 +45,6 @@ import {
   skipOccurrence,
 } from "./occurrences.js";
 import {
-  countBlocksAsSpent,
   ITEM_COLUMNS,
   ITEM_FROM,
   loadItem,
@@ -49,8 +53,10 @@ import {
   mutate,
   recomputeProgress,
   requireItemAccess,
+  setItemStatus,
   type ItemRow,
 } from "./service.js";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
 
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
@@ -153,20 +159,43 @@ type ScoreRow = {
   status: string;
   priority: "low" | "medium" | "high";
   due_at: Date | string | null;
+  end_at: Date | string | null;
+  all_day: boolean;
+  timezone: string;
   estimate_minutes: number | null;
   spent_minutes: number;
   created_at: Date | string;
+  /** Its project's deadline: a latest date the score counts to. */
+  project_deadline?: Date | string | null;
 };
 
-/** The priority score of an open task; null for events and closed tasks. */
-const scoreOf = (i: ScoreRow, now: Date, slot: number) =>
-  i.kind === "task" && !isClosed(i.status)
-    ? priorityScore(
-        { ...i, due_at: i.due_at ? new Date(i.due_at).toISOString() : null },
-        now,
-        slot,
-      )
-    : null;
+const isoOrNull = (v: Date | string | null) =>
+  v ? new Date(v).toISOString() : null;
+
+/**
+ * The priority score of an open task; null for events and closed tasks.
+ * Its urgency counts to the task's deadline (`deadlineOf`), or its project's
+ * when that comes first, as the planner does.
+ */
+const scoreOf = (i: ScoreRow, now: Date, slot: number) => {
+  if (i.kind !== "task" || isClosed(i.status)) return null;
+  const task = {
+    ...i,
+    due_at: isoOrNull(i.due_at),
+    end_at: isoOrNull(i.end_at),
+  };
+  return priorityScore(
+    {
+      ...task,
+      deadline_at: planningDeadline(
+        deadlineOf(task),
+        isoOrNull(i.project_deadline ?? null),
+      ),
+    },
+    now,
+    slot,
+  );
+};
 
 export async function itemRoutes(app: FastifyInstance) {
   app.get("/items", async (r) => {
@@ -273,8 +302,9 @@ export async function itemRoutes(app: FastifyInstance) {
       // Rank every match by score, then load the page asked for.
       const ranked = (
         await db.query<ScoreRow>(
-          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.estimate_minutes,
-                  i.spent_minutes, i.created_at
+          `SELECT i.id, i.kind, i.status, i.priority, i.due_at, i.end_at, i.all_day,
+                  i.timezone, i.estimate_minutes, i.spent_minutes, i.created_at,
+                  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline
            FROM items i WHERE ${where} LIMIT ${MAX_SCORED}`,
           filters,
         )
@@ -424,6 +454,83 @@ export async function itemRoutes(app: FastifyInstance) {
     return itemDetail(id, (text, values) => db.query(text, values));
   });
 
+  /** The task's project and readable source pages, including its source line. */
+  app.get("/items/:id/context", async (r): Promise<ItemContext> => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const item = (
+      await db.query<ItemRow>("SELECT * FROM items WHERE id = $1", [id])
+    ).rows[0];
+    if (!item) fail(404, "Item not found");
+    await requireItemAccess(u, item, "items:read");
+    const project = item.project_id
+      ? ((
+          await db.query<NonNullable<ItemContext["project"]>>(
+            `SELECT p.id, p.name, p.team_id, p.status, p.deadline,
+                    s.id AS stage_id, s.name AS stage_name
+               FROM projects p LEFT JOIN project_stages s
+                 ON s.id = $2 AND s.project_id = p.id
+              WHERE p.id = $1 AND ((p.team_id IS NULL AND p.user_id = $3)
+                OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $3))`,
+            [item.project_id, item.stage_id, u.id],
+          )
+        ).rows[0] ?? null)
+      : null;
+    const docs = (
+      await db.query<{
+        id: string;
+        title: string;
+        kind: ItemContext["pages"][number]["kind"];
+        team_id: string | null;
+        updated_at: Date;
+        content: DocBlock[];
+        block_id: string | null;
+      }>(
+        `SELECT d.id, d.title, d.kind, d.team_id, d.updated_at, d.content,
+                l.block_id
+           FROM docs d LEFT JOIN LATERAL (
+             SELECT block_id, created_at FROM doc_task_links
+              WHERE doc_id = d.id AND item_id = $1
+              ORDER BY created_at, block_id LIMIT 1
+           ) l ON true
+          WHERE (d.item_id = $1 OR l.block_id IS NOT NULL)
+            AND ${docVisibleTo("$2")}
+          ORDER BY (l.block_id IS NOT NULL) DESC,
+                   l.created_at ASC NULLS LAST, d.updated_at DESC, d.id
+          LIMIT 101`,
+        [id, u.id],
+      )
+    ).rows;
+    const source = docs.find((d) => d.block_id);
+    const block = source?.content.find((b) => b.id === source.block_id);
+    return {
+      project,
+      came_from: source
+        ? {
+            doc_id: source.id,
+            title: source.title,
+            kind: source.kind,
+            block_id: source.block_id!,
+            quote: quoteOf(block),
+            todo: block?.type === "todo",
+            done: block?.type === "todo" ? block.done : false,
+          }
+        : null,
+      pages: docs
+        .filter((d) => d.id !== source?.id)
+        .slice(0, 100)
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          kind: d.kind,
+          team_id: d.team_id,
+          updated_at: d.updated_at.toISOString(),
+          block_id: d.block_id,
+        })),
+    };
+  });
+
   // A device may name the item itself (made offline): sending it again is
   // the same item, never a second one.
   app.post("/items", async (r, reply) => {
@@ -563,28 +670,31 @@ export async function itemRoutes(app: FastifyInstance) {
         ).rows[0].n;
         if (steps > 0) fail(409, "This task's progress follows its checklist.");
       }
-      await db.query(
-        "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
-        [id, u.id, d.body, d.status ?? null, d.progress ?? null],
-      );
-      await db.query(
-        "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
-        [id],
-      );
-      if (d.status) {
+      // A new status goes the way every edit does (see setItemStatus): a
+      // finished task loses its future sessions, a repeating one moves on to
+      // its next occurrence, and webhooks and open apps hear about it.
+      const changed =
+        d.status && d.status !== item.status
+          ? await setItemStatus(db, u, id, d.status)
+          : null;
+      // A repeating task that moved on has already said so in its timeline,
+      // so a bare tick doesn't add a second, empty entry.
+      const movedOn = !!changed && changed.status !== d.status;
+      if (d.body || d.progress !== undefined || !movedOn) {
         await db.query(
-          `UPDATE items SET
-             status = $1::text,
-             progress = CASE WHEN $1::text = 'done' THEN 100 ELSE progress END,
-             reminder_version = CASE WHEN status IN ('done', 'cancelled')
-               AND $1::text NOT IN ('done', 'cancelled')
-               THEN reminder_version + 1 ELSE reminder_version END,
-             updated_at = now()
-           WHERE id = $2`,
-          [d.status, id],
+          "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
+          [
+            id,
+            u.id,
+            d.body,
+            movedOn ? null : (d.status ?? null),
+            d.progress ?? null,
+          ],
         );
-        if (d.status === "done" && item.status !== "done")
-          await countBlocksAsSpent(db, u.id, id);
+        await db.query(
+          "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
+          [id],
+        );
       }
       if (d.progress !== undefined)
         await db.query(

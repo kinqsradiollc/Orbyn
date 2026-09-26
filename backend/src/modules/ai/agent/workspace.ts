@@ -1,8 +1,10 @@
 import {
+  deadlineOf,
   isClosed,
   priorityScore,
-  projectAtRisk,
+  projectPlanStatus,
   projectProgress,
+  type AssistantSource,
 } from "@orbyn/core";
 import { pool } from "../../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../../lib/teams.js";
@@ -25,8 +27,12 @@ import {
   workingSpans,
 } from "../../planner/plans.js";
 import { planReality } from "../../followthrough/reality.js";
+import { PROJECT_COUNTS } from "../../projects/counts.js";
+import { projectPlanning } from "../../projects/planning.js";
+import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
+import { docVisibleTo } from "../../../lib/doc-visibility.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
@@ -44,6 +50,8 @@ type TaskRow = {
   priority: "low" | "medium" | "high";
   due_at: Date | null;
   end_at: Date | null;
+  all_day: boolean;
+  timezone: string;
   estimate_minutes: number | null;
   spent_minutes: number;
   team_name: string | null;
@@ -51,14 +59,30 @@ type TaskRow = {
   list_name: string | null;
 };
 
+/**
+ * When a task is due by (`deadlineOf`: the end of the day for an all-day
+ * task, the end time for one that has it), as an ISO string or null.
+ */
+const deadlineOfRow = (row: TaskRow) =>
+  deadlineOf({
+    due_at: row.due_at,
+    end_at: row.end_at,
+    all_day: row.all_day,
+    timezone: row.timezone,
+  });
+
 /** Why a task ranks where it does, in words a person would use. */
 function reasons(row: TaskRow, now: Date, timezone: string) {
   const out: string[] = [];
-  const due = row.due_at?.getTime();
+  // Overdue once the deadline has passed: not during an all-day task's day.
+  const deadline = deadlineOfRow(row);
+  const due = deadline ? Date.parse(deadline) : undefined;
   if (due !== undefined && due < now.getTime()) out.push("overdue");
   else if (due !== undefined) {
     const days = (due - now.getTime()) / 86_400_000;
-    if (localDate(row.due_at!, timezone) === localDate(now, timezone))
+    // The day it's due on: an all-day deadline is the midnight after it.
+    const dueDay = new Date(due - (row.all_day ? 60_000 : 0));
+    if (localDate(dueDay, timezone) === localDate(now, timezone))
       out.push("due today");
     else if (days <= 2) out.push("due in the next two days");
     else if (days <= 7) out.push("due this week");
@@ -71,7 +95,7 @@ function reasons(row: TaskRow, now: Date, timezone: string) {
 }
 
 const RANK_SELECT = `SELECT i.id, i.title, i.kind, i.status, i.priority, i.due_at, i.end_at,
-    i.estimate_minutes, i.spent_minutes, t.name AS team_name,
+    i.all_day, i.timezone, i.estimate_minutes, i.spent_minutes, t.name AS team_name,
     p.name AS project_name, l.name AS list_name
   FROM items i
   LEFT JOIN teams t ON t.id = i.team_id
@@ -117,6 +141,7 @@ export async function rankTasks(
           priority: r.priority,
           status: r.status,
           due_at: r.due_at?.toISOString() ?? null,
+          deadline_at: deadlineOfRow(r),
           estimate_minutes: r.estimate_minutes,
           spent_minutes: r.spent_minutes,
         },
@@ -130,7 +155,7 @@ export async function rankTasks(
     total_open: ranked.length,
     largest_free_minutes_today: free,
     how_ranked:
-      "The app's own priority score: 3 x priority + 4 x urgency (rises over the week before the due time) + 2 if overdue + how well the remaining estimate fits today's largest free stretch; started work rises, blocked work sinks.",
+      "The app's own priority score: 3 x priority + 4 x urgency (rises over the week before the deadline; an all-day task is due by the end of its day, one with an end time when it ends) + 2 once the deadline has passed + how well the remaining estimate fits today's largest free stretch; started work rises, blocked work sinks.",
     tasks: ranked.slice(0, limit).map(({ row, score }, n) => ({
       rank: n + 1,
       id: row.id,
@@ -153,6 +178,8 @@ type ProjectRow = {
   id: string;
   name: string;
   summary: string;
+  doc_id: string | null;
+  team_id: string | null;
   status: string;
   deadline: Date | null;
   team_name: string | null;
@@ -161,10 +188,10 @@ type ProjectRow = {
   updated_at: Date;
 };
 
-const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.status, p.deadline, p.updated_at,
+const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.doc_id, p.team_id,
+    p.status, p.deadline, p.updated_at,
     t.name AS team_name,
-    (SELECT count(*)::int FROM items i WHERE i.project_id = p.id) AS task_count,
-    (SELECT count(*)::int FROM items i WHERE i.project_id = p.id AND i.status = 'done') AS done_count
+    ${PROJECT_COUNTS}
   FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
 const VISIBLE_PROJECTS = `((p.team_id IS NULL AND p.user_id = $1)
   OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
@@ -185,12 +212,27 @@ const projectView = (p: ProjectRow, timezone: string) => {
     deadline: p.deadline ? localDate(p.deadline, timezone) : null,
     tasks: `${p.done_count} of ${p.task_count} done`,
     progress_percent: projectProgress(counts),
-    at_risk: projectAtRisk({
-      ...counts,
-      deadline: p.deadline?.toISOString() ?? null,
-    }),
   };
 };
+
+/** How many projects' plans list_projects checks, nearest deadline first. */
+const RISK_CHECKS = 12;
+
+/**
+ * At risk the way the project page's strip says it (`projectPlanStatus`):
+ * the person's part isn't fully planned before the deadline. Only active
+ * projects with a deadline can be; finished tasks never count.
+ */
+async function projectRisk(userId: string, p: ProjectRow) {
+  if (p.status !== "active" || !p.deadline) return false;
+  const planning = await projectPlanning(
+    pool,
+    userId,
+    { id: p.id, deadline: p.deadline, team_id: p.team_id },
+    false,
+  );
+  return projectPlanStatus(planning)?.status === "not_fully_planned";
+}
 
 /** Every project this person can see, with progress and whether it is at risk. */
 export async function listProjects(
@@ -206,7 +248,27 @@ export async function listProjects(
       [ctx.user.id],
     )
   ).rows;
-  return { projects: rows.map((p) => projectView(p, ctx.timezone)) };
+  const checked = new Set(
+    rows
+      .filter((p) => p.status === "active" && p.deadline)
+      .sort((a, b) => a.deadline!.getTime() - b.deadline!.getTime())
+      .slice(0, RISK_CHECKS)
+      .map((p) => p.id),
+  );
+  const risks = new Map(
+    await Promise.all(
+      rows
+        .filter((p) => checked.has(p.id))
+        .map(async (p) => [p.id, await projectRisk(ctx.user.id, p)] as const),
+    ),
+  );
+  return {
+    projects: rows.map((p) => ({
+      ...projectView(p, ctx.timezone),
+      // Unchecked (no deadline, not active, or beyond the nearest few): left out.
+      ...(risks.has(p.id) ? { at_risk: risks.get(p.id) } : {}),
+    })),
+  };
 }
 
 /**
@@ -215,6 +277,12 @@ export async function listProjects(
  * that no task delivers yet.
  */
 export async function getProject(ctx: AgentContext, a: { project_id: string }) {
+  if (
+    ctx.scope?.kind === "project" &&
+    !ctx.allowOutsideScope &&
+    a.project_id !== ctx.scope.id
+  )
+    throw new Error("This conversation is scoped to a different project.");
   if (!isUuid(a.project_id))
     throw new Error("Use a project id from list_projects.");
   const project = (
@@ -224,7 +292,8 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     )
   ).rows[0];
   if (!project) throw new Error("No project with that id in this workspace.");
-  const [stages, tasks, notes, records] = await Promise.all([
+  const now = new Date();
+  const [stages, tasks, notes, records, plan, upcoming] = await Promise.all([
     pool.query<{ id: string; name: string }>(
       "SELECT id, name FROM project_stages WHERE project_id = $1 ORDER BY position",
       [a.project_id],
@@ -244,33 +313,70 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
         LIMIT 200`,
       [ctx.user.id, a.project_id],
     ),
-    // Each page and record is checked on its own, as the app does: one kept
-    // beside a team project can still be someone's personal page.
-    pool.query<{ id: string; title: string; updated_at: Date }>(
-      `SELECT d.id, d.title, d.updated_at FROM docs d
-        WHERE d.project_id = $2 AND d.deleted_at IS NULL AND ${VISIBLE_DOCS}
-        ORDER BY d.updated_at DESC LIMIT 20`,
-      [ctx.user.id, a.project_id],
+    pool.query<{
+      id: string;
+      title: string;
+      updated_at: Date;
+      lines: { id?: string; text?: string }[];
+    }>(
+      `SELECT d.id, d.title, d.updated_at,
+              coalesce((SELECT jsonb_agg(x.block ORDER BY x.pos)
+                FROM (SELECT b.block, b.pos FROM jsonb_array_elements(d.content)
+                  WITH ORDINALITY AS b(block, pos)
+                  WHERE nullif(btrim(b.block->>'text'), '') IS NOT NULL
+                  ORDER BY b.pos LIMIT 4) x), '[]'::jsonb) AS lines
+         FROM docs d
+        WHERE d.project_id = $2
+          AND ${docVisibleTo("$1")}
+        ORDER BY (d.id = $3) DESC, d.updated_at DESC LIMIT 20`,
+      [ctx.user.id, a.project_id, project.doc_id],
     ),
     pool.query<{
+      id: string;
       kind: string;
       title: string;
       status: string;
       due_at: Date | null;
       linked_item_id: string | null;
     }>(
-      `SELECT w.kind, w.title, w.status, w.due_at, w.linked_item_id FROM work_records w
+      `SELECT w.id, w.kind, w.title, w.status, w.due_at, w.linked_item_id FROM work_records w
         WHERE w.project_id = $2 AND ${VISIBLE_RECORDS} AND w.status IN ('proposed', 'open')
         ORDER BY w.created_at DESC LIMIT 30`,
       [ctx.user.id, a.project_id],
     ),
+    projectPlanning(pool, ctx.user.id, project, false, now),
+    timeBlocks(
+      pool,
+      ctx.user.id,
+      now,
+      new Date(now.getTime() + 14 * 86_400_000),
+    ),
   ]);
+  const ownSessions = await withSessionFacts(
+    pool,
+    ctx.user.id,
+    upcoming.filter((session) =>
+      tasks.rows.some((task) => task.id === session.item_id),
+    ),
+  );
+  const cite = (key: string, source: AssistantSource) => {
+    if (!ctx.cited) return null;
+    const number = ctx.cited.get(key)?.number ?? ctx.cited.size + 1;
+    ctx.cited.set(key, { ...source, number });
+    return `[${number}]`;
+  };
   const task = (t: (typeof tasks.rows)[number]) => ({
     id: t.id,
     title: clean(t.title, 200),
     status: t.status,
     priority: t.priority,
     when: whenLabel(t.due_at, t.end_at, ctx.timezone),
+    source_ref: cite(`task:${t.id}`, {
+      kind: "task",
+      id: t.id,
+      title: clean(t.title, 200),
+      quote: whenLabel(t.due_at, t.end_at, ctx.timezone) ?? "No deadline",
+    }),
   });
   const inStage = (id: string | null) =>
     tasks.rows.filter((t) => t.stage_id === id && !isClosed(t.status));
@@ -279,14 +385,46 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     summary: clean(project.summary, 600),
     stages: [
       ...stages.rows.map((s) => ({
+        id: s.id,
         name: clean(s.name, 80),
         open_tasks: inStage(s.id).map(task),
       })),
-      { name: "No stage", open_tasks: inStage(null).map(task) },
-    ].filter((s) => s.open_tasks.length),
+      { id: null, name: "No stage", open_tasks: inStage(null).map(task) },
+    ],
     finished_tasks: tasks.rows.filter((t) => isClosed(t.status)).length,
-    notes: notes.rows.map((d) => ({ id: d.id, title: clean(d.title, 120) })),
+    brief:
+      notes.rows
+        .find((d) => d.id === project.doc_id)
+        ?.lines.map((line) => clean(line.text, 200)) ?? [],
+    notes: notes.rows.map((d) => ({
+      id: d.id,
+      title: clean(d.title, 120),
+      first_lines: d.lines.slice(0, 2).map((line) => ({
+        block_id: line.id ?? null,
+        text: clean(line.text, 160),
+      })),
+    })),
+    your_plan: plan,
+    your_sessions: ownSessions.slice(0, 12).map((session) => ({
+      id: session.id,
+      task_id: session.item_id,
+      start_at: session.start_at,
+      end_at: session.end_at,
+      deadline_at: session.planning_deadline_at ?? null,
+      after_deadline: session.after_deadline ?? false,
+    })),
     open_records: records.rows.map((r) => ({
+      id: r.id,
+      source_ref:
+        r.kind === "decision"
+          ? cite(`decision:${r.id}`, {
+              kind: "decision",
+              id: r.id,
+              project_id: project.id,
+              title: clean(r.title, 200),
+              quote: r.status,
+            })
+          : null,
       kind: r.kind,
       title: clean(r.title, 200),
       status: r.status,
@@ -468,7 +606,7 @@ export async function followThrough(ctx: AgentContext) {
       project: d.project_name ? clean(d.project_name, 80) : null,
     })),
     plans_kept_lately: reality.enough
-      ? `${Math.round((reality.rate ?? 0) * 100)}% of time set aside for tasks went into them over the last ${reality.window_days} days`
+      ? `${Math.round((reality.rate ?? 0) * 100)}% of session time went into its task over the last ${reality.window_days} days`
       : "Not enough planned time yet to say how plans hold up.",
   };
 }

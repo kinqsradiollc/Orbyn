@@ -14,6 +14,7 @@ import { colors, fonts, radii, themed } from "../../theme";
  */
 export function DocBody({
   content,
+  tasks,
   onToggleTodo,
   editing = null,
   draft = "",
@@ -28,8 +29,12 @@ export function DocBody({
   renderUnder,
   onOpenComments,
   onEditBlock,
+  targetBlockId,
+  onTargetLayout,
 }: {
   content: DocBlock[];
+  /** The checklist lines tied to a task, by id; only these say "task". */
+  tasks?: ReadonlySet<string>;
   /** Stretches of each line carrying a remark, to tint the words they name. */
   marks?: Record<string, Mark[]>;
   onToggleTodo?: (index: number) => void;
@@ -61,6 +66,9 @@ export function DocBody({
   renderUnder?: (blockId: string) => React.ReactNode;
   onOpenComments?: (blockId: string) => void;
   onEditBlock?: (index: number) => void;
+  /** A line opened from a task or citation. */
+  targetBlockId?: string | null;
+  onTargetLayout?: (y: number) => void;
 }) {
   /**
    * Wrap a line so tapping it opens it, and hang its remarks underneath —
@@ -75,11 +83,21 @@ export function DocBody({
    */
   const decorate = (index: number, body: React.ReactNode) => {
     const id = content[index].id;
+    const targetLayout =
+      id === targetBlockId
+        ? (event: { nativeEvent: { layout: { y: number } } }) =>
+            onTargetLayout?.(event.nativeEvent.layout.y)
+        : undefined;
     const count = (id && counts?.[id]) || 0;
     const under = id ? renderUnder?.(id) : null;
-    if (!count && !under) return <View key={index}>{body}</View>;
+    if (!count && !under)
+      return (
+        <View key={index} onLayout={targetLayout}>
+          {body}
+        </View>
+      );
     return (
-      <View key={index} style={styles.commented}>
+      <View key={index} style={styles.commented} onLayout={targetLayout}>
         <View style={styles.commentedRow}>
           <View style={styles.commentedBody}>{body}</View>
           {count > 0 && (
@@ -242,7 +260,9 @@ export function DocBody({
                   <Text style={[styles.text, block.done && styles.done]}>
                     <Inline text={block.text} marks={marks[block.id ?? ""]} />
                   </Text>
-                  {block.id ? <Text style={styles.tag}>task</Text> : null}
+                  {block.id && tasks?.has(block.id) ? (
+                    <Text style={styles.tag}>task</Text>
+                  ) : null}
                 </Pressable>
               </View>,
             );

@@ -113,14 +113,19 @@ async function addItem(token: string, data: Record<string, unknown>) {
 }
 
 let caller = 0;
-async function chat(token: string, message: string, history: unknown[] = []) {
+async function chat(
+  token: string,
+  message: string,
+  history: unknown[] = [],
+  scope?: { kind: "project" | "task"; id: string },
+) {
   const r = await app.inject({
     method: "POST",
     url: "/ai/chat",
     // Each call from its own address, so the chat rate limit never trips.
     remoteAddress: `10.9.${Math.floor(++caller / 250)}.${caller % 250}`,
     headers: auth(token),
-    payload: { message, timezone: TZ, history },
+    payload: { message, timezone: TZ, history, scope },
   });
   assert.equal(r.statusCode, 200, r.body);
   return r.json() as {
@@ -170,6 +175,19 @@ const reset = (...steps: typeof script) => {
   script = steps;
   requests = [];
 };
+
+test("assistant capabilities require a signed-in viewer", async () => {
+  const me = await newUser();
+  const denied = await app.inject({ method: "GET", url: "/ai/capabilities" });
+  assert.equal(denied.statusCode, 401);
+  const allowed = await app.inject({
+    method: "GET",
+    url: "/ai/capabilities",
+    headers: auth(me.token),
+  });
+  assert.equal(allowed.statusCode, 200, allowed.body);
+  assert.deepEqual(allowed.json(), { enabled: true, tools: true });
+});
 
 test("several items in one request become one proposal, each checked", async () => {
   const me = await newUser();
@@ -252,7 +270,10 @@ test("updates find the item first and change only the fields sent", async () => 
     }),
     { content: "Proposed: the dentist appointment moves to Monday." },
   );
-  const reply = await chat(me.token, "Move my dentist appointment to Monday");
+  const reply = await chat(
+    me.token,
+    "Move my dentist appointment's due date to Monday",
+  );
   assert.equal(reply.actions.length, 1);
   const [action] = reply.actions;
   assert.equal(action.operation, "update");
@@ -275,6 +296,62 @@ test("updates find the item first and change only the fields sent", async () => 
     await pool.query("SELECT status, notes FROM items WHERE id=$1", [item.id])
   ).rows[0];
   assert.deepEqual(saved, { status: "in_progress", notes: "Bring the forms" });
+});
+
+test("planning a session cannot silently move a task deadline", async () => {
+  const me = await newUser();
+  const item = await addItem(me.token, {
+    title: "Write report",
+    due_at: "2026-09-28T09:00:00+10:00",
+  });
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_update",
+          arguments: {
+            changes: [{ id: item.id, fields: { due_at: "2026-09-29" } }],
+          },
+        },
+      ],
+    },
+    { content: "I can plan a session without changing the deadline." },
+  );
+  const reply = await chat(
+    me.token,
+    "Plan a session for writing the report tomorrow",
+  );
+  const [result] = toolResults(requests[1]);
+  assert.equal(result.results[0].ok, false);
+  assert.match(result.results[0].error, /deadline or due date/);
+  assert.deepEqual(reply.actions, []);
+});
+
+test("reading a task gives the assistant its actual sessions and fit status", async () => {
+  const me = await newUser();
+  const now = Date.now();
+  const start = new Date(now + 24 * 60 * 60_000);
+  const end = new Date(start.getTime() + 60 * 60_000);
+  const due = new Date(now + 48 * 60 * 60_000);
+  const item = await addItem(me.token, {
+    title: "Finish proposal",
+    estimate_minutes: 120,
+    due_at: due.toISOString(),
+  });
+  await pool.query(
+    "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [item.id, me.id, start, end],
+  );
+  reset(
+    { tool_calls: [{ name: "get_item", arguments: { id: item.id } }] },
+    { content: "The proposal has one hour planned." },
+  );
+  await chat(me.token, "Am I on track for the proposal?");
+  const [task] = toolResults(requests[1]);
+  assert.equal(task.planning.planned_minutes, 60);
+  assert.equal(task.planning.next_sessions.length, 1);
+  assert.equal(task.planning.next_sessions[0].after_deadline, false);
+  assert.match(task.planning.status, /Short|At risk/);
 });
 
 test("the assistant only sees the user's own and team items", async () => {
@@ -325,6 +402,421 @@ test("the assistant only sees the user's own and team items", async () => {
   assert.deepEqual(reply.actions, []);
   const everything = JSON.stringify(requests.map((r) => r.body.messages));
   assert.doesNotMatch(everything, /Surprise party plans|Surprise team offsite/);
+});
+
+test("project context omits private pages from another team member", async () => {
+  const owner = await newUser();
+  const viewer = await newUser();
+  const team = await newTeam(owner.id, "Shared project team");
+  await pool.query(
+    "INSERT INTO team_members(team_id, user_id, role) VALUES ($1, $2, 'viewer')",
+    [team.id, viewer.id],
+  );
+  const project = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO projects(user_id, team_id, name) VALUES ($1, $2, 'Launch') RETURNING id",
+      [owner.id, team.id],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO docs(user_id, project_id, title) VALUES ($1, $2, 'Private budget')",
+    [owner.id, project.id],
+  );
+  await pool.query(
+    "INSERT INTO docs(user_id, team_id, project_id, title) VALUES ($1, $2, $3, 'Shared brief')",
+    [owner.id, team.id, project.id],
+  );
+  await pool.query(
+    "INSERT INTO work_records(created_by, project_id, kind, title) VALUES ($1, $2, 'decision', 'Private price')",
+    [owner.id, project.id],
+  );
+  await pool.query(
+    "INSERT INTO work_records(created_by, team_id, project_id, kind, title) VALUES ($1, $2, $3, 'decision', 'Shared launch choice')",
+    [owner.id, team.id, project.id],
+  );
+  reset(
+    {
+      tool_calls: [
+        { name: "get_project", arguments: { project_id: project.id } },
+      ],
+    },
+    { content: "The project has a shared brief." },
+  );
+  await chat(viewer.token, "What is in the Launch project?");
+  const [context] = toolResults(requests[1]);
+  assert.deepEqual(
+    context.notes.map((note: { title: string }) => note.title),
+    ["Shared brief"],
+  );
+  assert.deepEqual(
+    context.open_records.map((record: { title: string }) => record.title),
+    ["Shared launch choice"],
+  );
+  assert.ok(context.your_plan);
+  assert.deepEqual(context.your_sessions, []);
+  assert.doesNotMatch(
+    JSON.stringify(requests.map((r) => r.body.messages)),
+    /Private budget|Private price/,
+  );
+
+  const otherProject = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO projects(user_id, team_id, name) VALUES ($1, $2, 'Other launch') RETURNING id",
+      [owner.id, team.id],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO docs(user_id, team_id, project_id, title) VALUES ($1, $2, $3, 'Shared other brief')",
+    [owner.id, team.id, otherProject.id],
+  );
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "search_docs",
+          arguments: { query: "Shared", project_id: project.id },
+        },
+      ],
+    },
+    { content: "The shared brief is in the Launch project." },
+  );
+  await chat(viewer.token, "Find Shared in the Launch project");
+  assert.deepEqual(
+    toolResults(requests[1])[0].items.map(
+      (doc: { title: string }) => doc.title,
+    ),
+    ["Shared brief"],
+  );
+});
+
+test("a project chat preloads its project and keeps searches inside it", async () => {
+  const owner = await newUser();
+  const outsider = await newUser();
+  const first = (
+    await app.inject({
+      method: "POST",
+      url: "/projects",
+      headers: auth(owner.token),
+      payload: { name: "Scoped launch" },
+    })
+  ).json();
+  const second = (
+    await app.inject({
+      method: "POST",
+      url: "/projects",
+      headers: auth(owner.token),
+      payload: { name: "Other launch" },
+    })
+  ).json();
+  const ownTask = await addItem(owner.token, { title: "Scope review" });
+  const otherTask = await addItem(owner.token, { title: "Scope other" });
+  await pool.query("UPDATE items SET project_id = $1 WHERE id = $2", [
+    first.id,
+    ownTask.id,
+  ]);
+  await pool.query("UPDATE items SET project_id = $1 WHERE id = $2", [
+    second.id,
+    otherTask.id,
+  ]);
+  await pool.query(
+    "INSERT INTO docs(user_id, project_id, title) VALUES ($1, $2, 'Scope brief'), ($1, $3, 'Scope other page')",
+    [owner.id, first.id, second.id],
+  );
+  reset(
+    {
+      tool_calls: [
+        { name: "search_items", arguments: { query: "Scope" } },
+        { name: "search_docs", arguments: { query: "Scope" } },
+        { name: "get_item", arguments: { id: otherTask.id } },
+        { name: "get_overview", arguments: {} },
+      ],
+    },
+    { content: "The scoped launch has one matching task and page." },
+  );
+  await chat(owner.token, "Find Scope in this project", [], {
+    kind: "project",
+    id: first.id,
+  });
+  const system = requests[0].body.messages[0].content!;
+  assert.match(system, /Scoped launch/);
+  assert.doesNotMatch(system, /Scope other|Scope other page/);
+  const [items, pages, outside, global] = toolResults(requests[1]);
+  assert.deepEqual(
+    items.items.map((item: { id: string }) => item.id),
+    [ownTask.id],
+  );
+  assert.deepEqual(
+    pages.items.map((page: { title: string }) => page.title),
+    ["Scope brief"],
+  );
+  assert.match(outside.error, /No item with that id/);
+  assert.match(global.error, /scoped to the selected project/);
+
+  const denied = await app.inject({
+    method: "POST",
+    url: "/ai/chat/start",
+    headers: auth(outsider.token),
+    payload: {
+      message: "How is it going?",
+      timezone: TZ,
+      scope: { kind: "project", id: first.id },
+    },
+  });
+  assert.equal(denied.statusCode, 404, denied.body);
+
+  const stage = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO project_stages(project_id, name) VALUES ($1, 'Review') RETURNING id",
+      [first.id],
+    )
+  ).rows[0];
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_create",
+          arguments: {
+            items: [{ title: "Check launch copy", stage_id: stage.id }],
+          },
+        },
+      ],
+    },
+    { content: "I proposed a task in Review for your approval." },
+  );
+  const proposed = await chat(
+    owner.token,
+    "Add a task to Review in this project",
+    [],
+    {
+      kind: "project",
+      id: first.id,
+    },
+  );
+  assert.equal(proposed.actions[0].data?.project_id, first.id);
+  assert.equal(proposed.actions[0].data?.stage_id, stage.id);
+  assert.match(requests[0].body.messages[0].content!, /Review/);
+});
+
+test("a decision task is linked only when its proposal is approved", async () => {
+  const me = await newUser();
+  const project = (
+    await app.inject({
+      method: "POST",
+      url: "/projects",
+      headers: auth(me.token),
+      payload: { name: "Decision project" },
+    })
+  ).json();
+  const decision = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO work_records(created_by, project_id, kind, title) VALUES ($1, $2, 'decision', 'Choose vendor') RETURNING id",
+      [me.id, project.id],
+    )
+  ).rows[0];
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_create",
+          arguments: {
+            items: [
+              { title: "Sign vendor agreement", decision_id: decision.id },
+            ],
+          },
+        },
+      ],
+    },
+    { content: "I proposed the vendor task for approval." },
+  );
+  const proposal = (await chat(me.token, "Make a task for this decision", [], {
+    kind: "project",
+    id: project.id,
+  })) as Awaited<ReturnType<typeof chat>> & {
+    decision_links: { action_index: number; decision_id: string }[];
+  };
+  assert.equal(
+    proposal.actions.length,
+    1,
+    JSON.stringify(toolResults(requests[1])),
+  );
+  assert.equal(proposal.decision_links[0].decision_id, decision.id);
+  const before = await pool.query<{ linked_item_id: string | null }>(
+    "SELECT linked_item_id FROM work_records WHERE id = $1",
+    [decision.id],
+  );
+  assert.equal(before.rows[0].linked_item_id, null);
+  const applied = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: auth(me.token),
+    payload: {},
+  });
+  assert.equal(applied.statusCode, 200, applied.body);
+  const after = await pool.query<{
+    linked_item_id: string;
+    project_id: string;
+  }>(
+    `SELECT w.linked_item_id, i.project_id FROM work_records w
+      JOIN items i ON i.id = w.linked_item_id WHERE w.id = $1`,
+    [decision.id],
+  );
+  assert.equal(after.rows[0].project_id, project.id);
+});
+
+test("one session move waits for approval and rejects a stale preview", async () => {
+  const me = await newUser();
+  const item = await addItem(me.token, {
+    title: "Session task",
+    estimate_minutes: 60,
+  });
+  const start = new Date(Date.now() + 3 * 86_400_000);
+  const end = new Date(start.getTime() + 60 * 60_000);
+  const moved = new Date(start.getTime() + 86_400_000);
+  const block = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1,$2,$3,$4) RETURNING id",
+      [item.id, me.id, start, end],
+    )
+  ).rows[0];
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_session_change",
+          arguments: {
+            block_id: block.id,
+            operation: "move",
+            start_at: moved.toISOString(),
+          },
+        },
+      ],
+    },
+    { content: "I proposed moving this session for approval." },
+  );
+  const proposal = (await chat(me.token, "Move this session to tomorrow", [], {
+    kind: "task",
+    id: item.id,
+  })) as Awaited<ReturnType<typeof chat>> & {
+    session_change: { block_id: string };
+  };
+  assert.equal(proposal.session_change.block_id, block.id);
+  const before = await pool.query<{ start_at: Date }>(
+    "SELECT start_at FROM time_blocks WHERE id = $1",
+    [block.id],
+  );
+  assert.equal(before.rows[0].start_at.toISOString(), start.toISOString());
+  await pool.query(
+    "UPDATE time_blocks SET start_at = start_at + interval '1 hour', end_at = end_at + interval '1 hour' WHERE id = $1",
+    [block.id],
+  );
+  const stale = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${proposal.id}/apply`,
+    headers: auth(me.token),
+    payload: {},
+  });
+  assert.equal(stale.statusCode, 409, stale.body);
+  reset(
+    {
+      tool_calls: [
+        {
+          name: "propose_session_change",
+          arguments: {
+            block_id: block.id,
+            operation: "move",
+            start_at: moved.toISOString(),
+          },
+        },
+      ],
+    },
+    { content: "I proposed the updated move for approval." },
+  );
+  const fresh = await chat(me.token, "Move this session to tomorrow", [], {
+    kind: "task",
+    id: item.id,
+  });
+  const applied = await app.inject({
+    method: "POST",
+    url: `/ai/proposals/${fresh.id}/apply`,
+    headers: auth(me.token),
+    payload: {},
+  });
+  assert.equal(applied.statusCode, 200, applied.body);
+  const after = await pool.query<{ start_at: Date; source: string }>(
+    "SELECT start_at, source FROM time_blocks WHERE id = $1",
+    [block.id],
+  );
+  assert.equal(after.rows[0].start_at.toISOString(), moved.toISOString());
+  assert.equal(after.rows[0].source, "manual");
+});
+
+test("a task chat includes its source and subtasks without global planner data", async () => {
+  const user = await newUser();
+  const task = await addItem(user.token, { title: "Write launch copy" });
+  const child = await addItem(user.token, { title: "Draft headline" });
+  await pool.query("UPDATE items SET parent_id = $1 WHERE id = $2", [
+    task.id,
+    child.id,
+  ]);
+  const page = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO docs(user_id, title, content)
+       VALUES ($1, 'Launch brief', $2::jsonb) RETURNING id`,
+      [
+        user.id,
+        JSON.stringify([
+          {
+            id: "line-1",
+            type: "paragraph",
+            text: "Write the launch copy this week.",
+          },
+        ]),
+      ],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO doc_task_links(doc_id, block_id, item_id) VALUES ($1, 'line-1', $2)",
+    [page.id, task.id],
+  );
+  reset({ content: "The launch copy comes from the brief." });
+  await chat(user.token, "Where did this task come from?", [], {
+    kind: "task",
+    id: task.id,
+  });
+  const system = requests[0].body.messages[0].content!;
+  assert.match(system, /Launch brief/);
+  assert.match(system, /Write the launch copy this week/);
+  assert.match(system, /Draft headline/);
+  assert.doesNotMatch(system, /"overview":/);
+
+  await pool.query("UPDATE docs SET content = $2::jsonb WHERE id = $1", [
+    page.id,
+    JSON.stringify(
+      Array.from({ length: 65 }, (_, index) => ({
+        id: `line-${index + 1}`,
+        type: "paragraph",
+        text: `Brief line ${index + 1}`,
+      })),
+    ),
+  ]);
+  reset(
+    {
+      tool_calls: [
+        { name: "get_doc", arguments: { doc_id: page.id } },
+        { name: "get_doc", arguments: { doc_id: page.id, start_line: 41 } },
+      ],
+    },
+    { content: "I read both parts of the brief." },
+  );
+  await chat(user.token, "Read the whole source page for this task", [], {
+    kind: "task",
+    id: task.id,
+  });
+  const [partOne, partTwo] = toolResults(requests[1]);
+  assert.equal(partOne.lines.length, 40);
+  assert.equal(partOne.next_line, 41);
+  assert.equal(partTwo.lines[0].line, 41);
+  assert.equal(partTwo.next_line, null);
 });
 
 test("team members see team items, and viewers can't change them", async () => {
@@ -494,7 +986,7 @@ test("a clarifying question ends the turn and offers choices", async () => {
     },
     { content: "never requested" },
   );
-  const reply = await chat(me.token, "Move the meeting to 3pm");
+  const reply = await chat(me.token, "Move the meeting's due date to 3pm");
   assert.equal(requests.length, 1);
   assert.equal(reply.summary, "Which meeting do you mean?");
   assert.deepEqual(reply.follow_ups, ["Design review", "1:1 with Sam"]);
@@ -516,7 +1008,7 @@ test("a clarifying question ends the turn and offers choices", async () => {
     { content: "Proposed moving **Design review** to 3pm." },
   );
   const answer = await chat(me.token, "Design review", [
-    { role: "user", content: "Move the meeting to 3pm" },
+    { role: "user", content: "Move the meeting's due date to 3pm" },
     { role: "assistant", content: "Which meeting do you mean?" },
   ]);
   assert.equal(answer.actions.length, 1);

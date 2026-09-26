@@ -10,6 +10,7 @@ import {
   inProgressEmpty,
   emptyPlans,
   overviewItems,
+  todayIsCurrent,
   type Item,
   type Plan,
   type StudyOverview,
@@ -22,7 +23,9 @@ import { QuickAdd } from "../components/QuickAdd";
 import { SmallAction } from "../components/SmallAction";
 import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
+import { TodayCard } from "../components/TodayCard";
 import { UpNextCard } from "../components/UpNextCard";
+import { usePlanned } from "../lib/plannedContext";
 import {
   EmptyState,
   ItemRows,
@@ -38,9 +41,10 @@ const COMING_UP = 5;
 const WIDE = 600;
 
 /**
- * Overview: four stat cards, then the work that matters now. Each item shows
- * in one section only, the first that applies: Needs attention, In progress,
- * Due today, Coming up.
+ * Overview: four stat cards, Up next, then Today (planned and due in one
+ * list), Plan my day, and the work that matters now. Each item shows in one
+ * section only, the first that applies: Needs attention, In progress, Coming
+ * up (and Due today, on a server without the Today list).
  */
 export function TodayScreen({
   items,
@@ -52,11 +56,23 @@ export function TodayScreen({
   onAsk,
   onShowAll,
   onFocus,
+  onOpenById,
+  onPlanTask,
+  onPlanAgain,
+  onOpenCalendar,
   ...handlers
 }: ListHandlers & {
   items: Item[];
   /** Starts focus mode on a task. */
   onFocus: (item: Item) => void;
+  /** Opens a task or event by id (from the Today list). */
+  onOpenById: (id: string) => void;
+  /** "Plan it": plans a task, looking ahead as far as its deadline. */
+  onPlanTask: (itemId: string) => void;
+  /** "Plan again": a plan for an unfinished session's work. */
+  onPlanAgain: (blockId: string) => void;
+  /** Opens the Calendar tab. */
+  onOpenCalendar: () => void;
   /** Opens the Tasks tab. */
   onShowAll: () => void;
   userId?: string;
@@ -73,6 +89,16 @@ export function TodayScreen({
 }) {
   const now = new Date();
   const wide = useWindowDimensions().width >= WIDE;
+  const { today: todayList } = usePlanned();
+  // The Today list covers what's due; a server without it, or a list saved
+  // for another day, gets the Due today section as before.
+  const todayShown = !!todayList && todayIsCurrent(todayList, now);
+  /** Focus on a task by id: the listed copy, else the task opens instead. */
+  const focusById = (id: string) => {
+    const item = items.find((i) => i.id === id);
+    if (item) onFocus(item);
+    else onOpenById(id);
+  };
   // Cards due and the next exam, for people who study in Orbyn.
   const [study, setStudy] = useState<StudyOverview | null>(null);
   useEffect(() => {
@@ -146,6 +172,17 @@ export function TodayScreen({
       {open.some((i) => i.kind === "task") && (
         <UpNextCard items={items} onOpen={handlers.onOpen} onFocus={onFocus} />
       )}
+      {items.length > 0 && (
+        <TodayCard
+          today={todayList}
+          busy={handlers.busy}
+          onOpen={onOpenById}
+          onFocus={focusById}
+          onPlanIt={onPlanTask}
+          onPlanAgain={onPlanAgain}
+          onOpenCalendar={onOpenCalendar}
+        />
+      )}
       {open.some((i) => i.kind === "task") && (
         <FadeIn style={[shared.card, s.plan]}>
           <View style={s.planText}>
@@ -162,7 +199,11 @@ export function TodayScreen({
           />
         </FadeIn>
       )}
-      <ReviewCard items={items} onPlan={onOpenPlanner} />
+      <ReviewCard
+        items={items}
+        onPlan={onOpenPlanner}
+        showUnfinished={!todayShown}
+      />
 
       {!items.length ? (
         <EmptyState
@@ -187,13 +228,15 @@ export function TodayScreen({
               handlers={handlers}
             />
           )}
-          <Section
-            title="Due today"
-            items={dueToday}
-            empty="Nothing else is due today."
-            emptyAction={{ label: "Plan something", onPress: handlers.onAdd }}
-            handlers={handlers}
-          />
+          {!todayShown && (
+            <Section
+              title="Due today"
+              items={dueToday}
+              empty="Nothing else is due today."
+              emptyAction={{ label: "Plan something", onPress: handlers.onAdd }}
+              handlers={handlers}
+            />
+          )}
           <Section
             title="Coming up"
             items={comingUp}

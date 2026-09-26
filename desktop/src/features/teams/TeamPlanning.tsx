@@ -338,7 +338,7 @@ export function TeamPlanning({
         {workload && <AtRiskList workload={workload} />}
         {analytics && analytics.total_planned_minutes > 0 && (
           <div className="team-analytics">
-            <h3 className="team-block-title">Set-aside time · last 30 days</h3>
+            <h3 className="team-block-title">Sessions · last 30 days</h3>
             <ul className="team-analytics-list">
               {analytics.members
                 .filter((m) => m.planned_minutes > 0 || m.completed > 0)

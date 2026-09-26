@@ -43,6 +43,8 @@ export const controls = {
 } as const;
 
 export const radii = {
+  /** A checkbox's rounded square (22pt), as on task rows. */
+  check: 7,
   input: 12,
   card: 20,
   pill: 999,

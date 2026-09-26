@@ -1,4 +1,4 @@
-import { isClosed, type Item, type Status } from "@orbyn/core";
+import { dueBeforeToday, isClosed, type Item, type Status } from "@orbyn/core";
 
 /** Status the quick-complete checkbox moves an item to. */
 export const toggledStatus = (item: Item): Status =>
@@ -70,9 +70,10 @@ export const subtasksLabel = (
     : "";
 };
 
-/** Still open and due before today (the web's rule); due earlier today is today. */
+/**
+ * Still open and its deadline fell before today (the web's rule, see
+ * `dueBeforeToday`): due earlier today is today, and an all-day task is
+ * overdue from the next day.
+ */
 export const isOverdue = (item: Item, now = new Date()) =>
-  !isClosed(item.status) &&
-  !!item.due_at &&
-  new Date(item.due_at) <
-    new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  !isClosed(item.status) && dueBeforeToday(item, now);

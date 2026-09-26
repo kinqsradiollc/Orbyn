@@ -5,6 +5,7 @@ import {
   encodeSnapshot,
   SNAPSHOT_MAX_AGE_MS,
   SNAPSHOT_VERSION,
+  todayIsCurrent,
   type PlannerSnapshot,
 } from "@orbyn/core";
 
@@ -72,4 +73,45 @@ test("decoding keeps only the known collections", () => {
   const back = decodeSnapshot(raw)!;
   assert.ok(back);
   assert.equal((back as Record<string, unknown>).secret, undefined);
+});
+
+test("the planned feed and Today list ride along, and older snapshots still decode", () => {
+  const today = {
+    day: "2026-09-24",
+    timezone: "Australia/Melbourne",
+    now: "2026-09-24T02:00:00.000Z",
+    from: "2026-09-23T14:00:00.000Z",
+    to: "2026-09-24T14:00:00.000Z",
+    rows: [],
+    late_total: 0,
+    unfinished: [],
+  };
+  const planned = { from: null, to: null, tasks: [] };
+  const back = decodeSnapshot(
+    encodeSnapshot({ ...sample(), planned, today }, 1_000),
+    { now: 2_000 },
+  )!;
+  assert.deepEqual(back.planned, planned);
+  assert.deepEqual(back.today, today);
+  // Saved before they existed: null, not a rejected snapshot.
+  const old = decodeSnapshot(encodeSnapshot(sample(), 1_000), { now: 2_000 })!;
+  assert.ok(old);
+  assert.equal(old.planned, null);
+  assert.equal(old.today, null);
+  // Something that isn't one is dropped, the rest kept.
+  const odd = decodeSnapshot(
+    JSON.stringify({
+      v: SNAPSHOT_VERSION,
+      savedAt: 1_000,
+      data: { ...sample(), planned: "x", today: { rows: 1 } },
+    }),
+    { now: 2_000 },
+  )!;
+  assert.equal(odd.items.length, 1);
+  assert.equal(odd.planned, null);
+  assert.equal(odd.today, null);
+  // A saved list is only shown on its own day.
+  assert.equal(todayIsCurrent(today, new Date("2026-09-24T13:59:00Z")), true);
+  assert.equal(todayIsCurrent(today, new Date("2026-09-24T14:00:00Z")), false);
+  assert.equal(todayIsCurrent(null), false);
 });

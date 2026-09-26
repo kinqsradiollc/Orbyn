@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Pressable,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,20 +9,34 @@ import {
   View,
 } from "react-native";
 import {
-  projectAtRisk,
+  changeProjectDeadline,
+  projectDeadlineAt,
+  projectDeadlineParts,
+  projectPlanStatus,
   projectProgress,
   projectReentry,
+  deadlineOf,
+  shortMinutes,
+  snippetRuns,
   type Item,
   type Project,
+  type ProjectLink,
+  type ProjectPlanning,
+  type ProjectSession,
+  type Plan,
   type ProjectActivity,
   type Proposal,
   type Team,
+  type DocSummary,
+  type WorkRecord,
+  type SearchHit,
 } from "@orbyn/core";
 import { Segmented } from "../../components/Segmented";
 import { ScreenIntro } from "../../components/ScreenIntro";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
-import { DateField } from "../../components/Field";
+import { Pill } from "../../components/Pill";
+import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { MoreMenu } from "../../components/MoreMenu";
 import { shareLink } from "../../lib/share";
@@ -38,9 +52,29 @@ import { TemplatesPanel } from "./TemplatesPanel";
 import { ProjectTimeline } from "./ProjectTimeline";
 import { ProjectRecords } from "./ProjectRecords";
 import { ProjectTimeMachine } from "./ProjectTimeMachine";
+import { useImports } from "./Uploads";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { deviceTimeZone } from "../../lib/planning";
+
+/** "Fri 16 Oct, 5 pm", or just the day. */
+const deadlineDay = (iso: string, withTime = true) => {
+  const at = new Date(iso);
+  const day = at.toLocaleDateString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  if (!withTime) return day;
+  const time = at
+    .toLocaleTimeString([], {
+      hour: "numeric",
+      minute: at.getMinutes() ? "2-digit" : undefined,
+    })
+    .toLowerCase();
+  return `${day}, ${time}`;
+};
 
 const dueLabel = (iso: string | null) =>
   iso
@@ -57,12 +91,18 @@ export function ProjectsSheet({
   items,
   teams = [],
   openTemplate = null,
+  initialProjectId = null,
+  initialSection = null,
+  initialSourceId = null,
+  onInitialProjectShown,
   canWriteIn,
   userId,
   onClose,
   onDismiss,
   onOpenItem,
   onOpenNote,
+  onOpenPlanner,
+  onAskProject,
   onItemsChanged,
   startNew = false,
   openProject = null,
@@ -80,13 +120,19 @@ export function ProjectsSheet({
   teams?: Team[];
   /** Open on this template (from a "ready to start" notice). */
   openTemplate?: string | null;
+  initialProjectId?: string | null;
+  initialSection?: "decisions" | "history" | null;
+  initialSourceId?: string | null;
+  onInitialProjectShown?: () => void;
   canWriteIn: (teamId: string | null) => boolean;
   userId?: string;
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
   /** Opens one of a project's notes, in the page editor. */
-  onOpenNote?: (docId: string) => void;
+  onOpenNote?: (docId: string, blockId?: string | null) => void;
+  onOpenPlanner: (plan: Plan, title: string) => void;
+  onAskProject?: (project: Project, question?: string) => void;
   /** Called when a task moved, so the planner's lists catch up. */
   onItemsChanged?: () => void;
 }) {
@@ -97,15 +143,52 @@ export function ProjectsSheet({
   const [newTeam, setNewTeam] = useState<string | null>(null);
   const [newDue, setNewDue] = useState<string | null>(null);
   const [section, setSection] = useState<
-    "tasks" | "notes" | "timeline" | "decisions" | "history"
-  >("tasks");
+    "home" | "tasks" | "notes" | "timeline" | "decisions" | "history"
+  >("home");
+  const [focusSourceId, setFocusSourceId] = useState<string | null>(null);
   const [activity, setActivity] = useState<ProjectActivity[] | null>(null);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [reentry, setReentry] = useState<ReturnType<
     typeof projectReentry
   > | null>(null);
+  // "Explain what changed" needs the assistant; "Draft an update" also
+  // needs a provider that can use tools (drafting a page is one).
+  const [assistant, setAssistant] = useState({ enabled: false, tools: false });
+  useEffect(() => {
+    let live = true;
+    client.aiCapabilities().then(
+      (capabilities) => {
+        if (live) setAssistant(capabilities);
+      },
+      () => {
+        if (live) setAssistant({ enabled: false, tools: false });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const [planning, setPlanning] = useState<ProjectPlanning | null>(null);
+  const [sessions, setSessions] = useState<ProjectSession[]>([]);
+  const [homeNotes, setHomeNotes] = useState<DocSummary[]>([]);
+  const [homeRecords, setHomeRecords] = useState<WorkRecord[]>([]);
+  const [homeLinks, setHomeLinks] = useState<ProjectLink[]>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkTitle, setLinkTitle] = useState("");
+  const [addingLink, setAddingLink] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searchRecords, setSearchRecords] = useState<SearchHit[]>([]);
+  useEffect(() => {
+    setSearchQuery("");
+    setSearchHits([]);
+    setSearchRecords([]);
+  }, [open?.id]);
   /** A name being typed, for a new project or a rename. */
   const [draft, setDraft] = useState<string | null>(null);
+  /** Unassigned team tasks ticked to claim with "Plan this project". */
+  const [claiming, setClaiming] = useState<string[]>([]);
+  const [summaryDraft, setSummaryDraft] = useState<string | null>(null);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(!!openTemplate);
   useEffect(() => {
@@ -115,28 +198,45 @@ export function ProjectsSheet({
       setTemplatesOpen(true);
     }
   }, [openTemplate, visible]);
+  useEffect(() => {
+    if (!visible || !initialProjectId) return;
+    void client.getProject(initialProjectId).then(
+      (project) => {
+        setSection(initialSection ?? "home");
+        setFocusSourceId(initialSourceId);
+        setOpen(project);
+        onInitialProjectShown?.();
+      },
+      (e) => setError(errorText(e)),
+    );
+  }, [visible, initialProjectId, initialSection, initialSourceId]);
   const [projectPrompt, setProjectPrompt] = useState("");
   const [projectProposal, setProjectProposal] = useState<Proposal | null>(null);
   const [proposalState, setProposalState] = useState<"pending" | "applied">(
     "pending",
   );
   const { busy, error, setError, run } = useRun();
+  const projectImports = useImports(
+    setError,
+    () => {
+      if (open)
+        void client
+          .listDocs({ project: open.id })
+          .then(setHomeNotes)
+          .catch((e) => setError(errorText(e)));
+    },
+    open?.id,
+    open?.team_id,
+  );
 
   useEffect(() => {
     if (!visible || !open || section !== "history") return;
     let active = true;
     setActivity(null);
-    setLastSeen(null);
-    const key = `orbyn.project.seen.${open.id}`;
-    void AsyncStorage.getItem(key)
-      .then((previous) => {
-        if (!active) return;
-        setLastSeen(previous);
-        return client.projectActivity(open.id).then(async (rows) => {
-          if (!active) return;
-          setActivity(rows);
-          await AsyncStorage.setItem(key, new Date().toISOString());
-        });
+    void client
+      .projectActivity(open.id)
+      .then((rows) => {
+        if (active) setActivity(rows);
       })
       .catch((e: Error) => {
         if (active) setError(errorText(e));
@@ -149,17 +249,22 @@ export function ProjectsSheet({
   useEffect(() => {
     if (!visible || !open) return;
     let active = true;
-    const key = `orbyn.project.reentry.${open.id}`;
-    void AsyncStorage.getItem(key)
-      .then(async (previous) => {
-        const rows = await client.projectActivity(open.id);
+    setLastSeen(null);
+    setReentry(null);
+    void Promise.all([
+      client.visitProject(open.id),
+      client.projectActivity(open.id),
+    ])
+      .then(([visit, rows]) => {
         if (!active) return;
+        setLastSeen(visit.since_at);
         setReentry(
-          previous
-            ? projectReentry(rows.filter((row) => row.created_at > previous))
+          visit.since_at
+            ? projectReentry(
+                rows.filter((row) => row.created_at > visit.since_at!),
+              )
             : null,
         );
-        await AsyncStorage.setItem(key, new Date().toISOString());
       })
       .catch((reason: Error) => {
         if (active)
@@ -169,6 +274,100 @@ export function ProjectsSheet({
       active = false;
     };
   }, [visible, open?.id, setError]);
+
+  useEffect(() => {
+    if (!visible || !open) return;
+    let active = true;
+    setPlanning(null);
+    void client.projectPlanning(open.id).then(
+      (summary) => {
+        if (active) setPlanning(summary);
+      },
+      (reason: Error) => {
+        if (active) setError(errorText(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [visible, open?.id, open?.deadline, items, setError]);
+
+  useEffect(() => {
+    if (!visible || !open || (section !== "timeline" && section !== "home"))
+      return;
+    let active = true;
+    void client.projectSessions(open.id).then(
+      (rows) => {
+        if (active) setSessions(rows);
+      },
+      (reason: Error) => {
+        if (active) setError(errorText(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [visible, open?.id, section, items, setError]);
+
+  useEffect(() => {
+    if (!visible || !open || section !== "home") return;
+    let active = true;
+    setHomeNotes([]);
+    setHomeRecords([]);
+    setHomeLinks([]);
+    void Promise.all([
+      client.listDocs({ project: open.id }),
+      client.listWorkRecords({ project_id: open.id }),
+      client.listProjectLinks(open.id),
+    ]).then(
+      ([notes, records, links]) => {
+        if (active) {
+          setHomeNotes(notes);
+          setHomeRecords(records);
+          setHomeLinks(links);
+        }
+      },
+      (reason: Error) => {
+        if (active) setError(errorText(reason));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [visible, open?.id, section, setError]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!visible || !open || q.length < 2) {
+      setSearchHits([]);
+      setSearchRecords([]);
+      return;
+    }
+    setSearchHits([]);
+    setSearchRecords([]);
+    let active = true;
+    const timer = setTimeout(() => {
+      // One server search: pages, tasks and the project's decisions.
+      void client.search(q, { project: open.id, limit: 30 }).then(
+        (hits) => {
+          if (!active) return;
+          setSearchHits(hits.filter((hit) => hit.type !== "record"));
+          setSearchRecords(
+            hits.filter(
+              (hit) => hit.type === "record" && hit.kind === "decision",
+            ),
+          );
+        },
+        (reason: Error) => {
+          if (active) setError(errorText(reason));
+        },
+      );
+    }, 180);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [visible, open?.id, searchQuery, setError]);
 
   /** True when the list could not be read, which is not the same as empty. */
   const [failed, setFailed] = useState(false);
@@ -192,6 +391,144 @@ export function ProjectsSheet({
       setOpen(await client.updateProject(open.id, patch));
       await reload();
     });
+
+  const createProjectPage = (asBrief: boolean) =>
+    void run(async () => {
+      if (!open || !onOpenNote || !canWriteIn(open.team_id)) return;
+      const doc = await client.createDoc({
+        title: asBrief ? `${open.name} brief` : "",
+        kind: "note",
+        project_id: open.id,
+        team_id: open.team_id,
+        content: [{ type: "paragraph", text: "" }],
+      });
+      if (asBrief) {
+        setOpen(await client.updateProject(open.id, { doc_id: doc.id }));
+        await reload();
+      } else {
+        setHomeNotes(await client.listDocs({ project: open.id }));
+      }
+      onOpenNote(doc.id);
+    });
+
+  const saveProjectLink = () =>
+    void run(async () => {
+      if (!open || !canWriteIn(open.team_id) || !linkUrl.trim()) return;
+      await client.addProjectLink(open.id, {
+        url: linkUrl.trim(),
+        title: linkTitle.trim(),
+      });
+      setHomeLinks(await client.listProjectLinks(open.id));
+      setLinkUrl("");
+      setLinkTitle("");
+      setAddingLink(false);
+    });
+
+  const removeProjectLink = (linkId: string) =>
+    void run(async () => {
+      if (!open || !canWriteIn(open.team_id)) return;
+      await client.removeProjectLink(open.id, linkId);
+      setHomeLinks((links) => links.filter((link) => link.id !== linkId));
+    });
+
+  const addProjectFile = () => {
+    if (!open || !canWriteIn(open.team_id)) return;
+    const choose = () =>
+      void projectImports
+        .pickAndImport()
+        .catch((reason) => setError(errorText(reason)));
+    if (open.team_id) {
+      confirmAction(
+        `Add a file to ${open.name}?`,
+        `Everyone in ${open.team_name ?? "this team"} will be able to read the page made from it.`,
+        "Choose file",
+        choose,
+        false,
+      );
+    } else choose();
+  };
+
+  /** The open project's deadline as the day and time it is here. */
+  const openDeadline = open?.deadline
+    ? projectDeadlineParts(open.deadline, deviceTimeZone())
+    : null;
+  const homeTasks = open
+    ? items
+        .filter(
+          (item) =>
+            item.project_id === open.id &&
+            item.kind === "task" &&
+            item.status !== "done" &&
+            item.status !== "cancelled",
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(deadlineOf(a) ?? open.deadline ?? "9999-12-31") -
+            Date.parse(deadlineOf(b) ?? open.deadline ?? "9999-12-31"),
+        )
+        .slice(0, 5)
+    : [];
+  const now = Date.now();
+  const homeSessions = sessions
+    .filter(
+      (session) =>
+        Date.parse(session.start_at) >= now &&
+        Date.parse(session.start_at) < now + 7 * 86_400_000,
+    )
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
+    .slice(0, 7);
+  const openQuestions = homeRecords.filter(
+    (record) =>
+      record.status === "open" &&
+      ((record.kind === "decision" && !record.linked_item_id) ||
+        (record.kind === "promise" &&
+          record.due_at &&
+          Date.parse(record.due_at) < now + 7 * 86_400_000)),
+  );
+  const searchTasks = searchHits.filter((hit) => hit.type === "task");
+  const searchPages = searchHits.filter((hit) => hit.type === "doc");
+  const searchResults: SearchHit[] = [
+    ...searchTasks,
+    ...searchPages,
+    ...searchRecords,
+  ];
+  const openSearchHit = (hit: SearchHit) => {
+    if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
+    else if (hit.type === "record") setSection("decisions");
+    else {
+      const item = items.find((task) => task.id === hit.id);
+      if (item) onOpenItem?.(item);
+    }
+  };
+  const markedSearch = (value: string) => {
+    const q = searchQuery.trim();
+    const at = value.toLowerCase().indexOf(q.toLowerCase());
+    if (!q || at < 0) return value;
+    return (
+      <>
+        {value.slice(0, at)}
+        <Text style={styles.searchMark}>{value.slice(at, at + q.length)}</Text>
+        {value.slice(at + q.length)}
+      </>
+    );
+  };
+  const renderSearchHit = (hit: SearchHit) => (
+    <Pressable
+      key={hit.id}
+      style={styles.searchHit}
+      onPress={() => openSearchHit(hit)}
+      accessibilityRole="button"
+    >
+      <Text style={styles.stageName}>{markedSearch(hit.title)}</Text>
+      <Text style={styles.meta} numberOfLines={2}>
+        {snippetRuns(hit.snippet ?? "").map((run, index) => (
+          <Text key={index} style={run.hit ? styles.searchMark : undefined}>
+            {run.text}
+          </Text>
+        ))}
+      </Text>
+    </Pressable>
+  );
 
   /** The stages as the API wants them back: every one, named. */
   const stagesOf = (project: Project) =>
@@ -272,7 +609,10 @@ export function ProjectsSheet({
         name,
         summary: newSummary.trim(),
         team_id: newTeam,
-        deadline: newDue ? new Date(`${newDue}T17:00:00`).toISOString() : null,
+        // 5 pm on the day, where you are (the same rule as editing it).
+        deadline: newDue
+          ? projectDeadlineAt(newDue, null, deviceTimeZone())
+          : null,
       });
       setDraft(null);
       setNewSummary("");
@@ -280,7 +620,7 @@ export function ProjectsSheet({
       setNewDue(null);
       await reload();
       setOpen(made);
-      setSection("tasks");
+      setSection("home");
     });
   };
 
@@ -327,10 +667,10 @@ export function ProjectsSheet({
         </ChipRow>
       )}
       <DateField
-        label="Due date"
+        label="Deadline"
         value={newDue}
         clearable
-        placeholder="Due (optional)"
+        placeholder="No deadline (optional)"
         onChange={setNewDue}
       />
       <View style={styles.createMore}>
@@ -366,19 +706,28 @@ export function ProjectsSheet({
       const proposal = await client.draftProject(
         prompt,
         Intl.DateTimeFormat().resolvedOptions().timeZone,
+        newTeam || null,
+        { summary: prompt },
       );
       setProjectProposal(proposal);
       setProposalState("pending");
     });
   };
 
-  const applyAiDraft = () => {
+  const applyAiDraft = (giveTasksDeadlines = true) => {
     if (!projectProposal || busy) return;
     void run(async () => {
-      await client.applyProposal(projectProposal.id);
+      const { project_id } = await client.applyProposal(projectProposal.id, {
+        give_tasks_deadlines: giveTasksDeadlines,
+      });
       setProposalState("applied");
       await reload();
       onItemsChanged?.();
+      // Open the project it made.
+      const made = project_id
+        ? await client.getProject(project_id).catch(() => null)
+        : null;
+      if (made) setOpen(made);
     });
   };
 
@@ -526,7 +875,7 @@ export function ProjectsSheet({
               onProject={(id) =>
                 void run(async () => {
                   setOpen(await client.getProject(id));
-                  setSection("tasks");
+                  setSection("home");
                 })
               }
             />
@@ -604,9 +953,6 @@ export function ProjectsSheet({
               {draft === null ? (
                 <View style={styles.titleRow}>
                   <Text style={styles.title}>{open.name}</Text>
-                  {projectAtRisk(open) && (
-                    <Text style={styles.chip}>At risk</Text>
-                  )}
                   <MoreMenu
                     label="Project options"
                     title={open.name}
@@ -625,6 +971,22 @@ export function ProjectsSheet({
                             {
                               label: "Rename",
                               onPress: () => setDraft(open.name),
+                            },
+                            {
+                              label: "Edit summary & brief",
+                              onPress: () => setSummaryDraft(open.summary),
+                            },
+                            {
+                              label: "Mark active",
+                              onPress: () => save({ status: "active" }),
+                            },
+                            {
+                              label: "Mark done",
+                              onPress: () => save({ status: "done" }),
+                            },
+                            {
+                              label: "Archive",
+                              onPress: () => save({ status: "archived" }),
                             },
                             {
                               label: "Delete project",
@@ -662,6 +1024,35 @@ export function ProjectsSheet({
               {!!open.summary && (
                 <Text style={styles.summary}>{open.summary}</Text>
               )}
+              {summaryDraft !== null && (
+                <View style={styles.homeSection}>
+                  <Text style={styles.reentryTitle}>Summary & brief</Text>
+                  <TextInput
+                    style={styles.summaryInput}
+                    value={summaryDraft}
+                    multiline
+                    maxLength={2000}
+                    placeholder="What is this project for?"
+                    placeholderTextColor={colors.faint}
+                    onChangeText={setSummaryDraft}
+                  />
+                  <View style={styles.actions}>
+                    <SmallAction
+                      label="Save"
+                      disabled={busy}
+                      onPress={() => {
+                        save({ summary: summaryDraft.trim() });
+                        setSummaryDraft(null);
+                      }}
+                    />
+                    <SmallAction
+                      label="Cancel"
+                      disabled={busy}
+                      onPress={() => setSummaryDraft(null)}
+                    />
+                  </View>
+                </View>
+              )}
               <View style={styles.bar}>
                 <View
                   style={[
@@ -674,6 +1065,125 @@ export function ProjectsSheet({
                 {open.done_count} of {open.task_count} done ·{" "}
                 {dueLabel(open.deadline)}
               </Text>
+              {planning && open.task_count > 0 && open.status === "active" && (
+                <View style={styles.planning}>
+                  {(() => {
+                    const chip = projectPlanStatus(planning);
+                    const late = planning.late_session_count;
+                    const writable = canWriteIn(open.team_id);
+                    const unassigned = open.team_id
+                      ? items.filter(
+                          (item) =>
+                            item.project_id === open.id &&
+                            item.kind === "task" &&
+                            item.status !== "done" &&
+                            item.status !== "cancelled" &&
+                            !item.assignee_id,
+                        )
+                      : [];
+                    const claimed = claiming.filter((id) =>
+                      unassigned.some((item) => item.id === id),
+                    );
+                    return (
+                      <>
+                        {!!open.deadline && (
+                          <Text style={styles.reentryTitle}>
+                            Deadline {deadlineDay(open.deadline)}
+                          </Text>
+                        )}
+                        <Text style={styles.meta}>
+                          Your part: {shortMinutes(planning.planned_minutes)} of{" "}
+                          {shortMinutes(planning.needed_minutes)} planned
+                          {open.deadline ? " before it" : ""}
+                          {planning.planned_finish_at
+                            ? ` · Planned finish ${deadlineDay(planning.planned_finish_at, false)}`
+                            : ""}
+                        </Text>
+                        {!!chip && (
+                          <View style={styles.planChip}>
+                            <Pill
+                              label={chip.label}
+                              tone={
+                                chip.status === "on_track"
+                                  ? "accent"
+                                  : "warning"
+                              }
+                            />
+                          </View>
+                        )}
+                        {late > 0 && (
+                          <Text style={[styles.meta, styles.planWarn]}>
+                            {late === 1
+                              ? "1 session after its task's deadline"
+                              : `${late} sessions after their tasks' deadlines`}
+                          </Text>
+                        )}
+                        {planning.unestimated_tasks.length > 0 && (
+                          <Text style={styles.meta}>
+                            Needs an estimate:{" "}
+                            {planning.unestimated_tasks
+                              .map((task) => task.title)
+                              .join(", ")}
+                          </Text>
+                        )}
+                        {!!open.team_id && (
+                          <Text style={styles.meta}>
+                            {planning.team_planned_minutes !== undefined
+                              ? `Team: ${shortMinutes(planning.team_planned_minutes)} planned by everyone`
+                              : "Only your sessions are counted"}
+                          </Text>
+                        )}
+                        {writable && unassigned.length > 0 && (
+                          <>
+                            <Text style={styles.meta}>
+                              Unassigned tasks: tick the ones you'll take on.
+                              They become yours and are planned too.
+                            </Text>
+                            <ChipRow label="Unassigned tasks to claim" multi>
+                              {unassigned.map((item) => (
+                                <Chip
+                                  key={item.id}
+                                  multi
+                                  compact
+                                  label={item.title}
+                                  selected={claiming.includes(item.id)}
+                                  disabled={busy}
+                                  onPress={() =>
+                                    setClaiming((ids) =>
+                                      ids.includes(item.id)
+                                        ? ids.filter((id) => id !== item.id)
+                                        : [...ids, item.id],
+                                    )
+                                  }
+                                />
+                              ))}
+                            </ChipRow>
+                          </>
+                        )}
+                        {writable && (
+                          <Button
+                            title="Plan this project"
+                            secondary
+                            disabled={busy}
+                            onPress={() =>
+                              void run(async () => {
+                                const plan = await client.planProject(
+                                  open.id,
+                                  deviceTimeZone(),
+                                  claimed,
+                                );
+                                setClaiming([]);
+                                if (claimed.length) onItemsChanged?.();
+                                onOpenPlanner(plan, `Plan ${open.name}`);
+                              })
+                            }
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
+                </View>
+              )}
               {reentry && reentry.total > 0 && (
                 <View style={styles.reentry}>
                   <Text style={styles.reentryTitle}>Since your last visit</Text>
@@ -696,56 +1206,383 @@ export function ProjectsSheet({
                     disabled={busy}
                     onPress={() => setSection("history")}
                   />
+                  {onAskProject && assistant.enabled && reentry.total >= 2 && (
+                    <View>
+                      <SmallAction
+                        label="Explain what changed"
+                        disabled={busy}
+                        onPress={() =>
+                          onAskProject(
+                            open,
+                            "Explain what changed in this project since my last visit, with sources.",
+                          )
+                        }
+                      />
+                      {assistant.tools && (
+                        <SmallAction
+                          label="Draft an update"
+                          disabled={busy}
+                          onPress={() =>
+                            onAskProject(
+                              open,
+                              "Draft a project update page from the changes since my last visit. Show me the draft to edit and keep.",
+                            )
+                          }
+                        />
+                      )}
+                    </View>
+                  )}
                 </View>
               )}
               {/* The desktop has a date field beside the progress bar; the
                   phone only ever said what the deadline was. */}
               {canWriteIn(open.team_id) && (
-                <DateField
-                  label="Deadline"
-                  clearable
-                  placeholder="No deadline"
-                  value={
-                    open.deadline
-                      ? new Date(open.deadline).toISOString().slice(0, 10)
-                      : null
-                  }
-                  onChange={(day) =>
-                    save({
-                      deadline: day
-                        ? new Date(`${day}T12:00:00`).toISOString()
-                        : null,
-                    })
-                  }
-                />
+                <>
+                  <DateField
+                    label="Deadline"
+                    clearable
+                    placeholder="No deadline"
+                    value={openDeadline?.day ?? null}
+                    onChange={(day) =>
+                      save({
+                        deadline: changeProjectDeadline(
+                          open.deadline,
+                          { day },
+                          deviceTimeZone(),
+                        ),
+                      })
+                    }
+                  />
+                  {/* 5 pm unless another time is picked. */}
+                  {openDeadline && (
+                    <ClockField
+                      label="Deadline time"
+                      value={openDeadline.clock}
+                      disabled={busy}
+                      onChange={(clock) =>
+                        save({
+                          deadline: changeProjectDeadline(
+                            open.deadline,
+                            { clock },
+                            deviceTimeZone(),
+                          ),
+                        })
+                      }
+                    />
+                  )}
+                </>
+              )}
+
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                placeholder="Search this project"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel={`Search ${open.name}`}
+                returnKeyType="search"
+                onChangeText={setSearchQuery}
+                onSubmitEditing={() => {
+                  if (searchResults[0]) openSearchHit(searchResults[0]);
+                }}
+              />
+              {searchQuery.trim().length >= 2 && (
+                <View style={styles.searchResults}>
+                  {searchResults.length === 0 && (
+                    <Text style={styles.meta}>No matches in this project.</Text>
+                  )}
+                  {searchTasks.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>
+                        Tasks ({searchTasks.length})
+                      </Text>
+                      {searchTasks.map(renderSearchHit)}
+                    </View>
+                  )}
+                  {searchPages.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>
+                        Pages ({searchPages.length})
+                      </Text>
+                      {searchPages.map(renderSearchHit)}
+                    </View>
+                  )}
+                  {searchRecords.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>
+                        Decisions ({searchRecords.length})
+                      </Text>
+                      {searchRecords.map(renderSearchHit)}
+                    </View>
+                  )}
+                  <SmallAction
+                    label="Clear search"
+                    disabled={busy}
+                    onPress={() => setSearchQuery("")}
+                  />
+                </View>
               )}
 
               <Segmented
                 accessibilityLabel="Project section"
+                wrap
                 options={
                   onOpenNote
-                    ? ([
-                        "tasks",
-                        "notes",
-                        "timeline",
-                        "decisions",
-                        "history",
-                      ] as const)
-                    : (["tasks", "timeline", "decisions", "history"] as const)
+                    ? (["home", "tasks", "notes", "timeline", "more"] as const)
+                    : (["home", "tasks", "timeline", "more"] as const)
                 }
-                labels={{ history: "History", decisions: "Decisions" }}
-                value={section}
-                onChange={setSection}
+                labels={{ home: "Home", more: "More" }}
+                value={
+                  section === "decisions" || section === "history"
+                    ? "more"
+                    : section
+                }
+                onChange={(next) =>
+                  setSection(next === "more" ? "decisions" : next)
+                }
               />
+              {(section === "decisions" || section === "history") && (
+                <ChipRow label="More of this project">
+                  <Chip
+                    compact
+                    label="Decisions"
+                    selected={section === "decisions"}
+                    onPress={() => setSection("decisions")}
+                  />
+                  <Chip
+                    compact
+                    label="History"
+                    selected={section === "history"}
+                    onPress={() => setSection("history")}
+                  />
+                </ChipRow>
+              )}
+              {onAskProject && (
+                <SmallAction
+                  label={`Ask about ${open.name}`}
+                  disabled={busy}
+                  onPress={() => onAskProject(open)}
+                />
+              )}
+              {section === "home" && (
+                <View style={styles.home}>
+                  {homeTasks.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Coming due</Text>
+                      {homeTasks.map((item) => (
+                        <Pressable
+                          key={item.id}
+                          onPress={() => onOpenItem?.(item)}
+                        >
+                          <Text style={styles.stageName}>{item.title}</Text>
+                          <Text style={styles.meta}>
+                            {dueLabel(deadlineOf(item) ?? open.deadline)}
+                          </Text>
+                        </Pressable>
+                      ))}
+                      <SmallAction
+                        label="All tasks"
+                        disabled={busy}
+                        onPress={() => setSection("tasks")}
+                      />
+                    </View>
+                  )}
+                  {homeSessions.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Next 7 days</Text>
+                      {homeSessions.map((session) => {
+                        const item = items.find(
+                          (task) => task.id === session.item_id,
+                        );
+                        return (
+                          <Pressable
+                            key={session.id}
+                            onPress={() => item && onOpenItem?.(item)}
+                          >
+                            <Text style={styles.stageName}>
+                              {item?.title ?? "Session"}
+                            </Text>
+                            <Text style={styles.meta}>
+                              {new Date(session.start_at).toLocaleString([], {
+                                weekday: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {(open.summary ||
+                    open.doc_id ||
+                    (canWriteIn(open.team_id) && onOpenNote)) && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Brief</Text>
+                      {!!open.summary && (
+                        <Text style={styles.summary}>{open.summary}</Text>
+                      )}
+                      {!!open.doc_id && !!onOpenNote && (
+                        <SmallAction
+                          label="Open brief"
+                          disabled={busy}
+                          onPress={() => onOpenNote(open.doc_id!)}
+                        />
+                      )}
+                      {!open.doc_id &&
+                        canWriteIn(open.team_id) &&
+                        !!onOpenNote && (
+                          <SmallAction
+                            label="Write a brief"
+                            disabled={busy}
+                            onPress={() => createProjectPage(true)}
+                          />
+                        )}
+                    </View>
+                  )}
+                  {(homeNotes.length > 0 ||
+                    homeLinks.length > 0 ||
+                    canWriteIn(open.team_id)) && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Pages & files</Text>
+                      {homeLinks.map((link) => (
+                        <View key={link.id} style={styles.linkRow}>
+                          <Pressable
+                            style={styles.linkBody}
+                            onPress={() =>
+                              void Linking.openURL(link.url).catch((reason) =>
+                                setError(errorText(reason)),
+                              )
+                            }
+                          >
+                            <Text style={styles.stageName}>
+                              {link.title || link.url}
+                            </Text>
+                          </Pressable>
+                          {canWriteIn(open.team_id) && (
+                            <SmallAction
+                              label="Remove"
+                              disabled={busy}
+                              onPress={() => removeProjectLink(link.id)}
+                            />
+                          )}
+                        </View>
+                      ))}
+                      {addingLink && canWriteIn(open.team_id) && (
+                        <View style={styles.homeSection}>
+                          <TextInput
+                            style={styles.nameInput}
+                            value={linkUrl}
+                            onChangeText={setLinkUrl}
+                            placeholder="https://…"
+                            placeholderTextColor={colors.faint}
+                            autoCapitalize="none"
+                            keyboardType="url"
+                            maxLength={2000}
+                            accessibilityLabel="Link URL"
+                          />
+                          <TextInput
+                            style={styles.nameInput}
+                            value={linkTitle}
+                            onChangeText={setLinkTitle}
+                            placeholder="Title (optional)"
+                            placeholderTextColor={colors.faint}
+                            maxLength={200}
+                            accessibilityLabel="Link title"
+                          />
+                          <View style={styles.linkRow}>
+                            <SmallAction
+                              label="Save link"
+                              disabled={busy || !linkUrl.trim()}
+                              onPress={saveProjectLink}
+                            />
+                            <SmallAction
+                              label="Cancel"
+                              disabled={busy}
+                              onPress={() => setAddingLink(false)}
+                            />
+                          </View>
+                        </View>
+                      )}
+                      {homeNotes.slice(0, 5).map(
+                        (note) =>
+                          !!onOpenNote && (
+                            <Pressable
+                              key={note.id}
+                              onPress={() => onOpenNote(note.id)}
+                            >
+                              <Text style={styles.stageName}>
+                                {note.title || "Untitled"}
+                              </Text>
+                              {!!note.preview && (
+                                <Text style={styles.meta}>{note.preview}</Text>
+                              )}
+                            </Pressable>
+                          ),
+                      )}
+                      {homeNotes.length > 0 && !!onOpenNote && (
+                        <SmallAction
+                          label="All pages & files"
+                          disabled={busy}
+                          onPress={() => setSection("notes")}
+                        />
+                      )}
+                      {canWriteIn(open.team_id) && !!onOpenNote && (
+                        <SmallAction
+                          label="New page"
+                          disabled={busy}
+                          onPress={() => createProjectPage(false)}
+                        />
+                      )}
+                      {canWriteIn(open.team_id) && (
+                        <SmallAction
+                          label={
+                            projectImports.busy ? "Uploading…" : "Add a file"
+                          }
+                          disabled={busy || projectImports.busy}
+                          onPress={addProjectFile}
+                        />
+                      )}
+                      {canWriteIn(open.team_id) &&
+                        homeLinks.length < 20 &&
+                        !addingLink && (
+                          <SmallAction
+                            label="Add link"
+                            disabled={busy}
+                            onPress={() => setAddingLink(true)}
+                          />
+                        )}
+                    </View>
+                  )}
+                  {openQuestions.length > 0 && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Open questions</Text>
+                      {openQuestions.slice(0, 5).map((record) => (
+                        <Text key={record.id} style={styles.stageName}>
+                          {record.title}
+                        </Text>
+                      ))}
+                      <SmallAction
+                        label="All decisions"
+                        disabled={busy}
+                        onPress={() => setSection("decisions")}
+                      />
+                    </View>
+                  )}
+                </View>
+              )}
               {section === "timeline" && (
                 <ProjectTimeline
                   project={open}
                   tasks={items.filter((i) => i.project_id === open.id)}
+                  sessions={sessions}
+                  onOpenItem={(item) => onOpenItem?.(item)}
                 />
               )}
 
               {section === "decisions" && (
                 <ProjectRecords
+                  focusId={focusSourceId}
                   project={open}
                   items={items}
                   userId={userId}
@@ -783,20 +1620,32 @@ export function ProjectsSheet({
                             : "changes since your last visit"}
                         </Text>
                       )}
-                      {activity.map((event) => (
-                        <View key={event.id} style={styles.historyEntry}>
-                          <Text style={styles.historySummary}>
-                            {event.summary}
-                          </Text>
-                          <Text style={styles.historyMeta}>
-                            {event.actor_name ?? "Workspace activity"} ·{" "}
-                            {new Date(event.created_at).toLocaleString([], {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            })}
-                          </Text>
-                        </View>
-                      ))}
+                      {[...activity]
+                        .sort(
+                          (a, b) =>
+                            Number(b.id === focusSourceId) -
+                            Number(a.id === focusSourceId),
+                        )
+                        .map((event) => (
+                          <View
+                            key={event.id}
+                            style={[
+                              styles.historyEntry,
+                              event.id === focusSourceId && styles.sourceFocus,
+                            ]}
+                          >
+                            <Text style={styles.historySummary}>
+                              {event.summary}
+                            </Text>
+                            <Text style={styles.historyMeta}>
+                              {event.actor_name ?? "Workspace activity"} ·{" "}
+                              {new Date(event.created_at).toLocaleString([], {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </Text>
+                          </View>
+                        ))}
                     </>
                   )}
                 </View>
@@ -1077,9 +1926,6 @@ export function ProjectsSheet({
                   <View style={styles.cardTop}>
                     <Icon name="boxes" size={16} color={colors.muted} />
                     <Text style={styles.cardName}>{p.name}</Text>
-                    {projectAtRisk(p) && (
-                      <Text style={styles.chip}>At risk</Text>
-                    )}
                   </View>
                   <View style={styles.bar}>
                     <View
@@ -1218,6 +2064,31 @@ const styles = themed(() =>
     },
     barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
     meta: { color: colors.muted, fontSize: 12 },
+    home: { gap: 12 },
+    searchInput: {
+      minHeight: 44,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+    },
+    searchResults: { gap: 10 },
+    searchHit: { gap: 3, paddingVertical: 7 },
+    searchMark: { backgroundColor: colors.accentSoft, color: colors.text },
+    homeSection: {
+      gap: 10,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    linkBody: { flex: 1 },
     reentry: {
       gap: 7,
       padding: 14,
@@ -1226,6 +2097,16 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
+    planning: {
+      gap: 6,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    planChip: { flexDirection: "row" },
+    planWarn: { color: colors.warning },
     reentryTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
     page: { gap: 10 },
     actions: {
@@ -1283,6 +2164,13 @@ const styles = themed(() =>
       paddingVertical: 10,
       borderTopWidth: 1,
       borderTopColor: colors.border,
+    },
+    sourceFocus: {
+      paddingHorizontal: 10,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: radii.input,
+      backgroundColor: colors.accentSoft,
     },
     historySummary: { color: colors.text, fontSize: 14, lineHeight: 20 },
     historyMeta: { color: colors.muted, fontSize: 11, lineHeight: 16 },

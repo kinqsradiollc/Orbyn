@@ -12,6 +12,7 @@ export function confirmAction(
   message: string,
   confirmLabel: string,
   onConfirm: () => void,
+  destructive = true,
 ): void {
   if (Platform.OS === "web") {
     if (globalThis.confirm?.(`${title}\n\n${message}`)) onConfirm();
@@ -19,6 +20,10 @@ export function confirmAction(
   }
   Alert.alert(title, message, [
     { text: "Cancel", style: "cancel" },
-    { text: confirmLabel, style: "destructive", onPress: onConfirm },
+    {
+      text: confirmLabel,
+      style: destructive ? "destructive" : "default",
+      onPress: onConfirm,
+    },
   ]);
 }

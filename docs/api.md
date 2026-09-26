@@ -38,7 +38,7 @@ burst limit in front.
 
 `GET /openapi.yaml` (no sign-in) serves a hand-maintained OpenAPI 3.1 description
 ([`docs/openapi.yaml`](openapi.yaml)) of what automation tools use: auth and API keys, items
-(with quick add, manual order and incremental sync), lists, tags, time blocks, the calendar and
+(with quick add, manual order and incremental sync), lists, tags, sessions, the calendar and
 event search, and webhooks with every event's payload. The usual recipes:
 
 - **Triggers:** webhooks such as `item.created`, `item.completed` and `event.starting`.
@@ -290,7 +290,7 @@ and the others in days. At most 20 new cards are introduced a day.
 | `POST /study/cards/:id/review`            | `{ "rating": "again" \| "hard" \| "good" \| "easy" }` → the card, rescheduled                                  |
 | `PUT /study/exams`                        | `{ key, title, starts_at, doc_ids }`: the pages you're revising for an exam → the overview                     |
 | `POST /study/revision/plan`               | `{ key, minutes?, timezone }` → proposed sessions in free working time before the exam (nothing saved)         |
-| `POST /study/revision/apply`              | `{ key, sessions[] }` → `201`: a "Revise for …" task due at the exam, with the sessions as time blocks         |
+| `POST /study/revision/apply`              | `{ key, sessions[] }` → `201`: a "Revise for …" task due at the exam, with the sessions on your calendar       |
 | `POST /ai/study/pages/:id/cards` (10/min) | → `{ cards: [{ question, answer, source }] }` suggested from the page alone; the apps add only the ticked ones |
 | `POST /ai/study/grade` (10/min)           | `{ card_id, answer }` → `{ verdict, feedback, suggested_rating }`, judged against the card and its page        |
 | `POST /ai/study/cards/:id/explain`        | → `{ explanation, beyond_notes }`; `beyond_notes` is true when it needed more than the page                    |
@@ -330,16 +330,21 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
    - **The heavy OCR model** replaces Tesseract only where it's configured, which it isn't by
      default.
 4. The finished page is created with `in_uploads: true`, an in-app notice (`kind: "import"`) says
-   it's ready, and the file is deleted.
+   it's ready, and the file is deleted. With `project_id`, the page instead lands in that project
+   with `in_uploads: false`. The caller needs project edit access when starting the import and when
+   conversion finishes. A project import must include `project_team_id`, the team shown in the
+   upload confirmation (or `null` for a personal project). For a team project, the team must still
+   be the same; otherwise conversion
+   fails without sharing the page. The source file is deleted in either case.
 
-| Method and path             | Body / result                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `POST /imports`             | `{ file_name, bytes, mime? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up             |
-| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`) |
-| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                           |
-| `GET /imports/:id`          | → `ImportJob`                                                                                                            |
-| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                          |
-| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                               |
+| Method and path             | Body / result                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                    |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                              |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                                               |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                             |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                  |
 
 `scans` is how pages without their own text are read:
 
@@ -521,7 +526,8 @@ a calendar entry opens, by the same rule as the server. `422` for no ids, a bad 
 
 Turns the document's unticked, non-empty checklist lines into planner tasks (in the document's
 team, if it has one). → `{ "created": 2, "items": [ … ], "doc": { … } }`. Blank and
-already-ticked lines, and lines that are already tasks, are skipped. The page is read and written
+already-ticked lines, and lines that are already tasks, are skipped. An agenda answers `422`: its
+lines copy tasks you already have, so making them would only make each one twice. The page is read and written
 back under its lock, so a save that arrives meanwhile waits and then merges (`409`) rather than
 being overwritten.
 
@@ -573,7 +579,12 @@ creator; team projects follow the same team roles as team items.
 ### `GET /projects` (auth)
 
 → `[ { "id", "name", "summary", "status", "deadline", "doc_id", "stages": [...], "task_count",
-"done_count", … } ]`. Archived projects sort last.
+"done_count", … } ]`. Archived projects sort last. The counts are the project's open and done
+tasks: cancelled tasks and events filed in it aren't counted.
+
+A `deadline` is one moment. The apps save a picked day as 5 pm in the picker's own time zone
+unless a time is picked too (`projectDeadlineAt` and `changeProjectDeadline` in `@orbyn/core`),
+and always show it in the viewer's zone.
 
 ### `POST /projects` (auth)
 
@@ -590,6 +601,68 @@ Without `stages` a project starts with Planning, In progress, Review and Done. �
 ### `GET /projects/:id` (auth)
 
 → the project with its stages and task counts. `404` when it isn't yours.
+
+### Project Home links (auth)
+
+`GET /projects/:id/links` lists up to 20 pinned web links for a visible project. Each link has
+`id`, `project_id`, `url`, `title`, and `created_at`. `POST /projects/:id/links` accepts
+`{ "url": "https://example.com", "title": "Reference" }` and requires project write access.
+Only HTTP(S) URLs without embedded credentials are accepted. Posting the same URL updates its
+title. `DELETE /projects/:id/links/:linkId` requires write access. Inaccessible projects return
+`404`; a full project returns `409` when adding a new link.
+
+### `GET /projects/:id/planning` (auth)
+
+→ `{ project_id, deadline, task_count, needed_minutes, planned_minutes, unplanned_minutes,
+late_session_count, planned_finish_at, unestimated_tasks, team_planned_minutes? }`.
+The first counts and minutes cover only your open tasks and your own sessions. Each task's planned
+time counts only before its earliest task, project or dependent target. Excess sessions on one
+task cannot cover another. `planned_finish_at` is present only when all estimated work is covered;
+tasks without an estimate are named in `unestimated_tasks` and excluded from the hour totals.
+On a team project, `team_planned_minutes` is returned only to owners and admins, as an aggregate
+without names or session times. `404` when the project is not visible to you.
+
+### `POST /projects/:id/plan` (auth)
+
+Body: `{ "timezone": "Australia/Melbourne", "claim_item_ids": ["…"] }` (both optional). Needs
+edit rights (`403` for a viewer). Creates an expiring plan preview for your open tasks in an
+active project, plus the unassigned team tasks in `claim_item_ids` (up to 50): claiming makes you
+their assignee in the same transaction, writing only the assignee (and version), so other edits
+to those tasks are kept. Other people's tasks are excluded, including when the preview is tuned.
+The horizon ends on the project's deadline if it is within two weeks; otherwise it covers two
+weeks and the summary starts "Planned the next 2 weeks." Returns the usual planner `Plan`. The
+preview does not change sessions. `404` when the project is not visible; `409` when a task to
+claim was taken or finished meanwhile; `422` for an inactive project, invalid time zone, a
+personal project with claims, or no assigned work.
+
+Clients put Home together from `GET /projects/:id`, `/planning`, `/sessions`, `/links`, `/visit`
+and the page and task lists rather than one `GET /projects/:id/home` payload (a recorded
+deviation from the plan: each piece is cached and refreshed on its own).
+
+### `GET /projects/:id/sessions` (auth)
+
+→ up to 500 of your saved sessions for tasks in this project, newest first, as
+`{ id, item_id, start_at, end_at }`. Used for exact ticks on the project timeline.
+Other team members' session times are not returned. `404` when the project is not visible.
+
+### `POST /projects/:id/visit` (auth)
+
+Marks the project as visited by this person and returns `{ "since_at", "visited_at" }`.
+`since_at` is the visit before this one, or `null` on the first visit. Reopening within five
+minutes keeps the same catch-up point. The prior visit is kept on the server for both clients
+and for later "what changed?" answers. `404` when the project is not visible.
+
+The planner's daily worker also creates one `project` notification per person and local day
+when that person's work remains unplanned within seven days of an active project deadline.
+Its `ref` is `<project id>:<local day>`; the action opens the project. Team members do not
+receive one another's session times.
+When a project deadline moves earlier, a person with sessions newly after that deadline gets
+the same day's project notice updated with the change; sessions are not moved automatically.
+When a task deadline moves earlier, a person with sessions newly after it gets one `deadline`
+notice for that change's local day. A due-soon notice for the same task and day is updated
+in place; the sessions stay at their saved times for review.
+`GET /items/:id/sessions` also returns `assigned_to_me`, so a person can remove their old
+sessions after the task changes hands.
 
 ### `GET /projects/:id/activity?limit=100` (auth)
 
@@ -632,7 +705,16 @@ the project with no stage.
 ```
 
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
-that belongs to a different project is `422`.
+that belongs to a different project is `422`. Leaving `stage_id` out keeps the stage when the
+project stays the same; a different project starts with no stage. The response is
+`{ "ok": true, "item": <updated item> }`, including its new edit version.
+
+### `GET /items/:id/context` (auth)
+
+Returns the task's project and stage, the readable page and line from which it was made, and
+other readable pages tied to the task. `came_from.quote` is null when that line has since been
+removed. Personal pages belonging to someone else are never included, even when the task is
+shared in a team. An inaccessible task returns `404`.
 
 ### Work records (auth)
 
@@ -802,7 +884,11 @@ When the page is moved to Trash the event also carries `"trashed": true`; an edi
 open lets it go and says where it went, rather than finding out from a save that fails.
 
 `by` is the editor that saved — a per-tab id sent as `X-Orbyn-Editor` on writes and on this
-request. A tab is never told about its own save. `404` when the document isn't yours to read.
+request — or `"task"` when a task tied to one of its lines was finished or reopened somewhere else,
+or `"agenda"` when the day's agenda was written again from the calendar. A tab is never told about
+its own save. When only a task's tick moved (`onlyTaskTicksMoved` in `@orbyn/core`), Orbyn's
+editors re-read quietly if `by` is `"task"`, and otherwise say "A task on this page changed." rather
+than that someone else edited it. `404` when the document isn't yours to read.
 
 The stream is read with `fetch`, not `EventSource`, because `EventSource` cannot carry an
 `Authorization` header and the token must not travel in the URL.
@@ -939,8 +1025,13 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc` or `task`; leave it out for both, ranked together on one scale. Pages are matched on
-a weighted `tsvector` — title A, headings B, tags and project name C, body D — and on the **letters**
+`type` is `doc`, `task` or `record`; leave it out for pages and tasks, ranked together on one
+scale. `project` limits results to that project's pages and tasks, and adds its work records
+(decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
+searched with `type=record`. Every hit still passes the caller's normal visibility check, and
+pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
+Renaming a project reindexes its pages, which are found by their project's name. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
+body D — and on the **letters**
 of the title as well, so `Lanch breif` finds Launch brief. Rank is the text match lifted for a
 recently edited page, plus a little for a title that merely looks like what was typed.
 
@@ -1046,7 +1137,10 @@ meeting note to its event. → `201` with the full document.
 
 ### `GET /docs/:id` (auth)
 
-→ the full document, including `content`. `404` when it isn't yours.
+→ the full document, including `content` and `linked_block_ids`: the checklist lines tied to a
+task, by block id. Any line can carry an id (a remark needs one), so only these are tasks.
+`PUT /docs/:id` and the other routes that return one page include it too; `GET /docs` doesn't.
+`404` when it isn't yours.
 
 ### `GET /docs/:id/markdown` (auth)
 
@@ -1060,6 +1154,42 @@ meeting note to its event. → `201` with the full document.
 
 `version` is the version the edit was made against; a mismatch answers `409` rather than
 overwriting, so two open tabs can't clobber each other. `title` and `content` are each optional.
+
+Ticking or unticking a line tied to a task finishes or reopens the task the same way as anywhere
+else: its future sessions are removed, a repeating task moves on to its next occurrence, and
+webhooks, your other devices and the other pages showing the task hear about it. What counts is a
+tick the person made, not one the page is still carrying (a repeating task that moved on reads
+unticked again, and a refused tick reads as the task really is), so saving the page again never
+finishes a task twice:
+
+- An editor sends `X-Orbyn-Ticks-From: <version>`, the version of the page its ticks were taken
+  from: the last copy it read, saved or merged whose lines tied to tasks it showed exactly as that
+  copy had them. While a tick made on the page is unsaved, that stays put, even as newer copies
+  are merged in: sent as if made on the newer copy, a tick already counted (a save whose answer
+  was lost, or another open copy ticking the same line) would count again. `ticksTakenFrom` in
+  `@orbyn/core` keeps it. A save queued behind one still running sends the version from before
+  that one's answer. A line whose `done` differs
+  from its task counts when its ticks were taken from the first version that shows the line as
+  the task now stands, or a later one. So ticking a line on a page opened afresh, or again after
+  the save that took the last answer was lost, finishes the next occurrence.
+- Without the header (older apps), a line's `done` counts only when it differs from its task and
+  from the tick the page last sent for that line, which starts again from the task whenever the
+  task is finished or reopened anywhere else. Restoring a version goes by this rule too.
+
+A line whose task you can no longer change is left alone rather than failing the save.
+
+The response, like every route that returns one page, shows each line tied to a task as its task
+now stands, and the page is stored that way: a repeating task that moved on reads unticked for its
+next occurrence. An editor should take `done` for those lines from the response (unless the line
+was ticked again meanwhile; `adoptTaskTicks` in `@orbyn/core`) and save once it has. Accepting a
+suggestion changes words only and never finishes or reopens a task.
+
+When a task tied to a page's line is finished or reopened anywhere else (the planner, another
+page, the assistant), every page showing it moves on a version (without changing `updated_at`) and
+open copies hear about it on the live stream. An editor still showing the old tick gets `409` on
+its next save, re-reads, and merges, so it can't save the old tick back over the change. A save of
+the page running at that moment isn't waited for: it gives the page its next version, waits for
+the task itself, and reads the task as it now stands, so an old tick it carries doesn't count.
 
 ### `DELETE /docs/:id` (auth, `items:write`)
 
@@ -1117,24 +1247,25 @@ also include `team_name` and `user_id` (the creator).
 
 Planning fields, all optional:
 
-| Field              | Meaning                                                                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `estimate_minutes` | How long the task takes (1 to 10080); the planner uses it.                                                                                                                                 |
-| `spent_minutes`    | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                                                                                                                   |
-| `list_id`          | A list from `GET /lists`: your own for personal items, the team's for team ones.                                                                                                           |
-| `tag_ids`          | Up to 20 tags, with the same rule as lists.                                                                                                                                                |
-| `assignee_id`      | Who on the team is doing a team task. Responses also carry `assignee_name`.                                                                                                                |
-| `location`         | Where an event happens; drives travel time.                                                                                                                                                |
-| `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
-| `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
-| `timezone`         | The IANA zone a repeating or all-day item keeps its wall-clock time in.                                                                                                                    |
-| `all_day`          | A whole-day item: `due_at` is midnight in its `timezone` (your planner zone when not given) and `end_at` the midnight after its last day (one day for an event when omitted). Never busy.  |
-| `busy`             | Whether an event counts as busy (default true). Free events don't block the planner, booking pages or teammates, and get no buffers or travel.                                             |
-| `color`            | `#rrggbb` for the calendar, or null.                                                                                                                                                       |
-| `alerts`           | Minutes before `due_at` to remind: up to 5, each 0 to 40320 (four weeks), sorted and without repeats.                                                                                      |
-| `attendees`        | Events only: up to 50 `{ "email", "name"? }` to invite by email (see [Invitations](#invitations)). Sending the list replaces it.                                                           |
-| `parent_id`        | Tasks only: the task this one is a subtask of (see [Subtasks](#subtasks)); null for a top-level task.                                                                                      |
-| `links`            | Up to 20 `{ "url", "title"? }` web links (`http://` or `https://`). Sending the list replaces it; the item detail returns them with `id` and `position`.                                   |
+| Field                    | Meaning                                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `estimate_minutes`       | How long the task takes (1 to 10080); the planner uses it.                                                                                                                                 |
+| `project_id`, `stage_id` | File a task in a visible project and one of its stages. Omit to keep the saved place; `project_id: null` removes it. Moving the task to another space removes its old project.             |
+| `spent_minutes`          | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                                                                                                                   |
+| `list_id`                | A list from `GET /lists`: your own for personal items, the team's for team ones.                                                                                                           |
+| `tag_ids`                | Up to 20 tags, with the same rule as lists.                                                                                                                                                |
+| `assignee_id`            | Who on the team is doing a team task. Responses also carry `assignee_name`.                                                                                                                |
+| `location`               | Where an event happens; drives travel time.                                                                                                                                                |
+| `meeting_url`            | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
+| `rrule`                  | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
+| `timezone`               | The IANA zone a repeating or all-day item keeps its wall-clock time in.                                                                                                                    |
+| `all_day`                | A whole-day item: `due_at` is midnight in its `timezone` (your planner zone when not given) and `end_at` the midnight after its last day (one day for an event when omitted). Never busy.  |
+| `busy`                   | Whether an event counts as busy (default true). Free events don't block the planner, booking pages or teammates, and get no buffers or travel.                                             |
+| `color`                  | `#rrggbb` for the calendar, or null.                                                                                                                                                       |
+| `alerts`                 | Minutes before `due_at` to remind: up to 5, each 0 to 40320 (four weeks), sorted and without repeats.                                                                                      |
+| `attendees`              | Events only: up to 50 `{ "email", "name"? }` to invite by email (see [Invitations](#invitations)). Sending the list replaces it.                                                           |
+| `parent_id`              | Tasks only: the task this one is a subtask of (see [Subtasks](#subtasks)); null for a top-level task.                                                                                      |
+| `links`                  | Up to 20 `{ "url", "title"? }` web links (`http://` or `https://`). Sending the list replaces it; the item detail returns them with `id` and `position`.                                   |
 
 Read-only fields on every item: `remaining_minutes` (`max(0, estimate − spent)`, null without an
 estimate), `position` (its manual order), `child_count` (subtasks that aren't cancelled) and
@@ -1151,17 +1282,17 @@ it as the smallest alert, or null when there are none.
 
 A repeating item's `due_at` is its current occurrence and `series_start` its first. Completing a
 repeating task moves it to the next occurrence (its checklist resets and the timeline notes the
-completed one) instead of closing it. Completing any task removes its future time blocks.
+completed one) instead of closing it. Completing any task removes its future sessions.
 
 **Done or cancelled.** Both close a task: it leaves the planner, at-risk and due-soon notices,
-workload and the score (null), its reminders stop, and its future time blocks are removed.
+workload and the score (null), its reminders stop, and its future sessions are removed.
 Completing (`done`) also sets progress to 100, sends `item.completed`, moves a repeating task to
 its next occurrence and, with `count_blocks_as_spent` on, counts its blocks' time as spent.
 Cancelling (`cancelled`) does none of those: progress stays, no `item.completed`, and a repeating
 task stops for good. Reopening either re-arms its reminders. Cancelled events don't count as busy.
 
 **Blocks as time spent.** With the planner preference `count_blocks_as_spent` on (off by
-default), completing a task adds the past part of each of its time blocks (up to now) to
+default), completing a task adds the past part of each of its sessions (up to now) to
 `spent_minutes`. Each block counts once, even if the task is reopened and completed again.
 
 ### Subtasks
@@ -1205,7 +1336,13 @@ score = 3 × priority (low 1, medium 2, high 3) + 4 × urgency + 2 if overdue + 
         + 0.5 if in progress − 3 if blocked
 ```
 
-Urgency rises from 0 a week before the due time to 1 at it. `size_fit` is 1 when the remaining
+Urgency rises from 0 a week before the deadline to 1 at it, and a task is overdue once its deadline
+has passed; the deadline follows the one rule in [Sessions](#sessions-blocks) (the end of the day
+for an all-day task, the end time for a task that has one), or is the task's project deadline when
+that comes first. Every item carries `project_deadline` (its project's deadline, or null): the
+apps sort by the same latest date (`latestDates` in `@orbyn/core`, which also counts tasks waiting
+on it). Changing a project's deadline touches its open tasks' `updated_at` (not their version) so
+synced copies pick it up. `size_fit` is 1 when the remaining
 estimate (estimate − time spent) fits the largest free working slot left today (or on the next
 working day once today's hours are over), 0.5 when it doesn't, and 0.75 for a task without an
 estimate. The planner ranks tasks with the same score, comparing with the first planned day.
@@ -1295,7 +1432,10 @@ Body: item fields without `id`, `version`, timestamps. Only `title` is required.
 ### `PUT /items/:id` (auth)
 
 Body: **all** item fields plus the current `version`. → `200` item with `version + 1`, or `409` if
-the version is stale. Planning fields you leave out keep their saved values.
+the version is stale. Planning fields you leave out keep their saved values. Moving it to another
+space (a different `team_id`) takes it out of its project and stage. Completing a repeating task
+moves it on to its next occurrence; only the sessions before the finished occurrence's deadline
+are removed, so the next one's stay.
 
 ### `DELETE /items/:id?version=N` (auth)
 
@@ -1398,9 +1538,13 @@ responses also include `steps_total`, `steps_done`, `updates_count`, and `last_u
 
 When a task has steps, its progress is the share of steps done, and ticking the first step moves a
 `todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a
-task done sets progress to 100; reopening it re-arms its reminder. Steps and updates do not change
-the item's `version`, so an open editor never conflicts because of them, and `PUT /items/:id`
-without `progress` keeps the saved value. Viewers can read steps and updates but not change them.
+task done sets progress to 100; reopening it re-arms its reminder. A `status` sent with an update
+is saved the same way as `PUT /items/:id`: a finished task's future sessions are removed, a
+repeating task moves on to its next occurrence (keeping the sessions planned for it, and saying so
+in its timeline), and `item.updated` and `item.completed` webhooks fire. Steps, notes and progress
+do not change the item's `version`, so an open editor never conflicts because of them (a status
+change does, like any edit), and `PUT /items/:id` without `progress` keeps the saved value.
+Viewers can read steps and updates but not change them.
 
 ## Devices (mobile push)
 
@@ -1423,19 +1567,25 @@ Same body. → `204`
 Up to 100 most recent in-app notices:
 `{ "id", "title", "body", "read", "created_at", "kind", "item_id", "ref" }[]`.
 
-| `kind`        | About                                                                  | `ref`               | Suggested action |
-| ------------- | ---------------------------------------------------------------------- | ------------------- | ---------------- |
-| `reminder`    | An item's reminder; the due time is in your planner time zone          | the alert (minutes) | Open the item    |
-| `rsvp`        | Someone you invited answered (one notice per person, updated)          | the attendee        | Open the event   |
-| `conflict`    | An event now overlaps a future time block                              | the block           | Reschedule       |
-| `booking`     | A booking was made, requested, moved or cancelled                      | the booking         | Open the booking |
-| `rollforward` | Blocks from earlier days are unfinished (from your working start)      | the local date      | Roll forward     |
-| `at_risk`     | A task's remaining estimate is more than the free time before it's due | the local date      | Plan it          |
-| `deadline`    | A task is due within `deadline_notice_days` with no time set aside     | the local date      | Plan it          |
+| `kind`        | About                                                                   | `ref`               | Suggested action |
+| ------------- | ----------------------------------------------------------------------- | ------------------- | ---------------- |
+| `reminder`    | An item's reminder; the due time is in your planner time zone           | the alert (minutes) | Open the item    |
+| `rsvp`        | Someone you invited answered (one notice per person, updated)           | the attendee        | Open the event   |
+| `conflict`    | An event now overlaps a future session                                  | the session         | Reschedule       |
+| `booking`     | A booking was made, requested, moved or cancelled                       | the booking         | Open the booking |
+| `rollforward` | Sessions from earlier days are unfinished (from your working start)     | the local date      | Roll forward     |
+| `at_risk`     | A task's remaining estimate is more than the free time before it's due  | the local date      | Plan it          |
+| `deadline`    | A task is due within `deadline_notice_days` and isn't planned before it | the local date      | Plan it          |
 
 Planner notices (`conflict`, `rollforward`, `at_risk`, `deadline`) come at most once a day per
 task (once per block for conflicts, once per day for roll-forward). They also go to push and email
 as your `planner_notices` preference says (push on and email off by default; email needs SMTP).
+
+All three planning notices follow one rule: **only time that ends by the deadline counts as
+planned** (see [Sessions and deadlines](#planner)). A session after the deadline never silences
+them: the due-soon notice then says "…but its session ends after the deadline. Plan it?", or
+"…and 1 h of it isn't planned before then" when only part is planned. Once a deadline has passed,
+sessions still to come are catch-up time: they keep that work from rolling forward again.
 
 ### `POST /notifications/:id/read` (auth)
 
@@ -1499,7 +1649,7 @@ Planner preferences now include `digest`: `{ "morning": bool, "evening": bool, "
 
 ### `GET /planner/analytics` (auth)
 
-`?days=` (default 30). Where your set-aside time went: `{ from, to, days, planned_minutes, completed, by_list: [{name, minutes}], by_tag: [{name, minutes}] }`, from your own time blocks and finished tasks. Private to you.
+`?days=` (default 30). Where your set-aside time went: `{ from, to, days, planned_minutes, completed, by_list: [{name, minutes}], by_tag: [{name, minutes}] }`, from your own sessions and finished tasks. Private to you.
 
 ### `GET /planner/estimates` (auth)
 
@@ -1562,7 +1712,7 @@ it: `minutes` is then at most 25). `reasons` are short sentences, most important
 
 ### `POST /ai/project` (auth, 10/min)
 
-`{ "prompt", "timezone", "team_id"? }`. With `team_id` (you need write access to that team) the project and its tasks become the team's once approved. Drafts a project from the prompt: the AI provider returns a title and a set of subtasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
+`{ "prompt", "timezone", "team_id"?, "summary"?, "deadline"? }`. With `team_id` (you need write access to that team) the project and its tasks become the team's once approved. `summary` is saved on the project and as its brief page; `deadline` is the project's latest finish time. Drafts a project from the prompt: the AI provider returns a title and a set of tasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions, project }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
 
 ### `POST /ai/chat/start` (auth, 10/min)
 
@@ -1643,7 +1793,9 @@ block; the assistant only chooses the days and times to keep free.
 
 ### `POST /ai/proposals/:id/apply` (auth)
 
-Applies every action in one transaction. → `{ "applied": true }`. Idempotent. Returns `409` if the
+Optional body `{ "give_tasks_deadlines": false }` creates a proposed project's tasks without their suggested due dates; the reviewed sessions are still created. The default is `true`. Applies every action in one transaction. → `{ "applied": true, "project_id": "…" | null }`
+(`project_id` is the project a drafted project made; the same on a repeat). Idempotent. Project
+history names the person who applied it as the author of the project and its stages. Returns `409` if the
 proposal expired (15 minutes) or an item version is stale, and `404` if any action targets an item
 the user does not own, in which case nothing is applied.
 
@@ -1662,7 +1814,7 @@ above change them). Deleting a list or tag keeps its items.
 | `POST /tags`                        | `{ "name", "color"?, "team_id"? }` → `201`; `409` if the name exists |
 | `PUT /tags/:id`, `DELETE /tags/:id` | Rename or recolor; delete                                            |
 
-## Calendar and time blocks
+## Calendar and sessions
 
 ### `GET /calendar?from=&to=` (auth)
 
@@ -1672,7 +1824,8 @@ At most 62 days. → `{ from, to, timezone, entries, blocks, derived }`:
   occurrence with `occurrence` set, and `overridden: true` on one changed on its own. Each also
   has `all_day`, `busy` (false for free events, all-day items and tasks), `color`, `alerts` and
   `attendee_count`.
-- `blocks`: your time blocks, with their task's title and status.
+- `blocks`: your sessions, with their task's title and status, and what each is for (see
+  [Sessions](#sessions-blocks)).
 - `derived`: buffers and travel time around events, worked out from your planner settings and
   places (never stored, so they always follow the events).
 - `frames`: each occurrence of your frames in the range:
@@ -1695,34 +1848,210 @@ Busy intervals of up to 10 people you share a team with (or yourself), to lay ov
 31 days at most: `[{ user_id, name, timezone, busy }]`. Anyone else is left out. Like team
 availability, only the times are shared, never what they're for.
 
-### Time blocks
+### Sessions (`/blocks`)
 
-Time you set aside to work on a task. Each person has their own.
+A session is time planned for working on a task; the API calls it a block. Each person has their
+own. Moving, rescheduling or deleting one sends `block.updated` or `block.deleted` to your
+webhooks and refreshes your other devices, like any other change.
 
-| Method and path               | Body / result                                                                                                                                                                              |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /blocks?from=&to=`       | Your blocks in the range                                                                                                                                                                   |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                               |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`                                                                                                                                                                 |
-| `DELETE /blocks/:id`          | `204`                                                                                                                                                                                      |
-| `POST /blocks/:id/reschedule` | Moves it to your next free working time of the same length; `409` if none in 7 days                                                                                                        |
-| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days |
+**Due means the deadline.** A task is due at its due time; a task with an end time (drawn as a
+span) is due when it ends; an all-day task is due at the end of its day (its `due_at` is the
+local midnight it starts), so sessions on the day itself are on time. Planned time and the
+deadline stay separate: the planner never moves a deadline. Every "is this after the
+deadline?" check, in the planner, the at-risk and due-soon notices, the priority `score`, the
+apps' "Overdue", "due today" and due filters (task lists, Overview, Today and the widget
+glance), the daily agenda's "Due today" and "Carried over", the project timeline, the
+welcome-back brief, the assistant's ranking and overview counts, the team workload's at-risk
+check and the fields below, uses this rule (`deadlineOf` in `@orbyn/core`). Lists put a task
+under the day its deadline falls on (`dueDayAt`): an all-day task over several days under its
+last day, a span under the day it ends. A task is overdue once that day is before today
+(`dueBeforeToday`), so one due earlier today isn't yet. The task panels and Focus mode say "Due
+Fri 2 Oct, 5 pm" (`dueLine`); list lines (Tasks to place, plans, the team's at-risk list) say
+"due Fri 2 Oct, 5 pm", or "due Fri 2 Oct" for a whole day (`dueDateOf`).
+
+Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
+routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
+`status`, `kind`, `priority`, `team_id`, `list_id` and `estimate_minutes`:
+
+| Field            | Meaning                                                                                                                                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `due_at`         | When the task is due, as it shows it; null without a date. For a repeating task, the occurrence this session is for: the first one whose deadline it ends by, so time after one occurrence's deadline is for the next |
+| `due_all_day`    | That due date is a whole day (due by the end of it)                                                                                                                                                                   |
+| `deadline_at`    | The moment it's due by, by the rule above                                                                                                                                                                             |
+| `after_deadline` | The session ends after `deadline_at`                                                                                                                                                                                  |
+| `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
+| `project_id`     | The task's project, or null                                                                                                                                                                                           |
+
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                       |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                           |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                     |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                               |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                        |
+| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                       |
+
+`GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
+dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
+too (for a repeating task, those for its current occurrence and later ones);
+`planned_minutes` is the time still to come in sessions that end by the deadline (all of it
+without one), and `late_minutes` the time still to come in sessions that end after it.
+`project_deadline` is the deadline of the task's project. `dependent_deadline` is the earliest
+deadline of an open task downstream of this prerequisite. `planning_deadline_at` is the earliest
+of those dates and the task's own deadline; it caps the time that counts as planned and never
+changes `due_at` or `deadline_at`.
+
+**Does it fit?** `fit` is the task's one status against its planning deadline (`deadlineFit` in
+`@orbyn/core`), or null for a finished task or one that isn't yours to plan (a teammate's, when
+you have no sessions for it):
+
+```json
+{
+  "status": "late_session",
+  "label": "Session after the deadline",
+  "needed_minutes": 120,
+  "planned_minutes": 60,
+  "late_minutes": 60,
+  "short_minutes": 60,
+  "free_minutes": 300,
+  "deadline_at": "2026-10-02T07:00:00.000Z"
+}
+```
+
+| `status`       | `label`                    | When                                                                        |
+| -------------- | -------------------------- | --------------------------------------------------------------------------- |
+| `on_track`     | On track                   | What it still needs is planned before the deadline                          |
+| `short`        | Short 2h                   | Some of it is planned before the deadline, not all                          |
+| `late_session` | Session after the deadline | A session falls after the deadline, and that time is missing before it      |
+| `unplanned`    | Nothing planned            | No time before the deadline                                                 |
+| `at_risk`      | At risk                    | There isn't enough free working time before the deadline for what's missing |
+| `overdue`      | Deadline passed            | The deadline has passed; sessions still to come count as catch-up time      |
+| `no_deadline`  | No deadline                | Nothing to measure against                                                  |
+
+`needed_minutes` is the estimate minus the time logged (a past session isn't assumed done; a
+parent adds up its subtasks). Only time still to come that ends by the deadline counts in
+`planned_minutes` (for a repeating task, a session after this occurrence's deadline counts toward
+the next one). Without an estimate a task counts as 30 minutes, a guess, so `short` is only said
+within a week of the deadline. `free_minutes` (working hours less your events and your sessions, the
+task's own included since those before the deadline already count as planned; up to two weeks
+ahead) is looked up only when the task is short and due within two weeks; otherwise null. The
+review's and the daily notice's at-risk check and a plan whose days reach the deadline measure the
+same room. The
+apps show the status on a task's Sessions card; task rows show it only within a week of the
+deadline or when a session falls after it (`fitChipShown`).
+
+## Today and planned time
+
+Planned time (sessions) and the deadline stay separate. These two reads put them side by side:
+one Today list, and the planned time behind "Planned 9:15" and the status chips on task rows. Both
+only read. A malformed query string is `400`; an account that hasn't confirmed its email gets
+`403`, as everywhere.
+
+### `GET /today?timezone=` (auth)
+
+The day's events, your sessions, your tasks due today and late ones, in one list (`todayList` in
+`@orbyn/core`). The day is `timezone`'s (send the device's), or your planner's when left out.
+
+```json
+{
+  "day": "2026-09-24",
+  "timezone": "Australia/Melbourne",
+  "now": "2026-09-24T02:00:00.000Z",
+  "from": "2026-09-23T14:00:00.000Z",
+  "to": "2026-09-24T14:00:00.000Z",
+  "rows": [
+    {
+      "key": "task:…",
+      "kind": "task",
+      "at": "2026-09-24T01:00:00.000Z",
+      "item_id": "…",
+      "title": "Send invoice",
+      "due": "today",
+      "deadline_at": "2026-09-24T07:00:00.000Z",
+      "due_all_day": false,
+      "sessions": [{ "id": "…", "start_at": "…", "end_at": "…" }],
+      "fit": { "status": "on_track", "label": "On track", "…": "…" },
+      "chips": [
+        { "kind": "planned", "starts": ["2026-09-24T01:00:00.000Z"] },
+        {
+          "kind": "due",
+          "deadline_at": "2026-09-24T07:00:00.000Z",
+          "all_day": false
+        }
+      ],
+      "action": "focus",
+      "past": false
+    }
+  ],
+  "late_total": 1,
+  "unfinished": [
+    {
+      "block_id": "…",
+      "item_id": "…",
+      "title": "Competitor review",
+      "start_at": "…",
+      "end_at": "…",
+      "yesterday": true
+    }
+  ]
+}
+```
+
+`rows` run in time order: all-day events first, then events (yours, your teams' and the calendars
+you subscribe to and show; `calendar` names a subscribed one, whose `item_id` is null), your
+sessions (`block_id`, `part`/`parts`, `deadline_at`, `after_deadline`) and your tasks due today
+(yours, or assigned to you). A task due today sits at its first session today, or at its deadline
+when it has none. A task that is both planned and due today is **one row with two chips**
+(`planned` and `due`), never a session row as well. Late tasks (due on an earlier day) come last,
+latest deadline first: at most 20, with `late_total` counting them all; a late task with a session
+today joins that session's place instead. A task due today that isn't on track has a `fit` chip
+("Nothing planned", "Short 1h", "At risk"). Finished tasks and their sessions, and cancelled
+events, are left out.
+
+Every row has the same fields (null or empty when they don't apply). `action` is `"focus"` when
+time is planned now or later today, `"plan"` for a task due today or late with time still missing
+(`fit.short_minutes > 0`), or null. `past` marks an event or session that's over. `unfinished`
+holds sessions from earlier days whose task is still open with no time planned since (the review's
+rule, latest first); the apps offer Plan again (`POST /planner/roll-forward` with its `block_id`).
+`todayRowWords`, `todayChipText` and `unfinishedHeading` in `@orbyn/core` give the words both apps
+use ("9:15–10:00 · Session 1 · due Tue 6 Oct", "Due today 5 pm", "Late · due Tue 22 Sep",
+"Not finished yesterday").
+
+### `GET /planned?item_ids=&from=&to=` (auth)
+
+Your planned time, task by task, kept apart from the task itself (sessions change without the task
+changing, and devices sync tasks by `updated_at`):
+
+- `item_ids` (comma-separated, up to 200): those tasks, any you can see;
+- without it: every open task that's yours to plan (your own, or assigned to you), plus any task
+  with a session of yours in the window;
+- `from` and `to` (together, at most 62 days): each task lists your sessions in that window.
+
+→ `{ from, to, tasks: [{ item_id, sessions, next, planned_minutes, late_minutes, fit }] }`.
+`sessions` are `{ id, start_at, end_at, after_deadline }` in the window, soonest first (none
+without one). `next` is your next session still to come or under way. `planned_minutes`,
+`late_minutes` and `fit` follow the rule above (the Sessions card's), with `fit` null for a
+finished task or one that isn't yours to plan and has none of your sessions. The apps ask for the
+device's day: a task row shows "Planned 9:15" for a session today (`plannedLabel`), its status only
+within a week of the deadline or when a session falls after it (`rowFitChip`), and "Tasks to
+place" hides tasks already on track and says "2 h still to plan" (`stillToPlan`).
 
 ## Planner
 
-| Method and path                                              | Body / result                                                                                                                  |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people |
-| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters (below)                                                                 |
-| `POST /planner/frames/:id/skip` · `/unskip`                  | `{ "date": "YYYY-MM-DD" }` skips one date of a frame, or brings it back → the frame                                            |
-| `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`, `mode`, `peak_minutes`)                                         |
-| `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                              |
-| `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                               |
-| `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                |
-| `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced         |
-| `POST /planner/plans/:id/apply`                              | Saves its blocks → `{ blocks, skipped }` (blocks that now clash are skipped); `409` if already applied or expired              |
-| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`                                                                                           |
-| `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                |
+| Method and path                                              | Body / result                                                                                                                                                                                                                            |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /planner/prefs`, `PUT /planner/prefs`                   | Time zone, working days and hours, padding, splitting, breaks, buffers, travel, extra time zones, calendar sets, pinned people                                                                                                           |
+| `GET/POST /planner/frames`, `PUT/DELETE /planner/frames/:id` | Recurring windows for kinds of work, with task filters (below)                                                                                                                                                                           |
+| `POST /planner/frames/:id/skip` · `/unskip`                  | `{ "date": "YYYY-MM-DD" }` skips one date of a frame, or brings it back → the frame                                                                                                                                                      |
+| `GET/POST /planner/places`, `PUT/DELETE /planner/places/:id` | Places (`label`, `match` text in a location, `travel_minutes`, `mode`, `peak_minutes`)                                                                                                                                                   |
+| `POST /planner/preview`                                      | A plan (below). Nothing is saved.                                                                                                                                                                                                        |
+| `GET /planner/plans/:id`                                     | A plan you made in the last hour                                                                                                                                                                                                         |
+| `PATCH /planner/plans/:id`                                   | Tune a plan (below) → a new plan that replaces it; `409` if it was applied, replaced or expired                                                                                                                                          |
+| `GET /planner/plans/:id/stale`                               | `{ "stale" }`: true when the calendar, frames, hours or tasks changed since it was made, or it expired or was replaced                                                                                                                   |
+| `POST /planner/plans/:id/apply`                              | `{ "moves"? }` → saves its blocks and moves the late sessions named (below) → `{ blocks, skipped, moved, moves_skipped }`; `409` if already applied, expired, or there's nothing to add or move; `422` for a move the plan doesn't offer |
+| `GET /planner/review`                                        | `{ unfinished, at_risk, conflicts }`; an `at_risk` task has its `deadline_at`, and `due_all_day: true` when due on a whole day                                                                                                           |
+| `POST /planner/roll-forward`                                 | `{ "block_ids"? }` → a plan for unfinished work                                                                                                                                                                                          |
 
 Planner preferences also hold `deadline_notice_days` (0 to 14, default 1; 0 turns due-soon
 notices off), `planner_notices` (`{ "push": true, "email": false }`; send either key to change
@@ -1781,7 +2110,16 @@ teams named (all your teams when `team_ids` is omitted, none when it's empty) an
       "score": 13.4
     }
   ],
-  "unplaced": [],
+  "unplaced": [
+    {
+      "item_id": "uuid",
+      "title": "Tax return",
+      "due_at": "2026-09-15T14:00:00.000Z",
+      "deadline_at": "2026-09-16T14:00:00.000Z",
+      "due_all_day": true,
+      "reason": "Not enough free time in the days planned."
+    }
+  ],
   "at_risk": [],
   "capacity_minutes": 420,
   "planned_minutes": 150,
@@ -1792,16 +2130,65 @@ teams named (all your teams when `team_ids` is omitted, none when it's empty) an
 ```
 
 The planner considers your open personal tasks and team tasks assigned to you (or exactly the
-`item_ids` you name). Tasks without an estimate count as 30 minutes.
+`item_ids` you name). Tasks without an estimate count as 30 minutes. A block's `part` and `parts`
+count the sessions the task already has too, the way they'll be numbered once saved, so "Session
+3 of 4" in a preview is session 3 of 4 on the calendar.
+
+**Only time before the deadline counts.** A task's sessions that end after its deadline don't
+count as time set aside, so the planner still plans for that time. It first offers to move each
+late session that hasn't started to free time before the deadline, in `moves`:
+
+```json
+"moves": [
+  {
+    "block_id": "uuid",
+    "item_id": "uuid",
+    "title": "Quarterly report",
+    "from_start_at": "2026-10-03T00:00:00.000Z",
+    "from_end_at": "2026-10-03T01:00:00.000Z",
+    "start_at": "2026-09-30T06:00:00.000Z",
+    "end_at": "2026-09-30T07:00:00.000Z",
+    "deadline_at": "2026-10-02T07:00:00.000Z",
+    "due_all_day": false,
+    "source": "planner",
+    "selected": true
+  }
+]
+```
+
+Sessions the planner made are ticked (`selected: true`); sessions you placed by hand (or moved by
+hand) are offered unticked. A moved session covers its own length; only what's still missing
+becomes new blocks, so a plan may hold only moves. A late session that can't fit before the
+deadline stays where it is, and the task is `at_risk` with `remaining_minutes` and `free_minutes`
+and the same words as the daily notice ("Needs 2 h more, with 45 min free before it's due.").
+New time goes before the deadline first; the time a late session that stays already holds is never
+added again after the deadline, so planning again doesn't pile up late sessions. This applies only
+when the deadline falls within the days planned: when it's later, the days after the plan still
+count, so what doesn't fit is `unplaced` ("Not enough free time in the days planned.") and never
+`at_risk`. Nothing is refused and deadlines never move. Once a deadline has passed, time found is catch-up:
+nothing is moved or flagged.
+
+`POST /planner/plans/:id/apply` takes `{ "moves": ["<block id>", …] }`, the sessions to move
+(the ticked ones when omitted; `[]` moves none). Each is checked again first: it must still be
+yours, unchanged since the plan was made, its task open and the new time free; otherwise it's
+counted in `moves_skipped` and left where it is. `moved` lists the sessions moved, as `GET
+/blocks` returns them; each also sends `block.updated`. Moves never count as slips.
 
 Plans also carry `options` (what the plan was made with: `start_date`, `days`, `pad_percent`,
 `split`, `break_level`, `use_frames`, `timezone`, `scope`, `keep_free`, `item_ids`,
 `include_item_ids`, `exclude_item_ids`, `estimates`, `pinned_blocks`), `superseded_by`,
 `estimates_saved`, and `tasks`, a checklist of every task considered: `{ item_id, title, due_at,
-priority, team_id, list_id, estimate_minutes, estimate_tuned, included, planned_minutes, reason,
-at_risk, estimate_guess }`, where `reason` says why a task wasn't (fully) planned or was left out
-and `estimate_guess` (`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set
-when a task with no estimate was planned for a learned length. Blocks are placed at the best time
+deadline_at, due_all_day, priority, team_id, list_id, estimate_minutes, estimate_tuned, included,
+planned_minutes, moved_minutes, reason, at_risk, fit, estimate_guess }`, where `deadline_at` is the moment the task is
+due by (the end of its day when `due_all_day` is true, its end time when it has one; null without
+a date), `reason` says why a task wasn't (fully) planned or was left out and `estimate_guess`
+(`{ minutes, basis }`, basis `similar`, `list`, `tag` or `typical`) is set when a task with no
+estimate was planned for a learned length. `planned_minutes` includes the ticked sessions the
+plan moves (`moved_minutes`; one of yours it offers unticked isn't counted), and `fit` is the task's status once the plan is applied as
+proposed (ticked moves in). `unplaced` and `at_risk` rows (`{ item_id, title,
+due_at, reason }`) carry `deadline_at` and `due_all_day` too, and `at_risk` rows
+`remaining_minutes` and `free_minutes`; a plan saved before they were added
+may leave them out, so name `due_at` then. Blocks are placed at the best time
 rather than simply the earliest (see [Planning in the architecture notes](architecture.md#planning)),
 and `summary` says so when learning moved something ("Thesis chapter is in your best hours
 (10:00–12:00).") or a day asks for more than you usually get through.
@@ -1826,7 +2213,10 @@ The answer is a new plan with a new id; the old one expires and points at it (`s
 Teammates see each other's busy intervals only, never what the time is for. Busy frames count as
 busy in availability and meeting suggestions. `at_risk_items` lists each member's tasks that can't
 get enough time before they're due (tasks due soonest take the free time first):
-`{ id, title, assignee_id, assignee_name, due_at, remaining_minutes }`.
+`{ id, title, assignee_id, assignee_name, due_at, deadline_at, due_all_day, remaining_minutes }`.
+"Due" is the deadline, as everywhere: only free time before `deadline_at` (the end of the day for
+an all-day task, when it ends for a task with an end time) counts, and the list is in deadline
+order.
 
 | Method and path                                        | Result                                                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
@@ -1951,7 +2341,7 @@ Other tools reach your Orbyn account through these. Nothing here sends your data
 | `DELETE /me/webhooks/:id`                     | `204`                                                                                                     |
 | `POST /me/webhooks/:id/test`                  | Sends a `ping` now → `{ ok, status, error }`                                                              |
 | `GET /me/calendar-feed`                       | `{ enabled, busy_enabled, include_blocks }`                                                               |
-| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your time blocks as "Focus: {task}"                                           |
+| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Focus: {task}"                                              |
 | `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
 | `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
 | `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |
@@ -2010,12 +2400,18 @@ too), `block.scheduled`, `booking.requested`, `booking.confirmed`, `booking.resc
   you can see (team events too; not free, all-day or closed ones), once per occurrence and again
   if it's moved. `data`: `item_id`, `title`, `start_at`, `end_at`, `occurrence`, `location`,
   `meeting_url`, `team_id`, `lead_minutes`.
-- `block.started`: when one of your time blocks starts. `data`: `id`, `item_id`, `title`,
+- `block.started`: when one of your sessions starts. `data`: `id`, `item_id`, `title`,
   `start_at`, `end_at`.
 - `task.at_risk`: with the planner's at-risk notice, at most once a day per task. `data`:
-  `item_id`, `title`, `due_at`, `remaining_minutes`, `free_minutes`, `reason`.
+  `item_id`, `title`, `due_at`, `deadline_at` (the moment it's due by), `remaining_minutes`,
+  `free_minutes`, `reason`.
 
-The notifier looks for starting events and blocks every minute, so a delivery can come up to a
+Sessions also send `block.updated` when one is moved, resized or rescheduled (`data`: the
+session, as `GET /blocks` returns it, with its deadline and number) and `block.deleted` when one
+is removed (`data`: `id`, `item_id`, `start_at`, `end_at`). `block.scheduled` carries the new
+sessions the same way.
+
+The notifier looks for starting events and sessions every minute, so a delivery can come up to a
 minute late; one that started up to 5 minutes ago still goes.
 Each delivery is a JSON `POST` of `{ event, occurred_at, data }` with `X-Orbyn-Event`,
 `X-Orbyn-Delivery`, `X-Orbyn-Timestamp` and `X-Orbyn-Signature: sha256=<hex>`, where the hex is
@@ -2215,7 +2611,8 @@ with the change — and compared. Nothing is saved; no plan is stored.
 
 After 36 hours or more away (measured from presence check-ins), for three days or until
 dismissed: `assigned`, `changed` (by others, on your tasks), `asks` waiting on you, `mentions`,
-`due` (overdue or within three days) and team `pages` changed, five of each at most.
+`due` (overdue, that is past its deadline, or within three days) and team `pages` changed, five
+of each at most.
 `POST /me/reentry/dismiss` puts it away.
 
 ### `GET /docs/fading?team_id=` (auth)
