@@ -31,6 +31,7 @@ export function DocBody({
   onEditBlock,
   targetBlockId,
   onTargetLayout,
+  onLineLayout,
 }: {
   content: DocBlock[];
   /** The checklist lines tied to a task, by id; only these say "task". */
@@ -69,6 +70,8 @@ export function DocBody({
   /** A line opened from a task or citation. */
   targetBlockId?: string | null;
   onTargetLayout?: (y: number) => void;
+  /** Where each line sits in the body, for jumping to a heading. */
+  onLineLayout?: (index: number, y: number) => void;
 }) {
   /**
    * Wrap a line so tapping it opens it, and hang its remarks underneath —
@@ -84,9 +87,12 @@ export function DocBody({
   const decorate = (index: number, body: React.ReactNode) => {
     const id = content[index].id;
     const targetLayout =
-      id === targetBlockId
-        ? (event: { nativeEvent: { layout: { y: number } } }) =>
-            onTargetLayout?.(event.nativeEvent.layout.y)
+      id === targetBlockId || onLineLayout
+        ? (event: { nativeEvent: { layout: { y: number } } }) => {
+            const y = event.nativeEvent.layout.y;
+            onLineLayout?.(index, y);
+            if (id === targetBlockId) onTargetLayout?.(y);
+          }
         : undefined;
     const count = (id && counts?.[id]) || 0;
     const under = id ? renderUnder?.(id) : null;

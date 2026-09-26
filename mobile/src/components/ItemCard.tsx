@@ -68,6 +68,7 @@ export function ItemCard({
   onMoveBy,
   onDragStart,
   onDragRelease,
+  onPickUp,
 }: {
   item: Item;
   busy: boolean;
@@ -93,6 +94,8 @@ export function ItemCard({
   onDragStart?: (item: Item) => void;
   /** The finger lifted after a long press; true when the row was dragged. */
   onDragRelease?: () => boolean;
+  /** The board: a long press picks the card up to move it to another column. */
+  onPickUp?: (item: Item) => void;
 }) {
   const done = item.status === "done";
   const cancelled = item.status === "cancelled";
@@ -153,7 +156,11 @@ export function ItemCard({
     ]);
   };
   const actions = [
-    ...(canMove ? [{ name: "longpress", label: "Change status" }] : []),
+    ...(onPickUp
+      ? [{ name: "longpress", label: "Move to another column" }]
+      : canMove
+        ? [{ name: "longpress", label: "Change status" }]
+        : []),
     ...(canReorder && onMoveBy.up
       ? [{ name: "moveUp", label: "Move up" }]
       : []),
@@ -222,14 +229,20 @@ export function ItemCard({
                 longPressed.current = true;
                 onDragStart(item);
               }
-            : canMove || canReorder
-              ? menu
-              : undefined
+            : onPickUp
+              ? () => {
+                  tap();
+                  onPickUp(item);
+                }
+              : canMove || canReorder
+                ? menu
+                : undefined
         }
         accessibilityActions={actions.length ? actions : undefined}
         onAccessibilityAction={(e) => {
           const name = e.nativeEvent.actionName;
-          if (name === "longpress" && canMove) menu();
+          if (name === "longpress" && onPickUp) onPickUp(item);
+          else if (name === "longpress" && canMove) menu();
           else if (name === "moveUp") onMoveBy?.move(-1);
           else if (name === "moveDown") onMoveBy?.move(1);
         }}

@@ -1037,6 +1037,19 @@ export function RootScreen() {
                         await refresh({ animate: true });
                       })
                     }
+                    onAddWith={(prefill) => {
+                      setEditRepeat(null);
+                      present({ edit: { ...freshItem(), ...prefill } });
+                    }}
+                    onChangeItem={(i, change) =>
+                      void act(async () => {
+                        await client.updateItem(i.id, {
+                          ...itemBody(i),
+                          ...change,
+                        });
+                        await refresh({ animate: true });
+                      })
+                    }
                     {...listHandlers}
                   />
                 )}

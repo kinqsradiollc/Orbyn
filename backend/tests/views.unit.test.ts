@@ -12,6 +12,7 @@ import {
   isBoardGroup,
   moveSection,
   NO_GROUP,
+  refFromUrl,
   sectionRange,
   showsOutline,
   type DocBlock,
@@ -309,4 +310,23 @@ test("a section runs to the next heading at its level, and moves whole", () => {
     ["Method", "Steps", "**Kit** list", "Ruler"],
   );
   assert.equal(toEnd.length, page.length);
+});
+
+test("a link dropped into a page: ours, or the web app's own address", () => {
+  const id = "0b7f6d1e-3c1a-4f7e-9d59-2f0a4b6c8e11";
+  assert.deepEqual(refFromUrl(`orbyn://task/${id}`), { kind: "task", id });
+  assert.deepEqual(
+    refFromUrl(`https://orbyn.dev/app/doc/${id.toUpperCase()}`),
+    {
+      kind: "doc",
+      id,
+    },
+  );
+  assert.deepEqual(refFromUrl(` http://localhost:5174/app/project/${id} `), {
+    kind: "project",
+    id,
+  });
+  assert.equal(refFromUrl("https://example.com/somewhere"), null);
+  assert.equal(refFromUrl(`https://orbyn.dev/app/doc/${id}/extra`), null);
+  assert.equal(refFromUrl(""), null);
 });

@@ -838,6 +838,14 @@ none) and writes a formula as the symbols it reads as, the same as everywhere ou
 
 Kept for anything already pointing at it; `export?format=md` is the same bytes.
 
+### `GET /docs/:id/info` (auth)
+
+A page's Info panel in one request (NAV-04):
+`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write }`.
+`team`, `project`, `event` (`{ id, title, due_at }`) and `folder` are `null` when the page has none;
+`recent` is the latest three versions as `GET /docs/:id/versions` lists them. `linked_here` counts only
+places the reader can open. `404` for a page the reader can't open or one in the Trash.
+
 ### `GET /docs/:id/versions` (auth)
 
 → `[ { "version", "title", "author", "user_id", "created_at", "blocks" } ]`, newest first, without
@@ -1938,6 +1946,14 @@ last day, a span under the day it ends. A task is overdue once that day is befor
 (`dueBeforeToday`), so one due earlier today isn't yet. The task panels and Focus mode say "Due
 Fri 2 Oct, 5 pm" (`dueLine`); list lines (Tasks to place, plans, the team's at-risk list) say
 "due Fri 2 Oct, 5 pm", or "due Fri 2 Oct" for a whole day (`dueDateOf`).
+
+#### `POST /blocks` with a day (auth)
+
+`{ "item_id", "day": "2026-10-02", "minutes"? }` instead of `start_at`/`end_at`: a task dropped on a
+calendar day (ORG-06). The session goes in the first free working time that day in the person's zone
+(from now on for today), `minutes` long (default: the task's estimate, or 30). `201` with the session;
+`409` when the day is over or has no free working time for it. The task's deadline is never written;
+a session after it is kept and flagged late like any other.
 
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,

@@ -26,6 +26,8 @@ import {
   carryBlockIds,
   carryNewIds,
   docStats,
+  docOutline,
+  type OutlineEntry,
   emptyUndo,
   EXPORT_LABELS,
   indentBlocks,
@@ -85,6 +87,7 @@ import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
 import { LineToolbar, kindKey, type LineKind } from "./LineToolbar";
 import { PageInfo } from "./PageInfo";
+import { ContentsSheet } from "./ContentsSheet";
 import { LinkedHere, LinkPillProvider, useLinkPills } from "./links";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -200,6 +203,10 @@ export function DocEditor({
   const bodyOffset = useRef<number | null>(null);
   const targetOffset = useRef<number | null>(null);
   const jumped = useRef(false);
+  /** Where each line sits in the body, and where "Linked here" is. */
+  const lineYs = useRef(new Map<number, number>());
+  const linkedY = useRef<number | null>(null);
+  const [contentsOpen, setContentsOpen] = useState(false);
   useEffect(() => {
     bodyOffset.current = null;
     targetOffset.current = null;
@@ -1418,6 +1425,10 @@ export function DocEditor({
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
     { label: "Ask about this page", onPress: () => setTalking(true) },
+    // A page with headings has its contents a tap away (NAV-03).
+    ...(docOutline(blocks).length
+      ? [{ label: "Contents", onPress: () => setContentsOpen(true) }]
+      : []),
     {
       label: "Copy link",
       onPress: () =>
@@ -1456,6 +1467,16 @@ export function DocEditor({
       onPress: () => void downloadDoc(doc.id, format).catch(report),
     }),
   );
+  // ---- contents (NAV-03) ----
+  const outline = useMemo(() => docOutline(blocks), [blocks]);
+  /** Bring a heading to the top of the sheet. */
+  const jumpTo = (entry: OutlineEntry) => {
+    setContentsOpen(false);
+    setInfoOpen(false);
+    const y = lineYs.current.get(entry.index);
+    if (bodyOffset.current === null || y === undefined) return;
+    onTargetOffset?.(bodyOffset.current + y);
+  };
   const facts = pageFooter({
     ...docStats(blocks),
     savedAt,
@@ -1652,6 +1673,7 @@ export function DocEditor({
                 />
               );
             }}
+            onLineLayout={(index, y) => lineYs.current.set(index, y)}
             onEditBlock={reading && !suggesting ? undefined : openLine}
             onToggleTodo={reading || !structural ? undefined : toggle}
           />
@@ -1686,7 +1708,14 @@ export function DocEditor({
       )}
 
       {/* One quiet line at the end of the page. */}
-      <Text style={styles.footer}>{facts}</Text>
+      <Text style={styles.footer} onPress={() => setInfoOpen(true)}>
+        {facts}
+      </Text>
+      <View
+        onLayout={(event) => {
+          linkedY.current = event.nativeEvent.layout.y;
+        }}
+      />
       <LinkedHere
         kind="doc"
         id={doc.id}
@@ -1730,6 +1759,19 @@ export function DocEditor({
         }}
         onClose={() => setInfoOpen(false)}
         report={report}
+        outline={outline}
+        onJump={jumpTo}
+        onShowLinked={() => {
+          setInfoOpen(false);
+          if (linkedY.current !== null) onTargetOffset?.(linkedY.current);
+        }}
+      />
+      <ContentsSheet
+        visible={contentsOpen}
+        outline={outline}
+        current={-1}
+        onJump={jumpTo}
+        onClose={() => setContentsOpen(false)}
       />
       <ActionSheet
         visible={menu === "page"}
