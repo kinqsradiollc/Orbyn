@@ -1,8 +1,15 @@
+/**
+ * The first MCP endpoint's contract, kept for old personal API keys (ok_)
+ * on the legacy address (/api/mcp) for their 90 days: it now runs on the
+ * new mcp service and capability layer, with the three original tools as
+ * aliases (search_items, add_task, get_agenda) beside the new read tools.
+ */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
+import { spyPool, trapNetwork } from "./mcp-helpers.js";
 
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
@@ -11,6 +18,9 @@ const { env } = await import("../src/config/env.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 
 const app = await buildApp();
+// Nothing leaves the machine, and reads never step outside their transaction.
+const network = await trapNetwork();
+const pools = await spyPool();
 let session = "";
 let apiKey = "";
 let admin = "";
@@ -85,16 +95,19 @@ before(async () => {
   admin = boss.token;
 });
 after(async () => {
+  network.restore();
+  pools.restore();
   await app.close();
   await pool.end();
 });
 
-test("the endpoint needs a personal API key, and never takes an app session", async () => {
+test("the endpoint needs a key, and never takes an app session", async () => {
   const none = await post({ jsonrpc: "2.0", id: 1, method: "tools/list" }, {});
   assert.equal(none.status, 401);
   assert.equal(none.body.jsonrpc, "2.0");
   assert.equal(none.body.error.code, -32001);
-  assert.match(none.body.error.message, /personal API key/);
+  assert.match(none.body.error.message, /agent key/);
+  assert.match(String(none.headers["www-authenticate"]), /resource_metadata=/);
 
   // A browser's session token works on the REST API but not here.
   const browser = await post(
@@ -102,7 +115,7 @@ test("the endpoint needs a personal API key, and never takes an app session", as
     bearer(session),
   );
   assert.equal(browser.status, 401);
-  assert.match(browser.body.error.message, /not an app sign-in/);
+  assert.match(browser.body.error.message, /not the app's/);
 
   const wrong = await post(
     { jsonrpc: "2.0", id: 1, method: "tools/list" },
@@ -113,16 +126,33 @@ test("the endpoint needs a personal API key, and never takes an app session", as
 });
 
 test("initialize and tools/list describe the server and its tools", async () => {
-  const init = await rpc("initialize", { protocolVersion: "2025-06-18" });
-  assert.equal(init.body.result.serverInfo.name, "Orbyn");
+  const init = await rpc("initialize", {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "script", version: "1" },
+  });
+  assert.equal(init.body.result.serverInfo.name, "orbyn");
+  assert.equal(init.body.result.serverInfo.title, "Orbyn");
   assert.ok(init.body.result.capabilities.tools);
 
   const list = await rpc("tools/list");
   const names = list.body.result.tools.map((t: { name: string }) => t.name);
-  assert.deepEqual(names.sort(), ["add_task", "get_agenda", "search_items"]);
+  // The original three, beside the new read tools.
+  for (const name of [
+    "add_task",
+    "get_agenda",
+    "search_items",
+    "search",
+    "fetch",
+    "get_today",
+  ])
+    assert.ok(names.includes(name), name);
   // With no params at all, too.
   const bare = await post({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-  assert.equal(bare.body.result.tools.length, 3);
+  assert.equal(bare.body.result.tools.length, names.length);
+  // Old keys hear they're deprecated.
+  assert.match(String(list.headers.deprecation), /^@\d+$/);
+  assert.ok(list.headers.sunset);
 });
 
 test("a notification (no id) gets no response body", async () => {
@@ -257,7 +287,7 @@ test("bad requests get JSON-RPC errors, never a 500", async () => {
   });
   assert.equal(badArgs.body.error.code, -32602);
 
-  // Not a request at all.
+  // Not a request at all: HTTP 400 with a JSON-RPC error.
   for (const body of [
     { id: 1, method: "tools/list" },
     { jsonrpc: "2.0", id: 1 },
@@ -267,7 +297,7 @@ test("bad requests get JSON-RPC errors, never a 500", async () => {
     "null",
   ]) {
     const r = await post(body);
-    assert.equal(r.status, 200, JSON.stringify(body));
+    assert.equal(r.status, 400, JSON.stringify(body));
     assert.equal(r.body.error.code, -32600, JSON.stringify(body));
   }
   const broken = await post("{not json");
@@ -282,10 +312,14 @@ test("an unknown method and an unknown tool are reported cleanly", async () => {
   const badTool = await callTool("delete_everything", {});
   assert.equal(badTool.body.error.code, -32602);
 
-  // A tool that throws reports the error in-band, not as a transport failure.
+  // An empty search answers in words, not as a failure.
   const empty = await callTool("search_items", { query: "" });
   assert.equal(empty.status, 200);
   assert.match(text(empty.body), /words to search/);
+  // Arguments of the wrong kind are an in-band error the model can correct.
+  const wrong = await callTool("search_items", { query: 5 });
+  assert.equal(wrong.body.result.isError, true);
+  assert.match(text(wrong.body), /^INVALID/);
 });
 
 test("tool errors are in words, never the database's own", async (t) => {
@@ -296,17 +330,34 @@ test("tool errors are in words, never the database's own", async (t) => {
   assert.equal(badDate.body.result.isError, true);
   assert.match(text(badDate.body), /isn't a valid date/);
 
-  const query = pool.query.bind(pool);
-  t.mock.method(pool, "query", (sql: unknown, ...rest: unknown[]) =>
-    typeof sql === "string" && sql.includes("unnest($2::text[])")
-      ? Promise.reject(
-          Object.assign(
-            new Error('relation "items" does not exist at character 42'),
-            { code: "42P01" },
-          ),
-        )
-      : (query as (...a: unknown[]) => unknown)(sql, ...rest),
+  // A database failure is reported in words, never in the database's own.
+  const connect = pool.connect.bind(pool) as (...a: unknown[]) => any;
+  // pool.query itself connects with a callback: that path is left alone.
+  t.mock.method(pool, "connect", (...args: unknown[]) =>
+    typeof args[0] === "function" ? connect(...args) : wrapped(),
   );
+  const wrapped = async () => {
+    const client = await connect();
+    const query = client.query.bind(client);
+    const release = client.release.bind(client);
+    const broken = (sql: unknown, ...rest: unknown[]) =>
+      typeof sql === "string" && sql.includes("NOT ILIKE")
+        ? Promise.reject(
+            Object.assign(
+              new Error('relation "items" does not exist at character 42'),
+              { code: "42P01" },
+            ),
+          )
+        : (query as (...a: unknown[]) => unknown)(sql, ...rest);
+    Object.assign(client, {
+      query: broken,
+      release: (...args: unknown[]) => {
+        Object.assign(client, { query, release });
+        return (release as (...a: unknown[]) => unknown)(...args);
+      },
+    });
+    return client;
+  };
   const failed = await callTool("search_items", { query: "anything" });
   assert.equal(failed.status, 200);
   assert.equal(failed.body.result.isError, true);
@@ -336,7 +387,7 @@ test("GET and DELETE are 405; other web pages are refused", async () => {
     { ...bearer(apiKey), origin: env.APP_URL.replace(/\/$/, "") },
   );
   assert.equal(own.status, 200);
-  assert.equal(own.body.result.tools.length, 3);
+  assert.ok(own.body.result.tools.length >= 3);
 });
 
 test("during maintenance reads still answer and writes get a JSON-RPC error", async () => {
@@ -351,7 +402,7 @@ test("during maintenance reads still answer and writes get a JSON-RPC error", as
   try {
     const list = await rpc("tools/list");
     assert.equal(list.status, 200);
-    assert.equal(list.body.result.tools.length, 3);
+    assert.ok(list.body.result.tools.length >= 3);
     const found = await callTool("search_items", { query: "passport" });
     assert.match(text(found.body), /Renew passport/);
     assert.match(
@@ -408,4 +459,10 @@ test("past the rate limit the answer is a 429 in JSON-RPC shape", async () => {
     );
     invalidateSettings();
   }
+});
+
+// Last: everything above ran with the network and the pools watched.
+test("the old endpoint never reached the network or the pool from inside a read", () => {
+  assert.deepEqual(network.calls, []);
+  assert.deepEqual(pools.stray, []);
 });

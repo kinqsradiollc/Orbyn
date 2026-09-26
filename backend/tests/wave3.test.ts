@@ -1255,6 +1255,22 @@ test("the OpenAPI description is served and parses", async () => {
     "/calendar",
     "/calendar/search",
     "/me/webhooks",
+    // Sign in with Orbyn and outside agents (A2).
+    "/.well-known/oauth-authorization-server",
+    "/oauth/authorize/check",
+    "/oauth/authorize",
+    "/oauth/authorize/deny",
+    "/oauth/token",
+    "/oauth/revoke",
+    "/oauth/register",
+    "/me/reauth",
+    "/me/reauth/options",
+    "/teams/{id}/agents",
+    "/teams/{id}/agent-access",
+    "/admin/agents",
+    "/admin/agents/clients",
+    "/admin/agents/usage",
+    "/admin/users/{id}/agents/{grantId}",
   ])
     assert.ok(spec.paths[path], `documents ${path}`);
   assert.ok(spec.components.securitySchemes.bearer);

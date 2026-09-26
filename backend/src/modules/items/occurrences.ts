@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   fail,
   occurrences,
@@ -7,6 +8,7 @@ import {
   type ItemInput,
   type OccurrenceChanges,
 } from "@orbyn/core";
+import { itemSourceSql } from "../../capabilities/sources.js";
 import type { Db } from "../../db/pool.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import {
@@ -289,33 +291,49 @@ export async function editFollowing(
   const keepsTime = start.getTime() === when.getTime();
   const pick = <T>(value: T | undefined, saved: T) =>
     value === undefined ? saved : value;
-  const created = await mutate(db, actor, {
-    operation: "create",
-    data: {
-      ...data,
-      due_at: start.toISOString(),
-      rrule:
-        data.rrule === undefined || data.rrule === item.rrule
-          ? restOf(series, when)
-          : data.rrule,
-      timezone: pick(data.timezone, item.timezone),
-      estimate_minutes: pick(data.estimate_minutes, item.estimate_minutes),
-      list_id: pick(data.list_id, item.list_id),
-      tag_ids: pick(data.tag_ids, tags),
-      assignee_id: pick(data.assignee_id, item.assignee_id),
-      location: pick(data.location, item.location),
-      meeting_url: pick(data.meeting_url, item.meeting_url),
-      all_day: pick(data.all_day, item.all_day),
-      busy: pick(data.busy, item.busy),
-      color: pick(data.color, item.color),
-      parent_id: pick(data.parent_id, item.parent_id),
-      alerts: pick(data.alerts, item.alerts.map(Number)),
-      attendees: pick(
-        data.attendees,
-        invited.map((a) => (a.name ? a : { email: a.email })),
-      ),
+  // The new series is the same thing from here on: where its text came from
+  // (an email, a booking guest) carries over. Recorded first, so nothing
+  // written while the series is made reads it as the person's own.
+  const newId = randomUUID();
+  await db.query(
+    `INSERT INTO item_sources (item_id, source)
+     SELECT $2, x.source
+       FROM (SELECT ${itemSourceSql("i")} AS source FROM items i WHERE i.id = $1) x
+      WHERE x.source IS NOT NULL`,
+    [id, newId],
+  );
+  const created = await mutate(
+    db,
+    actor,
+    {
+      operation: "create",
+      data: {
+        ...data,
+        due_at: start.toISOString(),
+        rrule:
+          data.rrule === undefined || data.rrule === item.rrule
+            ? restOf(series, when)
+            : data.rrule,
+        timezone: pick(data.timezone, item.timezone),
+        estimate_minutes: pick(data.estimate_minutes, item.estimate_minutes),
+        list_id: pick(data.list_id, item.list_id),
+        tag_ids: pick(data.tag_ids, tags),
+        assignee_id: pick(data.assignee_id, item.assignee_id),
+        location: pick(data.location, item.location),
+        meeting_url: pick(data.meeting_url, item.meeting_url),
+        all_day: pick(data.all_day, item.all_day),
+        busy: pick(data.busy, item.busy),
+        color: pick(data.color, item.color),
+        parent_id: pick(data.parent_id, item.parent_id),
+        alerts: pick(data.alerts, item.alerts.map(Number)),
+        attendees: pick(
+          data.attendees,
+          invited.map((a) => (a.name ? a : { email: a.email })),
+        ),
+      },
     },
-  });
+    newId,
+  );
   if (created && keepsTime && (later.length || moved.length)) {
     await db.query(
       "UPDATE items SET exdates = $2::timestamptz[] WHERE id = $1",

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { analyticsOptOut, requestUser } from "./request-log.js";
+import { onAuthChange } from "./auth-events.js";
 import type { FastifyRequest } from "fastify";
 import {
   fail,
@@ -105,7 +106,7 @@ export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
@@ -136,17 +137,49 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // Push devices: a phone added by a key would keep getting reminders after
   // the key is gone. The apps register theirs signed in.
   { route: /^\/devices$/ },
+  // Outside agents: a key can't make agent keys or see and revoke
+  // connections, or reopen a team to agents (a team's agent policy); only a
+  // signed-in person can.
+  { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
+  { method: "PUT", route: /^\/teams\/:id\/agent-access$/ },
+  // Connecting an agent (the consent page) and confirming it's you before
+  // granting one write access: a signed-in person only.
+  { route: /^\/oauth\// },
+  { route: /^\/me\/reauth(?:\/|$)/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
 ];
 
-/** Whether an API key is refused on this request's route. */
-export function keyBlocked(r: FastifyRequest) {
-  const route = r.routeOptions?.url ?? "";
-  return KEY_BLOCKED.some(
-    (b) => (!b.method || b.method === r.method) && b.route.test(route),
+/** Whether an API key is refused on `method` + route pattern (`/teams/:id`). */
+export const keyBlockedRoute = (method: string, route: string) =>
+  KEY_BLOCKED.some(
+    (b) => (!b.method || b.method === method) && b.route.test(route),
   );
+
+/** Whether an API key is refused on this request's route. */
+export const keyBlocked = (r: FastifyRequest) =>
+  keyBlockedRoute(r.method, r.routeOptions?.url ?? "");
+
+/**
+ * The user and key behind a personal API key, for the MCP service's legacy
+ * grant (no route checks: MCP decides what a legacy key may do). null when
+ * it isn't a valid key.
+ */
+export async function apiKeyOwner(
+  token: string,
+): Promise<{ user: UserRow; key_id: string; key_name: string } | null> {
+  const row = (
+    await pool.query<UserRow & { key_id: string; key_name: string }>(
+      `SELECT u.*, k.id AS key_id, k.name AS key_name
+         FROM users u JOIN api_keys k ON k.user_id = u.id
+        WHERE k.key_hash = $1`,
+      [digest(token)],
+    )
+  ).rows[0];
+  if (!row) return null;
+  const { key_id, key_name, ...user } = row;
+  return { user: user as UserRow, key_id, key_name };
 }
 
 /** The user a personal API key belongs to, or a 401/403. */
@@ -173,13 +206,88 @@ async function keyUser(r: FastifyRequest, token: string): Promise<UserRow> {
 }
 
 /**
+ * Credentials made for outside agents: access tokens (oat_), refresh tokens
+ * (ort_) and agent keys (oak_). They belong to the MCP address alone.
+ */
+export const AGENT_TOKEN = /^(?:oat|ort|oak)_/;
+
+/** The MCP address and its protected-resource metadata: where agent credentials belong. */
+export function isMcpPath(url: string | undefined): boolean {
+  const path = (url ?? "").split("?")[0];
+  return (
+    path === "/mcp" || path.startsWith("/.well-known/oauth-protected-resource")
+  );
+}
+
+/**
+ * The OAuth endpoints apps call themselves (metadata, token, revoke,
+ * register), which answer any origin.
+ */
+export function isOAuthOpenPath(url: string | undefined): boolean {
+  const path = (url ?? "").split("?")[0];
+  return (
+    path === "/.well-known/oauth-authorization-server" ||
+    path === "/oauth/token" ||
+    path === "/oauth/revoke" ||
+    path === "/oauth/register"
+  );
+}
+
+/** Live connections by credential hash (null: not a live one), for rate limiting. */
+const grantIds = new Map<string, { id: string | null; at: number }>();
+
+// A revoked connection, a blocked app or a person signed out everywhere
+// (on any copy) stops counting as live here at once.
+onAuthChange(() => {
+  grantIds.clear();
+  keyIds.clear();
+});
+
+/**
+ * What an agent's requests count against in the general rate limit: its
+ * connection, never the address it comes from. Only on the MCP address, and
+ * only once the credential is known to belong to a live connection, so a
+ * made-up oak_… (a fresh one per request) counts against its address like
+ * any other request and can't slip past per-address limits such as the
+ * sign-in one. null otherwise.
+ */
+export async function agentLimitKey(r: FastifyRequest): Promise<string | null> {
+  if (!isMcpPath(r.url)) return null;
+  const token = r.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
+  if (!token || !AGENT_TOKEN.test(token)) return null;
+  const hash = digest(token);
+  const hit = grantIds.get(hash);
+  if (hit && Date.now() - hit.at < KEY_CACHE_MS)
+    return hit.id ? `agent:${hit.id}` : null;
+  const id =
+    (
+      await pool.query<{ grant_id: string }>(
+        `SELECT t.grant_id FROM agent_tokens t
+           JOIN agent_grants g ON g.id = t.grant_id
+          WHERE t.token_hash = $1 AND t.kind <> 'refresh' AND g.revoked_at IS NULL
+            AND (t.expires_at IS NULL OR t.expires_at > now())`,
+        [hash],
+      )
+    ).rows[0]?.grant_id ?? null;
+  if (grantIds.size > 5000) grantIds.clear();
+  grantIds.set(hash, { id, at: Date.now() });
+  return id ? `agent:${id}` : null;
+}
+
+export const AGENT_TOKEN_MESSAGE =
+  "Agent keys and agent sign-ins work only with Orbyn's MCP address, not the API.";
+
+/**
  * Resolve the bearer token on a request to its user, or fail with 401/403.
  * The token is a session token, or a personal API key (starting "ok_"),
- * which is refused on the routes in KEY_BLOCKED.
+ * which is refused on the routes in KEY_BLOCKED. Agent credentials (oat_,
+ * ort_, oak_) are refused everywhere here: their audience is the MCP
+ * service, which has its own authenticator.
  */
 export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
+  if (AGENT_TOKEN.test(token)) fail(401, AGENT_TOKEN_MESSAGE);
   if (token.startsWith("ok_")) return keyUser(r, token);
   const u = (
     await pool.query<UserRow>(
@@ -204,31 +312,12 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   return u;
 }
 
-/**
- * Only a personal API key, never an app session: for endpoints meant for
- * other tools (MCP). A browser's session token is refused, so a page that
- * got hold of one can't drive the account through them.
- */
-export async function authenticateApiKey(r: FastifyRequest): Promise<UserRow> {
-  const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
-  if (!token)
-    fail(
-      401,
-      "Send a personal API key as Authorization: Bearer ok_… (create one in Settings → Connections).",
-    );
-  if (!token.startsWith("ok_"))
-    fail(
-      401,
-      "This address takes a personal API key, not an app sign-in. Create one in Settings → Connections.",
-    );
-  return keyUser(r, token);
-}
-
 /** Authenticate and require a system permission (admin console routes). */
 export async function authorize(
   r: FastifyRequest,
   permission: SystemPermission,
 ): Promise<UserRow> {
+  // authenticate() already refuses agent credentials; keys are refused here.
   const u = await authenticate(r);
   if (viaApiKey.has(r))
     fail(
@@ -240,15 +329,22 @@ export async function authorize(
   return u;
 }
 
-/** Create a new opaque session token for a user. Only its hash is stored. */
+/**
+ * Create a new opaque session token for a user. Only its hash is stored.
+ * `reauthenticated`: the person just proved their password (and two-step)
+ * or a passkey, which counts as confirming it's them for the next few
+ * minutes (granting an agent write access needs that).
+ */
 export async function issueSession(
   u: UserRow,
   userAgent = "",
+  options: { reauthenticated?: boolean } = {},
 ): Promise<AuthResponse> {
   const token = randomBytes(48).toString("base64url");
   await pool.query(
-    "INSERT INTO sessions(token_hash,user_id,user_agent) VALUES($1,$2,$3)",
-    [digest(token), u.id, userAgent.slice(0, 400)],
+    `INSERT INTO sessions(token_hash,user_id,user_agent,reauthenticated_at)
+     VALUES($1,$2,$3,CASE WHEN $4 THEN now() END)`,
+    [digest(token), u.id, userAgent.slice(0, 400), !!options.reauthenticated],
   );
   return { token, user: publicUser(u) };
 }

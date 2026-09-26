@@ -40,3 +40,4 @@ export * from "./imports.js";
 export * from "./pdftext.js";
 export * from "./omml.js";
 export * from "./learning.js";
+export * from "./agents.js";

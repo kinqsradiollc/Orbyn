@@ -67,6 +67,8 @@ smtp_host=$(setting DOCKER_SMTP_HOST mailpit)
 mail_config=$(setting MAIL_CONFIG maddy.conf)
 mail_domain=$(setting MAIL_DOMAIN)
 app_url=$(setting APP_URL)
+mcp_url=$(setting MCP_PUBLIC_URL https://mcp.orbyn.dev/mcp)
+oauth_issuer=$(setting OAUTH_ISSUER "$app_url")
 cors=$(setting CORS_ORIGINS)
 profiles=$(setting COMPOSE_PROFILES)
 ocr_on=0
@@ -86,6 +88,23 @@ preflight() {
     case "$cors" in
       ""|*localhost*) warn "The tunnel is on but CORS_ORIGINS is '${cors:-unset}': set the public address too." ;;
     esac
+    case "$mcp_url" in
+      *localhost*|*127.0.0.1*) warn "The tunnel is on but MCP_PUBLIC_URL is '$mcp_url': agents would be told to sign in to localhost." ;;
+    esac
+    case "$oauth_issuer" in
+      ""|*localhost*|*127.0.0.1*) warn "The tunnel is on but the OAuth issuer (OAUTH_ISSUER, else APP_URL) is '${oauth_issuer:-unset}': agents can't sign in there." ;;
+    esac
+    case "$oauth_issuer" in
+      https://*) ;;
+      *) warn "The OAuth issuer '${oauth_issuer:-unset}' isn't https://: Claude and ChatGPT refuse to sign in to it." ;;
+    esac
+    case "$oauth_issuer" in
+      */) warn "The OAuth issuer '$oauth_issuer' ends in '/': clients compare it exactly, so drop the slash." ;;
+    esac
+    mcp_origin=$(printf '%s' "$mcp_url" | sed -E 's#^(https?://[^/]+).*#\1#')
+    if [ -n "$oauth_issuer" ] && [ "${oauth_issuer%/}" = "$mcp_origin" ]; then
+      warn "The OAuth issuer is the MCP host ($mcp_origin): it must be the web app's address, where the consent page is."
+    fi
   fi
   if [ -z "$(setting FILES_SECRET)" ]; then
     warn "FILES_SECRET is unset: importing PDFs and Word files into Docs stays off."
@@ -130,7 +149,7 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- apply migrations, then roll out api, ai, realtime, status, notifier, files, converter and the web app"
+  echo "- apply migrations, then roll out api, mcp, ai, realtime, status, notifier, files, converter and the web app"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
   [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
@@ -138,7 +157,7 @@ if [ "$CHECK" = 1 ]; then
   [ -n "$tunnel_token" ] && echo "- start or update the Cloudflare tunnel" || echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN unset)"
   echo "- prune leftover images; check /version"
   echo
-  echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}"
+  echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}  MCP_PUBLIC_URL=$mcp_url"
   compose --env-file "$ENV_FILE" config --quiet && echo "compose.yaml + $ENV_FILE: valid"
   [ "$problems" = 0 ] && echo "Preflight: OK" || { echo "Preflight: fix the problems above."; exit 1; }
   exit 0
@@ -152,7 +171,10 @@ fi
 
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-export GIT_SHA BUILD_TIME
+# The gateway's config lives in mounted files compose can't see; a
+# fingerprint of them in its environment replaces it when they change.
+GATEWAY_CONFIG_SHA=$(cat gateway/nginx.conf.template gateway/entrypoint.sh 2>/dev/null | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)
+export GIT_SHA BUILD_TIME GATEWAY_CONFIG_SHA
 
 log "Building images for $GIT_SHA"
 compose build
@@ -262,6 +284,8 @@ rollout() {
 }
 
 rollout api "$(setting API_REPLICAS 2)"
+# Outside agents (MCP): stateless, so copies roll over like the API's.
+rollout mcp "$(setting MCP_REPLICAS 2)"
 rollout ai "$(setting AI_REPLICAS 2)"
 # Open streams on the old copies close as they stop; clients reconnect to the
 # new ones on their own (EventSource retries), so a rollout loses no updates.

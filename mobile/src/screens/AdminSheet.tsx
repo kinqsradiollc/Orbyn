@@ -29,6 +29,7 @@ import { client } from "../lib/api";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { AdminAgents } from "./AdminAgents";
 import { AdminAi } from "./AdminAi";
 import { LegalCard } from "./AdminLegal";
 import { AdminDatabase } from "./AdminDatabase";
@@ -56,6 +57,7 @@ type Segment =
   | "database"
   | "storage"
   | "ai"
+  | "agents"
   | "system";
 
 const SEGMENTS: Segment[] = ["overview", "users", "teams", "audit"];
@@ -65,6 +67,7 @@ const SEGMENT_LABELS = {
   database: "Database",
   storage: "Storage",
   ai: "AI",
+  agents: "Agents",
   system: "System",
 } as const;
 const AUDIT_PAGE = 30;
@@ -115,7 +118,8 @@ export function AdminSheet({
     // The database is shown to those who run the system, as on the desktop.
     ...(canManageSystem ? (["database", "storage"] as const) : []),
     ...(canManageAi ? (["ai"] as const) : []),
-    ...(canManageSystem ? (["system"] as const) : []),
+    // Outside agents (MCP): the switches need system:manage, as on the web.
+    ...(canManageSystem ? (["agents", "system"] as const) : []),
   ];
   const banner = <ErrorBanner error={error} onDismiss={clearError} />;
   const close = () => {
@@ -197,6 +201,9 @@ export function AdminSheet({
             )}
             {segment === "ai" && canManageAi && (
               <AdminAi act={act} busy={busy} />
+            )}
+            {segment === "agents" && canManageSystem && (
+              <AdminAgents act={act} busy={busy} />
             )}
             {segment === "system" && canManageSystem && (
               <>

@@ -61,6 +61,13 @@ ${LIMIT_EXEMPT}
   limit_req_status 429;
   limit_conn_status 429;
 
+  # Outside agents (MCP) are limited per credential, never per address: the
+  # key is the Authorization header itself (nginx keeps keys in shared
+  # memory). Calls in flight are capped per credential across every mcp copy
+  # here; per-minute and daily limits are also counted by the service.
+  limit_req_zone $http_authorization zone=mcp_token:20m rate=120r/m;
+  limit_conn_zone $http_authorization zone=mcp_conn:10m;
+
   # Micro-cache for the public status report.
   proxy_cache_path /tmp/status_cache levels=1 keys_zone=status_cache:1m max_size=10m inactive=1m use_temp_path=off;
 
@@ -106,6 +113,14 @@ ${UPSTREAM_STATUS}
     least_conn;
 ${UPSTREAM_FILES}
     keepalive 16;
+  }
+
+  # The MCP service: stateless calls from outside agents.
+  upstream mcp {
+    zone mcp 64k;
+    least_conn;
+${UPSTREAM_MCP}
+    keepalive 64;
   }
 
   # The scheme the browser used: kept from a TLS proxy in front, else our own.
@@ -189,6 +204,24 @@ ${UPSTREAM_FILES}
       proxy_pass http://files;
     }
 
+    # The MCP address for older setups (the web app's /api/mcp): the mcp
+    # service, as on mcp.orbyn.dev.
+    location = /mcp {
+      ${MCP_GATE}
+      limit_req zone=per_client burst=100 nodelay;
+      limit_req zone=mcp_token burst=60 nodelay;
+      limit_conn mcp_conn 8;
+      proxy_buffering off;
+      proxy_read_timeout 100s;
+      proxy_next_upstream off;
+      proxy_pass http://mcp;
+      error_page 429 = @mcp_limited;
+    }
+    location @mcp_limited {
+      add_header Retry-After 30 always;
+      return 429 '{"jsonrpc":"2.0","id":null,"error":{"code":-32029,"message":"That\'s a lot at once. Wait a moment and try again."}}';
+    }
+
     # Everything else: the planner API.
     location / {
       limit_req zone=per_client burst=100 nodelay;
@@ -268,6 +301,22 @@ ${UPSTREAM_FILES}
       proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
+    # Signing in with Orbyn: the authorization server's metadata (RFC 8414)
+    # lives at the issuer (this host), served by the API. Its other endpoints
+    # are under /api/oauth/ (the /api/ location above).
+    location = /.well-known/oauth-authorization-server {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080;
+    }
+    # Any other well-known document isn't here: a 404, not the web app's page
+    # (clients probe paths like /.well-known/openid-configuration).
+    location ^~ /.well-known/ {
+      default_type application/json;
+      return 404 '{"message":"That isn\'t here."}';
+    }
 
     location / {
       proxy_pass http://web;
@@ -276,6 +325,64 @@ ${UPSTREAM_FILES}
     error_page 502 503 504 = @unavailable;
     location @unavailable {
       return 503 '{"message":"Orbyn is briefly unavailable. Please try again."}';
+    }
+  }
+
+  # The MCP host (mcp.orbyn.dev through the tunnel): only the MCP address and
+  # its protected-resource metadata; everything else is a 404.
+  server {
+    listen 8082;
+    client_max_body_size 1m;
+    limit_conn conn_per_client 200;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $fwd_proto;
+    proxy_set_header X-Request-Id $request_id;
+    proxy_connect_timeout 1s;
+    proxy_read_timeout 100s;
+    proxy_next_upstream error timeout http_502 http_503;
+    proxy_next_upstream_tries 4;
+    proxy_next_upstream_timeout 5s;
+
+    location = /health {
+      access_log off;
+      return 200 '{"status":"ok","service":"gateway"}';
+    }
+
+    location = /mcp {
+      ${MCP_GATE}
+      # A high ceiling per address; the real limits are per credential.
+      # Review in phase A2: hosted agents (claude.ai, ChatGPT) share their
+      # providers' egress addresses, so raise this for those ranges (or
+      # exempt them through LIMIT_EXEMPT) before they connect.
+      limit_req zone=per_client burst=200 nodelay;
+      limit_req zone=mcp_token burst=60 nodelay;
+      limit_conn mcp_conn 8;
+      proxy_buffering off;
+      proxy_next_upstream off;
+      proxy_pass http://mcp;
+      error_page 429 = @mcp_limited;
+    }
+    location = /.well-known/oauth-protected-resource {
+      proxy_pass http://mcp;
+    }
+    location = /.well-known/oauth-protected-resource/mcp {
+      proxy_pass http://mcp;
+    }
+    location @mcp_limited {
+      add_header Retry-After 30 always;
+      return 429 '{"jsonrpc":"2.0","id":null,"error":{"code":-32029,"message":"That\'s a lot at once. Wait a moment and try again."}}';
+    }
+    location / {
+      return 404 '{"message":"That isn\'t here. The MCP address is /mcp."}';
+    }
+
+    error_page 502 503 504 = @unavailable;
+    location @unavailable {
+      return 503 '{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Orbyn is briefly unavailable. Please try again."}}';
     }
   }
 }

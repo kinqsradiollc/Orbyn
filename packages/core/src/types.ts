@@ -343,7 +343,12 @@ export type Notice = {
     /** A subscribed calendar's event is coming up. */
     | "calendar"
     /** An imported file is ready in Uploads (`ref` = "doc:<page id>"). */
-    | "import";
+    | "import"
+    /**
+     * Outside agents: a new connection, one paused or cut off for safety,
+     * or a team's first use (`ref` = "grant:<id>" or "team:<id>").
+     */
+    | "agent";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

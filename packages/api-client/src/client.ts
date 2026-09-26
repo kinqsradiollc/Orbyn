@@ -98,6 +98,22 @@ import {
   type TeamRole,
   type User,
   type ApiKey,
+  type AgentActivity,
+  type AgentKeyInput,
+  type AgentSettings,
+  type AgentSettingsUpdate,
+  type AgentsOverview,
+  type NewAgentKey,
+  type TeamAgentAccess,
+  type TeamAgentsView,
+  type AdminAgentClient,
+  type AdminAgentUsage,
+  type OAuthCheck,
+  type OAuthConsentInput,
+  type OAuthRedirect,
+  type OAuthRequest,
+  type ReauthInput,
+  type Reauthenticated,
   type BlockDuplicateInput,
   type BlockInput,
   type BlockUpdate,
@@ -1800,6 +1816,77 @@ export class OrbynClient {
   deleteApiKey(id: string) {
     return this.request<void>(`/me/api-keys/${id}`, { method: "DELETE" });
   }
+  // ---- Connected agents (MCP) ----
+  /** Your connected agents, the MCP address, and until when old keys work there. */
+  agents() {
+    return this.request<AgentsOverview>("/me/agents");
+  }
+  /** A new agent key; the returned `key` is shown once. */
+  createAgentKey(input: AgentKeyInput) {
+    return this.request<NewAgentKey>("/me/agent-keys", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Revoke a connection (an agent key, or an old key's MCP access). */
+  revokeAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}`, { method: "DELETE" });
+  }
+  /** Restore a connection Orbyn paused for misbehaving. */
+  restoreAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}/restore`, { method: "POST" });
+  }
+  /** What one connection did, newest first. */
+  agentActivity(id: string) {
+    return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+  }
+  /** Team settings → Outside agents: the policy, and (managers) who connects. */
+  teamAgents(teamId: string) {
+    return this.request<TeamAgentsView>(`/teams/${teamId}/agents`);
+  }
+  // ---- Signing in with Orbyn (the consent page) ----
+  /** What an app's sign-in request asks for; with your spaces when signed in. */
+  oauthCheck(request: OAuthRequest) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(request))
+      if (typeof v === "string") q.set(k, v);
+    return this.request<OAuthCheck>(`/oauth/authorize/check?${q}`);
+  }
+  /** Allow the request: where to send the browser back, with a code. */
+  oauthAllow(input: OAuthConsentInput) {
+    return this.request<OAuthRedirect>("/oauth/authorize", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Decline the request: where to send the browser back, with an error. */
+  oauthDeny(request: OAuthRequest) {
+    return this.request<OAuthRedirect>("/oauth/authorize/deny", {
+      method: "POST",
+      body: { request },
+    });
+  }
+  /** Passkey options for confirming it's you (without a new session). */
+  reauthOptions() {
+    return this.request<{ handle: string; options: unknown }>(
+      "/me/reauth/options",
+      { method: "POST", body: {} },
+    );
+  }
+  /** Confirm it's you: password (and two-step code) or a passkey. */
+  reauth(input: ReauthInput) {
+    return this.request<Reauthenticated>("/me/reauth", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** A team's cap on outside agents (owners and admins). */
+  setTeamAgentAccess(teamId: string, agent_access: TeamAgentAccess) {
+    return this.request<{ id: string; agent_access: TeamAgentAccess }>(
+      `/teams/${teamId}/agent-access`,
+      { method: "PUT", body: { agent_access } },
+    );
+  }
   listWebhooks() {
     return this.request<Webhook[]>("/me/webhooks");
   }
@@ -2067,6 +2154,30 @@ export class OrbynClient {
   adminRevokeApiKey(id: string, keyId: string) {
     return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
       method: "DELETE",
+    });
+  }
+  /** Admin: the apps that have signed in with Orbyn. */
+  adminAgentClients() {
+    return this.request<AdminAgentClient[]>("/admin/agents/clients");
+  }
+  /** Admin: agent use by app over the last `days`. */
+  adminAgentUsage(days = 30) {
+    return this.request<AdminAgentUsage>(`/admin/agents/usage?days=${days}`);
+  }
+  /** Admin: end one of an account's agent connections. */
+  adminRevokeUserAgent(id: string, grantId: string) {
+    return this.request<void>(`/admin/users/${id}/agents/${grantId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Admin: the switches and limits for outside agents. */
+  adminAgentSettings() {
+    return this.request<AgentSettings>("/admin/agents");
+  }
+  adminUpdateAgentSettings(input: AgentSettingsUpdate) {
+    return this.request<AgentSettings>("/admin/agents", {
+      method: "PUT",
+      body: input,
     });
   }
   /** A one-hour password reset link to pass on (also emailed when mail is set up). */

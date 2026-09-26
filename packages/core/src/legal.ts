@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-09-23.3";
+export const DEFAULT_LEGAL_VERSION = "2026-09-26";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -218,6 +218,10 @@ Don't use Orbyn to break the law or anyone's rights; send spam or malware; haras
 
 Orbyn's assistant suggests changes; nothing changes until you approve it. Its suggestions can be wrong, so check them before relying on them.
 
+## Connected agents
+
+You can connect outside AI agents and apps (such as Claude or ChatGPT) to your Orbyn, by signing in with Orbyn or with an agent key. You choose what each one may do and in which spaces, and you can change or disconnect it at any time in Settings → Connected agents. What a connected agent does on your behalf counts as your own use of Orbyn, and the agent's own provider handles what Orbyn sends it under that provider's terms, not ours. Team owners and admins can limit or turn off outside agents in their team.
+
 ## Teams and sharing
 
 When you share with a team or a public page, the people you share with can see and sometimes change that content. Team owners and admins manage who belongs to a team.
@@ -272,6 +276,10 @@ This policy explains what personal data {{company}} ("we") collects when you use
 ## The assistant
 
 When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
+
+## Connected agents
+
+If you connect an outside AI agent or app to Orbyn (for example Claude, ChatGPT or a coding tool), by signing in with Orbyn or with an agent key, it can read, and if you allow it change, what you chose on the connection screen: your personal space, the teams you picked, and the kinds of things you turned on. Whatever it reads is sent to that app and its provider, who handle it under their own privacy policy; we don't control what they do with it. Guests' names and contact details from bookings are only included when you turn Bookings on for that connection. For each connection we keep its app's name and website, what you allowed, when it was last used, and a log of what it did (kept 180 days) so you can review and undo its changes; its sign-in is stored only as a one-way hash. We email you and show a notice when a new connection is made, and end every connection when you reset your password. Team owners and admins see which members' agents can reach their team (by name and app, never what they did in your personal space). Counts of agent calls are part of usage analytics and follow your analytics choice.
 
 ## Files you import
 

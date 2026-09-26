@@ -27,6 +27,7 @@ import { parseMinutes, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
 import { CalendarFeedCard, SubscriptionsCard } from "./CalendarLinks";
+import { ConnectedAgentsCard } from "./ConnectedAgents";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
@@ -55,8 +56,8 @@ const leadOf = (text: string) => {
 };
 
 /**
- * Settings → Connections: API keys, webhooks, your calendar feed links and
- * the calendars you subscribe to.
+ * Settings → Connections: connected AI agents, API keys, webhooks, your
+ * calendar feed links and the calendars you subscribe to.
  * Secrets are shown once, when they're made.
  */
 export function ConnectionsSheet({
@@ -132,13 +133,16 @@ function Body() {
           </Text>
         </View>
 
+        <ConnectedAgentsCard busy={busy} run={run} />
+
         {/* API keys */}
         <Text style={[shared.eyebrow, s.eyebrow]}>API KEYS</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Let scripts and other apps work with your tasks, pages and calendar
-            as you. A key can’t make or remove other keys, or change your
-            account settings, sign-in or webhooks. Treat it like a password.
+            Let scripts, automation tools and calendar apps work with your
+            tasks, pages and calendar as you. A key can’t make or remove other
+            keys, or change your account settings, sign-in or webhooks. Treat it
+            like a password. For AI agents, use an agent key above.
           </Text>
           {newKey && (
             <FadeIn style={s.secret}>
@@ -440,9 +444,8 @@ function Body() {
         <CalendarFeedCard />
         <SubscriptionsCard />
 
-        {/* Two addresses the desktop shows and the phone did not — and the
-            phone is where you are most likely to want the first of them,
-            since the calendar app you would subscribe is on it. */}
+        {/* The CalDAV address: the phone is where you are most likely to
+            want it, since the calendar app you would subscribe is on it. */}
         <Text style={[shared.eyebrow, s.eyebrow]}>FROM A CALENDAR APP</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
@@ -457,28 +460,6 @@ function Body() {
             label="Copy address"
             disabled={false}
             onPress={() => void shareText(`${webOrigin}/dav/`)}
-          />
-        </View>
-
-        <Text style={[shared.eyebrow, s.eyebrow]}>AN AI TOOL (MCP)</Text>
-        <View style={shared.card}>
-          <Text style={[shared.small, s.gap]}>
-            Let an AI tool that takes a request header, such as Claude Code or
-            Cursor, search your tasks, add tasks and read your agenda. Point it
-            at the address below and send a personal API key as “Authorization:
-            Bearer …”. The key reaches all your tasks, pages and calendar, so
-            keep it private. ChatGPT and claude.ai don’t take keys, so they
-            can’t connect this way.
-          </Text>
-          <Text selectable style={s.code}>
-            {`${client.baseUrl.replace(/\/$/, "")}/mcp`}
-          </Text>
-          <SmallAction
-            label="Copy address"
-            disabled={false}
-            onPress={() =>
-              void shareText(`${client.baseUrl.replace(/\/$/, "")}/mcp`)
-            }
           />
         </View>
       </View>

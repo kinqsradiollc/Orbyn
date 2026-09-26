@@ -79,14 +79,23 @@ export async function deliverOne(): Promise<boolean> {
                 ).rowCount
               : n.kind === "invite"
                 ? await inviteStale(db, n)
-                : PLANNER_KINDS.includes(n.kind)
-                  ? await plannerNoticeStale(db, n, item)
-                  : !item ||
-                    !item.can_see ||
-                    item.disabled ||
-                    isClosed(item.status) ||
-                    item.reminder_version !== n.item_version ||
-                    (n.channel === "email" && !item.email_reminders);
+                : n.kind === "agent"
+                  ? // About the person's own security or team: goes out
+                    // while their account is active.
+                    !(
+                      await db.query(
+                        "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
+                        [n.user_id],
+                      )
+                    ).rowCount
+                  : PLANNER_KINDS.includes(n.kind)
+                    ? await plannerNoticeStale(db, n, item)
+                    : !item ||
+                      !item.can_see ||
+                      item.disabled ||
+                      isClosed(item.status) ||
+                      item.reminder_version !== n.item_version ||
+                      (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,

@@ -8,13 +8,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import type {
-  AdminAnalytics,
-  AdminUserDetail,
-  Announcement,
-  RequestLogRow,
-  RequestSummary,
-  SweepView,
+import {
+  AGENT_ACCESS_LABELS,
+  type AdminAnalytics,
+  type AdminUserDetail,
+  type Announcement,
+  type RequestLogRow,
+  type RequestSummary,
+  type SweepView,
 } from "@orbyn/core";
 import { Chip, ChipRow } from "../components/Chip";
 import { Icon } from "../components/Icon";
@@ -673,6 +674,58 @@ export function AdminAccount({
                 />
               </View>
             ))}
+          </View>
+
+          <View style={s.list}>
+            <Text style={[shared.eyebrow, s.pad]}>
+              CONNECTED AGENTS · {(d.agents ?? []).length}
+            </Text>
+            {!d.agents?.length && (
+              <Text style={[shared.small, s.logRow]}>No agents connected.</Text>
+            )}
+            {(d.agents ?? []).map((g, n) => {
+              const title =
+                g.kind === "oauth"
+                  ? g.client_name || g.name
+                  : g.kind === "key"
+                    ? `Agent key “${g.name}”`
+                    : `API key “${g.name}”`;
+              return (
+                <View
+                  key={g.id}
+                  style={[s.logRow, s.rowBetween, n > 0 && s.divided]}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.title} numberOfLines={1}>
+                      {title}
+                    </Text>
+                    <Text style={shared.small} numberOfLines={2}>
+                      {g.client_host ? `${g.client_host} · ` : ""}
+                      {AGENT_ACCESS_LABELS[g.access].name} · connected{" "}
+                      {when(g.created_at)} ·{" "}
+                      {g.last_used_at
+                        ? `last used ${when(g.last_used_at)}`
+                        : "never used"}
+                      {g.suspended_at ? " · paused by Orbyn" : ""}
+                    </Text>
+                  </View>
+                  <SmallAction
+                    label="End"
+                    destructive
+                    disabled={busy}
+                    onPress={() =>
+                      confirmAction(
+                        `End ${g.kind === "oauth" ? title : `the key “${g.name}”`}'s connection to this account?`,
+                        "The agent stops working at once. What it already did stays.",
+                        "End connection",
+                        () =>
+                          then(() => client.adminRevokeUserAgent(d.id, g.id)),
+                      )
+                    }
+                  />
+                </View>
+              );
+            })}
           </View>
 
           {d.audit.length > 0 && (

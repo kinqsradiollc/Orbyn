@@ -18,8 +18,14 @@ info:
     sessions, two-step verification, passkeys, export, deleting the account,
     account settings (`PUT /me`, the public profile, privacy, time zone,
     consent, the email-to-task address and the calendar feed link), push
-    devices, and the assistant. Session tokens from `POST /auth/login` work
-    everywhere except `/mcp`, which takes only personal API keys.
+    devices, agent keys, and the assistant. Session tokens from
+    `POST /auth/login` work everywhere except `/mcp`.
+
+    **Agents.** AI agents connect to the MCP address (docs/mcp.md) with an
+    agent key (`oak_…`, made with `POST /me/agent-keys`), or sign in with
+    Orbyn (OAuth 2.1 with PKCE: the "Sign in with Orbyn" routes below).
+    Agent credentials (`oak_…`, `oat_…`, `ort_…`) are refused (`401`) by
+    every other route described here.
 
     **Errors** are `{ "message": "..." }` with the status codes below. `404`
     also covers records that belong to someone else.
@@ -57,6 +63,10 @@ tags:
   - name: Calendar
   - name: Time blocks
   - name: Webhooks
+  - name: Sign in with Orbyn
+    description: OAuth 2.1 for outside agents (docs/mcp.md). Public clients with PKCE.
+  - name: Outside agents
+    description: Team caps and the admin switches for outside agents.
 paths:
   /auth/register:
     post:
@@ -163,6 +173,488 @@ paths:
       parameters: [{ $ref: "#/components/parameters/Id" }]
       responses:
         "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents:
+    get:
+      tags: [Auth]
+      summary: Your connected agents and the MCP address (not with an API key)
+      responses:
+        "200":
+          description: "{ mcp_url, legacy_keys_until, grants }"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /me/agent-keys:
+    post:
+      tags: [Auth]
+      summary: Make an agent key for an AI agent (10 a minute; not with an API key)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 80 }
+                access: { type: string, enum: [read, suggest, write] }
+                personal: { type: boolean }
+                team_ids: { type: array, items: { type: string, format: uuid } }
+                expires_in_days: { type: integer, minimum: 1, maximum: 365 }
+                hide_outside_content: { type: boolean }
+      responses:
+        "201":
+          description: "{ grant, key }: the key (oak_…) is shown once"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /me/agents/{id}:
+    delete:
+      tags: [Auth]
+      summary: Revoke a connected agent
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents/{id}/restore:
+    post:
+      tags: [Auth]
+      summary: Restore a connected agent Orbyn paused for misbehaving
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Restored }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/agents/{id}/activity:
+    get:
+      tags: [Auth]
+      summary: What one connected agent did
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Activity, newest first
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /me/reauth:
+    post:
+      tags: [Auth]
+      summary: Confirm it's you again (password and two-step code, or a passkey)
+      description: |
+        Marks this session as just signed in for 10 minutes, which granting an
+        outside agent write access or bookings needs. Failures are `403`, never
+        `401`. Open during maintenance, like sign-in. Not with an API key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [password]
+                  properties:
+                    password: { type: string }
+                    code:
+                      { type: string, description: Two-step code, when it's on }
+                - type: object
+                  required: [handle, response]
+                  properties:
+                    handle: { type: string }
+                    response:
+                      { type: object, description: The passkey's answer }
+      responses:
+        "200":
+          description: "{ reauth_until }"
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /me/reauth/options:
+    post:
+      tags: [Auth]
+      summary: Passkey options for confirming it's you
+      responses:
+        "200":
+          description: WebAuthn authentication options and a handle
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /.well-known/oauth-authorization-server:
+    get:
+      tags: [Sign in with Orbyn]
+      summary: Authorization server metadata (RFC 8414)
+      description: |
+        Served at the issuer (the web address). Public clients only (PKCE S256,
+        `token_endpoint_auth_method: none`); client ID metadata documents are
+        supported; `registration_endpoint` is left out when an admin switches
+        dynamic registration off.
+      security: []
+      responses:
+        "200":
+          description: The metadata
+          content:
+            application/json:
+              schema: { type: object }
+  /oauth/authorize/check:
+    get:
+      tags: [Sign in with Orbyn]
+      summary: What the consent page shows for an authorization request
+      description: |
+        Checks the request (the app, its redirect address, PKCE, scope,
+        resource) and says who is asking. Signed out it answers the app only;
+        with a session it adds your spaces, any earlier connection and
+        `requested_access`. 30 a minute.
+      security: [{}, { bearer: [] }]
+      parameters:
+        - {
+            name: response_type,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [code] },
+          }
+        - {
+            name: client_id,
+            in: query,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            name: redirect_uri,
+            in: query,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            name: code_challenge,
+            in: query,
+            required: true,
+            schema: { type: string },
+          }
+        - {
+            name: code_challenge_method,
+            in: query,
+            required: true,
+            schema: { type: string, enum: [S256] },
+          }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: scope, in: query, schema: { type: string } }
+        - { name: resource, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: "{ client, requested_access, requested_bookings, account? }"
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /oauth/authorize:
+    post:
+      tags: [Sign in with Orbyn]
+      summary: Allow an app (the consent page); answers where to send the browser
+      description: |
+        Needs a session (not an API key). Write access or bookings need
+        `POST /me/reauth` within the last 10 minutes, else `403`
+        `reauth_required`. At most 50 finished connections per person.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request, access]
+              properties:
+                request:
+                  {
+                    type: object,
+                    description: The query from /oauth/authorize/check,
+                  }
+                access: { type: string, enum: [read, suggest, write] }
+                personal: { type: boolean }
+                team_ids: { type: array, items: { type: string, format: uuid } }
+                toolsets: { type: array, items: { type: string } }
+                bookings: { type: boolean }
+                notify_teammates: { type: boolean }
+                hide_outside_content: { type: boolean }
+                expires_in_days: { type: integer }
+      responses:
+        "200":
+          description: "{ redirect_to }: the app's address with code, state and iss"
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /oauth/authorize/deny:
+    post:
+      tags: [Sign in with Orbyn]
+      summary: Decline an app; answers where to send the browser (access_denied)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request]
+              properties:
+                request: { type: object }
+      responses:
+        "200":
+          description: "{ redirect_to }"
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Invalid" }
+  /oauth/token:
+    post:
+      tags: [Sign in with Orbyn]
+      summary: Exchange a code, or refresh (RFC 6749, PKCE, RFC 8707)
+      description: |
+        Codes last 60 seconds and are spent on first use. Access tokens
+        (`oat_…`) last an hour and work only at the MCP address. Refresh
+        tokens (`ort_…`) rotate on every use; presenting a spent one again
+        after a short grace (60 seconds, twice at most, for retries) revokes
+        the whole family and pauses the connection. Errors are
+        `{ error, error_description }` as RFC 6749 describes.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, client_id]
+              properties:
+                grant_type:
+                  { type: string, enum: [authorization_code, refresh_token] }
+                client_id: { type: string }
+                code: { type: string }
+                redirect_uri: { type: string }
+                code_verifier: { type: string }
+                refresh_token: { type: string }
+                resource: { type: string }
+                scope: { type: string }
+      responses:
+        "200":
+          description: "{ access_token, token_type, expires_in, refresh_token, scope }"
+          content:
+            application/json:
+              schema: { type: object }
+        "400":
+          description: "{ error, error_description }"
+          content:
+            application/json:
+              schema: { type: object }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /oauth/revoke:
+    post:
+      tags: [Sign in with Orbyn]
+      summary: Revoke a token (RFC 7009)
+      description: |
+        A refresh token takes its whole family; an access token only itself.
+        When nothing is left, the connection ends. Unknown tokens answer 200.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                client_id: { type: string }
+                token_type_hint: { type: string }
+      responses:
+        "200": { description: Revoked (or unknown) }
+        "400":
+          description: "{ error, error_description }"
+          content:
+            application/json:
+              schema: { type: object }
+  /oauth/register:
+    post:
+      tags: [Sign in with Orbyn]
+      summary: Register an app (RFC 7591), when admins allow it
+      description: |
+        Public clients only: a secret method is registered as `none`. 10 an
+        hour from one address and 20 a day. Every https address an app sends
+        people back to must pass Admin → Agents' allowed websites.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                client_name: { type: string }
+                redirect_uris:
+                  {
+                    type: array,
+                    items: { type: string },
+                    minItems: 1,
+                    maxItems: 10,
+                  }
+                application_type: { type: string, enum: [web, native] }
+                grant_types: { type: array, items: { type: string } }
+                response_types: { type: array, items: { type: string } }
+                token_endpoint_auth_method: { type: string }
+      responses:
+        "201":
+          description: The registration, with `client_id` and no secret
+          content:
+            application/json:
+              schema: { type: object }
+        "400":
+          description: "{ error, error_description }"
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { description: Registration is switched off }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /teams/{id}/agent-access:
+    put:
+      tags: [Outside agents]
+      summary: A team's cap on outside agents (owners and admins)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_access]
+              properties:
+                agent_access:
+                  { type: string, enum: [role, suggest, read, "off"] }
+      responses:
+        "200":
+          description: "{ id, agent_access }"
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /teams/{id}/agents:
+    get:
+      tags: [Outside agents]
+      summary: Team settings → Outside agents
+      description: |
+        The team's cap for everyone in it; for owners and admins also which
+        members' agents can reach it (by name and app) and when an agent first
+        used it.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: "{ agent_access, agent_first_used_at, connections? }"
+          content:
+            application/json:
+              schema: { type: object }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/agents:
+    get:
+      tags: [Outside agents]
+      summary: "Admin: the switches for outside agents"
+      responses:
+        "200":
+          description: "{ agents_enabled, agents_writes_enabled, dcr_enabled, allowed_client_hosts, blocked_client_ids, max_grant_days, agent_limits }"
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Outside agents]
+      summary: "Admin: change the switches (every field optional)"
+      description: |
+        Blocking an app ends its sign-ins at once. An app from a website no
+        longer allowed can't refresh or call MCP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agents_enabled: { type: boolean }
+                agents_writes_enabled: { type: boolean }
+                dcr_enabled: { type: boolean }
+                allowed_client_hosts:
+                  { type: array, items: { type: string }, maxItems: 50 }
+                blocked_client_ids:
+                  { type: array, items: { type: string }, maxItems: 200 }
+                max_grant_days: { type: integer, minimum: 1 }
+                agent_limits: { type: object }
+      responses:
+        "200":
+          description: The switches now
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/agents/clients:
+    get:
+      tags: [Outside agents]
+      summary: "Admin: the apps that have signed in, blocked or not"
+      responses:
+        "200":
+          description: Apps, with their kind, host and connections
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/agents/usage:
+    get:
+      tags: [Outside agents]
+      summary: "Admin: use by app"
+      parameters:
+        - {
+            name: days,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 90, default: 30 },
+          }
+      responses:
+        "200":
+          description: "{ apps }: connections, people, calls and writes per app"
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/users/{id}/agents/{grantId}:
+    delete:
+      tags: [Outside agents]
+      summary: "Admin: end one of an account's agent connections"
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - {
+            name: grantId,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "204": { description: Ended }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /items:

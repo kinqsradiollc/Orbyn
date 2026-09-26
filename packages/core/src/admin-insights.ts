@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ApiKey } from "./types.js";
+import type { AdminAgentGrant } from "./agents.js";
 
 /** What the admin console shows about traffic, usage and one account. */
 
@@ -145,6 +146,8 @@ export type AdminUserDetail = {
   /** Their personal API keys (never the keys themselves), newest first. */
   keys: ApiKey[];
   teams: { id: string; name: string; role: string }[];
+  /** Their outside agents' connections that haven't ended, newest first. */
+  agents: AdminAgentGrant[];
   counts: {
     items: number;
     open_items: number;

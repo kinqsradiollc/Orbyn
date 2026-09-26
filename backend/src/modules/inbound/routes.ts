@@ -98,8 +98,8 @@ export async function inboundRoutes(app: FastifyInstance) {
     const notes = String(body.text ?? "")
       .trim()
       .slice(0, 10000);
-    await transaction((db) =>
-      mutate(
+    await transaction(async (db) => {
+      const item = await mutate(
         db,
         { id: user.id, role: user.role as "admin" | "member" },
         {
@@ -109,8 +109,15 @@ export async function inboundRoutes(app: FastifyInstance) {
             notes: notes || parsed.input.notes || "",
           }),
         },
-      ),
-    );
+      );
+      // Its text came from an email: outside agents are told, and get it
+      // fenced as outside content.
+      if (item)
+        await db.query(
+          "INSERT INTO item_sources (item_id, source) VALUES ($1, 'inbound_email') ON CONFLICT DO NOTHING",
+          [item.id],
+        );
+    });
     return done("filed");
   });
 }

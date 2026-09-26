@@ -35,6 +35,7 @@ import { toggledStatus } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { TeamAgents } from "./TeamAgents";
 import { TeamTime } from "./TeamTime";
 import { MoreMenu } from "../components/MoreMenu";
 
@@ -408,6 +409,16 @@ export function TeamDetailPage({
                 .then(onChanged)
                 .catch(() => {})
             }
+          />
+        )}
+
+        {detail.role && (
+          <TeamAgents
+            teamId={teamId}
+            teamName={detail.name}
+            canManage={hasTeamPermission(detail.role, "team:update")}
+            busy={busy}
+            act={act}
           />
         )}
 

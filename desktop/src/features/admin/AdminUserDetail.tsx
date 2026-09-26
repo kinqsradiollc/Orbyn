@@ -8,7 +8,12 @@ import {
   Pencil,
   ShieldOff,
 } from "lucide-react";
-import type { AdminUserDetail as Detail, ApiKey } from "@orbyn/core";
+import {
+  AGENT_ACCESS_LABELS,
+  type AdminAgentGrant,
+  type AdminUserDetail as Detail,
+  type ApiKey,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
 import { useConfirm } from "../../components/Confirm";
@@ -116,6 +121,7 @@ export function AdminUserDetail({
   const d: Detail = data;
   // A server from before key listing sends only the count.
   const keys = d.keys ?? [];
+  const agents = d.agents ?? [];
 
   const saveProfile = async () => {
     if (!editing) return;
@@ -187,6 +193,21 @@ export function AdminUserDetail({
     )
       return;
     await run(() => client.adminRevokeApiKey(d.id, k.id));
+  };
+
+  const revokeAgent = async (g: AdminAgentGrant) => {
+    const title =
+      g.kind === "oauth" ? g.client_name || g.name : `the key “${g.name}”`;
+    if (
+      !(await ask({
+        title: `End ${title}'s connection to this account?`,
+        body: "The agent stops working at once. What it already did stays.",
+        confirmLabel: "End connection",
+        destructive: true,
+      }))
+    )
+      return;
+    await run(() => client.adminRevokeUserAgent(d.id, g.id));
   };
 
   const resetLink = async () => {
@@ -488,6 +509,49 @@ export function AdminUserDetail({
                   onClick={() => void revokeKey(k)}
                 >
                   Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="section-heading">
+          <h2>
+            Connected agents <span>{agents.length}</span>
+          </h2>
+        </div>
+        {agents.length === 0 ? (
+          <p className="db-empty">No agents connected.</p>
+        ) : (
+          <ul className="admin-sessions admin-keys">
+            {agents.map((g) => (
+              <li key={g.id}>
+                <span>
+                  <strong>
+                    {g.kind === "oauth"
+                      ? g.client_name || g.name
+                      : g.kind === "key"
+                        ? `Agent key “${g.name}”`
+                        : `API key “${g.name}”`}
+                  </strong>
+                  <small className="muted">
+                    {g.client_host ? `${g.client_host} · ` : ""}
+                    {AGENT_ACCESS_LABELS[g.access].name} · connected{" "}
+                    {when(g.created_at)} ·{" "}
+                    {g.last_used_at
+                      ? `last used ${when(g.last_used_at)}`
+                      : "never used"}
+                    {g.suspended_at ? " · paused by Orbyn" : ""}
+                  </small>
+                </span>
+                <button
+                  className="text-button danger-text"
+                  disabled={busy}
+                  onClick={() => void revokeAgent(g)}
+                >
+                  End
                 </button>
               </li>
             ))}

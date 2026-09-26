@@ -104,6 +104,10 @@ const WORDING = {
     private:
       "Calendar links must be on a public address, not a private network.",
   },
+  client: {
+    scheme: "An app's id must be an https:// address.",
+    private: "An app's id must be on a public address, not a private network.",
+  },
 };
 
 export type UrlKind = keyof typeof WORDING;
@@ -122,6 +126,7 @@ export type CheckedUrl = {
 export async function checkPublicUrl(
   raw: string,
   kind: UrlKind = "webhook",
+  options: { strict?: boolean } = {},
 ): Promise<CheckedUrl> {
   let url: URL;
   try {
@@ -129,7 +134,10 @@ export async function checkPublicUrl(
   } catch {
     fail(422, "That isn't a valid URL.");
   }
-  const privateAllowed = env.ALLOW_PRIVATE_WEBHOOKS === "true";
+  // Strict calls (an app's metadata document, fetched before anyone has
+  // signed in) never take the local-development shortcut.
+  const privateAllowed =
+    !options.strict && env.ALLOW_PRIVATE_WEBHOOKS === "true";
   if (
     url.protocol !== "https:" &&
     !(privateAllowed && url.protocol === "http:")
@@ -143,7 +151,7 @@ export async function checkPublicUrl(
   try {
     addresses = isIP(host)
       ? [{ address: host, family: isIP(host) }]
-      : await lookup(host, { all: true, verbatim: true });
+      : await outbound.lookup(host);
   } catch {
     fail(422, `Couldn't find ${host}. Check the address.`);
   }
@@ -185,6 +193,10 @@ export type PublicFetchInit = {
  * object so tests can stand in for the network.
  */
 export const outbound = {
+  /** Every address a name resolves to (DNS). */
+  lookup(host: string): Promise<{ address: string; family: number }[]> {
+    return lookup(host, { all: true, verbatim: true });
+  },
   request(checked: CheckedUrl, init: PublicFetchInit = {}): Promise<Response> {
     const { url, pinned } = checked;
     // Node asks for every address when it may try several (autoSelectFamily).
@@ -253,4 +265,80 @@ export async function publicFetch(
   kind: UrlKind = "webhook",
 ): Promise<Response> {
   return outbound.request(await checkPublicUrl(raw, kind), init);
+}
+
+export type SafeFetchResult = {
+  status: number;
+  headers: Headers;
+  /** The body as text, never more than the cap. */
+  text: string;
+  /** Where the answer finally came from, after any redirects. */
+  url: string;
+};
+
+/**
+ * A small fetch for addresses nobody in Orbyn chose yet: an app's client
+ * metadata document, fetched while someone is signing in. https only (no
+ * development shortcut), resolved once and called at that very address,
+ * each redirect checked again (at most `maxRedirects`), the whole thing
+ * within `timeoutMs`, and at most `maxBytes` of body. Fails with an Error
+ * whose message says what went wrong, in words.
+ */
+export async function safeFetch(
+  raw: string,
+  options: {
+    headers?: Record<string, string>;
+    maxBytes?: number;
+    timeoutMs?: number;
+    maxRedirects?: number;
+  } = {},
+): Promise<SafeFetchResult> {
+  const maxBytes = options.maxBytes ?? 65_536;
+  const maxRedirects = options.maxRedirects ?? 3;
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 5000);
+  let next = raw;
+  for (let hop = 0; ; hop++) {
+    const checked = await checkPublicUrl(next, "client", { strict: true });
+    const res = await outbound.request(checked, {
+      headers: options.headers,
+      signal,
+    });
+    if (res.status >= 300 && res.status < 400 && res.status !== 304) {
+      await res.body?.cancel().catch(() => {});
+      const location = res.headers.get("location");
+      if (!location) throw new Error("The address redirected nowhere.");
+      if (hop >= maxRedirects)
+        throw new Error("The address redirected too often.");
+      next = new URL(location, checked.url).toString();
+      continue;
+    }
+    const declared = Number(res.headers.get("content-length") ?? "0");
+    if (declared > maxBytes) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error("The document is too large.");
+    }
+    let text = "";
+    if (res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let size = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new Error("The document is too large.");
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+    }
+    return {
+      status: res.status,
+      headers: res.headers,
+      text,
+      url: String(checked.url),
+    };
+  }
 }

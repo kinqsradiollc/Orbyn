@@ -2,6 +2,7 @@
 # different command; only the gateway and the web app are published.
 #
 #   clients -> gateway :8008 -> api | ai | status -> pgbouncer -> postgres
+#   agents  -> gateway :8082 (mcp.orbyn.dev) -> mcp
 #   web :8080 (static app) -> /api -> gateway
 #   notifier (reminders) and status (probes) run in the background.
 #   Scale any service: docker compose up -d --scale api=3 --scale ai=2
@@ -178,6 +179,19 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
+  # Outside AI agents (MCP): short, stateless calls to mcp.orbyn.dev/mcp and
+  # the web app's /api/mcp. Scaled on requests; never calls an AI provider.
+  # Its public address is MCP_PUBLIC_URL (.env), never read from headers.
+  mcp:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/mcp.js"]
+    healthcheck: *http-health
+    deploy: { replicas: "${MCP_REPLICAS:-2}" }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
   # Schedules and delivers reminders; reports liveness by heartbeat.
   notifier:
     <<: *backend
@@ -280,6 +294,7 @@ services:
       STATUS_API_URL: http://api:8000
       STATUS_AI_URL: http://ai:8000
       STATUS_REALTIME_URL: http://realtime:8000
+      STATUS_MCP_URL: http://mcp:8000
     command: ["node", "backend/dist/services/status.js"]
     healthcheck: *http-health
     depends_on:
@@ -304,20 +319,29 @@ services:
       STATUS_SERVERS: ${GATEWAY_STATUS_SERVERS:-status:8000}
       WEB_SERVERS: ${GATEWAY_WEB_SERVERS:-desktop:8080}
       FILES_SERVERS: ${GATEWAY_FILES_SERVERS:-files:8000}
+      MCP_SERVERS: ${GATEWAY_MCP_SERVERS:-mcp:8000}
+      # Kill switch L4: 1 answers every MCP request with 503 (needs the
+      # gateway replaced; agents_enabled in Admin needs no restart).
+      MCP_DISABLED: ${MCP_DISABLED:-}
+      # A fingerprint of gateway/ (set by scripts/deploy.sh), so a changed
+      # template or entrypoint replaces the gateway on deploy.
+      GATEWAY_CONFIG_SHA: ${GATEWAY_CONFIG_SHA:-}
       RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
       TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
       RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-127.0.0.1/32 192.168.65.0/24}
     volumes: ["./gateway:/etc/orbyn-gateway:ro"]
-    # The gateway is the only service with host ports: the API and the web app.
+    # The gateway is the only service with host ports: the API, the web app
+    # and the MCP host (the tunnel reaches mcp.orbyn.dev at gateway:8082).
     ports:
       - "${API_BIND:-127.0.0.1}:${API_PORT:-8008}:8080"
       - "${WEB_PORT:-8080}:8081"
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8009}:8082"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 10
-    depends_on: [api, ai, realtime, status, files]
+    depends_on: [api, ai, realtime, status, files, mcp]
     restart: unless-stopped
 
   desktop:

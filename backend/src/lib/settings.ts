@@ -1,5 +1,7 @@
 import {
+  DEFAULT_AGENT_SETTINGS,
   DEFAULT_LEGAL_VERSION,
+  type AgentSettings,
   compareLegalVersions,
   defaultLegalSettings,
   type Announcement,
@@ -20,6 +22,24 @@ export const SETTING_KEYS: SystemSettingKey[] = [
   "status_interval_ms",
   "smtp",
 ];
+
+/**
+ * The switches for outside agents (MCP), kept in system_settings under
+ * these keys and changed in Admin (PUT /admin/agents). Like everything
+ * here they apply within 10 seconds on every copy, with no deploy:
+ * agents_enabled off stops every agent (kill switch L4 without the gateway),
+ * agents_writes_enabled off freezes their changes (L3), blocked_client_ids
+ * and allowed_client_hosts refuse apps (L2).
+ */
+export const AGENT_SETTING_KEYS = [
+  "agents_enabled",
+  "agents_writes_enabled",
+  "dcr_enabled",
+  "allowed_client_hosts",
+  "blocked_client_ids",
+  "max_grant_days",
+  "agent_limits",
+] as const satisfies readonly (keyof AgentSettings)[];
 
 type Smtp = {
   host: string;
@@ -43,6 +63,10 @@ export type LiveSettings = {
   announcement: Announcement;
   /** Who runs the service and the current Terms and Privacy Policy. */
   legal: LegalSettings;
+  /** Switches and limits for outside agents (see AGENT_SETTING_KEYS). */
+  agents: AgentSettings;
+  /** Until when old personal API keys still work over MCP (ISO), if set. */
+  legacy_keys_until: string | null;
   sources: Record<SystemSettingKey, "database" | "environment">;
   updated_at: string | null;
 };
@@ -70,6 +94,11 @@ function fromEnvironment(): LiveSettings {
     maintenance: { enabled: false, message: "", until: null, updated_at: null },
     announcement: { message: "", tone: "info", until: null, updated_at: null },
     legal: defaultLegalSettings(),
+    agents: {
+      ...DEFAULT_AGENT_SETTINGS,
+      agent_limits: { ...DEFAULT_AGENT_SETTINGS.agent_limits },
+    },
+    legacy_keys_until: null,
     sources: Object.fromEntries(
       SETTING_KEYS.map((k) => [k, "environment"]),
     ) as LiveSettings["sources"],
@@ -123,6 +152,20 @@ async function load(): Promise<LiveSettings> {
           };
       continue;
     }
+    if ((AGENT_SETTING_KEYS as readonly string[]).includes(row.key)) {
+      const key = row.key as (typeof AGENT_SETTING_KEYS)[number];
+      if (key === "agent_limits")
+        next.agents.agent_limits = {
+          ...next.agents.agent_limits,
+          ...(row.value as Partial<AgentSettings["agent_limits"]>),
+        };
+      else (next.agents as Record<string, unknown>)[key] = row.value;
+      continue;
+    }
+    if (row.key === "agents_legacy_keys_until") {
+      next.legacy_keys_until = typeof row.value === "string" ? row.value : null;
+      continue;
+    }
     if (row.key === "maintenance") {
       const m = row.value as Partial<Maintenance>;
       next.maintenance = {
@@ -146,7 +189,24 @@ async function load(): Promise<LiveSettings> {
     if (!latest || row.updated_at > latest) latest = row.updated_at;
   }
   next.updated_at = latest?.toISOString() ?? null;
+  if (!rows.some((r) => r.key === "agents_legacy_keys_until"))
+    next.legacy_keys_until = await legacyKeysUntil();
   return next;
+}
+
+/**
+ * Old personal API keys' last day on MCP when no setting says otherwise:
+ * 90 days after the agent-access migration ran here, so clearing the
+ * settings (Admin → System) never cuts them off early or keeps them on.
+ */
+async function legacyKeysUntil(): Promise<string | null> {
+  const row = (
+    await pool.query<{ until: Date }>(
+      `SELECT applied_at + interval '90 days' AS until FROM migrations
+        WHERE name LIKE '%\\_agent\\_access.sql' ORDER BY applied_at LIMIT 1`,
+    )
+  ).rows[0];
+  return row ? row.until.toISOString() : null;
 }
 
 /** Current settings, re-read from the database at most every 10 seconds. */
