@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
   fail,
-  FILE_LINK_MINUTES,
   isPageImage,
   pageFileInput,
   pageFileType,
@@ -19,6 +18,12 @@ import { pageFileReadableBy } from "../../lib/page-file-access.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { claimToken, importsEnabled } from "../imports/tokens.js";
+import {
+  PAGE_FILE_COLUMNS,
+  pageFileLimits,
+  readLink,
+  usedBytes,
+} from "./service.js";
 
 /**
  * Pictures and files in pages (EDT-01), on the API's side: a one-time link
@@ -34,30 +39,8 @@ import { claimToken, importsEnabled } from "../imports/tokens.js";
  * (page_file_refs, migrations 114 and 115; see sweep.ts).
  */
 
-export const PAGE_FILE_COLUMNS = `f.id, f.doc_id, f.name, f.mime, f.kind,
-  f.bytes::float8 AS bytes, f.width, f.height, f.status, f.source, f.created_at`;
-
-/** The largest file, and each person's space, in bytes. */
-export const pageFileLimits = () => ({
-  maxBytes: env.PAGE_FILES_MAX_MB * 1024 * 1024,
-  quotaBytes: env.PAGE_FILES_QUOTA_MB * 1024 * 1024,
-});
-
 /** How long an upload link lasts. */
 const UPLOAD_MINUTES = 10;
-
-/** How much space someone's pictures and files take (uploads on the way count). */
-export async function usedBytes(db: Queryable, userId: string) {
-  return Number(
-    (
-      await db.query<{ n: string | null }>(
-        `SELECT sum(bytes) AS n FROM page_files
-          WHERE user_id = $1 AND status <> 'failed'`,
-        [userId],
-      )
-    ).rows[0].n ?? 0,
-  );
-}
 
 /** A page `u` may change, for adding a picture or file to it. */
 async function writablePage(db: Queryable, u: UserRow, docId: string) {
@@ -136,17 +119,6 @@ const asFile = (
     created_at: new Date(file.created_at).toISOString(),
   };
 };
-
-/** A link to read one stored file for the next hour. */
-export function readLink(file: PageFile): PageFileLink {
-  const expires = Math.floor(Date.now() / 1000) + FILE_LINK_MINUTES * 60;
-  const token = claimToken("page-read", { f: file.id, e: expires });
-  return {
-    file,
-    url_path: `/files/r/${token}`,
-    expires_at: new Date(expires * 1000).toISOString(),
-  };
-}
 
 export async function pageFileRoutes(app: FastifyInstance) {
   /**

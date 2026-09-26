@@ -8,6 +8,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { audit } from "../../lib/audit.js";
 import { announceDocChange } from "./live.js";
 import { TAG_IN_SPACE, checkLinks, readDoc, requireDoc } from "./service.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Tidying the library (SRCH-03, ORG-03).
@@ -103,9 +104,7 @@ export async function libraryRoutes(app: FastifyInstance) {
     for (const id of [...new Set(b.ids)]) {
       try {
         const version = await transaction(async (db) => {
-          await db.query("SELECT set_config('orbyn.user_id', $1, true)", [
-            u.id,
-          ]);
+          await actAs(db, u.id);
           const doc = await requireDoc(db, id, u, "items:write");
           if (b.folder_id)
             await checkLinks(db, u, doc.team_id, { folder_id: b.folder_id });

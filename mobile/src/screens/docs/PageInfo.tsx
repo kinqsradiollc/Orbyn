@@ -169,27 +169,11 @@ export function PageInfo({
             />
           </Section>
         ) : null}
-        {doc.imported_from?.original_file ? (
-          <Section label="Original file">
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() =>
-                void downloadFile(doc.imported_from!.original_file!).catch(
-                  report,
-                )
-              }
-            >
-              <Text style={s.link}>{doc.imported_from.file_name}</Text>
-            </Pressable>
-          </Section>
-        ) : null}
         {/* A file kept with "Keep the original": take it away or delete it. */}
         <OriginalSection doc={doc} canWrite={canWrite} report={report} />
         {visible && (
           <FilesBlock
             docId={doc.id}
-            originalFile={doc.imported_from?.original_file ?? null}
             canWrite={canWrite && !reading}
             revision={doc.version}
             report={report}
@@ -282,13 +266,11 @@ export function PageInfo({
  */
 function FilesBlock({
   docId,
-  originalFile,
   canWrite,
   revision,
   report,
 }: {
   docId: string;
-  originalFile: string | null;
   canWrite: boolean;
   revision: number;
   report: (e: unknown) => void;
@@ -303,7 +285,7 @@ function FilesBlock({
     Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
       ([list, used]) => {
         if (!live) return;
-        setFiles(list.filter((f) => f.id !== originalFile));
+        setFiles(list);
         setUsage(used);
       },
       (e) => live && reportRef.current(e),
@@ -311,7 +293,7 @@ function FilesBlock({
     return () => {
       live = false;
     };
-  }, [docId, originalFile, revision, asked]);
+  }, [docId, revision, asked]);
   // The space is always shown, so someone near the limit sees it on any page.
   if (!files.length && !usage) return null;
   const remove = (f: PageFile) =>

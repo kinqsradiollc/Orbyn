@@ -23,6 +23,7 @@ import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { announceDocChange } from "../docs/live.js";
 import { idParam } from "../../lib/params.js";
 import { membershipRole, requireTeam } from "../../lib/teams.js";
+import { visibleOwned } from "../../lib/visibility.js";
 
 /**
  * Your own fields on pages and projects (ORG-02). A field belongs to a
@@ -46,8 +47,7 @@ const FIELD_FROM = `custom_fields f
   LEFT JOIN teams t ON t.id = f.team_id
   LEFT JOIN team_members tm ON tm.team_id = f.team_id AND tm.user_id = $1`;
 /** Fields `$1` can see: their own, and their teams'. */
-const FIELD_VISIBLE = `((f.team_id IS NULL AND f.user_id = $1)
-  OR f.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const fieldSeen = visibleOwned("f", "user_id");
 
 const canManage = (row: FieldRow, userId: string) =>
   row.team_id
@@ -81,7 +81,7 @@ export async function visibleFields(
   return (
     await db.query<FieldRow>(
       `SELECT ${FIELD_COLUMNS} FROM ${FIELD_FROM}
-        WHERE ${FIELD_VISIBLE} AND ($2::text IS NULL OR f.applies_to = $2)
+        WHERE ${fieldSeen} AND ($2::text IS NULL OR f.applies_to = $2)
         ORDER BY f.team_id NULLS FIRST, f.applies_to, f.position, lower(f.name), f.id`,
       [userId, appliesTo ?? null],
     )
@@ -98,7 +98,7 @@ async function requireField(
   const row = (
     await db.query<FieldRow>(
       `SELECT ${FIELD_COLUMNS} FROM ${FIELD_FROM}
-        WHERE f.id = $2 AND ${FIELD_VISIBLE}`,
+        WHERE f.id = $2 AND ${fieldSeen}`,
       [u.id, id],
     )
   ).rows[0];
@@ -223,8 +223,8 @@ export async function fieldDates(
         WHERE jsonb_typeof(v.value) = 'string'
           AND v.value #>> '{}' BETWEEN $2 AND $3
           AND f.team_id IS NOT DISTINCT FROM d.team_id
-          AND ((d.team_id IS NULL AND d.user_id = $1 AND f.user_id = $1)
-            OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${visibleOwned("d", "user_id")}
+          AND (d.team_id IS NOT NULL OR f.user_id = $1)
           AND ($4::uuid[] IS NULL OR d.team_id IS NULL OR d.team_id = ANY ($4::uuid[]))
        UNION ALL
        SELECT f.id, f.name, 'project', p.id, p.name, v.value #>> '{}', p.team_id
@@ -234,8 +234,8 @@ export async function fieldDates(
         WHERE jsonb_typeof(v.value) = 'string'
           AND v.value #>> '{}' BETWEEN $2 AND $3
           AND f.team_id IS NOT DISTINCT FROM p.team_id
-          AND ((p.team_id IS NULL AND p.user_id = $1 AND f.user_id = $1)
-            OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${visibleOwned("p", "user_id")}
+          AND (p.team_id IS NOT NULL OR f.user_id = $1)
           AND ($4::uuid[] IS NULL OR p.team_id IS NULL OR p.team_id = ANY ($4::uuid[]))
         ORDER BY date, field_name, title
         LIMIT 1000`,

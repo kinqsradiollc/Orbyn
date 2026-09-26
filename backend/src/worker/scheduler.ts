@@ -1,6 +1,7 @@
 import { transaction } from "../db/pool.js";
 import { expireInvites } from "../modules/booking/invites.js";
 import { emailEnabled } from "./channels/email.js";
+import { visibleItems } from "../lib/visibility.js";
 
 /**
  * Queue reminders for every open item whose next alert has come due: one
@@ -115,8 +116,7 @@ export async function enqueue() {
          AND b.start_at - make_interval(mins => p.session_reminder_minutes) <= now()
          AND b.started_at IS NULL
          AND i.status NOT IN ('done', 'cancelled')
-         AND ((i.team_id IS NULL AND i.user_id = b.user_id)
-           OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id = b.user_id))
+         AND ${visibleItems("i", { user: "b.user_id" })}
        ON CONFLICT DO NOTHING`,
     );
     await expireInvites(db);

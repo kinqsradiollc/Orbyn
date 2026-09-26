@@ -20,6 +20,7 @@ import { strictRateLimit } from "../../lib/params.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { loadPrefs } from "../planner/calendar.js";
+import { visibleDocs } from "../../lib/visibility.js";
 
 /**
  * Assistant chips when sharing, importing or scanning (AI-01): "Summarise"
@@ -102,9 +103,7 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
             team_id: string | null;
           }>(
             `SELECT d.title, d.content, d.team_id FROM docs d WHERE d.id = $2
-             AND d.deleted_at IS NULL
-             AND ((d.team_id IS NULL AND d.user_id = $1)
-               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+             AND ${visibleDocs("d")}`,
             [u.id, d.doc_id],
           )
         ).rows[0];

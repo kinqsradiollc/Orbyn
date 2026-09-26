@@ -133,6 +133,7 @@ import {
   ownBlock,
   removeSession,
 } from "./blocks.js";
+import { actAs } from "../../lib/actor.js";
 
 const DAY_MS = 86_400_000;
 
@@ -531,7 +532,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = sessionCheckInInput.parse(r.body);
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const result = await checkIn(
         db,
         u.id,
@@ -557,10 +558,8 @@ export async function plannerRoutes(app: FastifyInstance) {
       .strict()
       .parse(r.body ?? {});
     return transaction(async (db) => {
-      await db.query(
-        "SELECT set_config('orbyn.user_id', $1, true), set_config('orbyn.origin', $2, true)",
-        [u.id, from],
-      );
+      await actAs(db, u.id);
+      await db.query("SELECT set_config('orbyn.origin', $1, true)", [from]);
       return startSession(db, u.id, idParam(r));
     });
   });
@@ -628,11 +627,10 @@ export async function plannerRoutes(app: FastifyInstance) {
       slot ??= await workingFree(db, u.id, minutes, [b.id], now);
       if (!slot) fail(409, "There's no free working time in the next 7 days.");
       // The planner chose the new time, so a project's History says so.
+      await actAs(db, u.id);
       await db.query(
-        `SELECT set_config('orbyn.user_id', $1, true),
-                set_config('orbyn.origin',
-                  coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
-        [u.id],
+        `SELECT set_config('orbyn.origin',
+           coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
       );
       await db.query(
         "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
@@ -740,11 +738,10 @@ export async function plannerRoutes(app: FastifyInstance) {
     return transaction(async (db) => {
       // A project's History says the planner placed these sessions. An
       // origin set by the caller (the assistant applying its plan) stays.
+      await actAs(db, u.id);
       await db.query(
-        `SELECT set_config('orbyn.user_id', $1, true),
-                set_config('orbyn.origin',
-                  coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
-        [u.id],
+        `SELECT set_config('orbyn.origin',
+           coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
       );
       const plan = (
         await db.query<{

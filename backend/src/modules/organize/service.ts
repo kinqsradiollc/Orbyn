@@ -254,9 +254,7 @@ export async function setFavourite(
     const found = (
       await db.query(
         STARRABLE[kind],
-        kind === "heading"
-          ? [userId, targetId, blockId]
-          : [userId, targetId],
+        kind === "heading" ? [userId, targetId, blockId] : [userId, targetId],
       )
     ).rowCount;
     if (!found) fail(404, "Not found");

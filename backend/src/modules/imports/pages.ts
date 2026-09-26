@@ -16,6 +16,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { authenticate } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { unzip, ZipError } from "../docs/zip.js";
+import { actAs } from "../../lib/actor.js";
 
 const TEXT = /\.(md|markdown|txt|csv)$/i;
 
@@ -113,7 +114,7 @@ export async function pageImportRoutes(app: FastifyInstance) {
       if (d.dry_run || errors.length) return summary;
 
       return transaction(async (db) => {
-        await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+        await actAs(db, u.id);
         const folderIds = new Map<string, string>();
         for (const name of plan.folders) {
           folderIds.set(

@@ -112,6 +112,26 @@ export const visiblePageTemplates = (
 ) => visibleOwned(alias, "user_id", scope);
 
 /**
+ * Rows `scope.user` may change (not only see) in a table owned by one
+ * person or a team: their own personal rows, and rows in teams where they
+ * are more than a viewer. `scope.teams` and `scope.personal` are not
+ * applied; this is a write check on rows already found.
+ */
+export function writableOwned(
+  alias: string,
+  owner: string,
+  scope: Scope = DEFAULT_SCOPE,
+): string {
+  if (!ALIAS.test(alias) || !ALIAS.test(owner))
+    throw new Error(`Not a safe SQL name: ${alias}.${owner}`);
+  return (
+    `((${alias}.team_id IS NULL AND ${alias}.${owner} = ${scope.user})` +
+    ` OR ${alias}.team_id IN (SELECT team_id FROM team_members` +
+    ` WHERE user_id = ${scope.user} AND role IN ('owner', 'admin', 'member')))`
+  );
+}
+
+/**
  * Rows in a team `scope.user` belongs to (a team-only table, or the team
  * half of a rule written some other way).
  */

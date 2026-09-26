@@ -29,8 +29,9 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { privacyFrom } from "../links/privacy.js";
-import { PAGE_FILE_COLUMNS, readLink } from "../page-files/routes.js";
+import { PAGE_FILE_COLUMNS, readLink } from "../page-files/service.js";
 import { importsEnabled } from "../imports/tokens.js";
+import { visibleOwned } from "../../lib/visibility.js";
 
 /**
  * Publishing a page or a folder to the web (SHR-05, SHR-06).
@@ -94,8 +95,7 @@ async function ownerOf(
               coalesce(t.publishing_allowed, true) AS allowed
          FROM ${table} x LEFT JOIN teams t ON t.id = x.team_id
         WHERE x.id = $2 ${trash}
-          AND ((x.team_id IS NULL AND x.user_id = $1)
-            OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+          AND ${visibleOwned("x", "user_id")}`,
       [userId, id],
     )
   ).rows[0];

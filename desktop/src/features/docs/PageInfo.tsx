@@ -31,6 +31,7 @@ import { PageTags } from "./PageTags";
 import { FieldsPanel } from "../views/FieldsPanel";
 import { AliasesField } from "./AliasesField";
 import { downloadFile } from "./RichBlocks";
+import { saveBlob } from "./OriginalFile";
 import { ConnectionsMap } from "../connections/ConnectionsMap";
 
 /**
@@ -152,24 +153,25 @@ export function PageInfo({
         report={report}
       />
 
-      {doc.imported_from?.original_file && (
+      {doc.original && (
         <section className="page-info-section">
           <h3>Original file</h3>
           <button
             className="page-info-link"
             onClick={() =>
-              void downloadFile(doc.imported_from!.original_file!).catch(report)
+              void client
+                .downloadOriginal(doc.id)
+                .then(({ blob, name }) => saveBlob(blob, name), report)
             }
           >
             <Download size={13} aria-hidden="true" />
-            {doc.imported_from.file_name}
+            {doc.original.file_name}
           </button>
         </section>
       )}
 
       <FilesSection
         docId={doc.id}
-        originalFile={doc.imported_from?.original_file ?? null}
         canWrite={canWrite && !reading}
         revision={revision}
         report={report}
@@ -315,14 +317,11 @@ function AliasesSection({
  */
 function FilesSection({
   docId,
-  originalFile,
   canWrite,
   revision,
   report,
 }: {
   docId: string;
-  /** The kept original of an import, shown under "Original file". */
-  originalFile: string | null;
   canWrite: boolean;
   revision: string | number;
   report: (e: unknown) => void;
@@ -338,7 +337,7 @@ function FilesSection({
     Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
       ([list, used]) => {
         if (!live) return;
-        setFiles(list.filter((f) => f.id !== originalFile));
+        setFiles(list);
         setUsage(used);
       },
       (e) => live && reportRef.current(e),
@@ -346,7 +345,7 @@ function FilesSection({
     return () => {
       live = false;
     };
-  }, [docId, originalFile, revision, asked]);
+  }, [docId, revision, asked]);
   // The space is always shown, so someone near the limit sees it on any page.
   if (!files.length && !usage) return null;
   const remove = async (f: PageFile) => {

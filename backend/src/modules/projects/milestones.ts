@@ -12,7 +12,7 @@ import {
 import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { visibleItems } from "../../lib/visibility.js";
+import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { loadPrefs } from "../planner/calendar.js";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../planner/planned.js";
 import { loadItem, lockItem, requireItemAccess } from "../items/service.js";
 import { requireProject } from "./service.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Milestones: a project's own dated list of checkpoints. Each one rolls up
@@ -45,8 +46,7 @@ type MilestoneRow = {
 const COLUMNS = `m.id, m.project_id, m.name, to_char(m.due_on, 'YYYY-MM-DD') AS due_on,
   m.done_at, m.created_at, m.updated_at`;
 
-const VISIBLE_PROJECT = `((p.team_id IS NULL AND p.user_id = $1)
-  OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const projectSeen = visibleProjects("p");
 
 /** Every milestone of a project, soonest first, rolled up for `userId`. */
 export async function projectMilestones(
@@ -224,7 +224,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const db = reader(r.headers);
     const visible = await db.query(
-      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${VISIBLE_PROJECT}`,
+      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${projectSeen}`,
       [u.id, id],
     );
     if (!visible.rowCount) fail(404, "Project not found");
@@ -236,7 +236,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const d = milestoneInput.parse(r.body);
     const made = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const project = await requireProject(db, id, u, "items:write");
       // One add at a time per project, so parallel adds can't pass the cap.
       await db.query(
@@ -280,7 +280,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const p = params.parse(r.params);
     const d = milestoneUpdate.parse(r.body);
     await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await requireProject(db, p.id, u, "items:write");
       const before = await ownMilestone(db, p.id, p.milestoneId);
       const after = (
@@ -333,7 +333,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const p = params.parse(r.params);
     await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await requireProject(db, p.id, u, "items:write");
       const before = await ownMilestone(db, p.id, p.milestoneId);
       // Its tasks stay in the project; other devices hear they changed.
@@ -365,7 +365,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const { milestone_id } = itemMilestoneInput.parse(r.body);
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const item = await lockItem(db, id);
       await requireItemAccess(u, item, "items:write", db);
       if (milestone_id && item.kind !== "task")

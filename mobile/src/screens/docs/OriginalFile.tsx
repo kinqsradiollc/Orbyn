@@ -26,7 +26,7 @@ export function OriginalSection({
   if (!original || gone === doc.id) return null;
   return (
     <View style={s.section}>
-      <Text style={s.label}>Original</Text>
+      <Text style={s.label}>Original file</Text>
       <Text style={s.text}>
         {original.file_name} · {fileSizeLabel(Number(original.bytes))}
       </Text>

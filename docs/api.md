@@ -320,8 +320,7 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
 **Uploads** section of Docs, and the file itself is deleted
 (`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
 
-**Keep the original** (off by default): with `keep_original: true` on `POST /imports` (or the
-person's setting, `PUT /me/originals { keep }`, which a personal API key may read but not change), the file is kept after it becomes a page, encrypted in
+**Keep the original** (off by default): with the person's setting on (`PUT /me/originals { keep }`, which a personal API key may read but not change), or `keep_original: true` on `POST /imports` for one file (`false` overrides the setting), the file is kept after it becomes a page, encrypted in
 the file store's `kept/` folder, within `FILES_KEEP_QUOTA_MB` per person (over it, the page is still
 made and its notes say the original wasn't kept). `GET /me/originals` → `{ keep, used_bytes,
 quota_bytes, files }`. A page's `original` field names it; `GET /docs/:id/original` downloads it for
@@ -379,10 +378,10 @@ An `ImportJob` has these fields:
 - `error`: why it failed, in words for the person.
 - `notes`: what changed on the way in, such as "2 tables kept as tables" or "1 figure left out".
 
-**Keep the original** (`keep_original: true`): instead of being deleted, the file stays with the page
-it became, as one of its [pictures and files](#pictures-and-files-in-pages), in the importer's space
-(when it fits), and the page's `imported_from.original_file` names it. Tables in Word files, PDFs
-and OCR output are kept as tables.
+**Keep the original**: the person's setting (`PUT /me/originals { keep }`) decides, unless the
+import says otherwise (`keep_original: true` or `false` on `POST /imports`, as an agent's
+`start_import` can). A kept file is the page's `original` (see above), not one of its pictures and
+files. Tables in Word files, PDFs and OCR output are kept as tables.
 
 **Maths.** An equation read from a PDF's fonts, or from a scan, whose layout was a guess (a stacked
 fraction, a matrix, limits above and below) is a math block with `check: true`. The apps show a

@@ -10,6 +10,7 @@ import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { KeptOutError } from "../../lib/assistant-off.js";
+import { visibleProjects } from "../../lib/visibility.js";
 
 /**
  * Saved project chats: each person's own conversations with the assistant
@@ -24,13 +25,12 @@ const SUMMARY = `c.id, c.project_id, c.title, jsonb_array_length(c.turns)::int A
   c.created_at, c.updated_at`;
 
 /** SQL: the project on `p` is visible to `$1`. */
-const VISIBLE = `((p.team_id IS NULL AND p.user_id = $1)
-  OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const projectSeen = visibleProjects("p");
 
 async function visibleProject(db: Queryable, userId: string, id: string) {
   const row = (
     await db.query<{ assistant_off: boolean }>(
-      `SELECT p.assistant_off FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
+      `SELECT p.assistant_off FROM projects p WHERE p.id = $2 AND ${projectSeen}`,
       [userId, id],
     )
   ).rows[0];
@@ -63,7 +63,7 @@ export async function projectChatRoutes(app: FastifyInstance) {
       await reader(r.headers).query<ProjectChat>(
         `SELECT ${SUMMARY}, c.turns FROM project_chats c
            JOIN projects p ON p.id = c.project_id
-          WHERE c.id = $2 AND c.user_id = $1 AND ${VISIBLE}`,
+          WHERE c.id = $2 AND c.user_id = $1 AND ${projectSeen}`,
         [u.id, idParam(r)],
       )
     ).rows[0];

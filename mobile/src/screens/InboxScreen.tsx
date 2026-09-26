@@ -190,28 +190,28 @@ export function InboxScreen({
           n.kind === "session" && n.ref && n.item_id && onStartSession
             ? { label: "Start", run: onStartSession }
             : proposal && onOpenReview
-            ? {
-                label: "Review",
-                run: (x: Notice) => onOpenReview(proposal, x),
-              }
-            : n.kind === "conflict" && n.ref
-              ? { label: "Reschedule", run: onReschedule }
-              : n.kind === "rollforward"
-                ? { label: "Roll forward", run: onRollForward }
-                : n.kind === "at_risk" || n.kind === "deadline"
-                  ? { label: "Plan it", run: onPlanIt }
-                  : n.kind === "rsvp" && n.item_id
-                    ? { label: "Open event", run: onOpenItem }
-                    : n.kind === "template" && n.ref && onOpenTemplate
-                      ? { label: "Review", run: onOpenTemplate }
-                      : n.kind === "project" && n.ref && onOpenProject
-                        ? { label: "Open project", run: onOpenProject }
-                        : docId && onOpenDoc
-                          ? {
-                              label: "Open page",
-                              run: (x: Notice) => onOpenDoc(x, docId),
-                            }
-                          : null;
+              ? {
+                  label: "Review",
+                  run: (x: Notice) => onOpenReview(proposal, x),
+                }
+              : n.kind === "conflict" && n.ref
+                ? { label: "Reschedule", run: onReschedule }
+                : n.kind === "rollforward"
+                  ? { label: "Roll forward", run: onRollForward }
+                  : n.kind === "at_risk" || n.kind === "deadline"
+                    ? { label: "Plan it", run: onPlanIt }
+                    : n.kind === "rsvp" && n.item_id
+                      ? { label: "Open event", run: onOpenItem }
+                      : n.kind === "template" && n.ref && onOpenTemplate
+                        ? { label: "Review", run: onOpenTemplate }
+                        : n.kind === "project" && n.ref && onOpenProject
+                          ? { label: "Open project", run: onOpenProject }
+                          : docId && onOpenDoc
+                            ? {
+                                label: "Open page",
+                                run: (x: Notice) => onOpenDoc(x, docId),
+                              }
+                            : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable

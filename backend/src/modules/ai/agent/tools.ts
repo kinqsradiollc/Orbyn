@@ -56,10 +56,7 @@ import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { assistantMayRead, docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/service.js";
 import { visibleItems, visibleProjects } from "../../../lib/visibility.js";
-import {
-  proposeChanges,
-  type ProposedChange,
-} from "../../docs/service.js";
+import { proposeChanges, type ProposedChange } from "../../docs/service.js";
 import { openDecision } from "../../work-records/service.js";
 import {
   keptOutFor,

@@ -4,6 +4,7 @@ import type { TeamChange, TeamChangesPage } from "@orbyn/core";
 import { reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
+import { inMyTeams } from "../../lib/visibility.js";
 
 const query = z.object({
   /** One team; every team you are in when left out. */
@@ -67,7 +68,7 @@ export async function teamChangeRoutes(app: FastifyInstance) {
            FROM team_changes c
            JOIN teams t ON t.id = c.team_id
            LEFT JOIN users who ON who.id = c.user_id
-          WHERE c.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+          WHERE ${inMyTeams("c")}
             AND ($2::uuid IS NULL OR c.team_id = $2)
             AND (NOT $3::boolean OR c.user_id IS DISTINCT FROM $1)
             AND ($4::timestamptz IS NULL OR c.at < $4)

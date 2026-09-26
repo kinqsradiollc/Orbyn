@@ -1,12 +1,10 @@
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { sniffPageFile } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
 import {
   diskFull,
-  filesDir,
-  keptDir,
   objectPaths,
   pageFilesDir,
   readObject,
@@ -14,7 +12,7 @@ import {
   storeStream,
   UploadError,
 } from "../imports/store.js";
-import { isService, readClaimToken } from "../imports/tokens.js";
+import { readClaimToken } from "../imports/tokens.js";
 
 /**
  * Pictures and files in pages (EDT-01), on the file store's side. Uploads
@@ -194,54 +192,6 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
         .send(body);
     },
   );
-
-  /**
-   * Keep an import's original file with its page ("Keep the original"):
-   * the converter hands over the upload, which moves from the day-long
-   * import store into the page store under the page file's id. When the
-   * upload was already kept as the page's original (`kept`, POST
-   * /internal/files/:id/keep), it is copied from the kept originals and
-   * left there.
-   */
-  app.post("/internal/files/:id/keep-in-page", async (r, reply) => {
-    if (!isService(r.headers["x-orbyn-service"]))
-      return reply.code(403).send({ message: "Forbidden" });
-    const objectId = (r.params as { id: string }).id;
-    const { file, kept } = (r.body ?? {}) as {
-      file?: string;
-      kept?: boolean;
-    };
-    if (
-      !/^[0-9a-f-]{36}$/.test(objectId) ||
-      !file ||
-      !/^[0-9a-f-]{36}$/.test(file)
-    )
-      return reply.code(400).send({ message: "Bad request" });
-    const from = objectPaths(objectId, kept ? keptDir() : filesDir());
-    const to = objectPaths(file, pageFilesDir());
-    try {
-      await mkdir(pageFilesDir(), { recursive: true, mode: 0o700 });
-      // Copied, not renamed: the two stores are often on different volumes.
-      // The file's key is wrapped with the same master key, so it moves as is.
-      await copyFile(from.data, to.data);
-      await copyFile(from.key, to.key);
-    } catch {
-      await rm(to.data, { force: true });
-      await rm(to.key, { force: true });
-      await pool.query(
-        "UPDATE page_files SET status = 'failed' WHERE id = $1",
-        [file],
-      );
-      return reply.code(404).send({ message: "Not found" });
-    }
-    await pool.query(
-      `UPDATE page_files SET status = 'ready', stored_at = now()
-        WHERE id = $1`,
-      [file],
-    );
-    if (!kept) await removeObject(objectId, filesDir());
-    return { id: file };
-  });
 
   // Every ten minutes, the bytes of rows that are gone go too.
   let timer: NodeJS.Timeout | null = null;

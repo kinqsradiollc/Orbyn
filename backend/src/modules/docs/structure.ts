@@ -34,6 +34,8 @@ import {
   VISIBLE,
   withTaskState,
 } from "./service.js";
+import { actAs } from "../../lib/actor.js";
+import { writableOwned } from "../../lib/visibility.js";
 
 /**
  * Pages as structure (D4b): a live section of another page to embed
@@ -242,7 +244,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const { index, text } = docAnchorInput.parse(r.body ?? {});
     const out = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       // Anyone who can read the page may name a line to link to it: the
       // words don't change, and a viewer's "Copy link to this line" works.
       await requireDoc(db, id, u, "items:read");
@@ -288,7 +290,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = docExtractInput.parse(r.body ?? {});
     const out = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const current = await requireDoc(db, id, u, "items:write");
       if (current.version !== body.version)
         fail(
@@ -387,7 +389,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const body = docMergeInput.parse(r.body ?? {});
     if (body.into === id) fail(400, "A page can't be merged into itself.");
     const out = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       // Locked in one order, so two merges the other way round can't deadlock.
       const [a, b] = [id, body.into].sort();
       const first = await requireDoc(db, a, u, "items:write");
@@ -463,10 +465,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
                        AND l.target_kind = 'doc' AND l.target_id = $2
                      LIMIT 200)
               AND d.id <> $3 AND d.deleted_at IS NULL
-              AND ((d.team_id IS NULL AND d.user_id = $1)
-                OR d.team_id IN (SELECT team_id FROM team_members
-                                  WHERE user_id = $1
-                                    AND role IN ('owner', 'admin', 'member')))
+              AND ${writableOwned("d", "user_id")}
             ORDER BY d.id
             FOR UPDATE OF d`,
           [u.id, id, id],

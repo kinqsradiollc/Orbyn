@@ -15,6 +15,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { itemDetail, lockItem, requireItemAccess } from "../items/service.js";
 import { announceTo } from "../presence/live.js";
 import { startSessionsFor } from "../planner/check-in.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Focus: finished phases kept once (their id is made on the device), work
@@ -201,7 +202,7 @@ export async function setFocus(
   // session has started (it shows in the project's History).
   if (d.state.item_id && d.state.phase === "work" && d.state.run_started_at)
     await transaction(async (tx) => {
-      await tx.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(tx, u.id);
       await startSessionsFor(tx, u.id, d.state.item_id!);
     });
   await announceTo(db as never, { user_id: u.id }, "focus", {

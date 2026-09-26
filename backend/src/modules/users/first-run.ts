@@ -11,6 +11,7 @@ import { audit } from "../../lib/audit.js";
 import { authenticate, publicUser } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { strictRateLimit } from "../../lib/params.js";
+import { actAs } from "../../lib/actor.js";
 
 const insertDoc = async (
   db: Db,
@@ -48,7 +49,7 @@ export async function firstRunRoutes(app: FastifyInstance) {
     const starter = starterById(d.starter);
     if (d.team_id) await requireTeam(d.team_id, u, "items:write");
     const result = await transaction(async (db): Promise<FirstRunResult> => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const out: FirstRunResult = {
         project_id: null,
         brief_id: null,

@@ -486,9 +486,9 @@ export function seriesNoteFor(
 }
 
 /**
- * Where an imported page came from. The file itself is kept only when the
- * person chose "Keep the original" when importing it (EDT-01): then
- * `original_file` is its id in Orbyn's file store.
+ * Where an imported page came from. The file itself is kept only with
+ * "Keep the original" (the account setting, or a choice for one import):
+ * it is then the page's `original` ({@link Doc}), not part of this.
  */
 export type DocImportSource = {
   file_name: string;
@@ -496,7 +496,6 @@ export type DocImportSource = {
   pages: number;
   ocr_pages: number;
   imported_at: string;
-  original_file?: string | null;
 };
 
 export type DocComment = {

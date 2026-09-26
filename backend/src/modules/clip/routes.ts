@@ -39,6 +39,7 @@ import { visibleFolders, visibleProjects } from "../../lib/visibility.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "../docs/live.js";
 import { checkLinks, requireDoc, snapshot } from "../docs/service.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * The Orbyn Clipper's side of the API (CAP-02, CAP-03, CAP-04).
@@ -126,7 +127,7 @@ async function newPage(
   content: DocBlock[],
 ): Promise<string> {
   const teamId = await place(db, u, c);
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+  await actAs(db, u.id);
   return (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, folder_id, project_id)
@@ -150,7 +151,7 @@ async function addToExisting(
   docId: string,
   change: (content: DocBlock[]) => DocBlock[],
 ): Promise<{ title: string; version: number; lines: number }> {
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+  await actAs(db, u.id);
   await requireDoc(db, docId, u, "items:write");
   const doc = (
     await db.query<{ title: string; content: DocBlock[] }>(

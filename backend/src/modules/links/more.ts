@@ -18,12 +18,18 @@ import {
 import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
 import { docArchived, docVisibleTo } from "../../lib/doc-visibility.js";
-import { visibleItems, visibleProjects } from "../../lib/visibility.js";
+import {
+  readableDocs,
+  visibleItems,
+  visibleProjects,
+  writableOwned,
+} from "../../lib/visibility.js";
 import { hasVectors, semanticOn } from "../search/semantic.js";
 import { announceDocChange } from "../docs/live.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/service.js";
 import { linkPrivacy, readableLinks } from "./privacy.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * More about links (D4b): the hover card a link opens (LNK-07), the pages
@@ -34,12 +40,7 @@ import { linkPrivacy, readableLinks } from "./privacy.js";
  */
 
 /** SQL true when `$1` may change the thing with this team and owner. */
-const writable = (
-  alias: string,
-) => `((${alias}.team_id IS NULL AND ${alias}.user_id = $1)
-  OR ${alias}.team_id IN (SELECT team_id FROM team_members
-                            WHERE user_id = $1
-                              AND role IN ('owner', 'admin', 'member')))`;
+const writable = (alias: string) => writableOwned(alias, "user_id");
 
 const DOC_KIND = `CASE d.kind WHEN 'note' THEN 'Note' WHEN 'meeting' THEN 'Meeting note'
   WHEN 'agenda' THEN 'Agenda' ELSE 'Page' END`;
@@ -88,8 +89,7 @@ export async function linkCard(
            LEFT JOIN docs mi ON mi.id = d.merged_into
                 AND ${docVisibleTo("$1", "mi")}
           WHERE d.id = $2
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-              OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+            AND ${readableDocs("d")}`,
         [userId, q.id],
       )
     ).rows[0];
@@ -537,7 +537,7 @@ export async function linkUnlinkedMention(
         );
   if (!visible.rowCount) fail(404, "Not found");
   const saved = await transaction(async (db) => {
-    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await actAs(db, u.id);
     await requireDoc(db, input.doc_id, u, "items:write");
     const content =
       (

@@ -118,7 +118,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const { off } = z.object({ off: z.boolean() }).strict().parse(r.body);
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const project = await requireProject(db, id, u, "items:read");
       if (project.team_id) {
         const { effective } = await requireTeam(

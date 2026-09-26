@@ -1,4 +1,5 @@
 import type { Queryable } from "../db/pool.js";
+import { visibleProjects } from "./visibility.js";
 
 /**
  * Keep a project out of the assistant. An owner or admin (the owner, for a
@@ -46,8 +47,7 @@ export async function keptOutFor(
     await db.query<{ id: string }>(
       `SELECT p.id FROM projects p
         WHERE p.assistant_off
-          AND ((p.team_id IS NULL AND p.user_id = $1)
-            OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+          AND ${visibleProjects("p")}`,
       [userId],
     )
   ).rows.map((r) => r.id);
