@@ -12,6 +12,7 @@ import {
 import {
   requireDoc,
   restoreDocVersion,
+  saveDoc,
   trashDoc,
 } from "../modules/docs/service.js";
 import { deleteProject, requireProject } from "../modules/projects/service.js";
@@ -38,6 +39,8 @@ export type UndoOp =
       id: string;
       version: number;
       fields: Record<string, unknown>;
+      /** Time spent before completing counted its past sessions. */
+      spent_minutes?: number;
     }
   /** Sessions it removed (completing a task clears them): put them back. */
   | {
@@ -64,6 +67,14 @@ export type UndoOp =
     }
   /** A page it edited: put the kept version back. */
   | { op: "doc.restore"; doc_id: string; version: number; to_version: number }
+  /** A page it filed in a folder or project: put it back where it was. */
+  | {
+      op: "doc.file";
+      doc_id: string;
+      version: number;
+      folder_id?: string | null;
+      project_id?: string | null;
+    }
   /** A page it made: move it to Trash. */
   | { op: "doc.trash"; doc_id: string; version: number }
   /** Suggestions it left on a page: take them away while still open. */
@@ -121,6 +132,11 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
           version: row.version,
           data: mergedItem(row, op.fields),
         });
+        if (op.spent_minutes !== undefined)
+          await db.query("UPDATE items SET spent_minutes = $2 WHERE id = $1", [
+            op.id,
+            op.spent_minutes,
+          ]);
         break;
       }
       case "blocks.restore":
@@ -179,6 +195,19 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
         );
         after.push(() =>
           announceDocChange(pool, op.doc_id, restored.version, "undo"),
+        );
+        break;
+      }
+      case "doc.file": {
+        const doc = await requireDoc(db, op.doc_id, u, "items:write");
+        if (doc.version !== op.version) changedSince();
+        const saved = await saveDoc(db, u, op.doc_id, {
+          version: doc.version,
+          ...(op.folder_id !== undefined ? { folder_id: op.folder_id } : {}),
+          ...(op.project_id !== undefined ? { project_id: op.project_id } : {}),
+        });
+        after.push(() =>
+          announceDocChange(pool, op.doc_id, saved.version, "undo"),
         );
         break;
       }

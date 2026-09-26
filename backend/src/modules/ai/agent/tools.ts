@@ -1,3 +1,8 @@
+import {
+  assistantRegistry,
+  assistantSpecs,
+  runAssistantTool,
+} from "../../../capabilities/assistant.js";
 import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
@@ -1893,7 +1898,13 @@ export const TOOLS: Tool[] = [
   ),
 ];
 
-export const TOOL_SPECS = TOOLS.map((t) => t.spec);
+/**
+ * The assistant's tools on the capability registry (capabilities/
+ * assistant.ts): what it sends its provider, and how a call is found and
+ * checked, come from there.
+ */
+export const ASSISTANT_REGISTRY = assistantRegistry<AgentContext>(TOOLS);
+export const TOOL_SPECS = assistantSpecs(ASSISTANT_REGISTRY);
 
 const errorResult = (message: string) => ({
   content: JSON.stringify({ error: message }),
@@ -2218,8 +2229,7 @@ export async function runTool(
     return errorResult(
       "A project is already drafted for review. Do not add separate changes or schedules to this turn.",
     );
-  const found = TOOLS.find((t) => t.spec.name === name);
-  if (!found)
+  if (!ASSISTANT_REGISTRY.get(name))
     return errorResult(
       `Unknown tool "${call.name.slice(0, 60)}". Available: ${TOOL_SPECS.map((t) => t.name).join(", ")}.`,
     );
@@ -2231,16 +2241,13 @@ export async function runTool(
       `The arguments were not valid JSON. Call ${name} again with a JSON object.`,
     );
   }
-  const parsed = found.args.safeParse(raw);
-  if (!parsed.success)
-    return errorResult(
-      `Invalid arguments for ${name}: ${problem(parsed.error)}. Fix them and call it again.`,
-    );
   try {
-    return {
-      content: cap(await found.run(ctx, parsed.data as never)),
-      isError: false,
-    };
+    const ran = (await runAssistantTool(ASSISTANT_REGISTRY, name, ctx, raw))!;
+    if (!ran.ok)
+      return errorResult(
+        `Invalid arguments for ${name}: ${problem(ran.error)}. Fix them and call it again.`,
+      );
+    return { content: cap(ran.value), isError: false };
   } catch (error) {
     return errorResult(problem(error));
   }

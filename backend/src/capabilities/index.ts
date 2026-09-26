@@ -7,6 +7,23 @@ import { query } from "./query.js";
 import { Registry } from "./registry.js";
 import { findPassages, search } from "./search.js";
 import { getToday } from "./today.js";
+import {
+  completeTasks,
+  createTasks,
+  editChecklist,
+  updateTasks,
+} from "./write-tasks.js";
+import {
+  planSchedule,
+  rescheduleSessions,
+  scheduleSessions,
+} from "./write-sessions.js";
+import { createDocCapability, editDoc } from "./write-docs.js";
+import {
+  createProjectCapability,
+  link,
+  proposeChanges,
+} from "./write-links.js";
 
 /**
  * Every capability, in the order tools/list gives them. The order is part
@@ -27,6 +44,19 @@ export const registry = new Registry([
   searchItems,
   addTask,
   getAgenda,
+  // Changes and the Review inbox (phase A3).
+  createTasks,
+  updateTasks,
+  completeTasks,
+  editChecklist,
+  planSchedule,
+  scheduleSessions,
+  rescheduleSessions,
+  createDocCapability,
+  editDoc,
+  link,
+  createProjectCapability,
+  proposeChanges,
 ]);
 
 export { Registry };

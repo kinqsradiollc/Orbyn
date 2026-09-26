@@ -705,7 +705,7 @@ test("X-MCP-Readonly and X-MCP-Toolsets only ever narrow a connection", async ()
   const core = await h.legacy(keys.ownerAll, "tools/list", undefined, {
     "x-mcp-toolsets": "core,planner",
   });
-  assert.equal(core.body.result.tools.length, 8);
+  assert.equal(core.body.result.tools.length, 9);
   const ro = await h.post(
     {
       jsonrpc: "2.0",

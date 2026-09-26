@@ -27,7 +27,7 @@ const { keyBlockedRoute } = await import("../src/lib/auth.js");
  * covers routes; never raise it (a new signed-in route is covered or
  * excluded with a reason instead).
  */
-const MAX_PENDING = 165;
+const MAX_PENDING = 143;
 
 /** Routes between services, never for people or agents. */
 const INTERNAL = /^\/internal\//;

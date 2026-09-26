@@ -278,3 +278,174 @@ export async function recordChange(
 
 /** The write transaction as a Db (capabilities get it as Queryable). */
 export const dbOf = (ctx: CapabilityContext) => ctx.db as Db;
+
+// --- What the write tools share -------------------------------------------
+
+/** One thing a change made or changed, as the answer lists it. */
+export const doneEntry = z.object({
+  id: z.string(),
+  title: z.string(),
+  url: z.string(),
+  /** Its version now (tasks and pages), for the next change. */
+  version: z.number().nullable(),
+  change: z.string(),
+});
+export type DoneEntry = z.output<typeof doneEntry>;
+
+/** Something asked for that wasn't done, and why. */
+export const skippedEntry = z.object({ index: z.number(), reason: z.string() });
+
+/**
+ * Every write tool's answer: what was made directly, what waits in the
+ * Review inbox (one proposal for the rest), and what was left out.
+ */
+export const writeOutput = z.object({
+  status: z.enum(["done", "pending_review", "partly_pending"]),
+  done: z.array(doneEntry),
+  pending: pendingOutput.nullable(),
+  skipped: z.array(skippedEntry),
+});
+export type WriteAnswer = z.output<typeof writeOutput>;
+
+/**
+ * The answer for a write, filing whatever goes to review as one proposal.
+ * `undo` and `after` come from the changes made directly.
+ */
+export async function finishWrite(
+  ctx: CapabilityContext,
+  what: string,
+  parts: {
+    done: DoneEntry[];
+    review?: ReviewChangeInput[];
+    reviewSummary?: string;
+    skipped?: { index: number; reason: string }[];
+    undo?: UndoOp[];
+    after?: (() => Promise<void>)[];
+    teamId?: string | null;
+    outcome?: AgentOutcome;
+  },
+) {
+  const review = parts.review ?? [];
+  const pending = review.length
+    ? await toReview(ctx, parts.reviewSummary ?? what, review)
+    : null;
+  const skipped = parts.skipped ?? [];
+  const status: WriteAnswer["status"] = !pending
+    ? "done"
+    : parts.done.length
+      ? "partly_pending"
+      : "pending_review";
+  const { targets: pendingTargets = [], ...pendingOut } = pending ?? {};
+  const structured: WriteAnswer = {
+    status,
+    done: parts.done,
+    pending: pending ? (pendingOut as Pending) : null,
+    skipped,
+  };
+  const lines = [
+    ...parts.done.map(
+      (d) => `- ${d.change}: ${d.title}\n  id: ${d.id} · open: ${d.url}`,
+    ),
+    ...skipped.map((s) => `- Not done (#${s.index + 1}): ${s.reason}`),
+  ];
+  const head = parts.done.length
+    ? `${what}: ${parts.done.length} done${skipped.length ? `, ${skipped.length} not done` : ""}.`
+    : skipped.length && !pending
+      ? `${what}: nothing changed.`
+      : "";
+  const markdown = [
+    head,
+    ...lines,
+    ...(pending
+      ? [pendingText(parts.done.length ? "The rest" : what, pending)]
+      : []),
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const outcome: AgentOutcome =
+    parts.outcome ??
+    (pending && !parts.done.length
+      ? "proposed"
+      : !parts.done.length && skipped.length
+        ? "error"
+        : "ok");
+  return {
+    structured,
+    markdown,
+    targets: [...parts.done.map((d) => d.id), ...pendingTargets],
+    links: parts.done.slice(0, 20).map((d) => ({
+      uri: d.id
+        .replace(/^event:/, "task:")
+        .replace(/^(\w+):([0-9a-f-]{36}).*$/, "orbyn://$1/$2"),
+      name: d.title || d.id,
+    })),
+    write: {
+      outcome,
+      proposal_id: pending?.proposal_id ?? null,
+      undo: parts.undo,
+      team_id: parts.teamId ?? null,
+      after: parts.after,
+    } satisfies WriteMeta,
+  };
+}
+
+/**
+ * Whether a change to something in `teamId` reaches teammates' webhooks
+ * (a team change is sent to every member's webhooks listening for it), so
+ * it counts as reaching outside Orbyn.
+ */
+export async function teammatesListen(
+  db: Queryable,
+  teamId: string | null,
+  userId: string,
+  events: string[],
+): Promise<boolean> {
+  if (!teamId) return false;
+  return !!(
+    await db.query(
+      `SELECT 1 FROM webhooks w
+        WHERE w.active AND w.events && $3::text[] AND w.user_id <> $2
+          AND w.user_id IN (SELECT user_id FROM team_members WHERE team_id = $1)
+        LIMIT 1`,
+      [teamId, userId, events],
+    )
+  ).rowCount;
+}
+
+/**
+ * An ISO 8601 time with its offset ("2026-10-02T15:00:00+10:00"). Checked
+ * here rather than with a pattern, which would bloat every tool schema.
+ */
+export const isoTime = z
+  .string()
+  .max(40)
+  .refine(
+    (v) =>
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(
+        v,
+      ) && !Number.isNaN(Date.parse(v)),
+    "Use an ISO 8601 time with its offset, like 2026-10-02T15:00:00+10:00.",
+  )
+  .meta({ format: "date-time" });
+
+/** An id (a uuid), checked without a schema pattern. */
+export const idField = z
+  .string()
+  .max(36)
+  .refine(
+    (v) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    "Use an id (a uuid).",
+  )
+  .transform((v) => v.toLowerCase())
+  .meta({ format: "uuid" });
+
+/** An email address, checked without a schema pattern. */
+export const emailField = z
+  .string()
+  .max(320)
+  .refine(
+    (v) => /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v),
+    "Use an email address.",
+  )
+  .meta({ format: "email" });

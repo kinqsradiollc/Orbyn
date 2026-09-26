@@ -1,9 +1,9 @@
 import { loadPrefs } from "../planner/calendar.js";
 import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
-import { proposeProject, applyProject } from "./project-proposal.js";
+import { proposeProject } from "./project-proposal.js";
+import { applyProposal } from "../proposals/service.js";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import {
-  actionSchema,
   chatRequest,
   fail,
   HttpError,
@@ -20,12 +20,9 @@ import { pool, transaction } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
-import { actAs } from "../../lib/actor.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { audit } from "../../lib/audit.js";
-import { mutate } from "../items/service.js";
 import { pruneActions } from "./guards.js";
 import { ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
@@ -43,11 +40,9 @@ import { calendarMatches, getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
-import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
-import { linkDecision } from "../work-records/service.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -593,86 +588,17 @@ export async function aiRoutes(app: FastifyInstance) {
     return { state: "running" };
   });
 
+  // The assistant's Approve: the one proposals service applies it (the
+  // Review inbox's own route is POST /proposals/:id/apply). Kept here so the
+  // apps and any gateway that sends /ai/ to this service keep working.
   app.post("/ai/proposals/:id/apply", async (r) => {
     const u = await authenticate(r);
     const choice = z
       .object({ give_tasks_deadlines: z.boolean().default(true) })
       .parse(r.body ?? {});
-    return transaction(async (db) => {
-      const p = (
-        await db.query(
-          "SELECT * FROM proposals WHERE id=$1 AND user_id=$2 FOR UPDATE",
-          [idParam(r), u.id],
-        )
-      ).rows[0];
-      if (!p) fail(404, "Proposal not found");
-      if (p.applied)
-        return { applied: true, project_id: p.applied_project_id ?? null };
-      if (p.expires_at <= new Date())
-        fail(409, "Proposal expired. Ask the assistant again.");
-      await actAs(db, u.id);
-      let projectId: string | null = null;
-      if (p.project)
-        ({ project_id: projectId } = await applyProject(
-          db,
-          u,
-          p.project,
-          new Date(),
-          undefined,
-          choice.give_tasks_deadlines,
-        ));
-      else
-        for (const [index, raw] of p.actions.entries()) {
-          const action = actionSchema.parse(raw);
-          const item = await mutate(db, u, action);
-          const link = (p.decision_links ?? []).find(
-            (candidate: { action_index: number }) =>
-              candidate.action_index === index,
-          );
-          if (!link) continue;
-          if (
-            action.operation !== "create" ||
-            !item ||
-            !action.data?.project_id ||
-            item.project_id !== action.data.project_id
-          )
-            fail(
-              409,
-              "The decision task could not be linked. Ask for a new proposal.",
-            );
-          const linked = await linkDecision(
-            db,
-            u.id,
-            link.decision_id,
-            item.id,
-            item.project_id,
-          );
-          if (!linked)
-            fail(
-              409,
-              "The decision changed since this proposal. Ask again to review it.",
-            );
-        }
-      if (p.session_change)
-        await applySessionChange(db, u.id, p.session_change);
-      await db.query(
-        "UPDATE proposals SET applied=true, applied_project_id=$2 WHERE id=$1",
-        [p.id, projectId],
-      );
-      await audit(
-        {
-          actorId: u.id,
-          action: "ai.proposal_applied",
-          targetType: "proposal",
-          targetId: p.id,
-          details: {
-            actions: p.actions.length,
-            session_change: !!p.session_change,
-          },
-        },
-        db,
-      );
-      return { applied: true, project_id: projectId };
-    });
+    const done = await transaction((db) =>
+      applyProposal(db, u, idParam(r), choice),
+    );
+    return { applied: true, project_id: done.project_id };
   });
 }

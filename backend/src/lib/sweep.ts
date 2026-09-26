@@ -327,10 +327,13 @@ export const SWEEP_RULES: SweepRule[] = [
   },
   {
     key: "proposals",
-    label: "Assistant proposals",
-    detail: "Changes the assistant proposed that were never applied.",
+    label: "Proposals",
+    detail:
+      "Changes the assistant proposed, a day after they lapse; what outside agents proposed, 30 days after it was decided or expired (the Review inbox shows the last week).",
     table: "proposals",
-    where: "expires_at < now() - interval '1 day'",
+    where: `(source = 'assistant' AND expires_at < now() - interval '1 day')
+      OR (source = 'agent'
+          AND coalesce(decided_at, expires_at) < now() - interval '30 days')`,
     days: 0,
     configurable: false,
   },

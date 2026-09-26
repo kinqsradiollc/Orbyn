@@ -341,7 +341,7 @@ async function planInputs(db: Db, userId: string, state: PlanState, now: Date) {
  * A fingerprint of what a plan was made from: busy time, frames, working
  * hours and the tasks' planning fields. When it changes the plan is stale.
  */
-function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
+export function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
   const p = inputs.prefs;
   return createHash("sha256")
     .update(

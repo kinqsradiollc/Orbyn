@@ -346,6 +346,10 @@ async function staleness(
         return "It changed since this was suggested.";
       return null;
     }
+    case "checklist.edit": {
+      const found = await item(c.item_id);
+      return found ? null : "It's gone, or you can no longer see it.";
+    }
     case "checklist.remove": {
       const step = (
         await db.query(
@@ -433,6 +437,25 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
         ...base,
         headline: `Remove a step from ${quote(c.title)}`,
         rows: [{ label: "Step", before: c.step, after: null }],
+      };
+    case "checklist.edit":
+      return {
+        ...base,
+        headline: `Change the checklist of ${quote(c.title)}`,
+        rows: [
+          ...c.add.map((t) => ({ label: "Add step", before: null, after: t })),
+          ...c.rename.map((r) => ({
+            label: "Rename step",
+            before: null,
+            after: r.title,
+          })),
+          ...(c.tick.length
+            ? [{ label: "Tick", before: null, after: `${c.tick.length}` }]
+            : []),
+          ...(c.untick.length
+            ? [{ label: "Untick", before: null, after: `${c.untick.length}` }]
+            : []),
+        ],
       };
     case "doc.create":
       return {
@@ -769,6 +792,7 @@ export async function proposalOutcome(
   summary: string;
   changes: number;
   decided_at: string | null;
+  expires_at: string;
   review_url: string;
 } | null> {
   const row = (
@@ -785,6 +809,7 @@ export async function proposalOutcome(
     summary: row.summary,
     changes: row.source === "agent" ? row.changes.length : row.actions.length,
     decided_at: row.decided_at?.toISOString() ?? null,
+    expires_at: row.expires_at.toISOString(),
     review_url: reviewUrl(row.id),
   };
 }
@@ -862,6 +887,9 @@ export async function applyChange(
       await recomputeProgress(db, c.item_id);
       return {};
     }
+    case "checklist.edit":
+      await editSteps(db, u, c.item_id, c);
+      return {};
     case "doc.create":
       await createDoc(db, u, {
         title: c.title,
@@ -956,6 +984,73 @@ export async function applyChange(
       await removeLink(db, u, c);
       return {};
   }
+}
+
+/**
+ * Add, tick, untick or rename a task's checklist steps (never remove one),
+ * as `u`, then recompute its progress. Returns the steps as they were, for
+ * Undo. Steps don't change the task's edit version (as in the app).
+ */
+export async function editSteps(
+  db: Db,
+  u: UserRow,
+  itemId: string,
+  e: {
+    add?: string[];
+    tick?: string[];
+    untick?: string[];
+    rename?: { id: string; title: string }[];
+  },
+) {
+  const item = await lockItem(db, itemId);
+  await requireItemAccess(u, item, "items:write", db);
+  const before = (
+    await db.query<{
+      id: string;
+      title: string;
+      done: boolean;
+      position: number;
+    }>(
+      "SELECT id, title, done, position FROM item_steps WHERE item_id = $1 ORDER BY position",
+      [itemId],
+    )
+  ).rows;
+  const known = new Set(before.map((s) => s.id));
+  for (const id of [
+    ...(e.tick ?? []),
+    ...(e.untick ?? []),
+    ...(e.rename ?? []).map((r) => r.id),
+  ])
+    if (!known.has(id)) fail(404, "That step isn't on this task's checklist.");
+  for (const title of e.add ?? [])
+    await db.query(
+      `INSERT INTO item_steps (item_id, title, position)
+       VALUES ($1, $2, (SELECT coalesce(max(position), -1) + 1 FROM item_steps WHERE item_id = $1))`,
+      [itemId, title.trim().slice(0, 500)],
+    );
+  for (const r of e.rename ?? [])
+    await db.query(
+      "UPDATE item_steps SET title = $3 WHERE id = $1 AND item_id = $2",
+      [r.id, itemId, r.title.trim().slice(0, 500)],
+    );
+  if (e.tick?.length)
+    await db.query(
+      "UPDATE item_steps SET done = true WHERE item_id = $1 AND id = ANY($2::uuid[])",
+      [itemId, e.tick],
+    );
+  if (e.untick?.length)
+    await db.query(
+      "UPDATE item_steps SET done = false WHERE item_id = $1 AND id = ANY($2::uuid[])",
+      [itemId, e.untick],
+    );
+  await recomputeProgress(db, itemId);
+  await announceTo(
+    db as never,
+    { user_id: item.user_id, team_id: item.team_id },
+    "changed",
+    { area: "items" },
+  );
+  return { item, before };
 }
 
 /** Take a link away (never any content). */

@@ -50,10 +50,15 @@ after(async () => {
   await pool.end();
 });
 
-test("the migration runs on a database without pgvector", async () => {
+test("the migration runs on a database without pgvector", async (t) => {
   // It is the stock image here, which is the point: everything below must
-  // hold on the image the workspace actually runs.
-  assert.equal(await hasVectors(), false);
+  // hold on the image the workspace actually runs. A local database that
+  // ships pgvector (Postgres.app) can't show it, so the check is skipped
+  // there rather than failing on the machine instead of the code.
+  if (await hasVectors())
+    return t.skip(
+      "this test database has pgvector; the check needs the stock image",
+    );
   const column = (
     await pool.query(
       `SELECT 1 FROM information_schema.columns

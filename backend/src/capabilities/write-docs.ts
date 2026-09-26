@@ -1,0 +1,485 @@
+import { z } from "zod";
+import {
+  blockText,
+  carryBlockIds,
+  newBlockId,
+  parseDoc,
+  serializeDoc,
+  type DocBlock,
+  type ReviewChangeInput,
+} from "@orbyn/core";
+import { pool } from "../db/pool.js";
+import { Params, scopeFor, visibleDocs } from "../lib/visibility.js";
+import {
+  createDoc,
+  proposeChanges,
+  saveDoc,
+  type ProposedChange,
+} from "../modules/docs/service.js";
+import { announceDocChange } from "../modules/docs/live.js";
+import { syncSavedPages } from "../modules/study/service.js";
+import { cleanTitle } from "./format.js";
+import { docId, projectId, teamFilter } from "./common.js";
+import { visibleItem } from "./write-tasks.js";
+import { refUrl } from "./refs.js";
+import { CapabilityError, defineCapability } from "./registry.js";
+import {
+  ADDS,
+  EDITS,
+  actorOf,
+  clientRefInput,
+  dbOf,
+  destination,
+  finishWrite,
+  refuseSecrets,
+  idField,
+  emailField,
+  writeOutput,
+  type DoneEntry,
+} from "./write.js";
+
+/**
+ * Pages: making one from Markdown (create_doc) and targeted, version-checked
+ * edits (edit_doc). Personal pages change directly, always keeping the
+ * state before the edit in history, labelled with the agent; team pages
+ * get Take/Leave suggestions beside their words (or, for edits suggestions
+ * can't hold, a proposal in the Review inbox). Nothing ever rewrites a
+ * whole page from scratch.
+ */
+
+/**
+ * The most a page an agent writes may hold, serialized: what the apps can
+ * still save back (the API takes 64 KB a request).
+ */
+export const MAX_DOC_BYTES = 60_000;
+
+const DOC_BYTES_HINT =
+  "Keep a page under about 60 KB; split a long one into several pages.";
+
+/** Every line gets an id, so the page can be cited and edited line by line. */
+export const withIds = (blocks: DocBlock[]): DocBlock[] =>
+  blocks.map((b) => (b.id ? b : { ...b, id: newBlockId() }));
+
+function checkSize(content: DocBlock[]) {
+  if (Buffer.byteLength(JSON.stringify(content)) > MAX_DOC_BYTES)
+    throw new CapabilityError(
+      "INVALID",
+      "That page would be too long for the apps to save.",
+      DOC_BYTES_HINT,
+    );
+}
+
+const docEntry = (
+  d: { id: string; title: string; version: number },
+  change: string,
+): DoneEntry => ({
+  id: `doc:${d.id}`,
+  title: cleanTitle(d.title) || "Untitled",
+  url: refUrl({ type: "doc", id: d.id }),
+  version: d.version,
+  change,
+});
+
+/** Opens editors and Study once the change is committed. */
+const afterSave = (id: string, version: number, grant: string | null) => [
+  () => announceDocChange(pool, id, version, `agent:${grant ?? "session"}`),
+  () => syncSavedPages(id),
+];
+
+// --- create_doc --------------------------------------------------------
+
+export const createDocCapability = defineCapability({
+  name: "create_doc",
+  title: "Write a new page",
+  description:
+    "Makes a page, note or meeting note from Markdown (at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an id. Where this connection may only suggest, it waits in the Review inbox.",
+  input: z
+    .object({
+      title: z.string().trim().min(1).max(200),
+      markdown: z.string().max(MAX_DOC_BYTES),
+      kind: z.enum(["doc", "note", "meeting"]).default("doc"),
+      team: z
+        .string()
+        .trim()
+        .max(100)
+        .optional()
+        .describe('"personal" (the default), or a team id.'),
+      folder_id: idField.optional(),
+      project: z.string().trim().max(300).optional(),
+      event: z
+        .string()
+        .trim()
+        .max(300)
+        .optional()
+        .describe("An event this page is the notes of (event:<id>)."),
+      client_ref: clientRefInput,
+    })
+    .strict(),
+  output: writeOutput,
+  annotations: ADDS,
+  access: "suggest",
+  toolset: "core",
+  mode: "write",
+  tier: "W1",
+  async run(ctx, a) {
+    refuseSecrets(a.title, a.markdown);
+    const team = teamFilter(a.team);
+    const teamId = team && "team" in team ? team.team : null;
+    const content = withIds(parseDoc(a.markdown));
+    checkSize(content);
+    const project = a.project ? (projectId(a.project) ?? null) : null;
+    const where = destination(ctx, teamId, teamId ? "W2" : "W1");
+    if (where === "review")
+      return finishWrite(ctx, "Writing a page", {
+        done: [],
+        review: [
+          {
+            type: "doc.create",
+            title: a.title,
+            team_id: teamId,
+            kind: a.kind,
+            markdown: a.markdown,
+            folder_id: a.folder_id ?? null,
+            project_id: project,
+          },
+        ],
+        reviewSummary: `Write the page “${cleanTitle(a.title)}”`,
+        teamId,
+      });
+    const doc = await createDoc(dbOf(ctx), actorOf(ctx.principal), {
+      title: a.title,
+      kind: a.kind,
+      team_id: teamId,
+      item_id: a.event ? (await visibleItem(ctx, a.event)).id : null,
+      content,
+      folder_id: a.folder_id ?? null,
+      project_id: project,
+      tags: [],
+    });
+    return finishWrite(ctx, "Writing a page", {
+      done: [docEntry(doc, "Written")],
+      undo: [{ op: "doc.trash", doc_id: doc.id, version: doc.version }],
+      after: [() => syncSavedPages(doc.id)],
+      teamId,
+    });
+  },
+});
+
+// --- edit_doc ----------------------------------------------------------
+
+const edit = z.discriminatedUnion("op", [
+  z.object({
+    op: z.literal("append"),
+    markdown: z.string().max(MAX_DOC_BYTES),
+  }),
+  z.object({
+    op: z.literal("prepend"),
+    markdown: z.string().max(MAX_DOC_BYTES),
+  }),
+  z.object({
+    op: z.literal("insert_after"),
+    block: z.string().max(64).describe("The line's id (the ^b… anchor)."),
+    markdown: z.string().max(MAX_DOC_BYTES),
+  }),
+  z.object({
+    op: z.literal("replace"),
+    block: z.string().max(64),
+    markdown: z.string().max(MAX_DOC_BYTES),
+  }),
+  z.object({ op: z.literal("delete"), block: z.string().max(64) }),
+  z.object({
+    op: z.literal("find_replace"),
+    find: z.string().min(1).max(2000),
+    replace: z.string().max(2000),
+  }),
+]);
+type Edit = z.output<typeof edit>;
+
+/** The page after `edits`, all or nothing; INVALID naming what failed. */
+export function applyEdits(content: DocBlock[], edits: Edit[]): DocBlock[] {
+  let out = [...content];
+  const at = (block: string) => {
+    const i = out.findIndex((b) => b.id === block.replace(/^\^/, ""));
+    if (i < 0)
+      throw new CapabilityError(
+        "INVALID",
+        `There is no line ${block} on this page.`,
+        "Fetch the page again and use a line's ^b… anchor.",
+      );
+    return i;
+  };
+  for (const e of edits) {
+    switch (e.op) {
+      case "append":
+        out = [...out, ...withIds(parseDoc(e.markdown))];
+        break;
+      case "prepend":
+        out = [...withIds(parseDoc(e.markdown)), ...out];
+        break;
+      case "insert_after": {
+        const i = at(e.block);
+        out.splice(i + 1, 0, ...withIds(parseDoc(e.markdown)));
+        break;
+      }
+      case "replace": {
+        const i = at(e.block);
+        const fresh = withIds(carryBlockIds(out[i], parseDoc(e.markdown)));
+        out.splice(i, 1, ...fresh);
+        break;
+      }
+      case "delete":
+        out.splice(at(e.block), 1);
+        break;
+      case "find_replace": {
+        let hits = 0;
+        out = out.map((b) => {
+          if (!("text" in b) || !b.text.includes(e.find)) return b;
+          hits++;
+          return { ...b, text: b.text.split(e.find).join(e.replace) };
+        });
+        if (!hits)
+          throw new CapabilityError(
+            "INVALID",
+            "Those words aren't on the page.",
+            "Quote the words exactly as fetch returned them.",
+          );
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The same edits as Take/Leave suggestions beside the page's words, or
+ * null when one of them can't be a suggestion (new lines, or a line
+ * replaced by several).
+ */
+export function asSuggestions(
+  content: DocBlock[],
+  edits: Edit[],
+): ProposedChange[] | null {
+  const out: ProposedChange[] = [];
+  for (const e of edits) {
+    if (e.op === "find_replace") {
+      let found = false;
+      for (const b of content) {
+        if (!b.id || !("text" in b)) continue;
+        const text = blockText(b);
+        let from = text.indexOf(e.find);
+        while (from >= 0) {
+          found = true;
+          out.push({
+            block_id: b.id,
+            kind: e.replace ? "replace" : "delete",
+            range_start: from,
+            range_end: from + e.find.length,
+            text: e.replace,
+            quote: e.find,
+          });
+          from = text.indexOf(e.find, from + e.find.length);
+        }
+      }
+      if (!found)
+        throw new CapabilityError(
+          "INVALID",
+          "Those words aren't on the page.",
+          "Quote the words exactly as fetch returned them.",
+        );
+      continue;
+    }
+    if (e.op !== "replace" && e.op !== "delete") return null;
+    const b = content.find((x) => x.id === e.block.replace(/^\^/, ""));
+    if (!b)
+      throw new CapabilityError(
+        "INVALID",
+        `There is no line ${e.block} on this page.`,
+        "Fetch the page again and use a line's ^b… anchor.",
+      );
+    if (!("text" in b)) return null;
+    const text = blockText(b);
+    if (e.op === "delete") {
+      out.push({
+        block_id: b.id!,
+        kind: "delete",
+        range_start: 0,
+        range_end: text.length,
+        text: "",
+        quote: text,
+      });
+      continue;
+    }
+    const fresh = parseDoc(e.markdown);
+    if (fresh.length !== 1 || !("text" in fresh[0])) return null;
+    out.push({
+      block_id: b.id!,
+      kind: "replace",
+      range_start: 0,
+      range_end: text.length,
+      text: blockText(fresh[0]),
+      quote: text,
+    });
+  }
+  return out;
+}
+
+/** The lines that differ, before and after, for the inbox's diff. */
+function changedLines(before: DocBlock[], after: DocBlock[]) {
+  const was = new Map(before.map((b) => [b.id, serializeDoc([b])]));
+  const now = new Map(after.map((b) => [b.id, serializeDoc([b])]));
+  const lines: { before: string | null; after: string | null }[] = [];
+  for (const b of after) {
+    const old = b.id ? was.get(b.id) : undefined;
+    const text = now.get(b.id)!;
+    if (old !== text) lines.push({ before: old ?? null, after: text });
+  }
+  for (const b of before)
+    if (!b.id || !now.has(b.id))
+      lines.push({ before: was.get(b.id)!, after: null });
+  return lines.slice(0, 200).map((l) => ({
+    before: l.before?.slice(0, 5000) ?? null,
+    after: l.after?.slice(0, 5000) ?? null,
+  }));
+}
+
+export const editDoc = defineCapability({
+  name: "edit_doc",
+  title: "Edit a page",
+  description:
+    "Version-checked edits to one page, all or none: append, prepend, insert_after, replace or delete a line (by its ^b\u2026 anchor), find_replace, and a title. Personal pages change directly, keeping the old state in history labelled with this agent; team pages get Take/Leave suggestions (edits suggestions can't hold go to review).",
+  input: z
+    .object({
+      doc: z.string().trim().min(1).max(300),
+      version: z.number().int().positive(),
+      edits: z.array(edit).max(50).default([]),
+      title: z.string().trim().min(1).max(200).optional(),
+      client_ref: clientRefInput,
+    })
+    .strict()
+    .refine((a) => a.edits.length || a.title, {
+      message: "Give at least one edit or a new title.",
+    }),
+  output: writeOutput,
+  annotations: EDITS,
+  access: "suggest",
+  toolset: "core",
+  mode: "write",
+  tier: "W2",
+  async run(ctx, a) {
+    refuseSecrets(
+      a.title,
+      ...a.edits.map((e) =>
+        "markdown" in e ? e.markdown : "replace" in e ? e.replace : null,
+      ),
+    );
+    const id = docId(a.doc)!;
+    const params = new Params();
+    const scope = scopeFor(ctx.spaces, params);
+    const doc = (
+      await ctx.db.query<{
+        id: string;
+        title: string;
+        team_id: string | null;
+        version: number;
+        content: DocBlock[];
+      }>(
+        `SELECT d.id, d.title, d.team_id, d.version, d.content FROM docs d
+          WHERE d.id = ${params.add(id)} AND ${visibleDocs("d", scope)}
+          FOR UPDATE`,
+        params.values,
+      )
+    ).rows[0];
+    if (!doc)
+      throw new CapabilityError(
+        "NOT_FOUND",
+        "Nothing with that id is reachable from this connection.",
+        "Search for it and use an id from the results.",
+      );
+    if (doc.version !== a.version)
+      throw new CapabilityError(
+        "VERSION_CONFLICT",
+        `The page changed since version ${a.version}.`,
+        "Fetch it again, then make the edits against the current version.",
+        { id: `doc:${doc.id}`, version: doc.version },
+      );
+    const content = doc.content ?? [];
+    const after = applyEdits(content, a.edits);
+    checkSize(after);
+    const where = destination(ctx, doc.team_id, "W2");
+    const direct = where === "direct" && !doc.team_id;
+    const actor = actorOf(ctx.principal);
+    const db = dbOf(ctx);
+    if (direct) {
+      const saved = await saveDoc(
+        db,
+        actor,
+        doc.id,
+        {
+          version: doc.version,
+          content: after as never,
+          ...(a.title ? { title: a.title } : {}),
+        },
+        { always: true },
+      );
+      return finishWrite(ctx, "Editing the page", {
+        done: [docEntry(saved, "Edited")],
+        undo: [
+          {
+            op: "doc.restore",
+            doc_id: doc.id,
+            version: saved.version,
+            to_version: doc.version,
+          },
+        ],
+        after: afterSave(doc.id, saved.version, ctx.principal.grant_id),
+        teamId: doc.team_id,
+      });
+    }
+    // Team pages, and pages this connection may only suggest on.
+    const suggestions = a.title ? null : asSuggestions(content, a.edits);
+    if (suggestions?.length) {
+      const made = await proposeChanges(
+        ctx.db,
+        doc.id,
+        ctx.principal.user.id,
+        suggestions,
+        `Suggested by ${cleanTitle(ctx.principal.client.name) || "an outside agent"}`,
+      );
+      return finishWrite(ctx, "Suggesting edits", {
+        done: [
+          docEntry(
+            doc,
+            `${made.length} suggestion${made.length === 1 ? "" : "s"} beside the words, for someone to take or leave`,
+          ),
+        ],
+        undo: [
+          {
+            op: "suggestions.delete",
+            doc_id: doc.id,
+            ids: made.map((m) => m.id),
+          },
+        ],
+        teamId: doc.team_id,
+        outcome: "suggested",
+      });
+    }
+    const review: ReviewChangeInput[] = [
+      {
+        type: "doc.edit",
+        doc_id: doc.id,
+        version: doc.version,
+        title: doc.title,
+        team_id: doc.team_id,
+        content: after as never,
+        lines: changedLines(content, after),
+        ...(a.title ? { new_title: a.title } : {}),
+      },
+    ];
+    return finishWrite(ctx, "Editing the page", {
+      done: [],
+      review,
+      reviewSummary: `Edit the page “${cleanTitle(doc.title)}”`,
+      teamId: doc.team_id,
+    });
+  },
+});

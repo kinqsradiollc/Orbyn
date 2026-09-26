@@ -35,6 +35,7 @@ import {
   revokeConnections,
   revokeGrant,
 } from "./service.js";
+import { cancelTeamProposals } from "../proposals/service.js";
 
 /**
  * Settings → Connected agents (the person's own connections), the admin's
@@ -101,6 +102,10 @@ export async function agentRoutes(app: FastifyInstance) {
       // Every copy re-reads the team's policy on the next call anyway; this
       // clears anything held for it at once.
       await announceAuthChange(db, { teams: [teamId], reason: "team_policy" });
+      // Turned off or down to reading: what agents proposed in this team and
+      // still waits is cancelled (a team capped at suggest keeps them).
+      if (agent_access === "off" || agent_access === "read")
+        await cancelTeamProposals(db, teamId);
       await audit(
         {
           actorId: u.id,

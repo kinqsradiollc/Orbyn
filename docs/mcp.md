@@ -99,16 +99,28 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 
 ## Tools
 
-| Tool            | Title                        | Kind | Needs      |
-| --------------- | ---------------------------- | ---- | ---------- |
-| `get_context`   | Who and where                | read | read, core |
-| `search`        | Search Orbyn                 | read | read, core |
-| `fetch`         | Open by id                   | read | read, core |
-| `get_today`     | Today                        | read | read, core |
-| `get_calendar`  | Calendar                     | read | read, core |
-| `query`         | List with filters            | read | read, core |
-| `get_project`   | Open a project               | read | read, core |
-| `find_passages` | Find passages with citations | read | read, core |
+| Tool                  | Title                        | Kind        | Needs         |
+| --------------------- | ---------------------------- | ----------- | ------------- |
+| `get_context`         | Who and where                | read        | read, core    |
+| `search`              | Search Orbyn                 | read        | read, core    |
+| `fetch`               | Open by id                   | read        | read, core    |
+| `get_today`           | Today                        | read        | read, core    |
+| `get_calendar`        | Calendar                     | read        | read, core    |
+| `query`               | List with filters            | read        | read, core    |
+| `get_project`         | Open a project               | read        | read, core    |
+| `find_passages`       | Find passages with citations | read        | read, core    |
+| `create_tasks`        | Add tasks or events          | write       | suggest, core |
+| `update_tasks`        | Change tasks or events       | destructive | suggest, core |
+| `complete_tasks`      | Complete or reopen tasks     | destructive | write, core   |
+| `edit_checklist`      | Edit a task's checklist      | destructive | write, core   |
+| `plan_schedule`       | Preview a plan               | read        | read, core    |
+| `schedule_sessions`   | Put sessions on the calendar | write       | write, core   |
+| `reschedule_sessions` | Move or remove sessions      | destructive | write, core   |
+| `create_doc`          | Write a new page             | write       | suggest, core |
+| `edit_doc`            | Edit a page                  | destructive | suggest, core |
+| `link`                | Link or unlink               | write       | write, core   |
+| `create_project`      | Start a project              | write       | suggest, core |
+| `propose_changes`     | Propose changes for review   | write       | suggest, core |
 
 ### `get_context`
 
@@ -204,6 +216,141 @@ The lines of pages (and task notes and decisions) that best match a question, fo
 | `team`             | string  | "personal", or a team id from get_context.     |
 | `limit`            | integer | Default 8.                                     |
 
+### `create_tasks`
+
+Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !high 90m #uni @Sam", parsed without AI). Sets space, project and stage, parent, list, tags, estimate, repeat, steps and invites. Events that invite people, assigning someone else (without notify-teammates) and spaces it may only suggest in go to the Review inbox. Habit lines are left out.
+
+| Argument           | Type           | Notes                                                                                                                                      |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tasks` (required) | list of object |                                                                                                                                            |
+| `client_ref`       | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `update_tasks`
+
+Changes up to 25 tasks or events. Only named fields change; the version you give is checked (VERSION_CONFLICT otherwise), so nothing left out is wiped. A repeating item changes as a series. Moving between Personal and a team, emailing invitees or notifying a teammate (without notify-teammates) goes to review. Undo keeps the old values.
+
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `changes` (required) | list of object |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `complete_tasks`
+
+Completes (or with done false reopens) up to 25 tasks. Each needs its version, and a repeating task the occurrence (its due_at), so a retry never completes the next repeat. Future sessions of a completed task are cleared; Undo puts task and sessions back.
+
+| Argument           | Type           | Notes                                                                                                                                      |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tasks` (required) | list of object |                                                                                                                                            |
+| `client_ref`       | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `edit_checklist`
+
+Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.
+
+| Argument          | Type           | Notes                                                                                                                                      |
+| ----------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task` (required) | string         |                                                                                                                                            |
+| `add`             | list of string |                                                                                                                                            |
+| `tick`            | list of id     |                                                                                                                                            |
+| `untick`          | list of id     |                                                                                                                                            |
+| `rename`          | list of object |                                                                                                                                            |
+| `client_ref`      | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `plan_schedule`
+
+Previews sessions for open tasks over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.
+
+| Argument     | Type           | Notes                                           |
+| ------------ | -------------- | ----------------------------------------------- |
+| `days`       | integer        |                                                 |
+| `start_date` | string         | First day (YYYY-MM-DD, the person's time zone). |
+| `tasks`      | list of string | Only plan these tasks.                          |
+| `project`    | string         |                                                 |
+
+### `schedule_sessions`
+
+Adds sessions to the person's calendar: a plan_token's plan, or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.
+
+| Argument     | Type           | Notes                                                                                                                                      |
+| ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `plan_token` | string         |                                                                                                                                            |
+| `sessions`   | list of object |                                                                                                                                            |
+| `client_ref` | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `reschedule_sessions`
+
+Moves sessions, pushes them to the next free working slot, or removes them (ids from get_calendar or fetch). Undo puts them back.
+
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `changes` (required) | list of object |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `create_doc`
+
+Makes a page, note or meeting note from Markdown (at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an id. Where this connection may only suggest, it waits in the Review inbox.
+
+| Argument              | Type                     | Notes                                                                                                                                      |
+| --------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `title` (required)    | string                   |                                                                                                                                            |
+| `markdown` (required) | string                   |                                                                                                                                            |
+| `kind`                | `doc`, `note`, `meeting` | Default "doc".                                                                                                                             |
+| `team`                | string                   | "personal" (the default), or a team id.                                                                                                    |
+| `folder_id`           | id                       |                                                                                                                                            |
+| `project`             | string                   |                                                                                                                                            |
+| `event`               | string                   | An event this page is the notes of `(event:<id>)`.                                                                                         |
+| `client_ref`          | string                   | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `edit_doc`
+
+Version-checked edits to one page, all or none: append, prepend, insert_after, replace or delete a line (by its ^b… anchor), find_replace, and a title. Personal pages change directly, keeping the old state in history labelled with this agent; team pages get Take/Leave suggestions (edits suggestions can't hold go to review).
+
+| Argument             | Type        | Notes                                                                                                                                      |
+| -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required)     | string      |                                                                                                                                            |
+| `version` (required) | integer     |                                                                                                                                            |
+| `edits`              | list of any | Default [].                                                                                                                                |
+| `title`              | string      |                                                                                                                                            |
+| `client_ref`         | string      | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `link`
+
+Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder. Unlinking removes no content; Undo takes it back.
+
+| Argument            | Type                                                                  | Notes                                                                                                                                      |
+| ------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `action` (required) | `link`, `unlink`                                                      |                                                                                                                                            |
+| `kind` (required)   | `depends_on`, `task_doc`, `task_project`, `doc_project`, `doc_folder` |                                                                                                                                            |
+| `from` (required)   | string                                                                |                                                                                                                                            |
+| `to` (required)     | string                                                                | The task, page, project or folder id it links to.                                                                                          |
+| `stage_id`          | id                                                                    |                                                                                                                                            |
+| `block`             | string                                                                | For task_doc: the page line's id (^b…).                                                                                                    |
+| `client_ref`        | string                                                                | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `create_project`
+
+Starts a personal or team project with stages, first tasks and an optional main page. A team project over 25 tasks, or where it may only suggest, goes to review. The deadline never sets task deadlines.
+
+| Argument          | Type             | Notes                                                                                                                                      |
+| ----------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name` (required) | string           |                                                                                                                                            |
+| `team`            | string           | "personal" (the default), or a team id.                                                                                                    |
+| `summary`         | string           |                                                                                                                                            |
+| `deadline`        | ISO 8601 instant | The latest date for its tasks (ISO 8601).                                                                                                  |
+| `stages`          | list of object   |                                                                                                                                            |
+| `page`            | object           |                                                                                                                                            |
+| `client_ref`      | string           | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `propose_changes`
+
+Files one proposal the person approves or declines in Orbyn's Review inbox, and changes nothing else. For what agents never do directly: deleting tasks, pages or projects, removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with `fetch("proposal:<id>")`. A proposal waits 72 hours.
+
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `summary` (required) | string         | One line for the person: what and why.                                                                                                     |
+| `changes` (required) | list of object |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
 ## Older tools
 
 Personal API keys on the legacy address also get the first endpoint's three tools, unchanged, until they stop working here:
@@ -216,4 +363,4 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 
 Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.
 
-Routes: 25 of the app's signed-in routes are covered by tools, 156 are never for agents, and 165 are still to come.
+Routes: 47 of the app's signed-in routes are covered by tools, 162 are never for agents, and 143 are still to come.

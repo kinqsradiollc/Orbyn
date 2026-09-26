@@ -87,6 +87,20 @@ export const reviewChange = z.discriminatedUnion("type", [
     team_id: space,
   }),
   z.object({
+    type: z.literal("checklist.edit"),
+    item_id: id,
+    title,
+    team_id: space,
+    /** New steps, at the end. */
+    add: z.array(z.string().max(500)).max(50).default([]),
+    tick: z.array(id).max(100).default([]),
+    untick: z.array(id).max(100).default([]),
+    rename: z
+      .array(z.object({ id, title: z.string().max(500) }))
+      .max(100)
+      .default([]),
+  }),
+  z.object({
     type: z.literal("doc.create"),
     title,
     team_id: space,

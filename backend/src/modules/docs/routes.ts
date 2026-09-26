@@ -276,7 +276,9 @@ export async function docRoutes(app: FastifyInstance) {
   });
 
   const VERSION_COLUMNS = `v.version, v.title, v.created_at, v.user_id,
-    us.name AS author, jsonb_array_length(v.content) AS blocks`;
+    us.name AS author, jsonb_array_length(v.content) AS blocks,
+    (SELECT coalesce(nullif(g.client_name, ''), g.name) FROM agent_grants g
+      WHERE g.id = v.via_grant_id) AS via_agent`;
 
   /** 404 unless the reader may see this document. */
   async function mustSee(db: Queryable, id: string, u: UserRow) {

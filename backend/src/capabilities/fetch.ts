@@ -32,6 +32,7 @@ import {
   defineCapability,
   type CapabilityContext,
 } from "./registry.js";
+import { proposalOutcome } from "../modules/proposals/service.js";
 
 /**
  * Opening one thing by id. Follows OpenAI's fetch contract: the input is
@@ -47,6 +48,7 @@ const FETCH_TYPES = [
   "project",
   "record",
   "template",
+  "proposal",
 ] as const;
 
 const output = z.object({
@@ -613,6 +615,53 @@ async function byTitle(ctx: CapabilityContext, title: string): Promise<Ref> {
 }
 
 /** Opens `input` (any form of id) for the principal. */
+/**
+ * What became of a proposal this connection made: waiting, applied,
+ * declined, cancelled or expired. Only its own connection's proposals (the
+ * person's own session sees all of theirs).
+ */
+async function fetchProposal(
+  ctx: CapabilityContext,
+  ref: Ref,
+): Promise<Fetched> {
+  const p = ctx.principal;
+  const found = await proposalOutcome(ctx.db, p.user.id, p.grant_id, ref.id);
+  if (!found) throw notFound();
+  const r = refs({ type: "proposal", id: found.id });
+  const status: Record<string, string> = {
+    pending: "Waiting for the person's approval in Orbyn's Review inbox.",
+    applied: "Approved: the changes were made.",
+    declined: "Declined: nothing changed.",
+    cancelled:
+      "Cancelled (the connection or the team's agent access changed): nothing changed.",
+    expired: "Expired before anyone decided: nothing changed.",
+  };
+  return {
+    id: r.id,
+    title: cleanTitle(found.summary) || "Proposal",
+    text: [
+      `# Proposal: ${cleanTitle(found.summary) || "changes"}`,
+      `- ${status[found.status] ?? found.status}`,
+      `- ${found.changes} change${found.changes === 1 ? "" : "s"}${found.decided_at ? ` · decided ${both(new Date(found.decided_at), ctx.timezone)!.local}` : ""}`,
+      `- Review: ${found.review_url}`,
+    ].join("\n"),
+    url: found.review_url,
+    metadata: {
+      type: "proposal",
+      uri: r.uri,
+      team: "Personal",
+      team_id: null,
+      project_id: null,
+      status: found.status,
+      version: null,
+      updated_at: found.decided_at,
+      provenance: "you",
+      truncated: false,
+      next_block: null,
+    },
+  };
+}
+
 export async function fetchAny(
   ctx: CapabilityContext,
   input: string,
@@ -640,6 +689,8 @@ export async function fetchAny(
       return fetchRecord(ctx, ref);
     case "template":
       return fetchTemplate(ctx, ref);
+    case "proposal":
+      return fetchProposal(ctx, ref);
     default:
       throw new CapabilityError(
         "UNAVAILABLE",
