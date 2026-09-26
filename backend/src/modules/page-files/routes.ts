@@ -12,7 +12,7 @@ import {
   type PageFileUpload,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
-import { pool, reader, type Queryable } from "../../db/pool.js";
+import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { idParam } from "../../lib/params.js";
@@ -25,8 +25,11 @@ import { claimToken, importsEnabled } from "../imports/tokens.js";
  * space is left. The bytes themselves go to and come from the file store
  * (see store-routes.ts); the API never holds them.
  *
- * A file can be read by whoever can read its page, and added or removed by
- * whoever can change it. An id from a page you can't open is "not found".
+ * A file can be read by whoever can read a live page that shows it (the
+ * page it was added to, or one it was moved, merged or pasted into), and
+ * deleted by whoever can change such a page. An id from a page you can't
+ * open is "not found". A file no page shows any more goes 30 days later
+ * (page_file_refs, migration 114; see sweep.ts).
  */
 
 export const PAGE_FILE_COLUMNS = `f.id, f.doc_id, f.name, f.mime, f.kind,
@@ -68,7 +71,13 @@ async function writablePage(db: Queryable, u: UserRow, docId: string) {
   return doc;
 }
 
-/** A file on a page `u` can read, or 404. */
+/**
+ * A file `userId` can read, or 404: one on a live page they can read, or
+ * shown on one (a picture moved, merged or pasted into another page keeps
+ * working there, even once the page it was added to is in Trash or gone).
+ * Pages point at a file by its random id, which only people who could
+ * already read the file have seen.
+ */
 async function readableFile(
   db: Queryable,
   userId: string,
@@ -77,13 +86,44 @@ async function readableFile(
   const row = (
     await db.query<PageFile & { team_id: string | null }>(
       `SELECT ${PAGE_FILE_COLUMNS}, d.team_id FROM page_files f
-         JOIN docs d ON d.id = f.doc_id
-        WHERE f.id = $2 AND ${docVisibleTo("$1")}`,
+         LEFT JOIN docs d ON d.id = f.doc_id
+        WHERE f.id = $2
+          AND ((d.id IS NOT NULL AND ${docVisibleTo("$1")})
+            OR EXISTS (SELECT 1 FROM page_file_refs r
+                         JOIN docs s ON s.id = r.doc_id
+                        WHERE r.file_id = f.id AND ${docVisibleTo("$1", "s")}))`,
       [userId, fileId],
     )
   ).rows[0];
   if (!row) fail(404, "File not found");
   return row;
+}
+
+/**
+ * A page `u` may change that holds the file, for removing it: the page it
+ * was added to, or one that shows it.
+ */
+async function writableHolder(db: Queryable, u: UserRow, file: PageFile) {
+  const holders = (
+    await db.query<{ id: string }>(
+      `SELECT d.id FROM docs d
+        WHERE ${docVisibleTo("$1")}
+          AND (d.id = $2::uuid OR d.id IN (
+                SELECT doc_id FROM page_file_refs WHERE file_id = $3))
+        ORDER BY (d.id = $2::uuid) DESC`,
+      [u.id, file.doc_id, file.id],
+    )
+  ).rows;
+  let refused: unknown = null;
+  for (const h of holders) {
+    try {
+      return await writablePage(db, u, h.id);
+    } catch (e) {
+      refused = e;
+    }
+  }
+  if (refused) throw refused;
+  fail(404, "File not found");
 }
 
 const asFile = (row: PageFile & { team_id?: string | null }): PageFile => {
@@ -140,30 +180,37 @@ export async function pageFileRoutes(app: FastifyInstance) {
           413,
           `This file is over the ${env.PAGE_FILES_MAX_MB} MB limit for a page.`,
         );
-      const used = await usedBytes(pool, u.id);
-      if (used + d.bytes > quotaBytes)
-        fail(
-          413,
-          `Your space for pictures and files is full (${env.PAGE_FILES_QUOTA_MB} MB). Remove some from your pages to add more.`,
-        );
-      const row = (
-        await pool.query<PageFile>(
-          `INSERT INTO page_files (user_id, doc_id, name, mime, kind, bytes,
+      // One person's uploads are counted one at a time, so several at once
+      // can't together go over their space.
+      const row = await transaction(async (db) => {
+        await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+          `page-files:${u.id}`,
+        ]);
+        const used = await usedBytes(db, u.id);
+        if (used + d.bytes > quotaBytes)
+          fail(
+            413,
+            `Your space for pictures and files is full (${env.PAGE_FILES_QUOTA_MB} MB). Delete ones you no longer need from a page's Info, under Pictures and files.`,
+          );
+        return (
+          await db.query<PageFile>(
+            `INSERT INTO page_files (user_id, doc_id, name, mime, kind, bytes,
              width, height)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            RETURNING ${PAGE_FILE_COLUMNS.replace(/f\./g, "")}`,
-          [
-            u.id,
-            docId,
-            d.name,
-            mime!,
-            isPageImage(mime!) ? "image" : "file",
-            d.bytes,
-            d.width ?? null,
-            d.height ?? null,
-          ],
-        )
-      ).rows[0];
+            [
+              u.id,
+              docId,
+              d.name,
+              mime!,
+              isPageImage(mime!) ? "image" : "file",
+              d.bytes,
+              d.width ?? null,
+              d.height ?? null,
+            ],
+          )
+        ).rows[0];
+      });
       const expires = Math.floor(Date.now() / 1000) + UPLOAD_MINUTES * 60;
       const token = claimToken("page-upload", {
         f: row.id,
@@ -205,10 +252,14 @@ export async function pageFileRoutes(app: FastifyInstance) {
       )
     ).rowCount;
     if (!seen) fail(404, "Document not found");
+    // Added to this page, or shown on it (moved, merged or pasted here).
     return (
       await db.query<PageFile>(
         `SELECT ${PAGE_FILE_COLUMNS} FROM page_files f
-          WHERE f.doc_id = $1 AND f.status = 'ready'
+          WHERE (f.doc_id = $1
+                 OR f.id IN (SELECT file_id FROM page_file_refs
+                              WHERE doc_id = $1))
+            AND f.status = 'ready'
           ORDER BY f.created_at`,
         [docId],
       )
@@ -216,13 +267,14 @@ export async function pageFileRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Delete a picture or file for good (its line on the page is the page's
-   * to remove). Whoever can change the page may.
+   * Delete a picture or file for good, freeing its space at once (a line
+   * still showing it then says it's gone). Whoever can change a page that
+   * holds it may.
    */
   app.delete("/docs/files/:id", async (r, reply) => {
     const u = await authenticate(r);
     const file = await readableFile(pool, u.id, idParam(r));
-    await writablePage(pool, u, file.doc_id!);
+    await writableHolder(pool, u, file);
     await pool.query("DELETE FROM page_files WHERE id = $1", [file.id]);
     return reply.code(204).send();
   });

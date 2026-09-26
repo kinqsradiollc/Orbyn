@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  fileSize,
   MODE_LABELS,
   modesFor,
   savedAgo,
@@ -9,6 +10,8 @@ import {
   type DocMode,
   type DocTag,
   type OutlineEntry,
+  type PageFile,
+  type PageFilesUsage,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { ContentsList } from "./ContentsSheet";
@@ -16,7 +19,7 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
-import { colors, fonts, themed } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { DocViewers } from "./DocViewers";
 import { PageTags } from "./PageTags";
 import { FieldsSection } from "../views/FieldsSection";
@@ -174,6 +177,15 @@ export function PageInfo({
             </Pressable>
           </Section>
         ) : null}
+        {visible && (
+          <FilesBlock
+            docId={doc.id}
+            originalFile={doc.imported_from?.original_file ?? null}
+            canWrite={canWrite && !reading}
+            revision={doc.version}
+            report={report}
+          />
+        )}
         <FieldsBlock
           docId={doc.id}
           revision={`${doc.version}:${fieldsStamp ?? 0}`}
@@ -240,6 +252,114 @@ export function PageInfo({
   );
 }
 
+/**
+ * The pictures and files on a page (EDT-01), with how much of your space
+ * they all take. Deleting one here frees its space at once; a picture
+ * whose line is removed from every page frees it 30 days later.
+ */
+function FilesBlock({
+  docId,
+  originalFile,
+  canWrite,
+  revision,
+  report,
+}: {
+  docId: string;
+  originalFile: string | null;
+  canWrite: boolean;
+  revision: number;
+  report: (e: unknown) => void;
+}) {
+  const [files, setFiles] = useState<PageFile[]>([]);
+  const [usage, setUsage] = useState<PageFilesUsage | null>(null);
+  const [asked, setAsked] = useState(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  useEffect(() => {
+    let live = true;
+    Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
+      ([list, used]) => {
+        if (!live) return;
+        setFiles(list.filter((f) => f.id !== originalFile));
+        setUsage(used);
+      },
+      (e) => live && reportRef.current(e),
+    );
+    return () => {
+      live = false;
+    };
+  }, [docId, originalFile, revision, asked]);
+  if (!files.length) return null;
+  const remove = (f: PageFile) =>
+    Alert.alert(
+      `Delete ${f.name} for good?`,
+      "It frees its space now. Any line on a page that shows it will say it's gone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            void client
+              .deletePageFile(f.id)
+              .then(() => setAsked((n) => n + 1), report),
+        },
+      ],
+    );
+  const share = usage?.quota_bytes
+    ? Math.min(100, (usage.used_bytes / usage.quota_bytes) * 100)
+    : 0;
+  return (
+    <Section label="Pictures and files">
+      {files.map((f) => (
+        <View key={f.id} style={s.fileRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Download ${f.name}`}
+            hitSlop={8}
+            style={s.fileName}
+            onPress={() => void downloadFile(f.id).catch(report)}
+          >
+            <Text style={s.link} numberOfLines={1}>
+              {f.name}
+            </Text>
+          </Pressable>
+          <Text style={s.small}>{fileSize(f.bytes)}</Text>
+          {canWrite && (
+            <SmallAction
+              label="Delete"
+              destructive
+              disabled={false}
+              onPress={() => remove(f)}
+            />
+          )}
+        </View>
+      ))}
+      {usage && (
+        <View style={s.space}>
+          <View
+            style={s.spaceBar}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Your space for pictures and files"
+            accessibilityValue={{
+              min: 0,
+              max: 100,
+              now: Math.round(share),
+            }}
+          >
+            <View style={[s.spaceUsed, { width: `${share}%` }]} />
+          </View>
+          <Text style={s.small}>
+            {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
+            in all your pages. A picture whose line you remove frees its space
+            30 days later.
+          </Text>
+        </View>
+      )}
+    </Section>
+  );
+}
+
 /** Your own fields (ORG-02), under their own heading once there are any. */
 function FieldsBlock({
   docId,
@@ -291,6 +411,20 @@ const s = themed(() =>
     small: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     actions: { flexDirection: "row", gap: 8 },
     link: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
+    fileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    fileName: { flex: 1, minWidth: 0 },
+    space: { gap: 6 },
+    spaceBar: {
+      height: 6,
+      borderRadius: radii.pill,
+      backgroundColor: colors.surfaceMuted,
+      overflow: "hidden",
+    },
+    spaceUsed: {
+      height: "100%",
+      borderRadius: radii.pill,
+      backgroundColor: colors.accent,
+    },
     version: {
       flexDirection: "row",
       justifyContent: "space-between",

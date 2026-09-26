@@ -296,6 +296,20 @@ test("a link to one line is indexed on its page, resolves with the line's words,
     ).statusCode,
     404,
   );
+  // Naming a line isn't a change to its words: a team viewer may, so
+  // "Copy link to this line" works for them.
+  const shared = await page(me, "Shared lecture", [para("Unnamed")], {
+    team_id: teamId,
+  });
+  const byViewer = await call(viewer, "POST", `/docs/${shared.id}/anchor`, {
+    index: 0,
+    text: "Unnamed",
+  });
+  assert.equal(byViewer.statusCode, 200, byViewer.body);
+  assert.equal(
+    (await read(me, shared.id)).content[0].id,
+    byViewer.json().block_id,
+  );
 });
 
 test("a section embeds live and read-only: a heading's lines, or the page's first lines", async () => {
@@ -675,6 +689,11 @@ test("Merge into… moves the lines, relinks pages, goes to Trash, and old links
       `Go to ${linkMarkdown({ kind: "doc", id: from.id, block: "b-read" }, "Week 2")}`,
     ),
   ]);
+  const renamedLink = await page(me, "Pointer to a renamed line", [
+    para(
+      `See ${linkMarkdown({ kind: "doc", id: from.id, block: "b-w1" }, "Week 2 words")}`,
+    ),
+  ]);
   const personal = await page(me, "Elsewhere");
   const team = await page(me, "Team notes", [], { team_id: teamId });
   assert.equal(
@@ -701,7 +720,7 @@ test("Merge into… moves the lines, relinks pages, goes to Trash, and old links
     version: fresh.version,
   });
   assert.equal(merged.statusCode, 200, merged.body);
-  assert.equal(merged.json().relinked, 1);
+  assert.equal(merged.json().relinked, 2);
   const doc = merged.json().doc;
   assert.deepEqual(
     doc.content.map((b: { text: string }) => b.text),
@@ -714,6 +733,31 @@ test("Merge into… moves the lines, relinks pages, goes to Trash, and old links
   assert.equal((await call(me, "GET", `/docs/${from.id}`)).statusCode, 404);
   const relinked = await read(me, pointer.id);
   assert.ok(relinked.content[0].text.includes(`orbyn://doc/${into.id}#b-read`));
+  // A link to a line that had to be renamed follows the new name, not the
+  // other page's own line of the old name; the page keeps its history.
+  const toRenamed = await read(me, renamedLink.id);
+  assert.ok(
+    toRenamed.content[0].text.includes(
+      `orbyn://doc/${into.id}#${doc.content[2].id})`,
+    ),
+    toRenamed.content[0].text,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM doc_versions WHERE doc_id = $1", [
+        renamedLink.id,
+      ])
+    ).rowCount,
+    1,
+  );
+  // A hover card on an old link shows the page it went into.
+  const card = (
+    await call(me, "GET", `/links/card?kind=doc&id=${from.id}`)
+  ).json();
+  assert.equal(card.state, "ok");
+  assert.equal(card.id, into.id);
+  assert.equal(card.moved_from, from.id);
+  assert.equal(card.title, "Course notes");
   const [pill] = (
     await call(me, "GET", `/links/resolve?refs=doc:${from.id}`)
   ).json();
@@ -973,6 +1017,178 @@ test("a page deleted for good lets its files go at the next sweep", async () => 
       .rowCount,
     0,
   );
+});
+
+/** A picture uploaded to a page, ready to show. */
+const picture = async (who: Person, docId: string, name = "p.png") => {
+  const made = (
+    await call(who, "POST", `/docs/${docId}/files`, {
+      name,
+      bytes: PNG.length,
+    })
+  ).json();
+  assert.equal((await upload(made.upload_path, PNG)).statusCode, 201);
+  return made.file.id as string;
+};
+const image = (file: string, id: string) => ({
+  type: "image",
+  file,
+  text: "",
+  id,
+});
+const save = async (who: Person, id: string, content: unknown[]) => {
+  const now = await read(who, id);
+  const res = await call(who, "PUT", `/docs/${id}`, {
+    content,
+    version: now.version,
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  return res.json();
+};
+const owner = async (file: string) =>
+  (
+    await pool.query<{ doc_id: string | null }>(
+      "SELECT doc_id FROM page_files WHERE id = $1",
+      [file],
+    )
+  ).rows[0]?.doc_id;
+const listed = async (who: Person, docId: string) =>
+  (await call(who, "GET", `/docs/${docId}/files`))
+    .json()
+    .map((f: { id: string }) => f.id);
+
+test("pictures go with their lines when moved or merged, and still show where pasted", async () => {
+  const src = await page(me, "Photos");
+  const one = await picture(me, src.id, "one.png");
+  const two = await picture(me, src.id, "two.png");
+  await save(me, src.id, [
+    para("Intro", "b-intro"),
+    image(one, "b-one"),
+    image(two, "b-two"),
+  ]);
+
+  // Move to new page: the picture belongs to the new page, so trashing
+  // the old one doesn't break it.
+  const fresh = await read(me, src.id);
+  const moved = (
+    await call(me, "POST", `/docs/${src.id}/extract`, {
+      block_ids: ["b-one"],
+      version: fresh.version,
+    })
+  ).json().doc;
+  assert.equal(await owner(one), moved.id);
+  assert.equal(await owner(two), src.id);
+  assert.deepEqual(await listed(me, moved.id), [one]);
+  assert.equal((await call(me, "DELETE", `/docs/${src.id}`)).statusCode, 204);
+  assert.equal((await call(me, "GET", `/docs/files/${one}`)).statusCode, 200);
+  // A picture pasted into another page shows there, though the page it
+  // was added to is in Trash; someone who can't read either still can't.
+  const pasted = await page(me, "Pasted into", [image(two, "b-copy")]);
+  assert.equal((await call(me, "GET", `/docs/files/${two}`)).statusCode, 200);
+  assert.deepEqual(await listed(me, pasted.id), [two]);
+  assert.equal(
+    (await call(stranger, "GET", `/docs/files/${two}`)).statusCode,
+    404,
+  );
+  // Deleted for good, the page it was added to lets go; the paste keeps it.
+  await call(me, "DELETE", `/docs/${src.id}/forever`);
+  await runSweep();
+  assert.equal((await call(me, "GET", `/docs/files/${two}`)).statusCode, 200);
+
+  // Merge into…: the merged page's pictures belong to the page it went
+  // into, and show there although the merged page is in Trash.
+  const week = await page(me, "Week 3");
+  const three = await picture(me, week.id, "three.png");
+  const merged = await save(me, week.id, [image(three, "b-three")]);
+  const into = await page(me, "Term notes", [para("Week 1", "b-t1")]);
+  const res = await call(me, "POST", `/docs/${week.id}/merge`, {
+    into: into.id,
+    version: merged.version,
+  });
+  assert.equal(res.statusCode, 200, res.body);
+  assert.equal(await owner(three), into.id);
+  assert.equal((await call(me, "GET", `/docs/files/${three}`)).statusCode, 200);
+  assert.deepEqual(await listed(me, into.id), [three]);
+});
+
+test("a picture no page shows any more frees its space 30 days later", async () => {
+  const doc = await page(me, "Tidy");
+  const file = await picture(me, doc.id);
+  await save(me, doc.id, [image(file, "b-pic")]);
+  const unused = async () =>
+    (
+      await pool.query<{ unused_since: Date | null }>(
+        "SELECT unused_since FROM page_files WHERE id = $1",
+        [file],
+      )
+    ).rows[0]?.unused_since;
+  assert.equal(await unused(), null);
+  // Its line removed: marked, but kept for undo and history.
+  await save(me, doc.id, [para("No picture now")]);
+  assert.ok(await unused());
+  await runSweep();
+  assert.equal(await owner(file), doc.id);
+  // Put back (undo): in use again.
+  await save(me, doc.id, [image(file, "b-pic")]);
+  assert.equal(await unused(), null);
+  await save(me, doc.id, [para("Gone again")]);
+  const before = (await call(me, "GET", "/files/usage")).json().used_bytes;
+  await pool.query(
+    "UPDATE page_files SET unused_since = now() - interval '31 days' WHERE id = $1",
+    [file],
+  );
+  await runSweep();
+  assert.equal(await owner(file), undefined);
+  assert.equal(
+    (await call(me, "GET", "/files/usage")).json().used_bytes,
+    before - PNG.length,
+  );
+  // Removed at once from the page's Files, by whoever can change a page
+  // showing it; a viewer can't.
+  const team = await page(me, "Team pictures", [], { team_id: teamId });
+  const shared = await picture(me, team.id);
+  await save(me, team.id, [image(shared, "b-s")]);
+  assert.equal(
+    (await call(viewer, "DELETE", `/docs/files/${shared}`)).statusCode,
+    403,
+  );
+  assert.equal(
+    (await call(mate, "DELETE", `/docs/files/${shared}`)).statusCode,
+    204,
+  );
+});
+
+test("uploads at the same time can't together go over the space", async () => {
+  const doc = await page(me, "Racing");
+  const quota = (await call(me, "GET", "/files/usage")).json();
+  // Room for exactly one more picture.
+  const filler = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO page_files (user_id, doc_id, name, mime, kind, bytes, status)
+       VALUES ($1, $2, 'filler.pdf', 'application/pdf', 'file', $3, 'ready')
+       RETURNING id`,
+      [me.id, doc.id, quota.quota_bytes - quota.used_bytes - PNG.length],
+    )
+  ).rows[0].id;
+  try {
+    const codes = (
+      await Promise.all(
+        Array.from({ length: 4 }, (_, n) =>
+          call(me, "POST", `/docs/${doc.id}/files`, {
+            name: `race-${n}.png`,
+            bytes: PNG.length,
+          }),
+        ),
+      )
+    ).map((r) => r.statusCode);
+    assert.equal(codes.filter((c) => c === 201).length, 1, String(codes));
+    assert.equal(codes.filter((c) => c === 413).length, 3);
+  } finally {
+    await pool.query("DELETE FROM page_files WHERE doc_id = $1 OR id = $2", [
+      doc.id,
+      filler,
+    ]);
+  }
 });
 
 test("exports carry tables, callouts, footnotes and pictures' captions", async () => {

@@ -58,10 +58,24 @@ function titleFor(blocks: DocBlock[]): string {
   return words.slice(0, 200) || "Untitled";
 }
 
+/** The pictures and files these lines show. */
+function filesOf(blocks: DocBlock[]): string[] {
+  return [
+    ...new Set(
+      blocks.flatMap((b) =>
+        (b.type === "image" || b.type === "file") && b.file
+          ? [b.file.toLowerCase()]
+          : [],
+      ),
+    ),
+  ];
+}
+
 /**
- * Take a page's remarks, proposed changes and task lines on `ids` over to
- * another page, so they go where the lines went. `rename` gives a line a
- * new id where the page it goes to already had one of that name.
+ * Take a page's remarks, proposed changes, task lines and pictures and
+ * files on `ids` over to another page, so they go where the lines went.
+ * `rename` gives a line a new id where the page it goes to already had one
+ * of that name.
  */
 async function carryLines(
   db: Db,
@@ -69,7 +83,16 @@ async function carryLines(
   to: string,
   ids: string[],
   rename: Map<string, string> = new Map(),
+  files: string[] = [],
 ) {
+  // A picture or file belongs to the page its line is now on, so it lives
+  // as long as that page does (and is listed in its Info).
+  if (files.length)
+    await db.query(
+      `UPDATE page_files SET doc_id = $2
+        WHERE doc_id = $1 AND id = ANY ($3::uuid[])`,
+      [from, to, files],
+    );
   if (!ids.length) return;
   const renamed = (id: string) => rename.get(id) ?? id;
   const moved = (
@@ -217,7 +240,9 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const { index, text } = docAnchorInput.parse(r.body ?? {});
     const out = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      await requireDoc(db, id, u, "items:write");
+      // Anyone who can read the page may name a line to link to it: the
+      // words don't change, and a viewer's "Copy link to this line" works.
+      await requireDoc(db, id, u, "items:read");
       const content =
         (
           await db.query<{ content: DocBlock[] | null }>(
@@ -311,6 +336,9 @@ export async function docStructureRoutes(app: FastifyInstance) {
         id,
         newId,
         moved.map((b) => b.id!),
+        undefined,
+        // Unless a line left behind still shows it.
+        filesOf(moved).filter((f) => !filesOf(rest).includes(f)),
       );
       await writeLines(db, u, id, rest);
       return {
@@ -407,28 +435,54 @@ export async function docStructureRoutes(app: FastifyInstance) {
         body.into,
         (source.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
         rename,
+        filesOf(source.content ?? []),
       );
       const version = await writeLines(db, u, body.into, merged);
-      // Links to the merged page, in pages you can change, now open the other.
-      const rewritten = (
-        await db.query<{ id: string; version: number }>(
-          `UPDATE docs d
-              SET content = replace(d.content::text, $2, $3)::jsonb,
-                  version = d.version + 1, updated_at = now()
+      // Links to the merged page, in pages you can change, now open the
+      // other, and a link to one of its lines to that line under its new
+      // name if it had to be renamed. Each page keeps its history.
+      const linking = (
+        await db.query<{ id: string; content: DocBlock[] | null }>(
+          `SELECT d.id, d.content FROM docs d
             WHERE d.id IN (
                     SELECT l.source_id FROM object_links l
                      WHERE l.source_kind = 'doc' AND l.link_kind = 'link'
-                       AND l.target_kind = 'doc' AND l.target_id = $4
+                       AND l.target_kind = 'doc' AND l.target_id = $2
                      LIMIT 200)
-              AND d.id <> $5 AND d.deleted_at IS NULL
+              AND d.id <> $3 AND d.deleted_at IS NULL
               AND ((d.team_id IS NULL AND d.user_id = $1)
                 OR d.team_id IN (SELECT team_id FROM team_members
                                   WHERE user_id = $1
                                     AND role IN ('owner', 'admin', 'member')))
-            RETURNING d.id, d.version`,
-          [u.id, `orbyn://doc/${id}`, `orbyn://doc/${body.into}`, id, id],
+            ORDER BY d.id
+            FOR UPDATE OF d`,
+          [u.id, id, id],
         )
       ).rows;
+      const pointer = new RegExp(
+        `orbyn://doc/${id}(?:#([A-Za-z0-9_-]{1,64}))?`,
+        "gi",
+      );
+      const rewritten: { id: string; version: number }[] = [];
+      for (const p of linking) {
+        const before = JSON.stringify(p.content ?? []);
+        const after = before.replace(
+          pointer,
+          (_all, line?: string) =>
+            `orbyn://doc/${body.into}${line ? `#${rename.get(line) ?? line}` : ""}`,
+        );
+        if (after === before) continue;
+        await snapshot(db, p.id, u.id);
+        rewritten.push(
+          (
+            await db.query<{ id: string; version: number }>(
+              `UPDATE docs SET content = $2::jsonb, version = version + 1,
+                 updated_at = now() WHERE id = $1 RETURNING id, version`,
+              [p.id, after],
+            )
+          ).rows[0],
+        );
+      }
       await db.query(
         `UPDATE docs SET deleted_at = now(), deleted_by = $2, merged_into = $3
           WHERE id = $1`,

@@ -390,6 +390,8 @@ export type LinkCard = {
   /** Its project, when it has one. */
   project?: { id: string; name: string } | null;
   // A page.
+  /** The merged page the link named, when this is the page it went into. */
+  moved_from?: string;
   folder?: string | null;
   /** "Page", "Note", "Meeting note" or "Agenda". */
   kind_label?: string;
@@ -406,6 +408,8 @@ export type LinkCard = {
   planned?: { start_at: string; end_at: string } | null;
   /** A repeating task moves its dates from the task itself. */
   repeats?: boolean;
+  /** Your account's time zone, for moving a task's deadline by day. */
+  time_zone?: string;
   // An event.
   start_at?: string | null;
   end_at?: string | null;

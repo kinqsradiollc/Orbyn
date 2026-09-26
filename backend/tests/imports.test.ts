@@ -238,7 +238,9 @@ test("upload links are signed, expire, and can't be altered", () => {
     "base64url",
   );
   assert.equal(readUploadToken(`${forged}.${sig}`), null);
-  assert.equal(readUploadToken(`${payload}.x${sig.slice(1)}`), null);
+  // A changed first character (never the one it had, which made this flaky).
+  const other = sig[0] === "x" ? "y" : "x";
+  assert.equal(readUploadToken(`${payload}.${other}${sig.slice(1)}`), null);
   assert.equal(isService(serviceKey()), true);
   assert.equal(isService("nope"), false);
 });

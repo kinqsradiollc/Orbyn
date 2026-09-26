@@ -41,6 +41,10 @@ import {
   webLinks,
   withClozeLines,
   diagramKind,
+  assembleImport,
+  tablesToMarkdown,
+  TABLE_MAX,
+  TABLE_TEXT_MAX,
   type DocBlock,
 } from "@orbyn/core";
 
@@ -136,6 +140,81 @@ test("tables: cells, alignment, pipes in words, ragged rows", () => {
     ]),
     "Term Meaning · CAP C",
   );
+});
+
+test("a long or wide table is split with its header repeated, never cut", () => {
+  const row = (n: number, width = 3, cell = "") =>
+    `| ${Array.from({ length: width }, (_, c) => `r${n}c${c}${cell}`).join(" | ")} |`;
+  const table = (rows: number, width = 3, cell = "") =>
+    [
+      `| ${Array.from({ length: width }, (_, c) => `H${c}`).join(" | ")} |`,
+      `| ${Array.from({ length: width }, () => "---").join(" | ")} |`,
+      ...Array.from({ length: rows }, (_, n) => row(n, width, cell)),
+    ].join("\n");
+  const bodyRows = (blocks: DocBlock[]) =>
+    blocks.flatMap((b) =>
+      b.type === "table" ? parseTable(b.text, true).rows.slice(1) : [],
+    );
+
+  // 300 rows: two tables, every row kept, each within the editor's limits.
+  const long = parseDoc(`Before\n\n${table(300)}\n\nAfter`);
+  const tables = long.filter((b) => b.type === "table");
+  assert.equal(tables.length, 2);
+  assert.equal(bodyRows(long).length, 300);
+  assert.deepEqual(
+    bodyRows(long).map((r) => r[0]),
+    Array.from({ length: 300 }, (_, n) => `r${n}c0`),
+  );
+  for (const t of tables) {
+    assert.deepEqual(parseTable(t.text).rows[0], ["H0", "H1", "H2"]);
+    assert.ok(parseTable(t.text).rows.length <= TABLE_MAX.rows + 1);
+  }
+  assert.equal(long[0].type, "paragraph");
+  assert.equal(long.at(-1)!.type, "paragraph");
+  assert.ok(docContent.safeParse(long).success);
+
+  // 150 rows of long cells: over one table line's characters, so split.
+  const wordy = parseDoc(table(150, 3, "x".repeat(300)));
+  assert.ok(wordy.length > 1);
+  assert.equal(bodyRows(wordy).length, 150);
+  for (const t of wordy) assert.ok(t.text.length <= TABLE_TEXT_MAX);
+  assert.ok(docContent.safeParse(wordy).success);
+
+  // 25 columns: two tables, the second keeping the first column.
+  const wide = parseDoc(table(2, 25)).filter((b) => b.type === "table");
+  assert.equal(wide.length, 2);
+  const first = parseTable(wide[0].text, true).rows;
+  const second = parseTable(wide[1].text, true).rows;
+  assert.equal(first[0].length, TABLE_MAX.cols);
+  assert.deepEqual(second[0], ["H0", "H20", "H21", "H22", "H23", "H24"]);
+  assert.deepEqual(second[2], [
+    "r1c0",
+    "r1c20",
+    "r1c21",
+    "r1c22",
+    "r1c23",
+    "r1c24",
+  ]);
+
+  // A row too long for any table becomes lines of its own, not lost.
+  const huge = parseDoc(
+    `| A | B |\n| --- | --- |\n| small | one |\n| ${"y".repeat(45000)} | z |`,
+  );
+  assert.ok(docContent.safeParse(huge).success);
+  assert.equal(
+    huge
+      .filter((b) => b.type === "bullet")
+      .map((b) => (b as { text: string }).text)
+      .join("").length,
+    "A: ".length + 45000 + " · B: z".length,
+  );
+
+  // An import keeps every row and says it split the table.
+  const md = tablesToMarkdown(table(300, 3, "w".repeat(150))).markdown;
+  const imported = assembleImport([{ markdown: md, tables: 1 }], "big.docx");
+  assert.equal(bodyRows(imported.content).length, 300);
+  assert.ok(docContent.safeParse(imported.content).success);
+  assert.ok(imported.notes.some((n) => /split into parts/.test(n)));
 });
 
 test("strike, highlighter colours and footnote markers are marks of their own", () => {

@@ -844,35 +844,38 @@ A code block marked `mermaid` is drawn as a diagram; `orbyn-embed` shows another
 Inline, `~~words~~` is struck through and `=={green}words==` / `=={rose}words==` are the other
 highlighter colours.
 
-| Method and path                | Body / result                                                                                                                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                      |
-| `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on                                                                       |
-| `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions and task lines go with the lines, and a link takes their place                 |
-| `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, links in pages you can change are pointed at `into` |
-| `GET` / `PUT /docs/:id/folds`  | The headings you folded (`{ block_ids }`, at most 200), yours on every device                                                                                                      |
-| `PUT /docs/:id/aliases`        | `{ aliases }` (at most 8, each once): other names, such as a course code; the version stays                                                                                        |
+| Method and path                | Body / result                                                                                                                                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                                                                                                                            |
+| `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on; anyone who can read the page may                                                                                                                                           |
+| `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions, task lines and pictures go with the lines, and a link takes their place                                                                                                             |
+| `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, its pictures belong to `into`, and links in pages you can change are pointed at `into` (a renamed line under its new name, each page keeping its history) |
+| `GET` / `PUT /docs/:id/folds`  | The headings you folded (`{ block_ids }`, at most 200), yours on every device                                                                                                                                                                                                            |
+| `PUT /docs/:id/aliases`        | `{ aliases }` (at most 8, each once): other names, such as a course code; the version stays                                                                                                                                                                                              |
 
-`PUT /projects/:id` takes `aliases` too. Every write needs `items:write` on the page (`403` for a
-viewer, `404` for a page you can't open) and goes through its history, as a save does.
+`PUT /projects/:id` takes `aliases` too. Every write but `anchor` needs `items:write` on the page
+(`403` for a viewer, `404` for a page you can't open) and goes through its history, as a save does.
 
 ### Pictures and files in pages
 
 Kept in Orbyn's own file store (the `files` service, on its own `page_files` volume), encrypted,
-for as long as their page; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
+for as long as a page shows them; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
 and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
 Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
 
-| Method and path          | Body / result                                                                                                                                            |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file) |
-| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                             |
-| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour                                    |
-| `GET /docs/:id/files`    | The page's pictures and files → `[PageFile]`                                                                                                             |
-| `DELETE /docs/files/:id` | Deletes one for good (`items:write` on its page) → `204`                                                                                                 |
-| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                          |
+| Method and path          | Body / result                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file)                 |
+| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                                             |
+| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour, for anyone who can read a live page that shows it |
+| `GET /docs/:id/files`    | The pictures and files added to the page or shown on it → `[PageFile]`                                                                                                   |
+| `DELETE /docs/files/:id` | Deletes one for good, freeing its space (`items:write` on a page that holds it) → `204`                                                                                  |
+| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                                          |
 
-A page deleted for good takes its files with it at the next sweep.
+Which pages show a file is kept by a trigger (`page_file_refs`, migration 114), so a picture moved,
+merged or pasted into another page keeps working there. A file no page shows any more goes at the
+sweep 30 days after its last line was removed (time for undo and history), or at the next sweep
+when its page is deleted for good. Parallel uploads are counted one at a time against the space.
 
 ### `GET /docs/:id/export?format=` (auth)
 
@@ -1181,8 +1184,9 @@ yet: `POST /docs/:id/anchor` names it.
 
 A link's hover card (`kind` `doc`, `task`, `event` or `project`) → `LinkCard`: `state`, `title`,
 `can_write`, and by kind: a page's `kind_label`, `folder`, `project`, `preview` and (with `block`)
-`section`; a task's `done`, `due_at`, `all_day`, `estimate_minutes`, `repeats`, `project` and
-`planned` (your next session only); an event's `start_at`, `end_at` and `note_id`; a project's
+`section`; a page merged into another answers with the page it went into and `moved_from`; a task's
+`done`, `due_at`, `all_day`, `estimate_minutes`, `repeats`, `project`, `planned` (your next session
+only) and `time_zone` (your account's, which "Reschedule" moves the deadline in); an event's `start_at`, `end_at` and `note_id`; a project's
 `progress`, `next` and `deadline`. Something you can't open is `{ "state": "missing" }` and nothing
 else.
 

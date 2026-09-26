@@ -287,7 +287,7 @@ When you import a PDF, Word document or photo into Docs, the file is stored encr
 
 ## Pictures and files in pages
 
-Pictures and files you add to a page, and the originals of imports you chose to keep, are stored encrypted on Orbyn's own servers (never a third-party storage service), for as long as the page they're on. Whoever can open the page can see or download them, through links that last an hour. They count against your space for files. When the page is deleted for good, or you remove a file, it's deleted within a few hours. They are included in our backups.
+Pictures and files you add to a page, and the originals of imports you chose to keep, are stored encrypted on Orbyn's own servers (never a third-party storage service), for as long as a page shows them. Whoever can open a page that shows one can see or download it, through links that last an hour. They count against your space for files, which a page's Info shows. When you delete a file from a page's Info, it's deleted within a few hours. When no page shows it any more — its line was removed, or its page was deleted for good — it's deleted 30 days after its line was removed (so undo and page history can bring it back), or within a few hours of its page being deleted for good. They are included in our backups.
 
 ## Who we share it with
 
@@ -307,7 +307,7 @@ Orbyn stores only what it needs in your browser: your sign-in, and settings such
 - Deleted items: 90 days, so you can restore them.
 - Request logs: 7 days. Daily usage counts and study review history: about 13 months.
 - Files you import: deleted once they're read, and always within 24 hours, unless you keep the original. The record of each import (its file name and outcome): 30 days.
-- Pictures and files in pages: as long as their page.
+- Pictures and files in pages: as long as a page shows them; 30 days once none does, or until you delete them from a page's Info.
 - Security audit records: 2 years.
 - Expired sign-ins and email links: removed automatically.
 

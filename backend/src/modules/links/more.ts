@@ -15,12 +15,13 @@ import {
   type RelatedPage,
   type UnlinkedMention,
 } from "@orbyn/core";
-import { pool, transaction, type Queryable } from "../../db/pool.js";
+import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { hasVectors, semanticOn } from "../search/semantic.js";
 import { announceDocChange } from "../docs/live.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/routes.js";
 
 /**
@@ -49,7 +50,12 @@ const iso = (d: Date | string | null | undefined) =>
 export async function linkCard(
   db: Queryable,
   userId: string,
-  q: { kind: LinkCard["kind"]; id: string; block?: string },
+  q: {
+    kind: LinkCard["kind"];
+    id: string;
+    block?: string;
+    moved_from?: string;
+  },
 ): Promise<LinkCard> {
   const gone = (state: "deleted" | "missing"): LinkCard => ({
     kind: q.kind,
@@ -69,13 +75,17 @@ export async function linkCard(
         project_name: string | null;
         deleted: boolean;
         can_write: boolean;
+        moved_to: string | null;
       }>(
         `SELECT d.title, ${DOC_KIND} AS kind_label, d.content, f.name AS folder,
                 p.id AS project_id, p.name AS project_name,
-                d.deleted_at IS NOT NULL AS deleted, ${writable("d")} AS can_write
+                d.deleted_at IS NOT NULL AS deleted, ${writable("d")} AS can_write,
+                CASE WHEN d.deleted_at IS NOT NULL THEN mi.id END AS moved_to
            FROM docs d
            LEFT JOIN folders f ON f.id = d.folder_id
            LEFT JOIN projects p ON p.id = d.project_id
+           LEFT JOIN docs mi ON mi.id = d.merged_into
+                AND ${docVisibleTo("$1", "mi")}
           WHERE d.id = $2
             AND ((d.team_id IS NULL AND d.user_id = $1)
               OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
@@ -83,6 +93,17 @@ export async function linkCard(
       )
     ).rows[0];
     if (!d) return gone("missing");
+    // A page merged into another shows the page it went into, as its
+    // link's pill does (a line keeps its name there unless it was taken).
+    if (d.deleted && d.moved_to && !q.moved_from) {
+      const into = await linkCard(db, userId, {
+        kind: "doc",
+        id: d.moved_to,
+        block: q.block,
+        moved_from: q.id,
+      });
+      if (into.state === "ok") return { ...into, moved_from: q.id };
+    }
     if (d.deleted) return { ...gone("deleted"), title: d.title || "Untitled" };
     const content = d.content ?? [];
     const section = q.block ? sectionOf(content, q.block) : null;
@@ -175,6 +196,8 @@ export async function linkCard(
       all_day: i.all_day,
       estimate_minutes: i.estimate_minutes,
       repeats: i.repeats,
+      // Your account's time zone, which views move deadlines in too.
+      time_zone: (await loadPrefs(db as unknown as Db, userId)).timezone,
       planned:
         i.next_start && i.next_end
           ? { start_at: iso(i.next_start)!, end_at: iso(i.next_end)! }

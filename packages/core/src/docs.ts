@@ -778,7 +778,13 @@ const indentWidth = (lead: string) =>
  * items above it, not by a fixed number of spaces, so two-space, four-space
  * and tab-indented lists from anywhere all come in with the same shape.
  */
-export function parseDoc(markdown: string): DocBlock[] {
+export function parseDoc(
+  markdown: string,
+  opts: {
+    /** Told of each table too big for one table line, which is split. */
+    onTableSplit?: () => void;
+  } = {},
+): DocBlock[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: DocBlock[] = [];
   let i = 0;
@@ -924,10 +930,14 @@ export function parseDoc(markdown: string): DocBlock[] {
       const rows: string[] = [];
       while (i < lines.length && TABLE_ROW.test(lines[i]))
         rows.push(lines[i++]);
-      out.push({
-        type: "table",
-        text: tableMarkdown(parseTable(rows.join("\n"))),
-      });
+      const parts = splitTable(rows.join("\n"));
+      if (parts.length > 1) opts.onTableSplit?.();
+      for (const part of parts)
+        out.push(
+          "table" in part
+            ? { type: "table", text: part.table }
+            : { type: "bullet", text: part.line },
+        );
       continue;
     }
 
@@ -1084,15 +1094,22 @@ function tableCells(line: string): string[] {
   return cells;
 }
 
+/** The most characters one table line holds (as the page's schema says). */
+export const TABLE_TEXT_MAX = 40000;
+
+/** The most characters a list line holds, for a row too long for a table. */
+const TABLE_LINE_MAX = 4000;
+
 /**
  * A table's Markdown read into cells. Every row is made as wide as the
  * widest, so a ragged table from elsewhere still has a place for each word.
+ * An editor's table holds at most {@link TABLE_MAX}; `all` reads every row
+ * and column (see {@link splitTable}).
  */
-export function parseTable(text: string): TableCells {
-  const lines = text
-    .split("\n")
-    .filter((l) => TABLE_ROW.test(l))
-    .slice(0, TABLE_MAX.rows + 1);
+export function parseTable(text: string, all = false): TableCells {
+  const every = text.split("\n").filter((l) => TABLE_ROW.test(l));
+  const lines = all ? every : every.slice(0, TABLE_MAX.rows + 1);
+  const cols = all ? Infinity : TABLE_MAX.cols;
   let align: TableAlign[] = [];
   const rows: string[][] = [];
   lines.forEach((line, n) => {
@@ -1108,7 +1125,7 @@ export function parseTable(text: string): TableCells {
       );
       return;
     }
-    rows.push(tableCells(line).slice(0, TABLE_MAX.cols));
+    rows.push(tableCells(line).slice(0, cols));
   });
   if (!rows.length) rows.push([""]);
   const width = Math.max(1, ...rows.map((r) => r.length));
@@ -1137,6 +1154,79 @@ export function tableMarkdown({ rows, align }: TableCells): string {
   }).join(" | ")} |`;
   const [head = [""], ...body] = rows.length ? rows : [[""]];
   return [line(head), rule, ...body.map(line)].join("\n");
+}
+
+/**
+ * A table too big for one table line (more than {@link TABLE_MAX} rows or
+ * columns, or {@link TABLE_TEXT_MAX} characters), as several tables in
+ * order with the header repeated. Past the widest a table can be, the
+ * columns go in groups that each keep the first column, so a row can still
+ * be told apart. A row too long for any table (with its header) becomes a
+ * line of its own ("Header: cell · …"). Nothing is dropped.
+ */
+export function splitTable(
+  text: string,
+): Array<{ table: string } | { line: string }> {
+  const { rows, align } = parseTable(text, true);
+  const width = rows[0].length;
+  const groups: number[][] = [];
+  if (width <= TABLE_MAX.cols)
+    groups.push(Array.from({ length: width }, (_, i) => i));
+  else {
+    groups.push(Array.from({ length: TABLE_MAX.cols }, (_, i) => i));
+    for (let at = TABLE_MAX.cols; at < width; at += TABLE_MAX.cols - 1)
+      groups.push([
+        0,
+        ...Array.from(
+          { length: Math.min(TABLE_MAX.cols - 1, width - at) },
+          (_, i) => at + i,
+        ),
+      ]);
+  }
+  const out: Array<{ table: string } | { line: string }> = [];
+  for (const cols of groups) {
+    const pick = (r: string[]) => cols.map((c) => r[c] ?? "");
+    const head = pick(rows[0]);
+    const aligns = cols.map((c) => align[c] ?? null);
+    const md = (body: string[][]) =>
+      tableMarkdown({ rows: [head, ...body], align: aligns });
+    const base = md([]).length;
+    const lineLength = (r: string[]) =>
+      tableMarkdown({ rows: [r], align: aligns }).split("\n")[0].length + 1;
+    let chunk: string[][] = [];
+    let size = base;
+    const flush = () => {
+      if (chunk.length) out.push({ table: md(chunk) });
+      chunk = [];
+      size = base;
+    };
+    const body = rows.slice(1).map(pick);
+    if (!body.length) {
+      if (base <= TABLE_TEXT_MAX) out.push({ table: md([]) });
+      else out.push({ line: head.filter(Boolean).join(" · ") });
+      continue;
+    }
+    for (const r of body) {
+      const n = lineLength(r);
+      if (base + n > TABLE_TEXT_MAX) {
+        // Too long for any table: its words as a line of their own.
+        flush();
+        const line = r
+          .map((cell, i) => (cell && head[i] ? `${head[i]}: ${cell}` : cell))
+          .filter(Boolean)
+          .join(" · ");
+        // In pieces a list line can hold.
+        for (let k = 0; k < line.length; k += TABLE_LINE_MAX)
+          out.push({ line: line.slice(k, k + TABLE_LINE_MAX) });
+        continue;
+      }
+      if (chunk.length >= TABLE_MAX.rows || size + n > TABLE_TEXT_MAX) flush();
+      chunk.push(r);
+      size += n;
+    }
+    flush();
+  }
+  return out;
 }
 
 /** A new empty table: a header and one row, two columns wide. */

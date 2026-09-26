@@ -3003,6 +3003,51 @@ h4.doc-heading {
   color: var(--color-muted);
   font-size: 11px;
 }
+.page-info-files {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-info-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.page-info-files .page-info-link {
+  flex: 1;
+  min-width: 0;
+}
+.page-info-files .page-info-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-info-files small,
+.page-info-space small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.page-info-space {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.page-info-space-bar {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  overflow: hidden;
+}
+.page-info-space-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+}
 .page-info .page-freshness {
   margin: 0;
 }
@@ -3240,7 +3285,7 @@ h4.doc-heading {
 .doc-table {
   border-collapse: collapse;
   min-width: 60%;
-  font-size: 14px;
+  font-size: 13px;
 }
 .doc-table th,
 .doc-table td {
@@ -3403,7 +3448,7 @@ input.doc-image-caption:focus {
 }
 .doc-file-text small {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 /* The full-screen viewer. */
@@ -3451,7 +3496,7 @@ input.doc-image-caption:focus {
 .image-viewer-zoom {
   min-width: 42px;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -3529,7 +3574,7 @@ input.doc-image-caption:focus {
   gap: 6px;
   margin-bottom: 4px;
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 .doc-embed-head > span {
   flex: 1;
@@ -3654,7 +3699,7 @@ input.doc-image-caption:focus {
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
 }
 .link-card-action:hover:not(:disabled),

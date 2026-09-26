@@ -940,7 +940,7 @@ function paletteVars() {
     tertiaryColor: v("surfaceMuted"),
     lineColor: v("muted"),
     textColor: v("text"),
-    noteBkgColor: v("warnSoft"),
+    noteBkgColor: v("highBg"),
     noteTextColor: v("text"),
     fontFamily: "inherit",
   };
@@ -950,7 +950,10 @@ function paletteVars() {
 async function loadMermaid(): Promise<Mermaid> {
   mermaidReady ??= import("mermaid").then((m) => m.default);
   const mermaid = await mermaidReady;
-  const theme = document.documentElement.dataset.theme ?? "light";
+  // Set up again whenever the colours it reads change (the theme, or the
+  // tokens themselves), not only when the theme's name does.
+  const vars = paletteVars();
+  const theme = JSON.stringify(vars);
   if (theme !== mermaidTheme) {
     mermaidTheme = theme;
     mermaid.initialize({
@@ -958,7 +961,7 @@ async function loadMermaid(): Promise<Mermaid> {
       // No scripts or raw HTML from a diagram's text.
       securityLevel: "strict",
       theme: "base",
-      themeVariables: paletteVars(),
+      themeVariables: vars,
     });
   }
   return mermaid;

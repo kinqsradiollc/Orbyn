@@ -161,16 +161,22 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
-    // Pictures and files in pages (EDT-01): a file whose page was deleted
-    // for good, or an upload that never arrived. The file store deletes the
-    // bytes of rows that are gone.
+    // Pictures and files in pages (EDT-01): a file no page shows any more,
+    // once its page was deleted for good or 30 days after its last line
+    // went (time for undo and history), and uploads that never arrived.
+    // page_file_refs (migration 114) knows which pages show a file. The
+    // file store deletes the bytes of rows that are gone.
     key: "page_files",
     label: "Pictures and files in pages",
     detail:
-      "Files whose page was deleted for good, and uploads that never finished.",
+      "Files no page shows any more (30 days after their line was removed, or once their page is deleted for good), and uploads that never finished.",
     table: "page_files",
-    where: `doc_id IS NULL
-         OR (status <> 'ready' AND created_at < now() - interval '1 day')`,
+    where: `(status <> 'ready' AND created_at < now() - interval '1 day')
+         OR (NOT EXISTS (SELECT 1 FROM page_file_refs r
+                          WHERE r.file_id = page_files.id)
+             AND (doc_id IS NULL
+               OR coalesce(unused_since, created_at)
+                    < now() - interval '30 days'))`,
     days: 0,
     configurable: false,
   },

@@ -121,13 +121,15 @@ export function LinkCardPopover({
       client.postItemUpdate(card.id, { status: card.done ? "todo" : "done" }),
     );
 
+  /** Your account's time zone, as views use (the device's until the card is here). */
+  const zone = card?.time_zone ?? deviceTimeZone();
   /** A new deadline, the way views move one: the time kept, repeats refused. */
   const moveTo = (day: string | null) =>
     card &&
     run(
       async () => {
         const item = await client.getItem(card.id);
-        const moved = viewDueChange(item, day, deviceTimeZone());
+        const moved = viewDueChange(item, day, zone);
         if (!moved.ok) throw new Error(moved.reason);
         await client.updateItem(card.id, {
           ...itemBody(item),
@@ -138,7 +140,7 @@ export function LinkCardPopover({
       day ? "Deadline moved." : "Deadline cleared.",
     );
 
-  const today = localDateKey(new Date(), deviceTimeZone());
+  const today = localDateKey(new Date(), zone);
   const openNote = () =>
     card &&
     run(async () => {
@@ -236,6 +238,9 @@ export function LinkCardPopover({
               )}
               {card.kind === "doc" && (
                 <>
+                  {card.moved_from && (
+                    <Row>That page was merged into this one.</Row>
+                  )}
                   <Row>
                     {[card.kind_label, card.folder, card.project?.name]
                       .filter(Boolean)
@@ -302,9 +307,7 @@ export function LinkCardPopover({
                 </button>
                 <DateField
                   value={
-                    card.due_at
-                      ? localDateKey(new Date(card.due_at), deviceTimeZone())
-                      : ""
+                    card.due_at ? localDateKey(new Date(card.due_at), zone) : ""
                   }
                   onChange={(e) => e.target.value && moveTo(e.target.value)}
                   aria-label="New deadline"
@@ -354,7 +357,9 @@ export function LinkCardPopover({
                 type="button"
                 className="link-card-action is-open"
                 onClick={() => {
-                  onOpen();
+                  // A merged page opens the page it went into.
+                  if (card.moved_from) onOpenDoc(card.id);
+                  else onOpen();
                   onClose();
                 }}
               >

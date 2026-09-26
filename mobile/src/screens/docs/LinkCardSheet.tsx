@@ -105,12 +105,14 @@ export function LinkCardSheet({
     run(() =>
       client.postItemUpdate(card.id, { status: card.done ? "todo" : "done" }),
     );
+  /** Your account's time zone, as views use (the device's until the card is here). */
+  const zone = card?.time_zone ?? deviceTimeZone();
   const moveTo = (day: string | null) =>
     card &&
     run(
       async () => {
         const item = await client.getItem(card.id);
-        const moved = viewDueChange(item, day, deviceTimeZone());
+        const moved = viewDueChange(item, day, zone);
         if (!moved.ok) throw new Error(moved.reason);
         await client.updateItem(card.id, {
           ...itemBody(item),
@@ -120,11 +122,12 @@ export function LinkCardSheet({
       },
       day ? "Deadline moved." : "Deadline cleared.",
     );
-  const today = localDateKey(new Date(), deviceTimeZone());
+  const today = localDateKey(new Date(), zone);
   const open = () => {
     if (!target) return;
     onClose();
-    openObject(target);
+    // A merged page opens the page it went into.
+    openObject(card?.moved_from ? { ...target, id: card.id } : target);
   };
   const openNote = () =>
     card &&
@@ -157,6 +160,7 @@ export function LinkCardSheet({
         );
       if (card.project) rows.push(card.project.name);
     } else if (card.kind === "doc") {
+      if (card.moved_from) rows.push("That page was merged into this one.");
       rows.push(
         [card.kind_label, card.folder, card.project?.name]
           .filter(Boolean)
@@ -302,6 +306,8 @@ export function LinkCardSheet({
                 mode="date"
                 value={card.due_at ? new Date(card.due_at) : new Date()}
                 onChange={(_e, date) => {
+                  // The picker shows the device's days; the day picked
+                  // is then moved to in your account's time zone.
                   if (date) moveTo(localDateKey(date, deviceTimeZone()));
                 }}
               />
@@ -392,7 +398,7 @@ const s = themed(() =>
     pressed: { backgroundColor: colors.surfaceMuted },
     primary: { backgroundColor: colors.accent, borderColor: colors.accent },
     primaryPressed: { backgroundColor: colors.accentPressed },
-    actionText: { color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
+    actionText: { color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
     primaryText: { color: colors.white },
   }),
 );

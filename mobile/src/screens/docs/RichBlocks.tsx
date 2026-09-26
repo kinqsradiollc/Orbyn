@@ -1099,12 +1099,12 @@ const s = themed(() =>
       borderRightColor: colors.border,
       justifyContent: "center",
     },
-    tableText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+    tableText: { color: colors.text, fontSize: 13, lineHeight: 20 },
     tableHeadText: { fontFamily: fonts.semibold },
     tableInput: {
       minHeight: controls.compact,
       color: colors.text,
-      fontSize: 14,
+      fontSize: 13,
       padding: 0,
     },
     tableTools: {
@@ -1211,7 +1211,7 @@ const s = themed(() =>
     },
     fileText: { flex: 1, minWidth: 0, gap: 2 },
     fileName: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
-    fileMeta: { color: colors.muted, fontSize: 12 },
+    fileMeta: { color: colors.muted, fontSize: 11 },
     fileButton: {
       width: controls.compact + 4,
       height: controls.compact + 4,
@@ -1252,7 +1252,7 @@ const s = themed(() =>
       backgroundColor: colors.surface,
     },
     embedHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-    embedTitle: { flex: 1, color: colors.muted, fontSize: 12 },
+    embedTitle: { flex: 1, color: colors.muted, fontSize: 11 },
     embedOpen: {
       color: colors.accent,
       fontFamily: fonts.semibold,

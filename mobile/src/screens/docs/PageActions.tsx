@@ -283,7 +283,7 @@ const s = themed(() =>
     pressed: { backgroundColor: colors.surfaceMuted },
     rowText: { flex: 1, minWidth: 0, gap: 1 },
     rowTitle: { color: colors.text, fontFamily: fonts.regular, fontSize: 15 },
-    rowHint: { color: colors.muted, fontSize: 12 },
+    rowHint: { color: colors.muted, fontSize: 11 },
     primary: {
       minHeight: controls.tap,
       alignItems: "center",

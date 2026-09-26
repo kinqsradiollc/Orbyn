@@ -121,8 +121,11 @@ against the type, encrypts the file the same way as an upload and keeps it in `P
 (the `page_files` volume, backed up by `scripts/deploy.sh` with the database). Showing or
 downloading one takes a link the API signs for an hour for someone who can read its page
 (`/files/r/…`, `Content-Security-Policy: sandbox`, `nosniff`). Each person has `PAGE_FILES_QUOTA_MB`
-of space. A page deleted for good lets its rows go at the next sweep, and the file store deletes the
-bytes of rows that are gone. "Keep the original" moves an import's file here instead of deleting it.
+of space, checked under a per-person lock. A trigger keeps `page_file_refs` (every page whose lines
+or kept original point at a file), so a picture moved, merged or pasted into another page shows
+there too, and marks a file no page shows any more (`unused_since`): the sweep lets it go 30 days
+later, or at once when its page was deleted for good. The file store deletes the bytes of rows that
+are gone. "Keep the original" moves an import's file here instead of deleting it.
 
 The **converter** reads each page the cheapest way that works. It has one reading lane, plus one
 scan lane per worker: `TESSERACT_WORKERS` lanes (2 by default) with the built-in Tesseract, or
@@ -205,6 +208,7 @@ rate limited separately from the rest of the API.
 | `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.                                      |
 | `object_links`                                                 | Links between things, for "Linked here": picker links (a link to one line counts for its page), mentions and fixed connections. |
 | `page_files`                                                   | Pictures and files in pages, and kept import originals: owner, page, name, type, size, status.                                  |
+| `page_file_refs`                                               | Which pages show each picture or file (kept by a trigger on `docs`), for reading and for freeing unused files.                  |
 | `doc_folds`                                                    | The headings each person folded on a page.                                                                                      |
 | `saved_views`, `saved_view_pins`                               | Saved views (one shared definition), yours or a team's, and each person's sidebar pins.                                         |
 | `custom_fields`, `custom_field_values`                         | Your own typed fields on pages and projects in a space, and their values.                                                       |

@@ -1,14 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, Folder, Info, Link2, Users, X } from "lucide-react";
+import {
+  Download,
+  File as FileIcon,
+  Folder,
+  Image as ImageIcon,
+  Info,
+  Link2,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import {
   dateLabel,
+  fileSize,
   savedAgo,
   type Doc,
   type DocInfo,
   type DocTag,
   type DocViewer,
   type OutlineEntry,
+  type PageFile,
+  type PageFilesUsage,
 } from "@orbyn/core";
+import { useConfirm } from "../../components/Confirm";
 import { client } from "../../lib/api";
 import { DocOutline } from "./DocOutline";
 import { DocViewers } from "./DocViewers";
@@ -147,6 +161,14 @@ export function PageInfo({
         </section>
       )}
 
+      <FilesSection
+        docId={doc.id}
+        originalFile={doc.imported_from?.original_file ?? null}
+        canWrite={canWrite && !reading}
+        revision={revision}
+        report={report}
+      />
+
       {(tags.length > 0 || (canWrite && !reading)) && (
         <section className="page-info-section">
           <h3>Tags</h3>
@@ -267,6 +289,116 @@ function AliasesSection({
           )
         }
       />
+    </section>
+  );
+}
+
+/**
+ * The pictures and files on a page (EDT-01), with how much of your space
+ * they all take. Removing one here frees its space at once; a picture
+ * whose line is removed from every page frees it 30 days later.
+ */
+function FilesSection({
+  docId,
+  originalFile,
+  canWrite,
+  revision,
+  report,
+}: {
+  docId: string;
+  /** The kept original of an import, shown under "Original file". */
+  originalFile: string | null;
+  canWrite: boolean;
+  revision: string | number;
+  report: (e: unknown) => void;
+}) {
+  const { ask } = useConfirm();
+  const [files, setFiles] = useState<PageFile[]>([]);
+  const [usage, setUsage] = useState<PageFilesUsage | null>(null);
+  const [asked, setAsked] = useState(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  useEffect(() => {
+    let live = true;
+    Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
+      ([list, used]) => {
+        if (!live) return;
+        setFiles(list.filter((f) => f.id !== originalFile));
+        setUsage(used);
+      },
+      (e) => live && reportRef.current(e),
+    );
+    return () => {
+      live = false;
+    };
+  }, [docId, originalFile, revision, asked]);
+  if (!files.length) return null;
+  const remove = async (f: PageFile) => {
+    if (
+      !(await ask({
+        title: `Delete “${f.name}” for good?`,
+        body: "It frees its space now. Any line on a page that shows it will say it's gone.",
+        confirmLabel: "Delete",
+        destructive: true,
+      }))
+    )
+      return;
+    client.deletePageFile(f.id).then(() => setAsked((n) => n + 1), report);
+  };
+  const share = usage?.quota_bytes
+    ? Math.min(100, (usage.used_bytes / usage.quota_bytes) * 100)
+    : 0;
+  return (
+    <section className="page-info-section">
+      <h3>Pictures and files</h3>
+      <ul className="page-info-files">
+        {files.map((f) => (
+          <li key={f.id}>
+            <button
+              className="page-info-link"
+              onClick={() => void downloadFile(f.id).catch(report)}
+              title={`Download ${f.name}`}
+            >
+              {f.kind === "image" ? (
+                <ImageIcon size={13} aria-hidden="true" />
+              ) : (
+                <FileIcon size={13} aria-hidden="true" />
+              )}
+              <span>{f.name}</span>
+            </button>
+            <small>{fileSize(f.bytes)}</small>
+            {canWrite && (
+              <button
+                className="icon-button"
+                onClick={() => void remove(f)}
+                aria-label={`Delete ${f.name}`}
+                title="Delete for good"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {usage && (
+        <div className="page-info-space">
+          <div
+            className="page-info-space-bar"
+            role="meter"
+            aria-label="Your space for pictures and files"
+            aria-valuemin={0}
+            aria-valuemax={usage.quota_bytes}
+            aria-valuenow={usage.used_bytes}
+          >
+            <span style={{ width: `${share}%` }} />
+          </div>
+          <small>
+            {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
+            in all your pages. A picture whose line you remove frees its space
+            30 days later.
+          </small>
+        </div>
+      )}
     </section>
   );
 }

@@ -525,7 +525,10 @@ export function assembleImport(
     .map((p) => p.markdown.trim())
     .filter(Boolean)
     .join("\n\n");
-  let blocks = markdown.trim() ? parseDoc(markdown) : [];
+  let split = 0;
+  let blocks = markdown.trim()
+    ? parseDoc(markdown, { onTableSplit: () => split++ })
+    : [];
   let title = fileName
     .replace(/\.[a-z0-9]+$/i, "")
     .replace(/[_-]+/g, " ")
@@ -544,6 +547,10 @@ export function assembleImport(
         : b,
   );
   const notes = importNotes(pages, opts.notes);
+  if (split)
+    notes.push(
+      `${split} long table${split === 1 ? " was" : "s were"} split into parts, each with the header`,
+    );
   let cut = false;
   if (blocks.length > MAX_BLOCKS) {
     blocks = blocks.slice(0, MAX_BLOCKS);
