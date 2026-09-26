@@ -3,6 +3,11 @@ import {
   isOfflineError,
   mergeEdit,
   newId,
+  queueChange,
+  resolvePageSave,
+  waitingPageSave,
+  type Doc,
+  type PageSave,
   type HabitInput,
   type Item,
   type ItemInput,
@@ -11,6 +16,7 @@ import {
 } from "@orbyn/core";
 import { client } from "./api";
 import { errorText } from "./errors";
+import { rememberPage } from "./pageCache";
 
 /**
  * Changes made on this phone, kept in order until the server has them.
@@ -99,16 +105,14 @@ export async function clearOutbox() {
 
 function enqueue(op: OutboxOp, key = newId()) {
   set({
-    entries: [
-      ...state.entries,
-      {
-        key,
-        op,
-        queued_at: new Date().toISOString(),
-        attempts: 0,
-        state: "pending",
-      },
-    ],
+    // A page edit joins one still waiting for the same page.
+    entries: queueChange(state.entries, {
+      key,
+      op,
+      queued_at: new Date().toISOString(),
+      attempts: 0,
+      state: "pending",
+    }),
     offline: true,
   });
   persist();
@@ -159,6 +163,21 @@ async function perform(op: OutboxOp, key: string): Promise<unknown> {
       );
     case "booking.note":
       return client.once(key, () => client.setBookingNote(op.id, op.note));
+    case "doc.save": {
+      // The page as it is now: sent as it stands if it hasn't moved on,
+      // merged line by line if it has (SHR-03).
+      const now = await client.getDoc(op.save.id);
+      const next = resolvePageSave(op.save, now);
+      const saved = await client.once(key, () =>
+        client.updateDoc(op.save.id, {
+          title: next.title,
+          content: next.content,
+          version: next.version,
+        }),
+      );
+      void rememberPage(saved);
+      return saved;
+    }
   }
 }
 
@@ -222,6 +241,22 @@ export function flush(): Promise<void> {
             return;
           }
           if (status(e) === 401) return;
+          // A page saved elsewhere between reading it and sending: read it
+          // again and merge again, a few times at most.
+          if (
+            entry.op.type === "doc.save" &&
+            status(e) === 409 &&
+            entry.attempts < 3
+          ) {
+            // A fresh key: the server keeps the 409 under the old one and
+            // would only replay it. The merge makes a resend safe.
+            const attempts = entry.attempts + 1;
+            bump(entry, {
+              attempts,
+              key: `${entry.key.replace(/-m\d+$/, "")}-m${attempts}`,
+            });
+            continue;
+          }
           if (entry.op.type === "item.update" && status(e) === 409) {
             if (await settle(entry)) sent = true;
             continue;
@@ -336,6 +371,22 @@ export async function resolve(key: string, choice: "mine" | "retry" | "drop") {
 }
 
 // ---- the changes the app makes --------------------------------------------
+
+/**
+ * A page edit made with no connection (SHR-03): kept on the phone and sent
+ * when the signal is back, merged into whatever the page became meanwhile.
+ */
+export async function savePageOffline(save: PageSave) {
+  await loadOutbox();
+  enqueue({ type: "doc.save", save });
+}
+
+/** The edit waiting to be sent for a page, to show it with the page. */
+export const waitingSave = (id: string): PageSave | null =>
+  waitingPageSave(state.entries, id);
+
+/** Whether a page has an edit waiting on this phone. */
+export const pageWaiting = (doc: Pick<Doc, "id">) => !!waitingSave(doc.id);
 
 /** Create an item, named here so later changes can point at it offline. */
 export const createItem = (input: Partial<ItemInput> & { title: string }) =>

@@ -424,3 +424,40 @@ export async function embed(
     );
   return rows.map((r) => r.embedding ?? []);
 }
+
+/**
+ * Write out what was said in a recording (CAP-10), through the provider's
+ * OpenAI-shaped /audio/transcriptions endpoint. A provider without one
+ * can't write out recordings; the app says so and keeps the recording.
+ */
+export async function transcribe(
+  ai: Connection & { model: string },
+  audio: Uint8Array,
+  mime: string,
+  options: { model?: string; timeoutMs?: number } = {},
+): Promise<string> {
+  if (ai.format === "anthropic")
+    throw new ProviderError(
+      "no_transcription",
+      "The assistant's AI service can't write out recordings.",
+    );
+  const signal = AbortSignal.timeout(options.timeoutMs ?? 300_000);
+  const form = new FormData();
+  const ext = mime.split("/")[1]?.replace("mpeg", "mp3") || "webm";
+  form.append(
+    "file",
+    new Blob([audio as Uint8Array<ArrayBuffer>], { type: mime }),
+    `recording.${ext}`,
+  );
+  form.append("model", options.model ?? "whisper-1");
+  form.append("response_format", "json");
+  const { "Content-Type": _json, ...rest } = headers(ai);
+  const response = await send(
+    `${trimSlash(ai.baseUrl)}/audio/transcriptions`,
+    { method: "POST", headers: rest, body: form },
+    signal,
+    ai.apiKey,
+  );
+  const body = await json<{ text?: string }>(response);
+  return (body.text ?? "").trim();
+}

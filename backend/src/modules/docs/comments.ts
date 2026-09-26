@@ -26,6 +26,8 @@ import {
   withTaskState,
   type Owned,
 } from "./service.js";
+import { readableLinks } from "../links/privacy.js";
+import { carryRanges } from "./ranges.js";
 
 /**
  * What people say about a page and propose for it: comments (with
@@ -52,12 +54,18 @@ export async function listComments(
   id: string,
 ): Promise<DocComment[]> {
   await mustSeeDoc(db, userId, id);
-  return (
+  const rows = (
     await db.query<DocComment>(
       `${COMMENT_SELECT} WHERE c.doc_id = $1 ORDER BY c.created_at`,
       [id],
     )
   ).rows;
+  // Places, quoted words and bodies as this reader is shown them (D3aF).
+  return readableLinks(
+    db,
+    userId,
+    await carryRanges(db, userId, id, rows, "shown"),
+  );
 }
 
 /**
@@ -115,6 +123,8 @@ export async function addComment(
     if (!parent) fail(404, "Comment not found");
     parentId = parent.parent_id ?? parent.id;
   }
+  // Places counted in the words the reader was shown (D3aF).
+  const [placed] = await carryRanges(db, u.id, id, [input], "stored");
   const made = (
     await db.query<{ id: string }>(
       `INSERT INTO doc_comments
@@ -126,17 +136,19 @@ export async function addComment(
         u.id,
         input.body,
         input.block_id ?? null,
-        input.quote ?? null,
-        input.range_start ?? null,
-        input.range_end ?? null,
+        placed.quote ?? null,
+        placed.range_start ?? null,
+        placed.range_end ?? null,
         parentId,
       ],
     )
   ).rows[0].id;
   await nameMentions(db, doc, made, u, input.body, input.mentions);
-  return (
+  const comment = (
     await db.query<DocComment>(`${COMMENT_SELECT} WHERE c.id = $1`, [made])
   ).rows[0];
+  const [shown] = await carryRanges(db, u.id, id, [comment], "shown");
+  return readableLinks(db, u.id, shown);
 }
 
 /**
@@ -237,12 +249,17 @@ export async function listSuggestions(
   id: string,
 ): Promise<DocSuggestion[]> {
   await mustSeeDoc(db, userId, id);
-  return (
+  const rows = (
     await db.query<DocSuggestion>(
       `${SUGGESTION_SELECT} WHERE s.doc_id = $1 ORDER BY s.created_at`,
       [id],
     )
   ).rows;
+  return readableLinks(
+    db,
+    userId,
+    await carryRanges(db, userId, id, rows, "shown"),
+  );
 }
 
 /**
@@ -325,7 +342,7 @@ export async function decideSuggestion(
         "UPDATE doc_suggestions SET detached = true WHERE id = $1",
         [rival.id],
       );
-  return readDoc(db, id);
+  return readDoc(db, id, u.id);
 }
 
 /** Take back a proposal you made. Only its author, and only while open. */
@@ -459,5 +476,6 @@ export async function docVersion(
     )
   ).rows[0];
   if (!row) fail(404, "That version is not kept");
-  return row;
+  // Links to what the reader can't open keep no title (D3aF).
+  return readableLinks(db, userId, row);
 }

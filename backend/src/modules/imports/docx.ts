@@ -1,5 +1,5 @@
 import { inflateRawSync } from "node:zlib";
-import { ommlXmlToLatex, rowsToBullets } from "@orbyn/core";
+import { ommlXmlToLatex, rowsToTable } from "@orbyn/core";
 
 /**
  * Reading a Word document (.docx) into Markdown for an Orbyn page.
@@ -13,7 +13,7 @@ import { ommlXmlToLatex, rowsToBullets } from "@orbyn/core";
  * bulleted and numbered lists, quotes, and equations — Word stores their
  * structure (OMML), so they become exact LaTeX: inline as `$…$`, and an
  * equation on its own line as a math block.
- * Tables become one bullet per row; pictures are counted and left out.
+ * Tables stay tables; pictures are counted and left out.
  */
 
 export class NotAWordFile extends Error {}
@@ -174,7 +174,7 @@ const cellsOf = (row: string) =>
   );
 
 /**
- * A Word document as Markdown, with how many tables became lists and how
+ * A Word document as Markdown, with how many tables it kept and how
  * many pictures were left out.
  */
 export function docxToMarkdown(buf: Buffer): {
@@ -212,7 +212,7 @@ export function docxToMarkdown(buf: Buffer): {
       const rows = [...block.matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g)].map(
         (tr) => cellsOf(tr[1]),
       );
-      lines.push("", ...rowsToBullets(rows), "");
+      lines.push("", ...rowsToTable(rows), "");
       continue;
     }
     // An equation on its own line (Word's "display" equation): a math block.

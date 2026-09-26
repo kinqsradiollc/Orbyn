@@ -188,6 +188,7 @@ test("the archive holds every page in its folder, and everything beside them", a
     "planner.json",
     "projects.json",
     "folders.json",
+    "views.json",
     "attachments.json",
     "consent.json",
   ])

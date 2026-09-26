@@ -16,6 +16,7 @@ import {
   type DocSuggestion,
   type Item,
   blockText,
+  keepLinkLabels,
 } from "@orbyn/core";
 import {
   pool,
@@ -34,6 +35,8 @@ import { syncSavedPages } from "../study/service.js";
 import { inMyTeams, readableDocs, visibleDocs } from "../../lib/visibility.js";
 import { actAs } from "../../lib/actor.js";
 import { announceTo } from "../presence/live.js";
+import { allowPageFiles } from "../../lib/page-file-access.js";
+import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import type { z } from "zod";
 
 /**
@@ -50,6 +53,10 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
       'file_type', k.file_type, 'bytes', k.bytes, 'created_at', k.created_at)
       FROM kept_files k WHERE k.doc_id = d.id) END AS original,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
+  d.aliases, d.archived_at,
+  (d.archived_at IS NOT NULL OR EXISTS (
+     SELECT 1 FROM folders af WHERE af.id = d.folder_id
+        AND af.archived_at IS NOT NULL)) AS archived,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
@@ -279,7 +286,12 @@ export async function withTaskState(
  * editor takes the ticks from here, so a repeating task it just finished
  * shows unticked for its next occurrence.
  */
-export async function readDoc(db: Queryable, id: string): Promise<Doc> {
+export async function readDoc(
+  db: Queryable,
+  id: string,
+  /** Who it's for: the words of links they can't open are hidden (D3aF). */
+  userId: string,
+): Promise<Doc> {
   const doc = (
     await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
@@ -287,7 +299,35 @@ export async function readDoc(db: Queryable, id: string): Promise<Doc> {
       [id],
     )
   ).rows[0];
-  return { ...doc, content: await withTaskState(db, id, doc.content ?? []) };
+  return readableLinks(db, userId, {
+    ...doc,
+    content: await withTaskState(db, id, doc.content ?? []),
+  });
+}
+
+/**
+ * Lines a save hands in, with the words of any link it was shown as
+ * "Private page" put back as the page has them (D3aF): the saver never
+ * read them, and the people who can open the target still should.
+ */
+export async function keepHiddenLabels(
+  db: Queryable,
+  id: string,
+  userId: string,
+  content: DocBlock[],
+): Promise<DocBlock[]> {
+  if (!JSON.stringify(content).includes("orbyn://")) return content;
+  const stored = (
+    await db.query<{ content: DocBlock[] | null }>(
+      "SELECT content FROM docs WHERE id = $1",
+      [id],
+    )
+  ).rows[0]?.content;
+  if (!stored) return content;
+  // Only links the saver was shown as "Private page": someone who can open
+  // the target and wrote those words on purpose keeps them.
+  const links = await linkPrivacy(db, userId, stored);
+  return keepLinkLabels(content, stored, links.hidden);
 }
 
 /**
@@ -576,10 +616,16 @@ export async function makeLineTasks(
   // Each line gets a stable id, so the link survives later edits.
   const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
   const out: Item[] = [];
+  // A task is named from its line as its maker reads it (D3aF).
+  const links = await linkPrivacy(
+    db,
+    u.id,
+    lines.map((b) => b.text),
+  );
   for (const line of lines) {
     const item = await mutate(db, u, {
       operation: "create",
-      data: itemFromLine(line.text, doc.team_id),
+      data: itemFromLine(links.line(line.text).text, doc.team_id),
     });
     if (!item) continue;
     if (options.projectId) {
@@ -1028,6 +1074,8 @@ export async function createDoc(
   await actAs(db, u.id);
   if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
   await checkLinks(db, u, data.team_id ?? null, data);
+  // Pictures and files the new page shows must be ones its maker can read.
+  await allowPageFiles(db, u.id, data.content);
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
@@ -1079,10 +1127,18 @@ export async function saveDoc(
     fail(409, "This document changed somewhere else. Refresh and try again.");
   // Lines tied to tasks are stored as their tasks now stand.
   const content = body.content
-    ? await syncTicks(db, u, id, body.content, options.ticksFrom ?? null)
+    ? await syncTicks(
+        db,
+        u,
+        id,
+        await keepHiddenLabels(db, id, u.id, body.content),
+        options.ticksFrom ?? null,
+      )
     : undefined;
   if (content) await followComments(db, id, content);
   if (content) await followSuggestions(db, id, content);
+  // A picture or file pasted in is linked only if the saver can read it.
+  if (content) await allowPageFiles(db, u.id, content);
   await snapshot(db, id, u.id, options.always);
   await db.query(
     `UPDATE docs SET
@@ -1090,6 +1146,7 @@ export async function saveDoc(
        content = coalesce($3::jsonb, content),
        folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
        project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
+       aliases = coalesce($8::text[], aliases),
        -- Filing an imported page anywhere takes it out of Uploads.
        in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
                          ELSE in_uploads END,
@@ -1104,6 +1161,7 @@ export async function saveDoc(
       body.folder_id ?? null,
       body.project_id !== undefined,
       body.project_id ?? null,
+      body.aliases ?? null,
     ],
   );
   if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
@@ -1113,7 +1171,7 @@ export async function saveDoc(
     body.project_id !== undefined
   )
     await announceDocs(db, current.user_id, current.team_id, id);
-  return readDoc(db, id);
+  return readDoc(db, id, u.id);
 }
 
 /**
@@ -1159,6 +1217,8 @@ export async function restoreDocVersion(
   // comes loose rather than pointing at the wrong sentence.
   await followComments(db, id, content);
   await followSuggestions(db, id, content);
+  // Pictures and files it showed come back only for someone who can read them.
+  await allowPageFiles(db, u.id, content);
   // A restore is a sitting of its own: always keep what it replaces.
   await snapshot(db, id, u.id, true);
   await db.query(
@@ -1166,5 +1226,5 @@ export async function restoreDocVersion(
        updated_at = now() WHERE id = $1`,
     [id, past.title, JSON.stringify(content)],
   );
-  return readDoc(db, id);
+  return readDoc(db, id, u.id);
 }

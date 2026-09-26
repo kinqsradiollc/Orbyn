@@ -42,6 +42,7 @@ import { refs, type RefType } from "./refs.js";
 import { searchRank } from "../modules/search/rank.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 import { defineCapability, type CapabilityContext } from "./registry.js";
+import { linkPrivacy } from "../modules/links/privacy.js";
 
 /**
  * Finding things: `search` (the quick switcher and full-text search in one)
@@ -528,14 +529,21 @@ export const findPassages = defineCapability({
     );
     type Found = z.output<typeof passage> & { rank: number };
     const out: Found[] = [];
+    // Quotes and headings show only the links this caller may open (D3aF).
+    const links = await linkPrivacy(
+      ctx.db,
+      ctx.spaces,
+      found.rows.map((r) => r.text),
+      [...docs.values()].map((d) => d.content),
+    );
     for (const r of found.rows) {
       const d = docs.get(r.doc_id);
       if (!d) continue;
       const ref = { type: "doc" as const, id: d.id };
       const cited = r.block_id ? { ...ref, block: r.block_id } : ref;
       out.push({
-        quote: clean(r.text, QUOTE_MAX),
-        heading_path: headingPath(d.content, r.pos),
+        quote: clean(links.value(r.text), QUOTE_MAX),
+        heading_path: headingPath(links.value(d.content), r.pos),
         block_id: r.block_id,
         citation_url: refs(cited).url,
         provenance: provenanceOf(ctx.principal.user.id, d),

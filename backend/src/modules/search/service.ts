@@ -5,8 +5,17 @@ import { nearest } from "./semantic.js";
 import { searchRank } from "./rank.js";
 
 export { searchRank };
-import { docVisibleTo } from "../../lib/doc-visibility.js";
-import { visibleItems, visibleRecords } from "../../lib/visibility.js";
+import {
+  assistantMayRead,
+  docArchived,
+  docVisibleTo,
+} from "../../lib/doc-visibility.js";
+import {
+  visibleItems,
+  visibleProjects,
+  visibleRecords,
+} from "../../lib/visibility.js";
+import { readableLinks } from "../links/privacy.js";
 
 /**
  * One search across pages and tasks (and, within a project, its records):
@@ -28,6 +37,14 @@ import { visibleItems, visibleRecords } from "../../lib/visibility.js";
  * for is usually the thing they were last working on.
  */
 
+/**
+ * The team filter: a team's id, or "personal" for what belongs to no team
+ * (team:personal). Compared as text so the one parameter can carry either.
+ */
+const TEAM = (alias: string, param: string) =>
+  `(${param}::text IS NULL OR (${param} = 'personal' AND ${alias}.team_id IS NULL)
+    OR ${alias}.team_id::text = ${param})`;
+
 /** Where the matched words are wrapped, for a client that wants to mark them. */
 const MARKS =
   "StartSel=[[, StopSel=]], MaxWords=26, MinWords=10, MaxFragments=1";
@@ -47,6 +64,10 @@ export type PageSearch = {
   limit: number;
   /** How matched words are wrapped in snippets (none for the assistant). */
   marks?: string;
+  /** Archived pages too (SRCH-03's "Include archived"). */
+  archived?: boolean;
+  /** The assistant is asking: teams that keep pages out of it are left out. */
+  forAssistant?: boolean;
 };
 
 /**
@@ -75,17 +96,19 @@ export async function searchPages(
          LEFT JOIN projects p ON p.id = d.project_id
          CROSS JOIN q
         WHERE ${docVisibleTo("$1")}
-          AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
+          AND ($2::text = '' OR d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
           AND ($3::text IS NULL OR d.kind = $3)
           AND ($4::uuid IS NULL OR d.project_id = $4)
           AND ($5::uuid IS NULL OR EXISTS (
                 SELECT 1 FROM doc_tags dt
                  WHERE dt.doc_id = d.id AND dt.tag_id = $5))
-          AND ($6::uuid IS NULL OR d.team_id = $6)
+          AND ${TEAM("d", "$6")}
           AND ($7::timestamptz IS NULL OR d.updated_at >= $7)
           AND ($9::uuid IS NULL OR d.item_id = $9 OR EXISTS (
                 SELECT 1 FROM doc_task_links l
                  WHERE l.doc_id = d.id AND l.item_id = $9))
+          ${o.archived ? "" : `AND NOT ${docArchived("d")}`}
+          ${o.forAssistant ? `AND ${assistantMayRead("d")}` : ""}
         ORDER BY rank DESC, d.updated_at DESC
         LIMIT $8`,
       [
@@ -115,8 +138,9 @@ export async function searchEverything(
   q: z.output<typeof searchQuery>,
   options: { semantic: boolean },
 ): Promise<SearchHit[]> {
-  // Tasks take their own list: a placeholder a query never mentions has
-  // no type for Postgres to infer, and it refuses the whole statement.
+  // Tasks, records and projects share this list (tasks add their tag as
+  // $7): a placeholder a query never mentions has no type for Postgres to
+  // infer, and it refuses the whole statement.
   const itemParams = [
     userId,
     q.q,
@@ -127,7 +151,12 @@ export async function searchEverything(
   ];
 
   const wantsDocs = !q.type || q.type === "doc";
-  const wantsItems = (!q.type || q.type === "task") && !q.tag;
+  // Tasks carry tags too (item_tags, from the same tags as pages).
+  const wantsItems = !q.type || q.type === "task";
+  // Projects have no tags, kinds or a project of their own, so a search
+  // narrowed by one of those isn't looking for a project.
+  const wantsProjects =
+    (!q.type || q.type === "project") && !q.tag && !q.kind && !q.project;
   // Records have no search index of their own, so they are looked through
   // only within one project (or when asked for), where there are few.
   const wantsRecords =
@@ -142,6 +171,7 @@ export async function searchEverything(
         team: q.team,
         updatedAfter: q.updated_after,
         limit: q.limit,
+        archived: q.include_archived,
       })
     : [];
 
@@ -158,13 +188,16 @@ export async function searchEverything(
              LEFT JOIN projects p ON p.id = i.project_id
              CROSS JOIN q
             WHERE ${visibleItems()}
-              AND (i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
+              AND ($2::text = '' OR i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
               AND ($3::uuid IS NULL OR i.project_id = $3)
-              AND ($4::uuid IS NULL OR i.team_id = $4)
+              AND ${TEAM("i", "$4")}
               AND ($5::timestamptz IS NULL OR i.updated_at >= $5)
+              AND ($7::uuid IS NULL OR EXISTS (
+                    SELECT 1 FROM item_tags x
+                     WHERE x.item_id = i.id AND x.tag_id = $7))
             ORDER BY rank DESC, i.updated_at DESC
             LIMIT $6`,
-          itemParams,
+          [...itemParams, q.tag ?? null],
         )
       ).rows
     : [];
@@ -186,10 +219,10 @@ export async function searchEverything(
              LEFT JOIN projects p ON p.id = w.project_id
              CROSS JOIN q
             WHERE ${visibleRecords("w")}
-              AND (to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
+              AND ($2::text = '' OR to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
                    OR similarity(w.title, $2) > 0.25)
               AND ($3::uuid IS NULL OR w.project_id = $3)
-              AND ($4::uuid IS NULL OR w.team_id = $4)
+              AND ${TEAM("w", "$4")}
               AND ($5::timestamptz IS NULL OR w.updated_at >= $5)
             ORDER BY rank DESC, w.updated_at DESC
             LIMIT $6`,
@@ -198,9 +231,43 @@ export async function searchEverything(
       ).rows
     : [];
 
+  const projects = wantsProjects
+    ? (
+        await db.query<SearchHit>(
+          `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq)
+           SELECT p.id, 'project' AS type, p.name AS title, p.status AS kind,
+                  p.team_id, p.id AS project_id, p.name AS project_name,
+                  p.updated_at,
+                  ts_headline('english', p.summary, q.tsq, '${MARKS}') AS snippet,
+                  NULL AS block_id,
+                  ${RANK(
+                    "setweight(to_tsvector('english', p.name || ' ' || orbyn_aliases(p.aliases)), 'A') || setweight(to_tsvector('english', p.summary), 'C')",
+                    "p.name",
+                    "p.updated_at",
+                  )} AS rank
+             FROM projects p
+             CROSS JOIN q
+            WHERE ${visibleProjects("p")}
+              AND ($2::text = '' OR to_tsvector('english', p.name || ' ' || p.summary
+                                                   || ' ' || orbyn_aliases(p.aliases)) @@ q.tsq
+                   OR similarity(p.name, $2) > 0.25
+                   OR orbyn_aliases(p.aliases) ILIKE '%' || $2 || '%')
+              AND ($3::uuid IS NULL OR p.id = $3)
+              AND ${TEAM("p", "$4")}
+              AND ($5::timestamptz IS NULL OR p.updated_at >= $5)
+            ORDER BY rank DESC, p.updated_at DESC
+            LIMIT $6`,
+          itemParams,
+        )
+      ).rows
+    : [];
+
   // The lists are ranked on the same scale, so they interleave honestly.
-  const found = [...docs, ...items, ...records].sort(
-    (a, b) => Number(b.rank) - Number(a.rank),
+  // With no words every rank is level, so the newest leads.
+  const found = [...docs, ...items, ...records, ...projects].sort(
+    (a, b) =>
+      Number(b.rank) - Number(a.rank) ||
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   );
 
   /**
@@ -210,7 +277,8 @@ export async function searchEverything(
    * semantic search on can improve an order but not overturn it, and
    * turning it off changes nothing anyone was relying on.
    */
-  if (wantsDocs && options.semantic) {
+  // Meaning needs words to go on.
+  if (wantsDocs && options.semantic && q.q) {
     const near = await nearest(userId, q.q, q.limit, q.project);
     if (near.length) {
       const byId = new Map(found.map((h) => [h.id, h]));
@@ -228,7 +296,8 @@ export async function searchEverything(
               WHERE d.id = $1
                 AND ($2::text IS NULL OR d.kind = $2)
                 AND ($3::uuid IS NULL OR d.project_id = $3)
-                AND ${docVisibleTo("$4")}`,
+                AND ${docVisibleTo("$4")}
+                ${q.include_archived ? "" : `AND NOT ${docArchived("d")}`}`,
             [hit.id, q.kind ?? null, q.project ?? null, userId],
           )
         ).rows[0];
@@ -246,5 +315,6 @@ export async function searchEverything(
     }
   }
 
-  return found.slice(0, q.limit);
+  // A hit's words show only the links this reader may open (D3aF).
+  return readableLinks(db, userId, found.slice(0, q.limit));
 }

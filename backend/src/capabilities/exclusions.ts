@@ -47,12 +47,42 @@ export const EXCLUSION_REASONS = {
     "The Trash: agents never see trashed pages, and restoring or deleting for good is for people.",
   arrangement:
     "Dragging things into an order on screen (a task's place in a list): how a person lays out their own view.",
+  editor_shortcut:
+    "An editor's shortcut over a page's own lines (naming a line for a link, linking a mention, moving lines to a new page, merging pages, other names): agents change pages with their own page tools, under review.",
+  view_state:
+    "How a page is shown to one person (the headings they folded): not data.",
+  file_bytes:
+    "Uploading, showing and downloading pictures and files in pages through short-lived signed links: people's apps only; agents read pages as words.",
+  publishing:
+    "Putting a page or folder on the public web, its password, and a team's switch for it: people only, since it shows words to anyone.",
+  catch_up:
+    "A team's Recent changes list, for people catching up after time away; agents read what changed through the page and task tools.",
+  bring_in:
+    "Bringing in another app's export (a Markdown or Notion zip): people choose the file and read the dry run.",
+  navigation:
+    "How a person arranges their own app (stars, the sidebar, shortcuts, view choices): not data an agent needs.",
+  library:
+    "Tidying the library (archiving, moving or tagging several pages at once): agents file and change pages with their own page tools, under review.",
+  connections_map:
+    "The Connections map: a drawing of a page's or project's links for the Info panel; agents read the same links through fetch and search.",
+  clipper:
+    "The Orbyn Clipper browser extension's own routes, signed in with a Clipper key that works nowhere else.",
+  own_fields:
+    "Your own fields on pages and projects (making them and filling them in): set up by people in the apps; query says a view's field filters apply in the app only, and date fields reach agents as deadlines in get_calendar.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
 /** Routes a capability already covers, with the capabilities that do. */
 export const COVERED: Record<string, string[]> = {
   "GET /search": ["search"],
+  "GET /find": ["search"],
+  // The link picker finds names as /find does; pills are titles and states
+  // that fetch returns.
+  "GET /links/pick": ["search"],
+  "GET /links/resolve": ["fetch"],
+  // A page's Info panel: its facts (project, tags, versions, links) that
+  // fetch returns with the page.
+  "GET /docs/:id/info": ["fetch"],
   "GET /items": ["query"],
   "GET /items/:id": ["fetch"],
   "GET /docs": ["query"],
@@ -245,10 +275,29 @@ export const COVERED: Record<string, string[]> = {
   "POST /docs/:id/versions/:version/restore": ["propose_changes"],
   "POST /projects": ["create_project"],
   "DELETE /projects/:id": ["propose_changes"],
+  // Date fields shown on the calendar (DATA-07) are deadlines get_calendar lists.
+  "GET /fields/dates": ["get_calendar"],
+  // D4b: a link's hover card and a page's headings and sections are facts
+  // fetch returns with the thing; mentions and related pages are found by
+  // name and words, as search finds them.
+  "GET /links/card": ["fetch"],
+  "GET /links/headings": ["fetch"],
+  "GET /docs/:id/section": ["fetch"],
+  "GET /links/mentions": ["search"],
+  "GET /links/related": ["search"],
+  // D3a's "Linked here" and D4a's saved views, covered by the agents'
+  // get_links, search, query and save_view (A4) now both are merged.
+  "GET /links/here": ["get_links"],
+  "GET /views": ["search", "fetch"],
+  "POST /views": ["save_view"],
+  "PUT /views/:id": ["save_view"],
+  "DELETE /views/:id": ["propose_changes"],
+  "POST /views/run": ["query"],
 };
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "POST /recents": "device",
   "GET /admin/agents": "admin",
   "PUT /admin/agents": "admin",
   "GET /admin/agents/clients": "admin",
@@ -330,9 +379,11 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/study/cards/:id/explain": "hosted_ai",
   "POST /ai/study/grade": "hosted_ai",
   "POST /ai/study/pages/:id/cards": "hosted_ai",
+  "POST /ai/assist": "hosted_ai",
   "POST /auth/logout": "sign_in",
   "POST /auth/resend-verification": "sign_in",
   "GET /bookings/export.csv": "export_file",
+  "GET /views/:id/export.csv": "export_file",
   "PROPFIND /dav/*": "caldav",
   "REPORT /dav/cal/default/*": "caldav",
   "DELETE /dav/cal/default/:file": "caldav",
@@ -384,6 +435,19 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /me/export.zip": "account",
   "GET /ai/capabilities": "hosted_ai",
   "POST /capture/preview": "outside_fetch",
+  "POST /me/first-run": "account",
+  "POST /me/first-run/skip": "account",
+  "GET /changes": "catch_up",
+  "POST /imports/pages": "bring_in",
+  "GET /docs/:id/publish": "publishing",
+  "PUT /docs/:id/publish": "publishing",
+  "DELETE /docs/:id/publish": "publishing",
+  "PUT /docs/:id/web-description": "publishing",
+  "GET /folders/:id/publish": "publishing",
+  "PUT /folders/:id/publish": "publishing",
+  "DELETE /folders/:id/publish": "publishing",
+  "GET /teams/:id/publishing": "publishing",
+  "PUT /teams/:id/publishing": "team_admin",
   "DELETE /me/inbox": "account",
   "GET /me/inbox": "account",
   "POST /me/inbox/rotate": "account",
@@ -436,6 +500,44 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "PUT /me/agents/:id/toolsets": "credentials",
   "GET /me/calendar-subscriptions": "credentials",
   "PUT /items/:id/position": "arrangement",
+  // D4b: richer links and pages.
+  "POST /links/mentions/link": "editor_shortcut",
+  "POST /docs/:id/anchor": "editor_shortcut",
+  "POST /docs/:id/extract": "editor_shortcut",
+  "POST /docs/:id/merge": "editor_shortcut",
+  "PUT /docs/:id/aliases": "editor_shortcut",
+  "GET /docs/:id/folds": "view_state",
+  "PUT /docs/:id/folds": "view_state",
+  "POST /docs/:id/files": "file_bytes",
+  "GET /docs/:id/files": "file_bytes",
+  "GET /docs/files/:id": "file_bytes",
+  "DELETE /docs/files/:id": "file_bytes",
+  "GET /files/usage": "file_bytes",
+  // D5: later page, navigation and mobile features.
+  "GET /me/prefs": "navigation",
+  "PUT /me/prefs": "navigation",
+  "DELETE /me/prefs": "navigation",
+  "GET /starred": "navigation",
+  "GET /links/map": "connections_map",
+  "PUT /docs/:id/archive": "library",
+  "PUT /folders/:id/archive": "library",
+  "POST /docs/bulk": "library",
+  "GET /teams/:id/policies": "team_admin",
+  "PUT /teams/:id/policies": "team_admin",
+  "GET /me/clip-keys": "credentials",
+  "POST /me/clip-keys": "credentials",
+  "DELETE /me/clip-keys/:id": "credentials",
+  "GET /clips/destinations": "clipper",
+  "POST /clips": "clipper",
+  "POST /ai/recordings/:id/summary": "hosted_ai",
+  // D4a: pinning a view to your own sidebar, and your own fields.
+  "PUT /views/:id/pin": "navigation",
+  "GET /fields": "own_fields",
+  "POST /fields": "own_fields",
+  "PUT /fields/:id": "own_fields",
+  "DELETE /fields/:id": "own_fields",
+  "GET /fields/values": "own_fields",
+  "PUT /fields/:id/value": "own_fields",
 };
 
 /**
@@ -482,6 +584,15 @@ export const PUBLIC: string[] = [
   "POST /rsvp/:token",
   "GET /status",
   "PUT /files/u/:token",
+  // Pictures and files in pages: the signed one-time upload link and the
+  // signed hour-long link to show or download one (EDT-01).
+  "PUT /files/p/:token",
+  "GET /files/r/:token",
+  // Published pages (SHR-05): read by anyone with the address, with the
+  // password form for a page that has one.
+  "GET /p/:slug",
+  "GET /p/:slug/:doc",
+  "POST /p/:slug/unlock",
   "GET /mcp",
   "DELETE /mcp",
   "GET /.well-known/oauth-protected-resource",
@@ -502,4 +613,7 @@ export const PUBLIC: string[] = [
   "GET /.well-known/security.txt",
   // The OpenAI apps directory's domain check (A7).
   "GET /.well-known/openai-apps-challenge",
+  // The files phones check to open the web app's links in the app.
+  "GET /.well-known/apple-app-site-association",
+  "GET /.well-known/assetlinks.json",
 ];

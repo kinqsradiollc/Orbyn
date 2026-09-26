@@ -1,13 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { BLOCK_KINDS, type ToolbarStyle } from "@orbyn/core";
+  BLOCK_KINDS,
+  type HighlightTint,
+  type ObjectRef,
+  type ToolbarStyle,
+} from "@orbyn/core";
+import { LinkPickerPanel } from "./links";
 import { Icon, type IconName } from "../../components/Icon";
 import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
 import { colors, controls, fonts, radii, themed } from "../../theme";
@@ -25,7 +24,44 @@ const SHORT: Record<string, string> = {
   code: "Code",
   math: "∑ Maths",
   divider: "— Divider",
+  callout: "Callout",
 };
+
+/** What the kinds panel can put in place of the line, beyond its kinds. */
+export type LineInsert =
+  | "table"
+  | "photo"
+  | "picture"
+  | "file"
+  | "template"
+  | "footnote"
+  | "embed"
+  | "tasks"
+  | "diagram";
+
+export const INSERTS: { key: LineInsert; label: string; hint: string }[] = [
+  { key: "table", label: "Table", hint: "Rows and columns" },
+  { key: "photo", label: "Take a photo", hint: "A picture from the camera" },
+  { key: "picture", label: "Picture", hint: "From your photos" },
+  {
+    key: "file",
+    label: "File",
+    hint: "A PDF, Word or other file to keep here",
+  },
+  { key: "template", label: "Template", hint: "A template's lines, here" },
+  { key: "footnote", label: "Footnote", hint: "A numbered note at the end" },
+  {
+    key: "embed",
+    label: "Embed a page",
+    hint: "Another page, kept up to date",
+  },
+  {
+    key: "tasks",
+    label: "Tasks linked here",
+    hint: "The tasks this page links to",
+  },
+  { key: "diagram", label: "Diagram", hint: "A flowchart" },
+];
 
 export type LineKind = (typeof BLOCK_KINDS)[number];
 export const kindKey = (k: { type: string; level?: number }) =>
@@ -69,7 +105,17 @@ export function LineToolbar({
   onKind,
   onStyle,
   onLink,
+  linkQuery = null,
+  projectName,
+  onPickLink,
+  onCreateLink,
+  report,
   onTodo,
+  onLiveList,
+  onInsert,
+  onTint,
+  onCopyLink,
+  onMoveToPage,
   onIndent,
   onComment,
   onAsk,
@@ -84,11 +130,30 @@ export function LineToolbar({
   onUndo: () => void;
   onRedo: () => void;
   onKind: (kind: LineKind) => void;
-  onStyle: (style: "bold" | "italic" | "highlight") => void;
+  onStyle: (style: "bold" | "italic" | "highlight" | "strike") => void;
   /** Link the chosen words (or put the address in) with this address. */
   onLink: (url: string) => boolean;
+  /** The words after a "[[" typed before the caret, or null. */
+  linkQuery?: string | null;
+  /** The page's project, where a task made from the picker goes. */
+  projectName?: string | null;
+  /** Put a link to this in the line (the link picker). */
+  onPickLink: (ref: ObjectRef, title: string) => void;
+  /** Make a page or task with these words, and link it. */
+  onCreateLink: (kind: "doc" | "task", title: string) => void;
+  report: (e: unknown) => void;
   /** Make the line a to-do, or a to-do a task. */
   onTodo: () => void;
+  /** Make the line a live list (SRCH-02); left out where it can't be. */
+  onLiveList?: () => void;
+  /** Put a table, picture, file, template… in the line's place. */
+  onInsert?: (what: LineInsert) => void;
+  /** Highlight the chosen words green or pink (EDT-05). */
+  onTint?: (tint: HighlightTint) => void;
+  /** "Copy link to this line" (LNK-04). */
+  onCopyLink?: () => void;
+  /** "Move to new page" (ORG-05). */
+  onMoveToPage?: () => void;
   onIndent: (by: 1 | -1) => void;
   onComment: () => void;
   onAsk: () => void;
@@ -99,17 +164,18 @@ export function LineToolbar({
   onHide: () => void;
 }) {
   const [panel, setPanel] = useState<"kinds" | "link" | null>(null);
-  const [url, setUrl] = useState("");
-  const [bad, setBad] = useState(false);
   const [more, setMore] = useState(false);
+  /** A "[[" picker put away with its close button, until the "[[" goes. */
+  const [bracketShut, setBracketShut] = useState(false);
+  useEffect(() => {
+    if (linkQuery === null) setBracketShut(false);
+  }, [linkQuery]);
   const todo = line.kind === "todo";
   const isList = ["bullet", "numbered", "todo"].includes(line.kind);
-  const addLink = () => {
-    if (!url.trim()) return;
-    if (!onLink(url)) return setBad(true);
-    setUrl("");
-    setBad(false);
+  const addLink = (url: string) => {
+    if (!onLink(url)) return false;
     setPanel(null);
+    return true;
   };
   const menu: MoreAction[] = [
     ...(line.structural
@@ -126,11 +192,30 @@ export function LineToolbar({
           },
         ]
       : []),
+    ...(onTint && line.styleable
+      ? [
+          { label: "Highlight green", onPress: () => onTint("green") },
+          { label: "Highlight pink", onPress: () => onTint("rose") },
+        ]
+      : []),
     {
       label: "Comment on some words",
       disabled: !line.hasWords,
       onPress: onCommentWords,
     },
+    ...(onCopyLink
+      ? [{ label: "Copy link to this line", onPress: onCopyLink }]
+      : []),
+    ...(onMoveToPage && line.structural
+      ? [
+          {
+            label: line.kind.startsWith("heading")
+              ? "Move section to new page"
+              : "Move to new page",
+            onPress: onMoveToPage,
+          },
+        ]
+      : []),
     ...(line.structural
       ? [{ label: "Delete line", destructive: true, onPress: onDelete }]
       : []),
@@ -171,46 +256,70 @@ export function LineToolbar({
               </Pressable>
             );
           })}
+          {onLiveList && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Live list"
+              accessibilityHint="Tasks or pages that match, kept up to date"
+              onPress={() => {
+                setPanel(null);
+                onLiveList();
+              }}
+              style={({ pressed }) => [
+                s.kind,
+                pressed && { backgroundColor: colors.surfaceMuted },
+              ]}
+            >
+              <Text style={s.kindText}>Live list</Text>
+            </Pressable>
+          )}
+          {onInsert &&
+            INSERTS.map((item) => (
+              <Pressable
+                key={item.key}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                accessibilityHint={item.hint}
+                onPress={() => {
+                  setPanel(null);
+                  onInsert(item.key);
+                }}
+                style={({ pressed }) => [
+                  s.kind,
+                  pressed && { backgroundColor: colors.surfaceMuted },
+                ]}
+              >
+                <Text style={s.kindText}>{item.label}</Text>
+              </Pressable>
+            ))}
         </View>
       )}
-      {panel === "link" && (
-        <View style={s.linkRow}>
-          <Icon name="link" size={16} color={colors.muted} />
-          <TextInput
-            style={[s.linkInput, bad && { borderColor: colors.danger }]}
-            value={url}
-            autoFocus
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            placeholder="Paste or type a link"
-            placeholderTextColor={colors.faint}
-            returnKeyType="done"
-            onChangeText={(v) => {
-              setUrl(v);
-              setBad(false);
+      {linkQuery !== null && !bracketShut ? (
+        <LinkPickerPanel
+          query={linkQuery}
+          projectName={projectName}
+          onPick={onPickLink}
+          onCreate={onCreateLink}
+          onClose={() => setBracketShut(true)}
+          report={report}
+        />
+      ) : (
+        panel === "link" && (
+          <LinkPickerPanel
+            projectName={projectName}
+            onPick={(ref, title) => {
+              setPanel(null);
+              onPickLink(ref, title);
             }}
-            onSubmitEditing={addLink}
-            accessibilityLabel="Web address for the link"
+            onCreate={(kind, title) => {
+              setPanel(null);
+              onCreateLink(kind, title);
+            }}
+            onUrl={line.styleable ? addLink : undefined}
+            onClose={() => setPanel(null)}
+            report={report}
           />
-          <Pressable
-            accessibilityRole="button"
-            onPress={addLink}
-            disabled={!url.trim()}
-            style={({ pressed }) => [
-              s.linkAdd,
-              pressed && { backgroundColor: colors.accentPressed },
-              !url.trim() && { opacity: 0.45 },
-            ]}
-          >
-            <Text style={s.linkAddText}>Link</Text>
-          </Pressable>
-        </View>
-      )}
-      {panel === "link" && bad && (
-        <Text style={s.error}>
-          That isn’t a web address, or these words already have a style.
-        </Text>
+        )
       )}
       <View style={s.bar} accessibilityRole="toolbar">
         <ScrollView
@@ -249,10 +358,16 @@ export function LineToolbar({
             onPress={() => onStyle("highlight")}
           />
           <Tool
+            icon="strikethrough"
+            label="Strikethrough"
+            on={line.styles.includes("strike")}
+            off={!line.styleable}
+            onPress={() => onStyle("strike")}
+          />
+          <Tool
             icon="link"
             label="Link"
             on={panel === "link" || line.styles.includes("link")}
-            off={!line.styleable}
             onPress={() => setPanel(panel === "link" ? null : "link")}
           />
           <Tool
@@ -407,32 +522,5 @@ const s = themed(() =>
       color: colors.textSoft,
     },
     kindTextOn: { color: colors.accent },
-    linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    linkInput: {
-      flex: 1,
-      minWidth: 0,
-      minHeight: controls.tap - 6,
-      paddingHorizontal: 12,
-      borderRadius: radii.input,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      color: colors.text,
-      fontFamily: fonts.regular,
-      fontSize: 15,
-    },
-    linkAdd: {
-      minHeight: controls.tap - 6,
-      paddingHorizontal: 16,
-      justifyContent: "center",
-      borderRadius: radii.input,
-      backgroundColor: colors.accent,
-    },
-    linkAddText: {
-      color: colors.white,
-      fontFamily: fonts.semibold,
-      fontSize: 14,
-    },
-    error: { color: colors.danger, fontSize: 12 },
   }),
 );

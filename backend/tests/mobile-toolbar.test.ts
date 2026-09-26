@@ -375,9 +375,10 @@ test("the web app opens a shared page, task or project link", () => {
     "/book/x",
     "/application",
     "/app/agenda",
-    "/app/add",
   ])
     assert.equal(deepLinkOf(path), null, path);
+  // /app/add opens Quick add to confirm (D2a), with or without words.
+  assert.deepEqual(deepLinkOf("/app/add"), { kind: "add", text: "" });
 });
 
 // ------------------------------------------------ app icon quick actions ---

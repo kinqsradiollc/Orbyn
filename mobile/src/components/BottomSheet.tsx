@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import {
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,12 +12,14 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ToastHost } from "./Toast";
+import { useSwipeDown } from "../hooks/useSwipeDown";
 import { colors, fonts, radii, spacing, themed, tint } from "../theme";
 
 /**
  * A sheet that rises from the bottom over whatever is open, with a small
  * grab handle and an optional title: the + sheet, a page's Info and the
- * share sheet. A tap on the dimmed space above it closes it. `afterClose`
+ * share sheet. A tap on the dimmed space above it closes it, and so does
+ * pulling it down by its handle (MOB-04). `afterClose`
  * runs once it has gone, for anything that opens next (on iOS another
  * sheet can't open while this one is still leaving).
  */
@@ -40,6 +43,7 @@ export function BottomSheet({
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const swipe = useSwipeDown(visible, onClose);
   const after = useRef(afterClose);
   after.current = afterClose;
   // Only iOS reports the dismissal; elsewhere the sheet is gone at once.
@@ -66,17 +70,24 @@ export function BottomSheet({
           accessibilityLabel="Close"
           onPress={onClose}
         />
-        <View
-          style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+        <Animated.View
+          style={[
+            s.sheet,
+            { paddingBottom: Math.max(insets.bottom, 12) },
+            { transform: [{ translateY: swipe.offset }] },
+          ]}
           accessibilityViewIsModal
           accessibilityLabel={title ?? label}
         >
-          <View style={s.handle} />
-          {!!title && (
-            <Text style={s.title} accessibilityRole="header">
-              {title}
-            </Text>
-          )}
+          {/* The handle and title are what a finger pulls down. */}
+          <View {...swipe.handlers} style={s.grab}>
+            <View style={s.handle} />
+            {!!title && (
+              <Text style={s.title} accessibilityRole="header">
+                {title}
+              </Text>
+            )}
+          </View>
           <ScrollView
             style={s.scroll}
             contentContainerStyle={s.body}
@@ -85,7 +96,7 @@ export function BottomSheet({
             {children}
           </ScrollView>
           {footer && <View style={s.footer}>{footer}</View>}
-        </View>
+        </Animated.View>
         <ToastHost />
       </KeyboardAvoidingView>
     </Modal>
@@ -113,6 +124,7 @@ const s = themed(() =>
       borderTopRightRadius: radii.card,
       backgroundColor: colors.background,
     },
+    grab: { paddingTop: 2 },
     handle: {
       alignSelf: "center",
       width: 36,

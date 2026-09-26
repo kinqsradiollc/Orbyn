@@ -151,7 +151,7 @@ test("two columns are read left then right; running headers are dropped", () => 
   assert.ok(md.indexOf("Left line 8") < md.indexOf("Right line 1"));
 });
 
-test("aligned rows become a table of bullets", () => {
+test("aligned rows become a table", () => {
   const rows = [
     ["Protocol", "Leader", "Messages"],
     ["Raft", "yes", "2"],
@@ -166,7 +166,10 @@ test("aligned rows become a table of bullets", () => {
   };
   const res = pageToMarkdown(page, 1);
   assert.equal(res.tables, 1);
-  assert.match(res.markdown, /- Protocol: Raft · Leader: yes · Messages: 2/);
+  assert.match(
+    res.markdown,
+    /\| Protocol \| Leader \| Messages \|\n\| --- \| --- \| --- \|\n\| Raft \| yes \| 2 \|/,
+  );
 });
 
 test("equations whose layout was a guess are marked to check", () => {

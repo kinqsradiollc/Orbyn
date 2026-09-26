@@ -1,3 +1,4 @@
+import { AssistChips } from "../assist/AssistChips";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, FileUp, FolderInput, GraduationCap, X } from "lucide-react";
 import {
@@ -14,6 +15,28 @@ import {
 } from "@orbyn/core";
 import { KeepOriginalsSwitch } from "./OriginalFile";
 import { client } from "../../lib/api";
+
+const KEEP_KEY = "orbyn-keep-originals";
+
+/**
+ * "Keep the original" (EDT-01): whether an imported file stays with its
+ * page, in your file space. Off unless chosen; remembered in this browser.
+ */
+export function keepOriginals(): boolean {
+  try {
+    return localStorage.getItem(KEEP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function rememberKeep(on: boolean) {
+  try {
+    if (on) localStorage.setItem(KEEP_KEY, "1");
+    else localStorage.removeItem(KEEP_KEY);
+  } catch {
+    // Storage can be off: the switch still works for this visit.
+  }
+}
 
 /**
  * Importing files into Docs: the imports going on, kept fresh while any is
@@ -102,6 +125,7 @@ export function useImports(
           mime: file.type || undefined,
           project_id: projectId,
           project_team_id: projectId ? projectTeamId : undefined,
+          ...(keepOriginals() ? { keep_original: true } : {}),
         });
         startedId = started.id;
         await refresh();
@@ -188,10 +212,16 @@ export function UploadsPanel({
   onFiles,
   caps,
   report,
+  onChanged,
 }: {
   caps: ImportCapabilities | null;
-  /** Shows errors; with it, the "Keep the original" setting shows too. */
+  /**
+   * Shows errors; with it, the "Keep the original" setting and the
+   * assistant's chips on each page (AI-01) show too.
+   */
   report?: (e: unknown) => void;
+  /** The assistant's suggestion was taken: read the pages again. */
+  onChanged?: () => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -201,6 +231,7 @@ export function UploadsPanel({
   onMakeCards: (doc: DocSummary) => void;
   onFiles: (files: File[]) => void;
 }) {
+  const [keep, setKeep] = useState(keepOriginals);
   const waiting = docs.filter((d) => d.in_uploads);
   // A finished import is shown as its page (below) while it waits to be
   // filed; once filed or deleted, it's gone from Uploads.
@@ -209,11 +240,34 @@ export function UploadsPanel({
     <div className="uploads">
       <p className="uploads-intro muted">
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it, unless you keep the original. Move a page to a
-        folder when you&apos;re ready.
+        file, then deletes it; only the page stays, unless you keep the
+        original. Move a page to a folder when you&apos;re ready.
       </p>
+      {/* One "Keep the original" switch: your account's setting when it can
+          be read and saved here, this browser's otherwise. */}
       {report && <KeepOriginalsSwitch report={report} />}
       <p className="uploads-hint">{importHint(caps)}</p>
+      {!report && (
+        <label className="switch-line uploads-keep">
+          <input
+            type="checkbox"
+            role="switch"
+            className="ai-switch"
+            checked={keep}
+            onChange={(e) => {
+              setKeep(e.target.checked);
+              rememberKeep(e.target.checked);
+            }}
+          />
+          <span>
+            Keep the original file
+            <small>
+              It stays with its page, in your space for files, to download
+              again. Off, it's deleted once read.
+            </small>
+          </span>
+        </label>
+      )}
       {!waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
           <FileUp size={22} aria-hidden="true" />
@@ -316,13 +370,22 @@ export function UploadsPanel({
                 </small>
               </button>
               <span className="upload-actions">
-                <button
-                  className="text-button"
-                  title="Suggest study cards from this page"
-                  onClick={() => onMakeCards(doc)}
-                >
-                  <GraduationCap size={15} /> Make cards
-                </button>
+                {report ? (
+                  <AssistChips
+                    docId={doc.id}
+                    title={doc.title || "Untitled"}
+                    report={report}
+                    onChanged={onChanged}
+                  />
+                ) : (
+                  <button
+                    className="text-button"
+                    title="Suggest study cards from this page"
+                    onClick={() => onMakeCards(doc)}
+                  >
+                    <GraduationCap size={15} /> Make cards
+                  </button>
+                )}
                 <button
                   className="primary"
                   aria-haspopup="dialog"

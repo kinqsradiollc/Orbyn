@@ -195,6 +195,18 @@ if [ "$BACKUP" = 1 ]; then
   echo "Saved $file ($(du -h "$file" | cut -f1))"
   keep=$(setting BACKUP_KEEP 7)
   ls -1t backups/*.dump 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; done
+  # Pictures and files in pages live beside the database, already encrypted
+  # (keep FILES_MASTER_KEY with your backups: without it they can't be read).
+  if compose ps --status running --services 2>/dev/null | grep -qx files; then
+    pages="backups/page-files-$(date -u +%Y%m%d-%H%M%S)-$GIT_SHA.tar.gz"
+    if compose exec -T files tar -C /data/page-files -czf - . > "$pages" 2>/dev/null; then
+      echo "Saved $pages ($(du -h "$pages" | cut -f1))"
+    else
+      rm -f "$pages"
+      echo "No pictures or files in pages to back up yet."
+    fi
+    ls -1t backups/page-files-*.tar.gz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; done
+  fi
 fi
 
 # Bring up the selected mail backend before restarting its clients.

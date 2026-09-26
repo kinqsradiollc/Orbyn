@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,9 +15,27 @@ import {
   View,
 } from "react-native";
 import {
+  blocksToClipboard,
+  EMBED_LANG,
+  embedText,
+  emptyTable,
+  foldableHeadings,
+  footnoteNumbers,
+  footnoteTexts,
+  highlightCards,
+  movedRange,
+  nextFootnoteLabel,
+  pageFileType,
+  PAGE_FILE_TYPES,
+  toolbarTint,
+  withClozeLines,
+  type HighlightTint,
+  type RelatedPage,
   addedInlineTags,
   adoptTaskTicks,
   BLOCK_KINDS,
+  LIVE_LIST_LANG,
+  liveListText,
   blockDepth,
   blockText,
   blockToType,
@@ -26,18 +45,27 @@ import {
   carryBlockIds,
   carryNewIds,
   docStats,
+  docOutline,
+  type OutlineEntry,
   emptyUndo,
   EXPORT_LABELS,
   indentBlocks,
   keepStart,
   listLayout,
   pageFooter,
+  isOfflineError,
   pastedLines,
   recordUndo,
   redoStep,
   stylesAt,
   textToBlocks,
   toolbarLink,
+  insertLink,
+  linkMarkdown,
+  linkQueryAt,
+  slashMatches,
+  slashQueryAt,
+  type ObjectRef,
   toolbarStyle,
   undoStep,
   withDepth,
@@ -54,6 +82,7 @@ import {
   mentionQuery,
   type Doc,
   type DocBlock,
+  type Favourite,
   type DocMode,
   type DocAiAction,
   type DocSuggestion,
@@ -69,8 +98,12 @@ import { DocAsk } from "./DocAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
+import { readsFirst } from "../../lib/reading";
+import { forgetPage, rememberPage } from "../../lib/pageCache";
+import { savePageOffline } from "../../lib/outbox";
+import { PublishSheet } from "./PublishSheet";
 import { downloadDoc, formatsHere } from "../../lib/download";
-import { shareLink, sharePageFile } from "../../lib/share";
+import { copyLink, shareLink, sharePageFile } from "../../lib/share";
 import { setOpenDoc } from "../../lib/live";
 import { SmallAction } from "../../components/SmallAction";
 import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
@@ -81,9 +114,36 @@ import { client } from "../../lib/api";
 import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
-import { LineToolbar, kindKey, type LineKind } from "./LineToolbar";
+import {
+  INSERTS,
+  LineToolbar,
+  kindKey,
+  type LineInsert,
+  type LineKind,
+} from "./LineToolbar";
 import { MentionStrip, type MentionPerson } from "./MentionStrip";
 import { PageInfo } from "./PageInfo";
+import { ContentsSheet } from "./ContentsSheet";
+import {
+  LinkedHere,
+  LinkPickerPanel,
+  LinkPillProvider,
+  openObject,
+  useLinkPills,
+} from "./links";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import {
+  FootnoteContext,
+  RecordingContext,
+  TableEditor,
+  fileLink,
+} from "./RichBlocks";
+import { PresentSheet } from "./PresentSheet";
+import { announceStars, rememberLastPage } from "../../lib/accountPrefs";
+import { RecordSheet, RecordingSummarySheet } from "./RecordSheet";
+import { LinkCardSheet } from "./LinkCardSheet";
+import { EmbedSheet, MergeSheet, TemplateSheet } from "./PageActions";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -135,9 +195,12 @@ export function DocEditor({
   headerSlot,
   toolbarSlot,
   onShowHistory,
+  onShowInLibrary,
   report,
 }: {
   doc: Doc;
+  /** Close the page and show where it is in the library (ORG-03). */
+  onShowInLibrary?: () => void;
   /** A line to bring into view when the page opens (a source, a link). */
   initialBlockId?: string | null;
   /** Where that line sits, for the sheet to scroll to. */
@@ -164,6 +227,15 @@ export function DocEditor({
   canWrite?: boolean;
   report: (e: unknown) => void;
 }) {
+  // Opened: it leads the search's recent list, and ⌘K's on the web.
+  useEffect(() => {
+    void client.recordRecent("doc", doc.id).catch(() => {});
+    // Kept on the phone, to open with no signal (SHR-03).
+    void rememberPage(doc);
+    // "Open to: the last page" (NAV-12) opens this one next time.
+    rememberLastPage(doc.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.id]);
   /**
    * A page opens the way it was last worked on, and always read-only for
    * someone who cannot change it: landing in an editor that will refuse the
@@ -171,9 +243,10 @@ export function DocEditor({
    */
   const [mode, setMode] = useState<DocMode>(() =>
     canWrite
-      ? // The agenda is read more than written, so it opens for reading.
+      ? // The agenda is read more than written, so it opens for reading;
+        // so does every page on a phone set to read first (EDT-10).
         (readLocal(MODE_KEY + doc.id) ??
-          (doc.kind === "agenda" ? "read" : "edit")) === "read"
+          (doc.kind === "agenda" || readsFirst() ? "read" : "edit")) === "read"
         ? "read"
         : "edit"
       : "read",
@@ -194,6 +267,10 @@ export function DocEditor({
   const bodyOffset = useRef<number | null>(null);
   const targetOffset = useRef<number | null>(null);
   const jumped = useRef(false);
+  /** Where each line sits in the body, and where "Linked here" is. */
+  const lineYs = useRef(new Map<number, number>());
+  const linkedY = useRef<number | null>(null);
+  const [contentsOpen, setContentsOpen] = useState(false);
   useEffect(() => {
     bodyOffset.current = null;
     targetOffset.current = null;
@@ -277,6 +354,75 @@ export function DocEditor({
   const tagBase = useRef<DocBlock[]>(doc.content);
   /** Whether "Save as template" is open. */
   const [savingTemplate, setSavingTemplate] = useState(false);
+  /** Whether "Publish to web" is open (SHR-05). */
+  const [publishing, setPublishing] = useState(false);
+  /** Headings folded on this page (EDT-14), yours on every device. */
+  const [folds, setFolds] = useState<Set<string>>(() => new Set());
+  const foldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    let live = true;
+    setFolds(new Set());
+    client.docFolds(doc.id).then(
+      (r) => live && setFolds(new Set(r.block_ids)),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
+  /** A line just jumped to, lit for a moment (LNK-04). */
+  const [flash, setFlash] = useState<string | null>(null);
+  /** A link pill held down: its card (LNK-07). */
+  const [card, setCard] = useState<ObjectRef | null>(null);
+  /** The table whose cells are open, the template, embed and merge sheets. */
+  const [tableAt, setTableAt] = useState<number | null>(null);
+  const [templateAt, setTemplateAt] = useState<number | null>(null);
+  const [embedAt, setEmbedAt] = useState<number | null>(null);
+  const [merging, setMerging] = useState(false);
+  /** Presenting as slides (CNV-03); recording into the page (CAP-10). */
+  const [presenting, setPresenting] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [summarising, setSummarising] = useState<{
+    fileId: string;
+    name: string;
+  } | null>(null);
+  const recordingActions = useMemo(
+    () => ({
+      summarise: (fileId: string, name: string) =>
+        setSummarising({ fileId, name }),
+    }),
+    [],
+  );
+  /** This page's star and its starred headings (NAV-07). */
+  const [stars, setStars] = useState<Favourite[]>([]);
+  useEffect(() => {
+    let live = true;
+    client.listFavourites().then(
+      (all) =>
+        live &&
+        setStars(
+          all.filter(
+            (f) =>
+              (f.kind === "doc" || f.kind === "heading") &&
+              f.target_id === doc.id,
+          ),
+        ),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
+  const pageStarred = stars.some((f) => f.kind === "doc");
+  const starredHeadings = useMemo(
+    () =>
+      new Set(
+        stars.filter((f) => f.kind === "heading").map((f) => f.block_id ?? ""),
+      ),
+    [stars],
+  );
+  /** Archived (SRCH-03): out of the library and search until brought back. */
+  const [archived, setArchived] = useState(!!doc.archived);
   /** The page's Info, its ⋯ menu, and the two menus ⋯ leads to. */
   const [infoOpen, setInfoOpen] = useState(false);
   const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
@@ -312,6 +458,10 @@ export function DocEditor({
   /** Which line is open, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
   const base = useRef<DocBlock[]>(doc.content);
+  /** The title as last saved: what an offline edit's title is measured from. */
+  const baseTitle = useRef(doc.title);
+  /** An edit is kept on this phone, waiting for a connection (SHR-03). */
+  const [keptOffline, setKeptOffline] = useState(false);
   const live = useRef({ title: doc.title, blocks: doc.content });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -535,14 +685,38 @@ export function DocEditor({
           );
           version.current = saved.version;
           base.current = saved.content;
+          baseTitle.current = saved.title;
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
           setSavedAt(saved.updated_at);
           setNow(new Date());
+          setKeptOffline(false);
+          void rememberPage(saved);
           settle(nextBlocks, saved);
           onChanged(saved);
         } catch (e) {
+          // No signal: the edit is kept on the phone and sent when it's back,
+          // merged into whatever the page became meanwhile (SHR-03).
+          if (isOfflineError(e)) {
+            await savePageOffline({
+              id: doc.id,
+              title: nextTitle,
+              content: nextBlocks,
+              base: {
+                version: version.current,
+                title: baseTitle.current,
+                content: base.current,
+              },
+            });
+            void rememberPage({
+              ...doc,
+              title: nextTitle,
+              content: nextBlocks,
+            });
+            setKeptOffline(true);
+            return;
+          }
           // Someone saved first: take their copy, fold this edit into it and
           // save again rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
@@ -615,10 +789,12 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every render,
    * which on a phone is a request storm rather than a nuisance.
    */
+  /** Bumped when someone else sets a field, so Info reads the values afresh. */
+  const [fieldsStamp, setFieldsStamp] = useState(0);
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
-    { trashed, tags: retagged, by }: DocNews,
+    { trashed, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
@@ -631,6 +807,11 @@ export function DocEditor({
       showToast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone set a field: Info reads the values afresh, the words stay.
+    if (refielded) {
+      setFieldsStamp((n) => n + 1);
       return;
     }
     // Someone changed the page's tags: the row follows, the words stay.
@@ -763,11 +944,21 @@ export function DocEditor({
     refocus();
   };
 
-  /** Bold, Italic or Highlight on the chosen words, or off them. */
-  const styleLine = (style: "bold" | "italic" | "highlight") => {
+  /** Bold, Italic, Strikethrough or Highlight on the chosen words, or off them. */
+  const styleLine = (style: "bold" | "italic" | "highlight" | "strike") => {
     const next = toolbarStyle(draft, sel.current.start, sel.current.end, style);
     if (!next) {
       showToast({ text: "Those words already have another style." });
+      return refocus();
+    }
+    applyEdit(next);
+  };
+
+  /** The chosen words highlighted green or pink (EDT-05). */
+  const tintLine = (tint: HighlightTint) => {
+    const next = toolbarTint(draft, sel.current.start, sel.current.end, tint);
+    if (!next) {
+      showToast({ text: "Choose the words to highlight first." });
       return refocus();
     }
     applyEdit(next);
@@ -780,6 +971,119 @@ export function DocEditor({
     applyEdit(next);
     return true;
   };
+
+  /**
+   * "[[" typed before the caret in the open line: the picker searches the
+   * words after it, and picking replaces them with the link.
+   */
+  const openKind = focused !== null ? blocks[focused]?.type : undefined;
+  const bracket =
+    focused !== null && openKind !== "code" && openKind !== "math"
+      ? linkQueryAt(draft, selection.start)
+      : null;
+  /**
+   * "/" typed at the start of the line or after a space (MOB-13): the kinds
+   * of line, and what can be put in, listed under the line.
+   */
+  const slash =
+    focused !== null &&
+    !bracket &&
+    !reading &&
+    !suggesting &&
+    openKind !== "code" &&
+    openKind !== "math"
+      ? slashQueryAt(draft, selection.start)
+      : null;
+  /** The suggestions under the line were closed where they started. */
+  const [shutAt, setShutAt] = useState<string | null>(null);
+  const suggestKey = (kind: string, start: number) =>
+    `${focused}:${kind}:${start}`;
+  /** An insert chosen from "/", run once the "/words" are gone. */
+  const [slashInsert, setSlashInsert] = useState<LineInsert | "live" | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!slashInsert) return;
+    setSlashInsert(null);
+    if (slashInsert === "live") liveListLine();
+    else insertLine(slashInsert);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slashInsert]);
+  /** The line without the "/words" typed, and the caret where they were. */
+  const withoutSlash = () => {
+    if (!slash) return { text: draft, caret: selection.start };
+    return {
+      text: draft.slice(0, slash.start) + draft.slice(selection.start),
+      caret: slash.start,
+    };
+  };
+
+  /**
+   * Put a link in the open line: where "[[words" was typed, or at the caret
+   * (over the chosen words) from the toolbar's Link.
+   */
+  const insertPicked = (ref: ObjectRef, name: string) => {
+    const { start, end } = sel.current;
+    const next = bracket
+      ? insertLink(draft, bracket.start, start, ref, name)
+      : (() => {
+          const link = linkMarkdown(ref, name);
+          const rest = draft.slice(end);
+          const space = rest.startsWith(" ") || !rest ? "" : " ";
+          const text = draft.slice(0, start) + link + space + rest;
+          return { text, caret: start + link.length + space.length };
+        })();
+    applyEdit({ text: next.text, start: next.caret, end: next.caret });
+  };
+
+  /** "Create page X" / "Create task X": made first, then linked. */
+  const createAndLink = async (kind: "doc" | "task", name: string) => {
+    try {
+      if (kind === "doc") {
+        const made = await client.createDoc({
+          title: name,
+          team_id: doc.team_id,
+          project_id: doc.project_id,
+        });
+        insertPicked({ kind: "doc", id: made.id }, made.title);
+      } else {
+        const made = await client.createItem({
+          title: name,
+          ...(doc.team_id ? { team_id: doc.team_id } : {}),
+          ...(doc.project_id ? { project_id: doc.project_id } : {}),
+        });
+        insertPicked({ kind: "task", id: made.id }, made.title);
+        onItemsChanged?.();
+      }
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  /** Live titles, ticks and deletions for the page's links. */
+  const { pills, reload: reloadPills } = useLinkPills(blocks, report);
+  const pillActions = useMemo(
+    () => ({
+      pills,
+      onToggle: (id: string, done: boolean) =>
+        void client
+          .postItemUpdate(id, { status: done ? "done" : "todo" })
+          .then(() => {
+            reloadPills();
+            onItemsChanged?.();
+          }, report),
+      onRestore: (id: string) =>
+        void client.restoreDoc(id).then(() => reloadPills(), report),
+      onCard: (ref: ObjectRef) => {
+        Keyboard.dismiss();
+        setCard(ref);
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pills],
+  );
+  /** How many places link to this page, for the line at its end. */
+  const [linkedCount, setLinkedCount] = useState(0);
 
   /** Open a line for editing, showing the Markdown behind it. */
   const openLine = (index: number) => openWith(sourceOf(blocks, index), index);
@@ -858,10 +1162,10 @@ export function DocEditor({
   };
 
   /** The open line as another kind of block, keeping its words. */
-  const turnInto = (kind: (typeof BLOCK_KINDS)[number]) => {
+  const turnInto = (kind: (typeof BLOCK_KINDS)[number], from = draft) => {
     if (focused === null) return;
     remember();
-    const current = parseDoc(draft)[0] ?? EMPTY;
+    const current = parseDoc(from)[0] ?? EMPTY;
     const text = serializeBlock(blockToType(current, kind.type, kind.level));
     setDraft(text);
     setCaret({ start: text.length, end: text.length });
@@ -962,6 +1266,39 @@ export function DocEditor({
     setPicking(line);
   };
 
+  /**
+   * The open line as a live list (SRCH-02): the page's project's open tasks,
+   * or what's due this week. It shows its rows as soon as the line closes;
+   * what it lists can be changed on the web or desktop.
+   */
+  const liveListLine = () => {
+    if (focused === null || !structural) return;
+    remember();
+    const next = blocks.slice();
+    next[focused] = {
+      type: "code",
+      lang: LIVE_LIST_LANG,
+      id: blocks[focused].id,
+      text: liveListText(
+        doc.project_id
+          ? {
+              title: "Open tasks",
+              definition: {
+                source: "tasks",
+                filters: { project: doc.project_id },
+              },
+            }
+          : {
+              title: "Due this week",
+              definition: { source: "tasks", filters: { due_within_days: 7 } },
+            },
+      ),
+    };
+    setFocused(null);
+    update(keepStart(next, focused));
+    Keyboard.dismiss();
+  };
+
   const deleteLine = () => {
     if (focused === null) return;
     if (!structural) return;
@@ -971,6 +1308,376 @@ export function DocEditor({
     else next.splice(focused, 1, EMPTY);
     setFocused(null);
     update(next);
+  };
+
+  // ---- folding, line links, moving lines (EDT-14, LNK-04, ORG-05) ----
+  const saveFolds = (next: Set<string>) => {
+    setFolds(next);
+    if (foldTimer.current) clearTimeout(foldTimer.current);
+    foldTimer.current = setTimeout(() => {
+      void client.setDocFolds(doc.id, [...next].slice(0, 200)).catch(() => {});
+    }, 400);
+  };
+  const toggleFold = (blockId: string) => {
+    const next = new Set(folds);
+    if (next.has(blockId)) next.delete(blockId);
+    else next.add(blockId);
+    saveFolds(next);
+  };
+
+  /** Everything waiting is saved, so the server has what is on screen. */
+  const flush = async () => {
+    if (timer.current) clearTimeout(timer.current);
+    const next = canWrite && !suggesting ? pageWithDraft() : null;
+    if (next && unsaved(next)) await persist(live.current.title, next);
+    await saveQueue.current;
+  };
+
+  /** "Copy link to this line": a link that opens the page there. */
+  const copyLineLink = () => {
+    const line = settleLine();
+    if (!line) return;
+    Keyboard.dismiss();
+    void (async () => {
+      await saveQueue.current;
+      await copyLink(
+        { kind: "doc", id: doc.id, block: line.blockId },
+        title || "Untitled",
+      );
+    })().catch(report);
+  };
+
+  /**
+   * "Move to new page" (ORG-05): the open line — a heading with its whole
+   * section — becomes a page of its own, and a link takes its place.
+   */
+  const moveToNewPage = () => {
+    if (focused === null || !structural) return;
+    const at = focused;
+    const settled = settleLine();
+    if (!settled) return;
+    Keyboard.dismiss();
+    void (async () => {
+      try {
+        // Every line going needs a name the server knows.
+        const now = live.current.blocks;
+        const { start, end } = movedRange(now, at);
+        const named = now.map((b, i) =>
+          i >= start && i < end && !b.id ? { ...b, id: newBlockId() } : b,
+        );
+        if (named.some((b, i) => b !== now[i])) {
+          setBlocks(named);
+          live.current = { ...live.current, blocks: named };
+          dirty.current = true;
+        }
+        await flush();
+        const ids = named.slice(start, end).map((b) => b.id!);
+        const { doc: made, source } = await client.extractToPage(doc.id, {
+          block_ids: ids,
+          version: version.current,
+        });
+        version.current = source.version;
+        ticksFrom.current = source.version;
+        base.current = source.content;
+        dirty.current = false;
+        setBlocks(source.content);
+        live.current = { ...live.current, blocks: source.content };
+        onChanged(source);
+        showToast({
+          text: `Moved to “${made.title}”. A link to it is left here.`,
+          action: {
+            label: "Open",
+            run: () => openObject({ kind: "doc", id: made.id }),
+          },
+        });
+      } catch (e) {
+        report(e);
+      }
+    })();
+  };
+
+  // ---- pictures, files and other lines from the kinds panel (EDT-01) ----
+  /** Put lines where the open line is: in its place when it's empty. */
+  const placeLines = (made: DocBlock[], at: number | null = focused) => {
+    if (!made.length) return;
+    const current = at !== null && at === focused ? withDraft() : blocks;
+    const next = current.slice();
+    if (at === null) next.push(...made);
+    else {
+      const here = next[at];
+      const empty = here?.type === "paragraph" && !blockText(here).trim();
+      next.splice(empty ? at : at + 1, empty ? 1 : 0, ...made);
+    }
+    remember();
+    setFocused(null);
+    update(next);
+  };
+
+  type Picked = {
+    name: string;
+    uri: string;
+    mime?: string | null;
+    size?: number | null;
+    width?: number;
+    height?: number;
+    file?: File;
+  };
+
+  /** Send pictures and files to Orbyn's file store, then into the page. */
+  const addFiles = async (files: Picked[], at: number | null) => {
+    if (!files.length) return;
+    showToast({
+      text:
+        files.length === 1
+          ? `Adding “${files[0].name}”…`
+          : `Adding ${files.length} files…`,
+    });
+    const made: DocBlock[] = [];
+    for (const f of files) {
+      try {
+        const mime = pageFileType(f.name, f.mime ?? undefined);
+        if (!mime)
+          throw new Error(
+            `“${f.name}” can't go in a page: pictures, PDF, Word, Excel, PowerPoint, text and CSV files can.`,
+          );
+        const body: Blob =
+          Platform.OS === "web" && f.file
+            ? f.file
+            : await (await fetch(f.uri)).blob();
+        const { file, upload_path } = await client.createPageFile(doc.id, {
+          name: f.name.slice(0, 300) || "File",
+          bytes: f.size ?? body.size,
+          mime,
+          ...(f.width && f.height ? { width: f.width, height: f.height } : {}),
+        });
+        await client.uploadPageFile(upload_path, body, mime);
+        made.push(
+          file.kind === "image"
+            ? { type: "image", file: file.id, text: "", id: newBlockId() }
+            : {
+                type: "file",
+                file: file.id,
+                text: file.name,
+                id: newBlockId(),
+              },
+        );
+      } catch (e) {
+        report(e);
+      }
+    }
+    if (made.length) {
+      placeLines(made, at);
+      showToast({ text: "Added to the page" });
+    }
+  };
+
+  const pickPictures = async (camera: boolean, at: number | null) => {
+    if (camera) {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        showToast({
+          text: "Orbyn needs the camera to take a photo. Allow it in Settings.",
+        });
+        return;
+      }
+    }
+    const result = camera
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          quality: 0.85,
+          exif: false,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          quality: 0.85,
+          exif: false,
+          allowsMultipleSelection: true,
+        });
+    if (result.canceled) return;
+    await addFiles(
+      result.assets.map((a, i) => ({
+        name:
+          a.fileName ??
+          `Photo ${new Date().toISOString().slice(0, 10)}${i ? ` ${i + 1}` : ""}.jpg`,
+        uri: a.uri,
+        mime: a.mimeType ?? "image/jpeg",
+        size: a.fileSize ?? null,
+        width: a.width,
+        height: a.height,
+        file: (a as { file?: File }).file,
+      })),
+      at,
+    );
+  };
+
+  const pickFiles = async (at: number | null) => {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: Object.keys(PAGE_FILE_TYPES),
+      multiple: true,
+      copyToCacheDirectory: true,
+    });
+    if (picked.canceled) return;
+    await addFiles(
+      picked.assets.map((a) => ({
+        name: a.name,
+        uri: a.uri,
+        mime: a.mimeType ?? null,
+        size: a.size ?? null,
+        file: a.file,
+      })),
+      at,
+    );
+  };
+
+  /** What the kinds panel puts in the line's place. */
+  const insertLine = (what: LineInsert) => {
+    if (focused === null || !structural) return;
+    const at = focused;
+    Keyboard.dismiss();
+    switch (what) {
+      case "table":
+        placeLines([{ type: "table", text: emptyTable(), id: newBlockId() }]);
+        // Straight to its cells.
+        setTimeout(() => setTableAt(at), 300);
+        return;
+      case "diagram":
+        placeLines([
+          {
+            type: "code",
+            lang: "mermaid",
+            text: "flowchart TD\n  A[Start] --> B[Next step]",
+            id: newBlockId(),
+          },
+        ]);
+        return;
+      case "tasks":
+        placeLines([
+          {
+            type: "code",
+            lang: EMBED_LANG,
+            text: embedText({ kind: "tasks" }),
+            id: newBlockId(),
+          },
+        ]);
+        return;
+      case "photo":
+        void pickPictures(true, at).catch(report);
+        return;
+      case "picture":
+        void pickPictures(false, at).catch(report);
+        return;
+      case "file":
+        void pickFiles(at).catch(report);
+        return;
+      case "template":
+        setTemplateAt(at);
+        return;
+      case "embed":
+        setEmbedAt(at);
+        return;
+      case "footnote": {
+        // A marker at the caret, and the note's line at the page's end,
+        // opened to write in.
+        const label = nextFootnoteLabel(withDraft());
+        const marker = `[^${label}]`;
+        const c = sel.current.end;
+        const text = draft.slice(0, c) + marker + draft.slice(c);
+        const parsed = parseDoc(text);
+        const next = blocks.slice();
+        next.splice(
+          at,
+          1,
+          ...carryBlockIds(blocks[at], parsed.length ? parsed : [EMPTY]),
+        );
+        next.push({ type: "footnote", label, text: "", id: newBlockId() });
+        remember();
+        update(next);
+        openWith(sourceOf(next, next.length - 1), next.length - 1);
+        return;
+      }
+    }
+  };
+
+  /** "Make cards from highlights" (EDT-05): cloze cards under "Cards". */
+  const cardsFromHighlights = () => {
+    const lines = highlightCards(blocks);
+    if (!lines.length) {
+      showToast({
+        text: "Highlight the words to learn, then make cards from them.",
+      });
+      return;
+    }
+    remember();
+    update(withClozeLines(blocks, lines));
+    showToast({
+      text: `Added ${lines.length} card${lines.length === 1 ? "" : "s"} under Cards.`,
+    });
+  };
+
+  /** Copy the page for another app: HTML where it's taken, Markdown too (EDT-15). */
+  const richCopy = async () => {
+    const urls = new Map<string, string>();
+    await Promise.all(
+      blocks.flatMap((b) =>
+        b.type === "image" || b.type === "file"
+          ? [
+              fileLink(b.file).then(
+                (l) => urls.set(b.file, l.url),
+                () => {},
+              ),
+            ]
+          : [],
+      ),
+    );
+    const { html, text } = blocksToClipboard(blocks, {
+      fileUrl: (id) => urls.get(id) ?? null,
+    });
+    try {
+      if (Platform.OS === "web") {
+        const nav = globalThis.navigator as Navigator | undefined;
+        const Item = (globalThis as { ClipboardItem?: typeof ClipboardItem })
+          .ClipboardItem;
+        if (Item && nav?.clipboard?.write)
+          await nav.clipboard.write([
+            new Item({
+              "text/html": new Blob([html], { type: "text/html" }),
+              "text/plain": new Blob([text], { type: "text/plain" }),
+            }),
+          ]);
+        else await nav?.clipboard?.writeText(text);
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Clipboard = require("expo-clipboard") as {
+          setStringAsync: (
+            text: string,
+            options?: { inputFormat?: string },
+          ) => Promise<boolean>;
+          StringFormat?: { HTML: string };
+        };
+        await Clipboard.setStringAsync(html, {
+          inputFormat: Clipboard.StringFormat?.HTML ?? "html",
+        });
+      }
+      showToast({
+        text: "Copied. It pastes with its headings, lists and links.",
+      });
+    } catch {
+      showToast({ text: "Couldn't copy the page" });
+    }
+  };
+
+  /** Link a related page at the end of this one (LNK-06). */
+  const linkRelated = (page: RelatedPage) => {
+    remember();
+    update([
+      ...live.current.blocks,
+      {
+        type: "paragraph",
+        id: newBlockId(),
+        text: `See also ${linkMarkdown({ kind: "doc", id: page.doc_id }, page.title)}`,
+      },
+    ]);
+    showToast({ text: `Linked “${page.title}” at the end of the page` });
   };
 
   /**
@@ -1250,6 +1957,7 @@ export function DocEditor({
       try {
         if (last && unsaved(last)) await persist(live.current.title, last);
         await client.deleteDoc(doc.id);
+        void forgetPage(doc.id);
       } catch (e) {
         report(e);
         return;
@@ -1321,6 +2029,94 @@ export function DocEditor({
   /** The line being typed, as the keyboard toolbar shows it. */
   const current = focused !== null ? (parseDoc(draft)[0] ?? EMPTY) : null;
   const saved = focused !== null ? blocks[focused] : undefined;
+  // Under the line being edited (MOB-13): what "[[" or "/" offers.
+  const bracketOpen = !!bracket && shutAt !== suggestKey("link", bracket.start);
+  const slashOpen = !!slash && shutAt !== suggestKey("slash", slash.start);
+  const slashChoices: {
+    key: string;
+    label: string;
+    hint: string;
+    keywords?: string;
+    run: () => void;
+  }[] = slashOpen
+    ? [
+        ...BLOCK_KINDS.map((kind) => ({
+          key: kindKey(kind),
+          label: kind.label,
+          hint: kind.hint,
+          keywords: `${kindKey(kind)} ${kind.shorthand}`,
+          run: () => turnInto(kind, withoutSlash().text),
+        })),
+        ...(structural
+          ? [
+              {
+                key: "live",
+                label: "Live list",
+                hint: "Tasks or pages that match, kept up to date",
+                keywords: "query filter",
+                run: () => {
+                  const { text, caret } = withoutSlash();
+                  applyEdit({ text, start: caret, end: caret });
+                  setSlashInsert("live");
+                },
+              },
+              ...INSERTS.map((item) => ({
+                key: item.key,
+                label: item.label,
+                hint: item.hint,
+                run: () => {
+                  const { text, caret } = withoutSlash();
+                  applyEdit({ text, start: caret, end: caret });
+                  setSlashInsert(item.key);
+                },
+              })),
+            ]
+          : []),
+      ]
+        .filter((c) => slashMatches(slash!.query, c))
+        .slice(0, 8)
+    : [];
+  const underLine =
+    bracketOpen && bracket ? (
+      <LinkPickerPanel
+        query={bracket.query}
+        projectName={doc.project_name}
+        onPick={insertPicked}
+        onCreate={(kind, name) => void createAndLink(kind, name)}
+        onClose={() => setShutAt(suggestKey("link", bracket.start))}
+        report={report}
+      />
+    ) : slashChoices.length && slash ? (
+      <View style={styles.slash} accessibilityLabel="Kinds of line">
+        {slashChoices.map((c, n) => (
+          <Pressable
+            key={c.key}
+            accessibilityRole="button"
+            accessibilityLabel={c.label}
+            accessibilityHint={c.hint}
+            onPress={c.run}
+            style={({ pressed }) => [
+              styles.slashRow,
+              n > 0 && styles.slashDivider,
+              pressed && { backgroundColor: colors.surfaceMuted },
+            ]}
+          >
+            <Text style={styles.slashLabel}>{c.label}</Text>
+            <Text style={styles.slashHint} numberOfLines={1}>
+              {c.hint}
+            </Text>
+          </Pressable>
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setShutAt(suggestKey("slash", slash.start))}
+          style={[styles.slashRow, styles.slashDivider]}
+        >
+          <Text style={styles.slashHint}>Keep “/” as it is</Text>
+        </Pressable>
+      </View>
+    ) : null;
+
   const toolbar =
     focused !== null && current && (!reading || suggesting) ? (
       <>
@@ -1356,7 +2152,18 @@ export function DocEditor({
           onKind={(kind: LineKind) => turnInto(kind)}
           onStyle={styleLine}
           onLink={linkLine}
+          // Link suggestions show under the line itself (MOB-13).
+          linkQuery={null}
+          projectName={doc.project_name}
+          onPickLink={insertPicked}
+          onCreateLink={(kind, name) => void createAndLink(kind, name)}
+          report={report}
           onTodo={todoLine}
+          onLiveList={structural && !suggesting ? liveListLine : undefined}
+          onInsert={structural && !suggesting ? insertLine : undefined}
+          onTint={structural && !suggesting ? tintLine : undefined}
+          onCopyLink={copyLineLink}
+          onMoveToPage={structural && !suggesting ? moveToNewPage : undefined}
           onIndent={indentLine}
           onComment={commentOnLine}
           onAsk={askLine}
@@ -1368,13 +2175,161 @@ export function DocEditor({
       </>
     ) : null;
 
-  /** The page's ⋯: Ask, Share, Export, History, template and Trash. */
+  /** Star or unstar the page itself (NAV-07). */
+  const toggleStar = () => {
+    const on = !pageStarred;
+    setStars((all) =>
+      on
+        ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
+        : all.filter((f) => f.kind !== "doc"),
+    );
+    client.setFavourite("doc", doc.id, on).then(() => {
+      announceStars();
+      showToast({ text: on ? "Starred" : "Unstarred" });
+    }, report);
+  };
+  /** Star or unstar one heading (named first, if it has no name). */
+  const starHeading = (entry: OutlineEntry) => {
+    const block = blocks[entry.index];
+    const named = block?.id ?? null;
+    const blockId = named ?? nameBlockAt(entry.index);
+    const on = !starredHeadings.has(blockId);
+    void (async () => {
+      try {
+        // A heading named just now is saved first, so the star can find it.
+        if (!named) await flush();
+        await client.setFavourite("heading", doc.id, on, blockId);
+        announceStars();
+        setStars((all) =>
+          on
+            ? [
+                ...all,
+                {
+                  kind: "heading",
+                  target_id: doc.id,
+                  block_id: blockId,
+                  created_at: "",
+                },
+              ]
+            : all.filter(
+                (f) => !(f.kind === "heading" && f.block_id === blockId),
+              ),
+        );
+        showToast({ text: on ? `Starred “${entry.text}”` : "Unstarred" });
+      } catch (e) {
+        report(e);
+      }
+    })();
+  };
+  /** Archive the page (out of the library and search), or bring it back. */
+  const toggleArchive = async () => {
+    const next = !archived;
+    try {
+      const saved = await client.archiveDoc(doc.id, next);
+      setArchived(!!saved.archived);
+      onChanged(saved);
+      showToast({
+        text: next
+          ? "Archived. It's out of the library and search."
+          : "Back in the library",
+        action: next
+          ? {
+              label: "Undo",
+              run: () =>
+                void client.archiveDoc(doc.id, false).then((back) => {
+                  setArchived(false);
+                  onChanged(back);
+                }, report),
+            }
+          : undefined,
+      });
+    } catch (e) {
+      report(e);
+    }
+  };
+  /** A recording's summary goes under the recording (CAP-10). */
+  const addSummary = (fileId: string, lines: DocBlock[]) => {
+    const at = blocks.findIndex((b) => b.type === "file" && b.file === fileId);
+    placeLines(
+      lines.map((b) => ({ ...b, id: newBlockId() })),
+      at === -1 ? null : at,
+    );
+    showToast({ text: "Added the summary under the recording" });
+  };
+
+  /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
+    // Reading and editing (EDT-10): the same switch as Info's, a tap away.
+    ...(canWrite && !suggesting
+      ? [
+          {
+            label: reading ? "Edit this page" : "Read",
+            onPress: () => chooseMode(reading ? "edit" : "read"),
+          },
+        ]
+      : []),
     { label: "Ask about this page", onPress: () => setTalking(true) },
+    { label: "Present", onPress: () => setPresenting(true) },
+    {
+      label: pageStarred ? "Unstar" : "Star",
+      onPress: () => toggleStar(),
+    },
+    ...(onShowInLibrary
+      ? [{ label: "Show in library", onPress: () => onShowInLibrary() }]
+      : []),
+    // A page with headings has its contents a tap away (NAV-03).
+    ...(docOutline(blocks).length
+      ? [{ label: "Contents", onPress: () => setContentsOpen(true) }]
+      : []),
+    {
+      label: "Copy link",
+      onPress: () =>
+        void copyLink({ kind: "doc", id: doc.id }, title || "Untitled").catch(
+          report,
+        ),
+    },
     { label: "Share…", onPress: () => setMenu("share") },
     { label: "Export…", onPress: () => setMenu("export") },
     { label: "History", onPress: () => onShowHistory?.() },
     { label: "Save as template", onPress: () => setSavingTemplate(true) },
+    ...(doc.kind !== "agenda"
+      ? [{ label: "Publish to web…", onPress: () => setPublishing(true) }]
+      : []),
+    ...(foldableHeadings(blocks).length
+      ? [
+          {
+            label: foldableHeadings(blocks).some((id) => !folds.has(id))
+              ? "Collapse all headings"
+              : "Expand all headings",
+            onPress: () => {
+              const all = foldableHeadings(blocks);
+              saveFolds(
+                all.some((id) => !folds.has(id)) ? new Set(all) : new Set(),
+              );
+            },
+          },
+        ]
+      : []),
+    { label: "Copy for another app", onPress: () => void richCopy() },
+    ...(canWrite && structural && !reading
+      ? [
+          { label: "Make cards from highlights", onPress: cardsFromHighlights },
+          {
+            label: "Add a photo or file…",
+            onPress: () => void pickFiles(null).catch(report),
+          },
+          { label: "Record audio…", onPress: () => setRecording(true) },
+          { label: "Merge into…", onPress: () => setMerging(true) },
+        ]
+      : []),
+    ...(canWrite && doc.kind !== "agenda"
+      ? [
+          {
+            label: archived ? "Bring back from archive" : "Archive",
+            onPress: () => void toggleArchive(),
+          },
+        ]
+      : []),
     ...(canWrite
       ? [{ label: "Move to Trash", destructive: true, onPress: removePage }]
       : []),
@@ -1402,294 +2357,534 @@ export function DocEditor({
       onPress: () => void downloadDoc(doc.id, format).catch(report),
     }),
   );
-  const facts = pageFooter({ ...docStats(blocks), savedAt, saving, now });
+  // ---- contents (NAV-03) ----
+  const outline = useMemo(() => docOutline(blocks), [blocks]);
+  /** Bring a heading to the top of the sheet. */
+  const jumpTo = (entry: OutlineEntry) => {
+    setContentsOpen(false);
+    setInfoOpen(false);
+    const y = lineYs.current.get(entry.index);
+    if (bodyOffset.current === null || y === undefined) return;
+    onTargetOffset?.(bodyOffset.current + y);
+  };
+  const facts = keptOffline
+    ? "Offline, saved on this phone. It's sent when you're back online."
+    : pageFooter({
+        ...docStats(blocks),
+        savedAt,
+        saving,
+        now,
+        linked: linkedCount,
+      });
+
+  /** Footnote numbers and words; a marker's words show when tapped. */
+  const footnotes = useMemo(
+    () => ({
+      numbers: footnoteNumbers(blocks),
+      texts: footnoteTexts(blocks),
+      onShow: (n: string, words: string) =>
+        showToast({ text: `${n}. ${words}` }),
+    }),
+    [blocks],
+  );
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 1600);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   return (
-    <View style={styles.page}>
-      {/* The page's header holds only Back, its title, Info and ⋯. */}
-      {headerSlot && (
-        <SlotFill slot={headerSlot}>
-          <HeaderButton
-            icon="info"
-            label="Info"
-            on={infoOpen}
-            onPress={() => setInfoOpen(true)}
-          />
-          <HeaderButton
-            icon="more"
-            label="Page options"
-            on={menu !== null}
-            onPress={() => setMenu("page")}
-          />
-        </SlotFill>
-      )}
-      {reading ? (
-        <Text style={styles.title} accessibilityRole="header">
-          {title || "Untitled"}
-        </Text>
-      ) : (
-        // A hidden text mirror supplies the full wrapping height. Native
-        // multiline inputs can retain a one-line height after editing.
-        <View style={styles.titleEditor}>
-          <Text
-            style={[styles.title, { opacity: 0 }]}
-            accessible={false}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            {(title || "Untitled") + "\u200b"}
+    <RecordingContext.Provider value={recordingActions}>
+      <View style={styles.page}>
+        {/* The page's header holds only Back, its title, Info and ⋯. */}
+        {headerSlot && (
+          <SlotFill slot={headerSlot}>
+            <HeaderButton
+              icon="info"
+              label="Info"
+              on={infoOpen}
+              onPress={() => setInfoOpen(true)}
+            />
+            <HeaderButton
+              icon="more"
+              label="Page options"
+              on={menu !== null}
+              onPress={() => setMenu("page")}
+            />
+          </SlotFill>
+        )}
+        {reading ? (
+          <Text style={styles.title} accessibilityRole="header">
+            {title || "Untitled"}
           </Text>
-          <TextInput
-            style={[styles.title, StyleSheet.absoluteFill]}
-            scrollEnabled={false}
-            multiline
-            textAlignVertical="top"
-            value={title}
-            placeholder="Untitled"
-            placeholderTextColor={colors.faint}
-            maxLength={200}
-            accessibilityLabel="Document title"
-            onChangeText={(text) => {
-              remember("title");
-              setTitle(text);
-              queueSave(text, blocks);
-            }}
-          />
-        </View>
-      )}
+        ) : (
+          // A hidden text mirror supplies the full wrapping height. Native
+          // multiline inputs can retain a one-line height after editing.
+          <View style={styles.titleEditor}>
+            <Text
+              style={[styles.title, { opacity: 0 }]}
+              accessible={false}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {(title || "Untitled") + "\u200b"}
+            </Text>
+            <TextInput
+              style={[styles.title, StyleSheet.absoluteFill]}
+              scrollEnabled={false}
+              multiline
+              textAlignVertical="top"
+              value={title}
+              placeholder="Untitled"
+              placeholderTextColor={colors.faint}
+              maxLength={200}
+              accessibilityLabel="Document title"
+              onChangeText={(text) => {
+                remember("title");
+                setTitle(text);
+                queueSave(text, blocks);
+              }}
+            />
+          </View>
+        )}
 
-      {/* The page's tags, quietly under its title; Info changes them. */}
-      {tags.length > 0 && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Tags: ${tags.map((t) => t.name).join(", ")}. Open Info to change them.`}
-          onPress={() => setInfoOpen(true)}
-          style={styles.tags}
-        >
-          {tags.map((t) => (
-            <View key={t.id} style={styles.tag}>
-              <View style={[styles.tagDot, { backgroundColor: t.color }]} />
-              <Text style={styles.tagText} numberOfLines={1}>
-                {t.name}
-              </Text>
-            </View>
-          ))}
-        </Pressable>
-      )}
+        {/* The page's tags, quietly under its title; Info changes them. */}
+        {tags.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Tags: ${tags.map((t) => t.name).join(", ")}. Open Info to change them.`}
+            onPress={() => setInfoOpen(true)}
+            style={styles.tags}
+          >
+            {tags.map((t) => (
+              <View key={t.id} style={styles.tag}>
+                <View style={[styles.tagDot, { backgroundColor: t.color }]} />
+                <Text style={styles.tagText} numberOfLines={1}>
+                  {t.name}
+                </Text>
+              </View>
+            ))}
+          </Pressable>
+        )}
 
-      {!!note && (
-        <Text style={styles.note} onPress={() => setNote("")}>
-          {note}
-        </Text>
-      )}
+        {!!note && (
+          <Text style={styles.note} onPress={() => setNote("")}>
+            {note}
+          </Text>
+        )}
 
-      <DocSuggestions
-        suggestions={suggestions}
-        canDecide={canWrite}
-        userId={userId}
-        busy={deciding}
-        onDecide={decide}
-        onWithdraw={withdraw}
-      />
-
-      {savingTemplate && (
-        <SaveTemplatePanel
-          doc={doc}
-          canShare={canWrite}
-          onClose={() => setSavingTemplate(false)}
-          onSaved={(t) =>
-            showToast({
-              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
-            })
-          }
+        <DocSuggestions
+          suggestions={suggestions}
+          canDecide={canWrite}
+          userId={userId}
+          busy={deciding}
+          onDecide={decide}
+          onWithdraw={withdraw}
         />
-      )}
 
-      <View
-        onLayout={(event) => {
-          bodyOffset.current = event.nativeEvent.layout.y;
-          sendTarget();
-        }}
-      >
-        <DocBody
-          content={blocks}
-          targetBlockId={initialBlockId}
-          onTargetLayout={(y) => {
-            targetOffset.current = y;
+        {savingTemplate && (
+          <SaveTemplatePanel
+            doc={doc}
+            canShare={canWrite}
+            onClose={() => setSavingTemplate(false)}
+            onSaved={(t) =>
+              showToast({
+                text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+              })
+            }
+          />
+        )}
+
+        <View
+          onLayout={(event) => {
+            bodyOffset.current = event.nativeEvent.layout.y;
             sendTarget();
           }}
-          tasks={linked}
-          editing={focused}
-          draft={draft}
-          onDraftChange={changeDraft}
-          onCommit={commit}
-          onBlurLine={syncDraft}
-          selection={caret}
-          onSelectionChange={onSelect}
-          inputRef={lineInput}
-          counts={comments.counts}
-          marks={markRanges(comments.anchored)}
-          onOpenComments={(blockId) =>
-            setOpenThread((open) => (open === blockId ? null : blockId))
-          }
-          renderUnder={(blockId) => {
-            const list = comments.anchored.get(blockId) ?? [];
-            const waiting = pending?.blockId === blockId;
-            if (picking?.blockId === blockId)
-              return (
-                <WordPicker
-                  source={picking.source}
-                  onCancel={() => setPicking(null)}
-                  onAsk={(range) => {
-                    setPicking(null);
-                    setAsking({ blockId, ...range });
-                  }}
-                  onPick={(range) => {
-                    setPicking(null);
-                    setPending({
-                      blockId,
-                      quote: range.quote.slice(0, 400),
-                      range_start: range.start,
-                      range_end: range.end,
-                    });
-                    setOpenThread(blockId);
-                  }}
-                />
-              );
-            if (asking?.blockId === blockId)
-              return (
-                <AskSheet
-                  quote={asking.quote}
-                  busy={deciding}
-                  onCancel={() => setAsking(null)}
-                  onAsk={(action, instruction) =>
-                    void assist(action, instruction)
-                  }
-                />
-              );
-            if (openThread !== blockId && !waiting) return null;
-            return (
-              <DocThread
-                comments={list}
-                state={comments}
-                userId={userId}
-                quote={list[0]?.quote ?? pending?.quote}
-                placeholder="Comment on this line…"
-                autoFocus={waiting}
-                anchor={{
-                  block_id: blockId,
-                  quote: pending?.quote ?? list[0]?.quote ?? "",
-                  range_start: pending?.range_start,
-                  range_end: pending?.range_end,
-                }}
-                // Stay open on the line just commented on, so the remark
-                // that was written is there to read rather than folding away.
-                onDone={() => {
-                  setPending(null);
-                  setOpenThread(blockId);
-                }}
-              />
-            );
-          }}
-          onEditBlock={reading && !suggesting ? undefined : openLine}
-          onToggleTodo={reading || !structural ? undefined : toggle}
-        />
-      </View>
-
-      {/* The toolbar rides on the keyboard (the sheet docks it there); a
-          page shown anywhere else keeps it under the line. */}
-      {toolbar &&
-        (toolbarSlot ? (
-          <SlotFill slot={toolbarSlot}>{toolbar}</SlotFill>
-        ) : (
-          toolbar
-        ))}
-      {focused === null && structural && (
-        <Pressable
-          onPress={addLine}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
         >
-          <Text style={styles.addText}>+ Add a block</Text>
-        </Pressable>
-      )}
+          <LinkPillProvider value={pillActions}>
+            <FootnoteContext.Provider value={footnotes}>
+              <DocBody
+                content={blocks}
+                targetBlockId={initialBlockId}
+                onTargetLayout={(y) => {
+                  targetOffset.current = y;
+                  sendTarget();
+                  if (initialBlockId) setFlash(initialBlockId);
+                }}
+                folds={folds}
+                onToggleFold={toggleFold}
+                flash={flash}
+                onReplace={
+                  structural && !reading
+                    ? (index, block) => {
+                        remember();
+                        const next = blocks.slice();
+                        next[index] = block;
+                        update(next);
+                      }
+                    : undefined
+                }
+                onEditTable={
+                  structural && !reading
+                    ? (index) => setTableAt(index)
+                    : undefined
+                }
+                tasks={linked}
+                editing={focused}
+                draft={draft}
+                onDraftChange={changeDraft}
+                onCommit={commit}
+                onBlurLine={syncDraft}
+                selection={caret}
+                onSelectionChange={onSelect}
+                inputRef={lineInput}
+                counts={comments.counts}
+                marks={markRanges(comments.anchored)}
+                onOpenComments={(blockId) =>
+                  setOpenThread((open) => (open === blockId ? null : blockId))
+                }
+                renderUnder={(blockId) => {
+                  const list = comments.anchored.get(blockId) ?? [];
+                  const waiting = pending?.blockId === blockId;
+                  if (picking?.blockId === blockId)
+                    return (
+                      <WordPicker
+                        source={picking.source}
+                        onCancel={() => setPicking(null)}
+                        onAsk={(range) => {
+                          setPicking(null);
+                          setAsking({ blockId, ...range });
+                        }}
+                        onPick={(range) => {
+                          setPicking(null);
+                          setPending({
+                            blockId,
+                            quote: range.quote.slice(0, 400),
+                            range_start: range.start,
+                            range_end: range.end,
+                          });
+                          setOpenThread(blockId);
+                        }}
+                      />
+                    );
+                  if (asking?.blockId === blockId)
+                    return (
+                      <AskSheet
+                        quote={asking.quote}
+                        busy={deciding}
+                        onCancel={() => setAsking(null)}
+                        onAsk={(action, instruction) =>
+                          void assist(action, instruction)
+                        }
+                      />
+                    );
+                  if (openThread !== blockId && !waiting) return null;
+                  return (
+                    <DocThread
+                      comments={list}
+                      state={comments}
+                      userId={userId}
+                      quote={list[0]?.quote ?? pending?.quote}
+                      placeholder="Comment on this line…"
+                      autoFocus={waiting}
+                      anchor={{
+                        block_id: blockId,
+                        quote: pending?.quote ?? list[0]?.quote ?? "",
+                        range_start: pending?.range_start,
+                        range_end: pending?.range_end,
+                      }}
+                      // Stay open on the line just commented on, so the remark
+                      // that was written is there to read rather than folding away.
+                      onDone={() => {
+                        setPending(null);
+                        setOpenThread(blockId);
+                      }}
+                    />
+                  );
+                }}
+                onLineLayout={(index, y) => lineYs.current.set(index, y)}
+                onEditBlock={reading && !suggesting ? undefined : openLine}
+                // Reading, and allowed to edit: a double tap edits that line.
+                onDoubleTapBlock={
+                  reading && canWrite && !suggesting
+                    ? (index) => {
+                        setMode("edit");
+                        saveLocal(MODE_KEY + doc.id, "edit");
+                        openLine(index);
+                      }
+                    : undefined
+                }
+                onToggleTodo={reading || !structural ? undefined : toggle}
+                underEditing={underLine}
+              />
+            </FootnoteContext.Provider>
+          </LinkPillProvider>
+        </View>
 
-      {/* Four lines of instructions sat under every page, every time it was
+        {/* The toolbar rides on the keyboard (the sheet docks it there); a
+          page shown anywhere else keeps it under the line. */}
+        {toolbar &&
+          (toolbarSlot ? (
+            <SlotFill slot={toolbarSlot}>{toolbar}</SlotFill>
+          ) : (
+            toolbar
+          ))}
+        {focused === null && structural && (
+          <Pressable
+            onPress={addLine}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
+          >
+            <Text style={styles.addText}>+ Add a block</Text>
+          </Pressable>
+        )}
+
+        {/* Four lines of instructions sat under every page, every time it was
           opened. It says the one thing that is not obvious, and only while
           there is a toolbar for it to be about. */}
-      {focused !== null && structural && (
-        <Text style={styles.hint}>
-          Return starts a new line; on an empty list item it ends the list.
+        {focused !== null && structural && (
+          <Text style={styles.hint}>
+            Return starts a new line; on an empty list item it ends the list.
+          </Text>
+        )}
+
+        {/* One quiet line at the end of the page. */}
+        <Text style={styles.footer} onPress={() => setInfoOpen(true)}>
+          {facts}
         </Text>
-      )}
-
-      {/* One quiet line at the end of the page. */}
-      <Text style={styles.footer}>{facts}</Text>
-
-      {openTodos > 0 && (
-        <View style={styles.pageActions}>
-          <SmallAction
-            label={`Add ${openTodos} to my tasks`}
-            disabled={false}
-            onPress={() => makeTasks()}
+        <View
+          onLayout={(event) => {
+            linkedY.current = event.nativeEvent.layout.y;
+          }}
+        />
+        <LinkedHere
+          kind="doc"
+          id={doc.id}
+          onCount={setLinkedCount}
+          report={report}
+          onLinkRelated={
+            canWrite && structural && !reading ? linkRelated : undefined
+          }
+        />
+        <PublishSheet
+          visible={publishing}
+          kind="doc"
+          id={doc.id}
+          name={title || "Untitled"}
+          onClose={() => setPublishing(false)}
+        />
+        <LinkCardSheet
+          target={card}
+          onClose={() => setCard(null)}
+          onChanged={() => {
+            reloadPills();
+            onItemsChanged?.();
+          }}
+          report={report}
+        />
+        {tableAt !== null && blocks[tableAt]?.type === "table" && (
+          <TableEditor
+            visible
+            text={(blocks[tableAt] as { text: string }).text}
+            onSave={(text) => {
+              const at = tableAt;
+              remember();
+              const next = blocks.slice();
+              next[at] = { ...(blocks[at] as DocBlock), text } as DocBlock;
+              update(next);
+            }}
+            onClose={() => setTableAt(null)}
           />
-        </View>
-      )}
+        )}
+        <TemplateSheet
+          visible={templateAt !== null}
+          doc={{ title, project_name: doc.project_name }}
+          onPick={(lines) => placeLines(lines, templateAt)}
+          onClose={() => setTemplateAt(null)}
+          report={report}
+        />
+        <EmbedSheet
+          visible={embedAt !== null}
+          onPick={(ref) => {
+            if (ref.kind !== "doc" || ref.id === doc.id) {
+              showToast({
+                text:
+                  ref.id === doc.id
+                    ? "That's this page."
+                    : "Only a page can be embedded.",
+              });
+              return;
+            }
+            placeLines(
+              [
+                {
+                  type: "code",
+                  lang: EMBED_LANG,
+                  text: embedText({
+                    kind: "section",
+                    doc: ref.id,
+                    block: ref.block ?? null,
+                  }),
+                  id: newBlockId(),
+                },
+              ],
+              embedAt,
+            );
+          }}
+          onClose={() => setEmbedAt(null)}
+          report={report}
+        />
+        <MergeSheet
+          visible={merging}
+          doc={{ id: doc.id, title }}
+          version={async () => {
+            await flush();
+            return version.current;
+          }}
+          onClose={() => setMerging(false)}
+          onMerged={(into, relinked) => {
+            setMerging(false);
+            dirty.current = false;
+            flushOnClose.current = () => {};
+            gone.current = true;
+            onDeleted?.();
+            openObject({ kind: "doc", id: into.id });
+            showToast({
+              text:
+                relinked > 0
+                  ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
+                  : `Merged into “${into.title}”.`,
+            });
+          }}
+        />
 
-      <DocAsk
-        visible={talking}
-        docId={doc.id}
-        blocks={blocks}
-        canWrite={canWrite || suggesting}
-        onClose={() => setTalking(false)}
-        onGoToBlock={(blockId) => setOpenThread(blockId)}
-        onNameBlock={nameBlockAt}
-        onSuggested={(made) => setSuggestions((list) => [...list, made])}
-      />
-      <PageInfo
-        visible={infoOpen}
-        doc={doc}
-        tags={tags}
-        mode={mode}
-        canWrite={canWrite}
-        reading={reading}
-        facts={facts}
-        onMode={chooseMode}
-        onTags={setTags}
-        onShowHistory={() => {
-          setInfoOpen(false);
-          onShowHistory?.();
-        }}
-        onClose={() => setInfoOpen(false)}
-        report={report}
-      />
-      <ActionSheet
-        visible={menu === "page"}
-        label="Page options"
-        title={title || "Untitled"}
-        actions={pageActions}
-        onClose={() => setMenu((m) => (m === "page" ? null : m))}
-      />
-      <ActionSheet
-        visible={menu === "share"}
-        label="Share this page"
-        title="Share as"
-        actions={shareActions}
-        onClose={() => setMenu((m) => (m === "share" ? null : m))}
-      />
-      <ActionSheet
-        visible={menu === "export"}
-        label="Export this page"
-        title="Export as"
-        actions={exportActions}
-        onClose={() => setMenu((m) => (m === "export" ? null : m))}
-      />
-    </View>
+        {openTodos > 0 && (
+          <View style={styles.pageActions}>
+            <SmallAction
+              label={`Add ${openTodos} to my tasks`}
+              disabled={false}
+              onPress={() => makeTasks()}
+            />
+          </View>
+        )}
+
+        <DocAsk
+          visible={talking}
+          docId={doc.id}
+          blocks={blocks}
+          canWrite={canWrite || suggesting}
+          onClose={() => setTalking(false)}
+          onGoToBlock={(blockId) => setOpenThread(blockId)}
+          onNameBlock={nameBlockAt}
+          onSuggested={(made) => setSuggestions((list) => [...list, made])}
+        />
+        <PageInfo
+          visible={infoOpen}
+          doc={doc}
+          fieldsStamp={fieldsStamp}
+          tags={tags}
+          mode={mode}
+          canWrite={canWrite}
+          reading={reading}
+          facts={facts}
+          onMode={chooseMode}
+          onTags={setTags}
+          onShowHistory={() => {
+            setInfoOpen(false);
+            onShowHistory?.();
+          }}
+          onClose={() => setInfoOpen(false)}
+          report={report}
+          outline={outline}
+          onJump={jumpTo}
+          starredHeadings={starredHeadings}
+          onStarHeading={starHeading}
+          onShowLinked={() => {
+            setInfoOpen(false);
+            if (linkedY.current !== null) onTargetOffset?.(linkedY.current);
+          }}
+        />
+        <ContentsSheet
+          visible={contentsOpen}
+          outline={outline}
+          current={-1}
+          onJump={jumpTo}
+          onClose={() => setContentsOpen(false)}
+          starred={starredHeadings}
+          onStar={starHeading}
+        />
+        <PresentSheet
+          visible={presenting}
+          title={title}
+          blocks={blocks}
+          onClose={() => setPresenting(false)}
+        />
+        <RecordSheet
+          visible={recording}
+          onClose={() => setRecording(false)}
+          onDone={(r) => {
+            setRecording(false);
+            void addFiles([{ name: r.name, uri: r.uri, mime: r.mime }], null);
+          }}
+        />
+        <RecordingSummarySheet
+          target={summarising}
+          onAddToPage={
+            canWrite && !reading && summarising
+              ? (lines) => addSummary(summarising.fileId, lines)
+              : undefined
+          }
+          onClose={() => setSummarising(null)}
+        />
+        <ActionSheet
+          visible={menu === "page"}
+          label="Page options"
+          title={title || "Untitled"}
+          actions={pageActions}
+          onClose={() => setMenu((m) => (m === "page" ? null : m))}
+        />
+        <ActionSheet
+          visible={menu === "share"}
+          label="Share this page"
+          title="Share as"
+          actions={shareActions}
+          onClose={() => setMenu((m) => (m === "share" ? null : m))}
+        />
+        <ActionSheet
+          visible={menu === "export"}
+          label="Export this page"
+          title="Export as"
+          actions={exportActions}
+          onClose={() => setMenu((m) => (m === "export" ? null : m))}
+        />
+      </View>
+    </RecordingContext.Provider>
   );
 }
 
 const styles = themed(() =>
   StyleSheet.create({
+    slash: {
+      marginTop: 4,
+      borderRadius: radii.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: "hidden",
+    },
+    slashRow: {
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      gap: 2,
+    },
+    slashDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    slashLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    slashHint: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     page: { gap: 16 },
     titleEditor: { minHeight: 44 },
     title: {

@@ -23,6 +23,8 @@ import {
   type Db,
   type Queryable,
 } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
+import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -306,6 +308,8 @@ async function usePageTemplate(
     },
     input.title,
   );
+  // A template's pictures and files show only for someone who can read them.
+  await allowPageFiles(db, u.id, filled.content);
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
@@ -352,7 +356,11 @@ async function usePageTemplate(
       [id],
     )
   ).rows[0];
-  return { doc, tasks_created: made?.length ?? 0, existing: false };
+  return {
+    doc: await readableLinks(db, u.id, doc),
+    tasks_created: made?.length ?? 0,
+    existing: false,
+  };
 }
 
 export async function pageTemplateRoutes(app: FastifyInstance) {
@@ -366,7 +374,11 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
       )
     ).rows;
     return [
-      ...rows.map((row) => toTemplate(u, row)),
+      ...(await readableLinks(
+        reader(r.headers),
+        u.id,
+        rows.map((row) => toTemplate(u, row)),
+      )),
       ...PAGE_TEMPLATE_STARTERS.map(starter),
     ];
   });
@@ -512,7 +524,10 @@ export async function pageTemplateFromPage(
         (d.name ?? (doc.title.trim() || "Untitled")).slice(0, 120),
         d.description ?? "",
         doc.title.slice(0, 200),
-        JSON.stringify(templateFromPage(doc.content ?? [])),
+        // Copied as the saver reads it (D3aF).
+        JSON.stringify(
+          templateFromPage(await readableLinks(db, u.id, doc.content ?? [])),
+        ),
         folderId,
       ],
     )
@@ -546,7 +561,11 @@ export async function listPageTemplates(
     )
   ).rows;
   return [
-    ...rows.map((row) => toTemplate(u, row)),
+    ...(await readableLinks(
+      db,
+      u.id,
+      rows.map((row) => toTemplate(u, row)),
+    )),
     ...PAGE_TEMPLATE_STARTERS.map(starter),
   ];
 }

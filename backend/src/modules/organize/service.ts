@@ -8,10 +8,13 @@ import {
 import type { Db, Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
 import {
   readableDocs,
   visibleFolders,
-  visibleOwned,
+  visibleItems,
+  visibleProjects,
+  visibleViews,
 } from "../../lib/visibility.js";
 
 /**
@@ -25,6 +28,7 @@ export const LIST_COLUMNS = `l.id, l.user_id, l.team_id, t.name AS team_name, l.
 
 /** Selects a folder; `$1` must be the reader's id (docs they can't see aren't counted). */
 export const FOLDER_COLUMNS = `f.id, f.user_id, f.team_id, f.name, f.position, f.created_at,
+  f.archived_at,
   (SELECT count(*)::int FROM docs d WHERE d.folder_id = f.id
      AND d.deleted_at IS NULL
      AND ${readableDocs("d")}) AS doc_count`;
@@ -217,15 +221,26 @@ export async function deleteFolder(db: Db, u: UserRow, id: string) {
   await db.query("DELETE FROM folders WHERE id = $1", [id]);
 }
 
+/** How many stars one person may have. */
+export const STAR_LIMIT = 500;
+
+/** A query finding the thing starred, when `$1` can see it (`$3`: a heading's line). */
 const STARRABLE: Record<FavouriteKind, string> = {
-  doc: "docs",
-  project: "projects",
-  view: "saved_views",
+  doc: `SELECT 1 FROM docs d WHERE d.id = $2 AND ${docVisibleTo("$1")}`,
+  heading: `SELECT 1 FROM docs d WHERE d.id = $2 AND ${docVisibleTo("$1")}
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(
+                CASE WHEN jsonb_typeof(d.content) = 'array'
+                     THEN d.content ELSE '[]'::jsonb END) b
+               WHERE b->>'id' = $3)`,
+  task: `SELECT 1 FROM items i WHERE i.id = $2 AND ${visibleItems("i")}`,
+  project: `SELECT 1 FROM projects p WHERE p.id = $2 AND ${visibleProjects("p")}`,
+  view: `SELECT 1 FROM saved_views x WHERE x.id = $2 AND ${visibleViews("x")}`,
 };
 
 /**
  * Star or unstar something for `userId`. Only what they can see can be
- * starred (404 otherwise); starring twice is harmless.
+ * starred (404 otherwise); starring twice is harmless. A `heading` star
+ * names the page's line in `blockId`.
  */
 export async function setFavourite(
   db: Queryable,
@@ -233,26 +248,36 @@ export async function setFavourite(
   kind: FavouriteKind,
   targetId: string,
   starred: boolean,
+  blockId = "",
 ) {
   if (starred) {
-    const table = STARRABLE[kind];
-    const visible = (
+    const found = (
       await db.query(
-        `SELECT 1 FROM ${table} x WHERE x.id = $2
-           ${table === "docs" ? "AND x.deleted_at IS NULL" : ""}
-           AND ${visibleOwned("x", "user_id")}`,
-        [userId, targetId],
+        STARRABLE[kind],
+        kind === "heading"
+          ? [userId, targetId, blockId]
+          : [userId, targetId],
       )
     ).rowCount;
-    if (!visible) fail(404, "Not found");
+    if (!found) fail(404, "Not found");
+    // A few hundred stars is plenty; a runaway script isn't.
+    const count = (
+      await db.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM favourites WHERE user_id = $1",
+        [userId],
+      )
+    ).rows[0].n;
+    if (count >= STAR_LIMIT)
+      fail(409, `You can star up to ${STAR_LIMIT} things. Unstar some first.`);
     await db.query(
-      `INSERT INTO favourites (user_id, kind, target_id) VALUES ($1,$2,$3)
-         ON CONFLICT DO NOTHING`,
-      [userId, kind, targetId],
+      `INSERT INTO favourites (user_id, kind, target_id, block_id)
+         VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
+      [userId, kind, targetId, blockId],
     );
   } else
     await db.query(
-      "DELETE FROM favourites WHERE user_id=$1 AND kind=$2 AND target_id=$3",
-      [userId, kind, targetId],
+      `DELETE FROM favourites
+        WHERE user_id=$1 AND kind=$2 AND target_id=$3 AND block_id=$4`,
+      [userId, kind, targetId, blockId],
     );
 }

@@ -20,6 +20,7 @@ import {
 import { usePlanned } from "../app/planned";
 import { stagger } from "../lib/motion";
 import { minutesLabel } from "../lib/planning";
+import { startDrag } from "../lib/drag";
 import { progressOf, stepsLabel, updatesLabel } from "../lib/tasks";
 import { StatusPill } from "./StatusPill";
 import { ProgressBar } from "./ProgressBar";
@@ -96,6 +97,17 @@ export function ItemRow({
         `item-row tone-${i.status} fade-up stagger ` + (done ? "completed" : "")
       }
       style={stagger(index)}
+      // Picked up, a task plans a session on a calendar day or links into
+      // a page (ORG-06); its menus do the same without a mouse.
+      draggable
+      onDragStart={(e) =>
+        startDrag(e, {
+          kind: "task",
+          id: i.id,
+          title: i.title,
+          event: i.kind === "event",
+        })
+      }
     >
       {onToggleChildren && (
         <button

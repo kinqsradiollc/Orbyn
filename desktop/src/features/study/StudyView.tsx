@@ -913,11 +913,14 @@ export function MakeCardsDialog({
   title,
   report,
   onClose,
+  max,
 }: {
   docId: string;
   title: string;
   report: (e: unknown) => void;
   onClose: (added: number) => void;
+  /** How many to suggest: "Make 10 flashcards" asks for ten (AI-01). */
+  max?: number;
 }) {
   const [cards, setCards] = useState<
     (SuggestedCard & { keep: boolean })[] | null
@@ -925,11 +928,11 @@ export function MakeCardsDialog({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    client.suggestCards(docId).then(
+    client.suggestCards(docId, max).then(
       (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
       (e: Error) => setError(errorText(e)),
     );
-  }, [docId]);
+  }, [docId, max]);
   const update = (
     i: number,
     patch: Partial<SuggestedCard & { keep: boolean }>,

@@ -260,7 +260,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 ## What we collect
 
 - **Your account:** your name, email address, password (stored only as a one-way hash), passkeys, two-step settings and preferences.
-- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them, the flashcards in your pages with how your reviews went, and files you import into Docs (PDFs, Word documents and photos of notes).
+- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them, the flashcards in your pages with how your reviews went, files you import into Docs (PDFs, Word documents and photos of notes), pictures, files and audio recordings you add to pages, and what you save from web pages with the Orbyn Clipper browser extension (the page's address, its readable text, and passages you highlight).
 - **Sign-ins:** the device and browser you signed in from and when each session was last used, so you can see and end them.
 - **Requests to our servers:** the address requested, when, how long it took, the result, and which account made it. We use this to run, secure and debug Orbyn.
 - **Usage analytics:** per day, how many requests, changes and assistant requests your account made. This never includes what you wrote. You can turn it off.
@@ -275,7 +275,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 
 ## The assistant
 
-When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
+When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. When you ask for a summary of a recording you made in a page, the recording is sent to the AI service to be written out, and the written-out words to be summarised; recordings are never sent anywhere unless you ask. Team owners and admins can keep a team's pages out of the assistant altogether. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
 
 ## Connected agents
 
@@ -283,7 +283,11 @@ If you connect an outside AI agent or app to Orbyn (for example Claude, ChatGPT 
 
 ## Files you import
 
-When you import a PDF, Word document or photo into Docs, the file is stored encrypted on Orbyn's own servers only while it's turned into a page, then deleted. Scanned pages and photos are read by a text-recognition model that runs on our servers; the file is never sent to the AI service or anyone else. The file is deleted as soon as the import finishes, fails or is cancelled, and in any case within 24 hours. Only the page it became stays, like any page you write, with a note of the file's name.
+When you import a PDF, Word document or photo into Docs, the file is stored encrypted on Orbyn's own servers only while it's turned into a page, then deleted. Scanned pages and photos are read by a text-recognition model that runs on our servers; the file is never sent to the AI service or anyone else. The file is deleted as soon as the import finishes, fails or is cancelled, and in any case within 24 hours. Only the page it became stays, like any page you write, with a note of the file's name — unless you choose "Keep the original", when the file stays with its page as described below.
+
+## Pictures and files in pages
+
+Pictures, files and audio recordings you add to a page, and the originals of imports you chose to keep, are stored encrypted on Orbyn's own servers (never a third-party storage service), for as long as a page shows them. Whoever can open a page that shows one can see or download it, through links that last an hour. They count against your space for files, which a page's Info shows. When you delete a file from a page's Info, it's deleted within a few hours. When no page shows it any more — its line was removed, or its page was deleted for good — it's deleted 30 days after its line was removed (so undo and page history can bring it back), or within a few hours of its page being deleted for good. They are included in our backups.
 
 If you turn on "Keep the original" (off unless you choose it), the file itself is kept too, encrypted on Orbyn's own servers and included in our backups, for as long as the page it became exists. It is never sent to the AI service or anyone else. Whoever can open the page can download it. It comes with your full export, and it is deleted when you delete it, when its page is deleted for good, or when you delete your account.
 
@@ -312,7 +316,8 @@ Orbyn stores only what it needs in your browser: your sign-in, and settings such
 - Your account and content: until you delete them or your account.
 - Deleted items: 90 days, so you can restore them.
 - Request logs: 7 days. Daily usage counts and study review history: about 13 months.
-- Files you import: deleted once they're read, and always within 24 hours. The record of each import (its file name and outcome): 30 days.
+- Files you import: deleted once they're read, and always within 24 hours, unless you keep the original. The record of each import (its file name and outcome): 30 days.
+- Pictures and files in pages: as long as a page shows them; 30 days once none does, or until you delete them from a page's Info.
 - Security audit records: 2 years.
 - Expired sign-ins and email links: removed automatically.
 

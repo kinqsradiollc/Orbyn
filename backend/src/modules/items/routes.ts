@@ -61,6 +61,7 @@ import {
   visibleOwned,
   visibleProjects,
 } from "../../lib/visibility.js";
+import { readableLinks } from "../links/privacy.js";
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
 const ORDER: Record<Exclude<ItemSort, "score">, string> = {
@@ -424,7 +425,8 @@ export async function itemRoutes(app: FastifyInstance) {
             title: source.title,
             kind: source.kind,
             block_id: source.block_id!,
-            quote: quoteOf(block),
+            // Links to what the reader can't open keep no title (D3aF).
+            quote: quoteOf(await readableLinks(db, u.id, block)),
             todo: block?.type === "todo",
             done: block?.type === "todo" ? block.done : false,
           }

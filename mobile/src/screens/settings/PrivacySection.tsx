@@ -4,7 +4,7 @@ import { Switch } from "../../components/Switch";
 import type { LegalDoc, PrivacyView } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { LegalSheet } from "../../components/LegalSheet";
+import { LegalSheet, SecuritySheet } from "../../components/LegalSheet";
 import { client } from "../../lib/api";
 import { confirmAction } from "../../lib/confirm";
 import { colors, fonts, themed } from "../../theme";
@@ -39,6 +39,7 @@ export function PrivacySection({
 }) {
   const [view, setView] = useState<PrivacyView | null>(null);
   const [reading, setReading] = useState<LegalDoc | null>(null);
+  const [security, setSecurity] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -98,6 +99,12 @@ export function PrivacySection({
             onPress={() => setReading("privacy")}
           />
         </View>
+        <Button
+          secondary
+          title="Security and data"
+          icon="shieldCheck"
+          onPress={() => setSecurity(true)}
+        />
 
         <View style={s.row}>
           <View style={{ flex: 1 }}>
@@ -172,6 +179,7 @@ export function PrivacySection({
         />
       </SettingsSection>
       <LegalSheet doc={reading} onClose={() => setReading(null)} />
+      <SecuritySheet visible={security} onClose={() => setSecurity(false)} />
     </>
   );
 }

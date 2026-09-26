@@ -907,7 +907,12 @@ export const organize = defineCapability({
               id: z.string().trim().max(300).optional(),
               name: z.string().trim().min(1).max(80).optional(),
               space: z.string().trim().max(100).optional(),
-              kind: z.enum(FAVOURITE_KINDS).optional(),
+              // Stars on a page, project or view, as the tool has always
+              // taken (a task's or heading's star is the app's).
+              kind: z
+                .enum(FAVOURITE_KINDS)
+                .extract(["doc", "project", "view"])
+                .optional(),
               add: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
               remove: z.array(idField).max(20).optional(),
             })

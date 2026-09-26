@@ -26,3 +26,24 @@ export const DOCS_HAVE_TRASH = true;
 export function docVisibleTo(user: string, alias = "d") {
   return visibleDocs(alias, { user });
 }
+
+/**
+ * SQL true when `alias` is archived (SRCH-03): the page itself, or the
+ * folder it is in. Archived pages leave the library, the quick switcher,
+ * search, the link picker and "Mentioned without a link" unless asked for.
+ */
+export function docArchived(alias = "d") {
+  return `(${alias}.archived_at IS NOT NULL OR EXISTS (
+    SELECT 1 FROM folders af WHERE af.id = ${alias}.folder_id
+       AND af.archived_at IS NOT NULL))`;
+}
+
+/**
+ * SQL true when the assistant may read `alias` (OTH-04): a personal page, or
+ * a team page in a team that hasn't kept its pages out of the assistant.
+ */
+export function assistantMayRead(alias = "d") {
+  return `(${alias}.team_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM teams ast WHERE ast.id = ${alias}.team_id
+       AND NOT ast.assistant_allowed))`;
+}

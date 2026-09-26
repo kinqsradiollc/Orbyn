@@ -43,6 +43,7 @@ import {
   type AdminDatabaseTableDetail,
   type AdminDatabaseRows,
   type Doc,
+  type DocInfo,
   type TrashedDoc,
   type DocBlock,
   type DocKind,
@@ -53,12 +54,49 @@ import {
   type ExportFormat,
   type Proposed,
   type SearchHit,
+  type FindHit,
+  type LinkedHereList,
+  type LinkOption,
+  type LinkPill,
+  type ObjectRef,
+  resolveRefs,
+  type HeadingOption,
+  type LinkCard,
+  type RelatedPage,
+  type UnlinkedMention,
+  type PageFile,
+  type PageFileInput,
+  type PageFileLink,
+  type PageFilesUsage,
+  type PageFileUpload,
   type DocSummary,
   type EventNoteRef,
   type DocVersion,
   type DocVersionChanges,
   type Favourite,
   type FavouriteKind,
+  type StarredItem,
+  type AccountPrefs,
+  type AccountPrefsInput,
+  type ConnectionMap,
+  type TeamPolicies,
+  type RecordingSummary,
+  type ClipKey,
+  type ClipDestinations,
+  type ClipInput,
+  type ClipResult,
+  type CustomField,
+  type CustomFieldInput,
+  type CustomFieldUpdate,
+  type FieldDate,
+  type FieldTarget,
+  type FieldValue,
+  type SavedView,
+  type SavedViewInput,
+  type SavedViewUpdate,
+  type TargetFields,
+  type ViewDefinitionInput,
+  type ViewResult,
   type Folder,
   type Project,
   type ProjectLink,
@@ -146,6 +184,7 @@ import {
   type PlanApplied,
   type PlanApplyInput,
   type BlockInput,
+  type BlockOnDayInput,
   type BlockUpdate,
   type Booking,
   type BookingPage,
@@ -247,6 +286,15 @@ import {
   type ProjectChat,
   type ProjectChatInput,
   type ProjectChatSummary,
+  type CaptureAssistInput,
+  type CaptureAssistResult,
+  type FirstRunInput,
+  type FirstRunResult,
+  type PageImportInput,
+  type PagesImportSummary,
+  type PublishInput,
+  type PublishState,
+  type TeamChangesPage,
 } from "@orbyn/core";
 
 /** News from `GET /events`: re-read what it names. */
@@ -279,6 +327,8 @@ export type DocNews = {
   trashed: boolean;
   /** Only the page's tags changed; its words and version are as they were. */
   tags: boolean;
+  /** Only a field value changed (the Info panel reads it afresh). */
+  fields?: boolean;
   /** Who made the change, so an editor can skip its own saves ("" when unknown). */
   by: string;
 };
@@ -668,7 +718,7 @@ export class OrbynClient {
   }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
-    format: "orbyn" | "csv";
+    format: "orbyn" | "csv" | "todoist" | "ticktick";
     data: string;
     dry_run?: boolean;
   }) {
@@ -1063,6 +1113,8 @@ export class OrbynClient {
       deadline?: string | null;
       doc_id?: string | null;
       stages?: { id?: string; name: string }[];
+      /** Other names, such as a course code (LNK-03). */
+      aliases?: string[];
     },
   ) {
     return this.request<Project>(`/projects/${id}`, {
@@ -1277,11 +1329,203 @@ export class OrbynClient {
   listFavourites() {
     return this.request<Favourite[]>("/favourites");
   }
-  setFavourite(kind: FavouriteKind, targetId: string, starred: boolean) {
+  setFavourite(
+    kind: FavouriteKind,
+    targetId: string,
+    starred: boolean,
+    blockId?: string,
+  ) {
     return this.request<void>("/favourites", {
       method: "PUT",
-      body: { kind, target_id: targetId, starred },
+      body: {
+        kind,
+        target_id: targetId,
+        starred,
+        ...(blockId ? { block_id: blockId } : {}),
+      },
     });
+  }
+  /** The Starred group: every star with its live title (NAV-07). */
+  listStarred() {
+    return this.request<StarredItem[]>("/starred");
+  }
+
+  // Choices that follow the account (NAV-08, NAV-09, SHR-08)
+  getPrefs() {
+    return this.request<AccountPrefs>("/me/prefs");
+  }
+  savePrefs(input: AccountPrefsInput) {
+    return this.request<AccountPrefs>("/me/prefs", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  resetPrefs() {
+    return this.request<void>("/me/prefs", { method: "DELETE" });
+  }
+
+  // Archiving and tidying the library (SRCH-03, ORG-03)
+  archiveDoc(id: string, archived: boolean) {
+    return this.request<Doc>(`/docs/${id}/archive`, {
+      method: "PUT",
+      body: { archived },
+    });
+  }
+  archiveFolder(id: string, archived: boolean) {
+    return this.request<{ id: string; archived_at: string | null }>(
+      `/folders/${id}/archive`,
+      { method: "PUT", body: { archived } },
+    );
+  }
+  /** Move, archive or tag several pages at once. */
+  bulkDocs(input: {
+    ids: string[];
+    folder_id?: string | null;
+    archived?: boolean;
+    tag_id?: string;
+  }) {
+    return this.request<{
+      done: string[];
+      skipped: { id: string; reason: string }[];
+    }>("/docs/bulk", { method: "POST", body: input });
+  }
+
+  /** The Connections map around a page or project (CNV-02). */
+  connectionMap(kind: "doc" | "project", id: string, depth: 1 | 2 = 1) {
+    const q = new URLSearchParams({ kind, id, depth: String(depth) });
+    return this.request<ConnectionMap>(`/links/map?${q}`);
+  }
+
+  /** A team's switches for publishing, the assistant and booking (OTH-04). */
+  getTeamPolicies(teamId: string) {
+    return this.request<TeamPolicies>(`/teams/${teamId}/policies`);
+  }
+  setTeamPolicies(
+    teamId: string,
+    input: Partial<Pick<TeamPolicies, "publishing" | "assistant" | "booking">>,
+  ) {
+    return this.request<TeamPolicies>(`/teams/${teamId}/policies`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  /** A recording's summary and action items, from the assistant (CAP-10). */
+  summariseRecording(fileId: string, transcript?: string) {
+    return this.request<RecordingSummary>(`/ai/recordings/${fileId}/summary`, {
+      method: "POST",
+      body: transcript ? { transcript } : {},
+    });
+  }
+
+  // The Orbyn Clipper (CAP-02)
+  listClipKeys() {
+    return this.request<ClipKey[]>("/me/clip-keys");
+  }
+  createClipKey(name?: string) {
+    return this.request<{ key: string; clip_key: ClipKey }>("/me/clip-keys", {
+      method: "POST",
+      body: name ? { name } : {},
+    });
+  }
+  deleteClipKey(id: string) {
+    return this.request<void>(`/me/clip-keys/${id}`, { method: "DELETE" });
+  }
+  clipDestinations() {
+    return this.request<ClipDestinations>("/clips/destinations");
+  }
+  clip(input: Partial<ClipInput> & Pick<ClipInput, "type" | "url">) {
+    return this.request<ClipResult>("/clips", { method: "POST", body: input });
+  }
+
+  // Saved views (DATA-01) and your own fields (ORG-02)
+  /** Every saved view you can see: yours and those shared with your teams. */
+  listViews() {
+    return this.request<SavedView[]>("/views");
+  }
+  createView(input: SavedViewInput) {
+    return this.request<SavedView>("/views", { method: "POST", body: input });
+  }
+  updateView(id: string, input: SavedViewUpdate) {
+    return this.request<SavedView>(`/views/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteView(id: string) {
+    return this.request<void>(`/views/${id}`, { method: "DELETE" });
+  }
+  /** Pin a view to your own sidebar, or unpin it. */
+  pinView(id: string, pinned: boolean) {
+    return this.request<void>(`/views/${id}/pin`, {
+      method: "PUT",
+      body: { pinned },
+    });
+  }
+  /** A saved view's rows, as you see them. */
+  runView(id: string, limit?: number) {
+    return this.request<ViewResult>("/views/run", {
+      method: "POST",
+      body: limit ? { id, limit } : { id },
+    });
+  }
+  /** The rows of a definition that isn't saved (a live list, a view being built). */
+  runDefinition(definition: ViewDefinitionInput, limit?: number) {
+    return this.request<ViewResult>("/views/run", {
+      method: "POST",
+      body: limit ? { definition, limit } : { definition },
+    });
+  }
+  /** A saved view as CSV text, with the file name the server chose. */
+  async exportViewCsv(id: string) {
+    const response = await this.raw(`/views/${id}/export.csv`);
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return { text: await response.text(), name: named ?? "View.csv" };
+  }
+  /** Every field you can see, for pages and projects. */
+  listFields() {
+    return this.request<CustomField[]>("/fields");
+  }
+  createField(input: CustomFieldInput) {
+    return this.request<CustomField>("/fields", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateField(id: string, input: CustomFieldUpdate) {
+    return this.request<CustomField>(`/fields/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Removes a field and clears it everywhere it was set. */
+  deleteField(id: string) {
+    return this.request<void>(`/fields/${id}`, { method: "DELETE" });
+  }
+  /** A page's or project's fields and values, for its Info panel. */
+  targetFields(target: FieldTarget, id: string) {
+    return this.request<TargetFields>(
+      `/fields/values?${new URLSearchParams({ target, id })}`,
+    );
+  }
+  /** Set one field on a page or project; null clears it. */
+  setFieldValue(
+    fieldId: string,
+    target: FieldTarget,
+    targetId: string,
+    value: FieldValue,
+  ) {
+    return this.request<{ field_id: string; value: FieldValue }>(
+      `/fields/${fieldId}/value`,
+      { method: "PUT", body: { target, target_id: targetId, value } },
+    );
+  }
+  /** Date fields shown on the calendar between two days (YYYY-MM-DD). */
+  fieldDates(from: string, to: string) {
+    return this.request<FieldDate[]>(
+      `/fields/dates?${new URLSearchParams({ from, to })}`,
+    );
   }
 
   /**
@@ -1292,12 +1536,13 @@ export class OrbynClient {
   search(
     q: string,
     filter: {
-      type?: "doc" | "task";
+      type?: "doc" | "task" | "project";
       kind?: DocKind;
       project?: string;
       tag?: string;
       team?: string;
       updated_after?: string;
+      include_archived?: boolean;
       limit?: number;
     } = {},
   ) {
@@ -1305,6 +1550,197 @@ export class OrbynClient {
     for (const [k, v] of Object.entries(filter))
       if (v !== undefined) params.set(k, String(v));
     return this.request<SearchHit[]>(`/search?${params}`);
+  }
+
+  /**
+   * The quick switcher: pages, tasks and projects by name, from the first
+   * letter. With no words, what you opened last (then what changed last).
+   */
+  find(
+    q: string,
+    filter: {
+      type?: "doc" | "task" | "project";
+      limit?: number;
+      include_archived?: boolean;
+    } = {},
+  ) {
+    const params = new URLSearchParams({ q });
+    for (const [k, v] of Object.entries(filter))
+      if (v !== undefined) params.set(k, String(v));
+    return this.request<FindHit[]>(`/find?${params}`);
+  }
+
+  /**
+   * What the link picker offers for the words typed after [[: pages, tasks,
+   * events, projects and people (dates are worked out by the app).
+   */
+  pickLinks(q: string, limit?: number) {
+    const params = new URLSearchParams({ q });
+    if (limit !== undefined) params.set("limit", String(limit));
+    return this.request<LinkOption[]>(`/links/pick?${params}`);
+  }
+
+  /** Link pills as they stand now: live titles, ticks, deadlines, deletions. */
+  resolveLinks(refs: ObjectRef[]) {
+    if (!refs.length) return Promise.resolve([] as LinkPill[]);
+    const params = new URLSearchParams({ refs: resolveRefs(refs) });
+    return this.request<LinkPill[]>(`/links/resolve?${params}`);
+  }
+
+  /** "Linked here": the places that link to a page, task, project or person. */
+  linksHere(kind: "doc" | "task" | "event" | "project" | "person", id: string) {
+    const params = new URLSearchParams({ kind, id });
+    return this.request<LinkedHereList>(`/links/here?${params}`);
+  }
+
+  /** A link's hover card: enough to tick, reschedule or open it (LNK-07). */
+  linkCard(ref: {
+    kind: "doc" | "task" | "event" | "project";
+    id: string;
+    block?: string;
+  }) {
+    const params = new URLSearchParams({ kind: ref.kind, id: ref.id });
+    if (ref.block) params.set("block", ref.block);
+    return this.request<LinkCard>(`/links/card?${params}`);
+  }
+
+  /** Pages that say this page's or project's name without linking to it (LNK-06). */
+  unlinkedMentions(kind: "doc" | "project", id: string) {
+    const params = new URLSearchParams({ kind, id });
+    return this.request<UnlinkedMention[]>(`/links/mentions?${params}`);
+  }
+
+  /** Make a mention a link, in the page it's in. */
+  linkMention(input: {
+    doc_id: string;
+    block_id: string;
+    matched: string;
+    target: { kind: "doc" | "project"; id: string };
+  }) {
+    return this.request<{ doc_id: string; version: number }>(
+      "/links/mentions/link",
+      { method: "POST", body: input },
+    );
+  }
+
+  /** Pages that read like this one, not linked either way yet (LNK-06). */
+  relatedPages(docId: string) {
+    const params = new URLSearchParams({ kind: "doc", id: docId });
+    return this.request<RelatedPage[]>(`/links/related?${params}`);
+  }
+
+  /** A page's headings (and, with words, lines) for [[Page# (LNK-04). */
+  pageHeadings(docId: string, q = "") {
+    const params = new URLSearchParams({ doc: docId, q });
+    return this.request<HeadingOption[]>(`/links/headings?${params}`);
+  }
+
+  /** Name a heading or line so a link can point at it. */
+  anchorLine(docId: string, index: number, text: string) {
+    return this.request<{ block_id: string }>(`/docs/${docId}/anchor`, {
+      method: "POST",
+      body: { index, text },
+    });
+  }
+
+  /** A heading's section of a page (or the page's first lines), to embed. */
+  docSection(docId: string, block?: string | null) {
+    const params = new URLSearchParams();
+    if (block) params.set("block", block);
+    return this.request<{
+      doc_id: string;
+      title: string;
+      block_id: string | null;
+      missing: boolean;
+      more: boolean;
+      blocks: DocBlock[];
+    }>(`/docs/${docId}/section${block ? `?${params}` : ""}`);
+  }
+
+  /** "Move to new page": these lines become a page, and a link takes their place. */
+  extractToPage(
+    docId: string,
+    input: { block_ids: string[]; title?: string; version: number },
+  ) {
+    return this.request<{ doc: Doc; source: Doc }>(`/docs/${docId}/extract`, {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /** "Merge into…": this page's lines go to the end of another. */
+  mergeDoc(docId: string, into: string, version: number) {
+    return this.request<{ doc: Doc; relinked: number }>(
+      `/docs/${docId}/merge`,
+      { method: "POST", body: { into, version } },
+    );
+  }
+
+  /** The headings you folded on a page, on every device (EDT-14). */
+  docFolds(docId: string) {
+    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`);
+  }
+  setDocFolds(docId: string, blockIds: string[]) {
+    return this.request<{ block_ids: string[] }>(`/docs/${docId}/folds`, {
+      method: "PUT",
+      body: { block_ids: blockIds },
+    });
+  }
+
+  /** A page's other names, such as a course code (LNK-03). */
+  setDocAliases(docId: string, aliases: string[]) {
+    return this.request<{ aliases: string[] }>(`/docs/${docId}/aliases`, {
+      method: "PUT",
+      body: { aliases },
+    });
+  }
+
+  // ---- pictures and files in pages (EDT-01) ----
+  /**
+   * Add a picture or file to a page: its row, and where to send the bytes
+   * (a path on this API's base URL, good for ten minutes and one upload).
+   */
+  createPageFile(docId: string, input: PageFileInput) {
+    return this.request<PageFileUpload>(`/docs/${docId}/files`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Send a picture's or file's bytes to the link from `createPageFile`. */
+  async uploadPageFile(
+    uploadPath: string,
+    file: Blob | ArrayBuffer | Uint8Array,
+    contentType: string,
+  ): Promise<void> {
+    return this.uploadImportFile(uploadPath, file, contentType);
+  }
+  /** A picture or file, with a link to show or download it for an hour. */
+  pageFile(fileId: string) {
+    return this.request<PageFileLink>(`/docs/files/${fileId}`);
+  }
+  /** The pictures and files on a page. */
+  pageFiles(docId: string) {
+    return this.request<PageFile[]>(`/docs/${docId}/files`);
+  }
+  /** Delete a picture or file for good. */
+  deletePageFile(fileId: string) {
+    return this.request<void>(`/docs/files/${fileId}`, { method: "DELETE" });
+  }
+  /** How much of your space pictures and files take. */
+  filesUsage() {
+    return this.request<PageFilesUsage>("/files/usage");
+  }
+  /** The full address of a path on this API (a file's link, say). */
+  urlFor(path: string) {
+    return this.baseUrl + path;
+  }
+
+  /** Something was opened: it leads the quick switcher's recent list. */
+  recordRecent(kind: "doc" | "task" | "project", id: string) {
+    return this.request<void>("/recents", {
+      method: "POST",
+      body: { kind, id },
+    });
   }
 
   /**
@@ -1320,7 +1756,15 @@ export class OrbynClient {
 
   // Documents
   /** Every page you can see, newest edit first, optionally narrowed. */
-  listDocs(filter: { kind?: DocKind; project?: string; tag?: string } = {}) {
+  listDocs(
+    filter: {
+      kind?: DocKind;
+      project?: string;
+      tag?: string;
+      /** Archived pages: "include" lists them too, "only" nothing else. */
+      archived?: "include" | "only";
+    } = {},
+  ) {
     const q = new URLSearchParams(
       Object.entries(filter).flatMap(([k, v]) => (v ? [[k, v]] : [])),
     ).toString();
@@ -1328,6 +1772,10 @@ export class OrbynClient {
   }
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
+  }
+  /** A page's Info panel: what it belongs to, tags, links, versions. */
+  docInfo(id: string) {
+    return this.request<DocInfo>(`/docs/${id}/info`);
   }
   /** Put exactly these tags (by id) on a page. */
   setDocTags(id: string, tags: string[]) {
@@ -1490,11 +1938,13 @@ export class OrbynClient {
                   version?: number;
                   trashed?: boolean;
                   tags?: boolean;
+                  fields?: boolean;
                   by?: string;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
                   tags: payload.tags === true,
+                  fields: payload.fields === true,
                   by: typeof payload.by === "string" ? payload.by : "",
                 });
               } catch {
@@ -1560,6 +2010,13 @@ export class OrbynClient {
     return this.request<ItemSessions>(`/items/${itemId}/sessions`);
   }
   createBlock(input: BlockInput) {
+    return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
+  }
+  /**
+   * A session on a day (a task dropped on a calendar day): the first free
+   * working time that day, or a 409 saying there's none.
+   */
+  createBlockOnDay(input: BlockOnDayInput) {
     return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
   }
   updateBlock(id: string, input: BlockUpdate) {
@@ -2702,10 +3159,10 @@ export class OrbynClient {
     }>("/study/revision/apply", { method: "POST", body: input });
   }
   /** The assistant's suggested cards from a page — a proposal to tick. */
-  suggestCards(docId: string) {
+  suggestCards(docId: string, max?: number) {
     return this.request<{ cards: SuggestedCard[] }>(
       `/ai/study/pages/${docId}/cards`,
-      { method: "POST", body: {} },
+      { method: "POST", body: max ? { max } : {} },
     );
   }
   /** Grade a typed answer against the card and its page. */
@@ -3341,5 +3798,97 @@ export class OrbynClient {
   /** An experiment's before and after, measured. */
   experimentEvidence(id: string) {
     return this.request<ExperimentEvidence>(`/work-records/${id}/evidence`);
+  }
+
+  // ---- D4c: staying current, publishing, imports, assistant chips ----
+
+  /** Recent changes in your teams (SHR-02), newest first. */
+  listChanges(
+    params: {
+      team_id?: string;
+      /** Leave out your own changes; on unless false. */
+      hide_mine?: boolean;
+      before?: string;
+      limit?: number;
+    } = {},
+  ) {
+    const q = new URLSearchParams();
+    if (params.team_id) q.set("team_id", params.team_id);
+    if (params.hide_mine === false) q.set("hide_mine", "false");
+    if (params.before) q.set("before", params.before);
+    if (params.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return this.request<TeamChangesPage>(`/changes${qs ? `?${qs}` : ""}`);
+  }
+
+  /** Finish the first run (DSN-02): what Orbyn is for, and a starter. */
+  finishFirstRun(input: FirstRunInput) {
+    return this.request<FirstRunResult & { user: User }>("/me/first-run", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Not now: the first run isn't shown again. */
+  skipFirstRun() {
+    return this.request<User>("/me/first-run/skip", {
+      method: "POST",
+      body: {},
+    });
+  }
+
+  /** Whether a page or folder is on the web, and whether you may publish it. */
+  getPublish(kind: "doc" | "folder", id: string) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`);
+  }
+  /** Put a page or folder on the web, or change how (SHR-05, SHR-06). */
+  publish(kind: "doc" | "folder", id: string, input: PublishInput) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** Take it off the web; the address stops working at once. */
+  unpublish(kind: "doc" | "folder", id: string) {
+    return this.request<PublishState>(`/${kind}s/${id}/publish`, {
+      method: "DELETE",
+    });
+  }
+  /** A page's own description for its card on the web. */
+  setWebDescription(docId: string, description: string) {
+    return this.request<PublishState>(`/docs/${docId}/web-description`, {
+      method: "PUT",
+      body: { description },
+    });
+  }
+  /** A team's switch for publishing, and how many of its pages are on the web. */
+  getTeamPublishing(teamId: string) {
+    return this.request<{
+      allowed: boolean;
+      published: number;
+      can_change: boolean;
+    }>(`/teams/${teamId}/publishing`);
+  }
+  setTeamPublishing(teamId: string, allowed: boolean) {
+    return this.request<{
+      allowed: boolean;
+      published: number;
+      can_change: boolean;
+    }>(`/teams/${teamId}/publishing`, { method: "PUT", body: { allowed } });
+  }
+
+  /** A Markdown or Notion export into pages (DATA-08). Dry run by default. */
+  importPages(input: PageImportInput) {
+    return this.request<PagesImportSummary>("/imports/pages", {
+      method: "POST",
+      body: input,
+    });
+  }
+
+  /** Summarise, or find deadlines in, a page or shared words (AI-01). */
+  assistCapture(input: CaptureAssistInput) {
+    return this.request<CaptureAssistResult>("/ai/assist", {
+      method: "POST",
+      body: input,
+    });
   }
 }

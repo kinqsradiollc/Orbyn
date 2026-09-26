@@ -40,6 +40,7 @@
     "argon2": "^0.44.0",
     "dotenv": "^17.3.1",
     "fastify": "^5.12.4",
+    "katex": "^0.16.47",
     "nodemailer": "^10.0.9",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.7.284",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@orbyn/api-client": "1.0.0",
+    "@types/katex": "^0.16.8",
     "@types/node": "^22.19.15",
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.18.0",

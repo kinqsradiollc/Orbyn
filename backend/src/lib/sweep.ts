@@ -136,6 +136,51 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 1,
   },
   {
+    key: "recent_opens",
+    label: "Recently opened",
+    detail: "What each person opened lately, for the quick switcher.",
+    table: "recent_opens",
+    where: olderThan("opened_at"),
+    days: 90,
+    configurable: true,
+    min: 7,
+  },
+  {
+    // Links are kept in step by triggers (migration 111); this clears any a
+    // page or task left behind when it was removed some other way.
+    key: "object_links",
+    label: "Links between things",
+    detail:
+      'The index behind "Linked here": links whose page or task no longer exists.',
+    table: "object_links",
+    where: `(source_kind = 'doc' AND NOT EXISTS
+               (SELECT 1 FROM docs WHERE docs.id = object_links.source_id))
+         OR (source_kind = 'task' AND NOT EXISTS
+               (SELECT 1 FROM items WHERE items.id = object_links.source_id))`,
+    days: 0,
+    configurable: false,
+  },
+  {
+    // Pictures and files in pages (EDT-01): a file no page shows any more,
+    // once its page was deleted for good or 30 days after its last line
+    // went (time for undo and history), and uploads that never arrived.
+    // page_file_refs (migrations 114, 115) knows which pages show a file. The
+    // file store deletes the bytes of rows that are gone.
+    key: "page_files",
+    label: "Pictures and files in pages",
+    detail:
+      "Files no page shows any more (30 days after their line was removed, or once their page is deleted for good), and uploads that never finished.",
+    table: "page_files",
+    where: `(status <> 'ready' AND created_at < now() - interval '1 day')
+         OR (NOT EXISTS (SELECT 1 FROM page_file_refs r
+                          WHERE r.file_id = page_files.id)
+             AND (doc_id IS NULL
+               OR coalesce(unused_since, created_at)
+                    < now() - interval '30 days'))`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "audit_log",
     label: "Audit log",
     detail: "Admin and security actions.",
@@ -375,6 +420,17 @@ export const SWEEP_RULES: SweepRule[] = [
     where: "created_at < now() - interval '24 hours'",
     days: 0,
     configurable: false,
+  },
+  {
+    key: "team_changes",
+    label: "Recent changes",
+    detail:
+      "Who changed which team page or task, for each team's Recent changes.",
+    table: "team_changes",
+    where: olderThan("at"),
+    days: 90,
+    configurable: true,
+    min: 14,
   },
 ];
 

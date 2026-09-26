@@ -2,7 +2,8 @@ import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
-import { DOC_KINDS } from "./docs.js";
+import { CALLOUT_KINDS, DOC_KINDS } from "./docs.js";
+import { aliasesInput } from "./links.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
@@ -336,6 +337,37 @@ const docBlock = z.discriminatedUnion("type", [
     check: z.boolean().optional(),
   }),
   z.object({ ...named, type: z.literal("divider") }),
+  z.object({
+    ...named,
+    type: z.literal("callout"),
+    kind: z.enum(CALLOUT_KINDS),
+    text: z.string().max(4000),
+    folded: z.boolean().optional(),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("table"),
+    text: z.string().max(40000),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("image"),
+    file: z.uuid(),
+    text: z.string().max(300),
+    width: z.number().int().min(10).max(100).optional(),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("file"),
+    file: z.uuid(),
+    text: z.string().max(300),
+  }),
+  z.object({
+    ...named,
+    type: z.literal("footnote"),
+    label: z.string().regex(/^[\w-]{1,24}$/),
+    text: z.string().max(4000),
+  }),
 ]);
 
 export const docContent = z.array(docBlock).max(2000);
@@ -373,7 +405,47 @@ export const docUpdate = z
     folder_id: z.uuid().nullable().optional(),
     project_id: z.uuid().nullable().optional(),
     tags: z.array(z.uuid()).max(20).optional(),
+    /** Other names the page goes by (LNK-03). */
+    aliases: aliasesInput.optional(),
     version: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * "Move to new page" (ORG-05): these lines become a new page, and a link to
+ * it takes their place. `version` guards the page they leave, as a save does.
+ */
+export const docExtractInput = z
+  .object({
+    block_ids: z.array(z.string().min(1).max(64)).min(1).max(2000),
+    title: z.string().trim().max(200).optional(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+/**
+ * "Merge into…" (ORG-05): this page's lines go to the end of another, its
+ * comments and task lines with them, and this page goes to Trash; links to
+ * it open the page it went into.
+ */
+export const docMergeInput = z
+  .object({
+    into: z.uuid(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
+/** The headings someone has folded on one page (EDT-14). */
+export const docFoldsInput = z
+  .object({ block_ids: z.array(z.string().min(1).max(64)).max(200) })
+  .strict();
+
+/** Name a heading or line so a link can point at it (LNK-04). */
+export const docAnchorInput = z
+  .object({
+    index: z.number().int().min(0).max(1999),
+    /** What the line says, so a page that moved on isn't named wrong. */
+    text: z.string().max(40000),
   })
   .strict();
 
@@ -417,6 +489,8 @@ export const projectUpdate = z
     status: z.enum(PROJECT_STATUSES).optional(),
     deadline: z.iso.datetime({ offset: true }).nullable().optional(),
     doc_id: z.uuid().nullable().optional(),
+    /** Other names the project goes by, such as a course code (LNK-03). */
+    aliases: aliasesInput.optional(),
     stages: z
       .array(
         z.object({
@@ -459,9 +533,21 @@ export const favouriteInput = z
   .object({
     kind: z.enum(FAVOURITE_KINDS),
     target_id: z.uuid(),
+    /** The line of the page, for a `heading` star (and only for one). */
+    block_id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
     starred: z.boolean(),
   })
-  .strict();
+  .strict()
+  .refine((f) => (f.kind === "heading") === !!f.block_id, {
+    message: "A heading's star needs its line, and only a heading's does.",
+    path: ["block_id"],
+  });
 
 /** A remark on a document. One thread per document, so it survives edits. */
 export const docCommentInput = z
@@ -532,19 +618,68 @@ export const docAskRequest = z
 /** What to look for, and how to narrow it. */
 export const searchQuery = z
   .object({
-    q: z.string().trim().min(1).max(200),
     /**
-     * "doc" searches pages only, "task" tasks only, "record" work records
-     * (decisions and the like) only. By default pages and tasks, plus records
-     * when searching one project.
+     * The words. They may be left out when something else narrows the
+     * search (a kind, a tag, a project, a team or a date): it then lists
+     * what fits, newest first.
      */
-    type: z.enum(["doc", "task", "record"]).optional(),
+    q: z.string().trim().max(200).default(""),
+    /**
+     * "doc" searches pages only, "task" tasks only, "project" projects only,
+     * "record" work records (decisions and the like) only. By default pages,
+     * tasks and projects, plus records when searching one project.
+     */
+    type: z.enum(["doc", "task", "record", "project"]).optional(),
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),
-    team: z.uuid().optional(),
+    /** A team's id, or "personal" for what belongs to no team. */
+    team: z.union([z.uuid(), z.literal("personal")]).optional(),
     updated_after: z.iso.datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    /** Archived pages too (SRCH-03). */
+    include_archived: z
+      .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+      .transform((v) => v === true || v === "true" || v === "1")
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (s) =>
+      !!(
+        s.q ||
+        s.type ||
+        s.kind ||
+        s.project ||
+        s.tag ||
+        s.team ||
+        s.updated_after
+      ),
+    { message: "Type something to search for.", path: ["q"] },
+  );
+
+/**
+ * The quick switcher (NAV-02): things by name, from the first letter typed.
+ * With no words it lists what you opened last.
+ */
+export const findQuery = z
+  .object({
+    q: z.string().trim().max(200).default(""),
+    type: z.enum(["doc", "task", "project"]).optional(),
+    limit: z.coerce.number().int().min(1).max(30).default(12),
+    /** Archived pages too (SRCH-03). */
+    include_archived: z
+      .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+      .transform((v) => v === true || v === "true" || v === "1")
+      .optional(),
+  })
+  .strict();
+
+/** Something just opened, for the quick switcher's recent list. */
+export const recentOpenInput = z
+  .object({
+    kind: z.enum(["doc", "task", "project"]),
+    id: z.uuid(),
   })
   .strict();
 
@@ -554,8 +689,16 @@ export const docListQuery = z
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),
+    /**
+     * Archived pages (SRCH-03): left out by default, "include" lists them
+     * too and "only" lists nothing else.
+     */
+    archived: z.enum(["include", "only"]).optional(),
   })
   .strict();
+
+/** Archive a page or folder, or bring it back (SRCH-03). */
+export const archiveInput = z.object({ archived: z.boolean() }).strict();
 
 /**
  * Which time of a repeating event a note is for: the calendar entry's
@@ -719,7 +862,8 @@ export const projectRequest = z.object({
 /** Bring planner data in from an Orbyn export or a CSV. */
 export const importInput = z
   .object({
-    format: z.enum(["orbyn", "csv"]),
+    /** An Orbyn export, a CSV with a title column, or Todoist's or TickTick's CSV. */
+    format: z.enum(["orbyn", "csv", "todoist", "ticktick"]),
     data: z.string().min(1).max(5_000_000),
     /** Preview counts without writing anything. */
     dry_run: z.boolean().default(true),
@@ -1109,6 +1253,22 @@ export const blockInput = z
   .object({ item_id: z.uuid(), ...blockTimes })
   .strict()
   .refine(blockSpan, BLOCK_SPAN);
+/**
+ * A session on a day rather than at a time (a task dropped on a calendar
+ * day, ORG-06): the server finds the first free working time that day.
+ * `minutes` defaults to the task's estimate, or 30.
+ */
+export const blockOnDayInput = z
+  .object({
+    item_id: z.uuid(),
+    day: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "A day like 2026-10-02")
+      .refine((d) => !isNaN(Date.parse(`${d}T00:00:00Z`)), "Not a day"),
+    minutes: z.number().int().min(5).max(1440).optional(),
+  })
+  .strict();
+export type BlockOnDayInput = z.output<typeof blockOnDayInput>;
 export const blockUpdate = z
   .object(blockTimes)
   .strict()

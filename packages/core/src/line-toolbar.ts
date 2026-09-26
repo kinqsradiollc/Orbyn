@@ -5,19 +5,20 @@
  * of every style, and tell the toolbar which styles the caret sits in so it
  * can show them as on.
  */
-import { parseDocInline } from "./docs.js";
+import { isStyledRun, parseDocInline, type HighlightTint } from "./docs.js";
 import {
   isUrl,
   linkTarget,
   STYLE_MARKERS,
   styleRange,
+  tintRange,
   type InlineStyle,
   type Restyled,
 } from "./doc-editing.js";
 
 /** The marker a line of each kind starts with, as the editor shows it. */
 const LINE_MARKER =
-  /^(#{1,3}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?)/;
+  /^(#{1,3}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?\[![A-Za-z]+\][-+]?\s*|>\s?|\[\^[\w-]{1,24}\]:\s*)/;
 
 /**
  * Where the words of a line start in its Markdown: after "# ", "- [ ] ",
@@ -55,7 +56,13 @@ function intoWords(source: string, start: number, end: number) {
  */
 function emptyPairAt(source: string, caret: number): InlineStyle | null {
   // Longest first, so "**|**" isn't read as italic.
-  for (const style of ["bold", "highlight", "italic", "code"] as const) {
+  for (const style of [
+    "bold",
+    "highlight",
+    "strike",
+    "italic",
+    "code",
+  ] as const) {
     const m = STYLE_MARKERS[style];
     if (
       source.slice(caret - m.length, caret) === m &&
@@ -96,6 +103,7 @@ export function stylesAt(
       run.bold && "bold",
       run.italic && "italic",
       run.highlight && "highlight",
+      run.strike && "strike",
       run.code && "code",
       run.link && "link",
     ].filter((s): s is ToolbarStyle => !!s);
@@ -140,6 +148,21 @@ export function toolbarStyle(
     return { text: dropped.text, start: dropped.at, end: dropped.at };
   }
   return styleRange(source, at.start, at.end, style);
+}
+
+/**
+ * The highlighter's other colours from the toolbar (EDT-05): the chosen
+ * words highlighted green or pink, or highlighted words given that colour.
+ */
+export function toolbarTint(
+  source: string,
+  start: number,
+  end: number,
+  tint: HighlightTint,
+): Restyled | null {
+  if (!canStyleLine(source)) return null;
+  const at = intoWords(source, start, end);
+  return tintRange(source, at.start, at.end, tint);
 }
 
 /** "https://www.example.com/a/b" as "example.com/a/b", for a link's words. */
@@ -187,10 +210,7 @@ export function toolbarLink(
     const e = at.end - tail;
     // Only words that aren't styled another way; the same rule as desktop.
     const plain = parseDocInline(source).every(
-      (r) =>
-        r.start + r.text.length <= s ||
-        r.start >= e ||
-        !(r.bold || r.italic || r.code || r.math || r.link || r.highlight),
+      (r) => r.start + r.text.length <= s || r.start >= e || !isStyledRun(r),
     );
     if (!plain) return null;
     const inner = source.slice(s, e).replace(/[[\]]/g, "");
@@ -200,7 +220,7 @@ export function toolbarLink(
   // A caret inside words already styled can't start a link there.
   const inside = parseDocInline(source).some(
     (r) =>
-      (r.bold || r.italic || r.code || r.math || r.link || r.highlight) &&
+      isStyledRun(r) &&
       at.start > r.start &&
       at.start < r.start + r.text.length,
   );

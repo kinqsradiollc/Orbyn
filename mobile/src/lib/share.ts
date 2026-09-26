@@ -42,6 +42,67 @@ export async function shareLink(
   );
 }
 
+/**
+ * The clipboard: expo-clipboard in the app. A build made before it was added
+ * has no clipboard module, so copying falls back to the share sheet (which
+ * has Copy) rather than failing.
+ */
+type Clipboard = { setStringAsync: (text: string) => Promise<boolean> };
+function nativeClipboard(): Clipboard | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require("expo-clipboard") as Clipboard;
+  } catch {
+    return null;
+  }
+}
+
+/** Copy a page, task or project's link, and say so. */
+export async function copyLink(target: LinkTarget, title: string) {
+  const url = linkTo(target);
+  if (Platform.OS === "web") {
+    const nav = globalThis.navigator as Navigator | undefined;
+    try {
+      await nav?.clipboard?.writeText(url);
+      showToast({ text: "Link copied" });
+    } catch {
+      showToast({ text: "Couldn't copy the link" });
+    }
+    return;
+  }
+  const clipboard = nativeClipboard();
+  try {
+    if (!clipboard) return await shareLink(target, title);
+    await clipboard.setStringAsync(url);
+    showToast({ text: "Link copied" });
+  } catch {
+    // Callers don't wait for this (`void copyLink(…)`), so a failure is
+    // said here rather than left as an unhandled rejection.
+    showToast({ text: "Couldn't copy the link" });
+  }
+}
+
+/** Copy any words (a published page's address), and say so. */
+export async function copyText(text: string, done = "Copied") {
+  try {
+    if (Platform.OS === "web") {
+      await (
+        globalThis.navigator as Navigator | undefined
+      )?.clipboard?.writeText(text);
+    } else {
+      const clipboard = nativeClipboard();
+      if (!clipboard) {
+        await Share.share({ message: text });
+        return;
+      }
+      await clipboard.setStringAsync(text);
+    }
+    showToast({ text: done });
+  } catch {
+    showToast({ text: "Couldn't copy it" });
+  }
+}
+
 /** A page as a Markdown or PDF file, handed to the share sheet. */
 export const sharePageFile = (docId: string, format: "md" | "pdf") =>
   downloadDoc(docId, format);

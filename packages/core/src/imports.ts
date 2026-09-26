@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseDoc, type DocBlock } from "./docs.js";
+import { parseDoc, tableMarkdown, type DocBlock } from "./docs.js";
 
 /**
  * Importing a file into Docs: a lecture PDF, a Word document or a photo of
@@ -95,7 +95,7 @@ export type ImportJob = {
   doc_in_trash: boolean;
   /** Why it failed, in words for the person. */
   error: string | null;
-  /** What changed on the way in: tables as lists, figures left out. */
+  /** What changed on the way in: tables kept, figures left out. */
   notes: string[];
   /** Scanned pages from other files ahead of this one's next page. */
   queue_ahead: number | null;
@@ -113,7 +113,12 @@ export const importCreateInput = z
     mime: z.string().max(200).optional(),
     project_id: z.uuid().optional(),
     project_team_id: z.uuid().nullable().optional(),
-    /** Keep the file itself after it becomes a page; the person's setting when left out. */
+    /**
+     * Keep the original file with the page it becomes (EDT-01), in the
+     * person's file space. When left out, the person's own "Keep the
+     * original" setting decides; without one, the file is deleted as soon
+     * as it has been read.
+     */
     keep_original: z.boolean().optional(),
   })
   .strict();
@@ -174,9 +179,25 @@ const cellText = (html: string) =>
     .trim();
 
 /**
- * Orbyn pages have no table block yet, so a table becomes one bullet per
- * row: "Protocol: Raft · Leader: yes". The first row is taken as the header
- * when there is more than one row.
+ * A table's rows as the page's own table (EDT-02): Markdown pipe rows, the
+ * first row as the header. Empty rows are left out; a single row is still
+ * a table, with an empty body.
+ */
+export function rowsToTable(rows: string[][]): string[] {
+  const clean = rows
+    .map((r) => r.map((c) => c.replace(/\s+/g, " ").trim()))
+    .filter((r) => r.some(Boolean));
+  if (!clean.length) return [];
+  return tableMarkdown({
+    rows: clean,
+    align: clean[0].map(() => null),
+  }).split("\n");
+}
+
+/**
+ * A table as one bullet per row: "Protocol: Raft · Leader: yes". The first
+ * row is taken as the header when there is more than one row. Pages keep
+ * tables as tables now (rowsToTable); this is for places that want lines.
  */
 export function rowsToBullets(rows: string[][]): string[] {
   const clean = rows
@@ -205,19 +226,17 @@ function htmlTableRows(html: string): string[][] {
 }
 
 /**
- * Tables in Markdown, as bullets, counting how many there were. Handles the
- * OCR model's HTML tables and Markdown pipe tables.
+ * Tables in Markdown kept as the page's own tables (EDT-02), counting how
+ * many there were. Handles the OCR model's HTML tables and Markdown pipe
+ * tables (tidied, and given the header rule a table needs).
  */
-export function tablesToBullets(markdown: string): {
+export function tablesToMarkdown(markdown: string): {
   markdown: string;
   tables: number;
 } {
   let tables = 0;
-  let out = markdown.replace(/<table[\s\S]*?<\/table>/gi, (html) => {
-    tables++;
-    return "\n" + rowsToBullets(htmlTableRows(html)).join("\n") + "\n";
-  });
-  const lines = out.split("\n");
+  // Pipe tables first, so the tables made from HTML below aren't counted twice.
+  const lines = markdown.split("\n");
   const kept: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*\|.*\|\s*$/.test(lines[i])) {
@@ -233,9 +252,12 @@ export function tablesToBullets(markdown: string): {
     }
     i--;
     tables++;
-    kept.push(...rowsToBullets(rows));
+    kept.push("", ...rowsToTable(rows), "");
   }
-  out = kept.join("\n");
+  const out = kept.join("\n").replace(/<table[\s\S]*?<\/table>/gi, (html) => {
+    tables++;
+    return "\n\n" + rowsToTable(htmlTableRows(html)).join("\n") + "\n\n";
+  });
   return { markdown: out, tables };
 }
 
@@ -299,7 +321,7 @@ export function ocrPageToMarkdown(
     figures++;
     return figureLine(page, alt.trim());
   });
-  const tabled = tablesToBullets(markdown);
+  const tabled = tablesToMarkdown(markdown);
   return {
     markdown: normaliseMath(tabled.markdown),
     tables: tabled.tables,
@@ -476,7 +498,7 @@ export function importNotes(pages: ImportedPage[], extra: string[] = []) {
   const ocr = pages.filter((p) => p.ocr).length;
   const notes: string[] = [];
   if (tables)
-    notes.push(`${tables} table${tables === 1 ? "" : "s"} kept as lists`);
+    notes.push(`${tables} table${tables === 1 ? "" : "s"} kept as tables`);
   if (figures)
     notes.push(`${figures} figure${figures === 1 ? "" : "s"} left out`);
   if (ocr)
@@ -504,7 +526,10 @@ export function assembleImport(
     .map((p) => p.markdown.trim())
     .filter(Boolean)
     .join("\n\n");
-  let blocks = markdown.trim() ? parseDoc(markdown) : [];
+  let split = 0;
+  let blocks = markdown.trim()
+    ? parseDoc(markdown, { onTableSplit: () => split++ })
+    : [];
   let title = fileName
     .replace(/\.[a-z0-9]+$/i, "")
     .replace(/[_-]+/g, " ")
@@ -523,6 +548,10 @@ export function assembleImport(
         : b,
   );
   const notes = importNotes(pages, opts.notes);
+  if (split)
+    notes.push(
+      `${split} long table${split === 1 ? " was" : "s were"} split into parts, each with the header`,
+    );
   let cut = false;
   if (blocks.length > MAX_BLOCKS) {
     blocks = blocks.slice(0, MAX_BLOCKS);

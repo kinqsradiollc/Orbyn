@@ -1,22 +1,17 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { commandShortcuts } from "../app/commands";
+import { usePrefs } from "../app/prefs";
 
-const MOD = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const MOD = MAC ? "⌘" : "Ctrl";
 
-/** Every keyboard shortcut in the app, grouped by where it works. */
+/**
+ * Every keyboard shortcut in the app, grouped by where it works. The
+ * "Anywhere" ones come from the command list (app/commands.ts), which ⌘K
+ * shows too, so the two never disagree.
+ */
 const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
-  {
-    title: "Anywhere",
-    keys: [
-      {
-        keys: [MOD, "K"],
-        label: "Search, jump somewhere, or ask the assistant",
-      },
-      { keys: ["N"], label: "New item" },
-      { keys: ["?"], label: "Show these shortcuts" },
-      { keys: ["Esc"], label: "Close a dialog, panel or menu" },
-    ],
-  },
   {
     title: "Calendar",
     keys: [
@@ -45,6 +40,7 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
       { keys: [MOD, "Enter"], label: "Tick or untick a checklist line" },
       { keys: [MOD, "⇧", "V"], label: "Paste the words without their styles" },
       { keys: ["/"], label: "Change a line, or add a date or a task" },
+      { keys: [MOD + "-click"], label: "Open a link beside the page" },
     ],
   },
   {
@@ -66,7 +62,17 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
     title: "Command bar",
     keys: [
       { keys: ["↑", "↓"], label: "Move through results" },
-      { keys: ["Enter"], label: "Run the highlighted result" },
+      { keys: ["Enter"], label: "Open or run the highlighted result" },
+      {
+        keys: ["⇧", "Enter"],
+        label: "Make what you typed: a page, or a task on My tasks and Lists",
+      },
+      { keys: [MOD, "Enter"], label: "Open the result beside, in a side peek" },
+      { keys: ["tag:"], label: "Pages with a tag: tag:physics" },
+      { keys: ["project:"], label: 'In a project: project:"Big launch"' },
+      { keys: ["team:"], label: "In a team: team:lab" },
+      { keys: ["is:"], label: "One kind: is:page, is:task, is:project" },
+      { keys: ["edited:"], label: "Changed lately: edited:today, week, month" },
     ],
   },
 ];
@@ -76,6 +82,18 @@ type Props = { onClose: () => void };
 /** The "?" sheet. Escape, "?" or a click outside closes it. */
 export function ShortcutSheet({ onClose }: Props) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const { prefs } = usePrefs();
+  // "Anywhere" is the command list with your own changes (NAV-09).
+  const groups = [
+    {
+      title: "Anywhere",
+      keys: [
+        ...commandShortcuts(MAC, prefs.shortcuts),
+        { keys: ["Esc"], label: "Close a dialog, panel or menu" },
+      ],
+    },
+    ...GROUPS,
+  ];
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -123,7 +141,7 @@ export function ShortcutSheet({ onClose }: Props) {
           </button>
         </div>
         <div className="shortcut-groups">
-          {GROUPS.map((g) => (
+          {groups.map((g) => (
             <section key={g.title} className="shortcut-group">
               <h3>{g.title}</h3>
               <dl>
@@ -142,7 +160,8 @@ export function ShortcutSheet({ onClose }: Props) {
           ))}
         </div>
         <p className="shortcut-note">
-          Single-key shortcuts pause while you type in a field.
+          Single-key shortcuts pause while you type in a field. Change them in
+          Settings → Keyboard shortcuts.
         </p>
       </section>
     </div>

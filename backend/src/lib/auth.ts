@@ -18,6 +18,8 @@ export type UserRow = User & {
   created_at: string;
   /** Whether teammates may see when they are active (presence). */
   share_presence?: boolean;
+  /** When the first run was finished or skipped (DSN-02). */
+  first_run_at?: string | null;
 };
 
 export const digest = (s: string) =>
@@ -34,6 +36,8 @@ export const publicUser = (u: UserRow | Record<string, unknown>): User => ({
   bio: (u.bio as string | undefined) ?? "",
   terms_version: (u.terms_version as string | null | undefined) ?? null,
   analytics_opt_out: !!u.analytics_opt_out,
+  first_run_done: (u as { first_run_at?: unknown }).first_run_at !== null,
+  purpose: (u.purpose as User["purpose"] | undefined) ?? null,
 });
 
 /** API key ids by key hash, so rate limiting needn't ask the database each time. */
@@ -106,7 +110,7 @@ export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 
 export const KEY_BLOCKED_MESSAGE =
-  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, or use the assistant. Sign in to Orbyn to do that.";
+  "Personal API keys can't change your account settings, sign-in, webhooks or devices, make or remove other keys, change what outside agents can reach, publish to the web, or use the assistant. Sign in to Orbyn to do that.";
 
 /**
  * What a personal API key may never do, although it otherwise acts as its
@@ -153,8 +157,23 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // granting one write access: a signed-in person only.
   { route: /^\/oauth\// },
   { route: /^\/me\/reauth(?:\/|$)/ },
+  // Publishing to the public web is people only: a key can't make a page
+  // or folder public, change its password, description or noindex, or turn
+  // a team's publishing switch. Reading how it is published, and taking a
+  // page off the web, stay open.
+  { method: "PUT", route: /^\/(?:docs|folders)\/:id\/publish$/ },
+  { method: "PUT", route: /^\/docs\/:id\/web-description$/ },
+  { method: "PUT", route: /^\/teams\/:id\/publishing$/ },
+  // The guided first run, and skipping it: the person's own start.
+  { method: "POST", route: /^\/me\/first-run(?:\/skip)?$/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
+  // Choices that follow the account, Clipper keys (more access), and a
+  // team's switches: people only.
+  { method: "PUT", route: /^\/me\/prefs$/ },
+  { method: "DELETE", route: /^\/me\/prefs$/ },
+  { route: /^\/me\/clip-keys(?:\/|$)/ },
+  { method: "PUT", route: /^\/teams\/:id\/policies$/ },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
 ];
 
@@ -281,6 +300,9 @@ export async function agentLimitKey(r: FastifyRequest): Promise<string | null> {
   return id ? `agent:${id}` : null;
 }
 
+export const CLIP_KEY_MESSAGE =
+  "A Clipper key only saves clips from your browser. Sign in to Orbyn to do anything else.";
+
 export const AGENT_TOKEN_MESSAGE =
   "Agent keys and agent sign-ins work only with Orbyn's MCP address, not the API.";
 
@@ -295,6 +317,8 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
   if (AGENT_TOKEN.test(token)) fail(401, AGENT_TOKEN_MESSAGE);
+  // A Clipper key saves clips and nothing else (see modules/clip).
+  if (token.startsWith("ocl_")) fail(401, CLIP_KEY_MESSAGE);
   if (token.startsWith("ok_")) return keyUser(r, token);
   const u = (
     await pool.query<UserRow>(

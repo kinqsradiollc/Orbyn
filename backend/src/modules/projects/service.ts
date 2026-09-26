@@ -25,7 +25,7 @@ import type { QueryResultRow } from "pg";
 // A brief page in Trash is no brief: the project reads as having none until
 // the page is restored (the link itself is kept for that).
 export const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
-  p.status, p.deadline, p.assistant_off,
+  p.status, p.deadline, p.aliases, p.assistant_off,
   (SELECT b.id FROM docs b WHERE b.id = p.doc_id AND b.deleted_at IS NULL) AS doc_id,
   p.created_at, p.updated_at,
   ${PROJECT_COUNTS}`;
@@ -232,6 +232,7 @@ export async function updateProject(
        status = coalesce($4, status),
        deadline = CASE WHEN $5::boolean THEN $6::timestamptz ELSE deadline END,
        doc_id = CASE WHEN $7::boolean THEN $8::uuid ELSE doc_id END,
+       aliases = coalesce($9::text[], aliases),
        updated_at = now()
      WHERE id = $1`,
     [
@@ -243,6 +244,7 @@ export async function updateProject(
       body.deadline ?? null,
       body.doc_id !== undefined,
       body.doc_id ?? null,
+      body.aliases ?? null,
     ],
   );
   // Pages are found by their project's name too: index them again.

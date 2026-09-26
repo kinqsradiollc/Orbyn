@@ -1,8 +1,13 @@
 import {
   blockText,
+  CALLOUT_LABELS,
+  footnoteNumbers,
+  isEmbed,
+  isLiveList,
   listLayout,
   mathToText,
   parseDocInline,
+  parseTable,
   serializeDoc,
   type DocBlock,
   type DocInline,
@@ -55,27 +60,95 @@ const escapeHtml = (text: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** How HTML is written for a page's lines. */
+export type HtmlOptions = {
+  /** Where a picture in the page can be fetched from, when it can. */
+  fileUrl?: (id: string) => string | null;
+  /** The number each footnote shows (`footnoteNumbers`). */
+  notes?: Map<string, number>;
+  /**
+   * Colours written onto the tags themselves, for pasting into another app
+   * (which has none of this file's stylesheet).
+   */
+  inline?: boolean;
+  /**
+   * Where a link goes, for pages read somewhere else (a published page):
+   * null keeps the words and drops the link (a page that isn't published).
+   */
+  linkUrl?: (href: string) => string | null;
+  /** Give each heading an id (`h-<n>`, by line), for a contents list. */
+  anchors?: boolean;
+  /**
+   * Typeset maths as HTML (a published page writes MathML); left out, or
+   * returning null, maths is written as its plain reading.
+   */
+  math?: (tex: string, display: boolean) => string | null;
+};
+
+/** The highlighter colours as another app draws them (the light theme's tints). */
+const TINT_HEX = { amber: "#fbf1dc", green: "#e7f0ea", rose: "#fbefea" };
+
 /** One line's styled runs as HTML. Maths is written as symbols. */
-function inlineHtml(text: string): string {
+function inlineHtml(text: string, o: HtmlOptions = {}): string {
   return parseDocInline(text)
     .map((run: DocInline) => {
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
-      if (run.math) return `<span class="m">${body}</span>`;
+      if (run.math)
+        return o.math?.(run.text, false) ?? `<span class="m">${body}</span>`;
       if (run.code) return `<code>${body}</code>`;
-      if (run.link) return `<a href="${escapeHtml(run.link)}">${body}</a>`;
+      if (run.footnote) {
+        const n = o.notes?.get(run.footnote) ?? run.footnote;
+        return `<sup><a href="#fn-${escapeHtml(String(n))}">${escapeHtml(String(n))}</a></sup>`;
+      }
+      if (run.link) {
+        const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
+        return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
+      }
       if (run.bold) return `<strong>${body}</strong>`;
       if (run.italic) return `<em>${body}</em>`;
-      if (run.highlight) return `<mark>${body}</mark>`;
+      if (run.strike) return `<s>${body}</s>`;
+      if (run.highlight) {
+        const tint = run.tint ?? "amber";
+        return o.inline
+          ? `<mark style="background:${TINT_HEX[tint]}">${body}</mark>`
+          : `<mark${run.tint ? ` class="${run.tint}"` : ""}>${body}</mark>`;
+      }
       return body;
     })
     .join("");
 }
 
+/** A table's cells as an HTML table, the first row as its header. */
+function tableHtml(text: string, o: HtmlOptions): string {
+  const { rows, align } = parseTable(text);
+  const cell = (tag: "th" | "td", c: string, i: number) => {
+    const a = align[i];
+    const style = [
+      a ? `text-align:${a}` : "",
+      o.inline ? "border:1px solid #ddd;padding:4px 8px" : "",
+    ]
+      .filter(Boolean)
+      .join(";");
+    return `<${tag}${style ? ` style="${style}"` : ""}>${inlineHtml(c, o)}</${tag}>`;
+  };
+  const [head, ...body] = rows;
+  return (
+    `<table${o.inline ? ' style="border-collapse:collapse"' : ""}>` +
+    `<thead><tr>${head.map((c, i) => cell("th", c, i)).join("")}</tr></thead>` +
+    `<tbody>${body
+      .map((r) => `<tr>${r.map((c, i) => cell("td", c, i)).join("")}</tr>`)
+      .join("")}</tbody></table>`
+  );
+}
+
 /**
- * A page as a web page that stands on its own: no stylesheet to fetch, no
- * script, nothing to load. It should read the same in ten years.
+ * A page's lines as HTML, without a document around them: what a web page
+ * export holds, and what rich copy (EDT-15) puts on the clipboard so
+ * another app keeps headings, lists, tables and links.
  */
-export function docToHtml(title: string, blocks: DocBlock[]): string {
+export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
+  const notes = o.notes ?? footnoteNumbers(blocks);
+  const opts = { ...o, notes };
   const body: string[] = [];
   const layout = listLayout(blocks);
   // The lists open around the current line, outermost first. A list item is
@@ -108,36 +181,79 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
       case "heading": {
         closeList();
         const level = block.level + 1;
-        body.push(`<h${level}>${inlineHtml(block.text)}</h${level}>`);
+        const id = o.anchors ? ` id="h-${index}"` : "";
+        body.push(
+          `<h${level}${id}>${inlineHtml(block.text, opts)}</h${level}>`,
+        );
         break;
       }
       case "bullet":
         item(index, "ul");
-        body.push(`<li>${inlineHtml(block.text)}`);
+        body.push(`<li>${inlineHtml(block.text, opts)}`);
         break;
       case "numbered":
         item(index, "ol");
-        body.push(`<li>${inlineHtml(block.text)}`);
+        body.push(`<li>${inlineHtml(block.text, opts)}`);
         break;
       case "todo":
         item(index, "ul");
         body.push(
           `<li class="t"><input type="checkbox" disabled${
             block.done ? " checked" : ""
-          }> ${inlineHtml(block.text)}`,
+          }> ${inlineHtml(block.text, opts)}`,
         );
         break;
       case "quote":
         closeList();
-        body.push(`<blockquote>${inlineHtml(block.text)}</blockquote>`);
+        body.push(`<blockquote>${inlineHtml(block.text, opts)}</blockquote>`);
+        break;
+      case "callout":
+        closeList();
+        body.push(
+          `<blockquote class="c ${block.kind}"><strong>${CALLOUT_LABELS[block.kind]}</strong> ${inlineHtml(block.text, opts)}</blockquote>`,
+        );
+        break;
+      case "table":
+        closeList();
+        body.push(tableHtml(block.text, opts));
+        break;
+      case "image": {
+        closeList();
+        const src = o.fileUrl?.(block.file);
+        body.push(
+          src
+            ? `<figure><img src="${escapeHtml(src)}" alt="${escapeHtml(block.text)}"${
+                block.width ? ` style="width:${block.width}%"` : ""
+              }>${block.text ? `<figcaption>${escapeHtml(block.text)}</figcaption>` : ""}</figure>`
+            : `<p><em>Picture${block.text ? `: ${escapeHtml(block.text)}` : ""}</em></p>`,
+        );
+        break;
+      }
+      case "file": {
+        closeList();
+        const href = o.fileUrl?.(block.file);
+        body.push(
+          href
+            ? `<p><a href="${escapeHtml(href)}">${escapeHtml(block.text)}</a></p>`
+            : `<p><em>File: ${escapeHtml(block.text)}</em></p>`,
+        );
+        break;
+      }
+      case "footnote":
+        // Footnotes are listed together at the end.
         break;
       case "code":
         closeList();
+        // A live list or an embed is settings, not something to read.
+        if (isLiveList(block) || isEmbed(block)) break;
         body.push(`<pre><code>${escapeHtml(block.text)}</code></pre>`);
         break;
       case "math":
         closeList();
-        body.push(`<p class="m">${escapeHtml(mathToText(block.text))}</p>`);
+        body.push(
+          o.math?.(block.text, true) ??
+            `<p class="m">${escapeHtml(mathToText(block.text))}</p>`,
+        );
         break;
       case "divider":
         closeList();
@@ -145,10 +261,53 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
         break;
       default:
         closeList();
-        body.push(`<p>${inlineHtml(block.text)}</p>`);
+        body.push(`<p>${inlineHtml(block.text, opts)}</p>`);
     }
   }
   closeList();
+  const footnotes = blocks
+    .filter(
+      (b): b is Extract<DocBlock, { type: "footnote" }> =>
+        b.type === "footnote",
+    )
+    .sort((a, b) => (notes.get(a.label) ?? 0) - (notes.get(b.label) ?? 0));
+  if (footnotes.length)
+    body.push(
+      `<hr><ol class="fn">${footnotes
+        .map(
+          (f) =>
+            `<li id="fn-${escapeHtml(String(notes.get(f.label) ?? f.label))}" value="${notes.get(f.label) ?? ""}">${inlineHtml(f.text, opts)}</li>`,
+        )
+        .join("")}</ol>`,
+    );
+  return body.join("\n");
+}
+
+/**
+ * A selection of lines for the clipboard (EDT-15): HTML another app keeps
+ * the headings, lists, tables and links of, with its colours written on the
+ * tags, and the same lines as Markdown for anywhere that takes only text.
+ */
+export function blocksToClipboard(
+  blocks: DocBlock[],
+  o: Omit<HtmlOptions, "inline"> = {},
+): { html: string; text: string } {
+  return {
+    html: `<meta charset="utf-8">${blocksHtml(blocks, { ...o, inline: true })}`,
+    text: serializeDoc(blocks),
+  };
+}
+
+/**
+ * A page as a web page that stands on its own: no stylesheet to fetch, no
+ * script, nothing to load. It should read the same in ten years.
+ */
+export function docToHtml(
+  title: string,
+  blocks: DocBlock[],
+  o: HtmlOptions = {},
+): string {
+  const body = blocksHtml(blocks, o);
   // The colours below are written out, not theme tokens: the file is opened
   // on its own, far from the app's stylesheet, so it has no variables to
   // read. They match the light theme (the highlight is its warnSoft tint),
@@ -169,10 +328,18 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
   .m { font-style: italic; }
   li.t { list-style: none; margin-left: -1.2rem; }
   mark { background: #fbf1dc; color: inherit; padding: 0 0.1em; }
+  mark.green { background: #e7f0ea; }
+  mark.rose { background: #fbefea; }
+  blockquote.c { border-left-color: #376c51; color: inherit;
+                 background: #f3f5f2; padding: 0.6rem 1rem; }
+  table { border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: 0.3rem 0.6rem; }
+  figure { margin: 1rem 0; } img { max-width: 100%; }
+  ol.fn { font-size: 0.9em; color: #555; }
   hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
 </style>
 <h1>${escapeHtml(title)}</h1>
-${body.join("\n")}
+${body}
 </html>
 `;
 }
@@ -180,6 +347,7 @@ ${body.join("\n")}
 /** A page as plain words: the title, a blank line, then each line. */
 export function docToText(title: string, blocks: DocBlock[]): string {
   const layout = listLayout(blocks);
+  const notes = footnoteNumbers(blocks);
   const lines = blocks.map((b, i) => {
     if (b.type === "divider") return "---";
     const text = plainRuns(blockText(b));
@@ -189,6 +357,16 @@ export function docToText(title: string, blocks: DocBlock[]): string {
     if (b.type === "numbered") return `${indent}${layout[i].number}. ${text}`;
     if (b.type === "todo") return `${indent}[${b.done ? "x" : " "}] ${text}`;
     if (b.type === "quote") return `> ${text}`;
+    if (b.type === "callout") return `${CALLOUT_LABELS[b.kind]}: ${text}`;
+    if (b.type === "table")
+      return parseTable(b.text)
+        .rows.map((r) => r.map(plainRuns).join(" | "))
+        .join("\n");
+    if (b.type === "image") return `[Picture${text ? `: ${text}` : ""}]`;
+    if (b.type === "file") return `[File: ${text}]`;
+    if (b.type === "footnote")
+      return `[${notes.get(b.label) ?? b.label}] ${text}`;
+    if (isLiveList(b) || isEmbed(b)) return "";
     return text;
   });
   return `${title}\n\n${lines.join("\n\n")}\n`;
@@ -197,7 +375,9 @@ export function docToText(title: string, blocks: DocBlock[]): string {
 /** One line with its Markdown markers taken off, maths read as symbols. */
 const plainRuns = (text: string) =>
   parseDocInline(text)
-    .map((r) => (r.math ? mathToText(r.text) : r.text))
+    .map((r) =>
+      r.footnote ? `[${r.footnote}]` : r.math ? mathToText(r.text) : r.text,
+    )
     .join("");
 
 /** A page as the Markdown it already is, with its title as a heading. */

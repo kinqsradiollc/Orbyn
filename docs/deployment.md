@@ -535,7 +535,10 @@ Docs → Uploads, and the file is deleted. These services do the work:
   have their files kept after import in `kept/` inside that volume, encrypted, within
   `FILES_KEEP_QUOTA_MB` each (500 MB). **Back up `import_files/kept` with the database**: a
   `kept_files` row without its file downloads as "couldn't be found". The file store removes a kept
-  file once its page is deleted for good or its account is gone.
+  file once its page is deleted for good or its account is gone. It also keeps pictures and files
+  added to pages, encrypted, for as long as their page, in the `page_files` volume
+  (`PAGE_FILES_DIR`): each person has `PAGE_FILES_QUOTA_MB` (1 GB) of space and a file is at most
+  `PAGE_FILES_MAX_MB` (25 MB). Back that volume up with the database.
 - **`converter`** reads everything:
   - Word files, with exact equations;
   - PDF pages with real text, with columns, headings, tables and maths from their fonts;
@@ -582,22 +585,25 @@ set, it replaces Tesseract for scanned pages. More workers:
 Never build the `ocr` or `formula` image on a development machine. Tesseract and `pdftoppm` from
 Homebrew or apt are enough there, and `scripts/ocr-standin.mjs` stands in for the heavy model.
 
-| Setting               | Default            | What it does                                             |
-| --------------------- | ------------------ | -------------------------------------------------------- |
-| `FILES_SECRET`        | (blank: off)       | Signs upload links and the converter's requests          |
-| `FILES_MASTER_KEY`    | derived (dev only) | Wraps each file's own encryption key                     |
-| `FILES_MIN_FREE_MB`   | `1024`             | Uploads are refused below this much free disk            |
-| `FILES_KEEP_QUOTA_MB` | `500`              | "Keep the original": space per person for kept files     |
-| `TESSERACT_WORKERS`   | `2`                | Scanned pages read at once with Tesseract                |
-| `FORMULA_URL`         | (blank: off)       | `http://formula:8000` with the `formula` profile         |
-| `FORMULA_MEMORY`      | `2g`               | Memory cap for the `formula` container                   |
-| `OCR_URL`             | (blank: off)       | `http://ocr:8000` with the `ocr` profile (heavy)         |
-| `OCR_WORKERS`         | `1`                | Heavy OCR pages read at once (one per `ocr` container)   |
-| `OCR_TIMEOUT_MS`      | `600000`           | Longest one scanned page may take                        |
-| `OCR_MEMORY`          | `16g`              | Memory cap for each `ocr` container                      |
-| `OCR_IMAGE_MODE`      | `gundam`           | `gundam` crops (better on dense pages); `base` is faster |
-| `OCR_MODEL_REVISION`  | `main`             | Pin the heavy model and its code to a reviewed commit    |
-| `OCR_OFFLINE`         | `0`                | `1` after the first download: no internet access         |
+| Setting               | Default            | What it does                                                       |
+| --------------------- | ------------------ | ------------------------------------------------------------------ |
+| `FILES_SECRET`        | (blank: off)       | Signs upload links and the converter's requests                    |
+| `FILES_MASTER_KEY`    | derived (dev only) | Wraps each file's own encryption key                               |
+| `FILES_MIN_FREE_MB`   | `1024`             | Uploads are refused below this much free disk                      |
+| `FILES_KEEP_QUOTA_MB` | `500`              | "Keep the original": space per person for kept files               |
+| `PAGE_FILES_DIR`      | `FILES_DIR/pages`  | Where pictures and files in pages are kept (Compose: `page_files`) |
+| `PAGE_FILES_QUOTA_MB` | `1024`             | Each person's space for pictures and files in pages                |
+| `PAGE_FILES_MAX_MB`   | `25`               | The largest picture or file in a page                              |
+| `TESSERACT_WORKERS`   | `2`                | Scanned pages read at once with Tesseract                          |
+| `FORMULA_URL`         | (blank: off)       | `http://formula:8000` with the `formula` profile                   |
+| `FORMULA_MEMORY`      | `2g`               | Memory cap for the `formula` container                             |
+| `OCR_URL`             | (blank: off)       | `http://ocr:8000` with the `ocr` profile (heavy)                   |
+| `OCR_WORKERS`         | `1`                | Heavy OCR pages read at once (one per `ocr` container)             |
+| `OCR_TIMEOUT_MS`      | `600000`           | Longest one scanned page may take                                  |
+| `OCR_MEMORY`          | `16g`              | Memory cap for each `ocr` container                                |
+| `OCR_IMAGE_MODE`      | `gundam`           | `gundam` crops (better on dense pages); `base` is faster           |
+| `OCR_MODEL_REVISION`  | `main`             | Pin the heavy model and its code to a reviewed commit              |
+| `OCR_OFFLINE`         | `0`                | `1` after the first download: no internet access                   |
 
 The status page lists **Document import**, which is the converter's heartbeat. Admin → Storage
 shows the files on the server, the queue, how scans are read, and the last month of imports.
@@ -689,8 +695,12 @@ manual path run the same script: `./scripts/deploy.sh` on the server.
 
 ## Backups
 
-Everything lives in PostgreSQL, plus two small things beside it: `.env` (the secrets key above all)
-and the mail server's `mail_data` volume, which holds its DKIM key.
+Everything lives in PostgreSQL, plus a few things beside it: `.env` (the secrets key and
+`FILES_MASTER_KEY` above all), the mail server's `mail_data` volume, which holds its DKIM key, and
+the `page_files` volume with the pictures and files in pages (already encrypted; without
+`FILES_MASTER_KEY` they can't be read). `scripts/deploy.sh` saves `page_files` beside each dump as
+`backups/page-files-<stamp>.tar.gz`. Import originals people chose to keep live in
+`import_files/kept`; back that folder up too (see the file store above).
 
 `scripts/deploy.sh` dumps the database to `backups/` before every migration and keeps the last
 `BACKUP_KEEP` (default 7). That covers "the update broke something"; for everything else — disk

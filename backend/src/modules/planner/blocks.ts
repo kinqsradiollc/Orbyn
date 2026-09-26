@@ -1,4 +1,6 @@
 import {
+  addDays,
+  dayTime,
   fail,
   type PlanApplied,
   type PlanMove,
@@ -8,7 +10,8 @@ import type { Db } from "../../db/pool.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { withSessionFacts } from "./sessions.js";
-import { busyIntervals } from "./calendar.js";
+import { busyIntervals, loadPrefs } from "./calendar.js";
+import { workingFree } from "./plans.js";
 
 /**
  * Sessions (time set aside for a task): adding, moving and removing one.
@@ -65,26 +68,73 @@ export async function blockById(db: Db, id: string, userId: string) {
 }
 
 /**
+ * The first free working time of `minutes` on `day` (a "YYYY-MM-DD" in the
+ * person's zone), from now on when the day is today. 409 when the day is
+ * over or has no such time, so the person can pick a time themselves.
+ */
+export async function freeOnDay(
+  db: Db,
+  userId: string,
+  day: string,
+  minutes: number,
+): Promise<{ start_at: string; end_at: string }> {
+  const prefs = await loadPrefs(db, userId);
+  const now = new Date();
+  const start = dayTime(day, 0, prefs.timezone);
+  const end = dayTime(addDays(day, 1), 0, prefs.timezone);
+  if (end.getTime() <= now.getTime())
+    fail(409, "That day is over. Pick today or a day ahead.");
+  const slot = await workingFree(db, userId, minutes, [], now, start, end);
+  if (!slot)
+    fail(
+      409,
+      "There's no free working time left that day for it. Pick a time in the week view instead.",
+    );
+  return slot;
+}
+
+/**
  * Set time aside for a task `userId` can see: 404 for one they can't, 422
  * for anything but a task. Returns the new session.
+ *
+ * With `day` instead of times (a task dropped on a calendar day) it goes
+ * at the first free working time that day, for `minutes` or the task's
+ * estimate. A day's session may end after the task's deadline: it is
+ * flagged late, never refused, and the deadline is never touched.
  */
 export async function addSession(
   db: Db,
   userId: string,
-  s: { item_id: string; start_at: string; end_at: string },
+  s:
+    | { item_id: string; start_at: string; end_at: string }
+    | { item_id: string; day: string; minutes?: number },
 ): Promise<TimeBlock> {
   const item = (
-    await db.query<{ id: string; kind: string }>(
-      `SELECT i.id, i.kind FROM items i WHERE i.id = $2 AND ${visibleItems()}`,
+    await db.query<{
+      id: string;
+      kind: string;
+      estimate_minutes: number | null;
+    }>(
+      `SELECT i.id, i.kind, i.estimate_minutes FROM items i
+        WHERE i.id = $2 AND ${visibleItems()}`,
       [userId, s.item_id],
     )
   ).rows[0];
   if (!item) fail(404, "Item not found");
   if (item.kind !== "task") fail(422, "Only tasks can have sessions.");
+  const times =
+    "day" in s
+      ? await freeOnDay(
+          db,
+          userId,
+          s.day,
+          s.minutes ?? Math.min(item.estimate_minutes || 30, 1440),
+        )
+      : s;
   const { id } = (
     await db.query<{ id: string }>(
       `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [s.item_id, userId, s.start_at, s.end_at],
+      [s.item_id, userId, times.start_at, times.end_at],
     )
   ).rows[0];
   const created = await blockById(db, id, userId);

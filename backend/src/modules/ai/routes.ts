@@ -17,9 +17,10 @@ import {
   quoteOf,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
-import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -143,6 +144,7 @@ async function scopeOverview(
       `SELECT d.id AS doc_id, d.title, l.block_id, d.content
          FROM doc_task_links l JOIN docs d ON d.id = l.doc_id
         WHERE l.item_id = $2 AND ${docVisibleTo("$1")}
+          AND ${assistantMayRead("d")}
         ORDER BY l.created_at LIMIT 1`,
       [u.id, scope.id],
     ),
@@ -162,8 +164,13 @@ async function scopeOverview(
           doc_id: cameFrom.doc_id,
           title: cameFrom.title,
           block_id: cameFrom.block_id,
+          // Links to what the person can't open keep no title (D3aF).
           quote: quoteOf(
-            cameFrom.content.find((block) => block.id === cameFrom.block_id),
+            await readableLinks(
+              pool,
+              u.id,
+              cameFrom.content.find((block) => block.id === cameFrom.block_id),
+            ),
           ),
         }
       : null,

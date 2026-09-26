@@ -202,6 +202,14 @@ ${UPSTREAM_MCP}
     # Uploads for importing into Docs go straight to the file store,
     # streamed (not buffered here) and up to 50 MB. The link in the path is
     # signed by the API and works once.
+    # Markdown and Notion exports into pages (DATA-08): a zip up to 20 MB,
+    # sent as base64 in one JSON request.
+    location = /imports/pages {
+      limit_req zone=per_client burst=20 nodelay;
+      client_max_body_size 28m;
+      proxy_read_timeout 125s;
+      proxy_pass http://api;
+    }
     location /files/u/ {
       limit_req zone=per_client burst=10 nodelay;
       client_max_body_size 52m;
@@ -209,6 +217,23 @@ ${UPSTREAM_MCP}
       proxy_read_timeout 600s;
       proxy_send_timeout 600s;
       proxy_next_upstream off;
+      proxy_pass http://files;
+    }
+
+    # Pictures and files for pages go straight to the file store too,
+    # streamed, up to PAGE_FILES_MAX_MB (200 MB at most); the link is signed
+    # by the API and works once. Showing one is a signed hour-long link.
+    location /files/p/ {
+      limit_req zone=per_client burst=20 nodelay;
+      client_max_body_size 202m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_next_upstream off;
+      proxy_pass http://files;
+    }
+    location /files/r/ {
+      limit_req zone=per_client burst=100 nodelay;
       proxy_pass http://files;
     }
 
@@ -294,6 +319,27 @@ ${UPSTREAM_MCP}
       proxy_pass http://127.0.0.1:8080/;
     }
 
+    location = /api/imports/pages {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      client_max_body_size 28m;
+      proxy_pass http://127.0.0.1:8080/imports/pages;
+    }
+
+    # Published pages (SHR-05): read at /p/<slug> on the web app's own
+    # address, written by the API as plain HTML (no app, no script).
+    location ^~ /p/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/p/;
+    }
+
     # Uploads for importing, through this gateway's own entry point above.
     location /api/files/u/ {
       proxy_set_header Connection "";
@@ -306,6 +352,28 @@ ${UPSTREAM_MCP}
       proxy_read_timeout 600s;
       proxy_send_timeout 600s;
       proxy_pass http://127.0.0.1:8080/files/u/;
+    }
+
+    # Pictures and files in pages, through this gateway's entry point above.
+    location /api/files/p/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      client_max_body_size 202m;
+      proxy_request_buffering off;
+      proxy_read_timeout 600s;
+      proxy_send_timeout 600s;
+      proxy_pass http://127.0.0.1:8080/files/p/;
+    }
+    location /api/files/r/ {
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/files/r/;
     }
 
     # CalDAV, served by the API at its own /dav path (no /api strip), so Apple
@@ -345,6 +413,22 @@ ${UPSTREAM_MCP}
     }
     # Where to report a security problem (RFC 9116), from the API.
     location = /.well-known/security.txt {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080;
+    }
+    # Opening the web app's links in the phone app: the association files
+    # iOS and Android check, built by the API from its environment.
+    location = /.well-known/apple-app-site-association {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080;
+    }
+    location = /.well-known/assetlinks.json {
       proxy_set_header Host $host;
       proxy_set_header X-Forwarded-For $remote_addr;
       proxy_set_header X-Forwarded-Proto $fwd_proto;

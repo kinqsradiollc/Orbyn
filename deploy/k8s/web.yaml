@@ -112,14 +112,36 @@ data:
         proxy_send_timeout 600s;
         proxy_pass http://orbyn_files/files/u/;
       }
+      # Pictures and files in pages: uploads streamed to the file store, and
+      # signed links to show them.
+      location /api/files/p/ {
+        client_max_body_size 202m;
+        proxy_request_buffering off;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_pass http://orbyn_files/files/p/;
+      }
+      location /api/files/r/ {
+        proxy_pass http://orbyn_files/files/r/;
+      }
       # The MCP address for older setups: the mcp service, as on the MCP host.
       location = /api/mcp {
         proxy_buffering off;
         proxy_read_timeout 100s;
         proxy_pass http://orbyn_mcp/mcp;
       }
+      # Markdown and Notion exports into pages (DATA-08): up to 20 MB as
+      # base64 JSON.
+      location = /api/imports/pages {
+        client_max_body_size 28m;
+        proxy_pass http://orbyn_api/imports/pages;
+      }
       location /api/ {
         proxy_pass http://orbyn_api/;
+      }
+      # Published pages (SHR-05): plain HTML written by the API.
+      location ^~ /p/ {
+        proxy_pass http://orbyn_api/p/;
       }
       # Signing in with Orbyn: the authorization server's metadata (RFC 8414)
       # at the issuer (this host), from the API.
@@ -129,6 +151,13 @@ data:
       # Where to report a security problem (RFC 9116), from the API.
       location = /.well-known/security.txt {
         proxy_pass http://orbyn_api/.well-known/security.txt;
+      }
+      # The files phones check to open /app/ links in the Orbyn app.
+      location = /.well-known/apple-app-site-association {
+        proxy_pass http://orbyn_api/.well-known/apple-app-site-association;
+      }
+      location = /.well-known/assetlinks.json {
+        proxy_pass http://orbyn_api/.well-known/assetlinks.json;
       }
       # Well-known documents this app doesn't have: a 404, not the app's page.
       location ^~ /.well-known/ {

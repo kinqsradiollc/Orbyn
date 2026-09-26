@@ -89,9 +89,100 @@ export type DocBlock = Named &
      */
     | { type: "math"; text: string; check?: boolean }
     | { type: "divider" }
+    /**
+     * A set-apart box (EDT-04): Note, Tip, Warning, Question or Summary.
+     * Written `> [!tip] words`, as other Markdown apps write callouts; a
+     * folded one (`> [!tip]- words`) shows only its first line.
+     */
+    | { type: "callout"; kind: CalloutKind; text: string; folded?: boolean }
+    /**
+     * A table (EDT-02). `text` is the table as Markdown (`| a | b |` rows
+     * with a `| --- |` line under the header), so it searches, exports and
+     * reads anywhere; the apps draw and edit it as cells.
+     */
+    | { type: "table"; text: string }
+    /**
+     * A picture kept in Orbyn's own file store (EDT-01): `file` is its id
+     * there, `text` its caption, `width` how wide it is drawn, as a share of
+     * the page (10 to 100; left out for the full width).
+     */
+    | { type: "image"; file: string; text: string; width?: number }
+    /** A file kept in Orbyn's own file store, shown as a card: `text` is its name. */
+    | { type: "file"; file: string; text: string }
+    /**
+     * A footnote's words (EDT-13), written `[^1]: words`. The marker `[^1]`
+     * sits in a line; the page numbers markers in the order they are read
+     * and lists the notes at its end.
+     */
+    | { type: "footnote"; label: string; text: string }
   );
 
 export type DocBlockType = DocBlock["type"];
+
+/** The kinds of callout (EDT-04), in the order menus offer them. */
+export const CALLOUT_KINDS = [
+  "note",
+  "tip",
+  "warning",
+  "question",
+  "summary",
+] as const;
+export type CalloutKind = (typeof CALLOUT_KINDS)[number];
+
+/** What each kind of callout is called. */
+export const CALLOUT_LABELS: Record<CalloutKind, string> = {
+  note: "Note",
+  tip: "Tip",
+  warning: "Warning",
+  question: "Question",
+  summary: "Summary",
+};
+
+/**
+ * Callout names other Markdown apps use, read as the nearest of ours so an
+ * imported `> [!info]` or `> [!tldr]` still comes in as a callout.
+ */
+const CALLOUT_ALIASES: Record<string, CalloutKind> = {
+  note: "note",
+  info: "note",
+  important: "note",
+  tip: "tip",
+  hint: "tip",
+  success: "tip",
+  example: "tip",
+  warning: "warning",
+  caution: "warning",
+  attention: "warning",
+  danger: "warning",
+  error: "warning",
+  bug: "warning",
+  question: "question",
+  help: "question",
+  faq: "question",
+  summary: "summary",
+  abstract: "summary",
+  tldr: "summary",
+  quote: "note",
+};
+
+/** The callout kind a name stands for, or null when it isn't one. */
+export const calloutKindOf = (name: string): CalloutKind | null =>
+  CALLOUT_ALIASES[name.trim().toLowerCase()] ?? null;
+
+/**
+ * The highlighter colours (EDT-05): the plain `==words==` is the soft
+ * amber the page always used; `=={green}words==` and `=={rose}words==` are
+ * the palette's green and rose tints. No new colours.
+ */
+export const HIGHLIGHT_TINTS = ["amber", "green", "rose"] as const;
+export type HighlightTint = (typeof HIGHLIGHT_TINTS)[number];
+
+/** What each highlighter colour is called in a menu. */
+export const HIGHLIGHT_LABELS: Record<HighlightTint, string> = {
+  amber: "Yellow",
+  green: "Green",
+  rose: "Pink",
+};
 
 /**
  * Editing a line means re-reading its Markdown, which produces fresh blocks
@@ -297,6 +388,16 @@ export type Doc = {
    * not in lists). Any line can carry an id, so only these are tasks.
    */
   linked_block_ids?: string[];
+  /**
+   * Other names the page goes by (LNK-03), such as a course code: the link
+   * picker, the quick switcher, search and "Mentioned without a link" all
+   * find the page by them too.
+   */
+  aliases?: string[];
+  /** When the page itself was archived (SRCH-03), or null. */
+  archived_at?: string | null;
+  /** Archived, itself or through its folder: left out of lists and search. */
+  archived?: boolean;
 };
 
 /** A note an event has (`GET /docs/event-notes`): enough to mark the event. */
@@ -384,13 +485,18 @@ export function seriesNoteFor(
   );
 }
 
-/** Where an imported page came from. The file itself is not kept. */
+/**
+ * Where an imported page came from. The file itself is kept only when the
+ * person chose "Keep the original" when importing it (EDT-01): then
+ * `original_file` is its id in Orbyn's file store.
+ */
 export type DocImportSource = {
   file_name: string;
   file_type: string;
   pages: number;
   ocr_pages: number;
   imported_at: string;
+  original_file?: string | null;
 };
 
 export type DocComment = {
@@ -605,13 +711,33 @@ export type DocInline = {
   link?: string;
   /** `==words==`, drawn on a soft tint like a highlighter pen. */
   highlight?: boolean;
+  /** The highlighter's colour when it isn't the usual amber (`=={green}…==`). */
+  tint?: Exclude<HighlightTint, "amber">;
+  /** `~~words~~`, struck through (EDT-05). */
+  strike?: boolean;
+  /** `[^1]`: a footnote marker (EDT-13); `text` is its label. */
+  footnote?: string;
 };
 
+/** Whether a run carries any style: it can't take another one on top. */
+export const isStyledRun = (run: DocInline): boolean =>
+  !!(
+    run.bold ||
+    run.italic ||
+    run.code ||
+    run.math ||
+    run.link ||
+    run.highlight ||
+    run.strike ||
+    run.footnote
+  );
+
 // Inline maths first so `$x_1$` isn't mistaken for emphasis, then code (which
-// is literal), then links, then highlights, then emphasis. A highlight must
-// hug its words (`==this==`), so "a == b" in a note about code stays text.
+// is literal), then footnote markers, links, highlights, strikes, then
+// emphasis. A highlight or a strike must hug its words (`==this==`), so
+// "a == b" in a note about code stays text.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]+)\)|==([^=\s](?:[^=\n]*[^=\s])?)==|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
+  /\$([^$\n]+?)\$|`([^`\n]+)`|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
 
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
@@ -623,26 +749,39 @@ export function parseDocInline(text: string): DocInline[] {
   for (const m of text.matchAll(INLINE_RE)) {
     const start = m.index ?? 0;
     if (start > at) out.push({ text: text.slice(at, start), start: at });
-    // Each branch's offset skips the opening marker, so the run's `start`
-    // points at the first character its `text` actually holds.
-    const inner = (group: number) => start + m[0].indexOf(m[group], 1);
+    // Each run's `start` skips its opening marker, so it points at the
+    // first character its `text` actually holds.
     if (m[1] !== undefined)
-      out.push({ text: m[1], start: inner(1), math: true });
+      out.push({ text: m[1], start: start + 1, math: true });
     else if (m[2] !== undefined)
-      out.push({ text: m[2], start: inner(2), code: true });
+      out.push({ text: m[2], start: start + 1, code: true });
     else if (m[3] !== undefined)
-      out.push({ text: m[3], start: inner(3), link: m[4] });
-    else if (m[5] !== undefined)
-      out.push({ text: m[5], start: inner(5), highlight: true });
-    else if (m[6] !== undefined)
-      out.push({ text: m[6], start: inner(6), bold: true });
-    else if (m[7] !== undefined)
-      out.push({ text: m[7], start: inner(7), italic: true });
+      out.push({ text: m[3], start: start + 2, footnote: m[3] });
+    else if (m[4] !== undefined)
+      out.push({ text: m[4], start: start + 1, link: m[5] });
+    else if (m[7] !== undefined) {
+      const tint = m[6] ? (m[6].slice(1, -1) as "green" | "rose") : undefined;
+      out.push({
+        text: m[7],
+        start: start + 2 + (m[6]?.length ?? 0),
+        highlight: true,
+        ...(tint ? { tint } : {}),
+      });
+    } else if (m[8] !== undefined)
+      out.push({ text: m[8], start: start + 2, strike: true });
+    else if (m[9] !== undefined)
+      out.push({ text: m[9], start: start + 2, bold: true });
+    else if (m[10] !== undefined)
+      out.push({ text: m[10], start: start + 1, italic: true });
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), start: at });
   return out.length ? out : [{ text: "", start: 0 }];
 }
+
+/** The shape of an id, as links and embeds write it. */
+const UUID_SHAPE_EARLY =
+  "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
 // ----------------------------------------------------------------- parse ---
 
@@ -657,7 +796,13 @@ const indentWidth = (lead: string) =>
  * items above it, not by a fixed number of spaces, so two-space, four-space
  * and tab-indented lists from anywhere all come in with the same shape.
  */
-export function parseDoc(markdown: string): DocBlock[] {
+export function parseDoc(
+  markdown: string,
+  opts: {
+    /** Told of each table too big for one table line, which is split. */
+    onTableSplit?: () => void;
+  } = {},
+): DocBlock[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: DocBlock[] = [];
   let i = 0;
@@ -695,7 +840,7 @@ export function parseDoc(markdown: string): DocBlock[] {
     if (line.trim() && !/^\s*([-*]|\d+[.)])\s/.test(line)) indents = [];
 
     // Fenced code: ```lang … ```
-    const fence = /^```(\w*)\s*$/.exec(line);
+    const fence = /^```([\w+#.-]*)\s*$/.exec(line);
     if (fence) {
       const lang = fence[1] ?? "";
       const body: string[] = [];
@@ -778,6 +923,70 @@ export function parseDoc(markdown: string): DocBlock[] {
       continue;
     }
 
+    // A callout: `> [!tip] words`, folded with a `-` after the kind.
+    const callout = /^>\s?\[!([A-Za-z]+)\]([-+]?)\s*(.*)$/.exec(line);
+    if (callout && calloutKindOf(callout[1])) {
+      const body = [callout[3].trim()];
+      i++;
+      // Its further lines are the quote lines that follow it.
+      while (i < lines.length && /^>\s?(?!\[!)/.test(lines[i])) {
+        const more = lines[i].replace(/^>\s?/, "").trim();
+        if (more) body.push(more);
+        i++;
+      }
+      out.push({
+        type: "callout",
+        kind: calloutKindOf(callout[1])!,
+        text: body.filter(Boolean).join(" "),
+        ...(callout[2] === "-" ? { folded: true } : {}),
+      });
+      continue;
+    }
+
+    // A table: pipe rows with a `| --- |` line under the first.
+    if (TABLE_ROW.test(line) && TABLE_RULE.test(lines[i + 1] ?? "")) {
+      const rows: string[] = [];
+      while (i < lines.length && TABLE_ROW.test(lines[i]))
+        rows.push(lines[i++]);
+      const parts = splitTable(rows.join("\n"));
+      if (parts.length > 1) opts.onTableSplit?.();
+      for (const part of parts)
+        out.push(
+          "table" in part
+            ? { type: "table", text: part.table }
+            : { type: "bullet", text: part.line },
+        );
+      continue;
+    }
+
+    // A picture or a file from Orbyn's file store, on a line of its own.
+    const image = FILE_IMAGE.exec(line.trim());
+    if (image) {
+      const width = Number(image[3]);
+      out.push({
+        type: "image",
+        file: image[2].toLowerCase(),
+        text: image[1].trim(),
+        ...(width >= 10 && width < 100 ? { width: Math.round(width) } : {}),
+      });
+      i++;
+      continue;
+    }
+    const file = FILE_LINE.exec(line.trim());
+    if (file) {
+      out.push({ type: "file", file: file[2].toLowerCase(), text: file[1] });
+      i++;
+      continue;
+    }
+
+    // A footnote's words: `[^1]: words`.
+    const note = /^\[\^([\w-]{1,24})\]:\s*(.*)$/.exec(line.trim());
+    if (note) {
+      out.push({ type: "footnote", label: note[1], text: note[2].trim() });
+      i++;
+      continue;
+    }
+
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
       out.push({ type: "quote", text: quote[1].trim() });
@@ -832,10 +1041,273 @@ export function serializeBlock(b: DocBlock, number?: number | null): string {
       return `$$\n${b.text}\n$$`;
     case "divider":
       return "---";
+    case "callout":
+      return `> [!${b.kind}]${b.folded ? "-" : ""} ${b.text}`.trimEnd();
+    case "table":
+      return b.text;
+    case "image":
+      return `![${fileLabel(b.text)}](${fileHref(b.file, b.width)})`;
+    case "file":
+      return `[${fileLabel(b.text) || "File"}](${fileHref(b.file)})`;
+    case "footnote":
+      return `[^${b.label}]: ${b.text}`;
     default:
       return b.text;
   }
 }
+
+// ---------------------------------------------------------------- files ---
+
+const UUID_SHAPE = UUID_SHAPE_EARLY;
+/** `![caption](orbyn://file/<id>?w=60)` on a line of its own. */
+const FILE_IMAGE = new RegExp(
+  `^!\\[([^\\]\\n]*)\\]\\(orbyn://file/(${UUID_SHAPE})(?:\\?w=(\\d{1,3}))?\\)$`,
+);
+/** `[name](orbyn://file/<id>)` on a line of its own. */
+const FILE_LINE = new RegExp(
+  `^\\[([^\\]\\n]+)\\]\\(orbyn://file/(${UUID_SHAPE})\\)$`,
+);
+
+/** The address a picture or file in a page is kept at. */
+export const fileHref = (id: string, width?: number): string =>
+  `orbyn://file/${id.toLowerCase()}${width && width < 100 ? `?w=${Math.round(width)}` : ""}`;
+
+/** A caption or file name made safe to sit inside a link's brackets. */
+export const fileLabel = (name: string): string =>
+  name
+    .replace(/[[\]\n]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+
+// ---------------------------------------------------------------- tables ---
+
+const TABLE_ROW = /^\s*\|.*\|\s*$/;
+const TABLE_RULE = /^\s*\|(\s*:?-{1,}:?\s*\|)+\s*$/;
+
+/** How a column's words sit. */
+export type TableAlign = "left" | "center" | "right" | null;
+
+/** A table as cells: the first row is its header. */
+export type TableCells = { rows: string[][]; align: TableAlign[] };
+
+/** The most rows and columns a table keeps. */
+export const TABLE_MAX = { rows: 200, cols: 20 };
+
+/** One pipe row's cells, with `\|` read as a pipe in the words. */
+function tableCells(line: string): string[] {
+  const inner = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let cell = "";
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "\\" && inner[i + 1] === "|") {
+      cell += "|";
+      i++;
+    } else if (inner[i] === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else cell += inner[i];
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+/** The most characters one table line holds (as the page's schema says). */
+export const TABLE_TEXT_MAX = 40000;
+
+/** The most characters a list line holds, for a row too long for a table. */
+const TABLE_LINE_MAX = 4000;
+
+/**
+ * A table's Markdown read into cells. Every row is made as wide as the
+ * widest, so a ragged table from elsewhere still has a place for each word.
+ * An editor's table holds at most {@link TABLE_MAX}; `all` reads every row
+ * and column (see {@link splitTable}).
+ */
+export function parseTable(text: string, all = false): TableCells {
+  const every = text.split("\n").filter((l) => TABLE_ROW.test(l));
+  const lines = all ? every : every.slice(0, TABLE_MAX.rows + 1);
+  const cols = all ? Infinity : TABLE_MAX.cols;
+  let align: TableAlign[] = [];
+  const rows: string[][] = [];
+  lines.forEach((line, n) => {
+    if (n === 1 && TABLE_RULE.test(line)) {
+      align = tableCells(line).map((c) =>
+        /^:-+:$/.test(c)
+          ? "center"
+          : /^-+:$/.test(c)
+            ? "right"
+            : /^:-+$/.test(c)
+              ? "left"
+              : null,
+      );
+      return;
+    }
+    rows.push(tableCells(line).slice(0, cols));
+  });
+  if (!rows.length) rows.push([""]);
+  const width = Math.max(1, ...rows.map((r) => r.length));
+  return {
+    rows: rows.map((r) => [...r, ...Array(width - r.length).fill("")]),
+    align: Array.from({ length: width }, (_, i) => align[i] ?? null),
+  };
+}
+
+/** Cells written back as a Markdown table, a pipe in any cell escaped. */
+export function tableMarkdown({ rows, align }: TableCells): string {
+  const width = Math.max(1, ...rows.map((r) => r.length));
+  const cell = (c: string) =>
+    (c ?? "").replace(/\n/g, " ").replace(/\|/g, "\\|").trim();
+  const line = (r: string[]) =>
+    `| ${Array.from({ length: width }, (_, i) => cell(r[i] ?? "")).join(" | ")} |`;
+  const rule = `| ${Array.from({ length: width }, (_, i) => {
+    const a = align[i] ?? null;
+    return a === "center"
+      ? ":---:"
+      : a === "right"
+        ? "---:"
+        : a === "left"
+          ? ":---"
+          : "---";
+  }).join(" | ")} |`;
+  const [head = [""], ...body] = rows.length ? rows : [[""]];
+  return [line(head), rule, ...body.map(line)].join("\n");
+}
+
+/**
+ * A table too big for one table line (more than {@link TABLE_MAX} rows or
+ * columns, or {@link TABLE_TEXT_MAX} characters), as several tables in
+ * order with the header repeated. Past the widest a table can be, the
+ * columns go in groups that each keep the first column, so a row can still
+ * be told apart. A row too long for any table (with its header) becomes a
+ * line of its own ("Header: cell · …"). Nothing is dropped.
+ */
+export function splitTable(
+  text: string,
+): Array<{ table: string } | { line: string }> {
+  const { rows, align } = parseTable(text, true);
+  const width = rows[0].length;
+  const groups: number[][] = [];
+  if (width <= TABLE_MAX.cols)
+    groups.push(Array.from({ length: width }, (_, i) => i));
+  else {
+    groups.push(Array.from({ length: TABLE_MAX.cols }, (_, i) => i));
+    for (let at = TABLE_MAX.cols; at < width; at += TABLE_MAX.cols - 1)
+      groups.push([
+        0,
+        ...Array.from(
+          { length: Math.min(TABLE_MAX.cols - 1, width - at) },
+          (_, i) => at + i,
+        ),
+      ]);
+  }
+  const out: Array<{ table: string } | { line: string }> = [];
+  for (const cols of groups) {
+    const pick = (r: string[]) => cols.map((c) => r[c] ?? "");
+    const head = pick(rows[0]);
+    const aligns = cols.map((c) => align[c] ?? null);
+    const md = (body: string[][]) =>
+      tableMarkdown({ rows: [head, ...body], align: aligns });
+    const base = md([]).length;
+    const lineLength = (r: string[]) =>
+      tableMarkdown({ rows: [r], align: aligns }).split("\n")[0].length + 1;
+    let chunk: string[][] = [];
+    let size = base;
+    const flush = () => {
+      if (chunk.length) out.push({ table: md(chunk) });
+      chunk = [];
+      size = base;
+    };
+    const body = rows.slice(1).map(pick);
+    if (!body.length) {
+      if (base <= TABLE_TEXT_MAX) out.push({ table: md([]) });
+      else out.push({ line: head.filter(Boolean).join(" · ") });
+      continue;
+    }
+    for (const r of body) {
+      const n = lineLength(r);
+      if (base + n > TABLE_TEXT_MAX) {
+        // Too long for any table: its words as a line of their own.
+        flush();
+        const line = r
+          .map((cell, i) => (cell && head[i] ? `${head[i]}: ${cell}` : cell))
+          .filter(Boolean)
+          .join(" · ");
+        // In pieces a list line can hold.
+        for (let k = 0; k < line.length; k += TABLE_LINE_MAX)
+          out.push({ line: line.slice(k, k + TABLE_LINE_MAX) });
+        continue;
+      }
+      if (chunk.length >= TABLE_MAX.rows || size + n > TABLE_TEXT_MAX) flush();
+      chunk.push(r);
+      size += n;
+    }
+    flush();
+  }
+  return out;
+}
+
+/** A new empty table: a header and one row, two columns wide. */
+export const emptyTable = (): string =>
+  tableMarkdown({
+    rows: [
+      ["", ""],
+      ["", ""],
+    ],
+    align: [null, null],
+  });
+
+/** A table's words in reading order, for previews and search. */
+export const tableText = (text: string): string =>
+  parseTable(text)
+    .rows.map((r) => r.filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join(" · ");
+
+// ------------------------------------------------------------- footnotes ---
+
+/**
+ * What number each footnote shows: markers are numbered 1, 2, 3 in the
+ * order they are first read, whatever labels they were written with. A
+ * note nobody points at is numbered after the rest.
+ */
+export function footnoteNumbers(blocks: DocBlock[]): Map<string, number> {
+  const numbers = new Map<string, number>();
+  for (const b of blocks) {
+    if (b.type === "code" || b.type === "math" || b.type === "divider")
+      continue;
+    if (b.type === "footnote") continue;
+    for (const run of parseDocInline(b.text))
+      if (run.footnote && !numbers.has(run.footnote))
+        numbers.set(run.footnote, numbers.size + 1);
+  }
+  for (const b of blocks)
+    if (b.type === "footnote" && !numbers.has(b.label))
+      numbers.set(b.label, numbers.size + 1);
+  return numbers;
+}
+
+/** A label no footnote on the page uses yet: the next number. */
+export function nextFootnoteLabel(blocks: DocBlock[]): string {
+  const used = new Set<string>();
+  for (const b of blocks) {
+    if (b.type === "footnote") used.add(b.label);
+    else if (b.type !== "divider")
+      for (const run of parseDocInline(b.text))
+        if (run.footnote) used.add(run.footnote);
+  }
+  let n = used.size + 1;
+  while (used.has(String(n))) n++;
+  return String(n);
+}
+
+/** Each footnote's words by its label. */
+export const footnoteTexts = (blocks: DocBlock[]): Map<string, string> =>
+  new Map(
+    blocks.flatMap((b) =>
+      b.type === "footnote" ? [[b.label, b.text] as const] : [],
+    ),
+  );
 
 /**
  * Write a whole document back to Markdown, LaTeX included. Numbered lists
@@ -856,11 +1328,77 @@ export function serializeDoc(blocks: DocBlock[]): string {
   );
 }
 
+/**
+ * The language of a live list block (SRCH-02): a fenced block whose words
+ * say what to list, drawn as live rows in the apps (see views.ts). Its
+ * words are settings, not writing, so previews and counts leave them out.
+ */
+export const LIVE_LIST_LANG = "orbyn-list";
+
+/** A live list block, whose text is its settings. */
+export const isLiveList = (b: DocBlock) =>
+  b.type === "code" && b.lang === LIVE_LIST_LANG;
+
+/**
+ * The language of an embed block (LNK-08): a fenced block whose words say
+ * what to show, live and read-only — another page's section
+ * (`orbyn://doc/<id>#<line>`, or the whole page without a line) or the
+ * tasks this page links to (`tasks: linked`). Like a live list, its words
+ * are settings, so previews and counts leave them out.
+ */
+export const EMBED_LANG = "orbyn-embed";
+
+/** An embed block, whose text is what it shows. */
+export const isEmbed = (b: DocBlock) =>
+  b.type === "code" && b.lang === EMBED_LANG;
+
+/** What an embed block shows, read from its words; null when unreadable. */
+export type EmbedSpec =
+  { kind: "section"; doc: string; block: string | null } | { kind: "tasks" };
+
+const EMBED_DOC = new RegExp(
+  `^orbyn://doc/(${UUID_SHAPE_EARLY})(?:#([A-Za-z0-9_-]{1,64}))?$`,
+);
+
+/** Read an embed block's words. */
+export function parseEmbed(text: string): EmbedSpec | null {
+  const t = text.trim();
+  if (/^tasks\s*:\s*linked$/i.test(t)) return { kind: "tasks" };
+  const m = EMBED_DOC.exec(t);
+  return m
+    ? { kind: "section", doc: m[1].toLowerCase(), block: m[2] ?? null }
+    : null;
+}
+
+/** An embed block's words for a page's section, or the tasks it links to. */
+export const embedText = (spec: EmbedSpec): string =>
+  spec.kind === "tasks"
+    ? "tasks: linked"
+    : `orbyn://doc/${spec.doc.toLowerCase()}${spec.block ? `#${spec.block}` : ""}`;
+
+/** A code block drawn as a diagram (EDT-11). */
+export const isDiagram = (b: DocBlock) =>
+  b.type === "code" && b.lang.toLowerCase() === "mermaid";
+
+/**
+ * A line's words as they read in a preview or a search: a table's cells,
+ * a picture's caption, a file's name; nothing for a divider or a block
+ * whose words are settings (a live list, an embed).
+ */
+export function blockPlainText(b: DocBlock): string {
+  if (b.type === "divider" || isLiveList(b) || isEmbed(b)) return "";
+  if (b.type === "math") return mathToText(b.text);
+  if (b.type === "table") return plainText(tableText(b.text));
+  if (b.type === "code") return b.text;
+  return plainText(b.text);
+}
+
 /** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
     .map((b) => {
-      if (b.type === "divider") return "";
+      if (b.type === "divider" || isLiveList(b) || isEmbed(b)) return "";
+      if (b.type === "table") return plainText(tableText(b.text));
       // A maths block is LaTeX all the way through, with no fences to find
       // it by, so it is spelled out whole.
       if (b.type === "math") return mathToText(b.text);
@@ -1231,6 +1769,12 @@ export const BLOCK_KINDS: {
     shorthand: "> ",
   },
   {
+    type: "callout",
+    label: "Callout",
+    hint: "A note, tip or warning set apart",
+    shorthand: "> [!note] ",
+  },
+  {
     type: "code",
     label: "Code",
     hint: "Kept exactly as typed",
@@ -1284,10 +1828,41 @@ export function blockToType(
       return { type, text, lang: block.type === "code" ? block.lang : "" };
     case "divider":
       return { type };
+    case "callout":
+      return {
+        type,
+        kind: block.type === "callout" ? block.kind : "note",
+        text,
+        ...(block.id ? { id: block.id } : {}),
+      };
+    case "table":
+      // A line's words become the table's first cell.
+      return block.type === "table"
+        ? block
+        : {
+            type,
+            text: tableMarkdown({
+              rows: [
+                [plainTableCell(text), ""],
+                ["", ""],
+              ],
+              align: [null, null],
+            }),
+          };
+    case "footnote":
+      return { type, label: "1", text };
+    case "image":
+    case "file":
+      // Pictures and files come from the file store, never from words.
+      return block;
     default:
       return { type, text } as DocBlock;
   }
 }
+
+/** A line's words as one table cell: no pipes, no line breaks. */
+const plainTableCell = (text: string) =>
+  text.replace(/\n/g, " ").replace(/\|/g, "/").trim();
 
 // ----------------------------------------------------------- suggestions ---
 
@@ -1467,7 +2042,7 @@ export function reanchorSuggestions(
  */
 export type SearchHit = {
   id: string;
-  type: "doc" | "task" | "record";
+  type: "doc" | "task" | "record" | "project";
   title: string;
   kind: string;
   team_id: string | null;
@@ -1483,6 +2058,20 @@ export type SearchHit = {
   /** The line that matched, so a hit can open where the words are. */
   block_id: string | null;
   rank: number;
+};
+
+/** One thing the quick switcher found (GET /find). */
+export type FindHit = {
+  id: string;
+  /** A task, an event, a page or a project. */
+  type: "task" | "event" | "doc" | "project";
+  title: string;
+  /** A little about it: its project, or what kind of page it is. */
+  hint: string | null;
+  team_id: string | null;
+  updated_at: string;
+  /** Whether it came from what you opened lately rather than the words. */
+  recent: boolean;
 };
 
 /**
@@ -1567,7 +2156,9 @@ export type AssistantSource = (
  */
 export const plainText = (text: string): string =>
   parseDocInline(text)
-    .map((run) => (run.math ? mathToText(run.text) : run.text))
+    .map((run) =>
+      run.footnote ? "" : run.math ? mathToText(run.text) : run.text,
+    )
     .join("");
 
 /**

@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
+  Table2,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -25,7 +26,8 @@ export type View =
   | "Study"
   | "Projects"
   | "Booking"
-  | "Review";
+  | "Review"
+  | "Views";
 
 type Screen = { title: string; subtitle: string; eyebrow: string };
 
@@ -66,6 +68,12 @@ export const SCREENS: Record<View, Screen> = {
       "Changes your connected agents and the assistant suggest, waiting for you to approve.",
     eyebrow: "SHARED ORBITS",
   },
+  Views: {
+    title: "Views",
+    subtitle:
+      "Saved filters, sorts and layouts over your tasks, pages and projects.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
   Booking: {
     title: "Booking pages",
     subtitle: "Let people pick a time that works for everyone.",
@@ -101,6 +109,7 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
     items: [
       { label: "Projects", icon: Boxes },
       { label: "Docs", icon: FileText },
+      { label: "Views", icon: Table2 },
       { label: "Study", icon: GraduationCap },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
@@ -134,4 +143,5 @@ export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Teams",
   "Admin",
   "Booking",
+  "Views",
 ];

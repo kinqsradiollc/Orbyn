@@ -1,8 +1,13 @@
 import {
   blockText,
+  CALLOUT_LABELS,
+  footnoteNumbers,
+  isEmbed,
+  isLiveList,
   listLayout,
   mathToText,
   parseDocInline,
+  parseTable,
   type DocBlock,
   type DocInline,
 } from "@orbyn/core";
@@ -25,15 +30,33 @@ const esc = (text: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** The highlighter's colours as fills (the light theme's tints). */
+const TINT_FILL = { amber: "FBF1DC", green: "E7F0EA", rose: "FBEFEA" };
+
+/**
+ * The page's footnotes while it is written out: the number each marker
+ * shows, which is also its id in footnotes.xml (Word's own footnotes).
+ */
+let notes: Map<string, number> = new Map();
+
 /** One styled run. Word wants the styling before the text, in that order. */
 function run(piece: DocInline): string {
+  if (piece.footnote) {
+    const n = notes.get(piece.footnote);
+    if (n)
+      return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="${n}"/></w:r>`;
+  }
   const marks: string[] = [];
   if (piece.bold) marks.push("<w:b/>");
   if (piece.italic) marks.push("<w:i/>");
+  if (piece.strike) marks.push("<w:strike/>");
   if (piece.code || piece.math)
     marks.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/>');
   if (piece.link) marks.push('<w:color w:val="1155CC"/><w:u w:val="single"/>');
-  if (piece.highlight) marks.push('<w:highlight w:val="yellow"/>');
+  if (piece.highlight)
+    marks.push(
+      `<w:shd w:val="clear" w:color="auto" w:fill="${TINT_FILL[piece.tint ?? "amber"]}"/>`,
+    );
   const text = esc(piece.math ? mathToText(piece.text) : piece.text);
   // xml:space keeps the spaces between words from being collapsed away.
   return `<w:r>${
@@ -70,7 +93,34 @@ function blockXml(block: DocBlock, depth = 0, numId = 2): string {
       );
     case "quote":
       return para("Quote", runsFor(block.text));
+    case "callout":
+      return para(
+        "Callout",
+        run({ text: `${CALLOUT_LABELS[block.kind]}  `, start: 0, bold: true }) +
+          runsFor(block.text),
+      );
+    case "table":
+      return tableXml(block.text);
+    case "image":
+      return para(
+        "Quote",
+        run({
+          text: `Picture${block.text ? `: ${block.text}` : ""}`,
+          start: 0,
+          italic: true,
+        }),
+      );
+    case "file":
+      return para(
+        null,
+        run({ text: `File: ${block.text}`, start: 0, italic: true }),
+      );
+    case "footnote":
+      // Written as Word's own footnotes (footnotes.xml).
+      return "";
     case "code":
+      // A live list or an embed is settings, not something to read.
+      if (isLiveList(block) || isEmbed(block)) return "";
       // Each line of a code block is its own paragraph; Word has no <pre>.
       return block.text
         .split("\n")
@@ -85,6 +135,60 @@ function blockXml(block: DocBlock, depth = 0, numId = 2): string {
   }
 }
 
+/** A table, its first row as the header, with thin borders. */
+function tableXml(text: string): string {
+  const { rows, align } = parseTable(text);
+  const border = (side: string) =>
+    `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>`;
+  const cell = (c: string, i: number, head: boolean) =>
+    `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${para(
+      null,
+      head
+        ? parseDocInline(c)
+            .map((p) => run({ ...p, bold: true }))
+            .join("")
+        : runsFor(c),
+      align[i]
+        ? `<w:jc w:val="${align[i] === "center" ? "center" : align[i] === "right" ? "right" : "left"}"/>`
+        : "",
+    )}</w:tc>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders>${[
+    "top",
+    "left",
+    "bottom",
+    "right",
+    "insideH",
+    "insideV",
+  ]
+    .map(border)
+    .join("")}</w:tblBorders></w:tblPr>${rows
+    .map(
+      (r, n) => `<w:tr>${r.map((c, i) => cell(c, i, n === 0)).join("")}</w:tr>`,
+    )
+    .join("")}</w:tbl><w:p/>`;
+}
+
+/** Word's footnotes: the two separators it needs, then the page's notes. */
+function footnotesXml(blocks: DocBlock[]): string {
+  const list = blocks
+    .filter(
+      (b): b is Extract<DocBlock, { type: "footnote" }> =>
+        b.type === "footnote" && notes.has(b.label),
+    )
+    .sort((a, b) => notes.get(a.label)! - notes.get(b.label)!);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>
+<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>
+${list
+  .map(
+    (f) =>
+      `<w:footnote w:id="${notes.get(f.label)}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>${runsFor(f.text)}</w:p></w:footnote>`,
+  )
+  .join("\n")}
+</w:footnotes>`;
+}
+
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -92,6 +196,7 @@ const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 <Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
+<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>
 </Types>`;
 
 const RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -103,6 +208,7 @@ const DOC_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>
 </Relationships>`;
 
 const style = (id: string, name: string, body: string) =>
@@ -118,6 +224,9 @@ ${style("Heading3", "heading 3", '<w:pPr><w:spacing w:before="240" w:after="120"
 ${style("Quote", "Quote", '<w:pPr><w:ind w:left="480"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:rPr><w:i/><w:color w:val="555555"/></w:rPr>')}
 ${style("Code", "Code", '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="20"/></w:rPr>')}
 ${style("ListParagraph", "List Paragraph", '<w:pPr><w:ind w:left="720"/><w:spacing w:after="80"/></w:pPr>')}
+${style("Callout", "Callout", '<w:pPr><w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="376C51"/></w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="F3F5F2"/><w:ind w:left="240"/><w:spacing w:before="120" w:after="120"/></w:pPr>')}
+${style("FootnoteText", "footnote text", '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr>')}
+<w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
 </w:styles>`;
 
 /** Four levels of a list, each tucked in a step further than the last. */
@@ -158,6 +267,7 @@ export function docToDocx(
   at = new Date(),
 ): Buffer {
   const layout = listLayout(blocks);
+  notes = footnoteNumbers(blocks);
   // Each numbered list gets a numbering of its own (see `numbering`).
   const numbered: { numId: number; depth: number; start: number }[] = [];
   let lists: (number | null)[] = [];
@@ -208,6 +318,7 @@ ${body.join("\n")}
       { name: "word/document.xml", body: document },
       { name: "word/styles.xml", body: STYLES },
       { name: "word/numbering.xml", body: numbering(numbered) },
+      { name: "word/footnotes.xml", body: footnotesXml(blocks) },
     ],
     at,
   );

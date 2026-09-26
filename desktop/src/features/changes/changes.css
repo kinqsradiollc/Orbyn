@@ -1,0 +1,93 @@
+/* Recent changes per team (SHR-02). */
+.recent-changes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.recent-changes-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.recent-changes-head h2 svg {
+  color: var(--color-muted);
+}
+.changes-day h3 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+}
+.changes-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.change-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  border-top: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: none;
+  text-align: left;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.changes-day li:first-child .change-row {
+  border-top: none;
+}
+.change-row:hover:not(:disabled) {
+  background: var(--color-hover);
+}
+.change-row:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.change-row svg {
+  flex: none;
+  align-self: center;
+  color: var(--color-muted);
+}
+.change-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.change-who {
+  color: var(--color-textSoft);
+}
+.change-text small {
+  display: block;
+  color: var(--color-muted);
+}
+.change-row time {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.changes-dialog {
+  position: relative;
+  width: 600px;
+}
+.changes-dialog .recent-changes {
+  box-shadow: none;
+  border: none;
+  margin: 0;
+}
+.changes-dialog .recent-changes-head {
+  padding-right: 40px;
+}
+.changes-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}

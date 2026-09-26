@@ -452,7 +452,7 @@ npm run build</code></pre>
     { type: "todo", text: "Done thing", done: true },
     { type: "quote", text: "Said once" },
     { type: "code", text: "npm test\nnpm run build", lang: "" },
-    { type: "bullet", text: "Name: Ann · Role: Lead" },
+    { type: "table", text: "| Name | Role |\n| --- | --- |\n| Ann | Lead |" },
     { type: "paragraph", text: "Line one" },
     { type: "paragraph", text: "Line two" },
     { type: "divider" },

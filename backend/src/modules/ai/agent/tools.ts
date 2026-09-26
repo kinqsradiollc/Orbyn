@@ -7,6 +7,9 @@ import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
+  blockText,
+  keepLinkLabels,
+  type RedactedLine,
   dueDayAt,
   estimateModelOf,
   isClosed,
@@ -50,11 +53,10 @@ import {
   rankTasks,
 } from "./workspace.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
-import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/service.js";
 import { visibleItems, visibleProjects } from "../../../lib/visibility.js";
 import {
-  changeFor,
   proposeChanges,
   type ProposedChange,
 } from "../../docs/service.js";
@@ -65,6 +67,7 @@ import {
   scrubKeptOut,
   type KeptOut,
 } from "../../../lib/assistant-off.js";
+import { linkPrivacy, readableLinks } from "../../links/privacy.js";
 
 export { toInstant, whenLabel };
 
@@ -1944,6 +1947,7 @@ async function searchDocs(
       task: taskId ?? undefined,
       limit: a.limit,
       marks: "StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1",
+      forAssistant: true,
     })
   ).map((hit) => ({
     id: hit.id,
@@ -1987,7 +1991,7 @@ async function readDoc(
     }>(
       `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
         WHERE d.id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
@@ -2000,7 +2004,9 @@ async function readDoc(
     )
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
-  const allLines = doc.content
+  // Links to what the person can't open keep no title (D3aF).
+  const content = await readableLinks(pool, ctx.user.id, doc.content);
+  const allLines = content
     .filter((block) => (block.text ?? "").trim())
     .map((block, index) => ({
       line: index + 1,
@@ -2146,7 +2152,7 @@ async function proposeDocEdit(
     await pool.query<{ id: string; content: DocBlock[]; title: string }>(
       `SELECT d.id, d.content, d.title FROM docs d
         WHERE d.id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
@@ -2160,18 +2166,51 @@ async function proposeDocEdit(
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
 
-  // The words to change are looked for in the page as it stands; a
-  // proposal against words that are not there would have nothing to apply.
+  // The agent was shown links to what this person can't open as "Private
+  // page" (get_doc, D3aF), so its words are looked for in those lines, and
+  // places, quote and replacement are carried back to the stored words.
+  // Matching the stored words instead would let a guessed title come back
+  // as "proposed" and so confirm it.
+  const links = await linkPrivacy(pool, ctx.user.id, doc.content);
   const made: string[] = [];
   const missed: string[] = [];
   const changes: ProposedChange[] = [];
   for (const change of a.changes.slice(0, 10)) {
-    const found = changeFor(doc.content, change.find, change.replace);
+    // The words to change are looked for in the page as it stands; a
+    // proposal against words that are not there would have nothing to apply.
+    let found: {
+      id: string;
+      kept: string;
+      line: RedactedLine;
+      at: number;
+    } | null = null;
+    for (const b of doc.content) {
+      if (!b.id) continue;
+      const kept = blockText(b);
+      const line = links.line(kept);
+      const at = line.text.indexOf(change.find);
+      if (at !== -1) {
+        found = { id: b.id, kept, line, at };
+        break;
+      }
+    }
     if (!found) {
       missed.push(change.find);
       continue;
     }
-    changes.push(found);
+    const { kept, line, at } = found;
+    const start = line.changed ? line.toStored(at) : at;
+    const end = line.changed
+      ? Math.max(start, line.toStored(at + change.find.length, true))
+      : at + change.find.length;
+    changes.push({
+      block_id: found.id,
+      kind: change.replace ? "replace" : "delete",
+      range_start: start,
+      range_end: end,
+      text: keepLinkLabels(change.replace, doc.content, links.hidden),
+      quote: kept.slice(start, end),
+    });
     made.push(change.find);
   }
   // Through the docs service, as a person's proposals are.

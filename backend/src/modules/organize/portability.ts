@@ -1,7 +1,15 @@
-import { itemData, type SystemRole } from "@orbyn/core";
+import {
+  droppedDateNotes,
+  itemData,
+  tickTickTasks,
+  todoistTasks,
+  type ImportedTask,
+  type SystemRole,
+} from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
 import { mutate } from "../items/service.js";
 import { loadHabits } from "../planner/habits.js";
+import { loadPrefs } from "../planner/calendar.js";
 
 export type ExportArchive = {
   version: 1;
@@ -24,6 +32,9 @@ type ExportItem = {
   rrule: string | null;
   list: string | null;
   tags: string[];
+  /** A whole day in `timezone` (Todoist, TickTick and later exports). */
+  all_day?: boolean;
+  timezone?: string;
 };
 
 export type ImportSummary = {
@@ -164,6 +175,23 @@ function itemsFromCsv(rows: Record<string, string>[]): ExportItem[] {
   return out;
 }
 
+/** A task from Todoist or TickTick, in the archive item shape. */
+const fromApp = (t: ImportedTask): ExportItem => ({
+  title: t.title,
+  notes: t.notes,
+  kind: "task",
+  status: t.status,
+  priority: t.priority,
+  due_at: t.due_at,
+  end_at: null,
+  estimate_minutes: null,
+  location: "",
+  rrule: t.rrule,
+  list: t.list,
+  tags: t.tags,
+  ...(t.due_at ? { all_day: t.all_day, timezone: t.timezone } : {}),
+});
+
 /** Parse a date or datetime to an ISO string with offset, or null. */
 function isoOf(s: string): string | null {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(s.trim())
@@ -180,16 +208,29 @@ function isoOf(s: string): string | null {
 export async function importData(
   db: Db,
   user: { id: string; role: SystemRole },
-  format: "orbyn" | "csv",
+  format: "orbyn" | "csv" | "todoist" | "ticktick",
   data: string,
   dryRun: boolean,
 ): Promise<ImportSummary> {
   let items: ExportItem[];
+  // Dates another app wrote without a zone are read on the person's clock.
+  const zone = (await loadPrefs(db, user.id)).timezone || "UTC";
+  const notes: string[] = [];
   try {
+    const fromApps = (tasks: ImportedTask[]) => {
+      notes.push(...droppedDateNotes(tasks));
+      return tasks.map(fromApp);
+    };
     items =
       format === "csv"
         ? itemsFromCsv(parseCsv(data))
-        : ((JSON.parse(data) as ExportArchive).items ?? []);
+        : format === "todoist"
+          ? fromApps(todoistTasks(data, zone))
+          : format === "ticktick"
+            ? fromApps(tickTickTasks(data, zone))
+            : ((JSON.parse(data) as ExportArchive).items ?? []);
+    if (format !== "orbyn" && format !== "csv" && !items.length)
+      throw new Error("no tasks");
   } catch {
     return {
       created: 0,
@@ -223,7 +264,7 @@ export async function importData(
   let skipped = 0;
   let listsAdded = 0;
   let tagsAdded = 0;
-  const errors: string[] = [];
+  const errors: string[] = [...notes];
   const sample: string[] = [];
 
   const listId = async (name: string) => {
@@ -287,6 +328,8 @@ export async function importData(
         estimate_minutes: raw.estimate_minutes ?? null,
         location: raw.location ?? "",
         rrule: raw.rrule ?? null,
+        ...(raw.due_at && raw.timezone ? { timezone: raw.timezone } : {}),
+        ...(raw.due_at && raw.all_day ? { all_day: true } : {}),
         ...(list ? { list_id: list } : {}),
         ...(tagIds.length ? { tag_ids: tagIds } : {}),
       });

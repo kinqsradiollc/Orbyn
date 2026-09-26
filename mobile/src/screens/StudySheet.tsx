@@ -46,7 +46,7 @@ type Mode =
       quiz: boolean;
       ahead?: boolean;
     }
-  | { kind: "suggest"; docId: string; title: string }
+  | { kind: "suggest"; docId: string; title: string; max?: number }
   | { kind: "plan"; exam: StudyExam }
   | { kind: "pick" };
 
@@ -79,7 +79,7 @@ export function StudySheet({
   suggestFrom,
 }: {
   /** Open straight on suggesting cards from this page (from Docs → Uploads). */
-  suggestFrom?: { docId: string; title: string } | null;
+  suggestFrom?: { docId: string; title: string; max?: number } | null;
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
@@ -103,6 +103,7 @@ export function StudySheet({
               kind: "suggest",
               docId: suggestFrom.docId,
               title: suggestFrom.title,
+              max: suggestFrom.max,
             }
           : { kind: "home" },
       );
@@ -162,6 +163,7 @@ export function StudySheet({
             <Suggest
               docId={mode.docId}
               title={mode.title}
+              max={mode.max}
               onError={setError}
               onDone={(n) => {
                 setNote(
@@ -1073,11 +1075,14 @@ function Review({
 function Suggest({
   docId,
   title,
+  max,
   onError,
   onDone,
 }: {
   docId: string;
   title: string;
+  /** "Make 10 flashcards" asks for ten (AI-01). */
+  max?: number;
   onError: (m: string) => void;
   onDone: (added: number) => void;
 }) {
@@ -1086,7 +1091,7 @@ function Suggest({
   >(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    client.suggestCards(docId).then(
+    client.suggestCards(docId, max).then(
       (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
       (e: Error) => {
         onError(errorText(e));

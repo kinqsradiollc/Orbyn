@@ -19,10 +19,23 @@ import {
   Code,
   Type,
   CalendarDays,
+  Link2,
   ListChecks,
+  ListFilter,
   ListIndentDecrease,
   ListIndentIncrease,
   AtSign,
+  Lightbulb,
+  Table,
+  Image as ImageIcon,
+  Paperclip,
+  LayoutTemplate,
+  Superscript,
+  PanelTop,
+  Workflow,
+  ClipboardList,
+  Link as LinkIcon,
+  FileOutput,
 } from "lucide-react";
 import { BLOCK_KINDS, isListBlock, type DocBlock } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
@@ -40,6 +53,7 @@ const ICONS: Record<string, LucideIcon> = {
   code: Code,
   math: Sigma,
   divider: Minus,
+  callout: Lightbulb,
 };
 
 export const kindKey = (kind: (typeof BLOCK_KINDS)[number]) =>
@@ -69,6 +83,8 @@ export function DocBlockMenu({
   canIndent = false,
   canOutdent = false,
   structural = true,
+  onCopyLink,
+  onMoveToPage,
 }: {
   anchor: DOMRect;
   block: DocBlock;
@@ -84,6 +100,10 @@ export function DocBlockMenu({
   onIndent?: (by: 1 | -1) => void;
   canIndent?: boolean;
   canOutdent?: boolean;
+  /** "Copy link to this line" (LNK-04). */
+  onCopyLink?: () => void;
+  /** "Move to new page" (ORG-05); a heading takes its whole section. */
+  onMoveToPage?: () => void;
   /**
    * Whether the page itself may change. While suggesting it may not: a
    * proposal is a stretch of one line, so a line moved, copied or taken
@@ -146,6 +166,31 @@ export function DocBlockMenu({
           >
             <MessageSquarePlus size={15} aria-hidden="true" /> Comment
           </button>
+          {onCopyLink && (
+            <button
+              className="doc-menu-item"
+              onClick={() => {
+                onCopyLink();
+                onClose();
+              }}
+            >
+              <LinkIcon size={15} aria-hidden="true" /> Copy link to this line
+            </button>
+          )}
+          {structural && onMoveToPage && (
+            <button
+              className="doc-menu-item"
+              onClick={() => {
+                onMoveToPage();
+                onClose();
+              }}
+            >
+              <FileOutput size={15} aria-hidden="true" />
+              {block.type === "heading"
+                ? "Move section to new page"
+                : "Move to new page"}
+            </button>
+          )}
         </div>
         {structural && onIndent && isListBlock(block) && (
           <div className="doc-menu-row">
@@ -220,13 +265,26 @@ export function DocBlockMenu({
 
 /**
  * What the "/" menu can do: turn the line into a kind of block, or put
- * something in it — today's date, or a new task. Only what works today is
- * offered; links, tables, images, callouts and templates come later.
+ * something in it — today's date, a new task, a link, a live list, a
+ * table, a picture or file, a template, a footnote, an embed or a diagram.
  */
 export type SlashItem =
   | { kind: "block"; block: (typeof BLOCK_KINDS)[number] }
   | { kind: "task" }
-  | { kind: "date" };
+  | { kind: "date" }
+  | { kind: "link" }
+  | { kind: "live-list" }
+  | { kind: "table" }
+  | { kind: "image" }
+  | { kind: "file" }
+  | { kind: "template" }
+  | { kind: "footnote" }
+  | { kind: "embed-section" }
+  | { kind: "embed-tasks" }
+  | { kind: "diagram" };
+
+/** What can go into a line partway through it, rather than make a line. */
+const IN_LINE = new Set<SlashItem["kind"]>(["date", "link", "footnote"]);
 
 type SlashEntry = {
   item: SlashItem;
@@ -274,16 +332,114 @@ const slashEntries = (): SlashEntry[] => {
     icon: CalendarDays,
     words: "date today day",
   };
-  // "New task" sits with the checklist it is a kind of; the date comes last.
+  const link: SlashEntry = {
+    item: { kind: "link" },
+    key: "link",
+    label: "Link",
+    hint: "A page, task, project, person or date",
+    shorthand: "[[",
+    icon: Link2,
+    words: "link page connect mention",
+  };
+  const liveList: SlashEntry = {
+    item: { kind: "live-list" },
+    key: "live-list",
+    label: "Live list",
+    hint: "Tasks or pages that match, kept up to date",
+    icon: ListFilter,
+    words: "live list query view filter tasks due open action items",
+  };
+  const more: SlashEntry[] = [
+    {
+      item: { kind: "table" },
+      key: "table",
+      label: "Table",
+      hint: "Rows and columns",
+      shorthand: "|",
+      icon: Table,
+      words: "table grid rows columns",
+    },
+    {
+      item: { kind: "image" },
+      key: "image",
+      label: "Picture",
+      hint: "From your computer; resize it by its edge",
+      icon: ImageIcon,
+      words: "image picture photo png jpg",
+    },
+    {
+      item: { kind: "file" },
+      key: "file",
+      label: "File",
+      hint: "A PDF, Word, Excel or other file to keep here",
+      icon: Paperclip,
+      words: "file attachment pdf upload",
+    },
+    {
+      item: { kind: "template" },
+      key: "template",
+      label: "Template",
+      hint: "A template's lines, here",
+      icon: LayoutTemplate,
+      words: "template insert starter",
+    },
+    {
+      item: { kind: "footnote" },
+      key: "footnote",
+      label: "Footnote",
+      hint: "A numbered note at the end of the page",
+      shorthand: "[^1]",
+      icon: Superscript,
+      words: "footnote note reference cite",
+    },
+    {
+      item: { kind: "embed-section" },
+      key: "embed-section",
+      label: "Embed a page",
+      hint: "Another page, or one of its headings, kept up to date",
+      icon: PanelTop,
+      words: "embed transclude section page heading",
+    },
+    {
+      item: { kind: "embed-tasks" },
+      key: "embed-tasks",
+      label: "Tasks linked here",
+      hint: "The tasks this page links to, with their ticks",
+      icon: ClipboardList,
+      words: "embed tasks linked list ticks",
+    },
+    {
+      item: { kind: "diagram" },
+      key: "diagram",
+      label: "Diagram",
+      hint: "A flowchart or other Mermaid diagram",
+      icon: Workflow,
+      words: "diagram mermaid flowchart chart graph",
+    },
+  ];
+  // "New task" sits with the checklist it is a kind of; links, live lists
+  // and the date come after the kinds of line, then the rest.
   const at = blocks.findIndex((e) => e.key === "todo") + 1;
-  return [...blocks.slice(0, at), task, ...blocks.slice(at), date];
+  return [
+    ...blocks.slice(0, at),
+    task,
+    ...blocks.slice(at),
+    link,
+    more[0],
+    more[1],
+    more[2],
+    more[3],
+    liveList,
+    ...more.slice(4),
+    date,
+  ];
 };
 
 /**
  * The menu that opens when a line starts with "/": pick a kind of block by
  * name, or something to put in the line. Typing narrows it; Enter takes the
  * highlighted one; Escape leaves the slash as ordinary text. Partway through
- * a line only what goes into a line is offered (the date).
+ * a line only what goes into a line is offered (a link, the date).
  */
 export function SlashMenu({
   anchor,
@@ -303,7 +459,7 @@ export function SlashMenu({
     const q = query.trim().toLowerCase();
     return slashEntries().filter(
       (e) =>
-        (!insertsOnly || e.item.kind === "date") &&
+        (!insertsOnly || IN_LINE.has(e.item.kind)) &&
         (!q ||
           e.label.toLowerCase().includes(q) ||
           e.words.includes(q) ||

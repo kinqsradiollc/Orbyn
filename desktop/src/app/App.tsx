@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
   deadlineOf,
+  itemBody,
+  type ColumnChange,
   hasSystemPermission,
   hasTeamPermission,
   planDayPrompt,
@@ -22,16 +24,33 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
+import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
+import {
+  hasUnseenRelease,
+  type ObjectRef,
+  type StarredItem,
+} from "@orbyn/core";
 import {
   deepLinkKey,
   deepLinkOf,
   deepLinkPath,
   focusDocBlock,
+  deepLinkOfUrl,
   rememberDeepLink,
   takeDeepLink,
   type DeepLink,
 } from "./deep-link";
 import "./deep-link.css";
+import { commandById, commandForKey, type CommandDef } from "./commands";
+import {
+  lastPage,
+  PrefsContext,
+  startScreen,
+  useAccountPrefs,
+  useStarred,
+} from "./prefs";
+import { isPageWindow } from "../lib/windows";
+import { PageWindow } from "../features/docs/PageWindow";
 import { usePlannedData } from "../hooks/usePlannedData";
 import { PlanningProviders } from "./PlanningProviders";
 import { Sidebar } from "../components/Sidebar";
@@ -48,12 +67,28 @@ import { ShortcutSheet } from "../components/ShortcutSheet";
 import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
+import { nextUp } from "../lib/planning";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
 import { DeveloperPage } from "../features/developers/DeveloperPage";
+import { SecurityPage } from "../features/legal/SecurityPage";
+import { ChangelogPage } from "../features/whatsnew/ChangelogPage";
+import {
+  markReleaseSeen,
+  seenRelease,
+  WhatsNew,
+} from "../features/whatsnew/WhatsNew";
+import { FirstRun } from "../features/firstrun/FirstRun";
+import { SidePeek } from "../features/peek/SidePeek";
+import {
+  RecentChanges,
+  RecentChangesDialog,
+} from "../features/changes/RecentChanges";
+import { PEEK_EVENT } from "../features/docs/DocLinks";
+import { openPageCommands } from "./page-commands";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -64,10 +99,16 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { AssistantSource, Doc, LegalSummary } from "@orbyn/core";
+import type {
+  AssistantSource,
+  Doc,
+  LegalSummary,
+  SavedView,
+} from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
+import { ViewsView } from "../features/views/ViewsView";
 import {
   CalendarView,
   type CalendarMode,
@@ -136,6 +177,23 @@ export function App() {
   } = planner;
   const planning = usePlanningData(token, revision, report);
   const planned = usePlannedData(token, revision);
+  /** Choices that follow the account, and what's starred (D5). */
+  const accountPrefs = useAccountPrefs(token, report);
+  const starred = useStarred(token);
+  /** A window showing one page alone (NAV-06), and which page. */
+  const [pageWindowId] = useState<string | null>(() => {
+    if (!isPageWindow()) return null;
+    const open = new URLSearchParams(location.search).get("open");
+    const link = open
+      ? deepLinkOfUrl(open)
+      : deepLinkOf(location.pathname, location.hash, location.search);
+    return link?.kind === "doc" ? link.id : null;
+  });
+  /** Files opened with Orbyn on the desktop (CAP-11), for Docs to import. */
+  const [openedFiles, setOpenedFiles] = useState<{
+    files: File[];
+    seq: number;
+  } | null>(null);
   /** The current Terms version, to know whether to ask for agreement. */
   const [legal, setLegal] = useState<LegalSummary | null>(null);
   useEffect(() => {
@@ -190,14 +248,60 @@ export function App() {
   /** A proposal to open in Review (a link, a notice, an agent's activity). */
   const [reviewToOpen, setReviewToOpen] = useState<string | null>(null);
   const [reviewPending, setReviewPending] = useState(0);
+  /** A saved view to open (from the sidebar or a link), and the one open. */
+  const [viewToOpen, setViewToOpen] = useState<string | null>(null);
+  const [shownView, setShownView] = useState<string | null>(null);
+  /** Saved views pinned to the sidebar. */
+  const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
+  const loadPinnedViews = useCallback(() => {
+    client.listViews().then(
+      (views) => setPinnedViews(views.filter((v) => v.pinned)),
+      () => {
+        // The sidebar goes without pins until the next try.
+      },
+    );
+  }, []);
+  useEffect(() => {
+    if (token) loadPinnedViews();
+    else setPinnedViews([]);
+  }, [token, loadPinnedViews]);
+  const openSavedView = (id: string) => {
+    setViewToOpen(id);
+    setView("Views");
+  };
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
   const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  /** Words ⌘K opens with (a quick-add or search link). */
+  const [commandQuery, setCommandQuery] = useState("");
+  /** The words came from an add link: making them leads, to confirm. */
+  const [commandAdd, setCommandAdd] = useState(false);
+  const openCommand = (words = "", add = false) => {
+    setCommandQuery(words);
+    setCommandAdd(add);
+    setCommandOpen(true);
+  };
+  /** Bumped to open "New page from template" or a new project from ⌘K. */
+  const [templatesAsked, setTemplatesAsked] = useState(0);
+  const [projectAsked, setProjectAsked] = useState(0);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  /** "What's new" (DSN-03) and Recent changes (SHR-02), over the app. */
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
+  /** The side peek (NAV-05): what is open beside, and whether it stays. */
+  const [peek, setPeek] = useState<{
+    target: ObjectRef;
+    pinned: boolean;
+  } | null>(null);
+  /** A setting ⌘K asked for (NAV-10), counted so asking again works. */
+  const [settingAsked, setSettingAsked] = useState<{
+    id: string;
+    seq: number;
+  } | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
@@ -245,7 +349,11 @@ export function App() {
   // /app/project/<id>, /app/today) opens it over the app. Signed out, it
   // waits through every sign-in step (two-step and passkeys included), kept
   // for this tab and in the sign-in page's ?next=, and opens after.
-  const linked = deepLinkOf(path, nativeDesktop ? "" : location.hash);
+  const linked = deepLinkOf(
+    path,
+    nativeDesktop ? "" : location.hash,
+    nativeDesktop ? "" : location.search,
+  );
   // Read now: the sign-in redirect below replaces the address before effects.
   const signInSearch = nativeDesktop ? "" : location.search;
   const openDeepLink = (link: DeepLink) => {
@@ -259,10 +367,19 @@ export function App() {
     else if (link.kind === "project") {
       setProjectToOpen(link.id);
       setView("Projects");
-    } else if (link.kind === "review") {
+    } else if (link.kind === "add" || link.kind === "search")
+      // Words to add open Quick add filled in, to confirm: never added
+      // silently, whoever sent the link.
+      openCommand(
+        link.kind === "add" ? link.text : link.q,
+        link.kind === "add",
+      );
+    else if (link.kind === "review") {
+      // The Review inbox, at one change when the link names it.
       setReviewToOpen(link.id);
       setView("Review");
-    } else setView("Overview");
+    } else if (link.kind === "view") openSavedView(link.id);
+    else setView("Overview");
   };
   // How many proposals wait, for the sidebar: read when signed in and again
   // whenever the inbox changes (an agent proposed, or another device decided).
@@ -287,8 +404,113 @@ export function App() {
       stopOpen();
     };
   }, [token]);
+  // The desktop app hands over orbyn:// links it was opened with. Signed
+  // out, a link waits for sign-in, like a web link does.
+  const openLinkRef = useRef<(url: string) => void>(() => {});
+  openLinkRef.current = (url) => {
+    const link = deepLinkOfUrl(url);
+    if (!link) return;
+    if (token) openDeepLink(link);
+    else rememberDeepLink(link);
+  };
+  useEffect(
+    () => window.orbynDesktop?.onOpenLink((url) => openLinkRef.current(url)),
+    [],
+  );
+  // Link pills and "Linked here" ask for things to open the same way.
   useEffect(() => {
-    if (!linked) return;
+    const open = (e: Event) => {
+      const url = (e as CustomEvent<unknown>).detail;
+      if (typeof url === "string") openLinkRef.current(url);
+    };
+    window.addEventListener(OPEN_LINK_EVENT, open);
+    return () => window.removeEventListener(OPEN_LINK_EVENT, open);
+  }, []);
+  // ⌘-click on a link, ⌘Enter in ⌘K: open it beside (NAV-05).
+  useEffect(() => {
+    const onPeek = (e: Event) => {
+      const target = (e as CustomEvent<ObjectRef>).detail;
+      setPeek((was) => ({ target, pinned: was?.pinned ?? false }));
+    };
+    window.addEventListener(PEEK_EVENT, onPeek);
+    return () => window.removeEventListener(PEEK_EVENT, onPeek);
+  }, []);
+  // After a release, "What's new" opens once by itself (DSN-03). A browser
+  // that has never seen one (a new account, a first visit) is not shown it.
+  useEffect(() => {
+    if (!token || !user || user.first_run_done === false) return;
+    const seen = seenRelease();
+    if (!seen) markReleaseSeen();
+    else if (hasUnseenRelease(seen)) setWhatsNewOpen(true);
+  }, [token, user?.id, user?.first_run_done]);
+  // Moving to another screen closes the peek, unless it is pinned.
+  useEffect(() => {
+    setPeek((p) => (p?.pinned ? p : null));
+  }, [view]);
+  // What opens at start on this device (NAV-12), unless a link says otherwise.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!token || started.current) return;
+    started.current = true;
+    if (linked || pageWindowId) return;
+    const start = startScreen();
+    if (start === "agenda") setView("Agenda");
+    else if (start === "tasks") setView("My tasks");
+    else if (start === "last-page") {
+      const id = lastPage();
+      if (id)
+        void client.getDoc(id).then(
+          (doc) => {
+            setNoteDoc(doc);
+            setView("Docs");
+          },
+          () => {
+            // A page that's gone or no longer yours: Overview, as usual.
+          },
+        );
+    }
+  }, [token]);
+  // Files opened with Orbyn on the desktop (CAP-11): Word and PDF go to
+  // Uploads; Markdown is read by the page importer, which says first what
+  // it would make.
+  useEffect(
+    () =>
+      window.orbynDesktop?.onOpenFile?.((opened) => {
+        const bytes = Uint8Array.from(atob(opened.data), (c) =>
+          c.charCodeAt(0),
+        );
+        if (opened.type === "text/markdown") {
+          void client
+            .importPages({
+              format: "markdown",
+              file_name: opened.name,
+              data: opened.data,
+              dry_run: true,
+            })
+            .then(async (dry) => {
+              if (!dry.pages) {
+                planner.setError(`“${opened.name}” has nothing to import.`);
+                return;
+              }
+              await client.importPages({
+                format: "markdown",
+                file_name: opened.name,
+                data: opened.data,
+                dry_run: false,
+              });
+              // The library opens with the new page in it.
+              setView("Docs");
+            }, report);
+          return;
+        }
+        const file = new File([bytes], opened.name, { type: opened.type });
+        setOpenedFiles((was) => ({ files: [file], seq: (was?.seq ?? 0) + 1 }));
+        setView("Docs");
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (!linked || pageWindowId) return;
     if (!token) {
       rememberDeepLink(linked);
       navigatePath("/login", true);
@@ -320,49 +542,67 @@ export function App() {
             description: `${app} Orbyn plans your day around them, with an AI assistant that asks first. Web, desktop, iOS and Android.`,
             index: true,
           }
-        : path === "/terms" || path === "/privacy"
+        : path === "/security"
           ? {
-              title:
-                (path === "/terms" ? "Terms of Service" : "Privacy Policy") +
-                " · Orbyn",
+              title: "Security and data · Orbyn",
               description:
-                path === "/terms"
-                  ? "The terms for using Orbyn."
-                  : "What Orbyn collects, why, how long it's kept, and your rights.",
+                "How Orbyn keeps your account and your plans safe, and how you can take your data with you.",
               index: true,
             }
-          : isOAuth
+          : path === "/terms" || path === "/privacy"
             ? {
-                title: "Connect an app · Orbyn",
-                description: app,
-                index: false,
+                title:
+                  (path === "/terms" ? "Terms of Service" : "Privacy Policy") +
+                  " · Orbyn",
+                description:
+                  path === "/terms"
+                    ? "The terms for using Orbyn."
+                    : "What Orbyn collects, why, how long it's kept, and your rights.",
+                index: true,
               }
-            : path === "/status"
+            : isOAuth
               ? {
-                  title: "Service status · Orbyn",
-                  description: "Whether every part of Orbyn is up right now.",
+                  title: "Connect an app · Orbyn",
+                  description: app,
                   index: false,
                 }
-              : path === "/developers/mcp"
+              : path === "/status"
                 ? {
-                    title: "Orbyn for AI agents (MCP) · Orbyn",
-                    description:
-                      "Connect Claude, ChatGPT, Claude Code, Codex or Cursor to Orbyn over MCP: the address, signing in, limits, errors and every tool.",
-                    index: true,
+                    title: "Service status · Orbyn",
+                    description: "Whether every part of Orbyn is up right now.",
+                    index: false,
                   }
-                : token
-                  ? { title: view + " · Orbyn", description: app, index: false }
-                  : path === "/login"
+                : path === "/changelog"
+                  ? {
+                      title: "What's new · Orbyn",
+                      description:
+                        "Everything that changed in Orbyn: New, Better and No longer broken.",
+                      index: true,
+                    }
+                  : path === "/developers/mcp"
                     ? {
-                        title: "Sign in · Orbyn",
-                        description: app,
-                        index: false,
+                        title: "Orbyn for AI agents (MCP) · Orbyn",
+                        description:
+                          "Connect Claude, ChatGPT, Claude Code, Codex or Cursor to Orbyn over MCP: the address, signing in, limits, errors and every tool.",
+                        index: true,
                       }
-                    : {
-                        title: "Create your space · Orbyn",
-                        description: app,
-                        index: false,
-                      },
+                    : token
+                      ? {
+                          title: view + " · Orbyn",
+                          description: app,
+                          index: false,
+                        }
+                      : path === "/login"
+                        ? {
+                            title: "Sign in · Orbyn",
+                            description: app,
+                            index: false,
+                          }
+                        : {
+                            title: "Create your space · Orbyn",
+                            description: app,
+                            index: false,
+                          },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -390,38 +630,113 @@ export function App() {
     path === "/developers/mcp" ||
     path === "/terms" ||
     path === "/privacy" ||
+    path === "/security" ||
+    path === "/changelog" ||
     (!nativeDesktop && path === "/")
   );
   useEffect(() => {
     if (!token || isPublicBooking || !inShell) return;
+    // The keys come from the one command list (commands.ts), with the
+    // person's own changes (NAV-09): what a key does is looked up there,
+    // then run here, whichever command it is.
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setCommandOpen((open) => !open);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
-        e.preventDefault();
-        toggleRail();
-        return;
-      }
+      const command = commandForKey(e, accountPrefs.prefs.shortcuts);
+      if (!command) return;
+      const keys =
+        accountPrefs.prefs.shortcuts[command.id] ?? command.keys ?? [];
+      // ⌘ and Ctrl shortcuts work while typing; single keys don't, and
+      // wait while a dialog or popover is open.
+      const withMod = keys.includes("mod");
       if (
-        e.defaultPrevented ||
-        isTyping(e) ||
-        document.querySelector('[aria-modal="true"], .popover')
+        !withMod &&
+        (e.defaultPrevented ||
+          isTyping(e) ||
+          document.querySelector('[aria-modal="true"], .popover'))
       )
         return;
-      if (e.key === "?") {
-        e.preventDefault();
-        setShortcutsOpen(true);
-      } else if (e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        newItem();
-      }
+      if (!runCommandRef.current(command)) return;
+      e.preventDefault();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [token, isPublicBooking, inShell]);
+  }, [token, isPublicBooking, inShell, accountPrefs.prefs.shortcuts]);
+
+  /**
+   * Run any command from the list, as ⌘K would: a screen, the open page's
+   * own commands, a setting, or one of the app's actions. False when there
+   * is nothing to run it on (a page command with no page open).
+   */
+  const runCommandRef = useRef<(c: CommandDef) => boolean>(() => false);
+  runCommandRef.current = (c: CommandDef) => {
+    if (c.view) {
+      if (c.needs === "admin" && !isAdmin) return false;
+      navigate(c.view);
+      return true;
+    }
+    if (c.needs === "page") {
+      const run = openPageCommands()?.run[c.id];
+      if (!run) return false;
+      run();
+      return true;
+    }
+    if (c.setting) {
+      navigate("Settings");
+      setSettingAsked((was) => ({ id: c.setting!, seq: (was?.seq ?? 0) + 1 }));
+      return true;
+    }
+    const actions: Record<string, () => void> = {
+      "app.search": () => {
+        setCommandQuery("");
+        setCommandAdd(false);
+        setCommandOpen((open) => !open);
+      },
+      "app.sidebar": () => toggleRail(),
+      "app.shortcuts": () => setShortcutsOpen(true),
+      "app.changes": () => setChangesOpen(true),
+      "app.whats-new": () => setWhatsNewOpen(true),
+      "app.security": () => navigatePath("/security"),
+      "new.task": () => newItem(),
+      "new.event": () => newItem(null, { kind: "event" }),
+      "new.page": () => void newPage(),
+      "new.from-template": () => {
+        navigate("Docs");
+        setTemplatesAsked(Date.now());
+      },
+      "new.project": () => {
+        navigate("Projects");
+        setProjectAsked(Date.now());
+      },
+      "new.import": () => {
+        navigate("Settings");
+        setSettingAsked((was) => ({ id: "import", seq: (was?.seq ?? 0) + 1 }));
+      },
+      "plan.day": () => planMyDay(),
+      "plan.focus": () => {
+        const next = nextUp(items, undefined, 1)[0];
+        if (next) startFocus(next);
+      },
+      "plan.today": () => {
+        navigate("Calendar");
+        setCalendarDate(new Date());
+        setCalendarMode("day");
+      },
+    };
+    const action = actions[c.id];
+    if (!action) return false;
+    action();
+    return true;
+  };
+
+  /** Open something from the Starred group or ⌘K's starred rows (NAV-07). */
+  const openStarred = (s: StarredItem) => {
+    if (s.kind === "doc") openPage(s.id);
+    else if (s.kind === "heading") openPage(s.id, s.block_id);
+    else if (s.kind === "task") openItemById(s.id);
+    else if (s.kind === "project") {
+      setProjectToOpen(s.id);
+      navigate("Projects");
+    } else if (s.kind === "view") openSavedView(s.id);
+  };
 
   const newItem = (
     teamId: string | null = null,
@@ -430,6 +745,22 @@ export function App() {
     setDraftTeamId(teamId ?? prefill?.team_id ?? null);
     setDraft(prefill);
     setEditing("new");
+  };
+
+  /** A new page (titled when ⌘K's Shift+Enter named it), opened. */
+  const newPage = async (title = "") => {
+    try {
+      const doc = await client.createDoc({
+        title,
+        kind: "doc",
+        content: [{ type: "paragraph", text: "" }],
+      });
+      setNoteBlockId(null);
+      setNoteDoc(doc);
+      navigate("Docs");
+    } catch (e) {
+      report(e);
+    }
   };
 
   const openPage = (docId: string, blockId?: string | null) =>
@@ -483,6 +814,18 @@ export function App() {
 
   const setStatus = (i: Item, status: Status) => {
     if (status !== i.status && guard(i)) void planner.setItemStatus(i, status);
+  };
+
+  /**
+   * A card dragged to another board column (DATA-03): its list, priority,
+   * assignee or tags change, saved against the version it was shown at.
+   */
+  const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
+    if (!guard(i)) return;
+    void act(async () => {
+      await client.updateItem(i.id, { ...itemBody(i), ...change });
+      await refresh();
+    });
   };
 
   /**
@@ -661,6 +1004,26 @@ export function App() {
     });
   };
 
+  // What's new, every release: public, signed in or not (DSN-03).
+  if (path === "/changelog")
+    return (
+      <ChangelogPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
+  // Security and data: public, signed in or not.
+  if (path === "/security")
+    return (
+      <SecurityPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
   // Public status page, signed in or not. The native app routes in memory.
   if (path === "/status")
     return (
@@ -810,450 +1173,607 @@ export function App() {
     onOpen: openItem,
   };
 
-  return (
-    <PlanningProviders planning={planning} planned={planned}>
-      <div className={"app" + (railed ? " is-railed" : "")}>
-        <Sidebar
-          open={mobileNav}
-          railed={railed}
-          onToggleRail={toggleRail}
-          view={view}
-          user={user}
-          hasUnread={notices.some((n) => !n.read)}
-          reviewPending={reviewPending}
-          onNavigate={navigate}
-          onSignOut={() => void planner.logout()}
-        />
-        <div className="shell">
-          <AnnouncementBanner />
-          <MaintenanceBanner
-            maintenance={planner.maintenance}
-            isAdmin={hasSystemPermission(user?.role, "system:manage")}
-          />
-          {newVersion.available && (
-            <UpdateBanner onDismiss={newVersion.dismiss} />
-          )}
-          <FocusElsewhere
-            items={items}
-            hidden={!!shownFocus}
-            onOpen={setFocusTask}
-          />
-          <Topbar
-            view={view}
-            onToggleMenu={() => setMobileNav(!mobileNav)}
-            onOpenNotifications={() => navigate("Notifications")}
-            onOpenCommand={() => setCommandOpen(true)}
-          />
-          <main className="content">
-            {error && (
-              <div role="alert" className="error">
-                {error}
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss error"
-                  onClick={() => planner.setError("")}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            )}
-            <div key={view} className="view-enter">
-              {view !== "AI assistant" && (
-                <PageHeading
-                  view={view}
-                  user={user}
-                  onNewItem={() => newItem()}
-                />
-              )}
-              {view === "Overview" && (
-                <WelcomeBack
-                  onOpenItem={openItemById}
-                  onOpenDoc={(id) =>
-                    void client.getDoc(id).then((doc) => {
-                      setNoteDoc(doc);
-                      setView("Docs");
-                    }, report)
-                  }
-                  onOpenAsks={() => navigate("Notifications")}
-                />
-              )}
-              {view === "Overview" && (
-                <OverviewView
-                  {...listProps}
-                  onNewItem={() => newItem()}
-                  onNavigate={navigate}
-                  onOpenProject={(id) => {
-                    setProjectToOpen(id);
-                    setView("Projects");
-                  }}
-                  onOpenDoc={(found) => {
-                    setNoteDoc(found);
-                    setView("Docs");
-                  }}
-                  onPlanDay={() => {
-                    navigate("AI assistant");
-                    void assistant.ask(planDayPrompt);
-                  }}
-                  onFocus={startFocus}
-                  onOpenById={openItemById}
-                  onPlanIt={(id) => planTask(id, true)}
-                  onPlanAgain={(id) => void rollForward([id])}
-                  onPlanMyDay={planMyDay}
-                  onShowLate={() => navigate("My tasks")}
-                />
-              )}
-              {view === "My tasks" && (
-                <TasksView
-                  {...listProps}
-                  query={query}
-                  onQueryChange={setQuery}
-                  onSetStatus={setStatus}
-                  userId={user?.id}
-                  onChanged={refresh}
-                />
-              )}
-              {view === "Lists" && (
-                <ListsView
-                  {...listProps}
-                  teams={teams}
-                  report={report}
-                  onNewItem={(prefill) => newItem(null, prefill)}
-                />
-              )}
-              {view === "Agenda" && (
-                <AgendaView
-                  report={report}
-                  userId={user?.id}
-                  onItemsChanged={() => void refresh()}
-                />
-              )}
-              {view === "Docs" && (
-                <DocsView
-                  report={report}
-                  onOpenProject={(id) => {
-                    setProjectToOpen(id);
-                    setView("Projects");
-                  }}
-                  userId={user?.id}
-                  canWriteDoc={canWriteIn}
-                  teamNameFor={(id) =>
-                    teams.find((t) => t.id === id)?.name ?? null
-                  }
-                  onItemsChanged={() => void refresh()}
-                  initialDoc={noteDoc}
-                  initialBlockId={noteBlockId}
-                  onInitialDocShown={() => {
-                    setNoteDoc(null);
-                    setNoteBlockId(null);
-                  }}
-                />
-              )}
-              {view === "Study" && (
-                <StudyView
-                  report={report}
-                  onOpenPage={(doc) => {
-                    setNoteDoc(doc);
-                    setView("Docs");
-                  }}
-                  onPlanned={() => void refresh()}
-                />
-              )}
-              {view === "Projects" && (
-                <ProjectsView
-                  initialProjectId={projectToOpen}
-                  initialSection={projectSectionToOpen}
-                  initialSourceId={projectSourceId}
-                  onInitialProjectShown={() => {
-                    setProjectToOpen(null);
-                    setProjectSectionToOpen(null);
-                    setProjectSourceId(null);
-                  }}
-                  items={items}
-                  userId={user?.id ?? ""}
-                  teams={teams}
-                  openTemplate={templateToOpen}
-                  onTemplateOpened={() => setTemplateToOpen(null)}
-                  openProject={projectToOpen}
-                  onProjectOpened={() => setProjectToOpen(null)}
-                  report={report}
-                  onRefresh={() => void refresh()}
-                  onOpenItem={openItem}
-                  onOpenPlan={openPlan}
-                  onAskProject={(project, question) => {
-                    assistant.setScope({
-                      kind: "project",
-                      id: project.id,
-                      name: project.name,
-                    });
-                    if (question) assistant.setMessage(question);
-                    setView("AI assistant");
-                  }}
-                  onOpenNote={(docId, blockId) =>
-                    void client.getDoc(docId).then((doc) => {
-                      setNoteDoc(doc);
-                      setNoteBlockId(blockId ?? null);
-                      setView("Docs");
-                    }, report)
-                  }
-                />
-              )}
-              {view === "Calendar" && (
-                <CalendarView
-                  items={items}
-                  teams={teams}
-                  canWrite={canWrite}
-                  onOpen={openItem}
-                  onEditItem={(item, occurrence) => {
-                    setEditing(item);
-                    setEditOccurrence(occurrence ?? null);
-                  }}
-                  onFocus={startFocus}
-                  date={calendarDate}
-                  onDateChange={setCalendarDate}
-                  mode={calendarMode}
-                  onModeChange={setCalendarMode}
-                  shortcuts={
-                    !editing &&
-                    !shownTask &&
-                    !shownFocus &&
-                    !commandOpen &&
-                    !shortcutsOpen
-                  }
-                  onNewEvent={(prefill) => newItem(null, prefill)}
-                  userId={user?.id}
-                  revision={revision}
-                  report={report}
-                  onChanged={refresh}
-                  planRequest={planRequest}
-                />
-              )}
-              {view === "AI assistant" && (
-                <AssistantView
-                  items={items}
-                  busy={busy}
-                  assistant={assistant}
-                  onApplyPlan={applyPlan}
-                  onOpenPlan={openPlan}
-                  onShowOnCalendar={showOnCalendar}
-                  onOpenSource={openSource}
-                  onKeptNote={(docId) => openPage(docId)}
-                />
-              )}
-              {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
-              {view === "Booking" && (
-                <BookingView
-                  user={user}
-                  teams={teams}
-                  report={report}
-                  focus={bookingFocus}
-                />
-              )}
-              {view === "Admin" && isAdmin && (
-                <AdminView
-                  {...teamActions}
-                  onMaintenanceChange={planner.applyMaintenance}
-                />
-              )}
-              {view === "Notifications" && (
-                <AsksPanel onOpenItem={openItemById} />
-              )}
-              {view === "Notifications" && (
-                <NotificationsView
-                  notices={notices}
-                  onRead={planner.markRead}
-                  onReschedule={reschedule}
-                  onRollForward={() => rollForward()}
-                  onPlanIt={planIt}
-                  onOpenItem={openItemById}
-                  onOpenCalendar={() => navigate("Calendar")}
-                  onOpenBooking={openBooking}
-                  onOpenTemplate={(id) => {
-                    setTemplateToOpen(id);
-                    navigate("Projects");
-                  }}
-                  onOpenProject={(id) => {
-                    setProjectToOpen(id);
-                    navigate("Projects");
-                  }}
-                  onOpenDoc={(id) =>
-                    void client.getDoc(id).then((doc) => {
-                      setNoteDoc(doc);
-                      navigate("Docs");
-                    }, report)
-                  }
-                  onStartSession={async (blockId, itemId) => {
-                    try {
-                      await client.startSession(blockId, "reminder");
-                    } catch {
-                      // Over or moved: focus mode still starts on the task.
-                    }
-                    const task =
-                      items.find((i) => i.id === itemId) ??
-                      (await client.getItem(itemId).catch(() => null));
-                    if (task) startFocus(task);
-                  }}
-                  onOpenReview={(id) => {
-                    setReviewToOpen(id);
-                    navigate("Review");
-                  }}
-                />
-              )}
-              {view === "Review" && (
-                <ReviewView
-                  report={report}
-                  focusId={reviewToOpen}
-                  onFocused={() => setReviewToOpen(null)}
-                  onCount={setReviewPending}
-                />
-              )}
-              {view === "Settings" && (
-                <SettingsView
-                  user={user}
-                  teams={teams}
-                  busy={busy}
-                  report={report}
-                  onEmailReminders={planner.setEmailReminders}
-                  onOpenStatus={() => navigatePath("/status")}
-                  onAccountDeleted={() => {
-                    planner.clearSession();
-                    navigatePath("/", true);
-                  }}
-                />
-              )}
-            </div>
-            {loading && (
-              <small className="sync-status">Syncing your space…</small>
-            )}
-            {view !== "AI assistant" && (
-              <footer>
-                A little more clarity. A little more you. <Orbit size={14} />
-              </footer>
-            )}
-          </main>
-        </div>
-        {shownTask && (
-          <TaskDetail
-            key={shownTask.id}
-            item={shownTask}
-            teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
-            canWrite={canWrite(shownTask)}
-            suspended={!!editing}
-            onClose={closeTask}
-            onEdit={setEditing}
-            onFocus={startFocus}
-            items={items}
-            onOpenItem={(i) => openItem(i)}
-            onChanged={refresh}
-            onError={report}
-            occurrence={
-              openOccurrence?.itemId === shownTask.id
-                ? openOccurrence.occurrence
-                : null
-            }
-            onFindTime={findTimeFor}
-            onShowOnCalendar={showOnCalendar}
-            onOpenProject={(id) => {
-              closeTask();
-              setProjectToOpen(id);
-              setView("Projects");
-            }}
-            onAskTask={(item) => {
-              closeTask();
-              assistant.setScope({
-                kind: "task",
-                id: item.id,
-                name: item.title,
-              });
-              setView("AI assistant");
-            }}
-            onOpenDoc={(doc, blockId) => {
-              closeTask();
-              setNoteBlockId(blockId ?? null);
-              setNoteDoc(doc);
-              setView("Docs");
-            }}
-            onOpenNote={(event, series) => {
-              void client
-                // Opened on one class of a repeating event: that class's
-                // note, unless the series' own was asked for.
-                .itemNote(
-                  event.id,
-                  !series && event.rrule && openOccurrence?.itemId === event.id
-                    ? openOccurrence.occurrence
-                    : null,
-                )
-                .then((note) => {
-                  closeTask();
-                  setNoteDoc(note);
-                  setView("Docs");
-                })
-                .catch(report);
-            }}
-          />
-        )}
-        {shownFocus && (
-          <FocusMode
-            key={shownFocus.id}
-            item={shownFocus}
-            items={items}
-            canWrite={canWrite(shownFocus)}
-            onClose={closeFocus}
-            onSwitch={setFocusTask}
-            onChanged={refresh}
-            onError={report}
-          />
-        )}
-        {editing && (
-          <ItemEditor
-            key={editing === "new" ? "new" : editing.id + ":" + editing.version}
-            editing={editing}
-            teams={teams}
-            items={items}
-            defaultTeamId={draftTeamId}
-            draft={editing === "new" ? draft : null}
-            busy={busy}
-            error={error}
-            onClose={() => setEditing(null)}
-            onSave={saveItem}
-            onDelete={deleteItem}
-            occurrence={editing === "new" ? null : editOccurrence}
-          />
-        )}
-        {commandOpen && (
-          <CommandBar
-            items={items}
-            onClose={() => setCommandOpen(false)}
-            onOpenItem={openItem}
-            onOpenDoc={(found, blockId) => {
-              setNoteDoc(found);
-              setNoteBlockId(blockId ?? null);
-              setView("Docs");
-            }}
-            onGoToProjects={(id) => {
-              setProjectToOpen(id);
-              setView("Projects");
-            }}
-            onNewItem={() => newItem()}
-            onPlanDay={planMyDay}
-            onNavigate={navigate}
-            onApplyPlan={applyPlan}
-            onOpenPlan={openPlan}
-            onShowOnCalendar={showOnCalendar}
-            onOpenSource={openSource}
-            onKeptNote={(docId) => openPage(docId)}
-            onApplied={refresh}
-            onShowShortcuts={() => setShortcutsOpen(true)}
-            teams={teams}
+  // One page in a window of its own (NAV-06): no sidebar, no library.
+  if (pageWindowId)
+    return (
+      <PrefsContext.Provider value={accountPrefs}>
+        <PlanningProviders planning={planning} planned={planned}>
+          <PageWindow
+            docId={pageWindowId}
             userId={user?.id}
-            onJumpToDate={jumpToDate}
+            canWriteIn={canWriteIn}
+            teamNameFor={(id) => teams.find((t) => t.id === id)?.name ?? null}
+            onItemsChanged={() => void refresh()}
             report={report}
           />
-        )}
-        {shortcutsOpen && (
-          <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
-        )}
-        <Celebration />
-      </div>
-    </PlanningProviders>
+        </PlanningProviders>
+      </PrefsContext.Provider>
+    );
+
+  return (
+    <PrefsContext.Provider value={accountPrefs}>
+      <PlanningProviders planning={planning} planned={planned}>
+        <div
+          className={
+            "app" + (railed ? " is-railed" : "") + (peek ? " has-peek" : "")
+          }
+        >
+          <Sidebar
+            open={mobileNav}
+            railed={railed}
+            onToggleRail={toggleRail}
+            view={view}
+            user={user}
+            hasUnread={notices.some((n) => !n.read)}
+            reviewPending={reviewPending}
+            onNavigate={navigate}
+            pinnedViews={pinnedViews}
+            openView={shownView}
+            onOpenView={openSavedView}
+            starred={starred}
+            onOpenStarred={openStarred}
+            onSignOut={() => void planner.logout()}
+          />
+          <div className="shell">
+            <AnnouncementBanner />
+            <MaintenanceBanner
+              maintenance={planner.maintenance}
+              isAdmin={hasSystemPermission(user?.role, "system:manage")}
+            />
+            {newVersion.available && (
+              <UpdateBanner onDismiss={newVersion.dismiss} />
+            )}
+            <FocusElsewhere
+              items={items}
+              hidden={!!shownFocus}
+              onOpen={setFocusTask}
+            />
+            <Topbar
+              view={view}
+              onToggleMenu={() => setMobileNav(!mobileNav)}
+              onOpenNotifications={() => navigate("Notifications")}
+              onOpenCommand={() => openCommand()}
+            />
+            <main className="content">
+              {error && (
+                <div role="alert" className="error">
+                  {error}
+                  <button
+                    className="icon-button"
+                    aria-label="Dismiss error"
+                    onClick={() => planner.setError("")}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+              <div key={view} className="view-enter">
+                {view !== "AI assistant" && (
+                  <PageHeading
+                    view={view}
+                    user={user}
+                    onNewItem={() => newItem()}
+                  />
+                )}
+                {view === "Overview" && (
+                  <WelcomeBack
+                    onOpenItem={openItemById}
+                    onOpenDoc={(id) =>
+                      void client.getDoc(id).then((doc) => {
+                        setNoteDoc(doc);
+                        setView("Docs");
+                      }, report)
+                    }
+                    onOpenAsks={() => navigate("Notifications")}
+                  />
+                )}
+                {view === "Overview" && (
+                  <OverviewView
+                    {...listProps}
+                    onNewItem={() => newItem()}
+                    onNavigate={navigate}
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    onOpenDoc={(found) => {
+                      setNoteDoc(found);
+                      setView("Docs");
+                    }}
+                    onPlanDay={() => {
+                      navigate("AI assistant");
+                      void assistant.ask(planDayPrompt);
+                    }}
+                    onFocus={startFocus}
+                    onOpenById={openItemById}
+                    onPlanIt={(id) => planTask(id, true)}
+                    onPlanAgain={(id) => void rollForward([id])}
+                    onPlanMyDay={planMyDay}
+                    onShowLate={() => navigate("My tasks")}
+                  />
+                )}
+                {/* What changed in your teams, others' changes first (SHR-02). */}
+                {view === "Overview" && teams.length > 0 && (
+                  <RecentChanges compact limit={12} />
+                )}
+                {view === "My tasks" && (
+                  <TasksView
+                    {...listProps}
+                    query={query}
+                    onQueryChange={setQuery}
+                    onSetStatus={setStatus}
+                    userId={user?.id}
+                    onChanged={refresh}
+                    onNewItem={(prefill) => newItem(null, prefill)}
+                    onChangeItem={changeItem}
+                  />
+                )}
+                {view === "Lists" && (
+                  <ListsView
+                    {...listProps}
+                    teams={teams}
+                    report={report}
+                    onNewItem={(prefill) => newItem(null, prefill)}
+                  />
+                )}
+                {view === "Agenda" && (
+                  <AgendaView
+                    report={report}
+                    userId={user?.id}
+                    onItemsChanged={() => void refresh()}
+                  />
+                )}
+                {view === "Docs" && (
+                  <DocsView
+                    report={report}
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    userId={user?.id}
+                    canWriteDoc={canWriteIn}
+                    teamNameFor={(id) =>
+                      teams.find((t) => t.id === id)?.name ?? null
+                    }
+                    onItemsChanged={() => void refresh()}
+                    initialDoc={noteDoc}
+                    initialBlockId={noteBlockId}
+                    openTemplates={templatesAsked}
+                    incomingFiles={openedFiles}
+                    onInitialDocShown={() => {
+                      setNoteDoc(null);
+                      setNoteBlockId(null);
+                    }}
+                  />
+                )}
+                {view === "Views" && (
+                  <ViewsView
+                    report={report}
+                    teams={teams}
+                    userId={user?.id}
+                    items={items}
+                    revision={revision}
+                    openViewId={viewToOpen}
+                    onViewOpened={() => setViewToOpen(null)}
+                    onSelected={setShownView}
+                    onOpenItem={openItem}
+                    onOpenDoc={(id) =>
+                      void client.getDoc(id).then((doc) => {
+                        setNoteDoc(doc);
+                        setView("Docs");
+                      }, report)
+                    }
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    onViewsChanged={loadPinnedViews}
+                    onToggle={toggle}
+                    onSetStatus={setStatus}
+                    onChangeItem={changeItem}
+                  />
+                )}
+                {view === "Study" && (
+                  <StudyView
+                    report={report}
+                    onOpenPage={(doc) => {
+                      setNoteDoc(doc);
+                      setView("Docs");
+                    }}
+                    onPlanned={() => void refresh()}
+                  />
+                )}
+                {view === "Projects" && (
+                  <ProjectsView
+                    initialProjectId={projectToOpen}
+                    initialSection={projectSectionToOpen}
+                    initialSourceId={projectSourceId}
+                    onInitialProjectShown={() => {
+                      setProjectToOpen(null);
+                      setProjectSectionToOpen(null);
+                      setProjectSourceId(null);
+                    }}
+                    items={items}
+                    userId={user?.id ?? ""}
+                    teams={teams}
+                    openTemplate={templateToOpen}
+                    onTemplateOpened={() => setTemplateToOpen(null)}
+                    openProject={projectToOpen}
+                    onProjectOpened={() => setProjectToOpen(null)}
+                    report={report}
+                    onRefresh={() => void refresh()}
+                    onOpenItem={openItem}
+                    onOpenPlan={openPlan}
+                    startNew={projectAsked}
+                    onAskProject={(project, question) => {
+                      assistant.setScope({
+                        kind: "project",
+                        id: project.id,
+                        name: project.name,
+                      });
+                      if (question) assistant.setMessage(question);
+                      setView("AI assistant");
+                    }}
+                    onOpenNote={(docId, blockId) =>
+                      void client.getDoc(docId).then((doc) => {
+                        setNoteDoc(doc);
+                        setNoteBlockId(blockId ?? null);
+                        setView("Docs");
+                      }, report)
+                    }
+                  />
+                )}
+                {view === "Calendar" && (
+                  <CalendarView
+                    items={items}
+                    teams={teams}
+                    canWrite={canWrite}
+                    onOpen={openItem}
+                    onEditItem={(item, occurrence) => {
+                      setEditing(item);
+                      setEditOccurrence(occurrence ?? null);
+                    }}
+                    onFocus={startFocus}
+                    date={calendarDate}
+                    onDateChange={setCalendarDate}
+                    mode={calendarMode}
+                    onModeChange={setCalendarMode}
+                    shortcuts={
+                      !editing &&
+                      !shownTask &&
+                      !shownFocus &&
+                      !commandOpen &&
+                      !shortcutsOpen
+                    }
+                    onNewEvent={(prefill) => newItem(null, prefill)}
+                    userId={user?.id}
+                    revision={revision}
+                    report={report}
+                    onChanged={refresh}
+                    planRequest={planRequest}
+                    onOpenFieldTarget={(target, id) => {
+                      if (target === "project") {
+                        setProjectToOpen(id);
+                        setView("Projects");
+                      } else
+                        void client.getDoc(id).then((doc) => {
+                          setNoteDoc(doc);
+                          setView("Docs");
+                        }, report);
+                    }}
+                  />
+                )}
+                {view === "AI assistant" && (
+                  <AssistantView
+                    items={items}
+                    busy={busy}
+                    assistant={assistant}
+                    onApplyPlan={applyPlan}
+                    onOpenPlan={openPlan}
+                    onShowOnCalendar={showOnCalendar}
+                    onOpenSource={openSource}
+                    onKeptNote={(docId) => openPage(docId)}
+                  />
+                )}
+                {view === "Teams" && (
+                  <TeamsView teams={teams} {...teamActions} />
+                )}
+                {view === "Booking" && (
+                  <BookingView
+                    user={user}
+                    teams={teams}
+                    report={report}
+                    focus={bookingFocus}
+                  />
+                )}
+                {view === "Admin" && isAdmin && (
+                  <AdminView
+                    {...teamActions}
+                    onMaintenanceChange={planner.applyMaintenance}
+                  />
+                )}
+                {view === "Notifications" && (
+                  <AsksPanel onOpenItem={openItemById} />
+                )}
+                {view === "Notifications" && (
+                  <NotificationsView
+                    notices={notices}
+                    onRead={planner.markRead}
+                    onReschedule={reschedule}
+                    onRollForward={() => rollForward()}
+                    onPlanIt={planIt}
+                    onOpenItem={openItemById}
+                    onOpenCalendar={() => navigate("Calendar")}
+                    onOpenBooking={openBooking}
+                    onOpenTemplate={(id) => {
+                      setTemplateToOpen(id);
+                      navigate("Projects");
+                    }}
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      navigate("Projects");
+                    }}
+                    onOpenDoc={(id) =>
+                      void client.getDoc(id).then((doc) => {
+                        setNoteDoc(doc);
+                        navigate("Docs");
+                      }, report)
+                    }
+                    onStartSession={async (blockId, itemId) => {
+                      try {
+                        await client.startSession(blockId, "reminder");
+                      } catch {
+                        // Over or moved: focus mode still starts on the task.
+                      }
+                      const task =
+                        items.find((i) => i.id === itemId) ??
+                        (await client.getItem(itemId).catch(() => null));
+                      if (task) startFocus(task);
+                    }}
+                    onOpenReview={(id) => {
+                      setReviewToOpen(id);
+                      navigate("Review");
+                    }}
+                  />
+                )}
+                {view === "Review" && (
+                  <ReviewView
+                    report={report}
+                    focusId={reviewToOpen}
+                    onFocused={() => setReviewToOpen(null)}
+                    onCount={setReviewPending}
+                  />
+                )}
+                {view === "Settings" && (
+                  <SettingsView
+                    user={user}
+                    teams={teams}
+                    busy={busy}
+                    report={report}
+                    initialSetting={settingAsked}
+                    onOpenWhatsNew={() => setWhatsNewOpen(true)}
+                    onEmailReminders={planner.setEmailReminders}
+                    onOpenStatus={() => navigatePath("/status")}
+                    onOpenSecurity={() => navigatePath("/security")}
+                    onAccountDeleted={() => {
+                      planner.clearSession();
+                      navigatePath("/", true);
+                    }}
+                  />
+                )}
+              </div>
+              {loading && (
+                <small className="sync-status">Syncing your space…</small>
+              )}
+              {view !== "AI assistant" && (
+                <footer>
+                  A little more clarity. A little more you. <Orbit size={14} />{" "}
+                  <button
+                    type="button"
+                    className="footer-link"
+                    onClick={() => setWhatsNewOpen(true)}
+                  >
+                    What's new
+                  </button>
+                </footer>
+              )}
+            </main>
+          </div>
+          {shownTask && (
+            <TaskDetail
+              key={shownTask.id}
+              item={shownTask}
+              teamName={teams.find((t) => t.id === shownTask.team_id)?.name}
+              canWrite={canWrite(shownTask)}
+              suspended={!!editing}
+              onClose={closeTask}
+              onEdit={setEditing}
+              onFocus={startFocus}
+              items={items}
+              onOpenItem={(i) => openItem(i)}
+              onChanged={refresh}
+              onError={report}
+              occurrence={
+                openOccurrence?.itemId === shownTask.id
+                  ? openOccurrence.occurrence
+                  : null
+              }
+              onFindTime={findTimeFor}
+              onShowOnCalendar={showOnCalendar}
+              onOpenProject={(id) => {
+                closeTask();
+                setProjectToOpen(id);
+                setView("Projects");
+              }}
+              onAskTask={(item) => {
+                closeTask();
+                assistant.setScope({
+                  kind: "task",
+                  id: item.id,
+                  name: item.title,
+                });
+                setView("AI assistant");
+              }}
+              onOpenDoc={(doc, blockId) => {
+                closeTask();
+                setNoteBlockId(blockId ?? null);
+                setNoteDoc(doc);
+                setView("Docs");
+              }}
+              onOpenNote={(event, series) => {
+                void client
+                  // Opened on one class of a repeating event: that class's
+                  // note, unless the series' own was asked for.
+                  .itemNote(
+                    event.id,
+                    !series &&
+                      event.rrule &&
+                      openOccurrence?.itemId === event.id
+                      ? openOccurrence.occurrence
+                      : null,
+                  )
+                  .then((note) => {
+                    closeTask();
+                    setNoteDoc(note);
+                    setView("Docs");
+                  })
+                  .catch(report);
+              }}
+            />
+          )}
+          {shownFocus && (
+            <FocusMode
+              key={shownFocus.id}
+              item={shownFocus}
+              items={items}
+              canWrite={canWrite(shownFocus)}
+              onClose={closeFocus}
+              onSwitch={setFocusTask}
+              onChanged={refresh}
+              onError={report}
+            />
+          )}
+          {editing && (
+            <ItemEditor
+              key={
+                editing === "new" ? "new" : editing.id + ":" + editing.version
+              }
+              editing={editing}
+              teams={teams}
+              items={items}
+              defaultTeamId={draftTeamId}
+              draft={editing === "new" ? draft : null}
+              busy={busy}
+              error={error}
+              onClose={() => setEditing(null)}
+              onSave={saveItem}
+              onDelete={deleteItem}
+              occurrence={editing === "new" ? null : editOccurrence}
+            />
+          )}
+          {commandOpen && (
+            <CommandBar
+              items={items}
+              isAdmin={isAdmin}
+              view={view}
+              initialQuery={commandQuery}
+              initialAdd={commandAdd}
+              onClose={() => setCommandOpen(false)}
+              onOpenItem={openItem}
+              onOpenItemById={openItemById}
+              onOpenDoc={(found, blockId) => {
+                setNoteDoc(found);
+                setNoteBlockId(blockId ?? null);
+                setView("Docs");
+              }}
+              onGoToProjects={(id) => {
+                setProjectToOpen(id);
+                setView("Projects");
+              }}
+              onNewItem={() => newItem()}
+              onNewEvent={() => newItem(null, { kind: "event" })}
+              onNewPage={(title) => void newPage(title)}
+              onNewPageFromTemplate={() => {
+                navigate("Docs");
+                setTemplatesAsked(Date.now());
+              }}
+              onNewProject={() => {
+                navigate("Projects");
+                setProjectAsked(Date.now());
+              }}
+              onPlanDay={planMyDay}
+              onStartFocus={() => {
+                const next = nextUp(items, undefined, 1)[0];
+                if (next) startFocus(next);
+                else planner.setError("Nothing is next up to focus on.");
+              }}
+              onShowToday={() => {
+                navigate("Calendar");
+                setCalendarDate(new Date());
+                setCalendarMode("day");
+              }}
+              onToggleSidebar={toggleRail}
+              onOpenSecurity={() => navigatePath("/security")}
+              onNavigate={navigate}
+              onApplyPlan={applyPlan}
+              onOpenPlan={openPlan}
+              onShowOnCalendar={showOnCalendar}
+              onOpenSource={openSource}
+              onKeptNote={(docId) => openPage(docId)}
+              onApplied={refresh}
+              onShowShortcuts={() => setShortcutsOpen(true)}
+              onOpenWhatsNew={() => setWhatsNewOpen(true)}
+              onOpenChanges={() => setChangesOpen(true)}
+              onOpenSetting={(id) => {
+                navigate("Settings");
+                setSettingAsked((was) => ({ id, seq: (was?.seq ?? 0) + 1 }));
+              }}
+              teams={teams}
+              userId={user?.id}
+              onJumpToDate={jumpToDate}
+              starred={starred}
+              onOpenStarred={openStarred}
+              report={report}
+            />
+          )}
+          {shortcutsOpen && (
+            <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
+          )}
+          {peek && (
+            <SidePeek
+              target={peek.target}
+              pinned={peek.pinned}
+              onPin={(pinned) => setPeek((p) => (p ? { ...p, pinned } : p))}
+              onClose={() => setPeek(null)}
+              report={report}
+            />
+          )}
+          {whatsNewOpen && (
+            <WhatsNew
+              onClose={() => setWhatsNewOpen(false)}
+              onOpenChangelog={() => {
+                setWhatsNewOpen(false);
+                navigatePath("/changelog");
+              }}
+            />
+          )}
+          {changesOpen && (
+            <RecentChangesDialog onClose={() => setChangesOpen(false)} />
+          )}
+          {user && user.first_run_done === false && (
+            <FirstRun
+              user={user}
+              onDone={(_next, made) => {
+                markReleaseSeen();
+                void refreshUser();
+                void refresh();
+                if (made?.brief_id) openPage(made.brief_id);
+              }}
+            />
+          )}
+          <Celebration />
+        </div>
+      </PlanningProviders>
+    </PrefsContext.Provider>
   );
 }

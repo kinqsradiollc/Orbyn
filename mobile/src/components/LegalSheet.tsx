@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import type { LegalDoc, LegalDocument } from "@orbyn/core";
+import {
+  securityPageMarkdown,
+  type LegalDoc,
+  type LegalDocument,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { colors, fonts, themed } from "../theme";
 import { Sheet, sheetStyles } from "./Sheet";
@@ -107,6 +111,25 @@ export function LegalSheet({
           ) : (
             <Text style={[s.body, { color: colors.muted }]}>Loading…</Text>
           )}
+        </View>
+      </ScrollView>
+    </Sheet>
+  );
+}
+
+/** Security and data (OTH-02): the same dated page as the web's /security. */
+export function SecuritySheet({
+  visible,
+  onClose,
+}: {
+  visible: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet visible={visible} title="Security and data" onClose={onClose}>
+      <ScrollView contentContainerStyle={sheetStyles.body}>
+        <View style={sheetStyles.column}>
+          <LegalText body={securityPageMarkdown()} />
         </View>
       </ScrollView>
     </Sheet>

@@ -62,7 +62,10 @@ export async function profileRoutes(app: FastifyInstance) {
     const pages = (
       await db.query<PublicProfile["pages"][number]>(
         `SELECT p.title, p.slug, p.description, p.durations, p.color FROM booking_pages p
-         WHERE p.active AND (p.owner_id = $1
+         WHERE p.active
+           AND (p.team_id IS NULL OR EXISTS (
+             SELECT 1 FROM teams bt WHERE bt.id = p.team_id AND bt.booking_allowed))
+           AND (p.owner_id = $1
            OR p.id IN (SELECT page_id FROM booking_hosts WHERE user_id = $1))
          ORDER BY p.created_at`,
         [user.id],

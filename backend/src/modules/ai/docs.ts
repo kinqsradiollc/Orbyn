@@ -5,18 +5,21 @@ import {
   DOC_AI_LABELS,
   blockText,
   fail,
+  keepLinkLabels,
   type DocAnswer,
   type DocBlock,
 } from "@orbyn/core";
-import { reader, transaction } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { requireTeam } from "../../lib/teams.js";
+import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 import { readableDocs } from "../../lib/visibility.js";
 import { proposeChanges } from "../docs/service.js";
+import { linkPrivacy, readableLinks } from "../links/privacy.js";
+import { carryRanges } from "../docs/ranges.js";
 
 /**
  * The assistant, inside a page.
@@ -56,7 +59,17 @@ export async function aiDocRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!doc) fail(404, "Document not found");
     if (await docKeptOut(db, id)) fail(422, PAGE_KEPT_OUT);
-    return doc;
+    // A team can keep its pages out of the assistant (OTH-04).
+    await requireAssistantAllowed(doc.team_id);
+    // The words of links to what this reader can't open are not theirs to
+    // send anywhere (D3aF); `links` carries places back to the stored lines.
+    const links = await linkPrivacy(db, userId, doc.content);
+    return {
+      ...doc,
+      stored: doc.content,
+      content: links.value(doc.content),
+      links,
+    };
   }
 
   /** The provider, or a message saying who can turn one on. */
@@ -124,6 +137,16 @@ passage should be removed entirely, reply with an empty line.`;
     if (answer === quote)
       fail(409, "The assistant had nothing to change there.");
 
+    // Places and words as the page keeps them, not as they were shown.
+    const kept = blockText(doc.stored[at]);
+    const line = doc.links.line(kept);
+    const stored = line.changed
+      ? (() => {
+          const start = line.toStored(d.range_start);
+          const end = Math.max(start, line.toStored(d.range_end, true));
+          return { start, end, quote: kept.slice(start, end) };
+        })()
+      : { start: d.range_start, end: d.range_end, quote };
     const made = await transaction(async (db) => {
       if (doc.team_id) await requireTeam(doc.team_id, u, "items:read");
       const [made] = await proposeChanges(
@@ -134,10 +157,10 @@ passage should be removed entirely, reply with an empty line.`;
           {
             block_id: d.block_id,
             kind: answer ? "replace" : "delete",
-            range_start: d.range_start,
-            range_end: d.range_end,
-            text: answer,
-            quote,
+            range_start: stored.start,
+            range_end: stored.end,
+            text: keepLinkLabels(answer, doc.stored, doc.links.hidden),
+            quote: stored.quote,
           },
         ],
         `Assistant · ${
@@ -149,7 +172,10 @@ passage should be removed entirely, reply with an empty line.`;
       return made;
     });
     reply.code(201);
-    return made;
+    // Places, quoted words and the offered words as this reader is shown
+    // them (D3aF): the stored text keeps hidden titles, the reply must not.
+    const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
+    return readableLinks(pool, u.id, shown);
   });
 
   /**

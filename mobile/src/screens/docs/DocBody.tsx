@@ -1,16 +1,37 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { blockText, listLayout, mathToText, type DocBlock } from "@orbyn/core";
+import {
+  blockText,
+  canFold,
+  EMBED_LANG,
+  foldedLines,
+  footnoteNumbers,
+  isDiagram,
+  LIVE_LIST_LANG,
+  lineDirection,
+  listLayout,
+  type DocBlock,
+} from "@orbyn/core";
 import { Inline } from "./Inline";
+import { MathView } from "./MathView";
+import {
+  CalloutView,
+  CodeView,
+  DiagramView,
+  EmbedBlock,
+  FileCard,
+  FootnoteLine,
+  ImageBlock,
+  TableView,
+} from "./RichBlocks";
+import { LiveList } from "../views/LiveList";
 import { Icon } from "../../components/Icon";
 import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /**
- * A document as it reads on a phone. Formulas are shown as their symbols —
- * "0 < η < 1/μ" rather than the LaTeX behind them — because the phone has no
- * typesetting engine; the source is kept untouched and the desktop app
- * renders it properly.
+ * A document as it reads on a phone. Formulas are typeset on the phone
+ * itself (EDT-12, MathView), from the same LaTeX the desktop draws.
  */
 export function DocBody({
   content,
@@ -27,10 +48,18 @@ export function DocBody({
   counts,
   marks = {},
   renderUnder,
+  underEditing,
   onOpenComments,
   onEditBlock,
+  onDoubleTapBlock,
   targetBlockId,
   onTargetLayout,
+  onLineLayout,
+  folds,
+  onToggleFold,
+  flash = null,
+  onReplace,
+  onEditTable,
 }: {
   content: DocBlock[];
   /** The checklist lines tied to a task, by id; only these say "task". */
@@ -64,11 +93,32 @@ export function DocBody({
   counts?: Record<string, number>;
   /** What to show under a line — its remarks, when they are open. */
   renderUnder?: (blockId: string) => React.ReactNode;
+  /**
+   * Shown right under the line being edited (MOB-13): the link and "/"
+   * suggestions, where the eye already is rather than over the keyboard.
+   */
+  underEditing?: React.ReactNode;
   onOpenComments?: (blockId: string) => void;
   onEditBlock?: (index: number) => void;
+  /**
+   * Reading (EDT-10): a double tap on a line starts editing it there. A
+   * single tap stays a reader's (links, ticks, scrolling).
+   */
+  onDoubleTapBlock?: (index: number) => void;
   /** A line opened from a task or citation. */
   targetBlockId?: string | null;
   onTargetLayout?: (y: number) => void;
+  /** Where each line sits in the body, for jumping to a heading. */
+  onLineLayout?: (index: number, y: number) => void;
+  /** Headings folded away (EDT-14), and how to fold or unfold one. */
+  folds?: ReadonlySet<string>;
+  onToggleFold?: (blockId: string) => void;
+  /** A line just jumped to, lit for a moment (LNK-04). */
+  flash?: string | null;
+  /** Put another line in this one's place (a picture's size or caption). */
+  onReplace?: (index: number, block: DocBlock) => void;
+  /** Open a table's cells to edit. */
+  onEditTable?: (index: number) => void;
 }) {
   /**
    * Wrap a line so tapping it opens it, and hang its remarks underneath —
@@ -84,15 +134,23 @@ export function DocBody({
   const decorate = (index: number, body: React.ReactNode) => {
     const id = content[index].id;
     const targetLayout =
-      id === targetBlockId
-        ? (event: { nativeEvent: { layout: { y: number } } }) =>
-            onTargetLayout?.(event.nativeEvent.layout.y)
+      id === targetBlockId || onLineLayout
+        ? (event: { nativeEvent: { layout: { y: number } } }) => {
+            const y = event.nativeEvent.layout.y;
+            onLineLayout?.(index, y);
+            if (id === targetBlockId) onTargetLayout?.(y);
+          }
         : undefined;
     const count = (id && counts?.[id]) || 0;
     const under = id ? renderUnder?.(id) : null;
+    const lit = !!id && id === flash;
     if (!count && !under)
       return (
-        <View key={index} onLayout={targetLayout}>
+        <View
+          key={index}
+          onLayout={targetLayout}
+          style={lit ? styles.flash : undefined}
+        >
           {body}
         </View>
       );
@@ -123,6 +181,33 @@ export function DocBody({
     );
   };
 
+  /** The last tap on a line while reading, to tell a double tap. */
+  const lastTap = React.useRef<{ index: number; at: number } | null>(null);
+  const readerTap = (index: number) => {
+    const now = Date.now();
+    const was = lastTap.current;
+    if (was && was.index === index && now - was.at < 320) {
+      lastTap.current = null;
+      onDoubleTapBlock?.(index);
+    } else lastTap.current = { index, at: now };
+  };
+  /** A line being read: a double tap edits it (EDT-10). */
+  const readable = (index: number, node: React.ReactNode) =>
+    onDoubleTapBlock ? (
+      <Pressable
+        onPress={() => readerTap(index)}
+        accessibilityActions={[{ name: "activate", label: "Edit this line" }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === "activate") onDoubleTapBlock(index);
+        }}
+        accessibilityHint="Double-tap to edit this line"
+      >
+        {node}
+      </Pressable>
+    ) : (
+      node
+    );
+
   /** Wrap a line so tapping it opens it, when the page can be edited. */
   const line = (index: number, node: React.ReactNode) =>
     decorate(
@@ -146,18 +231,45 @@ export function DocBody({
           {node}
         </Pressable>
       ) : (
+        readable(index, node)
+      ),
+    );
+
+  /**
+   * A line drawn as something to look at or use (a picture, a table, an
+   * embed): a tap is its own, and a long press opens the Markdown behind
+   * it, to change or remove it.
+   */
+  const held = (index: number, node: React.ReactNode) =>
+    decorate(
+      index,
+      onEditBlock ? (
+        <Pressable
+          onLongPress={() => onEditBlock(index)}
+          delayLongPress={450}
+          accessibilityHint="Touch and hold to edit this line"
+        >
+          {node}
+        </Pressable>
+      ) : (
         node
       ),
     );
 
   // Numbers count through each list, and nested items step in.
   const layout = listLayout(content);
+  const hidden = folds?.size
+    ? foldedLines(content, folds)
+    : content.map(() => false);
+  const notes = footnoteNumbers(content);
   const inset = (index: number) =>
     layout[index].depth ? { marginLeft: layout[index].depth * NEST } : null;
 
   return (
     <View style={styles.body}>
       {content.map((block, index) => {
+        // Under a folded heading.
+        if (hidden[index] && index !== editing) return null;
         // The open line shows the Markdown behind it, so the shorthand that
         // made a heading or a checkbox is there to change.
         if (index === editing)
@@ -165,7 +277,7 @@ export function DocBody({
             <View key={index} style={[styles.editing, inset(index)]}>
               <TextInput
                 ref={inputRef}
-                style={styles.input}
+                style={[styles.input, dir(draft ?? "")]}
                 value={draft}
                 multiline
                 autoFocus
@@ -179,26 +291,96 @@ export function DocBody({
                 }
                 accessibilityLabel="Line being edited"
               />
+              {underEditing ? (
+                <View style={styles.underEditing}>{underEditing}</View>
+              ) : null}
             </View>
           );
         switch (block.type) {
-          case "heading":
-            return line(
+          case "heading": {
+            const folded = !!block.id && !!folds?.has(block.id);
+            const foldable =
+              !!block.id &&
+              !!onToggleFold &&
+              (folded || canFold(content, index));
+            const heading = line(
               index,
               <Text
                 style={[
                   styles.heading,
                   block.level === 1 ? styles.h1 : styles.h2,
+                  dir(block.text),
                 ]}
               >
                 <Inline text={block.text} marks={marks[block.id ?? ""]} />
+                {folded ? <Text style={styles.foldedMark}> …</Text> : null}
               </Text>,
+            );
+            if (!foldable) return heading;
+            // The fold sits at the heading's end, where a thumb reaches it
+            // and nothing is drawn past the page's edge.
+            return (
+              <View key={index} style={styles.headingRow}>
+                <View style={styles.headingBody}>{heading}</View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    folded ? `Unfold ${block.text}` : `Fold ${block.text}`
+                  }
+                  accessibilityState={{ expanded: !folded }}
+                  hitSlop={12}
+                  onPress={() => onToggleFold?.(block.id!)}
+                  style={styles.fold}
+                >
+                  <Icon
+                    name={folded ? "chevronRight" : "chevronDown"}
+                    size={16}
+                    color={colors.muted}
+                  />
+                </Pressable>
+              </View>
+            );
+          }
+          case "callout":
+            return line(index, <CalloutView block={block} />);
+          case "table":
+            return decorate(
+              index,
+              <Pressable
+                onLongPress={onEditBlock ? () => onEditBlock(index) : undefined}
+                delayLongPress={450}
+              >
+                <TableView
+                  text={block.text}
+                  onEdit={onEditTable ? () => onEditTable(index) : undefined}
+                />
+              </Pressable>,
+            );
+          case "image":
+            return held(
+              index,
+              <ImageBlock
+                block={block}
+                onChange={
+                  onReplace ? (next) => onReplace(index, next) : undefined
+                }
+              />,
+            );
+          case "file":
+            return held(index, <FileCard block={block} />);
+          case "footnote":
+            return line(
+              index,
+              <FootnoteLine
+                block={block}
+                number={notes.get(block.label) ?? block.label}
+              />,
             );
           case "bullet":
           case "numbered":
             return line(
               index,
-              <View style={[styles.row, inset(index)]}>
+              <View style={[styles.row, inset(index), rowDir(block.text)]}>
                 <Text
                   style={[
                     styles.marker,
@@ -209,7 +391,7 @@ export function DocBody({
                     ? BULLETS[layout[index].depth % BULLETS.length]
                     : `${layout[index].number ?? 1}.`}
                 </Text>
-                <Text style={styles.text}>
+                <Text style={[styles.text, dir(block.text)]}>
                   <Inline text={block.text} marks={marks[block.id ?? ""]} />
                 </Text>
               </View>,
@@ -220,7 +402,14 @@ export function DocBody({
             // instead.
             return decorate(
               index,
-              <View style={[styles.row, styles.line, inset(index)]}>
+              <View
+                style={[
+                  styles.row,
+                  styles.line,
+                  inset(index),
+                  rowDir(block.text),
+                ]}
+              >
                 {/* A checkbox, as on task rows and on the web: a switch reads
                     as a setting, and is twice the size of a line. */}
                 <Pressable
@@ -250,14 +439,26 @@ export function DocBody({
                     styles.todoText,
                     pressed && onEditBlock ? styles.linePressed : null,
                   ]}
-                  onPress={onEditBlock ? () => onEditBlock(index) : undefined}
-                  disabled={!onEditBlock}
+                  onPress={
+                    onEditBlock
+                      ? () => onEditBlock(index)
+                      : onDoubleTapBlock
+                        ? () => readerTap(index)
+                        : undefined
+                  }
+                  disabled={!onEditBlock && !onDoubleTapBlock}
                   accessibilityRole={onEditBlock ? "button" : undefined}
                   accessibilityLabel={
                     onEditBlock ? "Edit this line" : undefined
                   }
                 >
-                  <Text style={[styles.text, block.done && styles.done]}>
+                  <Text
+                    style={[
+                      styles.text,
+                      block.done && styles.done,
+                      dir(block.text),
+                    ]}
+                  >
                     <Inline text={block.text} marks={marks[block.id ?? ""]} />
                   </Text>
                   {block.id && tasks?.has(block.id) ? (
@@ -270,23 +471,32 @@ export function DocBody({
             return line(
               index,
               <View style={styles.quote}>
-                <Text style={styles.quoteText}>
+                <Text style={[styles.quoteText, dir(block.text)]}>
                   <Inline text={block.text} marks={marks[block.id ?? ""]} />
                 </Text>
               </View>,
             );
           case "code":
+            // A live list (SRCH-02) is drawn as its rows, not its settings.
+            if (block.lang === LIVE_LIST_LANG)
+              return line(index, <LiveList text={block.text} />);
+            // An embed (LNK-08) and a diagram (EDT-11) are drawn, not typed.
+            if (block.lang === EMBED_LANG)
+              return held(
+                index,
+                <EmbedBlock text={block.text} pageBlocks={content} />,
+              );
+            if (isDiagram(block))
+              return held(index, <DiagramView text={block.text} />);
             return line(
               index,
-              <View style={styles.block}>
-                <Text style={styles.code}>{block.text}</Text>
-              </View>,
+              <CodeView text={block.text} lang={block.lang} />,
             );
           case "math":
             return line(
               index,
               <View style={styles.block}>
-                <Text style={styles.math}>{mathToText(block.text)}</Text>
+                <MathView tex={block.text} display />
                 {block.check && (
                   <Text
                     style={styles.mathCheck}
@@ -302,7 +512,7 @@ export function DocBody({
           default:
             return line(
               index,
-              <Text style={styles.text}>
+              <Text style={[styles.text, dir(block.text)]}>
                 <Inline text={block.text} marks={marks[block.id ?? ""]} />
               </Text>,
             );
@@ -311,6 +521,20 @@ export function DocBody({
     </View>
   );
 }
+
+/**
+ * A line that starts in Arabic or Hebrew reads right to left (DSN-04), as
+ * dir="auto" does on the web; the rest of the app stays as it is.
+ */
+const dir = (text: string) =>
+  lineDirection(text) === "rtl"
+    ? ({ writingDirection: "rtl", textAlign: "right" } as const)
+    : null;
+/** A list row whose words read right to left has its marker on the right. */
+const rowDir = (text: string) =>
+  lineDirection(text) === "rtl"
+    ? ({ flexDirection: "row-reverse" } as const)
+    : null;
 
 /** How far each level of a nested list steps in. */
 const NEST = 20;
@@ -357,6 +581,7 @@ const styles = themed(() =>
       fontFamily: fonts.semibold,
     },
     editing: { gap: 6, alignItems: "flex-start" },
+    underEditing: { alignSelf: "stretch" },
     input: {
       alignSelf: "stretch",
       color: colors.text,
@@ -413,7 +638,6 @@ const styles = themed(() =>
       padding: 12,
     },
     code: { color: colors.text, fontSize: 13, fontFamily: "monospace" },
-    math: { color: colors.text, fontSize: 16, textAlign: "center" },
     mathCheck: {
       alignSelf: "flex-end",
       marginTop: 4,
@@ -427,5 +651,21 @@ const styles = themed(() =>
       fontWeight: "600",
     },
     divider: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
+    flash: {
+      marginHorizontal: -8,
+      paddingHorizontal: 8,
+      borderRadius: radii.input,
+      backgroundColor: colors.warningSoft,
+    },
+    headingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+    headingBody: { flex: 1, minWidth: 0 },
+    fold: {
+      width: 28,
+      height: 28,
+      borderRadius: radii.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    foldedMark: { color: colors.faint },
   }),
 );

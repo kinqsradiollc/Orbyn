@@ -1,5 +1,12 @@
 import React, { useRef, useState } from "react";
-import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { Item, Status } from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
@@ -26,6 +33,10 @@ export function SectionHeading({
   count,
   hint,
   color,
+  time,
+  folded,
+  onToggleFold,
+  onAdd,
 }: {
   title: string;
   count?: number;
@@ -33,16 +44,72 @@ export function SectionHeading({
   hint?: string;
   /** A dot before the title: a list's, tag's or status's colour. */
   color?: string;
+  /** The group's estimated time, "3 h 20 min" (DATA-04). */
+  time?: string;
+  /** With `onToggleFold`, the heading folds its group away. */
+  folded?: boolean;
+  onToggleFold?: () => void;
+  /** A + at the end: a new task in this group (DATA-03). */
+  onAdd?: () => void;
 }) {
+  const row = (
+    <>
+      {onToggleFold && (
+        <Icon
+          name={folded ? "chevronRight" : "chevronDown"}
+          size={14}
+          color={colors.muted}
+        />
+      )}
+      {!!color && <View style={[s.dot, { backgroundColor: color }]} />}
+      <Text style={shared.sectionTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      {count !== undefined && (
+        <View style={s.count}>
+          <Text style={s.countText}>{count}</Text>
+        </View>
+      )}
+      {!!time && <Text style={s.time}>{time}</Text>}
+    </>
+  );
   return (
     <View style={s.headingWrap}>
-      <View style={s.heading} accessibilityRole="header">
-        {!!color && <View style={[s.dot, { backgroundColor: color }]} />}
-        <Text style={shared.sectionTitle}>{title}</Text>
-        {count !== undefined && (
-          <View style={s.count}>
-            <Text style={s.countText}>{count}</Text>
+      <View style={s.headingLine}>
+        {onToggleFold ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${title}${count !== undefined ? `, ${count}` : ""}${time ? `, ${time}` : ""}`}
+            accessibilityState={{ expanded: !folded }}
+            accessibilityHint={folded ? "Shows this group" : "Folds this group"}
+            hitSlop={8}
+            onPress={() => {
+              animateLayout();
+              onToggleFold();
+            }}
+            style={({ pressed }) => [
+              s.heading,
+              s.headingFlex,
+              pressed && { opacity: 0.6 },
+            ]}
+          >
+            {row}
+          </Pressable>
+        ) : (
+          <View style={[s.heading, s.headingFlex]} accessibilityRole="header">
+            {row}
           </View>
+        )}
+        {onAdd && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`New task in ${title}`}
+            hitSlop={10}
+            onPress={onAdd}
+            style={({ pressed }) => [s.add, pressed && { opacity: 0.6 }]}
+          >
+            <Icon name="plus" size={15} color={colors.accent} />
+          </Pressable>
         )}
       </View>
       {!!hint && <Text style={shared.small}>{hint}</Text>}
@@ -115,6 +182,7 @@ export function ItemRows({
   nest = false,
   onReorder,
   onDragging,
+  onPickUp,
 }: Omit<ListHandlers, "onAdd"> & {
   items: Item[];
   /** Show each item's priority score (the list is sorted by it). */
@@ -127,6 +195,8 @@ export function ItemRows({
   onReorder?: (item: Item, place: Place) => void;
   /** A row is being dragged: the page should hold still. */
   onDragging?: (dragging: boolean) => void;
+  /** The board: a long press picks a card up to move to another column. */
+  onPickUp?: (item: Item) => void;
 }) {
   const [folded, setFolded] = useState<Set<string>>(() => new Set());
   const rows = nest
@@ -289,6 +359,7 @@ export function ItemRows({
                     : undefined
                 }
                 onDragStart={onReorder && !readOnly ? startDrag : undefined}
+                onPickUp={!readOnly ? onPickUp : undefined}
                 onDragRelease={onReorder ? releaseDrag : undefined}
               />
             </FadeIn>
@@ -373,7 +444,18 @@ export function PlannerList({
 const s = themed(() =>
   StyleSheet.create({
     headingWrap: { marginBottom: 10, gap: 2 },
+    headingLine: { flexDirection: "row", alignItems: "center", gap: 8 },
     heading: { flexDirection: "row", alignItems: "center", gap: 8 },
+    headingFlex: { flex: 1, minWidth: 0 },
+    time: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
+    add: {
+      width: 34,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radii.pill,
+      backgroundColor: colors.accentSoft,
+    },
     count: {
       backgroundColor: colors.surfaceMuted,
       borderRadius: 6,

@@ -352,14 +352,14 @@ good or the account is deleted.
    be the same; otherwise conversion
    fails without sharing the page. The source file is deleted in either case.
 
-| Method and path             | Body / result                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
-| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                    |
-| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                              |
-| `GET /imports/:id`          | → `ImportJob`                                                                                                                               |
-| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                             |
-| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                  |
+| Method and path             | Body / result                                                                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id?, keep_original? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                                    |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                                              |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                                                               |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                                             |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                                  |
 
 `scans` is how pages without their own text are read:
 
@@ -377,7 +377,12 @@ An `ImportJob` has these fields:
 - `queue_ahead` and `estimate_seconds`: set while `ocr`, from measured seconds per page.
 - `doc_id`: set once `ready`.
 - `error`: why it failed, in words for the person.
-- `notes`: what changed on the way in, such as "2 tables kept as lists" or "1 figure left out".
+- `notes`: what changed on the way in, such as "2 tables kept as tables" or "1 figure left out".
+
+**Keep the original** (`keep_original: true`): instead of being deleted, the file stays with the page
+it became, as one of its [pictures and files](#pictures-and-files-in-pages), in the importer's space
+(when it fits), and the page's `imported_from.original_file` names it. Tables in Word files, PDFs
+and OCR output are kept as tables.
 
 **Maths.** An equation read from a PDF's fonts, or from a scan, whose layout was a guess (a stacked
 fraction, a matrix, limits above and below) is a math block with `check: true`. The apps show a
@@ -879,6 +884,59 @@ true }`, the same note `POST /items/:id/note` opens. For a repeating event, `occ
   neither, it is the series' note. `422` for a time the event doesn't have. A line that only labels blanks left empty
   (`Course: {project}` with no project) is left off the page.
 
+### Richer pages (D4b)
+
+Besides headings, lists, to-dos, quotes, code, maths and dividers, a page's lines can be:
+
+| Line                                       | Markdown                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `{ type: "callout", kind, text, folded? }` | `> [!tip] words` (`note`, `tip`, `warning`, `question`, `summary`; `-` after the kind folds it) |
+| `{ type: "table", text }`                  | a pipe table; `text` is its Markdown                                                            |
+| `{ type: "image", file, text, width? }`    | `![caption](orbyn://file/<id>?w=60)`                                                            |
+| `{ type: "file", file, text }`             | `[name](orbyn://file/<id>)`                                                                     |
+| `{ type: "footnote", label, text }`        | `[^1]: words`; the marker `[^1]` sits in a line                                                 |
+
+A code block marked `mermaid` is drawn as a diagram; `orbyn-embed` shows another page's section
+(`orbyn://doc/<id>#<line>`) or the tasks the page links to (`tasks: linked`), read-only and live.
+Inline, `~~words~~` is struck through and `=={green}words==` / `=={rose}words==` are the other
+highlighter colours.
+
+| Method and path                | Body / result                                                                                                                                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                                                                                                                            |
+| `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on; anyone who can read the page may                                                                                                                                           |
+| `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions, task lines and pictures go with the lines, and a link takes their place                                                                                                             |
+| `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, its pictures belong to `into`, and links in pages you can change are pointed at `into` (a renamed line under its new name, each page keeping its history) |
+| `GET` / `PUT /docs/:id/folds`  | The headings you folded (`{ block_ids }`, at most 200), yours on every device                                                                                                                                                                                                            |
+| `PUT /docs/:id/aliases`        | `{ aliases }` (at most 8, each once): other names, such as a course code; the version stays                                                                                                                                                                                              |
+
+`PUT /projects/:id` takes `aliases` too. Every write but `anchor` needs `items:write` on the page
+(`403` for a viewer, `404` for a page you can't open) and goes through its history, as a save does.
+
+### Pictures and files in pages
+
+Kept in Orbyn's own file store (the `files` service, on its own `page_files` volume), encrypted,
+for as long as a page shows them; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
+and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
+Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
+
+| Method and path          | Body / result                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file)                                 |
+| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                                                             |
+| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour, for its uploader or anyone who can read a live page that shows it |
+| `GET /docs/:id/files`    | The pictures and files added to the page or shown on it → `[PageFile]`                                                                                                                   |
+| `DELETE /docs/files/:id` | Deletes one for good, freeing its space (its uploader, or `items:write` on the page it was added to; `403` from a page it was only pasted into) → `204`                                  |
+| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                                                          |
+
+Which pages show a file is kept by a trigger (`page_file_refs`, migrations 114 and 115), so a
+picture moved, merged or pasted into another page keeps working there. A save links a page to a
+file only when the person saving can already read it (the uploader, or a reader of a live page it
+is on); an id copied from anywhere else stays unlinked and shows as gone, and leaving a team unlinks
+that team's files from your own pages. A file no page shows any more goes at the
+sweep 30 days after its last line was removed (time for undo and history), or at the next sweep
+when its page is deleted for good. Parallel uploads are counted one at a time against the space.
+
 ### `GET /docs/:id/export?format=` (auth)
 
 `format` is `md` (the default), `txt`, `html`, `docx` or `pdf`; anything else is `422`. The reply
@@ -894,6 +952,14 @@ none) and writes a formula as the symbols it reads as, the same as everywhere ou
 ### `GET /docs/:id/markdown` (auth)
 
 Kept for anything already pointing at it; `export?format=md` is the same bytes.
+
+### `GET /docs/:id/info` (auth)
+
+A page's Info panel in one request (NAV-04):
+`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write }`.
+`team`, `project`, `event` (`{ id, title, due_at }`) and `folder` are `null` when the page has none;
+`recent` is the latest three versions as `GET /docs/:id/versions` lists them. `linked_here` counts only
+places the reader can open. `404` for a page the reader can't open or one in the Trash.
 
 ### `GET /docs/:id/versions` (auth)
 
@@ -1082,10 +1148,15 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc`, `task` or `record`; leave it out for pages and tasks, ranked together on one
-scale. `project` limits results to that project's pages and tasks, and adds its work records
+`type` is `doc`, `task`, `project` or `record`; leave it out for pages, tasks and projects, ranked
+together on one scale (projects match on their name and summary, and aren't included when `tag`,
+`kind` or `project` narrows the search). `q` may be left out when another filter is set: the search
+then lists what fits, newest first (the filter chips use this: "Pages and tasks tagged physics");
+with nothing at all to go on it answers 422. `tag` narrows pages (`doc_tags`) and tasks (`item_tags`),
+and leaves projects out. `team` is a team's id, or `personal` for what belongs to no team (the
+`team:personal` operator). `project` limits results to that project's pages and tasks, and adds its work records
 (decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
-searched with `type=record`. Every hit still passes the caller's normal visibility check, and
+searched with `type=record`. ⌘K and the phone's Search open a record hit's project. Every hit still passes the caller's normal visibility check, and
 pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
 Renaming a project reindexes its pages, which are found by their project's name. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
 body D — and on the **letters**
@@ -1097,6 +1168,127 @@ matched words in `[[` and `]]` — markers rather than markup, so nothing has to
 the database as HTML.
 
 A search only ever returns what the searcher can already see.
+
+### `GET /find?q=&type=&limit=` (auth)
+
+The quick switcher (⌘K on the web, Search on the phone). → `[ { "id", "type", "title", "hint",
+"team_id", "updated_at", "recent" } ]`. `type` (`doc`, `task` or `project`) narrows it; a hit's
+`type` is `doc`, `task`, `event` or `project`. `q` (up to 200 characters) matches **names** from the
+first letter: the whole name, its start, anywhere in it (`%` and `_` are letters), then names that
+look alike, lifted for what you opened lately (`recent: true`) and for what changed lately; done
+tasks and archived projects sink. With no `q` it lists what you opened last, newest first, topped up
+with your latest pages, open tasks and active projects. `limit` 1–30 (default 12). Only what you can
+see, never a page in the Trash.
+
+### `POST /recents` (auth)
+
+`{ "kind": "doc" | "task" | "project", "id" }` → 204. Something was opened: it goes to the top of
+your recent list. The apps call it when a page, task or project opens. Only the newest 50 are kept
+per person, and the sweeper clears entries untouched for 90 days (`recent_opens`). An id you can't see
+is never listed.
+
+## Links between things
+
+A link made with the link picker (`[[` in a page, "Link" in the `/` menu and on the phone's
+toolbar) is kept in the page as an ordinary Markdown link to `orbyn://<kind>/<id>` — `doc`, `task`,
+`event`, `project`, `person` or `date` (`orbyn://date/2026-09-26`). The words in the brackets are
+only what it said when it was made: the apps show the thing's live title, so renaming never breaks a
+link. Exports (`/docs/:id/export`, `/docs/:id/markdown`) turn pages, tasks and projects into web app
+links (`APP_URL/app/<kind>/<id>`) and people and dates into their words.
+
+Saving a page (any way: the editor, a restore, a suggestion, an import) fills the `object_links`
+index, beside the fixed connections: a checklist line that became a task, a meeting note, a page in
+a project, a task that waits for another and a person mentioned in a comment. Nothing is shown to
+someone who can't open both ends.
+
+**Link words are private to who can open the target (D3aF).** A reader who can't open what a link
+points to (someone's personal page, another team's task or project, a page deleted for good — the
+same things `/links/resolve` calls `missing`) never gets its bracket words: every answer that
+carries a page's words shows them as `Private page`, `Private task`, `Private event`,
+`Private project` or `Someone` instead — `GET /docs/:id` and its list previews, saves, versions,
+comments and suggestions, exports, `/links/here` lines, hover cards, headings, search hits, the
+assistant and agent `fetch`/`search` (an agent connection also can't read what lies outside its
+spaces) and published pages (a visitor can open only published pages). The stored page keeps the
+words: a save that hands back `Private …` for a link the page has keeps the page's own words, and
+comment and suggestion ranges are counted in the words the reader was shown and carried to the
+stored line (and back). Pages are found by search on their own words only, never by a link's.
+
+### `GET /links/here?kind=&id=` (auth)
+
+"Linked here" for a page, task, event, project or person (`kind` `doc`, `task`, `event`, `project`
+or `person`). → `{ "count", "items": [ { "kind": "doc" | "task", "id", "title", "hint", "source",
+"block_id", "context": { "before", "linked", "after" } } ] }`, one entry per place, newest first (at
+most 100). `source` is `link`, `mention`, `task_line`, `dependency`, `project` or `meeting`;
+`block_id` opens a page at the line. Places you can't open are neither listed nor counted. 404 when
+the thing itself isn't yours to open.
+
+### `GET /links/resolve?refs=` (auth)
+
+Link pills as they stand now. `refs` is up to 60 `kind:id` pairs, comma separated. → one
+`{ "kind", "id", "state", "title", "done"?, "due_at"?, "can_restore"? }` per ref, in order.
+`state` is `ok`; `deleted` for a page in the Trash you could open (`can_restore` when you may restore
+it); or `missing`, with no title, for anything gone for good or not yours to see (the two look
+alike). Tasks carry their tick and deadline.
+
+### `GET /links/pick?q=&limit=` (auth)
+
+What the link picker offers for the words typed: pages, tasks, events and projects by name (the
+quick switcher's ranking; with no `q`, what you opened last) with each task's `done` and `due_at`,
+then teammates by name. → `[ { "kind", "id", "title", "hint", "done"?, "due_at"? } ]`. `limit`
+1–30 (default 12). Dates are the app's own. Pages and projects are found by their other names too
+(`aliases`), with the hint "Also called …".
+
+### Links to one line (D4b)
+
+A link can point at one heading or line of a page: `orbyn://doc/<id>#<line>` (and
+`APP_URL/app/doc/<id>#<line>` on the web). It opens the page there, lit for a moment; `/links/here`
+lists it on the page. In `/links/resolve`, `refs` may name a line (`doc:<id>#<line>`), and its pill
+carries `block` and `block_title` (null once the line has gone). A page merged into another (below)
+resolves as `ok` with `moved_to`, the page it went into.
+
+### `GET /links/headings?doc=&q=` (auth)
+
+A page's headings, for `[[Page#`; with `q`, the headings and then the other lines that say it (at
+most 30). → `[ { "block_id", "index", "level", "text" } ]`. `block_id` is null for a line with no name
+yet: `POST /docs/:id/anchor` names it.
+
+### `GET /links/card?kind=&id=&block=` (auth)
+
+A link's hover card (`kind` `doc`, `task`, `event` or `project`) → `LinkCard`: `state`, `title`,
+`can_write`, and by kind: a page's `kind_label`, `folder`, `project`, `preview` and (with `block`)
+`section`; a page merged into another answers with the page it went into and `moved_from`; a task's
+`done`, `due_at`, `all_day`, `estimate_minutes`, `repeats`, `project`, `planned` (your next session
+only) and `time_zone` (your account's, which "Reschedule" moves the deadline in); an event's `start_at`, `end_at` and `note_id`; a project's
+`progress`, `next` and `deadline`. Something you can't open is `{ "state": "missing" }` and nothing
+else.
+
+### `GET /links/mentions?kind=&id=` (auth)
+
+"Mentioned without a link": pages that say a page's or project's name, or one of its other names, as
+words of their own (not in code, maths or links) without linking to it. → `[ { "doc_id", "title",
+"hint", "block_id", "matched", "context", "can_link" } ]`, at most 20.
+
+### `POST /links/mentions/link` (auth)
+
+`{ doc_id, block_id, matched, target: { kind: "doc" | "project", id } }` makes the first such mention
+in that line a link (a new version of that page) → `{ doc_id, version }`. `403` for a page you may
+only read, `404` for a target you can't open, `409` when the words aren't there any more.
+
+### `GET /links/related?kind=doc&id=` (auth)
+
+"Related": pages that read like this one and aren't linked either way — by meaning when the
+workspace measures pages (from the page's stored measurements; no provider is asked), then the same
+tags, links to the same things, and similar titles. → `[ { "doc_id", "title", "hint", "reason" } ]`,
+at most 6.
+
+## Links into the apps
+
+### `GET /.well-known/apple-app-site-association`, `GET /.well-known/assetlinks.json` (public)
+
+The files iOS and Android check before opening the web app's `/app/…` links in the Orbyn app
+(universal links and verified app links), served from the web host through the gateway. Built from
+`APPLE_TEAM_ID` (`<team>.com.orbyn.planner`, paths `/app/*`) and `ANDROID_CERT_FINGERPRINTS` (the
+signing certificates' SHA-256, comma separated). Unset, they are empty and links stay in the browser.
 
 ### Finding a page by meaning
 
@@ -1166,7 +1358,7 @@ coming back to, and are private to whoever starred them.
 
 ### `GET /favourites` (auth)
 
-→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc` or `project`.
+→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc`, `project` or `view` (a saved view).
 
 ### `PUT /favourites` (auth)
 
@@ -1174,6 +1366,117 @@ coming back to, and are private to whoever starred them.
 
 A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
 and leaving the field out keeps it where it is.
+
+## Saved views and your own fields
+
+A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.
+Its `definition` is the one language the apps, the live list block in a page and the agents' `query`
+and `save_view` share (`viewDefinition` in `packages/core/src/views.ts`):
+
+```json
+{
+  "source": "tasks",
+  "filters": {
+    "due_within_days": 7,
+    "project": "<id>",
+    "fields": [{ "field": "<id>", "op": "is", "value": "Final" }]
+  },
+  "sort": { "by": "due", "dir": "asc" },
+  "group_by": "project",
+  "layout": "table",
+  "columns": ["done", "title", "due", "estimate", "spent", "tags", "days_left"],
+  "date_by": "due"
+}
+```
+
+- `filters`: `text`, `status` (`open` by default for tasks and projects, `done`, `any`), `team`
+  (`"personal"` or a team id), `project`, `list`, `tag`, `assignee` (`"me"` or an id),
+  `due_after` / `due_before` (days), `due_within_days`, `overdue`, `no_due`, `folder`, `kind`,
+  `updated_within_days`, and up to ten `fields` filters (`is`, `is_not`, `empty`, `not_empty`,
+  `before`, `after`, `contains`).
+- `sort.by`: `due`, `updated`, `created`, `priority`, `title`, `estimate`, `days_left` or
+  `field:<id>`. Things without a value sort last either way.
+- `group_by`: tasks group as the task list does (`status`, `list`, `tag`, `size`, `priority`,
+  `project`, `due_week`, `assignee`); pages by `kind`, `folder`, `project`, `team`, `tag`; projects
+  by `status`, `team`; pages and projects also by `field:<id>`.
+- `layout`: `list`, `board`, `table`, `calendar`, or `gallery` (pages only). `columns` include the
+  ready-made computed columns `days_left`, `overdue` and `spent_vs_estimate` (no formula language).
+- A definition that doesn't fit its source is refused with `422`.
+
+A view is yours (`team_id` null) or shared with a team. It always runs as the person looking: a shared
+view shares its definition, never anyone's rows.
+
+### `GET /views` (auth)
+
+→ `[ SavedView ]`: yours and your teams', each with `pinned` (your own sidebar) and `can_edit`.
+
+### `POST /views` (auth)
+
+`{ "name", "team_id"?, "definition" }` → `201` the view. Sharing with a team needs permission to
+change the team's things (`403` for a viewer, `404` outside the team). At most 200 views per person
+(`409`).
+
+### `PUT /views/:id` (auth)
+
+`{ "name"?, "team_id"?, "definition"? }` → the view. Its maker, or the team's owners and admins
+(`403` otherwise). Only its maker shares it or takes it back; a view keeps its `source` (`400`).
+
+### `DELETE /views/:id` (auth)
+
+→ `204`, with everyone's stars and pins of it.
+
+### `PUT /views/:id/pin` (auth)
+
+`{ "pinned": bool }` → `204`. Pins are each person's own.
+
+### `POST /views/run` (auth)
+
+`{ "id", "limit"? }` or `{ "definition", "limit"? }` → `{ source, rows, truncated, fields, people,
+time_zone, view? }`. Rows are tasks, pages or projects in one shape (`ViewRow`); a task's row carries
+the task and its `end_at`, `all_day` and `timezone`, so "due" and "overdue" follow the task list's
+rule (an all-day task is due by the end of its day, a task with an end time when it ends, and a task
+due earlier today isn't overdue yet). Days are read in the account's time zone, returned as
+`time_zone` so the apps draw and edit in the same one. A page's `cover` is its first image only when
+it is in Orbyn's own file store (`/files/…`). At most 500 rows. Nothing is written.
+
+### `GET /views/:id/export.csv` (auth)
+
+The view as CSV with the columns it shows. Text that would start a spreadsheet formula is kept as
+text.
+
+### `GET /fields` (auth) · `POST /fields` · `PUT /fields/:id` · `DELETE /fields/:id`
+
+Your own typed fields (ORG-02) for pages or projects in a space (yours, or a team's):
+`{ "name", "type": "text"|"number"|"date"|"select"|"person"|"checkbox", "applies_to": "page"|"project",
+"team_id"?, "options"? (choices), "on_calendar"? (date fields) }`. One name per space and kind
+(`409`), 40 per space. Anyone who can change the team's things adds one; renaming, changing choices
+and removing it is for its maker and the team's owners and admins. A choice taken away is cleared
+where it was picked; removing a field clears every value.
+
+### `GET /fields/values?target=page|project&id=` (auth)
+
+A page's or project's fields and values, for its Info panel: `{ fields, values, can_write, people }`.
+Only the fields of its own space count.
+
+### `PUT /fields/:id/value` (auth)
+
+`{ "target", "target_id", "value" }` → `{ field_id, value }`. Checked by type (`400`): a choice must
+be one of the field's, a person someone in the team. `null` or empty text clears it. Needs
+permission to change the page or project (`403`). It counts as a change: the page's or project's
+`updated_at` moves (a page's `version` stays, so an open editor saves on), and open pages hear of it
+on their live stream as `{ fields: true }`.
+
+### `GET /fields/dates?from=YYYY-MM-DD&to=YYYY-MM-DD` (auth)
+
+Date fields shown on the calendar as deadlines (DATA-07), on the pages and projects you can open:
+`[ { field_id, field_name, target, target_id, title, date, team_id } ]`. The agents' `get_calendar`
+lists them as `deadline` entries.
+
+### A live list in a page (SRCH-02)
+
+A fenced block with the language `orbyn-list` whose text is `view:<id>` or a definition (with an
+optional `title` and `limit`). The apps draw it as live rows with working ticks; everything else
+keeps it as a code block.
 
 ## Documents
 
@@ -1944,6 +2247,14 @@ last day, a span under the day it ends. A task is overdue once that day is befor
 (`dueBeforeToday`), so one due earlier today isn't yet. The task panels and Focus mode say "Due
 Fri 2 Oct, 5 pm" (`dueLine`); list lines (Tasks to place, plans, the team's at-risk list) say
 "due Fri 2 Oct, 5 pm", or "due Fri 2 Oct" for a whole day (`dueDateOf`).
+
+#### `POST /blocks` with a day (auth)
+
+`{ "item_id", "day": "2026-10-02", "minutes"? }` instead of `start_at`/`end_at`: a task dropped on a
+calendar day (ORG-06). The session goes in the first free working time that day in the person's zone
+(from now on for today), `minutes` long (default: the task's estimate, or 30). `201` with the session;
+`409` when the day is over or has no free working time for it. The task's deadline is never written;
+a session after it is kept and flagged late like any other.
 
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
@@ -2729,3 +3040,67 @@ would take over the budget.
 to add); `DELETE /items/:id/proofs/:proofId`.
 `GET /progress?from=&to=&team_id=` → what got done, by person, with each task's proof, and the
 same as `markdown`. Without `team_id`, your own personal tasks.
+
+## Later pages, navigation and capture (D5)
+
+### Stars (NAV-07)
+
+- `PUT /favourites` `{ kind, target_id, block_id?, starred }`: `kind` is `doc`, `project`, `view`,
+  `task` or `heading` (a heading's star is its page's id plus the line's `block_id`, and only a
+  heading's star has one). 404 for something you can't open; at most 500 stars.
+- `GET /starred` → `StarredItem[]`: every star with its live title and where it is, newest first.
+  Stars on things you can no longer open, and headings whose line is gone, are left out.
+
+### Choices that follow the account (NAV-08, NAV-09, SHR-08)
+
+- `GET /me/prefs` → `{ sidebar: { order, hidden }, shortcuts, views, updated_at }` (defaults
+  until something is chosen).
+- `PUT /me/prefs` `{ sidebar?, shortcuts?, views? }`: the sidebar's arrangement and shortcuts are
+  replaced whole; view choices are merged by place (`null` clears one). A shortcut must name a
+  command and keys can do only one thing (400). Refused for personal API keys. 30 a minute.
+- `DELETE /me/prefs`: everything back as it came.
+
+What opens at start (NAV-12), the theme and text size stay on each device.
+
+### Archiving and tidying the library (SRCH-03, ORG-03)
+
+- `PUT /docs/:id/archive` and `PUT /folders/:id/archive` `{ archived }`. Archived pages (and pages
+  in an archived folder) leave `GET /docs`, `/find`, `/search`, the link picker and "Mentioned
+  without a link"; they still open, and their links still work. `GET /docs?archived=include|only`,
+  `/find?include_archived=true` and `/search?include_archived=true` include them.
+- `POST /docs/bulk` `{ ids (≤100), folder_id?, archived?, tag_id? }` → `{ done, skipped }`: each
+  page is checked as if changed alone; one you can't change is skipped, not an error.
+
+### The Connections map (CNV-02)
+
+`GET /links/map?kind=doc|project&id=&depth=1|2` → `{ nodes, edges, truncated }`: what a page or
+project is linked to, from the link index and a project's own tasks, at most 36 things. Only what
+the reader can open is on it; people and dates are ends.
+
+### A team's switches (OTH-04)
+
+`GET /teams/:id/policies` → `{ publishing, assistant, booking, can_change }`; `PUT` (owners and
+admins) with any of the three. With `assistant` off, the page assistant, assistant chips, Study's
+suggestions and the chat's page tools refuse or leave out the team's pages, and semantic search
+doesn't measure them. With `booking` off, the team's public booking pages answer 404 until it's
+on again.
+
+### Recordings (CAP-10)
+
+Recordings are page files (`audio/webm`, `audio/mp4`, `audio/mpeg`, `audio/ogg`, `audio/wav`,
+`audio/aac`) and play in the page. `POST /ai/recordings/:fileId/summary` `{ transcript? }` →
+`{ transcript, summary, actions[] }`, only when asked: the recording is written out by the
+assistant's provider (`AI_TRANSCRIBE_MODEL`, default `whisper-1`, on its `/audio/transcriptions`;
+the ai service fetches the file from the file store at `FILES_URL` and needs `FILES_SECRET`), then
+summarised. Nothing changes on the page until the person adds the summary.
+
+### The Orbyn Clipper (CAP-02, CAP-03, CAP-04)
+
+- `GET` / `POST /me/clip-keys`, `DELETE /me/clip-keys/:id` (signed in; refused for API keys): a
+  Clipper key (`ocl_…`) is shown once.
+- `GET /clips/destinations` and `POST /clips` accept a Clipper key (or a session). A Clipper key is
+  refused everywhere else (401). `POST /clips` `{ type: article|paper|assignment|read_later|
+highlights, url, title?, html?, selection?, highlights?, highlights_as?, folder_id?, project_id?,
+team_id?, doc_id?, due_at?, time_zone?, dry_run? }`. The page's HTML is cleaned here: only its
+  readable part is kept, with web links; `orbyn://` in clipped words is written harmlessly. An
+  assignment's deadline is read only from a full date on the page. 60 a minute.

@@ -13,7 +13,10 @@ export type AuditTarget =
   /** An outside agent's connection (an agent key or an OAuth sign-in). */
   | "agent_grant"
   /** An app registered to sign in over OAuth. */
-  | "oauth_client";
+  | "oauth_client"
+  /** A page or folder on the public web (SHR-05). */
+  | "page"
+  | "folder";
 
 /**
  * Append an entry to the audit log. Pass `db` to write inside a transaction,

@@ -5,17 +5,19 @@
  */
 import {
   docPlainText,
+  isStyledRun,
   parseDocInline,
   type DocBlock,
   type DocInline,
   type DocKind,
   type DocVersion,
+  type HighlightTint,
 } from "./docs.js";
 
 // ---------------------------------------------------------------- styles ---
 
 /** The styles the selection bar and the editor's shortcuts put on words. */
-export type InlineStyle = "bold" | "italic" | "highlight" | "code";
+export type InlineStyle = "bold" | "italic" | "highlight" | "code" | "strike";
 
 /** The Markdown written around words to give them each style. */
 export const STYLE_MARKERS: Record<InlineStyle, string> = {
@@ -23,20 +25,13 @@ export const STYLE_MARKERS: Record<InlineStyle, string> = {
   italic: "*",
   highlight: "==",
   code: "`",
+  strike: "~~",
 };
 
 /** A line after an edit, with the words that were acted on still selected. */
 export type Restyled = { text: string; start: number; end: number };
 
-const isStyled = (run: DocInline) =>
-  !!(
-    run.bold ||
-    run.italic ||
-    run.code ||
-    run.math ||
-    run.link ||
-    run.highlight
-  );
+const isStyled = isStyledRun;
 
 const hasStyle = (run: DocInline, style: InlineStyle) =>
   style === "bold"
@@ -45,7 +40,14 @@ const hasStyle = (run: DocInline, style: InlineStyle) =>
       ? !!run.italic
       : style === "code"
         ? !!run.code
-        : !!run.highlight;
+        : style === "strike"
+          ? !!run.strike
+          : !!run.highlight;
+
+/** How long a run's opening marker is: `==`, or `=={green}` for a tint. */
+const openLength = (run: DocInline, style: InlineStyle) =>
+  STYLE_MARKERS[style].length +
+  (style === "highlight" && run.tint ? run.tint.length + 2 : 0);
 
 /** Characters a style's words cannot hold, since they would end it early. */
 const FORBIDDEN: Record<InlineStyle, string> = {
@@ -53,6 +55,7 @@ const FORBIDDEN: Record<InlineStyle, string> = {
   italic: "*",
   highlight: "=",
   code: "`",
+  strike: "~",
 };
 
 /**
@@ -105,14 +108,15 @@ export function styleRange(
   for (const run of runs) {
     if (!hasStyle(run, style)) continue;
     const runEnd = run.start + run.text.length;
-    const open = run.start - m.length;
+    const lead = openLength(run, style);
+    const open = run.start - lead;
     const unwrapped =
       text.slice(0, open) + run.text + text.slice(runEnd + m.length);
     // The words with their markers selected: the style comes off them.
     if (start === open && end === runEnd + m.length)
       return { text: unwrapped, start: open, end: open + run.text.length };
     if (start >= run.start && end <= runEnd)
-      return { text: unwrapped, start: start - m.length, end: end - m.length };
+      return { text: unwrapped, start: start - lead, end: end - lead };
   }
   if (start === end) {
     // A caret inside words styled some other way can't start a new style.
@@ -138,6 +142,50 @@ export function styleRange(
     (r) => hasStyle(r, style) && r.start === s + m.length && r.text === inner,
   );
   return took ? { text: next, start: s + m.length, end: e + m.length } : null;
+}
+
+/**
+ * Highlight words in one of the highlighter's colours (EDT-05), or change
+ * the colour of words already highlighted. The usual amber is written as a
+ * plain `==words==`; the others as `=={green}words==`.
+ */
+export function tintRange(
+  text: string,
+  start: number,
+  end: number,
+  tint: HighlightTint,
+): Restyled | null {
+  if (end < start) [start, end] = [end, start];
+  const prefix = tint === "amber" ? "" : `{${tint}}`;
+  for (const run of parseDocInline(text)) {
+    if (!run.highlight) continue;
+    const runEnd = run.start + run.text.length;
+    const lead = openLength(run, "highlight");
+    const open = run.start - lead;
+    // Inside words already highlighted: only their colour changes.
+    if (start < open || end > runEnd + 2) continue;
+    const next = text.slice(0, open) + "==" + prefix + text.slice(run.start);
+    const shift = 2 + prefix.length - lead;
+    return { text: next, start: run.start + shift, end: runEnd + shift };
+  }
+  if (start === end) return null;
+  const plain = styleRange(text, start, end, "highlight");
+  if (!plain || !prefix) return plain;
+  // Put the colour just inside the opening marker.
+  const open = plain.start - 2;
+  const next =
+    plain.text.slice(0, open + 2) + prefix + plain.text.slice(open + 2);
+  const took = parseDocInline(next).some(
+    (r) =>
+      r.highlight && r.tint === tint && r.start === plain.start + prefix.length,
+  );
+  return took
+    ? {
+        text: next,
+        start: plain.start + prefix.length,
+        end: plain.end + prefix.length,
+      }
+    : null;
 }
 
 /** Whether the words at `start`–`end` could take this style right now. */
@@ -286,6 +334,8 @@ export function pageFooter(o: {
   saving?: boolean;
   failed?: boolean;
   now?: Date;
+  /** How many places link to the page ("3 linked here"); left out at 0. */
+  linked?: number;
 }): string {
   const parts = [
     o.selected
@@ -293,6 +343,7 @@ export function pageFooter(o: {
       : `${figure(o.words)} ${o.words === 1 ? "word" : "words"}`,
   ];
   if (o.minutes) parts.push(`${o.minutes} min read`);
+  if (o.linked) parts.push(`${figure(o.linked)} linked here`);
   if (o.saving) parts.push("Saving…");
   else if (o.failed) parts.push("Not saved");
   else if (o.savedAt) parts.push(`Saved ${savedAgo(o.savedAt, o.now)}`);

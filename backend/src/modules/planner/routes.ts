@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { randomBytes } from "node:crypto";
 import {
-  addDays,
   blockDuplicateInput,
   blockInput,
+  blockOnDayInput,
   blockRescheduleInput,
   sessionCheckInInput,
   blockUpdate,
@@ -11,7 +11,6 @@ import {
   calendarFeedSettingsInput,
   calendarSearchQuery,
   clockMinutes,
-  dayTime,
   fail,
   type CalendarFeed,
   type CalendarFeedSettings,
@@ -573,9 +572,15 @@ export async function plannerRoutes(app: FastifyInstance) {
     return itemSessions(reader(r.headers), u.id, idParam(r));
   });
 
+  // A session at a time, or (with `day` instead of times: a task dropped on
+  // a calendar day) at the first free working time that day. A day's
+  // session may end after the task's deadline: it is flagged late, never
+  // refused, and the deadline is never touched.
   app.post("/blocks", async (r, reply) => {
     const u = await authenticate(r);
-    const d = blockInput.parse(r.body);
+    const body = (r.body ?? {}) as Record<string, unknown>;
+    const onDay = "day" in body ? blockOnDayInput.parse(body) : null;
+    const d = onDay ?? blockInput.parse(body);
     const block = await transaction((db) => addSession(db, u.id, d));
     reply.code(201);
     return block;
