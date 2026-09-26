@@ -5,11 +5,7 @@
  * of every style, and tell the toolbar which styles the caret sits in so it
  * can show them as on.
  */
-import {
-  isStyledRun,
-  parseDocInline,
-  type HighlightTint,
-} from "./docs.js";
+import { isStyledRun, parseDocInline, type HighlightTint } from "./docs.js";
 import {
   isUrl,
   linkTarget,

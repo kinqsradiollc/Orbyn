@@ -337,14 +337,14 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
    be the same; otherwise conversion
    fails without sharing the page. The source file is deleted in either case.
 
-| Method and path             | Body / result                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
-| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                    |
-| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                              |
-| `GET /imports/:id`          | → `ImportJob`                                                                                                                               |
-| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                             |
-| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                  |
+| Method and path             | Body / result                                                                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id?, keep_original? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                                    |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                                              |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                                                               |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                                             |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                                  |
 
 `scans` is how pages without their own text are read:
 
@@ -362,7 +362,12 @@ An `ImportJob` has these fields:
 - `queue_ahead` and `estimate_seconds`: set while `ocr`, from measured seconds per page.
 - `doc_id`: set once `ready`.
 - `error`: why it failed, in words for the person.
-- `notes`: what changed on the way in, such as "2 tables kept as lists" or "1 figure left out".
+- `notes`: what changed on the way in, such as "2 tables kept as tables" or "1 figure left out".
+
+**Keep the original** (`keep_original: true`): instead of being deleted, the file stays with the page
+it became, as one of its [pictures and files](#pictures-and-files-in-pages), in the importer's space
+(when it fits), and the page's `imported_from.original_file` names it. Tables in Word files, PDFs
+and OCR output are kept as tables.
 
 **Maths.** An equation read from a PDF's fonts, or from a scan, whose layout was a guess (a stacked
 fraction, a matrix, limits above and below) is a math block with `check: true`. The apps show a
@@ -822,6 +827,53 @@ true }`, the same note `POST /items/:id/note` opens. For a repeating event, `occ
   neither, it is the series' note. `422` for a time the event doesn't have. A line that only labels blanks left empty
   (`Course: {project}` with no project) is left off the page.
 
+### Richer pages (D4b)
+
+Besides headings, lists, to-dos, quotes, code, maths and dividers, a page's lines can be:
+
+| Line                                       | Markdown                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `{ type: "callout", kind, text, folded? }` | `> [!tip] words` (`note`, `tip`, `warning`, `question`, `summary`; `-` after the kind folds it) |
+| `{ type: "table", text }`                  | a pipe table; `text` is its Markdown                                                            |
+| `{ type: "image", file, text, width? }`    | `![caption](orbyn://file/<id>?w=60)`                                                            |
+| `{ type: "file", file, text }`             | `[name](orbyn://file/<id>)`                                                                     |
+| `{ type: "footnote", label, text }`        | `[^1]: words`; the marker `[^1]` sits in a line                                                 |
+
+A code block marked `mermaid` is drawn as a diagram; `orbyn-embed` shows another page's section
+(`orbyn://doc/<id>#<line>`) or the tasks the page links to (`tasks: linked`), read-only and live.
+Inline, `~~words~~` is struck through and `=={green}words==` / `=={rose}words==` are the other
+highlighter colours.
+
+| Method and path                | Body / result                                                                                                                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                      |
+| `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on                                                                       |
+| `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions and task lines go with the lines, and a link takes their place                 |
+| `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, links in pages you can change are pointed at `into` |
+| `GET` / `PUT /docs/:id/folds`  | The headings you folded (`{ block_ids }`, at most 200), yours on every device                                                                                                      |
+| `PUT /docs/:id/aliases`        | `{ aliases }` (at most 8, each once): other names, such as a course code; the version stays                                                                                        |
+
+`PUT /projects/:id` takes `aliases` too. Every write needs `items:write` on the page (`403` for a
+viewer, `404` for a page you can't open) and goes through its history, as a save does.
+
+### Pictures and files in pages
+
+Kept in Orbyn's own file store (the `files` service, on its own `page_files` volume), encrypted,
+for as long as their page; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
+and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
+Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
+
+| Method and path          | Body / result                                                                                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file) |
+| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                             |
+| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour                                    |
+| `GET /docs/:id/files`    | The page's pictures and files → `[PageFile]`                                                                                                             |
+| `DELETE /docs/files/:id` | Deletes one for good (`items:write` on its page) → `204`                                                                                                 |
+| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                          |
+
+A page deleted for good takes its files with it at the next sweep.
+
 ### `GET /docs/:id/export?format=` (auth)
 
 `format` is `md` (the default), `txt`, `html`, `docx` or `pdf`; anything else is `422`. The reply
@@ -1108,7 +1160,50 @@ alike). Tasks carry their tick and deadline.
 What the link picker offers for the words typed: pages, tasks, events and projects by name (the
 quick switcher's ranking; with no `q`, what you opened last) with each task's `done` and `due_at`,
 then teammates by name. → `[ { "kind", "id", "title", "hint", "done"?, "due_at"? } ]`. `limit`
-1–30 (default 12). Dates are the app's own.
+1–30 (default 12). Dates are the app's own. Pages and projects are found by their other names too
+(`aliases`), with the hint "Also called …".
+
+### Links to one line (D4b)
+
+A link can point at one heading or line of a page: `orbyn://doc/<id>#<line>` (and
+`APP_URL/app/doc/<id>#<line>` on the web). It opens the page there, lit for a moment; `/links/here`
+lists it on the page. In `/links/resolve`, `refs` may name a line (`doc:<id>#<line>`), and its pill
+carries `block` and `block_title` (null once the line has gone). A page merged into another (below)
+resolves as `ok` with `moved_to`, the page it went into.
+
+### `GET /links/headings?doc=&q=` (auth)
+
+A page's headings, for `[[Page#`; with `q`, the headings and then the other lines that say it (at
+most 30). → `[ { "block_id", "index", "level", "text" } ]`. `block_id` is null for a line with no name
+yet: `POST /docs/:id/anchor` names it.
+
+### `GET /links/card?kind=&id=&block=` (auth)
+
+A link's hover card (`kind` `doc`, `task`, `event` or `project`) → `LinkCard`: `state`, `title`,
+`can_write`, and by kind: a page's `kind_label`, `folder`, `project`, `preview` and (with `block`)
+`section`; a task's `done`, `due_at`, `all_day`, `estimate_minutes`, `repeats`, `project` and
+`planned` (your next session only); an event's `start_at`, `end_at` and `note_id`; a project's
+`progress`, `next` and `deadline`. Something you can't open is `{ "state": "missing" }` and nothing
+else.
+
+### `GET /links/mentions?kind=&id=` (auth)
+
+"Mentioned without a link": pages that say a page's or project's name, or one of its other names, as
+words of their own (not in code, maths or links) without linking to it. → `[ { "doc_id", "title",
+"hint", "block_id", "matched", "context", "can_link" } ]`, at most 20.
+
+### `POST /links/mentions/link` (auth)
+
+`{ doc_id, block_id, matched, target: { kind: "doc" | "project", id } }` makes the first such mention
+in that line a link (a new version of that page) → `{ doc_id, version }`. `403` for a page you may
+only read, `404` for a target you can't open, `409` when the words aren't there any more.
+
+### `GET /links/related?kind=doc&id=` (auth)
+
+"Related": pages that read like this one and aren't linked either way — by meaning when the
+workspace measures pages (from the page's stored measurements; no provider is asked), then the same
+tags, links to the same things, and similar titles. → `[ { "doc_id", "title", "hint", "reason" } ]`,
+at most 6.
 
 ## Links into the apps
 
